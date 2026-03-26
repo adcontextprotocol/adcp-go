@@ -18,7 +18,8 @@ func setupTest(t *testing.T) (*IdentityAgent, *miniredis.Miniredis) {
 	}
 
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	agent := NewIdentityAgent(rdb,
+	store := NewRedisStore(rdb)
+	agent := NewIdentityAgent(store,
 		[]PackageConfig{
 			{
 				PackageID:  "pkg-display-001",
@@ -39,8 +40,8 @@ func setupTest(t *testing.T) (*IdentityAgent, *miniredis.Miniredis) {
 				PackageID:  "pkg-multi-rule",
 				CampaignID: "campaign-acme",
 				FrequencyRules: []FrequencyRule{
-					{MaxCount: 2, Window: 12 * time.Hour},  // 2 per 12h
-					{MaxCount: 5, Window: 7 * 24 * time.Hour}, // AND 5 per week
+					{MaxCount: 2, Window: 12 * time.Hour},
+					{MaxCount: 5, Window: 7 * 24 * time.Hour},
 				},
 			},
 			{
@@ -86,14 +87,13 @@ func TestExpose_CampaignFrequencyCap(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
+	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
-	// 5 exposures across two packages in campaign-acme (campaign cap is 5)
 	for i := 0; i < 3; i++ {
-		agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 	for i := 0; i < 2; i++ {
-		agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002"})
+		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002"})
 	}
 
 	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
@@ -117,11 +117,10 @@ func TestExpose_PackageCappedButCampaignNot(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
+	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
-	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5)
 	for i := 0; i < 3; i++ {
-		agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 
 	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
@@ -151,10 +150,8 @@ func TestMultipleFrequencyRules(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	// pkg-multi-rule: 2 per 12h AND 5 per 7d
-	// Expose 2 times — should hit the 12h cap
-	agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
-	agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
+	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
+	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
 
 	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
 		RequestID:  "id-test-multi",
@@ -175,14 +172,12 @@ func TestSlidingWindow_OldExposuresExpire(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
+	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
-	// Expose 3 times (hits package cap of 3 per 24h)
 	for i := 0; i < 3; i++ {
-		agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 
-	// Should be capped now
 	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
 		RequestID: "id-before", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
@@ -190,11 +185,8 @@ func TestSlidingWindow_OldExposuresExpire(t *testing.T) {
 		t.Error("should be capped (3/3 in 24h)")
 	}
 
-	// Fast-forward miniredis by 25 hours — exposures fall outside the 24h window
 	mr.FastForward(25 * time.Hour)
 
-	// The sorted set entries still exist but their timestamps are now >24h old.
-	// ZCOUNT with the sliding window cutoff should return 0.
 	resp, _ = agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
 		RequestID: "id-after", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
@@ -208,8 +200,8 @@ func TestExpose_IntentScoreUpdated(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
-	agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
+	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 
 	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
 		RequestID: "id-intent", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
@@ -262,5 +254,70 @@ func TestUnknownPackage(t *testing.T) {
 
 	if resp.Eligibility[0].Eligible {
 		t.Error("unknown package should not be eligible")
+	}
+}
+
+// --- In-Memory Store Tests ---
+
+func TestInMemoryStore_FullFlow(t *testing.T) {
+	store := NewInMemoryStore()
+	agent := NewIdentityAgent(store,
+		[]PackageConfig{
+			{PackageID: "pkg-1", CampaignID: "camp-1", FrequencyRules: []FrequencyRule{{MaxCount: 2, Window: time.Hour}}},
+		},
+		[]CampaignConfig{
+			{CampaignID: "camp-1", FrequencyRules: []FrequencyRule{{MaxCount: 3, Window: 24 * time.Hour}}},
+		},
+	)
+	ctx := context.Background()
+
+	// Two exposures should work
+	_, err := agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-1", PackageID: "pkg-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-1", PackageID: "pkg-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should now be capped
+	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+		RequestID: "test", UserToken: "user-1", PackageIDs: []string{"pkg-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Eligibility[0].Eligible {
+		t.Error("should be capped after 2 exposures (in-memory store)")
+	}
+}
+
+func TestInMemoryStore_AudienceSegments(t *testing.T) {
+	store := NewInMemoryStore()
+	agent := NewIdentityAgent(store,
+		[]PackageConfig{
+			{PackageID: "pkg-1", TargetSegments: []string{"vip"}},
+		},
+		nil,
+	)
+	ctx := context.Background()
+
+	// Not in segment
+	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+		RequestID: "t1", UserToken: "user-1", PackageIDs: []string{"pkg-1"},
+	})
+	if resp.Eligibility[0].Eligible {
+		t.Error("should not be eligible (not in segment)")
+	}
+
+	// Load segment
+	_ = agent.LoadAudienceSegment(ctx, "vip", []string{"user-1"})
+
+	resp, _ = agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+		RequestID: "t2", UserToken: "user-1", PackageIDs: []string{"pkg-1"},
+	})
+	if !resp.Eligibility[0].Eligible {
+		t.Error("should be eligible after segment load")
 	}
 }
