@@ -11,6 +11,7 @@ import (
 // uses an in-memory mock with simulated network latency.
 type ValkeyClient interface {
 	SIsMember(ctx context.Context, key, member string) (bool, error)
+	SMembers(ctx context.Context, key string) ([]string, error)
 	SInter(ctx context.Context, keys ...string) ([]string, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
@@ -56,6 +57,21 @@ func (m *MockValkeyClient) SAdd(key string, members ...string) {
 	for _, member := range members {
 		s[member] = struct{}{}
 	}
+}
+
+func (m *MockValkeyClient) SMembers(_ context.Context, key string) ([]string, error) {
+	m.simulateLatency()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sets[key]
+	if !ok {
+		return nil, nil
+	}
+	out := make([]string, 0, len(s))
+	for member := range s {
+		out = append(out, member)
+	}
+	return out, nil
 }
 
 func (m *MockValkeyClient) SIsMember(_ context.Context, key, member string) (bool, error) {

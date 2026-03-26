@@ -86,7 +86,7 @@ func TestPropertySuppression(t *testing.T) {
 	ctx := context.Background()
 
 	// Suppress property RID 2
-	agent.suppressions.SuppressProperty(ctx, 2, time.Hour)
+	_ = agent.suppressions.SuppressProperty(ctx, 2, time.Hour)
 
 	req := &tmp.ContextMatchRequest{
 		RequestID:   "test-3",
