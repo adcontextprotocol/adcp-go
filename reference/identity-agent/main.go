@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
@@ -18,7 +19,19 @@ func main() {
 
 	rdb := redis.NewClient(&redis.Options{Addr: *redisAddr})
 
-	agent := NewIdentityAgent(rdb,
+	// Try to connect to Valkey; fall back to in-memory if unavailable
+	var store Store
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Printf("Valkey unavailable (%v), using in-memory store", err)
+		store = NewInMemoryStore()
+	} else {
+		log.Printf("Connected to Valkey at %s", *redisAddr)
+		store = NewRedisStore(rdb)
+	}
+
+	agent := NewIdentityAgent(store,
 		[]PackageConfig{
 			{PackageID: "pkg-display-0041", CampaignID: "campaign-acme-q1", FrequencyRules: []FrequencyRule{{MaxCount: 5, Window: 24 * time.Hour}}, TargetSegments: []string{"cooking_enthusiast", "home_improvement"}},
 			{PackageID: "pkg-display-0042", CampaignID: "campaign-acme-q1", FrequencyRules: []FrequencyRule{{MaxCount: 3, Window: 12 * time.Hour}}},
@@ -36,34 +49,43 @@ func main() {
 		var req tmp.IdentityMatchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		resp, err := agent.IdentityMatch(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{RequestID: req.RequestID, Code: tmp.ErrorCodeInternalError, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{RequestID: req.RequestID, Code: tmp.ErrorCodeInternalError, Message: err.Error()})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
 		var req tmp.ExposeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		resp, err := agent.Expose(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInternalError, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInternalError, Message: err.Error()})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		if err := store.Ping(r.Context()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(w).Encode(map[string]string{"status": "degraded", "store": "in-memory"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "store": "valkey"})
 	})
 
 	log.Printf("Identity Agent listening on %s, Valkey at %s", *addr, *redisAddr)

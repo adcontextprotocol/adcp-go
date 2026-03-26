@@ -6,10 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmp"
-	"github.com/redis/go-redis/v9"
 )
 
 // FrequencyRule defines a sliding window frequency cap.
@@ -33,15 +33,15 @@ type CampaignConfig struct {
 	FrequencyRules []FrequencyRule // Campaign-level caps (all must pass)
 }
 
-// IdentityAgent evaluates user eligibility using Valkey/Redis.
+// IdentityAgent evaluates user eligibility using a Store (Redis or in-memory).
 type IdentityAgent struct {
-	rdb       *redis.Client
+	store     Store
 	packages  map[string]PackageConfig
 	campaigns map[string]CampaignConfig
 }
 
-// NewIdentityAgent creates an agent with the given Redis client and configs.
-func NewIdentityAgent(rdb *redis.Client, packages []PackageConfig, campaigns []CampaignConfig) *IdentityAgent {
+// NewIdentityAgent creates an agent with the given store and configs.
+func NewIdentityAgent(store Store, packages []PackageConfig, campaigns []CampaignConfig) *IdentityAgent {
 	pkgMap := make(map[string]PackageConfig, len(packages))
 	for _, p := range packages {
 		pkgMap[p.PackageID] = p
@@ -50,7 +50,7 @@ func NewIdentityAgent(rdb *redis.Client, packages []PackageConfig, campaigns []C
 	for _, c := range campaigns {
 		campMap[c.CampaignID] = c
 	}
-	return &IdentityAgent{rdb: rdb, packages: pkgMap, campaigns: campMap}
+	return &IdentityAgent{store: store, packages: pkgMap, campaigns: campMap}
 }
 
 // IdentityMatch evaluates a user against all requested packages.
@@ -130,8 +130,7 @@ func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmp.IdentityMatc
 }
 
 // Expose records that a user was shown an ad for a package.
-// Adds a timestamped entry to sorted sets for both package and campaign frequency.
-// Uses sorted sets for sliding window frequency capping.
+// Uses pipeline to batch Redis commands for efficiency.
 func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tmp.ExposeResponse, error) {
 	tokenHash := hashToken(req.UserToken)
 	pkg, ok := a.packages[req.PackageID]
@@ -141,14 +140,13 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 
 	now := time.Now()
 	ts := float64(now.UnixMilli())
-	member := fmt.Sprintf("%d:%s", now.UnixNano(), req.PackageID) // Unique per exposure
+	member := fmt.Sprintf("%d:%s", now.UnixNano(), req.PackageID)
 
-	pipe := a.rdb.Pipeline()
+	pipe := a.store.Pipeline(ctx)
 
 	// Add to package-level sorted set
 	pkgKey := fmt.Sprintf("freq:pkg:%s:%s", req.PackageID, tokenHash)
-	pipe.ZAdd(ctx, pkgKey, redis.Z{Score: ts, Member: member})
-	// Set TTL to longest window + buffer to auto-cleanup
+	pipe.ZAdd(ctx, pkgKey, ts, member)
 	if len(pkg.FrequencyRules) > 0 {
 		maxWindow := maxRuleWindow(pkg.FrequencyRules)
 		pipe.Expire(ctx, pkgKey, maxWindow+time.Hour)
@@ -163,7 +161,7 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 	var campKey string
 	if campaignID != "" {
 		campKey = fmt.Sprintf("freq:campaign:%s:%s", campaignID, tokenHash)
-		pipe.ZAdd(ctx, campKey, redis.Z{Score: ts, Member: member})
+		pipe.ZAdd(ctx, campKey, ts, member)
 		if camp, ok := a.campaigns[campaignID]; ok && len(camp.FrequencyRules) > 0 {
 			maxWindow := maxRuleWindow(camp.FrequencyRules)
 			pipe.Expire(ctx, campKey, maxWindow+time.Hour)
@@ -174,8 +172,7 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 	intentKey := fmt.Sprintf("intent:%s:%s", req.PackageID, tokenHash)
 	pipe.Set(ctx, intentKey, now.Unix(), 7*24*time.Hour)
 
-	_, err := pipe.Exec(ctx)
-	if err != nil {
+	if err := pipe.Exec(ctx); err != nil {
 		return nil, err
 	}
 
@@ -186,7 +183,7 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 		if camp, ok := a.campaigns[campaignID]; ok && len(camp.FrequencyRules) > 0 {
 			shortestRule := camp.FrequencyRules[0]
 			cutoff := float64(now.Add(-shortestRule.Window).UnixMilli())
-			count, _ := a.rdb.ZCount(ctx, campKey, fmt.Sprintf("%f", cutoff), "+inf").Result()
+			count, _ := a.store.ZCount(ctx, campKey, cutoff, 1e18)
 			resp.CampaignCount = int(count)
 			resp.CampaignRemaining = shortestRule.MaxCount - int(count)
 			if resp.CampaignRemaining < 0 {
@@ -200,13 +197,12 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 
 // checkFrequencyRules checks all frequency rules against a sorted set.
 // Returns true (capped) if ANY rule is exceeded.
-// Each rule is a sliding window: count entries within [now-window, now].
 func (a *IdentityAgent) checkFrequencyRules(ctx context.Context, key string, rules []FrequencyRule) (bool, error) {
 	now := time.Now()
 	for _, rule := range rules {
 		cutoff := float64(now.Add(-rule.Window).UnixMilli())
-		count, err := a.rdb.ZCount(ctx, key, fmt.Sprintf("%f", cutoff), "+inf").Result()
-		if err != nil && err != redis.Nil {
+		count, err := a.store.ZCount(ctx, key, cutoff, 1e18)
+		if err != nil {
 			return false, err
 		}
 		if int(count) >= rule.MaxCount {
@@ -229,7 +225,7 @@ func maxRuleWindow(rules []FrequencyRule) time.Duration {
 func (a *IdentityAgent) checkAudienceMatch(ctx context.Context, tokenHash string, segments []string) (bool, error) {
 	for _, seg := range segments {
 		key := fmt.Sprintf("audience:%s", seg)
-		member, err := a.rdb.SIsMember(ctx, key, tokenHash).Result()
+		member, err := a.store.SIsMember(ctx, key, tokenHash)
 		if err != nil {
 			return false, err
 		}
@@ -242,12 +238,16 @@ func (a *IdentityAgent) checkAudienceMatch(ctx context.Context, tokenHash string
 
 func (a *IdentityAgent) computeIntentScore(ctx context.Context, tokenHash, packageID string) (float64, error) {
 	key := fmt.Sprintf("intent:%s:%s", packageID, tokenHash)
-	ts, err := a.rdb.Get(ctx, key).Int64()
-	if err == redis.Nil {
-		return 0, nil
-	}
+	val, err := a.store.Get(ctx, key)
 	if err != nil {
 		return 0, err
+	}
+	if val == "" {
+		return 0, nil
+	}
+	ts, err := strconv.ParseInt(val, 10, 64)
+	if err != nil {
+		return 0, nil
 	}
 	hoursSince := time.Since(time.Unix(ts, 0)).Hours()
 	score := 1.0 - (hoursSince / 168.0)
@@ -263,7 +263,7 @@ func (a *IdentityAgent) LoadAudienceSegment(ctx context.Context, segmentID strin
 	for i, tok := range userTokens {
 		members[i] = hashToken(tok)
 	}
-	return a.rdb.SAdd(ctx, key, members...).Err()
+	return a.store.SAdd(ctx, key, members...)
 }
 
 func hashToken(token string) string {
