@@ -18,20 +18,26 @@ type Router struct {
 	providers []ProviderConfig
 	registry  *Registry
 	sigCache  *SignatureCache // nil = no signing
+	health    *ProviderHealth // nil = no health tracking
 	client    *http.Client
 }
 
 // NewRouter creates a router with the given provider configuration and registry.
 // sigCache is optional — pass nil to disable request signing.
-func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache) *Router {
+func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth) *Router {
+	maxPerHost := len(providers)
+	if maxPerHost < 10 {
+		maxPerHost = 10
+	}
 	return &Router{
 		providers: providers,
 		registry:  registry,
 		sigCache:  sigCache,
+		health:    health,
 		client: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 10,
+				MaxIdleConnsPerHost: maxPerHost,
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
@@ -92,7 +98,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeContextResponses(cmReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merged)
+	_ = json.NewEncoder(w).Encode(merged)
 }
 
 // HandleIdentityMatch processes an identity match request.
@@ -129,7 +135,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeIdentityResponses(imReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merged)
+	_ = json.NewEncoder(w).Encode(merged)
 }
 
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmp.ContextMatchResponse {
@@ -142,6 +148,10 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 		go func(p ProviderConfig) {
 			defer wg.Done()
 
+			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				return
+			}
+
 			timeout := p.Timeout
 			if timeout == 0 {
 				timeout = 30 * time.Millisecond
@@ -151,7 +161,17 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", body)
 			if err != nil {
-				return // Provider excluded from this response
+				if r.health != nil {
+					if callCtx.Err() != nil {
+						r.health.RecordTimeout(p.ID)
+					} else {
+						r.health.RecordFailure(p.ID)
+					}
+				}
+				return
+			}
+			if r.health != nil {
+				r.health.RecordSuccess(p.ID)
 			}
 
 			var cmResp tmp.ContextMatchResponse
@@ -179,6 +199,10 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 		go func(p ProviderConfig) {
 			defer wg.Done()
 
+			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				return
+			}
+
 			timeout := p.Timeout
 			if timeout == 0 {
 				timeout = 30 * time.Millisecond
@@ -188,7 +212,17 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 
 			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body)
 			if err != nil {
+				if r.health != nil {
+					if callCtx.Err() != nil {
+						r.health.RecordTimeout(p.ID)
+					} else {
+						r.health.RecordFailure(p.ID)
+					}
+				}
 				return
+			}
+			if r.health != nil {
+				r.health.RecordSuccess(p.ID)
 			}
 
 			var imResp tmp.IdentityMatchResponse
@@ -217,7 +251,7 @@ func (r *Router) callProvider(ctx context.Context, url string, body []byte) ([]b
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("provider returned %d", resp.StatusCode)
@@ -312,7 +346,7 @@ func writeError(w http.ResponseWriter, requestID string, code tmp.ErrorCode, mes
 		status = http.StatusServiceUnavailable
 	}
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(tmp.ErrorResponse{
+	_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,
