@@ -54,7 +54,7 @@ func main() {
 		var req tmp.ContextMatchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
 				Code:    tmp.ErrorCodeInvalidRequest,
 				Message: err.Error(),
 			})
@@ -64,7 +64,7 @@ func main() {
 		resp, err := agent.ContextMatch(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
 				RequestID: req.RequestID,
 				Code:      tmp.ErrorCodeInternalError,
 				Message:   err.Error(),
@@ -73,7 +73,7 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	log.Printf("Context Agent listening on %s", *addr)

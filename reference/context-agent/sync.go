@@ -72,8 +72,8 @@ func ApplyEvents(registry *PropertyRegistry, targeting *TargetingConfig, events 
 		case "register", "update":
 			rec := event.Record
 			registry.Put(&rec)
-			if targeting.ContainsProperty(rec.RID) {
-				// Already targeted, no change needed
+			if !targeting.ContainsProperty(rec.RID) {
+				targeting.AddProperties(rec.RID)
 			}
 		case "deactivate":
 			registry.Remove(event.Record.RID)
