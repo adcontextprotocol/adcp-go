@@ -168,7 +168,7 @@ func TestMergeIdentityResponses(t *testing.T) {
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	// Mock provider that activates pkg-1
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
 			RequestID: "ctx-e2e",
 			Offers:    []tmp.Offer{{PackageID: "pkg-1"}},
 			Signals: &tmp.Signals{
@@ -199,7 +199,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	}
 
 	var resp tmp.ContextMatchResponse
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-1" {
 		t.Errorf("expected 1 offer for pkg-1, got: %+v", resp.Offers)
@@ -209,7 +209,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	score := 0.82
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
 			RequestID: "id-e2e",
 			Eligibility: []tmp.PackageEligibility{
 				{PackageID: "pkg-1", Eligible: true, IntentScore: &score},
@@ -238,7 +238,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	}
 
 	var resp tmp.IdentityMatchResponse
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	if len(resp.Eligibility) != 2 {
 		t.Errorf("expected 2 eligibility entries, got %d", len(resp.Eligibility))
@@ -249,7 +249,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	// Slow provider that takes too long
 	slowProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
 			RequestID: "ctx-slow",
 			Offers:    []tmp.Offer{{PackageID: "pkg-slow"}},
 		})
@@ -258,7 +258,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 
 	// Fast provider
 	fastProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
 			RequestID: "ctx-fast",
 			Offers:    []tmp.Offer{{PackageID: "pkg-fast"}},
 		})
@@ -283,7 +283,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	router.HandleContextMatch(w, req)
 
 	var resp tmp.ContextMatchResponse
-	json.NewDecoder(w.Body).Decode(&resp)
+	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	// Should only have the fast provider's offer
 	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-fast" {

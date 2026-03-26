@@ -92,7 +92,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeContextResponses(cmReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merged)
+	_ = json.NewEncoder(w).Encode(merged)
 }
 
 // HandleIdentityMatch processes an identity match request.
@@ -129,7 +129,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeIdentityResponses(imReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(merged)
+	_ = json.NewEncoder(w).Encode(merged)
 }
 
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmp.ContextMatchResponse {
@@ -217,7 +217,7 @@ func (r *Router) callProvider(ctx context.Context, url string, body []byte) ([]b
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("provider returned %d", resp.StatusCode)
@@ -312,7 +312,7 @@ func writeError(w http.ResponseWriter, requestID string, code tmp.ErrorCode, mes
 		status = http.StatusServiceUnavailable
 	}
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(tmp.ErrorResponse{
+	_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,

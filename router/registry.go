@@ -129,7 +129,7 @@ func (r *Registry) LoadSnapshot() error {
 	if err != nil {
 		return fmt.Errorf("fetch snapshot: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("snapshot returned %d", resp.StatusCode)
@@ -228,5 +228,5 @@ func (r *Registry) HandleSnapshot(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Registry-Sequence", fmt.Sprintf("%d", seq))
-	json.NewEncoder(w).Encode(snapshot)
+	_ = json.NewEncoder(w).Encode(snapshot)
 }

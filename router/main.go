@@ -40,7 +40,7 @@ func main() {
 	mux.HandleFunc("POST /tmp/identity", router.HandleIdentityMatch)
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "ok")
+		_, _ = fmt.Fprintln(w, "ok")
 	})
 
 	log.Printf("TMP Router listening on %s with %d providers", *addr, len(providers))

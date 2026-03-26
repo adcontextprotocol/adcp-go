@@ -152,7 +152,7 @@ func TestRegistry_HandleSnapshot(t *testing.T) {
 	}
 
 	var snapshot RegistrySnapshot
-	json.NewDecoder(w.Body).Decode(&snapshot)
+	_ = json.NewDecoder(w.Body).Decode(&snapshot)
 
 	if len(snapshot.Properties) != 2 {
 		t.Errorf("expected 2 properties in snapshot, got %d", len(snapshot.Properties))
@@ -168,7 +168,7 @@ func TestRegistry_HandleSnapshot(t *testing.T) {
 func TestRegistry_LoadSnapshot_FromRemote(t *testing.T) {
 	// Serve a mock registry
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(RegistrySnapshot{
+		_ = json.NewEncoder(w).Encode(RegistrySnapshot{
 			Sequence: 50,
 			Properties: []RegistryProperty{
 				{PropertyID: "pub-remote-1", PropertyRID: 2001, PropertyType: "website", Domain: "remote1.example.com"},
@@ -206,10 +206,10 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 		var req struct {
 			PropertyRID uint64 `json:"property_rid"`
 		}
-		json.NewDecoder(r.Body).Decode(&req)
+		_ = json.NewDecoder(r.Body).Decode(&req)
 		receivedRID = req.PropertyRID
 
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"request_id": "ctx-rid",
 			"offers":     []interface{}{},
 		})
