@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmp"
@@ -27,15 +28,26 @@ func currentEpoch() int64 {
 // This reduces signing cost from ~14μs to ~57ns (cache lookup).
 type SignatureCache struct {
 	mu      sync.RWMutex
-	cache   map[string]string // key -> base64-encoded signature
+	cache   map[string]sigEntry
 	privKey ed25519.PrivateKey
+	maxSize int // 0 = unlimited
+	hits    atomic.Int64
+	misses  atomic.Int64
+}
+
+type sigEntry struct {
+	sig   string
+	epoch int64
 }
 
 // NewSignatureCache creates a signature cache with the given private key.
-func NewSignatureCache(privKey ed25519.PrivateKey) *SignatureCache {
+// maxSize controls eviction: when the cache exceeds maxSize, entries from
+// older epochs are evicted first. 0 means unlimited (not recommended for production).
+func NewSignatureCache(privKey ed25519.PrivateKey, maxSize int) *SignatureCache {
 	return &SignatureCache{
-		cache:   make(map[string]string),
+		cache:   make(map[string]sigEntry),
 		privKey: privKey,
+		maxSize: maxSize,
 	}
 }
 
@@ -46,11 +58,14 @@ func (sc *SignatureCache) SignOrCache(req *tmp.ContextMatchRequest) string {
 
 	// Fast path: read lock
 	sc.mu.RLock()
-	if sig, ok := sc.cache[key]; ok {
+	if entry, ok := sc.cache[key]; ok {
 		sc.mu.RUnlock()
-		return sig
+		sc.hits.Add(1)
+		return entry.sig
 	}
 	sc.mu.RUnlock()
+
+	sc.misses.Add(1)
 
 	// Slow path: compute signature (~14μs), then cache as base64
 	payload := canonicalizeForSigning(req, epoch)
@@ -58,10 +73,45 @@ func (sc *SignatureCache) SignOrCache(req *tmp.ContextMatchRequest) string {
 	b64Sig := base64.RawURLEncoding.EncodeToString(rawSig)
 
 	sc.mu.Lock()
-	sc.cache[key] = b64Sig
+	sc.cache[key] = sigEntry{sig: b64Sig, epoch: epoch}
+	sc.evictLocked(epoch)
 	sc.mu.Unlock()
 
 	return b64Sig
+}
+
+// evictLocked removes old-epoch entries when cache exceeds maxSize.
+// Must be called with sc.mu held for writing.
+func (sc *SignatureCache) evictLocked(currentEpoch int64) {
+	if sc.maxSize <= 0 || len(sc.cache) <= sc.maxSize {
+		return
+	}
+	// First pass: remove entries from older epochs
+	for k, e := range sc.cache {
+		if e.epoch < currentEpoch {
+			delete(sc.cache, k)
+		}
+	}
+	// If still over limit, remove arbitrary entries
+	for k := range sc.cache {
+		if len(sc.cache) <= sc.maxSize {
+			break
+		}
+		delete(sc.cache, k)
+	}
+}
+
+// Stats returns cache statistics.
+func (sc *SignatureCache) Stats() *SigCacheStats {
+	sc.mu.RLock()
+	size := len(sc.cache)
+	sc.mu.RUnlock()
+	return &SigCacheStats{
+		Size:    size,
+		MaxSize: sc.maxSize,
+		Hits:    sc.hits.Load(),
+		Misses:  sc.misses.Load(),
+	}
 }
 
 // Invalidate removes cached signatures for a specific placement.
@@ -80,7 +130,7 @@ func (sc *SignatureCache) Invalidate(placementID string) {
 func (sc *SignatureCache) InvalidateAll() {
 	sc.mu.Lock()
 	defer sc.mu.Unlock()
-	sc.cache = make(map[string]string)
+	sc.cache = make(map[string]sigEntry)
 }
 
 // Len returns the number of cached signatures.

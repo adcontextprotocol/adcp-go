@@ -180,7 +180,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 
 	router := NewRouter([]ProviderConfig{
 		{ID: "test-provider", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	reqBody := `{
 		"request_id": "ctx-e2e",
@@ -221,7 +221,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 
 	router := NewRouter([]ProviderConfig{
 		{ID: "test-provider", Endpoint: provider.URL, IdentityMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	reqBody := `{
 		"request_id": "id-e2e",
@@ -268,7 +268,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	router := NewRouter([]ProviderConfig{
 		{ID: "slow", Endpoint: slowProvider.URL, ContextMatch: true, Timeout: 10 * time.Millisecond},
 		{ID: "fast", Endpoint: fastProvider.URL, ContextMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil)
+	}, nil, nil, nil)
 
 	reqBody := `{
 		"request_id": "ctx-timeout",

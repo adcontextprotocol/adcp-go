@@ -218,7 +218,7 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 
 	router := NewRouter([]ProviderConfig{
 		{ID: "test", Endpoint: provider.URL, ContextMatch: true, Timeout: 5e9},
-	}, reg, nil)
+	}, reg, nil, nil)
 
 	reqBody := `{
 		"request_id": "ctx-rid",
