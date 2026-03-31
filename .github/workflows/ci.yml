@@ -8,19 +8,19 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         go-version: ["1.22", "1.23"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ matrix.go-version }}
 
@@ -50,35 +50,36 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.23"
 
       - name: Run golangci-lint (root)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.1
           args: ./...
 
       - name: Run golangci-lint (router)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.1
           working-directory: router
           args: ./...
 
       - name: Run golangci-lint (context agent)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.1
           working-directory: reference/context-agent
           args: ./...
 
       - name: Run golangci-lint (identity agent)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.1
           working-directory: reference/identity-agent
@@ -87,16 +88,21 @@ jobs:
   benchmark:
     name: Benchmark
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: main
           path: _base
+          fetch-depth: 1
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.23"
 
@@ -116,12 +122,17 @@ jobs:
           benchstat /tmp/bench-main.txt /tmp/bench-pr.txt | tee /tmp/benchstat.txt
 
       - name: Post benchmark comparison
-        if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const fs = require('fs');
-            const result = fs.readFileSync('/tmp/benchstat.txt', 'utf8');
+            const path = '/tmp/benchstat.txt';
+            if (!fs.existsSync(path)) {
+              core.warning('benchstat.txt not found, skipping comment');
+              return;
+            }
+            const raw = fs.readFileSync(path, 'utf8');
+            const result = raw.replace(/`/g, '\\`');
             const body = `## Benchmark Comparison (vs main)\n\n\`\`\`\n${result}\n\`\`\``;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
