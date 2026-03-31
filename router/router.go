@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -98,7 +99,9 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeContextResponses(cmReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(merged)
+	if err := json.NewEncoder(w).Encode(merged); err != nil {
+		slog.Debug("failed to write context response", "error", err)
+	}
 }
 
 // HandleIdentityMatch processes an identity match request.
@@ -135,7 +138,9 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	merged := mergeIdentityResponses(imReq.RequestID, responses)
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(merged)
+	if err := json.NewEncoder(w).Encode(merged); err != nil {
+		slog.Debug("failed to write identity response", "error", err)
+	}
 }
 
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmp.ContextMatchResponse {
@@ -346,9 +351,11 @@ func writeError(w http.ResponseWriter, requestID string, code tmp.ErrorCode, mes
 		status = http.StatusServiceUnavailable
 	}
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
+	if err := json.NewEncoder(w).Encode(tmp.ErrorResponse{
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,
-	})
+	}); err != nil {
+		slog.Debug("failed to write error response", "error", err)
+	}
 }

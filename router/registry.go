@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -228,5 +229,7 @@ func (r *Registry) HandleSnapshot(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Registry-Sequence", fmt.Sprintf("%d", seq))
-	_ = json.NewEncoder(w).Encode(snapshot)
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+		slog.Debug("failed to write registry snapshot", "error", err)
+	}
 }

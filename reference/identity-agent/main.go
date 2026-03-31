@@ -36,34 +36,34 @@ func main() {
 		var req tmp.IdentityMatchRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		resp, err := agent.IdentityMatch(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{RequestID: req.RequestID, Code: tmp.ErrorCodeInternalError, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{RequestID: req.RequestID, Code: tmp.ErrorCodeInternalError, Message: err.Error()})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
 		var req tmp.ExposeRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		resp, err := agent.Expose(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInternalError, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{Code: tmp.ErrorCodeInternalError, Message: err.Error()})
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	log.Printf("Identity Agent listening on %s, Valkey at %s", *addr, *redisAddr)
