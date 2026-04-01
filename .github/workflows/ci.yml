@@ -24,6 +24,11 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Check generated code is up to date
+        run: |
+          go generate ./tmp/...
+          git diff --exit-code tmp/types_gen.go
+
       - name: Test root module
         run: go test -race -count=1 ./...
 

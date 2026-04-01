@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "identity_match_request.json",
+  "type": "object",
+  "description": "IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.",
+  "x-go-name": "IdentityMatchRequest",
+  "required": ["request_id", "user_token", "package_ids"],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "x-go-omitempty": true
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "user_token": {
+      "type": "string"
+    },
+    "uid_type": {
+      "$ref": "enums.json#/$defs/UIDType",
+      "x-go-omitempty": true
+    },
+    "package_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "x-go-name": "PackageIDs"
+    }
+  }
+}
