@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/bench
 
-go 1.22
+go 1.26
 
 require capnproto.org/go/capnp/v3 v3.1.0-alpha.2
 

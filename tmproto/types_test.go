@@ -1,4 +1,4 @@
-package tmp
+package tmproto
 
 import (
 	"encoding/json"
@@ -214,9 +214,7 @@ func TestErrorResponse_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestJSONCodec_RoundTrip(t *testing.T) {
-	codec := &JSONCodec{}
-
+func TestMarshalJSON_RoundTrip(t *testing.T) {
 	req := &ContextMatchRequest{
 		RequestID:    "ctx-codec-001",
 		PropertyID:   "test-pub",
@@ -227,13 +225,13 @@ func TestJSONCodec_RoundTrip(t *testing.T) {
 		},
 	}
 
-	data, err := codec.MarshalContextRequest(req)
+	data, err := MarshalJSON(req)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	got, err := codec.UnmarshalContextRequest(data)
-	if err != nil {
+	var got ContextMatchRequest
+	if err := UnmarshalJSON(data, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 

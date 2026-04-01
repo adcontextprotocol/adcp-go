@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // --- Mock Context Agent ---
@@ -27,10 +27,10 @@ func (a *mockContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var req tmp.ContextMatchRequest
+	var req tmproto.ContextMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	var offers []tmp.Offer
+	var offers []tmproto.Offer
 	for _, pkg := range req.AvailablePkgs {
 		keywords, ok := a.rules[pkg.PackageID]
 		if !ok {
@@ -45,21 +45,21 @@ func (a *mockContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if matched {
-				offers = append(offers, tmp.Offer{PackageID: pkg.PackageID})
+				offers = append(offers, tmproto.Offer{PackageID: pkg.PackageID})
 				break
 			}
 		}
 	}
 
-	resp := tmp.ContextMatchResponse{
+	resp := tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
-		Signals: &tmp.Signals{
-			TargetingKVs: []tmp.KeyValuePair{},
+		Signals: &tmproto.Signals{
+			TargetingKVs: []tmproto.KeyValuePair{},
 		},
 	}
 	for _, o := range offers {
-		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmp.KeyValuePair{
+		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmproto.KeyValuePair{
 			Key: "adcp_pkg", Value: o.PackageID,
 		})
 	}
@@ -95,7 +95,7 @@ func (a *mockIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Request) {
-	var req tmp.IdentityMatchRequest
+	var req tmproto.IdentityMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
@@ -103,7 +103,7 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 
 	userExposures := a.exposures[req.UserToken]
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
 		eligible := true
 		if cap, ok := a.freqCaps[pkgID]; ok {
@@ -116,7 +116,7 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 			}
 		}
 		intent := 0.75
-		eligibility = append(eligibility, tmp.PackageEligibility{
+		eligibility = append(eligibility, tmproto.PackageEligibility{
 			PackageID:   pkgID,
 			Eligible:    eligible,
 			IntentScore: &intent,
@@ -124,14 +124,14 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 	})
 }
 
 func (a *mockIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmp.ExposeRequest
+	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
@@ -143,7 +143,7 @@ func (a *mockIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request)
 	a.exposures[req.UserToken][req.PackageID]++
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.ExposeResponse{
+	json.NewEncoder(w).Encode(tmproto.ExposeResponse{
 		PackageID: req.PackageID,
 	})
 }
@@ -170,7 +170,7 @@ func (rt *mockRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
-	var req tmp.ContextMatchRequest
+	var req tmproto.ContextMatchRequest
 	json.Unmarshal(body, &req)
 
 	// Validate: no identity fields
@@ -183,14 +183,14 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 
 	// Compute URL hash
 	if len(req.Artifacts) > 0 {
-		req.URLHash = tmp.HashURL(req.Artifacts[0])
+		req.URLHash = tmproto.HashURL(req.Artifacts[0])
 	}
 
 	enrichedBody, _ := json.Marshal(req)
 
 	// Fan out to all context agents
-	var allOffers []tmp.Offer
-	var allKVs []tmp.KeyValuePair
+	var allOffers []tmproto.Offer
+	var allKVs []tmproto.KeyValuePair
 	var allSegments []string
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -204,7 +204,7 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer resp.Body.Close()
-			var cmResp tmp.ContextMatchResponse
+			var cmResp tmproto.ContextMatchResponse
 			json.NewDecoder(resp.Body).Decode(&cmResp)
 			mu.Lock()
 			allOffers = append(allOffers, cmResp.Offers...)
@@ -217,12 +217,12 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	merged := tmp.ContextMatchResponse{
+	merged := tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    allOffers,
 	}
 	if len(allKVs) > 0 || len(allSegments) > 0 {
-		merged.Signals = &tmp.Signals{
+		merged.Signals = &tmproto.Signals{
 			TargetingKVs: allKVs,
 			Segments:     allSegments,
 		}
@@ -253,7 +253,7 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer resp.Body.Close()
-			var imResp tmp.IdentityMatchResponse
+			var imResp tmproto.IdentityMatchResponse
 			json.NewDecoder(resp.Body).Decode(&imResp)
 			mu.Lock()
 			for _, e := range imResp.Eligibility {
@@ -275,12 +275,12 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	var req tmp.IdentityMatchRequest
+	var req tmproto.IdentityMatchRequest
 	json.Unmarshal(body, &req)
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for pkgID, m := range byPkg {
-		eligibility = append(eligibility, tmp.PackageEligibility{
+		eligibility = append(eligibility, tmproto.PackageEligibility{
 			PackageID:   pkgID,
 			Eligible:    m.eligible,
 			IntentScore: m.intentScore,
@@ -288,7 +288,7 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 	})
@@ -336,20 +336,20 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	defer router.Close()
 
 	// 1. Context Match
-	ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+	ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 		RequestID:    "ctx-e2e-001",
 		PropertyID:   "pub-oakwood",
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar-300x250",
 		Artifacts:    []string{"article:cooking-with-herbs"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food-display", MediaBuyID: "mb-1"},
 			{PackageID: "pkg-tech-native", MediaBuyID: "mb-2"},
 			{PackageID: "pkg-auto-video", MediaBuyID: "mb-3"},
 		},
 	})
 
-	var cmResp tmp.ContextMatchResponse
+	var cmResp tmproto.ContextMatchResponse
 	json.Unmarshal(ctxResp, &cmResp)
 
 	if len(cmResp.Offers) != 1 {
@@ -360,17 +360,17 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	}
 
 	// 2. Identity Match (ALL active packages, not just page-specific)
-	idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID: "id-e2e-001",
 		UserToken: "tok-user-abc",
-		UIDType:   tmp.UIDTypeUID2,
+		UIDType:   tmproto.UIDTypeUID2,
 		PackageIDs: []string{
 			"pkg-food-display", "pkg-tech-native", "pkg-auto-video",
 			"pkg-other-site-1", "pkg-other-site-2", "pkg-other-site-3",
 		},
 	})
 
-	var imResp tmp.IdentityMatchResponse
+	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
 
 	// All should be eligible (no exposures yet)
@@ -417,20 +417,20 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 
 	// Record 2 exposures directly to the identity agent
 	for i := 0; i < 2; i++ {
-		postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+		postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 			UserToken: "tok-user-freq",
 			PackageID: "pkg-food-display",
 		})
 	}
 
 	// Now check eligibility
-	idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-freq-001",
 		UserToken:  "tok-user-freq",
 		PackageIDs: []string{"pkg-food-display", "pkg-tech-native"},
 	})
 
-	var imResp tmp.IdentityMatchResponse
+	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
 
 	for _, e := range imResp.Eligibility {
@@ -463,18 +463,18 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 	})
 	defer router.Close()
 
-	resp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+	resp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 		RequestID:   "ctx-merge-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
 		Artifacts:   []string{"article:cooking-tips"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 			{PackageID: "pkg-sports", MediaBuyID: "mb-2"},
 		},
 	})
 
-	var cmResp tmp.ContextMatchResponse
+	var cmResp tmproto.ContextMatchResponse
 	json.Unmarshal(resp, &cmResp)
 
 	if len(cmResp.Offers) != 2 {
@@ -484,7 +484,7 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 
 func TestPackageSetDecorrelation(t *testing.T) {
 	// Context match: 3 packages (per-placement)
-	contextPackages := []tmp.AvailablePackage{
+	contextPackages := []tmproto.AvailablePackage{
 		{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		{PackageID: "pkg-2", MediaBuyID: "mb-2"},
 		{PackageID: "pkg-3", MediaBuyID: "mb-3"},
@@ -512,8 +512,8 @@ func TestProviderTimeout_Excluded(t *testing.T) {
 
 	slowAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
-			Offers: []tmp.Offer{{PackageID: "pkg-slow"}},
+		json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Offers: []tmproto.Offer{{PackageID: "pkg-slow"}},
 		})
 	}))
 	defer slowAgent.Close()
@@ -523,12 +523,12 @@ func TestProviderTimeout_Excluded(t *testing.T) {
 	client := &http.Client{Timeout: 100 * time.Millisecond}
 
 	// Fast agent responds
-	body, _ := json.Marshal(tmp.ContextMatchRequest{
+	body, _ := json.Marshal(tmproto.ContextMatchRequest{
 		RequestID:   "ctx-timeout-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
 		Artifacts:   []string{"article:test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-fast", MediaBuyID: "mb-1"},
 		},
 	})
@@ -564,46 +564,46 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	defer router.Close()
 
 	// 1. Context match
-	ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+	ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 		RequestID:   "ctx-loop-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
 		Artifacts:   []string{"article:cooking"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 		},
 	})
-	var cmResp tmp.ContextMatchResponse
+	var cmResp tmproto.ContextMatchResponse
 	json.Unmarshal(ctxResp, &cmResp)
 	if len(cmResp.Offers) != 1 {
 		t.Fatalf("expected 1 offer, got %d", len(cmResp.Offers))
 	}
 
 	// 2. Identity match (should be eligible)
-	idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-loop-001",
 		UserToken:  "tok-loop-user",
 		PackageIDs: []string{"pkg-food"},
 	})
-	var imResp tmp.IdentityMatchResponse
+	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
 	if !imResp.Eligibility[0].Eligible {
 		t.Error("should be eligible before exposure")
 	}
 
 	// 3. Expose (ad was shown)
-	postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+	postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 		UserToken: "tok-loop-user",
 		PackageID: "pkg-food",
 	})
 
 	// 4. Identity match again (should be capped)
-	idResp2 := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+	idResp2 := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-loop-002",
 		UserToken:  "tok-loop-user",
 		PackageIDs: []string{"pkg-food"},
 	})
-	var imResp2 tmp.IdentityMatchResponse
+	var imResp2 tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp2, &imResp2)
 	if imResp2.Eligibility[0].Eligible {
 		t.Error("should be capped after 1 exposure")
@@ -614,12 +614,12 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 	// Context agent that echoes the property_rid it received
 	var receivedRID uint64
 	echoAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req tmp.ContextMatchRequest
+		var req tmproto.ContextMatchRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		receivedRID = req.PropertyRID
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: req.RequestID,
-			Offers:    []tmp.Offer{},
+			Offers:    []tmproto.Offer{},
 		})
 	}))
 	defer echoAgent.Close()
@@ -630,12 +630,12 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 	})
 	defer router.Close()
 
-	postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+	postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 		RequestID:   "ctx-rid-001",
 		PropertyID:  "pub-oakwood",
 		PlacementID: "main",
 		Artifacts:   []string{"article:test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	})
@@ -648,12 +648,12 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 func TestRouterEnrichment_URLHash(t *testing.T) {
 	var receivedHash uint64
 	echoAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req tmp.ContextMatchRequest
+		var req tmproto.ContextMatchRequest
 		json.NewDecoder(r.Body).Decode(&req)
 		receivedHash = req.URLHash
-		json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: req.RequestID,
-			Offers:    []tmp.Offer{},
+			Offers:    []tmproto.Offer{},
 		})
 	}))
 	defer echoAgent.Close()
@@ -663,17 +663,17 @@ func TestRouterEnrichment_URLHash(t *testing.T) {
 	})
 	defer router.Close()
 
-	postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+	postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 		RequestID:   "ctx-hash-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
 		Artifacts:   []string{"https://www.oakwood.example.com/cooking"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	})
 
-	expectedHash := tmp.HashURL("https://www.oakwood.example.com/cooking")
+	expectedHash := tmproto.HashURL("https://www.oakwood.example.com/cooking")
 	if receivedHash != expectedHash {
 		t.Errorf("expected url_hash %d, got %d", expectedHash, receivedHash)
 	}
@@ -695,16 +695,16 @@ func TestTimingReport(t *testing.T) {
 	})
 	defer router.Close()
 
-	ctxReq := tmp.ContextMatchRequest{
+	ctxReq := tmproto.ContextMatchRequest{
 		RequestID:   "ctx-timing",
 		PropertyID:  "pub-oakwood",
 		PlacementID: "sidebar",
 		Artifacts:   []string{"article:cooking"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 		},
 	}
-	idReq := tmp.IdentityMatchRequest{
+	idReq := tmproto.IdentityMatchRequest{
 		RequestID:  "id-timing",
 		UserToken:  "tok-timing",
 		PackageIDs: []string{"pkg-food", "pkg-other-1", "pkg-other-2"},

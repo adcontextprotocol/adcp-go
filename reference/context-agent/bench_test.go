@@ -1,4 +1,4 @@
-package main
+package contextagent
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/RoaringBitmap/roaring"
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // BenchmarkBitmapCheck tests Roaring bitmap Contains() with 50K properties, targeting 1K.
@@ -37,13 +37,13 @@ func BenchmarkSignatureVerify(b *testing.B) {
 	registry := NewPropertyRegistry()
 	registry.Put(&PropertyRecord{RID: 1, Domain: "bench.example.com", PublicKey: pub})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sig",
 		PropertyRID:  1,
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
 		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
@@ -64,7 +64,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 	targeting := NewTargetingConfig()
 
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
-	for i := uint32(1); i <= 1000; i++ {
+	for i := uint64(1); i <= 1000; i++ {
 		registry.Put(&PropertyRecord{RID: i, Domain: fmt.Sprintf("prop-%d.example.com", i), PublicKey: pub})
 		targeting.AddProperties(i)
 	}
@@ -86,11 +86,11 @@ func BenchmarkFullPipeline(b *testing.B) {
 		SignatureSampleRate: 0,
 	})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "bench-pipeline",
 		PropertyRID: 500,
 		Artifacts:   []string{"article:pasta-recipe"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 			{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
 		},
@@ -112,7 +112,7 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	}
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	s := snapshot{Sequence: 1}
-	for i := uint32(0); i < 50000; i++ {
+	for i := uint64(0); i < 50000; i++ {
 		s.Records = append(s.Records, &PropertyRecord{
 			RID:       i,
 			Domain:    fmt.Sprintf("prop-%d.example.com", i),
@@ -149,13 +149,13 @@ func BenchmarkValkeyLookup(b *testing.B) {
 // BenchmarkSignatureSign tests Ed25519 signing (router-side cost).
 func BenchmarkSignatureSign(b *testing.B) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sign",
 		PropertyRID:  1,
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
 		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
@@ -171,17 +171,17 @@ func BenchmarkHMACSign(b *testing.B) {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-hmac",
 		PropertyRID:  1,
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
 		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
-	payload := canonicalizeRequest(req, currentEpoch())
+	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
 
 	mac := hmac.New(sha256.New, key)
 	b.ResetTimer()
@@ -197,17 +197,17 @@ func BenchmarkHMACVerify(b *testing.B) {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-hmac-v",
 		PropertyRID:  1,
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
 		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
-	payload := canonicalizeRequest(req, currentEpoch())
+	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
 
 	mac := hmac.New(sha256.New, key)
 	mac.Write(payload)
@@ -232,11 +232,11 @@ func BenchmarkCachedSignature(b *testing.B) {
 	// Pre-fill cache with 1000 placement signatures
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i)
-		req := &tmp.ContextMatchRequest{
+		req := &tmproto.ContextMatchRequest{
 			RequestID:    fmt.Sprintf("req-%d", i),
 			PropertyRID:  uint64(i),
 			PlacementID:  fmt.Sprintf("placement-%d", i),
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 			},
 		}

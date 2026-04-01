@@ -1,11 +1,11 @@
-package main
+package identityagent
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -65,7 +65,7 @@ func TestExpose_IncrementsCounters(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, err := agent.Expose(ctx, &tmp.ExposeRequest{
+	resp, err := agent.Expose(ctx, &tmproto.ExposeRequest{
 		UserToken: "user-abc",
 		PackageID: "pkg-display-001",
 	})
@@ -90,13 +90,13 @@ func TestExpose_CampaignFrequencyCap(t *testing.T) {
 
 	// 5 exposures across two packages in campaign-acme (campaign cap is 5)
 	for i := 0; i < 3; i++ {
-		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 	for i := 0; i < 2; i++ {
-		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002"})
+		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002"})
 	}
 
-	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, err := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-test-campaign",
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
@@ -121,10 +121,10 @@ func TestExpose_PackageCappedButCampaignNot(t *testing.T) {
 
 	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5)
 	for i := 0; i < 3; i++ {
-		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 
-	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, err := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-test-pkg-cap",
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
@@ -133,7 +133,7 @@ func TestExpose_PackageCappedButCampaignNot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	byPkg := map[string]tmp.PackageEligibility{}
+	byPkg := map[string]tmproto.PackageEligibility{}
 	for _, e := range resp.Eligibility {
 		byPkg[e.PackageID] = e
 	}
@@ -153,10 +153,10 @@ func TestMultipleFrequencyRules(t *testing.T) {
 
 	// pkg-multi-rule: 2 per 12h AND 5 per 7d
 	// Expose 2 times — should hit the 12h cap
-	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
-	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
+	_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
+	_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule"})
 
-	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, err := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-test-multi",
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-multi-rule"},
@@ -179,11 +179,11 @@ func TestSlidingWindow_OldExposuresExpire(t *testing.T) {
 
 	// Expose 3 times (hits package cap of 3 per 24h)
 	for i := 0; i < 3; i++ {
-		_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 
 	// Should be capped now
-	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, _ := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-before", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
 	if resp.Eligibility[0].Eligible {
@@ -195,7 +195,7 @@ func TestSlidingWindow_OldExposuresExpire(t *testing.T) {
 
 	// The sorted set entries still exist but their timestamps are now >24h old.
 	// ZCOUNT with the sliding window cutoff should return 0.
-	resp, _ = agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, _ = agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-after", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
 	if !resp.Eligibility[0].Eligible {
@@ -209,9 +209,9 @@ func TestExpose_IntentScoreUpdated(t *testing.T) {
 	ctx := context.Background()
 
 	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
-	_, _ = agent.Expose(ctx, &tmp.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+	_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 
-	resp, err := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, err := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-intent", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
 	if err != nil {
@@ -228,7 +228,7 @@ func TestAudienceMatch_NotInSegment(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, _ := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-audience", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
 
@@ -242,7 +242,7 @@ func TestNoCapPackage(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, _ := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-nocap", UserToken: "user-abc", PackageIDs: []string{"pkg-no-cap"},
 	})
 
@@ -256,7 +256,7 @@ func TestUnknownPackage(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, _ := agent.IdentityMatch(ctx, &tmp.IdentityMatchRequest{
+	resp, _ := agent.IdentityMatch(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "id-unknown", UserToken: "user-abc", PackageIDs: []string{"pkg-unknown"},
 	})
 

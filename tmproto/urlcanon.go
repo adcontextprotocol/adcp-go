@@ -1,4 +1,4 @@
-package tmp
+package tmproto
 
 import (
 	"hash/fnv"

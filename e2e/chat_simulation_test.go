@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // ChatTurn simulates a user message and the AI assistant's response.
@@ -45,10 +45,10 @@ type chatContextAgent struct {
 }
 
 func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var req tmp.ContextMatchRequest
+	var req tmproto.ContextMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	var offers []tmp.Offer
+	var offers []tmproto.Offer
 	for _, pkg := range req.AvailablePkgs {
 		topics := a.packageTopics[pkg.PackageID]
 		if len(topics) == 0 {
@@ -72,13 +72,13 @@ func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if matched {
-			offer := tmp.Offer{
+			offer := tmproto.Offer{
 				PackageID: pkg.PackageID,
 			}
 
 			// Add brand if available
 			if brand, ok := a.packageBrands[pkg.PackageID]; ok {
-				offer.Brand = &tmp.BrandRef{
+				offer.Brand = &tmproto.BrandRef{
 					Name:             brand.name,
 					AdvertiserDomain: brand.domain,
 				}
@@ -89,7 +89,7 @@ func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			// Add creative manifest if available
 			if creative, ok := a.packageCreatives[pkg.PackageID]; ok {
-				offer.CreativeManifest = creative
+				offer.CreativeManifest, _ = json.Marshal(creative)
 			}
 
 			offers = append(offers, offer)
@@ -97,7 +97,7 @@ func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
 	})
@@ -122,13 +122,13 @@ func (a *chatIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Request) {
-	var req tmp.IdentityMatchRequest
+	var req tmproto.IdentityMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
 		eligible := true
 		intent := 0.5
@@ -148,7 +148,7 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 		}
 
 		score := intent
-		eligibility = append(eligibility, tmp.PackageEligibility{
+		eligibility = append(eligibility, tmproto.PackageEligibility{
 			PackageID:   pkgID,
 			Eligible:    eligible,
 			IntentScore: &score,
@@ -156,14 +156,14 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 	})
 }
 
 func (a *chatIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmp.ExposeRequest
+	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
@@ -174,7 +174,7 @@ func (a *chatIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request)
 	a.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.ExposeResponse{PackageID: req.PackageID})
+	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
 }
 
 func TestSimulation_AIAssistantChat(t *testing.T) {
@@ -308,13 +308,13 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 		t.Logf("User: %s", turn.UserMessage)
 
 		// 1. Context Match
-		ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   fmt.Sprintf("ctx-chat-%d", i),
 			PropertyID:  "pub-addie-assistant",
-			PropertyType: tmp.PropertyTypeAIAssistant,
+			PropertyType: tmproto.PropertyTypeAIAssistant,
 			PlacementID: "conversation-inline",
 			Artifacts:   []string{turn.ArtifactID},
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-olive-oil", MediaBuyID: "mb-meridian-q1"},
 				{PackageID: "pkg-knife-set", MediaBuyID: "mb-edgecraft-q1"},
 				{PackageID: "pkg-meal-kit", MediaBuyID: "mb-freshbox-q1"},
@@ -323,27 +323,27 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			},
 		})
 
-		var cmResp tmp.ContextMatchResponse
+		var cmResp tmproto.ContextMatchResponse
 		json.Unmarshal(ctxResp, &cmResp)
 
 		// 2. Identity Match (in parallel in production, sequential here for clarity)
-		idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  fmt.Sprintf("id-chat-%d", i),
 			UserToken:  userToken,
-			UIDType:    tmp.UIDTypePublisherFirstParty,
+			UIDType:    tmproto.UIDTypePublisherFirstParty,
 			PackageIDs: allPackages,
 		})
 
-		var imResp tmp.IdentityMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
 		// 3. Publisher join
-		eligMap := make(map[string]tmp.PackageEligibility)
+		eligMap := make(map[string]tmproto.PackageEligibility)
 		for _, e := range imResp.Eligibility {
 			eligMap[e.PackageID] = e
 		}
 
-		var bestOffer *tmp.Offer
+		var bestOffer *tmproto.Offer
 		var bestIntent float64 = -1
 		seen := make(map[string]bool)
 		for _, offer := range cmResp.Offers {
@@ -373,8 +373,9 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			t.Logf("")
 
 			// Extract creative details
-			if bestOffer.CreativeManifest != nil {
-				if assets, ok := bestOffer.CreativeManifest.(map[string]interface{}); ok {
+			if len(bestOffer.CreativeManifest) > 0 {
+				var assets map[string]interface{}
+				if json.Unmarshal(bestOffer.CreativeManifest, &assets) == nil {
 					if assetsMap, ok := assets["assets"].(map[string]interface{}); ok {
 						disclosure := "Sponsored"
 						if d, ok := assetsMap["disclosure"].(string); ok {
@@ -398,7 +399,7 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			}
 
 			// 5. Report exposure
-			postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 				UserToken: userToken,
 				PackageID: bestOffer.PackageID,
 			})
@@ -461,26 +462,26 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 	impressionCount := 0
 
 	for turn := 0; turn < 5; turn++ {
-		ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   fmt.Sprintf("ctx-freq-%d", turn),
 			PropertyID:  "pub-addie",
 			PlacementID: "inline",
 			Artifacts:   []string{"turn:coffee-discussion"},
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-coffee", MediaBuyID: "mb-1"},
 			},
 		})
 
-		var cmResp tmp.ContextMatchResponse
+		var cmResp tmproto.ContextMatchResponse
 		json.Unmarshal(ctxResp, &cmResp)
 
-		idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  fmt.Sprintf("id-freq-%d", turn),
 			UserToken:  token,
 			PackageIDs: []string{"pkg-coffee"},
 		})
 
-		var imResp tmp.IdentityMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
 		// Check if we can show the ad
@@ -490,7 +491,7 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 				if e.PackageID == offer.PackageID && e.Eligible {
 					showed = true
 					impressionCount++
-					postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+					postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 						UserToken: token,
 						PackageID: offer.PackageID,
 					})

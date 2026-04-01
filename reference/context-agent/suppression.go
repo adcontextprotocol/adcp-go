@@ -1,4 +1,4 @@
-package main
+package contextagent
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func NewSuppressionManager(valkey ValkeyClient, providerID string) *SuppressionM
 }
 
 // IsPropertySuppressed checks if a property RID is suppressed for this provider.
-func (s *SuppressionManager) IsPropertySuppressed(ctx context.Context, propertyRID uint32) (bool, error) {
+func (s *SuppressionManager) IsPropertySuppressed(ctx context.Context, propertyRID uint64) (bool, error) {
 	key := fmt.Sprintf("suppress:%s:property:%d", s.providerID, propertyRID)
 	return s.valkey.Exists(ctx, key)
 }
@@ -32,7 +32,7 @@ func (s *SuppressionManager) IsGeoSuppressed(ctx context.Context, countryCode st
 }
 
 // SuppressProperty adds a property suppression with a TTL.
-func (s *SuppressionManager) SuppressProperty(ctx context.Context, propertyRID uint32, ttl time.Duration) error {
+func (s *SuppressionManager) SuppressProperty(ctx context.Context, propertyRID uint64, ttl time.Duration) error {
 	key := fmt.Sprintf("suppress:%s:property:%d", s.providerID, propertyRID)
 	return s.valkey.Set(ctx, key, "1", ttl)
 }

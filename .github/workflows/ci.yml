@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
     strategy:
       matrix:
-        go-version: ["1.22", "1.23"]
+        go-version: ["1.25", "1.26"]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -26,8 +26,8 @@ jobs:
 
       - name: Check generated code is up to date
         run: |
-          go generate ./tmp/...
-          git diff --exit-code tmp/types_gen.go
+          go generate ./tmproto/...
+          git diff --exit-code tmproto/types_gen.go
 
       - name: Test root module
         run: go test -race -count=1 ./...
@@ -61,7 +61,7 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
 
       - name: Run golangci-lint (root)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
@@ -109,7 +109,7 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.23"
+          go-version: "1.26"
 
       - name: Benchmark PR
         working-directory: bench

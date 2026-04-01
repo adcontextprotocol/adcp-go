@@ -1,5 +1,5 @@
 // Command generate reads JSON Schema files from a directory and produces
-// Go type definitions. It is invoked via go:generate from the tmp package.
+// Go type definitions. It is invoked via go:generate from the tmproto package.
 package main
 
 import (
@@ -12,7 +12,7 @@ import (
 func main() {
 	schemaDir := flag.String("schema", "", "directory containing JSON Schema files")
 	outFile := flag.String("out", "", "output Go file path")
-	pkg := flag.String("pkg", "tmp", "Go package name for generated file")
+	pkg := flag.String("pkg", "tmproto", "Go package name for generated file")
 	flag.Parse()
 
 	if *schemaDir == "" || *outFile == "" {

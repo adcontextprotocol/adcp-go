@@ -1,4 +1,4 @@
-package main
+package router
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // Router fans out TMP requests to registered providers and merges responses.
@@ -49,18 +49,19 @@ func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *Signatu
 func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
 	if err != nil {
-		writeError(w, "", tmp.ErrorCodeInvalidRequest, "failed to read request body")
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
 
-	var cmReq tmp.ContextMatchRequest
+	var cmReq tmproto.ContextMatchRequest
 	if err := json.Unmarshal(body, &cmReq); err != nil {
-		writeError(w, "", tmp.ErrorCodeInvalidRequest, fmt.Sprintf("invalid JSON: %v", err))
+		slog.Debug("invalid JSON in context match request", "error", err)
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 
 	if err := ValidateContextRequest(&cmReq); err != nil {
-		writeError(w, cmReq.RequestID, tmp.ErrorCodeInvalidRequest, err.Error())
+		writeError(w, cmReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -73,7 +74,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 
 	// Compute URL hash from first artifact for fast blocklist/allowlist checks
 	if len(cmReq.Artifacts) > 0 {
-		cmReq.URLHash = tmp.HashURL(cmReq.Artifacts[0])
+		cmReq.URLHash = tmproto.HashURL(cmReq.Artifacts[0])
 	}
 
 	// Sign the request (cached — ~57ns for cache hit vs ~14μs for cold sign)
@@ -108,18 +109,19 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
 	if err != nil {
-		writeError(w, "", tmp.ErrorCodeInvalidRequest, "failed to read request body")
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
 
-	var imReq tmp.IdentityMatchRequest
+	var imReq tmproto.IdentityMatchRequest
 	if err := json.Unmarshal(body, &imReq); err != nil {
-		writeError(w, "", tmp.ErrorCodeInvalidRequest, fmt.Sprintf("invalid JSON: %v", err))
+		slog.Debug("invalid JSON in identity match request", "error", err)
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 
 	if err := ValidateIdentityRequest(&imReq); err != nil {
-		writeError(w, imReq.RequestID, tmp.ErrorCodeInvalidRequest, err.Error())
+		writeError(w, imReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -143,9 +145,9 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmp.ContextMatchResponse {
+func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmproto.ContextMatchResponse {
 	var mu sync.Mutex
-	var results []*tmp.ContextMatchResponse
+	var results []*tmproto.ContextMatchResponse
 	var wg sync.WaitGroup
 
 	for _, p := range providers {
@@ -179,7 +181,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 				r.health.RecordSuccess(p.ID)
 			}
 
-			var cmResp tmp.ContextMatchResponse
+			var cmResp tmproto.ContextMatchResponse
 			if err := json.Unmarshal(resp, &cmResp); err != nil {
 				return
 			}
@@ -194,9 +196,9 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 	return results
 }
 
-func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []*tmp.IdentityMatchResponse {
+func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []*tmproto.IdentityMatchResponse {
 	var mu sync.Mutex
-	var results []*tmp.IdentityMatchResponse
+	var results []*tmproto.IdentityMatchResponse
 	var wg sync.WaitGroup
 
 	for _, p := range providers {
@@ -230,7 +232,7 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 				r.health.RecordSuccess(p.ID)
 			}
 
-			var imResp tmp.IdentityMatchResponse
+			var imResp tmproto.IdentityMatchResponse
 			if err := json.Unmarshal(resp, &imResp); err != nil {
 				return
 			}
@@ -262,18 +264,18 @@ func (r *Router) callProvider(ctx context.Context, url string, body []byte) ([]b
 		return nil, fmt.Errorf("provider returned %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, 1024*1024)) // 1MB max response
 }
 
 // mergeContextResponses combines offers and signals from multiple providers.
-func mergeContextResponses(requestID string, responses []*tmp.ContextMatchResponse) *tmp.ContextMatchResponse {
-	merged := &tmp.ContextMatchResponse{
+func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchResponse) *tmproto.ContextMatchResponse {
+	merged := &tmproto.ContextMatchResponse{
 		RequestID: requestID,
-		Offers:    []tmp.Offer{},
+		Offers:    []tmproto.Offer{},
 	}
 
 	var allSegments []string
-	var allKVs []tmp.KeyValuePair
+	var allKVs []tmproto.KeyValuePair
 
 	for _, resp := range responses {
 		merged.Offers = append(merged.Offers, resp.Offers...)
@@ -284,7 +286,7 @@ func mergeContextResponses(requestID string, responses []*tmp.ContextMatchRespon
 	}
 
 	if len(allSegments) > 0 || len(allKVs) > 0 {
-		merged.Signals = &tmp.Signals{
+		merged.Signals = &tmproto.Signals{
 			Segments:     allSegments,
 			TargetingKVs: allKVs,
 		}
@@ -295,7 +297,7 @@ func mergeContextResponses(requestID string, responses []*tmp.ContextMatchRespon
 
 // mergeIdentityResponses combines eligibility from multiple providers.
 // AND semantics: eligible only if NO provider says ineligible. intent_score = max.
-func mergeIdentityResponses(requestID string, responses []*tmp.IdentityMatchResponse) *tmp.IdentityMatchResponse {
+func mergeIdentityResponses(requestID string, responses []*tmproto.IdentityMatchResponse) *tmproto.IdentityMatchResponse {
 	type mergedElig struct {
 		eligible    bool
 		intentScore *float64
@@ -322,36 +324,36 @@ func mergeIdentityResponses(requestID string, responses []*tmp.IdentityMatchResp
 		}
 	}
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for pkgID, m := range byPkg {
-		eligibility = append(eligibility, tmp.PackageEligibility{
+		eligibility = append(eligibility, tmproto.PackageEligibility{
 			PackageID:   pkgID,
 			Eligible:    m.eligible,
 			IntentScore: m.intentScore,
 		})
 	}
 
-	return &tmp.IdentityMatchResponse{
+	return &tmproto.IdentityMatchResponse{
 		RequestID:   requestID,
 		Eligibility: eligibility,
 	}
 }
 
-func writeError(w http.ResponseWriter, requestID string, code tmp.ErrorCode, message string) {
+func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	status := http.StatusBadRequest
 	switch code {
-	case tmp.ErrorCodeRateLimited:
+	case tmproto.ErrorCodeRateLimited:
 		status = http.StatusTooManyRequests
-	case tmp.ErrorCodeTimeout:
+	case tmproto.ErrorCodeTimeout:
 		status = http.StatusGatewayTimeout
-	case tmp.ErrorCodeInternalError:
+	case tmproto.ErrorCodeInternalError:
 		status = http.StatusInternalServerError
-	case tmp.ErrorCodeProviderUnavailable:
+	case tmproto.ErrorCodeProviderUnavailable:
 		status = http.StatusServiceUnavailable
 	}
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(tmp.ErrorResponse{
+	if err := json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,

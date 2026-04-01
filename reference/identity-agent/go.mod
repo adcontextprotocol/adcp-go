@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/reference/identity-agent
 
-go 1.22
+go 1.26
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0

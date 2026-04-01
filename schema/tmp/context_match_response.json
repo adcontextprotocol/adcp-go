@@ -43,7 +43,7 @@
           "x-go-omitempty": true
         },
         "creative_manifest": {
-          "x-go-type": "any",
+          "x-go-type": "json.RawMessage",
           "x-go-omitempty": true
         },
         "macros": {

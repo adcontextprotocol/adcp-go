@@ -1,9 +1,9 @@
-// Package main provides the property registry types and lookup for the context agent.
+// Package contextagent provides the property registry types and lookup for the context agent.
 //
-// The registry maps property RIDs (uint32) to property records containing
+// The registry maps property RIDs (uint64) to property records containing
 // domain, public key, and authorized agents. In production, this is downloaded
 // as a binary snapshot. For now, it uses JSON serialization.
-package main
+package contextagent
 
 import (
 	"crypto/ed25519"
@@ -15,7 +15,7 @@ import (
 
 // PropertyRecord is a single property in the registry.
 type PropertyRecord struct {
-	RID              uint32           `json:"rid"`
+	RID              uint64           `json:"rid"`
 	Domain           string           `json:"domain"`
 	PublicKey        ed25519.PublicKey `json:"public_key"`
 	AuthorizedAgents []AuthorizedAgent `json:"authorized_agents,omitempty"`
@@ -32,18 +32,18 @@ type AuthorizedAgent struct {
 type PropertyRegistry struct {
 	mu       sync.RWMutex
 	Sequence uint64                    `json:"sequence"`
-	Records  map[uint32]*PropertyRecord `json:"records"`
+	Records  map[uint64]*PropertyRecord `json:"records"`
 }
 
 // NewPropertyRegistry creates an empty registry.
 func NewPropertyRegistry() *PropertyRegistry {
 	return &PropertyRegistry{
-		Records: make(map[uint32]*PropertyRecord),
+		Records: make(map[uint64]*PropertyRecord),
 	}
 }
 
 // Get returns the property record for a given RID, or nil if not found.
-func (r *PropertyRegistry) Get(rid uint32) *PropertyRecord {
+func (r *PropertyRegistry) Get(rid uint64) *PropertyRecord {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.Records[rid]
@@ -57,7 +57,7 @@ func (r *PropertyRegistry) Put(rec *PropertyRecord) {
 }
 
 // Remove deletes a property record by RID.
-func (r *PropertyRegistry) Remove(rid uint32) {
+func (r *PropertyRegistry) Remove(rid uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.Records, rid)
@@ -71,10 +71,10 @@ func (r *PropertyRegistry) Len() int {
 }
 
 // AllRIDs returns all RIDs in the registry.
-func (r *PropertyRegistry) AllRIDs() []uint32 {
+func (r *PropertyRegistry) AllRIDs() []uint64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	rids := make([]uint32, 0, len(r.Records))
+	rids := make([]uint64, 0, len(r.Records))
 	for rid := range r.Records {
 		rids = append(rids, rid)
 	}
@@ -103,7 +103,7 @@ func (r *PropertyRegistry) LoadFromJSON(data []byte) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Sequence = snapshot.Sequence
-	r.Records = make(map[uint32]*PropertyRecord, len(snapshot.Records))
+	r.Records = make(map[uint64]*PropertyRecord, len(snapshot.Records))
 	for _, rec := range snapshot.Records {
 		r.Records[rec.RID] = rec
 	}

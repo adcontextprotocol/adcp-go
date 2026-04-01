@@ -1,4 +1,4 @@
-package main
+package router
 
 import (
 	"encoding/json"
@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 func TestValidateContextRequest_Valid(t *testing.T) {
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:    "ctx-001",
 		PropertyID:   "pub-oakwood",
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar-300x250",
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
@@ -29,12 +29,12 @@ func TestValidateContextRequest_Valid(t *testing.T) {
 func TestValidateContextRequest_MissingFields(t *testing.T) {
 	tests := []struct {
 		name string
-		req  tmp.ContextMatchRequest
+		req  tmproto.ContextMatchRequest
 	}{
-		{"missing request_id", tmp.ContextMatchRequest{PropertyID: "p", PlacementID: "pl", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"missing property_id", tmp.ContextMatchRequest{RequestID: "r", PlacementID: "pl", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"missing placement_id", tmp.ContextMatchRequest{RequestID: "r", PropertyID: "p", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"empty packages", tmp.ContextMatchRequest{RequestID: "r", PropertyID: "p", PlacementID: "pl"}},
+		{"missing request_id", tmproto.ContextMatchRequest{PropertyID: "p", PlacementID: "pl", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
+		{"missing property_id", tmproto.ContextMatchRequest{RequestID: "r", PlacementID: "pl", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
+		{"missing placement_id", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
+		{"empty packages", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", PlacementID: "pl"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -46,7 +46,7 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 }
 
 func TestValidateIdentityRequest_Valid(t *testing.T) {
-	req := &tmp.IdentityMatchRequest{
+	req := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-001",
 		UserToken:  "tok_abc",
 		PackageIDs: []string{"pkg-1", "pkg-2"},
@@ -62,8 +62,8 @@ func TestProviderFiltering_PropertyID(t *testing.T) {
 		PropertyIDs:  []string{"pub-oakwood-*"},
 	}
 
-	match := &tmp.ContextMatchRequest{PropertyID: "pub-oakwood-main", PropertyType: "website", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
-	noMatch := &tmp.ContextMatchRequest{PropertyID: "pub-other-site", PropertyType: "website", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	match := &tmproto.ContextMatchRequest{PropertyID: "pub-oakwood-main", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	noMatch := &tmproto.ContextMatchRequest{PropertyID: "pub-other-site", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 
 	if !MatchesContextProvider(match, provider) {
 		t.Error("should match pub-oakwood-main")
@@ -79,7 +79,7 @@ func TestProviderFiltering_ExcludeProperty(t *testing.T) {
 		ExcludePropertyIDs: []string{"pub-blocked-*"},
 	}
 
-	req := &tmp.ContextMatchRequest{PropertyID: "pub-blocked-123", PropertyType: "website", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	req := &tmproto.ContextMatchRequest{PropertyID: "pub-blocked-123", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 	if MatchesContextProvider(req, provider) {
 		t.Error("should be excluded")
 	}
@@ -91,8 +91,8 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 		PropertyTypes: []string{"website", "ai_assistant"},
 	}
 
-	web := &tmp.ContextMatchRequest{PropertyID: "p", PropertyType: "website", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
-	ctv := &tmp.ContextMatchRequest{PropertyID: "p", PropertyType: "ctv_app", AvailablePkgs: []tmp.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	web := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	ctv := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "ctv_app", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 
 	if !MatchesContextProvider(web, provider) {
 		t.Error("should match website")
@@ -103,21 +103,21 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 }
 
 func TestMergeContextResponses(t *testing.T) {
-	r1 := &tmp.ContextMatchResponse{
-		Offers: []tmp.Offer{{PackageID: "pkg-1"}},
-		Signals: &tmp.Signals{
+	r1 := &tmproto.ContextMatchResponse{
+		Offers: []tmproto.Offer{{PackageID: "pkg-1"}},
+		Signals: &tmproto.Signals{
 			Segments: []string{"cooking"},
-			TargetingKVs: []tmp.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
+			TargetingKVs: []tmproto.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
 		},
 	}
-	r2 := &tmp.ContextMatchResponse{
-		Offers: []tmp.Offer{{PackageID: "pkg-2"}, {PackageID: "pkg-3"}},
-		Signals: &tmp.Signals{
+	r2 := &tmproto.ContextMatchResponse{
+		Offers: []tmproto.Offer{{PackageID: "pkg-2"}, {PackageID: "pkg-3"}},
+		Signals: &tmproto.Signals{
 			Segments: []string{"sustainability"},
 		},
 	}
 
-	merged := mergeContextResponses("ctx-test", []*tmp.ContextMatchResponse{r1, r2})
+	merged := mergeContextResponses("ctx-test", []*tmproto.ContextMatchResponse{r1, r2})
 
 	if len(merged.Offers) != 3 {
 		t.Errorf("expected 3 offers, got %d", len(merged.Offers))
@@ -130,22 +130,22 @@ func TestMergeContextResponses(t *testing.T) {
 func TestMergeIdentityResponses(t *testing.T) {
 	score1 := 0.7
 	score2 := 0.9
-	r1 := &tmp.IdentityMatchResponse{
-		Eligibility: []tmp.PackageEligibility{
+	r1 := &tmproto.IdentityMatchResponse{
+		Eligibility: []tmproto.PackageEligibility{
 			{PackageID: "pkg-1", Eligible: true, IntentScore: &score1},
 			{PackageID: "pkg-2", Eligible: false},
 		},
 	}
-	r2 := &tmp.IdentityMatchResponse{
-		Eligibility: []tmp.PackageEligibility{
+	r2 := &tmproto.IdentityMatchResponse{
+		Eligibility: []tmproto.PackageEligibility{
 			{PackageID: "pkg-1", Eligible: false, IntentScore: &score2},
 			{PackageID: "pkg-2", Eligible: true},
 		},
 	}
 
-	merged := mergeIdentityResponses("id-test", []*tmp.IdentityMatchResponse{r1, r2})
+	merged := mergeIdentityResponses("id-test", []*tmproto.IdentityMatchResponse{r1, r2})
 
-	byPkg := map[string]tmp.PackageEligibility{}
+	byPkg := map[string]tmproto.PackageEligibility{}
 	for _, e := range merged.Eligibility {
 		byPkg[e.PackageID] = e
 	}
@@ -168,11 +168,11 @@ func TestMergeIdentityResponses(t *testing.T) {
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	// Mock provider that activates pkg-1
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: "ctx-e2e",
-			Offers:    []tmp.Offer{{PackageID: "pkg-1"}},
-			Signals: &tmp.Signals{
-				TargetingKVs: []tmp.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
+			Offers:    []tmproto.Offer{{PackageID: "pkg-1"}},
+			Signals: &tmproto.Signals{
+				TargetingKVs: []tmproto.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
 			},
 		})
 	}))
@@ -198,7 +198,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp tmp.ContextMatchResponse
+	var resp tmproto.ContextMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-1" {
@@ -209,9 +209,9 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	score := 0.82
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 			RequestID: "id-e2e",
-			Eligibility: []tmp.PackageEligibility{
+			Eligibility: []tmproto.PackageEligibility{
 				{PackageID: "pkg-1", Eligible: true, IntentScore: &score},
 				{PackageID: "pkg-2", Eligible: false},
 			},
@@ -237,7 +237,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp tmp.IdentityMatchResponse
+	var resp tmproto.IdentityMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	if len(resp.Eligibility) != 2 {
@@ -249,18 +249,18 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	// Slow provider that takes too long
 	slowProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: "ctx-slow",
-			Offers:    []tmp.Offer{{PackageID: "pkg-slow"}},
+			Offers:    []tmproto.Offer{{PackageID: "pkg-slow"}},
 		})
 	}))
 	defer slowProvider.Close()
 
 	// Fast provider
 	fastProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmp.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: "ctx-fast",
-			Offers:    []tmp.Offer{{PackageID: "pkg-fast"}},
+			Offers:    []tmproto.Offer{{PackageID: "pkg-fast"}},
 		})
 	}))
 	defer fastProvider.Close()
@@ -282,7 +282,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
 	router.HandleContextMatch(w, req)
 
-	var resp tmp.ContextMatchResponse
+	var resp tmproto.ContextMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	// Should only have the fast provider's offer

@@ -1,38 +1,15 @@
-package main
+package router
 
 import (
-	"fmt"
-
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// ValidateContextRequest ensures no identity fields leaked into a context request.
-func ValidateContextRequest(req *tmp.ContextMatchRequest) error {
-	if req.RequestID == "" {
-		return fmt.Errorf("request_id is required")
-	}
-	if req.PropertyID == "" {
-		return fmt.Errorf("property_id is required")
-	}
-	if req.PlacementID == "" {
-		return fmt.Errorf("placement_id is required")
-	}
-	if len(req.AvailablePkgs) == 0 {
-		return fmt.Errorf("available_packages must not be empty")
-	}
-	return nil
+// ValidateContextRequest ensures required fields are present on a context match request.
+func ValidateContextRequest(req *tmproto.ContextMatchRequest) error {
+	return tmproto.ValidateContextRequest(req)
 }
 
-// ValidateIdentityRequest ensures no context fields leaked into an identity request.
-func ValidateIdentityRequest(req *tmp.IdentityMatchRequest) error {
-	if req.RequestID == "" {
-		return fmt.Errorf("request_id is required")
-	}
-	if req.UserToken == "" {
-		return fmt.Errorf("user_token is required")
-	}
-	if len(req.PackageIDs) == 0 {
-		return fmt.Errorf("package_ids must not be empty")
-	}
-	return nil
+// ValidateIdentityRequest ensures required fields are present on an identity match request.
+func ValidateIdentityRequest(req *tmproto.IdentityMatchRequest) error {
+	return tmproto.ValidateIdentityRequest(req)
 }

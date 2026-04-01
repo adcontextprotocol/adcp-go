@@ -68,7 +68,7 @@ func TestRender(t *testing.T) {
 		t.Fatalf("LoadSchemas: %v", err)
 	}
 
-	src, err := Render("tmp", ir)
+	src, err := Render("tmproto", ir)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestRender(t *testing.T) {
 	}
 
 	// Must contain package declaration.
-	if !strings.Contains(code, "package tmp") {
+	if !strings.Contains(code, "package tmproto") {
 		t.Error("missing package declaration")
 	}
 
@@ -109,19 +109,19 @@ func TestGoldenFile(t *testing.T) {
 		t.Fatalf("LoadSchemas: %v", err)
 	}
 
-	generated, err := Render("tmp", ir)
+	generated, err := Render("tmproto", ir)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 
-	goldenPath := filepath.Join("..", "..", "tmp", "types_gen.go")
+	goldenPath := filepath.Join("..", "..", "tmproto", "types_gen.go")
 	golden, err := os.ReadFile(goldenPath)
 	if err != nil {
 		t.Fatalf("read golden file: %v", err)
 	}
 
 	if string(generated) != string(golden) {
-		t.Error("generated output differs from golden file (tmp/types_gen.go); run go generate ./tmp/...")
+		t.Error("generated output differs from golden file (tmproto/types_gen.go); run go generate ./tmproto/...")
 	}
 }
 

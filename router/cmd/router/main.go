@@ -10,6 +10,8 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/router"
 )
 
 func main() {
@@ -18,16 +20,16 @@ func main() {
 	flag.Parse()
 
 	// Load config
-	var cfg *ServerConfig
+	var cfg *router.ServerConfig
 	if *configFile != "" {
 		var err error
-		cfg, err = LoadServerConfig(*configFile)
+		cfg, err = router.LoadServerConfig(*configFile)
 		if err != nil {
 			slog.Error("failed to load config", "path", *configFile, "error", err)
 			os.Exit(1)
 		}
 	} else {
-		cfg = DefaultServerConfig()
+		cfg = router.DefaultServerConfig()
 	}
 	if *addr != "" {
 		cfg.Addr = *addr
@@ -38,19 +40,19 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Initialize components
-	registry := NewRegistry("", "")
-	health := NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
-	router := NewRouter(cfg.Providers, registry, nil, health)
-	metrics := NewMetrics(health, nil)
+	registry := router.NewRegistry("", "")
+	health := router.NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
+	r := router.NewRouter(cfg.Providers, registry, nil, health)
+	metrics := router.NewMetrics(health, nil)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, req *http.Request) {
 		metrics.ContextRequests.Add(1)
-		router.HandleContextMatch(w, r)
+		r.HandleContextMatch(w, req)
 	})
-	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, req *http.Request) {
 		metrics.IdentityRequests.Add(1)
-		router.HandleIdentityMatch(w, r)
+		r.HandleIdentityMatch(w, req)
 	})
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.HandleFunc("GET /metrics", metrics.HandleMetrics)

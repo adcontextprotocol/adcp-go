@@ -252,11 +252,9 @@ func schemaToStruct(name string, s *jsonschema.Schema) (GoStruct, error) {
 		if extraBool(prop, "x-go-pointer") {
 			goType = "*" + goType
 		}
-		// Validate x-go-type values (built-in types and $ref types are safe by construction).
-		if explicit := extraString(prop, "x-go-type"); explicit != "" {
-			if err := validateGoType(fmt.Sprintf("field %s.%s x-go-type", name, jsonName), explicit); err != nil {
-				return GoStruct{}, err
-			}
+		// Validate all resolved types (covers $ref, x-go-type, and computed types).
+		if err := validateGoType(fmt.Sprintf("field %s.%s type", name, jsonName), goType); err != nil {
+			return GoStruct{}, err
 		}
 
 		field := GoField{
