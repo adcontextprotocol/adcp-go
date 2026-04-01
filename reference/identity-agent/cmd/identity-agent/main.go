@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -34,10 +35,16 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, r *http.Request) {
-		var req tmproto.IdentityMatchRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "failed to read request body"})
+			return
+		}
+		var req tmproto.IdentityMatchRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
 		resp, err := agent.IdentityMatch(r.Context(), &req)
@@ -51,10 +58,16 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
-		var req tmproto.ExposeRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "failed to read request body"})
+			return
+		}
+		var req tmproto.ExposeRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
 		resp, err := agent.Expose(r.Context(), &req)

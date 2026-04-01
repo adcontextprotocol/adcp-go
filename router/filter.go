@@ -63,6 +63,13 @@ func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
 // Supports only '*' (matches any sequence of characters) and '?' (matches any single character).
 // Unlike filepath.Match, this has no platform-specific behavior.
 func matchGlob(pattern, s string) bool {
+	return matchGlobBounded(pattern, s, 0)
+}
+
+func matchGlobBounded(pattern, s string, depth int) bool {
+	if depth > 100 {
+		return false
+	}
 	for len(pattern) > 0 {
 		switch pattern[0] {
 		case '*':
@@ -75,7 +82,7 @@ func matchGlob(pattern, s string) bool {
 			}
 			// Try matching rest of pattern at every position
 			for i := 0; i <= len(s); i++ {
-				if matchGlob(pattern, s[i:]) {
+				if matchGlobBounded(pattern, s[i:], depth+1) {
 					return true
 				}
 			}

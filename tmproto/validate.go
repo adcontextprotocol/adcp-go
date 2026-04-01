@@ -10,6 +10,9 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if req.PropertyID == "" {
 		return errors.New("property_id is required")
 	}
+	if req.PropertyType == "" {
+		return errors.New("property_type is required")
+	}
 	if req.PlacementID == "" {
 		return errors.New("placement_id is required")
 	}

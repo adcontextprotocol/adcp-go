@@ -25,7 +25,7 @@ func CanonicalizeForSigning(req *ContextMatchRequest, epoch int64) []byte {
 	// PropertyID and PlacementID are user-controlled strings that could contain pipes.
 	ids := make([]string, len(req.AvailablePkgs))
 	for i, p := range req.AvailablePkgs {
-		ids[i] = p.PackageID
+		ids[i] = fmt.Sprintf("%d:%s", len(p.PackageID), p.PackageID)
 	}
 	sort.Strings(ids)
 

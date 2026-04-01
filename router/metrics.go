@@ -48,7 +48,9 @@ func (m *Metrics) HandleMetrics(w http.ResponseWriter, _ *http.Request) {
 			Context:  m.ContextRequests.Load(),
 			Identity: m.IdentityRequests.Load(),
 		},
-		Providers: m.health.Snapshot(),
+	}
+	if m.health != nil {
+		snap.Providers = m.health.Snapshot()
 	}
 	if m.sigCache != nil {
 		snap.SigCache = m.sigCache.Stats()

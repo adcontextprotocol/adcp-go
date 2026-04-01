@@ -1,11 +1,11 @@
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-COPY ../go.mod ../go.sum ../
+COPY tmproto/ tmproto/
+COPY router/ router/
+WORKDIR /src/router
 RUN go mod download
-COPY . .
-COPY ../tmp ../tmp
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /router .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /router ./cmd/router
 
 FROM scratch
 COPY --from=build /router /router

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"time"
@@ -53,12 +54,21 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, r *http.Request) {
-		var req tmproto.ContextMatchRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 				Code:    tmproto.ErrorCodeInvalidRequest,
-				Message: err.Error(),
+				Message: "failed to read request body",
+			})
+			return
+		}
+		var req tmproto.ContextMatchRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+				Code:    tmproto.ErrorCodeInvalidRequest,
+				Message: "request body is not valid JSON",
 			})
 			return
 		}
