@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"time"
 
 	contextagent "github.com/adcontextprotocol/adcp-go/reference/context-agent"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -77,6 +78,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
+	srv := &http.Server{
+		Addr:         *addr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	log.Printf("Context Agent listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	log.Fatal(srv.ListenAndServe())
 }

@@ -67,6 +67,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
+	srv := &http.Server{
+		Addr:         *addr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	log.Printf("Identity Agent listening on %s, Valkey at %s", *addr, *redisAddr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	log.Fatal(srv.ListenAndServe())
 }

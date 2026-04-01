@@ -83,7 +83,7 @@ func (r *PropertyRegistry) AllRIDs() []uint64 {
 
 // LoadFromFile loads a registry snapshot from a JSON file.
 func (r *PropertyRegistry) LoadFromFile(path string) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is from CLI flag
 	if err != nil {
 		return fmt.Errorf("read registry file: %w", err)
 	}
