@@ -66,27 +66,27 @@ jobs:
       - name: Run golangci-lint (root)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
-          version: v2.2
+          version: v2.11
           args: ./...
 
       - name: Run golangci-lint (router)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
-          version: v2.2
+          version: v2.11
           working-directory: router
           args: ./...
 
       - name: Run golangci-lint (context agent)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
-          version: v2.2
+          version: v2.11
           working-directory: reference/context-agent
           args: ./...
 
       - name: Run golangci-lint (identity agent)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
-          version: v2.2
+          version: v2.11
           working-directory: reference/identity-agent
           args: ./...
 
