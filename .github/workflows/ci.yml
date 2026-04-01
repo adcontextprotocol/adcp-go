@@ -32,10 +32,6 @@ jobs:
       - name: Test root module
         run: go test -race -count=1 ./...
 
-      - name: Test router
-        working-directory: router
-        run: go test -race -count=1 ./...
-
       - name: Test context agent
         working-directory: reference/context-agent
         run: go test -race -count=1 ./...
@@ -67,13 +63,6 @@ jobs:
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.11
-          args: ./...
-
-      - name: Run golangci-lint (router)
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
-        with:
-          version: v2.11
-          working-directory: router
           args: ./...
 
       - name: Run golangci-lint (context agent)
