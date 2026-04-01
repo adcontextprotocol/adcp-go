@@ -11,22 +11,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // BenchmarkBitmapCheck tests Roaring bitmap Contains() with 50K properties, targeting 1K.
 func BenchmarkBitmapCheck(b *testing.B) {
-	bm := roaring.New()
+	bm := roaring64.New()
 	// Add 1K targeted properties out of 50K universe
-	for i := range uint32(1000) {
+	for i := range uint64(1000) {
 		bm.Add(i * 50) // Spread across the 50K range
 	}
 	bm.RunOptimize()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rid := uint32(i % 50000)
+		rid := uint64(i % 50000)
 		_ = bm.Contains(rid)
 	}
 }

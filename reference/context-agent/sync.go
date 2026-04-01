@@ -3,7 +3,6 @@ package contextagent
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 )
 
@@ -78,9 +77,7 @@ func ApplyEvents(registry *PropertyRegistry, targeting *TargetingConfig, events 
 			}
 		case "deactivate":
 			registry.Remove(event.Record.RID)
-			if event.Record.RID <= math.MaxUint32 {
-				targeting.PropertyBitmap.Remove(uint32(event.Record.RID))
-			}
+			targeting.PropertyBitmap.Remove(event.Record.RID)
 		}
 		if event.Sequence > registry.Sequence {
 			registry.Sequence = event.Sequence
