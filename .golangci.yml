@@ -11,6 +11,6 @@ linters:
     - bodyclose
     - nilerr
 
-issues:
+run:
   exclude-dirs:
     - cmd
