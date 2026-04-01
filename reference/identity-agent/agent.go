@@ -1,4 +1,4 @@
-package main
+package identityagent
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -54,14 +54,14 @@ func NewIdentityAgent(rdb *redis.Client, packages []PackageConfig, campaigns []C
 }
 
 // IdentityMatch evaluates a user against all requested packages.
-func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmp.IdentityMatchRequest) (*tmp.IdentityMatchResponse, error) {
+func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmproto.IdentityMatchRequest) (*tmproto.IdentityMatchResponse, error) {
 	tokenHash := hashToken(req.UserToken)
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
 		pkg, known := a.packages[pkgID]
 		if !known {
-			eligibility = append(eligibility, tmp.PackageEligibility{
+			eligibility = append(eligibility, tmproto.PackageEligibility{
 				PackageID: pkgID,
 				Eligible:  false,
 			})
@@ -113,7 +113,7 @@ func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmp.IdentityMatc
 			return nil, fmt.Errorf("intent score for %s: %w", pkgID, err)
 		}
 
-		e := tmp.PackageEligibility{
+		e := tmproto.PackageEligibility{
 			PackageID: pkgID,
 			Eligible:  eligible,
 		}
@@ -123,7 +123,7 @@ func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmp.IdentityMatc
 		eligibility = append(eligibility, e)
 	}
 
-	return &tmp.IdentityMatchResponse{
+	return &tmproto.IdentityMatchResponse{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 	}, nil
@@ -132,7 +132,7 @@ func (a *IdentityAgent) IdentityMatch(ctx context.Context, req *tmp.IdentityMatc
 // Expose records that a user was shown an ad for a package.
 // Adds a timestamped entry to sorted sets for both package and campaign frequency.
 // Uses sorted sets for sliding window frequency capping.
-func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tmp.ExposeResponse, error) {
+func (a *IdentityAgent) Expose(ctx context.Context, req *tmproto.ExposeRequest) (*tmproto.ExposeResponse, error) {
 	tokenHash := hashToken(req.UserToken)
 	pkg, ok := a.packages[req.PackageID]
 	if !ok {
@@ -179,7 +179,7 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmp.ExposeRequest) (*tm
 		return nil, err
 	}
 
-	resp := &tmp.ExposeResponse{PackageID: req.PackageID}
+	resp := &tmproto.ExposeResponse{PackageID: req.PackageID}
 
 	// Return campaign count for the shortest window
 	if campKey != "" {

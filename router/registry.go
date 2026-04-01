@@ -1,4 +1,4 @@
-package main
+package router
 
 import (
 	"encoding/json"
@@ -136,7 +136,7 @@ func (r *Registry) LoadSnapshot() error {
 		return fmt.Errorf("snapshot returned %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024)) // 10MB max
 	if err != nil {
 		return fmt.Errorf("read snapshot: %w", err)
 	}

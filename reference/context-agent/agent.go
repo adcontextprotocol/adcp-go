@@ -1,4 +1,4 @@
-// Package main implements a reference TMP Context Match agent.
+// Package contextagent implements a reference TMP Context Match agent.
 //
 // The agent evaluates packages against content context using:
 // 1. Roaring bitmap pre-filter on property RIDs
@@ -9,7 +9,7 @@
 // Property targeting uses Roaring bitmaps for O(1) membership checks across
 // 50K+ properties. The registry maps property RIDs to records containing
 // domain, public key, and authorized agents.
-package main
+package contextagent
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // Agent is the main context match agent.
@@ -69,7 +69,7 @@ func NewAgent(cfg AgentConfig) *Agent {
 // shouldVerifySignature decides whether to verify this request's signature.
 // Uses atomic counter for lock-free sampling. Always verifies if the property
 // has no established trust (not in registry or recently failed verification).
-func (a *Agent) shouldVerifySignature(rid uint32) bool {
+func (a *Agent) shouldVerifySignature(rid uint64) bool {
 	if a.signatureSampleRate >= 100 {
 		return true
 	}
@@ -88,7 +88,7 @@ func (a *Agent) shouldVerifySignature(rid uint32) bool {
 
 // onSignatureFailure handles a failed signature verification by suppressing
 // the property and logging the incident.
-func (a *Agent) onSignatureFailure(ctx context.Context, rid uint32) {
+func (a *Agent) onSignatureFailure(ctx context.Context, rid uint64) {
 	// Suppress property for 24 hours
 	_ = a.suppressions.SuppressProperty(ctx, rid, 24*time.Hour)
 }
@@ -99,8 +99,8 @@ func (a *Agent) onSignatureFailure(ctx context.Context, rid uint32) {
 //  2. Suppression check (is this property or geo suppressed?)
 //  3. Signature verification (is the request authentically from the publisher?)
 //  4. Per-package evaluation through the module pipeline
-func (a *Agent) ContextMatch(ctx context.Context, req *tmp.ContextMatchRequest) (*tmp.ContextMatchResponse, error) {
-	rid := uint32(req.PropertyRID)
+func (a *Agent) ContextMatch(ctx context.Context, req *tmproto.ContextMatchRequest) (*tmproto.ContextMatchResponse, error) {
+	rid := req.PropertyRID
 
 	// 1. Bitmap pre-filter: is this property in our targeting set?
 	if !a.targeting.ContainsProperty(rid) {
@@ -130,7 +130,7 @@ func (a *Agent) ContextMatch(ctx context.Context, req *tmp.ContextMatchRequest) 
 	}
 
 	// 4. Run module pipeline per package
-	var offers []tmp.Offer
+	var offers []tmproto.Offer
 	for _, pkg := range req.AvailablePkgs {
 		// Check per-package targeting bitmap
 		if !a.targeting.ContainsPackageProperty(pkg.PackageID, rid) {
@@ -140,7 +140,7 @@ func (a *Agent) ContextMatch(ctx context.Context, req *tmp.ContextMatchRequest) 
 		activate := true
 		var bestScore float32
 		for _, mod := range a.modules {
-			results := mod.Evaluate(ctx, req, []tmp.AvailablePackage{pkg})
+			results := mod.Evaluate(ctx, req, []tmproto.AvailablePackage{pkg})
 			for _, r := range results {
 				if !r.Activate {
 					activate = false
@@ -155,11 +155,11 @@ func (a *Agent) ContextMatch(ctx context.Context, req *tmp.ContextMatchRequest) 
 			}
 		}
 		if activate {
-			offers = append(offers, tmp.Offer{PackageID: pkg.PackageID})
+			offers = append(offers, tmproto.Offer{PackageID: pkg.PackageID})
 		}
 	}
 
-	return &tmp.ContextMatchResponse{
+	return &tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
 	}, nil
@@ -167,12 +167,12 @@ func (a *Agent) ContextMatch(ctx context.Context, req *tmp.ContextMatchRequest) 
 
 // VerifyRequest verifies the base64-encoded Ed25519 signature on a request
 // using the publisher's public key from the registry.
-func (a *Agent) VerifyRequest(req *tmp.ContextMatchRequest, b64Sig string) error {
+func (a *Agent) VerifyRequest(req *tmproto.ContextMatchRequest, b64Sig string) error {
 	return VerifyRequestSignature(req, b64Sig, a.registry)
 }
 
-func emptyResponse(requestID string) *tmp.ContextMatchResponse {
-	return &tmp.ContextMatchResponse{
+func emptyResponse(requestID string) *tmproto.ContextMatchResponse {
+	return &tmproto.ContextMatchResponse{
 		RequestID: requestID,
 		Offers:    nil,
 	}

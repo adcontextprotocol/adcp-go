@@ -3,10 +3,13 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"io"
 	"log"
 	"net/http"
+	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	contextagent "github.com/adcontextprotocol/adcp-go/reference/context-agent"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 func main() {
@@ -15,10 +18,10 @@ func main() {
 	flag.Parse()
 
 	// Initialize Valkey client (mock for reference implementation)
-	valkey := NewMockValkeyClient()
+	valkey := contextagent.NewMockValkeyClient()
 
 	// Load registry
-	registry := NewPropertyRegistry()
+	registry := contextagent.NewPropertyRegistry()
 	if *registryFile != "" {
 		if err := registry.LoadFromFile(*registryFile); err != nil {
 			log.Fatalf("Failed to load registry: %v", err)
@@ -27,7 +30,7 @@ func main() {
 	}
 
 	// Build targeting config from registry
-	targeting := NewTargetingConfig()
+	targeting := contextagent.NewTargetingConfig()
 	for _, rid := range registry.AllRIDs() {
 		targeting.AddProperties(rid)
 	}
@@ -37,26 +40,35 @@ func main() {
 	valkey.SAdd("topics:package:pkg-native-0078", "technology.gadgets", "technology.reviews")
 
 	// Create modules
-	urlModule := NewURLPatternModule(valkey)
-	topicModule := NewTopicMatchModule(valkey)
+	urlModule := contextagent.NewURLPatternModule(valkey)
+	topicModule := contextagent.NewTopicMatchModule(valkey)
 
-	agent := NewAgent(AgentConfig{
-		ProviderID:                "reference-context-agent",
-		Registry:                  registry,
-		Targeting:                 targeting,
-		Valkey:                    valkey,
-		Modules:                   []Module{urlModule, topicModule},
+	agent := contextagent.NewAgent(contextagent.AgentConfig{
+		ProviderID:          "reference-context-agent",
+		Registry:            registry,
+		Targeting:           targeting,
+		Valkey:              valkey,
+		Modules:             []contextagent.Module{urlModule, topicModule},
 		SignatureSampleRate: 0, // Disabled for reference demo (no keys configured)
 	})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, r *http.Request) {
-		var req tmp.ContextMatchRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
-				Code:    tmp.ErrorCodeInvalidRequest,
-				Message: err.Error(),
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+				Code:    tmproto.ErrorCodeInvalidRequest,
+				Message: "failed to read request body",
+			})
+			return
+		}
+		var req tmproto.ContextMatchRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+				Code:    tmproto.ErrorCodeInvalidRequest,
+				Message: "request body is not valid JSON",
 			})
 			return
 		}
@@ -64,9 +76,9 @@ func main() {
 		resp, err := agent.ContextMatch(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(tmp.ErrorResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 				RequestID: req.RequestID,
-				Code:      tmp.ErrorCodeInternalError,
+				Code:      tmproto.ErrorCodeInternalError,
 				Message:   err.Error(),
 			})
 			return
@@ -76,6 +88,12 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
+	srv := &http.Server{
+		Addr:         *addr,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
 	log.Printf("Context Agent listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	log.Fatal(srv.ListenAndServe())
 }

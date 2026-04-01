@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // --- Realistic Module Implementations ---
@@ -23,7 +23,7 @@ type BrandSafetyModule struct {
 	blockedKeywords map[string][]string
 }
 
-func (m *BrandSafetyModule) Evaluate(req *tmp.ContextMatchRequest, pkg tmp.AvailablePackage) (bool, float32) {
+func (m *BrandSafetyModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
 	blocked := m.blockedKeywords[pkg.PackageID]
 	for _, kw := range blocked {
 		for _, art := range req.Artifacts {
@@ -42,7 +42,7 @@ type TopicRelevanceModule struct {
 	topicKeywords map[string][]string
 }
 
-func (m *TopicRelevanceModule) Evaluate(req *tmp.ContextMatchRequest, pkg tmp.AvailablePackage) (bool, float32) {
+func (m *TopicRelevanceModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
 	topics := m.topicKeywords[pkg.PackageID]
 	if len(topics) == 0 {
 		return true, 0.5 // No topic targeting = pass with neutral score
@@ -70,7 +70,7 @@ type CatalogMatchModule struct {
 	catalogRelevance map[string][]string
 }
 
-func (m *CatalogMatchModule) Evaluate(req *tmp.ContextMatchRequest, pkg tmp.AvailablePackage) (bool, float32) {
+func (m *CatalogMatchModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
 	keywords := m.catalogRelevance[pkg.PackageID]
 	if len(keywords) == 0 {
 		return false, 0 // No catalog data for this package — don't activate
@@ -92,7 +92,7 @@ type PropertyTargetingModule struct {
 	allowedProperties map[string]map[string]bool
 }
 
-func (m *PropertyTargetingModule) Evaluate(req *tmp.ContextMatchRequest, pkg tmp.AvailablePackage) (bool, float32) {
+func (m *PropertyTargetingModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
 	allowed := m.allowedProperties[pkg.PackageID]
 	if allowed == nil {
 		return true, 1.0 // No property targeting = run everywhere
@@ -107,7 +107,7 @@ func (m *PropertyTargetingModule) Evaluate(req *tmp.ContextMatchRequest, pkg tmp
 
 type simulatedContextAgent struct {
 	name    string
-	modules []interface{ Evaluate(*tmp.ContextMatchRequest, tmp.AvailablePackage) (bool, float32) }
+	modules []interface{ Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32) }
 }
 
 func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -115,10 +115,10 @@ func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request
 		http.NotFound(w, r)
 		return
 	}
-	var req tmp.ContextMatchRequest
+	var req tmproto.ContextMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	var offers []tmp.Offer
+	var offers []tmproto.Offer
 	for _, pkg := range req.AvailablePkgs {
 		activate := true
 		var totalScore float32
@@ -136,7 +136,7 @@ func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 		if activate && moduleCount > 0 {
 			avgScore := totalScore / float32(moduleCount)
-			offer := tmp.Offer{
+			offer := tmproto.Offer{
 				PackageID: pkg.PackageID,
 				Summary:   fmt.Sprintf("Activated by %s (score: %.2f)", a.name, avgScore),
 			}
@@ -144,18 +144,18 @@ func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	resp := tmp.ContextMatchResponse{
+	resp := tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
-		Signals: &tmp.Signals{
+		Signals: &tmproto.Signals{
 			Segments: []string{},
-			TargetingKVs: []tmp.KeyValuePair{
+			TargetingKVs: []tmproto.KeyValuePair{
 				{Key: "provider", Value: a.name},
 			},
 		},
 	}
 	for _, o := range offers {
-		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmp.KeyValuePair{
+		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmproto.KeyValuePair{
 			Key: "adcp_pkg", Value: o.PackageID,
 		})
 	}
@@ -209,13 +209,13 @@ func (a *simulatedIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Request) {
-	var req tmp.IdentityMatchRequest
+	var req tmproto.IdentityMatchRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	var eligibility []tmp.PackageEligibility
+	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
 		eligible := true
 		intentScore := 0.5
@@ -260,7 +260,7 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 			intentScore = 1.0
 		}
 		score := intentScore
-		eligibility = append(eligibility, tmp.PackageEligibility{
+		eligibility = append(eligibility, tmproto.PackageEligibility{
 			PackageID:   pkgID,
 			Eligible:    eligible,
 			IntentScore: &score,
@@ -268,14 +268,14 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 	})
 }
 
 func (a *simulatedIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmp.ExposeRequest
+	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.mu.Lock()
@@ -286,7 +286,7 @@ func (a *simulatedIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Req
 	a.mu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmp.ExposeResponse{PackageID: req.PackageID})
+	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
 }
 
 // --- Simulation Tests ---
@@ -301,7 +301,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	contextualAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "contextual-provider",
 		modules: []interface {
-			Evaluate(*tmp.ContextMatchRequest, tmp.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
 		}{
 			// Brand safety runs first — blocks before any other evaluation
 			&BrandSafetyModule{
@@ -337,7 +337,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	catalogAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "catalog-provider",
 		modules: []interface {
-			Evaluate(*tmp.ContextMatchRequest, tmp.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
 		}{
 			&CatalogMatchModule{
 				catalogRelevance: map[string][]string{
@@ -379,12 +379,12 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 	// --- Scenario 1: Coffee category page ---
 	t.Run("coffee_category_page", func(t *testing.T) {
-		ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-coffee-001",
 			PropertyID:  "pub-grocery-main",
 			PlacementID: "category-sponsored-products",
 			Artifacts:   []string{"category:beverages-coffee", "search:cold-brew-espresso"},
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-coffee-sponsored", MediaBuyID: "mb-coffee-q1"},
 				{PackageID: "pkg-snacks-display", MediaBuyID: "mb-snacks-q1"},
 				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
@@ -393,7 +393,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 			},
 		})
 
-		var cmResp tmp.ContextMatchResponse
+		var cmResp tmproto.ContextMatchResponse
 		json.Unmarshal(ctxResp, &cmResp)
 
 		t.Logf("Context Match returned %d offers:", len(cmResp.Offers))
@@ -414,10 +414,10 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		}
 
 		// Identity match for Alice
-		idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID: "id-sim-coffee-001",
 			UserToken: "tok-user-alice",
-			UIDType:   tmp.UIDTypeUID2,
+			UIDType:   tmproto.UIDTypeUID2,
 			PackageIDs: []string{
 				"pkg-coffee-sponsored", "pkg-snacks-display", "pkg-alcohol-display",
 				"pkg-pharma-native", "pkg-cleaning-carousel",
@@ -425,7 +425,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 			},
 		})
 
-		var imResp tmp.IdentityMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
 		t.Logf("Identity Match for Alice:")
@@ -456,7 +456,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 	// --- Scenario 2: Same page, different user (Bob, not in health segment) ---
 	t.Run("same_page_different_user", func(t *testing.T) {
-		idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID: "id-sim-coffee-002",
 			UserToken: "tok-user-bob",
 			PackageIDs: []string{
@@ -465,7 +465,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 			},
 		})
 
-		var imResp tmp.IdentityMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
 		for _, e := range imResp.Eligibility {
@@ -478,18 +478,18 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 	// --- Scenario 3: Children's content — brand safety blocks alcohol ---
 	t.Run("children_content_brand_safety", func(t *testing.T) {
-		ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-children-001",
 			PropertyID:  "pub-grocery-main",
 			PlacementID: "category-sponsored",
 			Artifacts:   []string{"article:healthy-snacks-for-children-school-lunches"},
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-snacks-display", MediaBuyID: "mb-snacks-q1"},
 				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
 			},
 		})
 
-		var cmResp tmp.ContextMatchResponse
+		var cmResp tmproto.ContextMatchResponse
 		json.Unmarshal(ctxResp, &cmResp)
 
 		t.Logf("Children content - %d offers:", len(cmResp.Offers))
@@ -509,19 +509,19 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		token := "tok-user-charlie"
 
 		for i := 0; i < 3; i++ {
-			postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 				UserToken: token,
 				PackageID: "pkg-coffee-sponsored",
 			})
 		}
 
-		idResp := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  "id-sim-freq-001",
 			UserToken:  token,
 			PackageIDs: []string{"pkg-coffee-sponsored", "pkg-snacks-display"},
 		})
 
-		var imResp tmp.IdentityMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
 		for _, e := range imResp.Eligibility {
@@ -541,18 +541,18 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 	// --- Scenario 5: Property targeting --- different property, fewer packages match ---
 	t.Run("property_targeting", func(t *testing.T) {
-		ctxResp := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-blog-001",
 			PropertyID:  "pub-recipe-blog",
 			PlacementID: "sidebar",
 			Artifacts:   []string{"article:best-coffee-beans-2026"},
-			AvailablePkgs: []tmp.AvailablePackage{
+			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-coffee-sponsored", MediaBuyID: "mb-coffee-q1"},
 				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
 			},
 		})
 
-		var cmResp tmp.ContextMatchResponse
+		var cmResp tmproto.ContextMatchResponse
 		json.Unmarshal(ctxResp, &cmResp)
 
 		t.Logf("Recipe blog - %d offers:", len(cmResp.Offers))
@@ -585,7 +585,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 	ctxAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "contextual-agent",
 		modules: []interface {
-			Evaluate(*tmp.ContextMatchRequest, tmp.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
 		}{
 			&TopicRelevanceModule{
 				topicKeywords: map[string][]string{
@@ -616,12 +616,12 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 	pages := []struct {
 		name      string
 		artifacts []string
-		packages  []tmp.AvailablePackage
+		packages  []tmproto.AvailablePackage
 	}{
 		{
 			name:      "recipe page",
 			artifacts: []string{"article:pasta-recipe-carbonara"},
-			packages: []tmp.AvailablePackage{
+			packages: []tmproto.AvailablePackage{
 				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
 			},
@@ -629,7 +629,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		{
 			name:      "gadget review",
 			artifacts: []string{"article:best-kitchen-gadgets-review"},
-			packages: []tmp.AvailablePackage{
+			packages: []tmproto.AvailablePackage{
 				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
 			},
@@ -637,7 +637,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		{
 			name:      "another recipe",
 			artifacts: []string{"article:cooking-with-cast-iron"},
-			packages: []tmp.AvailablePackage{
+			packages: []tmproto.AvailablePackage{
 				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
 			},
@@ -654,7 +654,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			ctxData = postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+			ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 				RequestID:     fmt.Sprintf("ctx-life-%d", i),
 				PropertyID:    "pub-foodie",
 				PlacementID:   "main-content",
@@ -664,7 +664,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			idData = postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+			idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("id-life-%d", i),
 				UserToken:  token,
 				PackageIDs: allPackages,
@@ -673,17 +673,17 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		wg.Wait()
 		elapsed := time.Since(start)
 
-		var cmResp tmp.ContextMatchResponse
-		var imResp tmp.IdentityMatchResponse
+		var cmResp tmproto.ContextMatchResponse
+		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(ctxData, &cmResp)
 		json.Unmarshal(idData, &imResp)
 
 		// Join
-		contextOffers := make(map[string]tmp.Offer)
+		contextOffers := make(map[string]tmproto.Offer)
 		for _, o := range cmResp.Offers {
 			contextOffers[o.PackageID] = o
 		}
-		eligMap := make(map[string]tmp.PackageEligibility)
+		eligMap := make(map[string]tmproto.PackageEligibility)
 		for _, e := range imResp.Eligibility {
 			eligMap[e.PackageID] = e
 		}
@@ -710,7 +710,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 
 		// Report exposure for the best package
 		if bestPkg != "" {
-			postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 				UserToken: token,
 				PackageID: bestPkg,
 			})

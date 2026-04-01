@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "context_match_request.json",
+  "type": "object",
+  "description": "ContextMatchRequest is sent by the publisher to evaluate available packages against content context. MUST NOT contain user identity.",
+  "x-go-name": "ContextMatchRequest",
+  "required": ["request_id", "property_id", "property_type", "placement_id", "available_packages"],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "x-go-omitempty": true
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "property_id": {
+      "type": "string"
+    },
+    "property_rid": {
+      "type": "integer",
+      "x-go-type": "uint64",
+      "x-go-omitempty": true,
+      "description": "Registry integer ID, enriched by router"
+    },
+    "property_type": {
+      "$ref": "enums.json#/$defs/PropertyType"
+    },
+    "placement_id": {
+      "type": "string"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "x-go-omitempty": true
+    },
+    "geo": {
+      "$ref": "#/$defs/Geo",
+      "x-go-pointer": true,
+      "x-go-omitempty": true,
+      "description": "Geographic context, publisher controls granularity"
+    },
+    "url_hash": {
+      "type": "integer",
+      "x-go-type": "uint64",
+      "x-go-omitempty": true,
+      "description": "FNV-1a of canonicalized URL, enriched by router"
+    },
+    "available_packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/AvailablePackage" },
+      "x-go-name": "AvailablePkgs"
+    },
+    "signature": {
+      "type": "string",
+      "x-go-omitempty": true,
+      "description": "Ed25519 signature from publisher/router"
+    }
+  },
+  "$defs": {
+    "Geo": {
+      "type": "object",
+      "description": "Geo describes the geographic context of the impression. Publisher controls granularity — country for volume filtering, finer for valuation. Describes where the ad serves, not where the user is.",
+      "properties": {
+        "country": {
+          "type": "string",
+          "x-go-omitempty": true,
+          "description": "ISO 3166-1 alpha-2"
+        },
+        "region": {
+          "type": "string",
+          "x-go-omitempty": true,
+          "description": "ISO 3166-2 subdivision"
+        },
+        "metro": {
+          "$ref": "#/$defs/Metro",
+          "x-go-pointer": true,
+          "x-go-omitempty": true,
+          "description": "Metro area per AdCP metro-system enum"
+        }
+      }
+    },
+    "Metro": {
+      "type": "object",
+      "description": "Metro identifies a metro area using an AdCP-standard classification system.",
+      "required": ["system", "value"],
+      "properties": {
+        "system": {
+          "type": "string",
+          "description": "\"nielsen_dma\", \"uk_itl2\", \"eurostat_nuts2\", \"custom\""
+        },
+        "value": {
+          "type": "string",
+          "description": "Code within the system (e.g., \"501\" for NY DMA)"
+        }
+      }
+    },
+    "AvailablePackage": {
+      "type": "object",
+      "description": "AvailablePackage is a lightweight projection of a media buy package with the fields needed for real-time evaluation.",
+      "required": ["package_id", "media_buy_id"],
+      "properties": {
+        "package_id": {
+          "type": "string"
+        },
+        "media_buy_id": {
+          "type": "string"
+        },
+        "format_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "x-go-omitempty": true,
+          "x-go-name": "FormatIDs"
+        },
+        "catalogs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Catalog" },
+          "x-go-omitempty": true
+        }
+      }
+    },
+    "Catalog": {
+      "type": "object",
+      "description": "Catalog is a lightweight reference to a buyer's product catalog with selectors scoping which items are in play.",
+      "required": ["catalog_id"],
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "x-go-omitempty": true
+        },
+        "gtins": {
+          "type": "array",
+          "items": { "type": "string" },
+          "x-go-omitempty": true,
+          "x-go-name": "GTINs"
+        },
+        "ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "x-go-omitempty": true,
+          "x-go-name": "IDs"
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "x-go-omitempty": true
+        },
+        "category": {
+          "type": "string",
+          "x-go-omitempty": true
+        },
+        "query": {
+          "type": "string",
+          "x-go-omitempty": true
+        }
+      }
+    }
+  }
+}

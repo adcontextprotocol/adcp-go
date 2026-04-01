@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "expose_request.json",
+  "type": "object",
+  "description": "ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.",
+  "x-go-name": "ExposeRequest",
+  "required": ["user_token", "package_id"],
+  "properties": {
+    "user_token": {
+      "type": "string"
+    },
+    "uid_type": {
+      "$ref": "enums.json#/$defs/UIDType",
+      "x-go-omitempty": true
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "campaign_id": {
+      "type": "string",
+      "x-go-omitempty": true
+    },
+    "timestamp": {
+      "type": "integer",
+      "x-go-type": "int64",
+      "x-go-omitempty": true
+    }
+  }
+}

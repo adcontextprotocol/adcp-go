@@ -1,4 +1,4 @@
-package main
+package contextagent
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // Module is a pluggable evaluation step in the context match pipeline.
@@ -14,7 +14,7 @@ import (
 // a list of results indicating whether to activate and at what score.
 type Module interface {
 	Name() string
-	Evaluate(ctx context.Context, req *tmp.ContextMatchRequest, packages []tmp.AvailablePackage) []ModuleResult
+	Evaluate(ctx context.Context, req *tmproto.ContextMatchRequest, packages []tmproto.AvailablePackage) []ModuleResult
 }
 
 // ModuleResult is the output of a single module evaluation for one package.
@@ -22,7 +22,7 @@ type ModuleResult struct {
 	PackageID string
 	Activate  bool
 	Score     float32 // 0-1, used for ranking
-	Offer     *tmp.Offer
+	Offer     *tmproto.Offer
 }
 
 // PropertyListModule checks the Roaring bitmap pre-filter per package.
@@ -36,8 +36,8 @@ func NewPropertyListModule(targeting *TargetingConfig) *PropertyListModule {
 
 func (m *PropertyListModule) Name() string { return "property_list" }
 
-func (m *PropertyListModule) Evaluate(_ context.Context, req *tmp.ContextMatchRequest, packages []tmp.AvailablePackage) []ModuleResult {
-	rid := uint32(req.PropertyRID)
+func (m *PropertyListModule) Evaluate(_ context.Context, req *tmproto.ContextMatchRequest, packages []tmproto.AvailablePackage) []ModuleResult {
+	rid := req.PropertyRID
 	results := make([]ModuleResult, 0, len(packages))
 	for _, pkg := range packages {
 		activate := m.targeting.ContainsPackageProperty(pkg.PackageID, rid)
@@ -66,7 +66,7 @@ func NewURLPatternModule(valkey ValkeyClient) *URLPatternModule {
 
 func (m *URLPatternModule) Name() string { return "url_pattern" }
 
-func (m *URLPatternModule) Evaluate(ctx context.Context, req *tmp.ContextMatchRequest, packages []tmp.AvailablePackage) []ModuleResult {
+func (m *URLPatternModule) Evaluate(ctx context.Context, req *tmproto.ContextMatchRequest, packages []tmproto.AvailablePackage) []ModuleResult {
 	results := make([]ModuleResult, 0, len(packages))
 	for _, pkg := range packages {
 		activate := true
@@ -116,7 +116,7 @@ func NewTopicMatchModule(valkey ValkeyClient) *TopicMatchModule {
 
 func (m *TopicMatchModule) Name() string { return "topic_match" }
 
-func (m *TopicMatchModule) Evaluate(ctx context.Context, req *tmp.ContextMatchRequest, packages []tmp.AvailablePackage) []ModuleResult {
+func (m *TopicMatchModule) Evaluate(ctx context.Context, req *tmproto.ContextMatchRequest, packages []tmproto.AvailablePackage) []ModuleResult {
 	results := make([]ModuleResult, 0, len(packages))
 	for _, pkg := range packages {
 		activate := false

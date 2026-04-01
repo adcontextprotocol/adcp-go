@@ -1,4 +1,4 @@
-package main
+package contextagent
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 func setupTestAgent(t *testing.T) (*Agent, *MockValkeyClient) {
@@ -19,7 +19,7 @@ func setupTestAgent(t *testing.T) (*Agent, *MockValkeyClient) {
 
 	// Register 5 properties
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
-	for i := uint32(1); i <= 5; i++ {
+	for i := uint64(1); i <= 5; i++ {
 		registry.Put(&PropertyRecord{
 			RID:       i,
 			Domain:    "example.com",
@@ -43,10 +43,10 @@ func TestBitmapPreFilter_Targeted(t *testing.T) {
 	agent, _ := setupTestAgent(t)
 	ctx := context.Background()
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-1",
 		PropertyRID: 1,
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1"},
 		},
 	}
@@ -64,10 +64,10 @@ func TestBitmapPreFilter_NotTargeted(t *testing.T) {
 	agent, _ := setupTestAgent(t)
 	ctx := context.Background()
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-2",
 		PropertyRID: 999, // Not in targeting bitmap
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1"},
 		},
 	}
@@ -88,10 +88,10 @@ func TestPropertySuppression(t *testing.T) {
 	// Suppress property RID 2
 	_ = agent.suppressions.SuppressProperty(ctx, 2, time.Hour)
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-3",
 		PropertyRID: 2,
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1"},
 		},
 	}
@@ -112,10 +112,10 @@ func TestPerPackageTargeting(t *testing.T) {
 	// pkg-scoped only targets property 3
 	agent.targeting.AddPackageProperties("pkg-scoped", 3)
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-4",
 		PropertyRID: 1, // In global bitmap but not in pkg-scoped
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-scoped"},
 		},
 	}
@@ -163,11 +163,11 @@ func TestModulePipeline_TopicMatch(t *testing.T) {
 		SignatureSampleRate: 0,
 	})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-5",
 		PropertyRID: 10,
 		Artifacts:   []string{"article:pasta-recipe"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food"},
 		},
 	}
@@ -204,11 +204,11 @@ func TestModulePipeline_TopicMiss(t *testing.T) {
 		SignatureSampleRate: 0,
 	})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-6",
 		PropertyRID: 10,
 		Artifacts:   []string{"article:cpu-review"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food"},
 		},
 	}
@@ -246,11 +246,11 @@ func TestModulePipeline_URLBlocklist(t *testing.T) {
 		SignatureSampleRate: 0,
 	})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-7",
 		PropertyRID: 20,
 		Artifacts:   []string{"article:controversial-post"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-family"},
 		},
 	}
@@ -269,12 +269,12 @@ func TestSignatureVerification(t *testing.T) {
 	registry := NewPropertyRegistry()
 	registry.Put(&PropertyRecord{RID: 100, Domain: "secure.example.com", PublicKey: pub})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "signed-1",
 		PropertyRID: 100,
-		PropertyType: tmp.PropertyTypeWebsite,
+		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID: "sidebar",
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1"},
 		},
 	}
@@ -327,11 +327,11 @@ func TestMultiplePackages_MixedResults(t *testing.T) {
 		SignatureSampleRate: 0,
 	})
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "test-multi",
 		PropertyRID: 30,
 		Artifacts:   []string{"article:pasta"},
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-food"},
 			{PackageID: "pkg-tech"},
 		},
@@ -385,10 +385,10 @@ func TestEmptyResponse_RequestIDPreserved(t *testing.T) {
 	agent, _ := setupTestAgent(t)
 	ctx := context.Background()
 
-	req := &tmp.ContextMatchRequest{
+	req := &tmproto.ContextMatchRequest{
 		RequestID:   "preserve-me",
 		PropertyRID: 999, // Not targeted
-		AvailablePkgs: []tmp.AvailablePackage{
+		AvailablePkgs: []tmproto.AvailablePackage{
 			{PackageID: "pkg-1"},
 		},
 	}

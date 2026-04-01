@@ -1,4 +1,4 @@
-package main
+package router
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ type ShutdownConfig struct {
 
 // LoadServerConfig reads a JSON config file and returns the config.
 func LoadServerConfig(path string) (*ServerConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is from CLI flag, not user input
 	if err != nil {
 		return nil, err
 	}

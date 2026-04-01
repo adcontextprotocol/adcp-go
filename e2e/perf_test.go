@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/tmp"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // TestPerformance_EndToEnd measures the full TMP exchange including HTTP
@@ -19,7 +19,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 	ctxAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "perf-ctx",
 		modules: []interface {
-			Evaluate(*tmp.ContextMatchRequest, tmp.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
 		}{
 			&TopicRelevanceModule{
 				topicKeywords: map[string][]string{
@@ -54,7 +54,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 		"pkg-food", "pkg-tech", "pkg-auto", "pkg-travel", "pkg-finance",
 		"pkg-health", "pkg-sports", "pkg-fashion", "pkg-home", "pkg-garden",
 	}
-	pkgs := []tmp.AvailablePackage{
+	pkgs := []tmproto.AvailablePackage{
 		{PackageID: "pkg-food", MediaBuyID: "mb-1"},
 		{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
 		{PackageID: "pkg-auto", MediaBuyID: "mb-3"},
@@ -64,7 +64,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 
 	// Warm up
 	for i := 0; i < 10; i++ {
-		postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+		postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID: fmt.Sprintf("warmup-%d", i), PropertyID: "pub-perf",
 			PlacementID: "main", Artifacts: []string{"article:cooking-recipe"},
 			AvailablePkgs: pkgs,
@@ -81,7 +81,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 
 			// Context match
 			ctxStart := time.Now()
-			ctxData := postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+			ctxData := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 				RequestID:     fmt.Sprintf("perf-ctx-%d", i),
 				PropertyID:    "pub-perf",
 				PlacementID:   "main",
@@ -92,7 +92,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 
 			// Identity match
 			idStart := time.Now()
-			idData := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("perf-id-%d", i),
 				UserToken:  fmt.Sprintf("tok-user-%d", i%50),
 				PackageIDs: allPkgIDs,
@@ -101,8 +101,8 @@ func TestPerformance_EndToEnd(t *testing.T) {
 
 			// Publisher join
 			joinStart := time.Now()
-			var cmResp tmp.ContextMatchResponse
-			var imResp tmp.IdentityMatchResponse
+			var cmResp tmproto.ContextMatchResponse
+			var imResp tmproto.IdentityMatchResponse
 			json.Unmarshal(ctxData, &cmResp)
 			json.Unmarshal(idData, &imResp)
 
@@ -140,7 +140,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			wg.Add(2)
 			go func() {
 				defer wg.Done()
-				ctxData = postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+				ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 					RequestID:     fmt.Sprintf("par-ctx-%d", i),
 					PropertyID:    "pub-perf",
 					PlacementID:   "main",
@@ -150,7 +150,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			}()
 			go func() {
 				defer wg.Done()
-				idData = postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+				idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 					RequestID:  fmt.Sprintf("par-id-%d", i),
 					UserToken:  fmt.Sprintf("tok-user-%d", i%50),
 					PackageIDs: allPkgIDs,
@@ -158,8 +158,8 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			}()
 			wg.Wait()
 
-			var cmResp tmp.ContextMatchResponse
-			var imResp tmp.IdentityMatchResponse
+			var cmResp tmproto.ContextMatchResponse
+			var imResp tmproto.IdentityMatchResponse
 			json.Unmarshal(ctxData, &cmResp)
 			json.Unmarshal(idData, &imResp)
 			totalE2E += time.Since(start)
@@ -204,7 +204,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 					inner.Add(2)
 					go func() {
 						defer inner.Done()
-						ctxData = postJSON(t, router.URL+"/tmp/context", tmp.ContextMatchRequest{
+						ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 							RequestID:     fmt.Sprintf("tp-%d-%d", workerID, i),
 							PropertyID:    "pub-perf",
 							PlacementID:   "main",
@@ -214,7 +214,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 					}()
 					go func() {
 						defer inner.Done()
-						idData = postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+						idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 							RequestID:  fmt.Sprintf("tp-id-%d-%d", workerID, i),
 							UserToken:  fmt.Sprintf("tok-%d-%d", workerID, i),
 							PackageIDs: allPkgIDs,
@@ -268,20 +268,20 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 		token := fmt.Sprintf("tok-freq-%d", u)
 		for p := 0; p < pagesPerUser; p++ {
 			// Identity match
-			idData := postJSON(t, router.URL+"/tmp/identity", tmp.IdentityMatchRequest{
+			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("freq-%d-%d", u, p),
 				UserToken:  token,
 				PackageIDs: allPkgIDs,
 			})
 			totalRequests++
 
-			var imResp tmp.IdentityMatchResponse
+			var imResp tmproto.IdentityMatchResponse
 			json.Unmarshal(idData, &imResp)
 
 			// Find best eligible package and expose
 			for _, e := range imResp.Eligibility {
 				if e.Eligible && e.PackageID == "pkg-a" {
-					postJSON(t, idServer.URL+"/tmp/expose", tmp.ExposeRequest{
+					postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 						UserToken: token,
 						PackageID: "pkg-a",
 					})

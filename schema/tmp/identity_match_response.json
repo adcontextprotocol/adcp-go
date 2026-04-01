@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "identity_match_response.json",
+  "type": "object",
+  "description": "IdentityMatchResponse contains per-package eligibility determinations.",
+  "x-go-name": "IdentityMatchResponse",
+  "required": ["request_id", "eligibility"],
+  "properties": {
+    "request_id": {
+      "type": "string"
+    },
+    "eligibility": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/PackageEligibility" }
+    }
+  },
+  "$defs": {
+    "PackageEligibility": {
+      "type": "object",
+      "description": "PackageEligibility is an identity-based eligibility determination. The buyer computes eligibility from frequency caps, audience membership, etc. and returns an opaque boolean. The publisher does not learn why.",
+      "required": ["package_id", "eligible"],
+      "properties": {
+        "package_id": {
+          "type": "string"
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "intent_score": {
+          "type": "number",
+          "x-go-pointer": true,
+          "x-go-omitempty": true
+        }
+      }
+    }
+  }
+}

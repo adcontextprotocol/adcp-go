@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "context_match_response.json",
+  "type": "object",
+  "description": "ContextMatchResponse contains offers for matched packages and optional response-level targeting signals for ad server pass-through.",
+  "x-go-name": "ContextMatchResponse",
+  "required": ["request_id", "offers"],
+  "properties": {
+    "request_id": {
+      "type": "string"
+    },
+    "offers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Offer" }
+    },
+    "signals": {
+      "$ref": "#/$defs/Signals",
+      "x-go-pointer": true,
+      "x-go-omitempty": true
+    }
+  },
+  "$defs": {
+    "Offer": {
+      "type": "object",
+      "description": "Offer is a buyer's response for a single package. For simple GAM activation, only PackageID is needed. For richer integrations, the buyer can include brand, price, summary, and creative manifest.",
+      "required": ["package_id"],
+      "properties": {
+        "package_id": {
+          "type": "string"
+        },
+        "brand": {
+          "$ref": "#/$defs/BrandRef",
+          "x-go-pointer": true,
+          "x-go-omitempty": true
+        },
+        "price": {
+          "$ref": "#/$defs/OfferPrice",
+          "x-go-pointer": true,
+          "x-go-omitempty": true
+        },
+        "summary": {
+          "type": "string",
+          "x-go-omitempty": true
+        },
+        "creative_manifest": {
+          "x-go-type": "json.RawMessage",
+          "x-go-omitempty": true
+        },
+        "macros": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "x-go-omitempty": true
+        }
+      }
+    },
+    "OfferPrice": {
+      "type": "object",
+      "description": "OfferPrice represents a variable price for a TMP offer.",
+      "required": ["amount", "model"],
+      "properties": {
+        "amount": {
+          "type": "number"
+        },
+        "currency": {
+          "type": "string",
+          "x-go-omitempty": true
+        },
+        "model": {
+          "$ref": "enums.json#/$defs/PriceModel"
+        }
+      }
+    },
+    "BrandRef": {
+      "type": "object",
+      "description": "BrandRef identifies a brand on an offer.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "advertiser_domain": {
+          "type": "string",
+          "x-go-omitempty": true
+        }
+      }
+    },
+    "Signals": {
+      "type": "object",
+      "description": "Signals contains response-level targeting signals for ad server pass-through.",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": { "type": "string" },
+          "x-go-omitempty": true
+        },
+        "targeting_kvs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/KeyValuePair" },
+          "x-go-omitempty": true,
+          "x-go-name": "TargetingKVs"
+        }
+      }
+    },
+    "KeyValuePair": {
+      "type": "object",
+      "description": "KeyValuePair is a targeting key-value pair for ad server integration.",
+      "required": ["key", "value"],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

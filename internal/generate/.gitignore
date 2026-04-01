@@ -1,0 +1,16 @@
+# Compiled binaries
+router/router
+reference/context-agent/context-agent
+reference/identity-agent/identity-agent
+
+# Go workspace (local development only)
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
