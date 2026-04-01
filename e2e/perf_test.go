@@ -63,7 +63,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 	}
 
 	// Warm up
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID: fmt.Sprintf("warmup-%d", i), PropertyID: "pub-perf",
 			PlacementID: "main", Artifacts: []string{"article:cooking-recipe"},
@@ -76,7 +76,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 		iterations := 100
 		var totalCtx, totalId, totalJoin, totalE2E time.Duration
 
-		for i := 0; i < iterations; i++ {
+		for i := range iterations {
 			e2eStart := time.Now()
 
 			// Context match
@@ -133,7 +133,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 		iterations := 100
 		var totalE2E time.Duration
 
-		for i := 0; i < iterations; i++ {
+		for i := range iterations {
 			start := time.Now()
 			var ctxData, idData []byte
 			var wg sync.WaitGroup
@@ -187,7 +187,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			close(done)
 		}()
 
-		for w := 0; w < workers; w++ {
+		for w := range workers {
 			wg.Add(1)
 			go func(workerID int) {
 				defer wg.Done()
@@ -264,9 +264,9 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 	totalExposures := 0
 	cappedCount := 0
 
-	for u := 0; u < users; u++ {
+	for u := range users {
 		token := fmt.Sprintf("tok-freq-%d", u)
-		for p := 0; p < pagesPerUser; p++ {
+		for p := range pagesPerUser {
 			// Identity match
 			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("freq-%d-%d", u, p),

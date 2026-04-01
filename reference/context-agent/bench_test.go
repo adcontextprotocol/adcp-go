@@ -11,22 +11,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // BenchmarkBitmapCheck tests Roaring bitmap Contains() with 50K properties, targeting 1K.
 func BenchmarkBitmapCheck(b *testing.B) {
-	bm := roaring.New()
+	bm := roaring64.New()
 	// Add 1K targeted properties out of 50K universe
-	for i := uint32(0); i < 1000; i++ {
+	for i := range uint64(1000) {
 		bm.Add(i * 50) // Spread across the 50K range
 	}
 	bm.RunOptimize()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rid := uint32(i % 50000)
+		rid := uint64(i % 50000)
 		_ = bm.Contains(rid)
 	}
 }
@@ -78,11 +78,11 @@ func BenchmarkFullPipeline(b *testing.B) {
 	urlMod := NewURLPatternModule(valkey)
 
 	agent := NewAgent(AgentConfig{
-		ProviderID:                "bench-provider",
-		Registry:                  registry,
-		Targeting:                 targeting,
-		Valkey:                    valkey,
-		Modules:                   []Module{urlMod, topicMod},
+		ProviderID:          "bench-provider",
+		Registry:            registry,
+		Targeting:           targeting,
+		Valkey:              valkey,
+		Modules:             []Module{urlMod, topicMod},
 		SignatureSampleRate: 0,
 	})
 
@@ -112,7 +112,7 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	}
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	s := snapshot{Sequence: 1}
-	for i := uint64(0); i < 50000; i++ {
+	for i := range uint64(50000) {
 		s.Records = append(s.Records, &PropertyRecord{
 			RID:       i,
 			Domain:    fmt.Sprintf("prop-%d.example.com", i),
@@ -134,7 +134,7 @@ func BenchmarkValkeyLookup(b *testing.B) {
 	valkey.latency = 0 // Remove simulated latency for raw performance
 
 	// Add 10K URLs to blocklist
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		valkey.SAdd("url:blocklist:pkg-1", hashURL(fmt.Sprintf("article:content-%d", i)))
 	}
 
@@ -230,12 +230,12 @@ func BenchmarkCachedSignature(b *testing.B) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 
 	// Pre-fill cache with 1000 placement signatures
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i)
 		req := &tmproto.ContextMatchRequest{
-			RequestID:    fmt.Sprintf("req-%d", i),
-			PropertyRID:  uint64(i),
-			PlacementID:  fmt.Sprintf("placement-%d", i),
+			RequestID:   fmt.Sprintf("req-%d", i),
+			PropertyRID: uint64(i),
+			PlacementID: fmt.Sprintf("placement-%d", i),
 			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 			},
@@ -284,7 +284,7 @@ func BenchmarkOpenRTBEquivalent(b *testing.B) {
 
 	// Targeting: list of allowed domains (string comparison)
 	allowedDomains := make(map[string]bool, 1000)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		allowedDomains[fmt.Sprintf("www.publisher-%d.example.com", i)] = true
 	}
 	allowedDomains["www.oakwoodpublishing.example.com"] = true

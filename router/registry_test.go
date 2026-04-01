@@ -209,9 +209,9 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		receivedRID = req.PropertyRID
 
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"request_id": "ctx-rid",
-			"offers":     []interface{}{},
+			"offers":     []any{},
 		})
 	}))
 	defer provider.Close()

@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/reference/context-agent
 
-go 1.26
+go 1.25
 
 require (
 	github.com/RoaringBitmap/roaring v1.9.4

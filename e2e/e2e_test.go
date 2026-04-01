@@ -72,7 +72,7 @@ func (a *mockContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 type mockIdentityAgent struct {
 	mu        sync.Mutex
-	freqCaps  map[string]int           // package_id -> max per hour
+	freqCaps  map[string]int            // package_id -> max per hour
 	exposures map[string]map[string]int // token_hash -> package_id -> count
 }
 
@@ -296,7 +296,7 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 
 // --- Helper ---
 
-func postJSON(t *testing.T, url string, body interface{}) []byte {
+func postJSON(t *testing.T, url string, body any) []byte {
 	t.Helper()
 	b, _ := json.Marshal(body)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
@@ -416,7 +416,7 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	defer router.Close()
 
 	// Record 2 exposures directly to the identity agent
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 			UserToken: "tok-user-freq",
 			PackageID: "pkg-food-display",
@@ -717,7 +717,7 @@ func TestTimingReport(t *testing.T) {
 	// Measure sequential
 	start := time.Now()
 	iterations := 100
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		ctxReq.RequestID = fmt.Sprintf("ctx-%d", i)
 		idReq.RequestID = fmt.Sprintf("id-%d", i)
 		postJSON(t, router.URL+"/tmp/context", ctxReq)
@@ -727,7 +727,7 @@ func TestTimingReport(t *testing.T) {
 
 	// Measure parallel (context + identity simultaneously)
 	start = time.Now()
-	for i := 0; i < iterations; i++ {
+	for i := range iterations {
 		ctxReq.RequestID = fmt.Sprintf("ctx-p-%d", i)
 		idReq.RequestID = fmt.Sprintf("id-p-%d", i)
 		var wg sync.WaitGroup

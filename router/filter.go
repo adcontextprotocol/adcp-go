@@ -1,6 +1,8 @@
 package router
 
 import (
+	"slices"
+
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -44,13 +46,7 @@ func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
 
 	// Check property type allowlist
 	if len(p.PropertyTypes) > 0 {
-		found := false
-		for _, t := range p.PropertyTypes {
-			if t == propertyType {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(p.PropertyTypes, propertyType)
 		if !found {
 			return false
 		}
@@ -103,4 +99,3 @@ func matchGlobBounded(pattern, s string, depth int) bool {
 	}
 	return len(s) == 0
 }
-

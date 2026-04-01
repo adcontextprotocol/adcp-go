@@ -1,9 +1,7 @@
 package contextagent
 
 import (
-	"math"
-
-	"github.com/RoaringBitmap/roaring"
+	"github.com/RoaringBitmap/roaring/roaring64"
 )
 
 // TargetingConfig holds Roaring bitmaps for property-level targeting.
@@ -11,25 +9,22 @@ import (
 // in this bitmap, the request is rejected before any other evaluation.
 // PackageTargets holds per-package bitmaps for finer-grained control.
 type TargetingConfig struct {
-	PropertyBitmap *roaring.Bitmap            // Global property targeting set
-	PackageTargets map[string]*roaring.Bitmap // package_id -> property bitmap
+	PropertyBitmap *roaring64.Bitmap            // Global property targeting set
+	PackageTargets map[string]*roaring64.Bitmap // package_id -> property bitmap
 }
 
 // NewTargetingConfig creates an empty targeting config.
 func NewTargetingConfig() *TargetingConfig {
 	return &TargetingConfig{
-		PropertyBitmap: roaring.New(),
-		PackageTargets: make(map[string]*roaring.Bitmap),
+		PropertyBitmap: roaring64.New(),
+		PackageTargets: make(map[string]*roaring64.Bitmap),
 	}
 }
 
 // AddProperties adds property RIDs to the global targeting bitmap.
-// RIDs exceeding uint32 range are silently skipped (Roaring bitmap limitation).
 func (t *TargetingConfig) AddProperties(rids ...uint64) {
 	for _, rid := range rids {
-		if rid <= math.MaxUint32 {
-			t.PropertyBitmap.Add(uint32(rid))
-		}
+		t.PropertyBitmap.Add(rid)
 	}
 }
 
@@ -37,23 +32,17 @@ func (t *TargetingConfig) AddProperties(rids ...uint64) {
 func (t *TargetingConfig) AddPackageProperties(packageID string, rids ...uint64) {
 	bm, ok := t.PackageTargets[packageID]
 	if !ok {
-		bm = roaring.New()
+		bm = roaring64.New()
 		t.PackageTargets[packageID] = bm
 	}
 	for _, rid := range rids {
-		if rid <= math.MaxUint32 {
-			bm.Add(uint32(rid))
-		}
+		bm.Add(rid)
 	}
 }
 
 // ContainsProperty checks if a property RID is in the global targeting set.
-// Returns false for RIDs exceeding uint32 range.
 func (t *TargetingConfig) ContainsProperty(rid uint64) bool {
-	if rid > math.MaxUint32 {
-		return false
-	}
-	return t.PropertyBitmap.Contains(uint32(rid))
+	return t.PropertyBitmap.Contains(rid)
 }
 
 // ContainsPackageProperty checks if a property RID is in a package's targeting set.
@@ -63,19 +52,14 @@ func (t *TargetingConfig) ContainsPackageProperty(packageID string, rid uint64) 
 	if !ok {
 		return true // No per-package targeting means all properties allowed
 	}
-	if rid > math.MaxUint32 {
-		return false
-	}
-	return bm.Contains(uint32(rid))
+	return bm.Contains(rid)
 }
 
 // BuildFromRegistry populates the global bitmap from a list of targeted RIDs.
 func (t *TargetingConfig) BuildFromRegistry(targetedRIDs []uint64) {
-	t.PropertyBitmap = roaring.New()
+	t.PropertyBitmap = roaring64.New()
 	for _, rid := range targetedRIDs {
-		if rid <= math.MaxUint32 {
-			t.PropertyBitmap.Add(uint32(rid))
-		}
+		t.PropertyBitmap.Add(rid)
 	}
 	t.PropertyBitmap.RunOptimize()
 }

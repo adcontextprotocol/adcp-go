@@ -188,10 +188,7 @@ func (a *IdentityAgent) Expose(ctx context.Context, req *tmproto.ExposeRequest) 
 			cutoff := float64(now.Add(-shortestRule.Window).UnixMilli())
 			count, _ := a.rdb.ZCount(ctx, campKey, fmt.Sprintf("%f", cutoff), "+inf").Result()
 			resp.CampaignCount = int(count)
-			resp.CampaignRemaining = shortestRule.MaxCount - int(count)
-			if resp.CampaignRemaining < 0 {
-				resp.CampaignRemaining = 0
-			}
+			resp.CampaignRemaining = max(shortestRule.MaxCount-int(count), 0)
 		}
 	}
 
@@ -259,7 +256,7 @@ func (a *IdentityAgent) computeIntentScore(ctx context.Context, tokenHash, packa
 // LoadAudienceSegment bulk-loads user tokens into an audience segment set.
 func (a *IdentityAgent) LoadAudienceSegment(ctx context.Context, segmentID string, userTokens []string) error {
 	key := fmt.Sprintf("audience:%s", segmentID)
-	members := make([]interface{}, len(userTokens))
+	members := make([]any, len(userTokens))
 	for i, tok := range userTokens {
 		members[i] = hashToken(tok)
 	}

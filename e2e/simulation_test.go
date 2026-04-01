@@ -107,7 +107,9 @@ func (m *PropertyTargetingModule) Evaluate(req *tmproto.ContextMatchRequest, pkg
 
 type simulatedContextAgent struct {
 	name    string
-	modules []interface{ Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32) }
+	modules []interface {
+		Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+	}
 }
 
 func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -352,10 +354,10 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	// Identity agent with frequency caps and audience targeting
 	identityAgent := newSimulatedIdentityAgent("identity-provider",
 		map[string]int{
-			"pkg-coffee-sponsored": 3,  // 3 per session
-			"pkg-snacks-display":   5,  // 5 per session
-			"pkg-alcohol-display":  2,  // 2 per session
-			"pkg-pharma-native":    1,  // 1 per session
+			"pkg-coffee-sponsored": 3, // 3 per session
+			"pkg-snacks-display":   5, // 5 per session
+			"pkg-alcohol-display":  2, // 2 per session
+			"pkg-pharma-native":    1, // 1 per session
 		},
 		map[string][]string{
 			"pkg-pharma-native": {"health_conscious"}, // Requires audience segment
@@ -508,7 +510,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	t.Run("frequency_capping_progression", func(t *testing.T) {
 		token := "tok-user-charlie"
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
 				UserToken: token,
 				PackageID: "pkg-coffee-sponsored",

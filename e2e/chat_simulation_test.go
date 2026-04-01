@@ -41,7 +41,7 @@ type chatContextAgent struct {
 		domain string
 	}
 	// package -> creative manifest templates
-	packageCreatives map[string]map[string]interface{}
+	packageCreatives map[string]map[string]any
 }
 
 func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -197,48 +197,48 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			"pkg-running-shoe": {name: "StrideMax", domain: "stridemax.example.com"},
 			"pkg-protein":      {name: "CoreFuel", domain: "corefuel.example.com"},
 		},
-		packageCreatives: map[string]map[string]interface{}{
+		packageCreatives: map[string]map[string]any{
 			"pkg-olive-oil": {
 				"format_id": "sponsored_chat_card",
-				"assets": map[string]interface{}{
-					"headline":    "Meridian Extra Virgin Olive Oil",
-					"body":        "Cold-pressed from single-origin olives. The secret to authentic carbonara.",
-					"image_url":   "https://cdn.meridianfoods.example.com/evoo-bottle.jpg",
-					"cta_text":    "Shop now",
-					"cta_url":     "https://meridianfoods.example.com/evoo",
-					"disclosure":  "Sponsored",
+				"assets": map[string]any{
+					"headline":   "Meridian Extra Virgin Olive Oil",
+					"body":       "Cold-pressed from single-origin olives. The secret to authentic carbonara.",
+					"image_url":  "https://cdn.meridianfoods.example.com/evoo-bottle.jpg",
+					"cta_text":   "Shop now",
+					"cta_url":    "https://meridianfoods.example.com/evoo",
+					"disclosure": "Sponsored",
 				},
 			},
 			"pkg-knife-set": {
 				"format_id": "sponsored_chat_card",
-				"assets": map[string]interface{}{
-					"headline":  "EdgeCraft Pro Chef Knife Set",
-					"body":      "Japanese steel, lifetime warranty. Makes prep work effortless.",
-					"image_url": "https://cdn.edgecraft.example.com/pro-set.jpg",
-					"cta_text":  "See collection",
-					"cta_url":   "https://edgecraft.example.com/pro",
+				"assets": map[string]any{
+					"headline":   "EdgeCraft Pro Chef Knife Set",
+					"body":       "Japanese steel, lifetime warranty. Makes prep work effortless.",
+					"image_url":  "https://cdn.edgecraft.example.com/pro-set.jpg",
+					"cta_text":   "See collection",
+					"cta_url":    "https://edgecraft.example.com/pro",
 					"disclosure": "Sponsored",
 				},
 			},
 			"pkg-meal-kit": {
 				"format_id": "sponsored_chat_card",
-				"assets": map[string]interface{}{
-					"headline":  "FreshBox Pasta Night Kit",
-					"body":      "Everything you need for restaurant-quality pasta at home. Delivered fresh.",
-					"image_url": "https://cdn.freshbox.example.com/pasta-kit.jpg",
-					"cta_text":  "Try it",
-					"cta_url":   "https://freshbox.example.com/pasta",
+				"assets": map[string]any{
+					"headline":   "FreshBox Pasta Night Kit",
+					"body":       "Everything you need for restaurant-quality pasta at home. Delivered fresh.",
+					"image_url":  "https://cdn.freshbox.example.com/pasta-kit.jpg",
+					"cta_text":   "Try it",
+					"cta_url":    "https://freshbox.example.com/pasta",
 					"disclosure": "Sponsored",
 				},
 			},
 			"pkg-running-shoe": {
 				"format_id": "sponsored_chat_card",
-				"assets": map[string]interface{}{
-					"headline":  "StrideMax Ultra 5",
-					"body":      "Engineered for distance. 30% lighter than last generation.",
-					"image_url": "https://cdn.stridemax.example.com/ultra5.jpg",
-					"cta_text":  "Shop now",
-					"cta_url":   "https://stridemax.example.com/ultra5",
+				"assets": map[string]any{
+					"headline":   "StrideMax Ultra 5",
+					"body":       "Engineered for distance. 30% lighter than last generation.",
+					"image_url":  "https://cdn.stridemax.example.com/ultra5.jpg",
+					"cta_text":   "Shop now",
+					"cta_url":    "https://stridemax.example.com/ultra5",
 					"disclosure": "Sponsored",
 				},
 			},
@@ -309,11 +309,11 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 
 		// 1. Context Match
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-			RequestID:   fmt.Sprintf("ctx-chat-%d", i),
-			PropertyID:  "pub-addie-assistant",
+			RequestID:    fmt.Sprintf("ctx-chat-%d", i),
+			PropertyID:   "pub-addie-assistant",
 			PropertyType: tmproto.PropertyTypeAIAssistant,
-			PlacementID: "conversation-inline",
-			Artifacts:   []string{turn.ArtifactID},
+			PlacementID:  "conversation-inline",
+			Artifacts:    []string{turn.ArtifactID},
 			AvailablePkgs: []tmproto.AvailablePackage{
 				{PackageID: "pkg-olive-oil", MediaBuyID: "mb-meridian-q1"},
 				{PackageID: "pkg-knife-set", MediaBuyID: "mb-edgecraft-q1"},
@@ -374,9 +374,9 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 
 			// Extract creative details
 			if len(bestOffer.CreativeManifest) > 0 {
-				var assets map[string]interface{}
+				var assets map[string]any
 				if json.Unmarshal(bestOffer.CreativeManifest, &assets) == nil {
-					if assetsMap, ok := assets["assets"].(map[string]interface{}); ok {
+					if assetsMap, ok := assets["assets"].(map[string]any); ok {
 						disclosure := "Sponsored"
 						if d, ok := assetsMap["disclosure"].(string); ok {
 							disclosure = d
@@ -432,12 +432,12 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 		}{
 			"pkg-coffee": {name: "BeanCo", domain: "beanco.example.com"},
 		},
-		packageCreatives: map[string]map[string]interface{}{
+		packageCreatives: map[string]map[string]any{
 			"pkg-coffee": {
 				"format_id": "sponsored_chat_card",
-				"assets": map[string]interface{}{
-					"headline":  "BeanCo Single Origin",
-					"body":      "Ethically sourced, perfectly roasted.",
+				"assets": map[string]any{
+					"headline":   "BeanCo Single Origin",
+					"body":       "Ethically sourced, perfectly roasted.",
 					"disclosure": "Sponsored",
 				},
 			},
@@ -461,7 +461,7 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 	token := "tok-freq-test"
 	impressionCount := 0
 
-	for turn := 0; turn < 5; turn++ {
+	for turn := range 5 {
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   fmt.Sprintf("ctx-freq-%d", turn),
 			PropertyID:  "pub-addie",
