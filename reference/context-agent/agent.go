@@ -33,8 +33,8 @@ type Agent struct {
 	// Default 5 means ~5% of requests are verified. On first failure, the
 	// property is suppressed for 24h and all subsequent requests are verified.
 	signatureSampleRate uint32
-	requireSignatures   bool   // When true, reject requests with no signature
-	verifyCounter       uint64 // atomic counter for sampling
+	requireSignatures   bool          // When true, reject requests with no signature
+	verifyCounter       atomic.Uint64 // atomic counter for sampling
 }
 
 // AgentConfig holds configuration for creating a new Agent.
@@ -45,7 +45,7 @@ type AgentConfig struct {
 	Valkey              ValkeyClient
 	Modules             []Module
 	SignatureSampleRate uint32 // 0-100, percentage of requests to verify. Default: 5
-	RequireSignatures  bool   // When true, reject requests with no signature
+	RequireSignatures   bool   // When true, reject requests with no signature
 }
 
 // NewAgent creates a context match agent with the given configuration.
@@ -82,7 +82,7 @@ func (a *Agent) shouldVerifySignature(rid uint64) bool {
 		return true
 	}
 	// Sample established properties
-	counter := atomic.AddUint64(&a.verifyCounter, 1)
+	counter := a.verifyCounter.Add(1)
 	return counter%uint64(100/a.signatureSampleRate) == 0
 }
 

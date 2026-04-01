@@ -27,6 +27,11 @@ go.work.sum
 # env file
 .env
 
+# Compiled binaries
+router/router
+reference/context-agent/context-agent
+reference/identity-agent/identity-agent
+
 # Editor/IDE
 # .idea/
 # .vscode/

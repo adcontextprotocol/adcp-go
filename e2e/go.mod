@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/e2e
 
-go 1.26
+go 1.25
 
 require github.com/adcontextprotocol/adcp-go v0.0.0
 

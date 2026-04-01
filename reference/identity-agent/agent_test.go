@@ -39,7 +39,7 @@ func setupTest(t *testing.T) (*IdentityAgent, *miniredis.Miniredis) {
 				PackageID:  "pkg-multi-rule",
 				CampaignID: "campaign-acme",
 				FrequencyRules: []FrequencyRule{
-					{MaxCount: 2, Window: 12 * time.Hour},  // 2 per 12h
+					{MaxCount: 2, Window: 12 * time.Hour},     // 2 per 12h
 					{MaxCount: 5, Window: 7 * 24 * time.Hour}, // AND 5 per week
 				},
 			},
@@ -89,10 +89,10 @@ func TestExpose_CampaignFrequencyCap(t *testing.T) {
 	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
 	// 5 exposures across two packages in campaign-acme (campaign cap is 5)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002"})
 	}
 
@@ -120,7 +120,7 @@ func TestExpose_PackageCappedButCampaignNot(t *testing.T) {
 	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
 	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 
@@ -178,7 +178,7 @@ func TestSlidingWindow_OldExposuresExpire(t *testing.T) {
 	_ = agent.LoadAudienceSegment(ctx, "cooking", []string{"user-abc"})
 
 	// Expose 3 times (hits package cap of 3 per 24h)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, _ = agent.Expose(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 	}
 

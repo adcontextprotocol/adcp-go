@@ -26,10 +26,7 @@ type Router struct {
 // NewRouter creates a router with the given provider configuration and registry.
 // sigCache is optional — pass nil to disable request signing.
 func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth) *Router {
-	maxPerHost := len(providers)
-	if maxPerHost < 10 {
-		maxPerHost = 10
-	}
+	maxPerHost := max(len(providers), 10)
 	return &Router{
 		providers: providers,
 		registry:  registry,
