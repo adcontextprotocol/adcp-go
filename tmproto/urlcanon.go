@@ -65,6 +65,6 @@ func HashURL(raw string) uint64 {
 // HashCanonical returns a uint64 FNV-1a hash of an already-canonicalized string.
 func HashCanonical(canonical string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(canonical))
+	_, _ = h.Write([]byte(canonical)) // fnv.Write never returns an error
 	return h.Sum64()
 }
