@@ -9,5 +9,6 @@ use (
 	./internal/generate
 	./reference/context-agent
 	./reference/identity-agent
+	./registry
 	./router
 )
