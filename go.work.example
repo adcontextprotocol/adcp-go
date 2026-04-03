@@ -1,6 +1,6 @@
 // Copy this file to go.work for multi-module development.
 // Do not commit go.work to version control.
-go 1.26
+go 1.25
 
 use (
 	.
@@ -10,5 +10,4 @@ use (
 	./reference/context-agent
 	./reference/identity-agent
 	./registry
-	./router
 )

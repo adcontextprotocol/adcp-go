@@ -6,7 +6,7 @@ Go SDK and reference implementation for the [Ad Context Protocol (AdCP)](https:/
 
 | Package | Description |
 |---------|-------------|
-| `tmp/` | TMP message types, provider interfaces, JSON codec |
+| `tmproto/` | TMP message types, provider interfaces, JSON codec |
 | `router/` | TMP Router — fan-out, merge, privacy enforcement, cached Ed25519 signing |
 | `reference/context-agent/` | Reference context match agent — Roaring bitmaps, modular pipeline, Valkey |
 | `reference/identity-agent/` | Reference identity match agent — frequency capping, audience matching, expose endpoint |
@@ -16,11 +16,11 @@ Go SDK and reference implementation for the [Ad Context Protocol (AdCP)](https:/
 ## Quick start
 
 ```bash
-# Build everything
+# Build everything (includes tmproto, router, cmd/router)
 go build ./...
 
 # Run tests
-cd router && go test ./...
+go test ./...
 cd reference/context-agent && go test ./...
 cd reference/identity-agent && go test ./...
 cd e2e && go test ./...
