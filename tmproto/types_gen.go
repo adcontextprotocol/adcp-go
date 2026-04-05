@@ -140,7 +140,7 @@ type Offer struct {
 	Brand            *BrandRef         `json:"brand,omitempty"`
 	Price            *OfferPrice       `json:"price,omitempty"`
 	Summary          string            `json:"summary,omitempty"`
-	ManifestType     string            `json:"manifest_type,omitempty"` // "html", "vast", "native", "activation_only"
+	ManifestType     string            `json:"manifest_type,omitempty"` // Creative manifest format: html, vast, native, activation_only
 	CreativeManifest json.RawMessage   `json:"creative_manifest,omitempty"`
 	Macros           map[string]string `json:"macros,omitempty"`
 }
@@ -172,12 +172,6 @@ type ErrorResponse struct {
 	Message   string    `json:"message,omitempty"`
 }
 
-// UserIdentity represents a single user identifier.
-type UserIdentity struct {
-	UserToken string  `json:"user_token"`
-	UIDType   UIDType `json:"uid_type,omitempty"`
-}
-
 // ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.
 type ExposeRequest struct {
 	UserToken    string         `json:"user_token"`
@@ -198,9 +192,15 @@ type ExposeResponse struct {
 
 // ConsentSignals carries privacy consent strings for the identity agent.
 type ConsentSignals struct {
-	TCF string `json:"tcf,omitempty"` // IAB TCF 2.0 consent string
-	GPP string `json:"gpp,omitempty"` // IAB GPP string
-	USP string `json:"usp,omitempty"` // US Privacy string (legacy)
+	Tcf string `json:"tcf,omitempty"` // IAB TCF 2.0 consent string
+	Gpp string `json:"gpp,omitempty"` // IAB GPP string
+	Usp string `json:"usp,omitempty"` // US Privacy string (legacy)
+}
+
+// UserIdentity represents a single user identifier.
+type UserIdentity struct {
+	UserToken string  `json:"user_token"`
+	UIDType   UIDType `json:"uid_type,omitempty"`
 }
 
 // IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.

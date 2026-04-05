@@ -98,7 +98,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 	const iterations = 1000
 	benchStart := time.Now()
 	for range iterations {
-		engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
+		_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 			RequestID: "bench", UserToken: "user-heavy", PackageIDs: pkgIDs,
 		})
 	}
@@ -131,7 +131,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	for day := range 10 {
 		for i := range 3 {
 			ts := now.Add(-time.Duration(30-day) * 24 * time.Hour)
-			engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+			_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
 				UserToken: cookie, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-cookie-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -141,7 +141,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 11-20: UID2 only.
 	for day := 10; day < 20; day++ {
 		for i := range 2 {
-			engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+			_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
 				UserToken: uid2, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-uid2-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -150,17 +150,17 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 21-30: hashed email. Some impressions shared with cookie (same impression ID).
 	for day := 20; day < 30; day++ {
 		// Unique impressions under email.
-		engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-email-d%d", day),
 			CampaignID: "campaign-food",
 		})
 		// Shared impression: also record under cookie with same impression ID.
 		sharedImpID := fmt.Sprintf("imp-shared-d%d", day)
-		engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})
-		engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
 			UserToken: cookie, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})

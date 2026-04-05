@@ -38,7 +38,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 		const iterations = 50_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateContext(context.Background(), req)
+			_, _ = engine.EvaluateContext(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %8d properties: %v/eval", n, elapsed/iterations)
@@ -89,7 +89,7 @@ func TestScale_Campaigns(t *testing.T) {
 		const iterations = 10_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateIdentity(context.Background(), req)
+			_, _ = engine.EvaluateIdentity(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %6d campaigns in Store: %v/eval (5 packages, 1 campaign loaded)", numCampaigns, elapsed/iterations)
@@ -134,7 +134,7 @@ func TestScale_AudienceSegmentSize(t *testing.T) {
 		const iterations = 50_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateIdentity(context.Background(), req)
+			_, _ = engine.EvaluateIdentity(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %8d segment members: %v/eval", n, elapsed/iterations)
@@ -162,7 +162,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		key := fmt.Sprintf("freq:pkg:pkg-1:%s", tokenHash)
 		for i := range numExposures {
 			ts := float64(now.Add(-time.Duration(i) * time.Minute).UnixMilli())
-			store.ZAdd(context.Background(), key, ts, fmt.Sprintf("%d:pkg-1", i))
+			_ = store.ZAdd(context.Background(), key, ts, fmt.Sprintf("%d:pkg-1", i))
 		}
 
 		engine := NewEngine(EngineConfig{
@@ -181,7 +181,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		const iterations = 20_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateIdentity(context.Background(), req)
+			_, _ = engine.EvaluateIdentity(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %6d prior exposures: %v/eval", numExposures, elapsed/iterations)
@@ -222,7 +222,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		const iterations = 20_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateContext(context.Background(), req)
+			_, _ = engine.EvaluateContext(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %6d topics per package: %v/eval", n, elapsed/iterations)
@@ -261,7 +261,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 		const iterations = 50_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateContext(context.Background(), req)
+			_, _ = engine.EvaluateContext(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %6d blocked URLs: %v/eval", n, elapsed/iterations)
@@ -331,16 +331,16 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		// Static mode.
 		start := time.Now()
 		for range iterations {
-			staticEngine.EvaluateContext(context.Background(), ctxReq)
-			staticEngine.EvaluateIdentity(context.Background(), idReq)
+			_, _ = staticEngine.EvaluateContext(context.Background(), ctxReq)
+			_, _ = staticEngine.EvaluateIdentity(context.Background(), idReq)
 		}
 		staticTime := time.Since(start)
 
 		// Dynamic mode.
 		start = time.Now()
 		for range iterations {
-			dynamicEngine.EvaluateContext(context.Background(), ctxReq)
-			dynamicEngine.EvaluateIdentity(context.Background(), idReq)
+			_, _ = dynamicEngine.EvaluateContext(context.Background(), ctxReq)
+			_, _ = dynamicEngine.EvaluateIdentity(context.Background(), idReq)
 		}
 		dynamicTime := time.Since(start)
 
@@ -459,16 +459,16 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		// Dynamic mode (MGet per request).
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateContext(context.Background(), ctxReq)
-			engine.EvaluateIdentity(context.Background(), idReq)
+			_, _ = engine.EvaluateContext(context.Background(), ctxReq)
+			_, _ = engine.EvaluateIdentity(context.Background(), idReq)
 		}
 		dynamicTime := time.Since(start)
 
 		// Resolved mode (cached indexes).
 		start = time.Now()
 		for range iterations {
-			engine.EvaluateContextResolved(context.Background(), resolved, ctxReq)
-			engine.EvaluateIdentityResolved(context.Background(), resolved, idReq)
+			_, _ = engine.EvaluateContextResolved(context.Background(), resolved, ctxReq)
+			_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, idReq)
 		}
 		resolvedTime := time.Since(start)
 
@@ -525,8 +525,8 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		const iterations = 10_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateContext(context.Background(), ctxReq)
-			engine.EvaluateIdentity(context.Background(), idReq)
+			_, _ = engine.EvaluateContext(context.Background(), ctxReq)
+			_, _ = engine.EvaluateIdentity(context.Background(), idReq)
 		}
 		elapsed := time.Since(start)
 		perPkg := elapsed / time.Duration(iterations*numPkgs)

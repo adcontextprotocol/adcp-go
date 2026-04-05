@@ -116,7 +116,7 @@ func TestScale_IdentityNoTargeting(t *testing.T) {
 		const iterations = 20_000
 		start := time.Now()
 		for range iterations {
-			engine.EvaluateIdentity(context.Background(), req)
+			_, _ = engine.EvaluateIdentity(context.Background(), req)
 		}
 		elapsed := time.Since(start)
 		perPkg := elapsed / time.Duration(iterations*numPkgs)
