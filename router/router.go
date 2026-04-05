@@ -418,7 +418,9 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(lastResp)
+	if err := json.NewEncoder(w).Encode(lastResp); err != nil {
+		slog.Debug("failed to write expose response", "error", err)
+	}
 }
 
 // filterPackagesForProvider filters AvailablePackage list if the provider has PackageIDs configured.

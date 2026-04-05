@@ -31,7 +31,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   uint64(n / 2), // hit in the middle
+			PropertyRID:   uint64(n / 2), //nolint:gosec // test value
 			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 		}
 
