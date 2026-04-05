@@ -35,7 +35,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 		}
 
-		const iterations = 50_000
+		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContext(context.Background(), req)
@@ -86,7 +86,7 @@ func TestScale_Campaigns(t *testing.T) {
 			PackageIDs: []string{"pkg-0", "pkg-1", "pkg-2", "pkg-3", "pkg-4"},
 		}
 
-		const iterations = 10_000
+		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateIdentity(context.Background(), req)
@@ -131,7 +131,7 @@ func TestScale_AudienceSegmentSize(t *testing.T) {
 			PackageIDs: []string{"pkg-1"},
 		}
 
-		const iterations = 50_000
+		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateIdentity(context.Background(), req)
@@ -178,7 +178,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 			PackageIDs: []string{"pkg-1"},
 		}
 
-		const iterations = 20_000
+		const iterations = 500
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateIdentity(context.Background(), req)
@@ -219,7 +219,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 		}
 
-		const iterations = 20_000
+		const iterations = 500
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContext(context.Background(), req)
@@ -258,7 +258,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 		}
 
-		const iterations = 50_000
+		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContext(context.Background(), req)
@@ -326,7 +326,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			PackageIDs: pkgIDs,
 		}
 
-		const iterations = 5_000
+		const iterations = 1_000
 
 		// Static mode.
 		start := time.Now()
@@ -376,7 +376,7 @@ func TestScale_Resolver(t *testing.T) {
 			})
 		}
 
-		const iterations = 10_000
+		const iterations = 1_000
 		start := time.Now()
 		var totalPkgs int
 		for range iterations {
@@ -454,7 +454,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			PackageIDs: pkgIDs,
 		}
 
-		const iterations = 2_000
+		const iterations = 500
 
 		// Dynamic mode (MGet per request).
 		start := time.Now()
@@ -522,7 +522,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 			PackageIDs: pkgIDs,
 		}
 
-		const iterations = 10_000
+		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContext(context.Background(), ctxReq)

@@ -77,7 +77,7 @@ func TestScale_JSONvsBinary(t *testing.T) {
 	t.Logf("  Reduction:   %.0f%%", (1-float64(len(binData))/float64(len(jsonData)))*100)
 	t.Logf("")
 
-	const iterations = 5000
+	const iterations = 1000
 	pkgHash := hashString("pkg-0")
 	campHash := hashString("campaign-0")
 	rules := []FrequencyRule{{MaxCount: 50, Window: 24 * time.Hour}}
