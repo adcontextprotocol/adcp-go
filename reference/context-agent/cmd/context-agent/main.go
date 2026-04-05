@@ -9,6 +9,7 @@ import (
 	"time"
 
 	contextagent "github.com/adcontextprotocol/adcp-go/reference/context-agent"
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -17,10 +18,7 @@ func main() {
 	registryFile := flag.String("registry", "", "Path to registry snapshot JSON file")
 	flag.Parse()
 
-	// Initialize Valkey client (mock for reference implementation)
-	valkey := contextagent.NewMockValkeyClient()
-
-	// Load registry
+	// Load property registry.
 	registry := contextagent.NewPropertyRegistry()
 	if *registryFile != "" {
 		if err := registry.LoadFromFile(*registryFile); err != nil {
@@ -29,27 +27,28 @@ func main() {
 		log.Printf("Loaded %d properties from registry", registry.Len())
 	}
 
-	// Build targeting config from registry
-	targeting := contextagent.NewTargetingConfig()
+	// Build global property bitmap from registry using Roaring.
+	tc := contextagent.NewTargetingConfig()
 	for _, rid := range registry.AllRIDs() {
-		targeting.AddProperties(rid)
+		tc.AddProperties(rid)
 	}
 
-	// Seed sample topics for reference demo
-	valkey.SAdd("topics:package:pkg-display-0041", "food.cooking", "food.recipes", "lifestyle.home")
-	valkey.SAdd("topics:package:pkg-native-0078", "technology.gadgets", "technology.reviews")
+	// Seed sample data in mock store.
+	store := targeting.NewMockStore()
+	store.SetAdd("topics:package:pkg-display-0041", "food.cooking", "food.recipes", "lifestyle.home")
+	store.SetAdd("topics:package:pkg-native-0078", "technology.gadgets", "technology.reviews")
 
-	// Create modules
-	urlModule := contextagent.NewURLPatternModule(valkey)
-	topicModule := contextagent.NewTopicMatchModule(valkey)
-
-	agent := contextagent.NewAgent(contextagent.AgentConfig{
-		ProviderID:          "reference-context-agent",
-		Registry:            registry,
-		Targeting:           targeting,
-		Valkey:              valkey,
-		Modules:             []contextagent.Module{urlModule, topicModule},
-		SignatureSampleRate: 0, // Disabled for reference demo (no keys configured)
+	// Create targeting engine.
+	engine := targeting.NewEngine(targeting.EngineConfig{
+		ProviderID: "reference-context-agent",
+		Store:      store,
+		Properties: targeting.PropertyList{
+			Global: &contextagent.RoaringBitmap{Bitmap: tc.PropertyBitmap},
+		},
+		Packages: []targeting.PackageConfig{
+			{PackageID: "pkg-display-0041", TopicTargets: true, EmitSegments: []string{"food", "lifestyle"}},
+			{PackageID: "pkg-native-0078", TopicTargets: true, URLBlocklist: true, EmitSegments: []string{"technology"}},
+		},
 	})
 
 	mux := http.NewServeMux()
@@ -73,7 +72,7 @@ func main() {
 			return
 		}
 
-		resp, err := agent.ContextMatch(r.Context(), &req)
+		result, err := engine.EvaluateContext(r.Context(), &req)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
@@ -84,6 +83,11 @@ func main() {
 			return
 		}
 
+		resp := &tmproto.ContextMatchResponse{
+			RequestID: result.RequestID,
+			Offers:    result.Offers,
+			Signals:   result.Signals,
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})

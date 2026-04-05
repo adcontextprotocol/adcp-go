@@ -10,4 +10,5 @@ use (
 	./reference/context-agent
 	./reference/identity-agent
 	./registry
+	./targeting/valkeystore
 )

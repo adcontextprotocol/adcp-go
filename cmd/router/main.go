@@ -54,6 +54,9 @@ func main() {
 		metrics.IdentityRequests.Add(1)
 		r.HandleIdentityMatch(w, req)
 	})
+	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, req *http.Request) {
+		r.HandleExpose(w, req)
+	})
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.HandleFunc("GET /metrics", metrics.HandleMetrics)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {

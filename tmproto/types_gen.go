@@ -136,9 +136,11 @@ type KeyValuePair struct {
 // Offer is a buyer's response for a single package. For simple GAM activation, only PackageID is needed. For richer integrations, the buyer can include brand, price, summary, and creative manifest.
 type Offer struct {
 	PackageID        string            `json:"package_id"`
+	DealID           string            `json:"deal_id,omitempty"`
 	Brand            *BrandRef         `json:"brand,omitempty"`
 	Price            *OfferPrice       `json:"price,omitempty"`
 	Summary          string            `json:"summary,omitempty"`
+	ManifestType     string            `json:"manifest_type,omitempty"` // "html", "vast", "native", "activation_only"
 	CreativeManifest json.RawMessage   `json:"creative_manifest,omitempty"`
 	Macros           map[string]string `json:"macros,omitempty"`
 }
@@ -170,13 +172,21 @@ type ErrorResponse struct {
 	Message   string    `json:"message,omitempty"`
 }
 
+// UserIdentity represents a single user identifier.
+type UserIdentity struct {
+	UserToken string  `json:"user_token"`
+	UIDType   UIDType `json:"uid_type,omitempty"`
+}
+
 // ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.
 type ExposeRequest struct {
-	UserToken  string  `json:"user_token"`
-	UIDType    UIDType `json:"uid_type,omitempty"`
-	PackageID  string  `json:"package_id"`
-	CampaignID string  `json:"campaign_id,omitempty"`
-	Timestamp  int64   `json:"timestamp,omitempty"`
+	UserToken    string         `json:"user_token"`
+	UIDType      UIDType        `json:"uid_type,omitempty"`
+	Identities   []UserIdentity `json:"identities,omitempty"`
+	ImpressionID string         `json:"impression_id,omitempty"`
+	PackageID    string         `json:"package_id"`
+	CampaignID   string         `json:"campaign_id,omitempty"`
+	Timestamp    int64          `json:"timestamp,omitempty"`
 }
 
 // ExposeResponse acknowledges an exposure notification.
@@ -186,13 +196,22 @@ type ExposeResponse struct {
 	CampaignRemaining int    `json:"campaign_remaining,omitempty"`
 }
 
+// ConsentSignals carries privacy consent strings for the identity agent.
+type ConsentSignals struct {
+	TCF string `json:"tcf,omitempty"` // IAB TCF 2.0 consent string
+	GPP string `json:"gpp,omitempty"` // IAB GPP string
+	USP string `json:"usp,omitempty"` // US Privacy string (legacy)
+}
+
 // IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.
 type IdentityMatchRequest struct {
-	ProtocolVersion string   `json:"protocol_version,omitempty"`
-	RequestID       string   `json:"request_id"`
-	UserToken       string   `json:"user_token"`
-	UIDType         UIDType  `json:"uid_type,omitempty"`
-	PackageIDs      []string `json:"package_ids"`
+	ProtocolVersion string          `json:"protocol_version,omitempty"`
+	RequestID       string          `json:"request_id"`
+	UserToken       string          `json:"user_token"`
+	UIDType         UIDType         `json:"uid_type,omitempty"`
+	Identities      []UserIdentity  `json:"identities,omitempty"`
+	PackageIDs      []string        `json:"package_ids"`
+	Consent         *ConsentSignals `json:"consent,omitempty"`
 }
 
 // PackageEligibility is an identity-based eligibility determination. The buyer computes eligibility from frequency caps, audience membership, etc. and returns an opaque boolean. The publisher does not learn why.

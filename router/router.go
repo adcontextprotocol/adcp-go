@@ -91,7 +91,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Fan out to matching providers in parallel
-	responses := r.fanOutContext(req.Context(), matching, body)
+	responses := r.fanOutContext(req.Context(), matching, &cmReq, body)
 
 	// Merge responses
 	merged := mergeContextResponses(cmReq.RequestID, responses)
@@ -142,7 +142,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, body []byte) []*tmproto.ContextMatchResponse {
+func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, cmReq *tmproto.ContextMatchRequest, body []byte) []*tmproto.ContextMatchResponse {
 	var mu sync.Mutex
 	var results []*tmproto.ContextMatchResponse
 	var wg sync.WaitGroup
@@ -163,7 +163,15 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			callCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", body)
+			// Filter packages if provider has PackageIDs configured.
+			callBody := body
+			if len(p.PackageIDs) > 0 {
+				filtered := *cmReq
+				filtered.AvailablePkgs = filterPackagesForProvider(cmReq.AvailablePkgs, &p)
+				callBody, _ = json.Marshal(&filtered)
+			}
+
+			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody)
 			if err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
@@ -334,6 +342,119 @@ func mergeIdentityResponses(requestID string, responses []*tmproto.IdentityMatch
 		RequestID:   requestID,
 		Eligibility: eligibility,
 	}
+}
+
+// HandleExpose processes an exposure notification and fans out to identity providers.
+func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024))
+	if err != nil {
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
+		return
+	}
+
+	// Validate the request.
+	var expReq tmproto.ExposeRequest
+	if err := json.Unmarshal(body, &expReq); err != nil {
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
+		return
+	}
+	if expReq.PackageID == "" {
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "package_id is required")
+		return
+	}
+	if expReq.UserToken == "" && len(expReq.Identities) == 0 {
+		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "user_token or identities is required")
+		return
+	}
+
+	// Find identity providers.
+	var matching []ProviderConfig
+	for _, p := range r.providers {
+		if MatchesIdentityProvider(&p) {
+			matching = append(matching, p)
+		}
+	}
+
+	// Fan out to all identity providers (expose is idempotent).
+	var lastResp *tmproto.ExposeResponse
+	var lastErr error
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, p := range matching {
+		wg.Add(1)
+		go func(p ProviderConfig) {
+			defer wg.Done()
+			timeout := p.Timeout
+			if timeout == 0 {
+				timeout = 30 * time.Millisecond
+			}
+			callCtx, cancel := context.WithTimeout(req.Context(), timeout)
+			defer cancel()
+
+			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/expose", body)
+			if err != nil {
+				return
+			}
+			var expResp tmproto.ExposeResponse
+			if err := json.Unmarshal(resp, &expResp); err != nil {
+				return
+			}
+			mu.Lock()
+			lastResp = &expResp
+			lastErr = nil
+			mu.Unlock()
+		}(p)
+	}
+	wg.Wait()
+
+	if lastResp == nil {
+		if lastErr != nil {
+			writeError(w, "", tmproto.ErrorCodeProviderUnavailable, lastErr.Error())
+		} else {
+			writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(lastResp)
+}
+
+// filterPackagesForProvider filters AvailablePackage list if the provider has PackageIDs configured.
+func filterPackagesForProvider(pkgs []tmproto.AvailablePackage, p *ProviderConfig) []tmproto.AvailablePackage {
+	if len(p.PackageIDs) == 0 {
+		return pkgs
+	}
+	allowed := make(map[string]bool, len(p.PackageIDs))
+	for _, id := range p.PackageIDs {
+		allowed[id] = true
+	}
+	var filtered []tmproto.AvailablePackage
+	for _, pkg := range pkgs {
+		if allowed[pkg.PackageID] {
+			filtered = append(filtered, pkg)
+		}
+	}
+	return filtered
+}
+
+// filterPackageIDsForProvider filters a PackageIDs list if the provider has PackageIDs configured.
+func filterPackageIDsForProvider(ids []string, p *ProviderConfig) []string {
+	if len(p.PackageIDs) == 0 {
+		return ids
+	}
+	allowed := make(map[string]bool, len(p.PackageIDs))
+	for _, id := range p.PackageIDs {
+		allowed[id] = true
+	}
+	var filtered []string
+	for _, id := range ids {
+		if allowed[id] {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {

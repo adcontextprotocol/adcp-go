@@ -14,6 +14,7 @@ type ProviderConfig struct {
 	PropertyIDs        []string `json:"property_ids,omitempty"`         // Only send these (empty = all)
 	ExcludePropertyIDs []string `json:"exclude_property_ids,omitempty"` // Never send these
 	PropertyTypes      []string `json:"property_types,omitempty"`       // Only these types (empty = all)
+	PackageIDs         []string `json:"package_ids,omitempty"`          // Only send these packages (empty = all)
 
 	Timeout time.Duration `json:"timeout"`
 }
