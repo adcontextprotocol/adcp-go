@@ -18,7 +18,7 @@ func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
 	buf := make([]byte, len(log)*binaryEntrySize)
 	for i, e := range log {
 		offset := i * binaryEntrySize
-		binary.LittleEndian.PutUint64(buf[offset:], uint64(e.Timestamp))
+		binary.LittleEndian.PutUint64(buf[offset:], uint64(e.Timestamp)) //nolint:gosec // timestamp is always positive
 		binary.LittleEndian.PutUint64(buf[offset+8:], hashString(e.ImpressionID))
 		binary.LittleEndian.PutUint64(buf[offset+16:], hashString(e.PackageID))
 		binary.LittleEndian.PutUint64(buf[offset+24:], hashString(e.CampaignID))
@@ -33,7 +33,7 @@ func (b BinaryExposureLog) Len() int {
 
 // Timestamp returns the timestamp of entry i.
 func (b BinaryExposureLog) Timestamp(i int) int64 {
-	return int64(binary.LittleEndian.Uint64(b[i*binaryEntrySize:]))
+	return int64(binary.LittleEndian.Uint64(b[i*binaryEntrySize:])) //nolint:gosec // timestamp stored as uint64, always positive
 }
 
 // ImpressionHash returns the impression ID hash of entry i.
@@ -174,6 +174,6 @@ func LatestExposureMultiLog(logs []BinaryExposureLog, pkgHash uint64) int64 {
 // where an occasional collision causes slight over/under-counting.
 func hashString(s string) uint64 {
 	h := fnv.New64a()
-	h.Write([]byte(s))
+	_, _ = h.Write([]byte(s)) // fnv.Write never returns an error
 	return h.Sum64()
 }

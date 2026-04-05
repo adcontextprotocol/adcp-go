@@ -779,7 +779,7 @@ func (e *Engine) computeIntentScore(ctx context.Context, tokenHash, packageID st
 	}
 	ts, err := strconv.ParseInt(val, 10, 64)
 	if err != nil {
-		return 0, nil
+		return 0, nil //nolint:nilerr // unparseable timestamp = no intent score
 	}
 	hoursSince := now.Sub(time.Unix(ts, 0)).Hours()
 	score := 1.0 - (hoursSince / 168.0)
@@ -849,14 +849,4 @@ func buildOffersFromDynamic(pkgID string, cfg *PackageContextConfig) []tmproto.O
 		ManifestType: cfg.ManifestType,
 		Macros:       cfg.Macros,
 	}}
-}
-
-func maxRuleWindow(rules []FrequencyRule) time.Duration {
-	var m time.Duration
-	for _, r := range rules {
-		if r.Window > m {
-			m = r.Window
-		}
-	}
-	return m
 }

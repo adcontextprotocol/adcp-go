@@ -440,22 +440,6 @@ func filterPackagesForProvider(pkgs []tmproto.AvailablePackage, p *ProviderConfi
 }
 
 // filterPackageIDsForProvider filters a PackageIDs list if the provider has PackageIDs configured.
-func filterPackageIDsForProvider(ids []string, p *ProviderConfig) []string {
-	if len(p.PackageIDs) == 0 {
-		return ids
-	}
-	allowed := make(map[string]bool, len(p.PackageIDs))
-	for _, id := range p.PackageIDs {
-		allowed[id] = true
-	}
-	var filtered []string
-	for _, id := range ids {
-		if allowed[id] {
-			filtered = append(filtered, id)
-		}
-	}
-	return filtered
-}
 
 func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {
 	w.Header().Set("Content-Type", "application/json")

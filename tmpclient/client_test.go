@@ -31,7 +31,7 @@ func TestContextMatch_HappyPath(t *testing.T) {
 			Offers:    []tmproto.Offer{{PackageID: "pkg-1"}},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -66,7 +66,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -91,7 +91,7 @@ func TestExpose_HappyPath(t *testing.T) {
 		}
 		resp := tmproto.ExposeResponse{PackageID: "pkg-1", CampaignCount: 3, CampaignRemaining: 2}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -111,7 +111,7 @@ func TestExpose_HappyPath(t *testing.T) {
 func TestContextMatch_ErrorResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 			RequestID: "err-1",
 			Code:      tmproto.ErrorCodeInvalidRequest,
 			Message:   "missing field",
@@ -169,7 +169,7 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 		receivedID = req.RequestID
 		resp := tmproto.ContextMatchResponse{RequestID: req.RequestID}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer srv.Close()
 
@@ -199,7 +199,7 @@ func TestActivate_HappyPath(t *testing.T) {
 		switch r.URL.Path {
 		case "/tmp/context":
 			contextCalled.Store(true)
-			json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 				RequestID: "ctx-1",
 				Offers: []tmproto.Offer{
 					{PackageID: "pkg-food"},
@@ -210,7 +210,7 @@ func TestActivate_HappyPath(t *testing.T) {
 		case "/tmp/identity":
 			identityCalled.Store(true)
 			score := 0.95
-			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID: "id-1",
 				Eligibility: []tmproto.PackageEligibility{
 					{PackageID: "pkg-food", Eligible: true, IntentScore: &score},
@@ -265,11 +265,11 @@ func TestActivate_NoOverlap(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/tmp/context":
-			json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 				Offers: []tmproto.Offer{{PackageID: "pkg-a"}},
 			})
 		case "/tmp/identity":
-			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				Eligibility: []tmproto.PackageEligibility{
 					{PackageID: "pkg-b", Eligible: true},
 				},
@@ -301,9 +301,9 @@ func TestActivate_ContextFails(t *testing.T) {
 		switch r.URL.Path {
 		case "/tmp/context":
 			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInternalError})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInternalError})
 		case "/tmp/identity":
-			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{})
+			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{})
 		}
 	}))
 	defer srv.Close()
@@ -327,7 +327,7 @@ func TestActivate_IntentScoreSorting(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/tmp/context":
-			json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 				Offers: []tmproto.Offer{
 					{PackageID: "pkg-low"},
 					{PackageID: "pkg-high"},
@@ -337,7 +337,7 @@ func TestActivate_IntentScoreSorting(t *testing.T) {
 		case "/tmp/identity":
 			low := 0.3
 			high := 0.9
-			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				Eligibility: []tmproto.PackageEligibility{
 					{PackageID: "pkg-low", Eligible: true, IntentScore: &low},
 					{PackageID: "pkg-high", Eligible: true, IntentScore: &high},
@@ -385,13 +385,13 @@ func TestActivate_DerivesPackageIDs(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/tmp/context":
-			json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{})
+			_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{})
 		case "/tmp/identity":
 			var req tmproto.IdentityMatchRequest
 			body, _ := io.ReadAll(r.Body)
 			_ = json.Unmarshal(body, &req)
 			receivedPkgIDs = req.PackageIDs
-			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{})
+			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{})
 		}
 	}))
 	defer srv.Close()

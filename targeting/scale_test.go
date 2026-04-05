@@ -18,7 +18,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 	for _, n := range []int{100, 1_000, 10_000, 100_000, 1_000_000} {
 		bm := make(MapBitmap, n)
 		for i := range n {
-			bm[uint64(i)] = struct{}{}
+			bm[uint64(i)] = struct{}{} //nolint:gosec // test
 		}
 
 		store := NewMockStore()
