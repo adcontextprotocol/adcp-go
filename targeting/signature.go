@@ -51,7 +51,7 @@ func (e *Engine) verifySignature(ctx context.Context, req *tmproto.ContextMatchR
 
 	pk := e.registry.GetPublicKey(req.PropertyRID)
 	if len(pk) == 0 {
-		return fmt.Errorf("unknown property rid %d", req.PropertyRID)
+		return errors.New("invalid signature")
 	}
 
 	sig, err := base64.RawURLEncoding.DecodeString(req.Signature)

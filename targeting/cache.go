@@ -42,11 +42,19 @@ func (c *Cache) Get(key string) (any, bool) {
 }
 
 // Set stores a value with the cache's TTL.
+// Also purges expired entries to prevent unbounded growth.
 func (c *Cache) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	now := c.now()
 	c.entries[key] = cacheEntry{
 		value:     value,
-		expiresAt: c.now().Add(c.ttl),
+		expiresAt: now.Add(c.ttl),
+	}
+	// Purge expired entries (amortized cleanup).
+	for k, e := range c.entries {
+		if now.After(e.expiresAt) {
+			delete(c.entries, k)
+		}
 	}
 }

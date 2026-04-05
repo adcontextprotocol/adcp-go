@@ -32,6 +32,7 @@ type MediaBuyPackage struct {
 
 // ResolvePackages resolves active packages for a seller by looking up media buys
 // in the Store, filtering by date, geo, and property.
+// The now parameter must be in UTC for correct date boundary comparison.
 //
 // Total: 2 Store round-trips (1 SetMembers + 1 MGet) regardless of media buy count.
 func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, country string, now time.Time) ([]tmproto.AvailablePackage, error) {
