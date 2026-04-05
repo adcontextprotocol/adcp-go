@@ -13,6 +13,15 @@
       "$ref": "enums.json#/$defs/UIDType",
       "x-go-omitempty": true
     },
+    "identities": {
+      "type": "array",
+      "items": { "$ref": "identity_match_request.json#/$defs/UserIdentity" },
+      "x-go-omitempty": true
+    },
+    "impression_id": {
+      "type": "string",
+      "x-go-omitempty": true
+    },
     "package_id": {
       "type": "string"
     },

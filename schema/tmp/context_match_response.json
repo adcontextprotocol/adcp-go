@@ -28,6 +28,10 @@
         "package_id": {
           "type": "string"
         },
+        "deal_id": {
+          "type": "string",
+          "x-go-omitempty": true
+        },
         "brand": {
           "$ref": "#/$defs/BrandRef",
           "x-go-pointer": true,
@@ -40,6 +44,11 @@
         },
         "summary": {
           "type": "string",
+          "x-go-omitempty": true
+        },
+        "manifest_type": {
+          "type": "string",
+          "description": "Creative manifest format: html, vast, native, activation_only",
           "x-go-omitempty": true
         },
         "creative_manifest": {

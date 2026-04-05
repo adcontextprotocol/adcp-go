@@ -12,15 +12,15 @@ import (
 	"testing"
 
 	"github.com/RoaringBitmap/roaring/roaring64"
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // BenchmarkBitmapCheck tests Roaring bitmap Contains() with 50K properties, targeting 1K.
 func BenchmarkBitmapCheck(b *testing.B) {
 	bm := roaring64.New()
-	// Add 1K targeted properties out of 50K universe
 	for i := range uint64(1000) {
-		bm.Add(i * 50) // Spread across the 50K range
+		bm.Add(i * 50)
 	}
 	bm.RunOptimize()
 
@@ -34,9 +34,6 @@ func BenchmarkBitmapCheck(b *testing.B) {
 // BenchmarkSignatureVerify tests Ed25519 verify.
 func BenchmarkSignatureVerify(b *testing.B) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	registry := NewPropertyRegistry()
-	registry.Put(&PropertyRecord{RID: 1, Domain: "bench.example.com", PublicKey: pub})
-
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sig",
 		PropertyRID:  1,
@@ -47,43 +44,36 @@ func BenchmarkSignatureVerify(b *testing.B) {
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
-	sig := SignRequest(req, priv)
+	sig := tmproto.SignRequest(req, priv)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = VerifyRequestSignature(req, sig, registry)
+		_ = tmproto.VerifyRequestSignature(req, sig, pub)
 	}
 }
 
-// BenchmarkFullPipeline tests complete ContextMatch call with bitmap + modules.
+// BenchmarkFullPipeline tests complete context evaluation with bitmap + topic match.
 func BenchmarkFullPipeline(b *testing.B) {
-	valkey := NewMockValkeyClient()
-	valkey.latency = 0 // Remove simulated latency for benchmark purity
+	store := targeting.NewMockStore()
+	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.baking", "food.italian")
+	store.SetAdd("topics:artifact:article:pasta-recipe", "food.cooking", "food.italian")
 
-	registry := NewPropertyRegistry()
-	targeting := NewTargetingConfig()
-
-	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	bm := roaring64.New()
 	for i := uint64(1); i <= 1000; i++ {
-		registry.Put(&PropertyRecord{RID: i, Domain: fmt.Sprintf("prop-%d.example.com", i), PublicKey: pub})
-		targeting.AddProperties(i)
+		bm.Add(i)
 	}
-	targeting.PropertyBitmap.RunOptimize()
+	bm.RunOptimize()
 
-	// Set up topic data
-	valkey.SAdd("topics:package:pkg-food", "food.cooking", "food.baking", "food.italian")
-	valkey.SAdd("topics:artifact:article:pasta-recipe", "food.cooking", "food.italian")
-
-	topicMod := NewTopicMatchModule(valkey)
-	urlMod := NewURLPatternModule(valkey)
-
-	agent := NewAgent(AgentConfig{
-		ProviderID:          "bench-provider",
-		Registry:            registry,
-		Targeting:           targeting,
-		Valkey:              valkey,
-		Modules:             []Module{urlMod, topicMod},
-		SignatureSampleRate: 0,
+	engine := targeting.NewEngine(targeting.EngineConfig{
+		ProviderID: "bench-provider",
+		Store:      store,
+		Properties: targeting.PropertyList{
+			Global: &RoaringBitmap{Bitmap: bm},
+		},
+		Packages: []targeting.PackageConfig{
+			{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true},
+			{PackageID: "pkg-tech", TopicTargets: true},
+		},
 	})
 
 	req := &tmproto.ContextMatchRequest{
@@ -99,13 +89,12 @@ func BenchmarkFullPipeline(b *testing.B) {
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = agent.ContextMatch(ctx, req)
+		_, _ = engine.EvaluateContext(ctx, req)
 	}
 }
 
 // BenchmarkRegistryLoad tests loading a 50K property registry.
 func BenchmarkRegistryLoad(b *testing.B) {
-	// Build a JSON snapshot with 50K records
 	type snapshot struct {
 		Sequence uint64            `json:"sequence"`
 		Records  []*PropertyRecord `json:"records"`
@@ -128,21 +117,18 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	}
 }
 
-// BenchmarkValkeyLookup tests URL pattern check using mock Valkey.
+// BenchmarkValkeyLookup tests URL pattern check using mock store.
 func BenchmarkValkeyLookup(b *testing.B) {
-	valkey := NewMockValkeyClient()
-	valkey.latency = 0 // Remove simulated latency for raw performance
-
-	// Add 10K URLs to blocklist
+	store := targeting.NewMockStore()
 	for i := range 10000 {
-		valkey.SAdd("url:blocklist:pkg-1", hashURL(fmt.Sprintf("article:content-%d", i)))
+		store.SetAdd("url:blocklist:pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
 	}
 
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		urlHash := hashURL(fmt.Sprintf("article:content-%d", i%20000))
-		_, _ = valkey.SIsMember(ctx, "url:blocklist:pkg-1", urlHash)
+		urlHash := targeting.HashURL(fmt.Sprintf("article:content-%d", i%20000))
+		_, _ = store.SetIsMember(ctx, "url:blocklist:pkg-1", urlHash)
 	}
 }
 
@@ -162,7 +148,7 @@ func BenchmarkSignatureSign(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = SignRequest(req, priv)
+		_ = tmproto.SignRequest(req, priv)
 	}
 }
 
@@ -222,14 +208,11 @@ func BenchmarkHMACVerify(b *testing.B) {
 	}
 }
 
-// BenchmarkCachedSignature tests the cost when signatures are pre-computed
-// per (placement_id, package_set_hash) — the router caches the signature
-// because available_packages is stable per placement.
+// BenchmarkCachedSignature tests the cost when signatures are pre-computed.
 func BenchmarkCachedSignature(b *testing.B) {
 	cache := make(map[string]string, 1000)
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 
-	// Pre-fill cache with 1000 placement signatures
 	for i := range 1000 {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i)
 		req := &tmproto.ContextMatchRequest{
@@ -240,21 +223,18 @@ func BenchmarkCachedSignature(b *testing.B) {
 				{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 			},
 		}
-		cache[key] = SignRequest(req, priv)
+		cache[key] = tmproto.SignRequest(req, priv)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i%1000)
-		_ = cache[key] // cache hit: map lookup only
+		_ = cache[key]
 	}
 }
 
-// BenchmarkOpenRTBEquivalent simulates the equivalent OpenRTB operation:
-// parse a full BidRequest JSON, do string-based URL matching, and check
-// targeting rules with string comparison.
+// BenchmarkOpenRTBEquivalent simulates the equivalent OpenRTB operation.
 func BenchmarkOpenRTBEquivalent(b *testing.B) {
-	// Simulate an OpenRTB BidRequest (simplified)
 	type BidRequest struct {
 		ID   string `json:"id"`
 		Site struct {
@@ -282,14 +262,12 @@ func BenchmarkOpenRTBEquivalent(b *testing.B) {
 		]
 	}`)
 
-	// Targeting: list of allowed domains (string comparison)
 	allowedDomains := make(map[string]bool, 1000)
 	for i := range 1000 {
 		allowedDomains[fmt.Sprintf("www.publisher-%d.example.com", i)] = true
 	}
 	allowedDomains["www.oakwoodpublishing.example.com"] = true
 
-	// URL blocklist (string matching)
 	blockedURLPrefixes := make([]string, 100)
 	for i := range blockedURLPrefixes {
 		blockedURLPrefixes[i] = fmt.Sprintf("https://www.blocked-%d.example.com", i)
@@ -299,11 +277,7 @@ func BenchmarkOpenRTBEquivalent(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var req BidRequest
 		_ = json.Unmarshal(reqJSON, &req)
-
-		// Domain check (string map lookup)
 		_ = allowedDomains[req.Site.Domain]
-
-		// URL blocklist check (string prefix matching)
 		for _, prefix := range blockedURLPrefixes {
 			if strings.HasPrefix(req.Site.Page, prefix) {
 				break

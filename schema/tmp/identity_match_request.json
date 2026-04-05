@@ -20,10 +20,57 @@
       "$ref": "enums.json#/$defs/UIDType",
       "x-go-omitempty": true
     },
+    "identities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/UserIdentity" },
+      "x-go-omitempty": true
+    },
     "package_ids": {
       "type": "array",
       "items": { "type": "string" },
       "x-go-name": "PackageIDs"
+    },
+    "consent": {
+      "$ref": "#/$defs/ConsentSignals",
+      "x-go-pointer": true,
+      "x-go-omitempty": true
+    }
+  },
+  "$defs": {
+    "UserIdentity": {
+      "type": "object",
+      "description": "UserIdentity represents a single user identifier.",
+      "required": ["user_token"],
+      "properties": {
+        "user_token": {
+          "type": "string"
+        },
+        "uid_type": {
+          "$ref": "enums.json#/$defs/UIDType",
+          "x-go-omitempty": true
+        }
+      }
+    },
+    "ConsentSignals": {
+      "type": "object",
+      "description": "ConsentSignals carries privacy consent strings for the identity agent.",
+      "properties": {
+        "tcf": {
+          "type": "string",
+          "description": "IAB TCF 2.0 consent string",
+          "x-go-omitempty": true
+        },
+        "gpp": {
+          "type": "string",
+          "description": "IAB GPP string",
+          "x-go-omitempty": true
+        },
+        "usp": {
+          "type": "string",
+          "description": "US Privacy string (legacy)",
+          "x-go-omitempty": true
+        }
+      }
     }
   }
 }
