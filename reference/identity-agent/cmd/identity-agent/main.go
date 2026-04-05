@@ -19,34 +19,38 @@ func main() {
 	// Use mock store for reference implementation.
 	store := targeting.NewMockStore()
 
+	// Seed identity config in Store (data-driven).
+	store.SetPackageIdentityConfig("pkg-display-0041", targeting.PackageIdentityConfig{
+		CampaignID:     "campaign-acme-q1",
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+		TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
+	})
+	store.SetPackageIdentityConfig("pkg-display-0042", targeting.PackageIdentityConfig{
+		CampaignID:     "campaign-acme-q1",
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 43200}},
+	})
+	store.SetPackageIdentityConfig("pkg-native-0078", targeting.PackageIdentityConfig{
+		CampaignID: "campaign-nova-spring",
+		FrequencyRules: []targeting.FrequencyRuleJSON{
+			{MaxCount: 2, WindowSeconds: 43200},
+			{MaxCount: 5, WindowSeconds: 604800},
+		},
+		TargetSegments: []string{"organic_food"},
+	})
+	store.SetCampaignFreqConfig("campaign-acme-q1", targeting.CampaignFreqConfig{
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
+	})
+	store.SetCampaignFreqConfig("campaign-nova-spring", targeting.CampaignFreqConfig{
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 15, WindowSeconds: 2592000}},
+	})
+
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "reference-identity-agent",
 		Store:      store,
 		Packages: []targeting.PackageConfig{
-			{
-				PackageID:      "pkg-display-0041",
-				CampaignID:     "campaign-acme-q1",
-				FrequencyRules: []targeting.FrequencyRule{{MaxCount: 5, Window: 24 * time.Hour}},
-				TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
-			},
-			{
-				PackageID:      "pkg-display-0042",
-				CampaignID:     "campaign-acme-q1",
-				FrequencyRules: []targeting.FrequencyRule{{MaxCount: 3, Window: 12 * time.Hour}},
-			},
-			{
-				PackageID:  "pkg-native-0078",
-				CampaignID: "campaign-nova-spring",
-				FrequencyRules: []targeting.FrequencyRule{
-					{MaxCount: 2, Window: 12 * time.Hour},
-					{MaxCount: 5, Window: 7 * 24 * time.Hour},
-				},
-				TargetSegments: []string{"organic_food"},
-			},
-		},
-		Campaigns: []targeting.CampaignConfig{
-			{CampaignID: "campaign-acme-q1", FrequencyRules: []targeting.FrequencyRule{{MaxCount: 10, Window: 7 * 24 * time.Hour}}},
-			{CampaignID: "campaign-nova-spring", FrequencyRules: []targeting.FrequencyRule{{MaxCount: 15, Window: 30 * 24 * time.Hour}}},
+			{PackageID: "pkg-display-0041"},
+			{PackageID: "pkg-display-0042"},
+			{PackageID: "pkg-native-0078"},
 		},
 	})
 
