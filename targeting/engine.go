@@ -651,6 +651,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		}
 		// Append the new entry's payload (skip its header).
 		pruned = append(pruned, newEntry[binaryHeaderSize:]...)
+		pruned = TruncateBinaryLog(pruned, maxExposureEntries)
 
 		if err := e.store.Set(ctx, key, string(pruned), 30*24*time.Hour); err != nil {
 			e.metrics.StoreError("write_exposure_log", err)

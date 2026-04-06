@@ -16,9 +16,10 @@ import (
 //
 //	timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8)
 const (
-	binaryHeaderSize  = 4
-	binaryVersion1    = 1
-	binaryEntrySize   = 32
+	binaryHeaderSize    = 4
+	binaryVersion1      = 1
+	binaryEntrySize     = 32
+	maxExposureEntries  = 10000 // cap per-user log to bound linear scan cost (~320 KB)
 )
 
 var (
@@ -103,22 +104,22 @@ func (b BinaryExposureLog) entryOffset(i int) int {
 	return binaryHeaderSize + i*binaryEntrySize
 }
 
-// Timestamp returns the timestamp of entry i.
+// Timestamp returns the timestamp of entry i. Panics if i >= Len().
 func (b BinaryExposureLog) Timestamp(i int) int64 {
 	return int64(binary.LittleEndian.Uint64(b[b.entryOffset(i):])) //nolint:gosec // timestamp stored as uint64, always positive
 }
 
-// ImpressionHash returns the impression ID hash of entry i.
+// ImpressionHash returns the impression ID hash of entry i. Panics if i >= Len().
 func (b BinaryExposureLog) ImpressionHash(i int) uint64 {
 	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+8:])
 }
 
-// PackageHash returns the package ID hash of entry i.
+// PackageHash returns the package ID hash of entry i. Panics if i >= Len().
 func (b BinaryExposureLog) PackageHash(i int) uint64 {
 	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+16:])
 }
 
-// CampaignHash returns the campaign ID hash of entry i.
+// CampaignHash returns the campaign ID hash of entry i. Panics if i >= Len().
 func (b BinaryExposureLog) CampaignHash(i int) uint64 {
 	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+24:])
 }
@@ -130,10 +131,6 @@ func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 	for _, log := range logs {
 		total += log.Len()
 	}
-	if total == 0 {
-		return nil
-	}
-
 	seen := make(map[uint64]struct{}, total)
 	result := newBinaryLog(total)
 
@@ -237,6 +234,20 @@ func LatestExposureMultiLog(logs []BinaryExposureLog, pkgHash uint64) int64 {
 		}
 	}
 	return latest
+}
+
+// TruncateBinaryLog keeps only the last maxEntries entries (appended most recently).
+// Returns the input unchanged if it is already within the limit.
+func TruncateBinaryLog(b BinaryExposureLog, maxEntries int) BinaryExposureLog {
+	n := b.Len()
+	if n <= maxEntries {
+		return b
+	}
+	keepFrom := n - maxEntries
+	result := newBinaryLog(maxEntries)
+	result = result[:binaryHeaderSize+maxEntries*binaryEntrySize]
+	copy(result[binaryHeaderSize:], b[b.entryOffset(keepFrom):])
+	return result
 }
 
 // hashString returns an FNV-1a 64-bit hash. Used for compact binary storage

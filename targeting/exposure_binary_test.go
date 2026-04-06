@@ -128,6 +128,49 @@ func TestBinary_MergedLogIsVersioned(t *testing.T) {
 	}
 }
 
+func TestBinary_Truncate(t *testing.T) {
+	var entries ExposureLog
+	for i := range 100 {
+		entries = append(entries, ExposureEntry{
+			ImpressionID: fmt.Sprintf("imp-%d", i),
+			PackageID:    "pkg-a",
+			Timestamp:    int64(i),
+		})
+	}
+	bin := EncodeBinaryExposureLog(entries)
+
+	truncated := TruncateBinaryLog(bin, 10)
+	if err := ValidateBinaryLog(truncated); err != nil {
+		t.Fatalf("truncated log failed validation: %v", err)
+	}
+	if truncated.Len() != 10 {
+		t.Errorf("expected 10 entries, got %d", truncated.Len())
+	}
+	// Should keep the last 10 (timestamps 90-99).
+	if truncated.Timestamp(0) != 90 {
+		t.Errorf("expected first kept timestamp 90, got %d", truncated.Timestamp(0))
+	}
+	if truncated.Timestamp(9) != 99 {
+		t.Errorf("expected last kept timestamp 99, got %d", truncated.Timestamp(9))
+	}
+
+	// No-op when under limit.
+	same := TruncateBinaryLog(bin, 200)
+	if same.Len() != 100 {
+		t.Errorf("expected no truncation, got %d entries", same.Len())
+	}
+}
+
+func TestBinary_MergeEmptyReturnsValidLog(t *testing.T) {
+	merged := MergeBinaryLogs()
+	if err := ValidateBinaryLog(merged); err != nil {
+		t.Errorf("merge of nothing should produce valid empty log: %v", err)
+	}
+	if merged.Len() != 0 {
+		t.Errorf("expected 0 entries, got %d", merged.Len())
+	}
+}
+
 func TestScale_JSONvsBinary(t *testing.T) {
 	// Build 1,500 exposures.
 	var entries ExposureLog
