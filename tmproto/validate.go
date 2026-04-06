@@ -13,9 +13,15 @@ const (
 	MaxIdentitiesPerRequest = 10
 )
 
+// MaxIDLength caps identifier fields to prevent oversized store keys.
+const MaxIDLength = 256
+
 // validateSafeID checks that an ID does not contain characters that could
-// cause Store key injection (colons, slashes, newlines).
+// cause Store key injection (colons, slashes, newlines) and is within length limits.
 func validateSafeID(field, value string) error {
+	if len(value) > MaxIDLength {
+		return fmt.Errorf("%s exceeds maximum length of %d", field, MaxIDLength)
+	}
 	if strings.ContainsAny(value, ":\n\r\t/\\") {
 		return fmt.Errorf("%s contains invalid characters", field)
 	}
@@ -85,6 +91,35 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	}
 	for _, id := range req.PackageIDs {
 		if err := validateSafeID("package_id", id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ValidateExposeRequest checks that required fields are present on an expose request.
+func ValidateExposeRequest(req *ExposeRequest) error {
+	if req.UserToken == "" && len(req.Identities) == 0 {
+		return errors.New("user_token or identities is required")
+	}
+	if req.PackageID == "" {
+		return errors.New("package_id is required")
+	}
+	if err := validateSafeID("package_id", req.PackageID); err != nil {
+		return err
+	}
+	if req.SourceID != "" {
+		if err := validateSafeID("source_id", req.SourceID); err != nil {
+			return err
+		}
+	}
+	if req.ImpressionID != "" {
+		if err := validateSafeID("impression_id", req.ImpressionID); err != nil {
+			return err
+		}
+	}
+	if req.CampaignID != "" {
+		if err := validateSafeID("campaign_id", req.CampaignID); err != nil {
 			return err
 		}
 	}

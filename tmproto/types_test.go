@@ -239,3 +239,113 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 		t.Errorf("property_type: got %q, want ai_assistant", got.PropertyType)
 	}
 }
+
+func TestValidateExposeRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		req     ExposeRequest
+		wantErr bool
+	}{
+		{
+			name:    "valid with source_id",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", SourceID: "agent-cnn"},
+			wantErr: false,
+		},
+		{
+			name:    "valid without source_id",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1"},
+			wantErr: false,
+		},
+		{
+			name:    "missing user_token and identities",
+			req:     ExposeRequest{PackageID: "pkg-1"},
+			wantErr: true,
+		},
+		{
+			name:    "missing package_id",
+			req:     ExposeRequest{UserToken: "u1"},
+			wantErr: true,
+		},
+		{
+			name:    "source_id with colon",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", SourceID: "bad:id"},
+			wantErr: true,
+		},
+		{
+			name:    "source_id with slash",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", SourceID: "bad/id"},
+			wantErr: true,
+		},
+		{
+			name:    "campaign_id with colon",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", CampaignID: "bad:camp"},
+			wantErr: true,
+		},
+		{
+			name:    "package_id with newline",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg\n1"},
+			wantErr: true,
+		},
+		{
+			name: "valid with identities instead of user_token",
+			req: ExposeRequest{
+				PackageID:  "pkg-1",
+				Identities: []UserIdentity{{UserToken: "u1", UIDType: UIDTypeUID2}},
+			},
+			wantErr: false,
+		},
+		{
+			name:    "impression_id with colon",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", ImpressionID: "bad:imp"},
+			wantErr: true,
+		},
+		{
+			name:    "impression_id with newline",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", ImpressionID: "bad\nimp"},
+			wantErr: true,
+		},
+		{
+			name:    "source_id exceeds max length",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", SourceID: strings.Repeat("a", MaxIDLength+1)},
+			wantErr: true,
+		},
+		{
+			name:    "source_id at max length is ok",
+			req:     ExposeRequest{UserToken: "u1", PackageID: "pkg-1", SourceID: strings.Repeat("a", MaxIDLength)},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateExposeRequest(&tt.req)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateExposeRequest() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestExposeRequest_SourceID_RoundTrip(t *testing.T) {
+	req := ExposeRequest{
+		SourceID:     "aao-agent-cnn-identity-v2",
+		UserToken:    "uid2-abc123",
+		PackageID:    "pkg-display-001",
+		ImpressionID: "imp-12345",
+		CampaignID:   "campaign-acme",
+	}
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"source_id":"aao-agent-cnn-identity-v2"`) {
+		t.Error("source_id missing from JSON output")
+	}
+
+	var got ExposeRequest
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.SourceID != "aao-agent-cnn-identity-v2" {
+		t.Errorf("source_id: got %q, want aao-agent-cnn-identity-v2", got.SourceID)
+	}
+}

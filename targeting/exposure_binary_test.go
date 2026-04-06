@@ -1,6 +1,7 @@
 package targeting
 
 import (
+	"encoding/binary"
 	"fmt"
 	"testing"
 	"time"
@@ -59,15 +60,15 @@ func TestBinary_VersionHeader(t *testing.T) {
 	}
 	bin := EncodeBinaryExposureLog(log)
 
-	if bin.Version() != 1 {
-		t.Errorf("expected version 1, got %d", bin.Version())
+	if bin.Version() != 2 {
+		t.Errorf("expected version 2, got %d", bin.Version())
 	}
-	if bin.EntrySize() != 32 {
-		t.Errorf("expected entry size 32, got %d", bin.EntrySize())
+	if bin.EntrySize() != 40 {
+		t.Errorf("expected entry size 40, got %d", bin.EntrySize())
 	}
-	// 4-byte header + 1*32 = 36 bytes total.
-	if len(bin) != 36 {
-		t.Errorf("expected 36 bytes, got %d", len(bin))
+	// 4-byte header + 1*40 = 44 bytes total.
+	if len(bin) != 44 {
+		t.Errorf("expected 44 bytes, got %d", len(bin))
 	}
 	if err := ValidateBinaryLog(bin); err != nil {
 		t.Errorf("valid log failed validation: %v", err)
@@ -81,11 +82,16 @@ func TestBinary_ValidateRejectsInvalid(t *testing.T) {
 		err  error
 	}{
 		{"too short", BinaryExposureLog{0x01}, ErrBinaryTooShort},
-		{"unknown version", BinaryExposureLog{0x02, 0x00, 0x20, 0x00}, ErrBinaryUnknownVersion},
-		{"zero entry size", BinaryExposureLog{0x01, 0x00, 0x00, 0x00}, ErrBinaryCorrupt},
-		{"wrong entry size", BinaryExposureLog{0x01, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
-		{"unaligned payload", append(
-			BinaryExposureLog{0x01, 0x00, 0x20, 0x00}, // valid header
+		{"unknown version", BinaryExposureLog{0x03, 0x00, 0x28, 0x00}, ErrBinaryUnknownVersion},
+		{"zero entry size", BinaryExposureLog{0x02, 0x00, 0x00, 0x00}, ErrBinaryCorrupt},
+		{"wrong entry size v2", BinaryExposureLog{0x02, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
+		{"wrong entry size v1", BinaryExposureLog{0x01, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
+		{"unaligned payload v2", append(
+			BinaryExposureLog{0x02, 0x00, 0x28, 0x00}, // valid v2 header
+			make([]byte, 15)...,                         // 15 bytes, not multiple of 40
+		), ErrBinaryCorrupt},
+		{"unaligned payload v1", append(
+			BinaryExposureLog{0x01, 0x00, 0x20, 0x00}, // valid v1 header
 			make([]byte, 15)...,                         // 15 bytes, not multiple of 32
 		), ErrBinaryCorrupt},
 	}
@@ -120,8 +126,8 @@ func TestBinary_MergedLogIsVersioned(t *testing.T) {
 	if err := ValidateBinaryLog(merged); err != nil {
 		t.Errorf("merged log failed validation: %v", err)
 	}
-	if merged.Version() != 1 {
-		t.Errorf("expected version 1 on merged log, got %d", merged.Version())
+	if merged.Version() != 2 {
+		t.Errorf("expected version 2 on merged log, got %d", merged.Version())
 	}
 	if merged.Len() != 2 {
 		t.Errorf("expected 2 entries, got %d", merged.Len())
@@ -168,6 +174,204 @@ func TestBinary_MergeEmptyReturnsValidLog(t *testing.T) {
 	}
 	if merged.Len() != 0 {
 		t.Errorf("expected 0 entries, got %d", merged.Len())
+	}
+}
+
+func TestBinary_SourceHash(t *testing.T) {
+	log := ExposureLog{
+		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", SourceID: "agent-cnn", Timestamp: 1000},
+		{ImpressionID: "imp-2", PackageID: "pkg-tech", CampaignID: "acme", SourceID: "agent-nyt", Timestamp: 2000},
+	}
+	bin := EncodeBinaryExposureLog(log)
+
+	cnnHash := hashString("agent-cnn")
+	nytHash := hashString("agent-nyt")
+
+	if bin.SourceHash(0) != cnnHash {
+		t.Errorf("entry 0: expected source hash %d, got %d", cnnHash, bin.SourceHash(0))
+	}
+	if bin.SourceHash(1) != nytHash {
+		t.Errorf("entry 1: expected source hash %d, got %d", nytHash, bin.SourceHash(1))
+	}
+}
+
+func TestBinary_SourceHashOfEmptyString(t *testing.T) {
+	log := ExposureLog{
+		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000},
+	}
+	bin := EncodeBinaryExposureLog(log)
+	emptyHash := hashString("")
+	if bin.SourceHash(0) != emptyHash {
+		t.Errorf("expected hash of empty string, got %d", bin.SourceHash(0))
+	}
+}
+
+func TestBinary_V1ReadCompatibility(t *testing.T) {
+	// Construct a v1 binary log manually (32-byte entries).
+	v1 := make([]byte, binaryHeaderSize+2*binaryEntrySize1)
+	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
+
+	// Entry 0: ts=1000, imp=hash("imp-1"), pkg=hash("pkg-a"), camp=hash("c1")
+	off := binaryHeaderSize
+	binary.LittleEndian.PutUint64(v1[off:], 1000)
+	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+
+	// Entry 1: ts=2000
+	off = binaryHeaderSize + binaryEntrySize1
+	binary.LittleEndian.PutUint64(v1[off:], 2000)
+	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-2"))
+	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-b"))
+	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+
+	blog := BinaryExposureLog(v1)
+
+	// Validation passes.
+	if err := ValidateBinaryLog(blog); err != nil {
+		t.Fatalf("v1 log should validate: %v", err)
+	}
+	if blog.Len() != 2 {
+		t.Fatalf("expected 2 entries, got %d", blog.Len())
+	}
+	if blog.Timestamp(0) != 1000 {
+		t.Errorf("expected ts 1000, got %d", blog.Timestamp(0))
+	}
+	// V1 source hash returns 0.
+	if blog.SourceHash(0) != 0 {
+		t.Errorf("v1 source hash should be 0, got %d", blog.SourceHash(0))
+	}
+
+	// Frequency check works on v1 logs.
+	rules := []FrequencyRule{{MaxCount: 1, Window: 24 * time.Hour}}
+	capped := CheckFrequencyRulesBinary(blog, hashString("pkg-a"), false, rules, 3000)
+	if !capped {
+		t.Error("expected capped for pkg-a (1 exposure, cap 1)")
+	}
+}
+
+func TestBinary_V1UpgradeOnMerge(t *testing.T) {
+	// Build a v1 log.
+	v1 := make([]byte, binaryHeaderSize+1*binaryEntrySize1)
+	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
+	off := binaryHeaderSize
+	binary.LittleEndian.PutUint64(v1[off:], 1000)
+	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+
+	// Build a v2 log.
+	v2 := EncodeBinaryExposureLog(ExposureLog{
+		{ImpressionID: "imp-v2", PackageID: "pkg-a", CampaignID: "c1", SourceID: "agent-x", Timestamp: 2000},
+	})
+
+	// Merge upgrades v1 entries to v2 format.
+	merged := MergeBinaryLogs(BinaryExposureLog(v1), v2)
+	if merged.Version() != 2 {
+		t.Errorf("expected v2 after merge, got %d", merged.Version())
+	}
+	if merged.Len() != 2 {
+		t.Fatalf("expected 2 entries, got %d", merged.Len())
+	}
+	if err := ValidateBinaryLog(merged); err != nil {
+		t.Fatalf("merged log should validate: %v", err)
+	}
+
+	// V1 entry gets source hash 0, v2 entry keeps its source hash.
+	if merged.SourceHash(0) != 0 {
+		t.Errorf("upgraded v1 entry should have source hash 0, got %d", merged.SourceHash(0))
+	}
+	if merged.SourceHash(1) != hashString("agent-x") {
+		t.Errorf("v2 entry should keep source hash")
+	}
+}
+
+func TestBinary_V1TruncateUpgrades(t *testing.T) {
+	// Build a v1 log with 20 entries, truncate to 5 — should upgrade to v2.
+	v1 := make([]byte, binaryHeaderSize+20*binaryEntrySize1)
+	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
+	for i := range 20 {
+		off := binaryHeaderSize + i*binaryEntrySize1
+		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
+		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
+		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
+		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	}
+
+	truncated := TruncateBinaryLog(BinaryExposureLog(v1), 5)
+	if err := ValidateBinaryLog(truncated); err != nil {
+		t.Fatalf("truncated log failed validation: %v", err)
+	}
+	if truncated.Version() != 2 {
+		t.Errorf("expected v2 after truncation, got %d", truncated.Version())
+	}
+	if truncated.Len() != 5 {
+		t.Fatalf("expected 5 entries, got %d", truncated.Len())
+	}
+	// Should keep last 5 entries (timestamps 1015-1019).
+	if truncated.Timestamp(0) != 1015 {
+		t.Errorf("expected first kept timestamp 1015, got %d", truncated.Timestamp(0))
+	}
+	// Upgraded entries should have source hash 0.
+	if truncated.SourceHash(0) != 0 {
+		t.Errorf("upgraded v1 entry should have source hash 0, got %d", truncated.SourceHash(0))
+	}
+}
+
+func TestBinary_V1UnderLimitUpgrades(t *testing.T) {
+	// Build a v1 log with 2 entries, under limit — should upgrade to v2 without truncation.
+	v1 := make([]byte, binaryHeaderSize+2*binaryEntrySize1)
+	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
+	for i := range 2 {
+		off := binaryHeaderSize + i*binaryEntrySize1
+		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
+		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
+		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
+		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	}
+
+	upgraded := TruncateBinaryLog(BinaryExposureLog(v1), 100)
+	if upgraded.Version() != 2 {
+		t.Errorf("expected v2 after upgrade, got %d", upgraded.Version())
+	}
+	if upgraded.Len() != 2 {
+		t.Errorf("expected 2 entries preserved, got %d", upgraded.Len())
+	}
+}
+
+func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
+	// V1 log with 1 entry for pkg-a.
+	v1 := make([]byte, binaryHeaderSize+1*binaryEntrySize1)
+	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
+	off := binaryHeaderSize
+	binary.LittleEndian.PutUint64(v1[off:], 1000)
+	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+
+	// V2 log with 1 entry for pkg-a (different impression).
+	v2 := EncodeBinaryExposureLog(ExposureLog{
+		{ImpressionID: "imp-v2", PackageID: "pkg-a", CampaignID: "c1", SourceID: "agent-x", Timestamp: 2000},
+	})
+
+	logs := []BinaryExposureLog{BinaryExposureLog(v1), v2}
+	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}}
+
+	// 2 entries for pkg-a, cap=2 → capped.
+	capped := CheckFrequencyRulesMultiLog(logs, hashString("pkg-a"), false, rules, 3000)
+	if !capped {
+		t.Error("expected capped with mixed v1+v2 logs")
+	}
+
+	// latest across mixed versions.
+	latest := LatestExposureMultiLog(logs, hashString("pkg-a"))
+	if latest != 2000 {
+		t.Errorf("expected latest 2000, got %d", latest)
 	}
 }
 

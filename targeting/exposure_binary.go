@@ -15,16 +15,22 @@ import (
 // Version 1 entry (32 bytes):
 //
 //	timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8)
+//
+// Version 2 entry (40 bytes):
+//
+//	timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8) + sourceHash(8)
 const (
 	binaryHeaderSize    = 4
 	binaryVersion1      = 1
-	binaryEntrySize     = 32
-	maxExposureEntries  = 10000 // cap per-user log to bound linear scan cost (~320 KB)
+	binaryVersion2      = 2
+	binaryEntrySize1    = 32
+	binaryEntrySize     = 40 // current write format (v2)
+	maxExposureEntries  = 10000 // cap per-user log to bound linear scan cost (~400 KB)
 )
 
 var (
 	ErrBinaryTooShort      = errors.New("binary log too short for header")
-	ErrBinaryUnknownVersion = fmt.Errorf("unknown binary log version (supported: %d)", binaryVersion1)
+	ErrBinaryUnknownVersion = fmt.Errorf("unknown binary log version (supported: %d, %d)", binaryVersion1, binaryVersion2)
 	ErrBinaryCorrupt       = errors.New("binary log size not aligned to entry size")
 )
 
@@ -32,15 +38,15 @@ var (
 // Format: 4-byte header + N fixed-size entries.
 type BinaryExposureLog []byte
 
-// newBinaryLog allocates a versioned binary log buffer with capacity for n entries.
+// newBinaryLog allocates a v2 binary log buffer with capacity for n entries.
 func newBinaryLog(n int) []byte {
 	buf := make([]byte, binaryHeaderSize, binaryHeaderSize+n*binaryEntrySize)
-	binary.LittleEndian.PutUint16(buf[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(buf[0:], binaryVersion2)
 	binary.LittleEndian.PutUint16(buf[2:], binaryEntrySize)
 	return buf
 }
 
-// EncodeBinaryExposureLog converts a JSON exposure log to binary format.
+// EncodeBinaryExposureLog converts a JSON exposure log to v2 binary format.
 func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
 	buf := newBinaryLog(len(log))
 	buf = buf[:binaryHeaderSize+len(log)*binaryEntrySize]
@@ -50,6 +56,7 @@ func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
 		binary.LittleEndian.PutUint64(buf[offset+8:], hashString(e.ImpressionID))
 		binary.LittleEndian.PutUint64(buf[offset+16:], hashString(e.PackageID))
 		binary.LittleEndian.PutUint64(buf[offset+24:], hashString(e.CampaignID))
+		binary.LittleEndian.PutUint64(buf[offset+32:], hashString(e.SourceID))
 	}
 	return buf
 }
@@ -60,12 +67,18 @@ func ValidateBinaryLog(b BinaryExposureLog) error {
 		return ErrBinaryTooShort
 	}
 	version := binary.LittleEndian.Uint16(b[0:])
-	if version != binaryVersion1 {
-		return ErrBinaryUnknownVersion
-	}
 	entrySize := int(binary.LittleEndian.Uint16(b[2:]))
-	if entrySize != binaryEntrySize {
-		return ErrBinaryCorrupt
+	switch version {
+	case binaryVersion1:
+		if entrySize != binaryEntrySize1 {
+			return ErrBinaryCorrupt
+		}
+	case binaryVersion2:
+		if entrySize != binaryEntrySize {
+			return ErrBinaryCorrupt
+		}
+	default:
+		return ErrBinaryUnknownVersion
 	}
 	payload := len(b) - binaryHeaderSize
 	if payload%entrySize != 0 {
@@ -95,13 +108,17 @@ func (b BinaryExposureLog) Len() int {
 	if len(b) < binaryHeaderSize {
 		return 0
 	}
-	return (len(b) - binaryHeaderSize) / binaryEntrySize
+	es := int(b.EntrySize())
+	if es == 0 {
+		return 0
+	}
+	return (len(b) - binaryHeaderSize) / es
 }
 
 // entryOffset returns the byte offset for entry i.
 // Caller must ensure 0 <= i < Len().
 func (b BinaryExposureLog) entryOffset(i int) int {
-	return binaryHeaderSize + i*binaryEntrySize
+	return binaryHeaderSize + i*int(b.EntrySize())
 }
 
 // Timestamp returns the timestamp of entry i. Panics if i >= Len().
@@ -124,8 +141,16 @@ func (b BinaryExposureLog) CampaignHash(i int) uint64 {
 	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+24:])
 }
 
+// SourceHash returns the source ID hash of entry i. Returns 0 for v1 entries (no source). Panics if i >= Len().
+func (b BinaryExposureLog) SourceHash(i int) uint64 {
+	if b.Version() < binaryVersion2 {
+		return 0
+	}
+	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+32:])
+}
+
 // MergeBinaryLogs merges multiple binary logs, deduplicating by impression hash.
-// Returns a new versioned binary log.
+// Returns a new v2 binary log. V1 entries are upgraded (source hash = 0).
 func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 	total := 0
 	for _, log := range logs {
@@ -135,6 +160,7 @@ func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 	result := newBinaryLog(total)
 
 	for _, log := range logs {
+		es := int(log.EntrySize())
 		for i := range log.Len() {
 			impHash := log.ImpressionHash(i)
 			if _, dup := seen[impHash]; dup {
@@ -142,7 +168,14 @@ func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 			}
 			seen[impHash] = struct{}{}
 			offset := log.entryOffset(i)
-			result = append(result, log[offset:offset+binaryEntrySize]...)
+			if es == binaryEntrySize {
+				// V2: copy directly.
+				result = append(result, log[offset:offset+binaryEntrySize]...)
+			} else {
+				// V1: upgrade by copying 32 bytes + 8 zero bytes for source hash.
+				result = append(result, log[offset:offset+binaryEntrySize1]...)
+				result = append(result, 0, 0, 0, 0, 0, 0, 0, 0)
+			}
 		}
 	}
 	return result
@@ -238,15 +271,32 @@ func LatestExposureMultiLog(logs []BinaryExposureLog, pkgHash uint64) int64 {
 
 // TruncateBinaryLog keeps only the last maxEntries entries (appended most recently).
 // Returns the input unchanged if it is already within the limit.
+// V1 logs are upgraded to v2 during truncation.
 func TruncateBinaryLog(b BinaryExposureLog, maxEntries int) BinaryExposureLog {
 	n := b.Len()
-	if n <= maxEntries {
+	if n <= maxEntries && b.Version() == binaryVersion2 {
 		return b
 	}
+	if n <= maxEntries {
+		// V1 log under limit: upgrade to v2 via merge.
+		return MergeBinaryLogs(b)
+	}
 	keepFrom := n - maxEntries
+	es := int(b.EntrySize())
+	if es == binaryEntrySize {
+		// V2: direct copy.
+		result := newBinaryLog(maxEntries)
+		result = result[:binaryHeaderSize+maxEntries*binaryEntrySize]
+		copy(result[binaryHeaderSize:], b[b.entryOffset(keepFrom):])
+		return result
+	}
+	// V1: upgrade entries during truncation.
 	result := newBinaryLog(maxEntries)
-	result = result[:binaryHeaderSize+maxEntries*binaryEntrySize]
-	copy(result[binaryHeaderSize:], b[b.entryOffset(keepFrom):])
+	for i := keepFrom; i < n; i++ {
+		off := b.entryOffset(i)
+		result = append(result, b[off:off+binaryEntrySize1]...)
+		result = append(result, 0, 0, 0, 0, 0, 0, 0, 0)
+	}
 	return result
 }
 
