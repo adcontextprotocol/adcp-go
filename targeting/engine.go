@@ -494,9 +494,11 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		exposureData := values[i*2+1]
 		profiles = append(profiles, ParseUserProfile(profileData))
 		binLog := BinaryExposureLog(exposureData)
-		if len(exposureData) > 0 && len(exposureData)%binaryEntrySize != 0 {
-			e.metrics.StoreError("corrupt_exposure_log", fmt.Errorf("exposure log has %d bytes (not multiple of %d)", len(exposureData), binaryEntrySize))
-			binLog = binLog[:len(binLog)/binaryEntrySize*binaryEntrySize]
+		if len(exposureData) > 0 {
+			if err := ValidateBinaryLog(binLog); err != nil {
+				e.metrics.StoreError("corrupt_exposure_log", err)
+				binLog = nil
+			}
 		}
 		firstLogs = append(firstLogs, binLog)
 	}
@@ -630,19 +632,26 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 			continue
 		}
 
-		// Append binary entry directly.
+		// Prune expired entries and append new one, preserving versioned header.
 		existing := BinaryExposureLog(val)
-		newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
-
-		// Prune: rebuild without expired entries.
-		var pruned []byte
-		for j := range existing.Len() {
-			if existing.Timestamp(j) >= cutoff {
-				offset := j * binaryEntrySize
-				pruned = append(pruned, existing[offset:offset+binaryEntrySize]...)
+		if len(val) > 0 {
+			if err := ValidateBinaryLog(existing); err != nil {
+				e.metrics.StoreError("corrupt_exposure_log", err)
+				existing = nil
 			}
 		}
-		pruned = append(pruned, newEntry...)
+		newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
+
+		pruned := newBinaryLog(existing.Len() + 1)
+		for j := range existing.Len() {
+			if existing.Timestamp(j) >= cutoff {
+				off := existing.entryOffset(j)
+				pruned = append(pruned, existing[off:off+binaryEntrySize]...)
+			}
+		}
+		// Append the new entry's payload (skip its header).
+		pruned = append(pruned, newEntry[binaryHeaderSize:]...)
+		pruned = TruncateBinaryLog(pruned, maxExposureEntries)
 
 		if err := e.store.Set(ctx, key, string(pruned), 30*24*time.Hour); err != nil {
 			e.metrics.StoreError("write_exposure_log", err)

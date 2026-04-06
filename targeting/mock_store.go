@@ -116,10 +116,10 @@ func (m *MockStore) AddExposure(token string, entry ExposureEntry) {
 	key := "user:exposures:" + hash
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	existing := []byte(m.strings[key].value)
-	bin := EncodeBinaryExposureLog(ExposureLog{entry})
-	existing = append(existing, bin...)
-	m.strings[key] = stringEntry{value: string(existing)}
+	existing := BinaryExposureLog(m.strings[key].value)
+	newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
+	merged := MergeBinaryLogs(existing, newEntry)
+	m.strings[key] = stringEntry{value: string(merged)}
 }
 
 // SetPackageContextConfig stores context config for a package. Test helper.

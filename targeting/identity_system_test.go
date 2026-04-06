@@ -332,27 +332,30 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	// Check the exposure log: should be pruned to ~30 days.
 	hash := HashToken("user-rolling")
 	val, _, _ := store.Get(context.Background(), "user:exposures:"+hash)
-	log := ParseExposureLog(val)
+	binLog := BinaryExposureLog(val)
+	if err := ValidateBinaryLog(binLog); err != nil {
+		t.Fatalf("exposure log validation failed: %v", err)
+	}
 
 	// Pruning happens on each write. Entries older than 30 days should be gone.
 	thirtyDaysAgo := currentTime.Add(-30 * 24 * time.Hour).Unix()
 	oldEntries := 0
-	for _, e := range log {
-		if e.Timestamp < thirtyDaysAgo {
+	for i := range binLog.Len() {
+		if binLog.Timestamp(i) < thirtyDaysAgo {
 			oldEntries++
 		}
 	}
 
-	t.Logf("  After 35 days: %d entries in log, %d older than 30 days", len(log), oldEntries)
+	t.Logf("  After 35 days: %d entries in log, %d older than 30 days", binLog.Len(), oldEntries)
 
 	if oldEntries > 0 {
 		t.Errorf("expected 0 entries older than 30 days, got %d", oldEntries)
 	}
 
 	// Should have ~60 entries (30 days × 2/day, first 5 days pruned).
-	if len(log) > 62 || len(log) < 58 {
-		t.Logf("  WARNING: expected ~60 entries, got %d (acceptable variance from pruning boundary)", len(log))
+	if binLog.Len() > 62 || binLog.Len() < 58 {
+		t.Logf("  WARNING: expected ~60 entries, got %d (acceptable variance from pruning boundary)", binLog.Len())
 	}
 
-	t.Logf("  Exposure log correctly pruned: %d entries, 0 expired", len(log))
+	t.Logf("  Exposure log correctly pruned: %d entries, 0 expired", binLog.Len())
 }

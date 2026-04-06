@@ -53,6 +53,124 @@ func TestBinary_MergeDedup(t *testing.T) {
 	}
 }
 
+func TestBinary_VersionHeader(t *testing.T) {
+	log := ExposureLog{
+		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", Timestamp: 1000},
+	}
+	bin := EncodeBinaryExposureLog(log)
+
+	if bin.Version() != 1 {
+		t.Errorf("expected version 1, got %d", bin.Version())
+	}
+	if bin.EntrySize() != 32 {
+		t.Errorf("expected entry size 32, got %d", bin.EntrySize())
+	}
+	// 4-byte header + 1*32 = 36 bytes total.
+	if len(bin) != 36 {
+		t.Errorf("expected 36 bytes, got %d", len(bin))
+	}
+	if err := ValidateBinaryLog(bin); err != nil {
+		t.Errorf("valid log failed validation: %v", err)
+	}
+}
+
+func TestBinary_ValidateRejectsInvalid(t *testing.T) {
+	tests := []struct {
+		name string
+		data BinaryExposureLog
+		err  error
+	}{
+		{"too short", BinaryExposureLog{0x01}, ErrBinaryTooShort},
+		{"unknown version", BinaryExposureLog{0x02, 0x00, 0x20, 0x00}, ErrBinaryUnknownVersion},
+		{"zero entry size", BinaryExposureLog{0x01, 0x00, 0x00, 0x00}, ErrBinaryCorrupt},
+		{"wrong entry size", BinaryExposureLog{0x01, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
+		{"unaligned payload", append(
+			BinaryExposureLog{0x01, 0x00, 0x20, 0x00}, // valid header
+			make([]byte, 15)...,                         // 15 bytes, not multiple of 32
+		), ErrBinaryCorrupt},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateBinaryLog(tt.data)
+			if err != tt.err {
+				t.Errorf("expected %v, got %v", tt.err, err)
+			}
+		})
+	}
+}
+
+func TestBinary_EmptyLog(t *testing.T) {
+	bin := EncodeBinaryExposureLog(nil)
+	if bin.Len() != 0 {
+		t.Errorf("expected 0 entries, got %d", bin.Len())
+	}
+	if err := ValidateBinaryLog(bin); err != nil {
+		t.Errorf("empty log failed validation: %v", err)
+	}
+}
+
+func TestBinary_MergedLogIsVersioned(t *testing.T) {
+	log1 := EncodeBinaryExposureLog(ExposureLog{
+		{ImpressionID: "imp-1", PackageID: "pkg-a", Timestamp: 1000},
+	})
+	log2 := EncodeBinaryExposureLog(ExposureLog{
+		{ImpressionID: "imp-2", PackageID: "pkg-b", Timestamp: 2000},
+	})
+	merged := MergeBinaryLogs(log1, log2)
+	if err := ValidateBinaryLog(merged); err != nil {
+		t.Errorf("merged log failed validation: %v", err)
+	}
+	if merged.Version() != 1 {
+		t.Errorf("expected version 1 on merged log, got %d", merged.Version())
+	}
+	if merged.Len() != 2 {
+		t.Errorf("expected 2 entries, got %d", merged.Len())
+	}
+}
+
+func TestBinary_Truncate(t *testing.T) {
+	var entries ExposureLog
+	for i := range 100 {
+		entries = append(entries, ExposureEntry{
+			ImpressionID: fmt.Sprintf("imp-%d", i),
+			PackageID:    "pkg-a",
+			Timestamp:    int64(i),
+		})
+	}
+	bin := EncodeBinaryExposureLog(entries)
+
+	truncated := TruncateBinaryLog(bin, 10)
+	if err := ValidateBinaryLog(truncated); err != nil {
+		t.Fatalf("truncated log failed validation: %v", err)
+	}
+	if truncated.Len() != 10 {
+		t.Errorf("expected 10 entries, got %d", truncated.Len())
+	}
+	// Should keep the last 10 (timestamps 90-99).
+	if truncated.Timestamp(0) != 90 {
+		t.Errorf("expected first kept timestamp 90, got %d", truncated.Timestamp(0))
+	}
+	if truncated.Timestamp(9) != 99 {
+		t.Errorf("expected last kept timestamp 99, got %d", truncated.Timestamp(9))
+	}
+
+	// No-op when under limit.
+	same := TruncateBinaryLog(bin, 200)
+	if same.Len() != 100 {
+		t.Errorf("expected no truncation, got %d entries", same.Len())
+	}
+}
+
+func TestBinary_MergeEmptyReturnsValidLog(t *testing.T) {
+	merged := MergeBinaryLogs()
+	if err := ValidateBinaryLog(merged); err != nil {
+		t.Errorf("merge of nothing should produce valid empty log: %v", err)
+	}
+	if merged.Len() != 0 {
+		t.Errorf("expected 0 entries, got %d", merged.Len())
+	}
+}
+
 func TestScale_JSONvsBinary(t *testing.T) {
 	// Build 1,500 exposures.
 	var entries ExposureLog
