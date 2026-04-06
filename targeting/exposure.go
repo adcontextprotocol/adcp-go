@@ -13,6 +13,7 @@ type ExposureEntry struct {
 	ImpressionID string `json:"id"`
 	PackageID    string `json:"pkg"`
 	CampaignID   string `json:"cmp,omitempty"`
+	SourceID     string `json:"src,omitempty"`
 	Timestamp    int64  `json:"ts"`
 }
 

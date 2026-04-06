@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -800,5 +801,91 @@ func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
 	}
 	if !byPkg["pkg-display-002"].Eligible {
 		t.Error("pkg-display-002 should still be eligible")
+	}
+}
+
+// --- Source Provenance Tests ---
+
+func TestIdentity_SourceIDFallsBackToProviderID(t *testing.T) {
+	engine, _, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	// No source_id → engine uses providerID ("test-provider").
+	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		UserToken:    "user-src",
+		PackageID:    "pkg-display-001",
+		ImpressionID: "imp-src-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.PackageID != "pkg-display-001" {
+		t.Errorf("expected pkg-display-001, got %s", resp.PackageID)
+	}
+
+	// Read back the binary log and verify source hash = hash("test-provider").
+	hash := HashToken("user-src")
+	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
+	blog := BinaryExposureLog(val)
+	if blog.Len() != 1 {
+		t.Fatalf("expected 1 entry, got %d", blog.Len())
+	}
+	if blog.SourceHash(0) != hashString("test-provider") {
+		t.Error("expected source hash of 'test-provider' when source_id not provided")
+	}
+}
+
+func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
+	engine, _, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		SourceID:     "agent-cnn-v2",
+		UserToken:    "user-src2",
+		PackageID:    "pkg-display-001",
+		ImpressionID: "imp-src-2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hash := HashToken("user-src2")
+	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
+	blog := BinaryExposureLog(val)
+	if blog.Len() != 1 {
+		t.Fatalf("expected 1 entry, got %d", blog.Len())
+	}
+	if blog.SourceHash(0) != hashString("agent-cnn-v2") {
+		t.Error("expected source hash of 'agent-cnn-v2'")
+	}
+}
+
+func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
+	engine, _, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	// Two different sources submit the same impression_id.
+	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		SourceID:     "agent-a",
+		UserToken:    "user-ns",
+		PackageID:    "pkg-display-001",
+		ImpressionID: "imp-dup",
+	})
+	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		SourceID:     "agent-b",
+		UserToken:    "user-ns",
+		PackageID:    "pkg-display-001",
+		ImpressionID: "imp-dup",
+	})
+
+	// ZCount should show 2 distinct members (agent-a:imp-dup and agent-b:imp-dup).
+	hash := HashToken("user-ns")
+	key := "freq:pkg:pkg-display-001:" + hash
+	count, err := engine.store.ZCount(ctx, key, 0, math.MaxFloat64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 sorted set members (namespaced by source), got %d", count)
 	}
 }

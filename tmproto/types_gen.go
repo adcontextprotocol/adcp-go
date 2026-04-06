@@ -174,6 +174,7 @@ type ErrorResponse struct {
 
 // ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.
 type ExposeRequest struct {
+	SourceID     string         `json:"source_id,omitempty"` // Identifies the agent or system that recorded this exposure. Used for dedup namespacing, rollback, and audit.
 	UserToken    string         `json:"user_token"`
 	UIDType      UIDType        `json:"uid_type,omitempty"`
 	Identities   []UserIdentity `json:"identities,omitempty"`

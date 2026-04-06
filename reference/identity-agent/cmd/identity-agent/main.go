@@ -81,14 +81,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
-		if req.PackageID == "" {
+		if err := tmproto.ValidateExposeRequest(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "package_id is required"})
-			return
-		}
-		if req.UserToken == "" && len(req.Identities) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "user_token or identities required"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		resp, err := engine.RecordExposure(r.Context(), &req)

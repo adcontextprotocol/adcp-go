@@ -6,6 +6,11 @@
   "x-go-name": "ExposeRequest",
   "required": ["user_token", "package_id"],
   "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "Identifies the agent or system that recorded this exposure. Used for dedup namespacing, rollback, and audit.",
+      "x-go-omitempty": true
+    },
     "user_token": {
       "type": "string"
     },

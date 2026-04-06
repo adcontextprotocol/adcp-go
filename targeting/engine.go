@@ -591,8 +591,17 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 // Valkey Lua scripting for atomic append.
 // TODO: Add Store.Append method for atomic binary append.
 func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest) (*tmproto.ExposeResponse, error) {
+	if err := tmproto.ValidateExposeRequest(req); err != nil {
+		return nil, fmt.Errorf("invalid expose request: %w", err)
+	}
 	now := e.now()
 	identities := resolveExposeIdentities(req)
+
+	// Resolve source ID: use request field, fall back to engine's provider ID.
+	sourceID := req.SourceID
+	if sourceID == "" {
+		sourceID = e.providerID
+	}
 
 	// Resolve campaign ID.
 	campaignID := req.CampaignID
@@ -613,6 +622,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		ImpressionID: impressionID,
 		PackageID:    req.PackageID,
 		CampaignID:   campaignID,
+		SourceID:     sourceID,
 		Timestamp:    now.Unix(),
 	}
 
@@ -638,7 +648,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 			continue
 		}
 
-		// Prune expired entries and append new one, preserving versioned header.
+		// Prune expired entries and append new one, upgrading v1→v2 if needed.
 		existing := BinaryExposureLog(val)
 		if len(val) > 0 {
 			if err := ValidateBinaryLog(existing); err != nil {
@@ -649,13 +659,20 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
 
 		pruned := newBinaryLog(existing.Len() + 1)
+		es := int(existing.EntrySize())
 		for j := range existing.Len() {
 			if existing.Timestamp(j) >= cutoff {
 				off := existing.entryOffset(j)
-				pruned = append(pruned, existing[off:off+binaryEntrySize]...)
+				if es == binaryEntrySize {
+					pruned = append(pruned, existing[off:off+binaryEntrySize]...)
+				} else {
+					// Upgrade v1 entry: copy 32 bytes + 8 zero bytes for source hash.
+					pruned = append(pruned, existing[off:off+binaryEntrySize1]...)
+					pruned = append(pruned, 0, 0, 0, 0, 0, 0, 0, 0)
+				}
 			}
 		}
-		// Append the new entry's payload (skip its header).
+		// Append the new v2 entry's payload (skip its header).
 		pruned = append(pruned, newEntry[binaryHeaderSize:]...)
 		pruned = TruncateBinaryLog(pruned, maxExposureEntries)
 
@@ -667,8 +684,9 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		}
 
 		// Package frequency sorted set.
+		member := sourceID + ":" + impressionID
 		pkgFreqKey := fmt.Sprintf("freq:pkg:%s:%s", req.PackageID, hash)
-		if err := e.store.ZAdd(ctx, pkgFreqKey, nowMs, impressionID); err != nil {
+		if err := e.store.ZAdd(ctx, pkgFreqKey, nowMs, member); err != nil {
 			e.metrics.StoreError("zadd_pkg_freq", err)
 		} else {
 			if err := e.store.ZRemRangeByScore(ctx, pkgFreqKey, 0, pruneBeforeMs); err != nil {
@@ -680,7 +698,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		// Campaign frequency sorted set.
 		if campaignID != "" {
 			campFreqKey := fmt.Sprintf("freq:campaign:%s:%s", campaignID, hash)
-			if err := e.store.ZAdd(ctx, campFreqKey, nowMs, impressionID); err != nil {
+			if err := e.store.ZAdd(ctx, campFreqKey, nowMs, member); err != nil {
 				e.metrics.StoreError("zadd_campaign_freq", err)
 			} else {
 				if err := e.store.ZRemRangeByScore(ctx, campFreqKey, 0, pruneBeforeMs); err != nil {
