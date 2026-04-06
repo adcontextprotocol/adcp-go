@@ -581,8 +581,6 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
 }
 
-// RecordExposure records that a user was shown an ad for a package.
-// Updates frequency cap sorted sets and intent scoring timestamp.
 // RecordExposure records an impression to the exposure log for all UIDs.
 // Each UID's exposure log is read, the new entry is appended,
 // old entries are pruned, and the log is written back.
@@ -619,11 +617,19 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 	}
 
 	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
+	nowMs := float64(now.UnixMilli())
+	pruneBeforeMs := float64(now.Add(-30 * 24 * time.Hour).UnixMilli())
+	nowStr := fmt.Sprintf("%d", now.Unix())
+
+	// Pre-compute token hashes (SHA-256, avoid re-hashing per loop).
+	hashes := make([]string, len(identities))
+	for i, uid := range identities {
+		hashes[i] = HashToken(uid.UserToken)
+	}
 
 	// Write to each UID's exposure log. Capture the first UID's log for the response.
 	var firstLog BinaryExposureLog
-	for i, uid := range identities {
-		hash := HashToken(uid.UserToken)
+	for i, hash := range hashes {
 		key := "user:exposures:" + hash
 
 		val, _, err := e.store.Get(ctx, key)
@@ -659,6 +665,36 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		if i == 0 {
 			firstLog = BinaryExposureLog(pruned)
 		}
+
+		// Package frequency sorted set.
+		pkgFreqKey := fmt.Sprintf("freq:pkg:%s:%s", req.PackageID, hash)
+		if err := e.store.ZAdd(ctx, pkgFreqKey, nowMs, impressionID); err != nil {
+			e.metrics.StoreError("zadd_pkg_freq", err)
+		} else {
+			if err := e.store.ZRemRangeByScore(ctx, pkgFreqKey, 0, pruneBeforeMs); err != nil {
+				e.metrics.StoreError("zremrangebyscore_pkg_freq", err)
+			}
+			_ = e.store.ZExpire(ctx, pkgFreqKey, 30*24*time.Hour)
+		}
+
+		// Campaign frequency sorted set.
+		if campaignID != "" {
+			campFreqKey := fmt.Sprintf("freq:campaign:%s:%s", campaignID, hash)
+			if err := e.store.ZAdd(ctx, campFreqKey, nowMs, impressionID); err != nil {
+				e.metrics.StoreError("zadd_campaign_freq", err)
+			} else {
+				if err := e.store.ZRemRangeByScore(ctx, campFreqKey, 0, pruneBeforeMs); err != nil {
+					e.metrics.StoreError("zremrangebyscore_campaign_freq", err)
+				}
+				_ = e.store.ZExpire(ctx, campFreqKey, 30*24*time.Hour)
+			}
+		}
+
+		// Intent timestamp.
+		intentKey := fmt.Sprintf("intent:%s:%s", req.PackageID, hash)
+		if err := e.store.Set(ctx, intentKey, nowStr, 7*24*time.Hour); err != nil {
+			e.metrics.StoreError("set_intent", err)
+		}
 	}
 
 	e.metrics.ExposureRecorded(req.PackageID)
@@ -672,6 +708,11 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 		if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
 			rules := toFrequencyRules(campCfg.FrequencyRules)
 			shortestRule := rules[0]
+			for _, r := range rules[1:] {
+				if r.Window < shortestRule.Window {
+					shortestRule = r
+				}
+			}
 			windowStart := now.Add(-shortestRule.Window).Unix()
 			count := 0
 			for i := range firstLog.Len() {

@@ -230,7 +230,15 @@ func (m *MockStore) Exists(_ context.Context, key string) (bool, error) {
 func (m *MockStore) ZAdd(_ context.Context, key string, score float64, member string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.zsets[key] = append(m.zsets[key], zsetMember{score: score, member: member})
+	// Match Redis semantics: update score if member already exists.
+	members := m.zsets[key]
+	for i, z := range members {
+		if z.member == member {
+			members[i].score = score
+			return nil
+		}
+	}
+	m.zsets[key] = append(members, zsetMember{score: score, member: member})
 	return nil
 }
 
@@ -261,6 +269,20 @@ func (m *MockStore) ZExpire(_ context.Context, key string, ttl time.Duration) er
 	} else {
 		delete(m.expiry, key)
 	}
+	return nil
+}
+
+func (m *MockStore) ZRemRangeByScore(_ context.Context, key string, min, max float64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	members := m.zsets[key]
+	kept := members[:0]
+	for _, z := range members {
+		if z.score < min || z.score > max {
+			kept = append(kept, z)
+		}
+	}
+	m.zsets[key] = kept
 	return nil
 }
 

@@ -644,3 +644,161 @@ func TestIdentity_RequestIDPreserved(t *testing.T) {
 		t.Errorf("expected request_id 'keep-this', got %q", resp.RequestID)
 	}
 }
+
+// --- Non-Resolved Identity Tests (sorted-set frequency capping) ---
+
+func TestIdentityNonResolved_PackageFrequencyCap(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	store.SetAdd("audience:cooking", HashToken("user-abc"))
+
+	// Record 3 exposures (package cap = 3/24h).
+	for i := range 3 {
+		_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-abc", PackageID: "pkg-display-001",
+			ImpressionID: fmt.Sprintf("imp-nr-%d", i),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-pkg-cap", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Eligibility[0].Eligible {
+		t.Error("pkg-display-001 should be package-capped via sorted set (3/3)")
+	}
+}
+
+func TestIdentityNonResolved_CampaignFrequencyCap(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	store.SetAdd("audience:cooking", HashToken("user-abc"))
+
+	// 5 exposures across two packages in campaign-acme (cap = 5/7d).
+	for i := range 3 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-abc", PackageID: "pkg-display-001",
+			ImpressionID: fmt.Sprintf("imp-nr-camp-1-%d", i),
+		})
+	}
+	for i := range 2 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-abc", PackageID: "pkg-display-002",
+			ImpressionID: fmt.Sprintf("imp-nr-camp-2-%d", i),
+		})
+	}
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-camp-cap", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range resp.Eligibility {
+		if e.Eligible {
+			t.Errorf("%s should be campaign-capped via sorted set", e.PackageID)
+		}
+	}
+}
+
+func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	store.SetAdd("audience:cooking", HashToken("user-abc"))
+
+	// 3 exposures (hits package cap of 3/24h).
+	for i := range 3 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-abc", PackageID: "pkg-display-001",
+			ImpressionID: fmt.Sprintf("imp-nr-window-%d", i),
+		})
+	}
+
+	resp, _ := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-before", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	if resp.Eligibility[0].Eligible {
+		t.Error("should be capped (3/3)")
+	}
+
+	// Advance past 24h window.
+	future := now.Add(25 * time.Hour)
+	engine.Now = func() time.Time { return future }
+	store.Now = func() time.Time { return future }
+
+	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-after", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	if !resp.Eligibility[0].Eligible {
+		t.Error("should be eligible after window expires")
+	}
+}
+
+func TestIdentityNonResolved_IntentScore(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	store.SetAdd("audience:cooking", HashToken("user-abc"))
+
+	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		UserToken: "user-abc", PackageID: "pkg-display-001",
+	})
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-intent", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Eligibility[0].IntentScore == nil || *resp.Eligibility[0].IntentScore < 0.99 {
+		t.Error("expected high intent score after recent exposure")
+	}
+}
+
+func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	store.SetAdd("audience:cooking", HashToken("user-abc"))
+
+	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
+	for i := range 3 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-abc", PackageID: "pkg-display-001",
+			ImpressionID: fmt.Sprintf("imp-nr-mixed-%d", i),
+		})
+	}
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "nr-mixed", UserToken: "user-abc",
+		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byPkg := map[string]tmproto.PackageEligibility{}
+	for _, e := range resp.Eligibility {
+		byPkg[e.PackageID] = e
+	}
+	if byPkg["pkg-display-001"].Eligible {
+		t.Error("pkg-display-001 should be package-capped (3/3)")
+	}
+	if !byPkg["pkg-display-002"].Eligible {
+		t.Error("pkg-display-002 should still be eligible")
+	}
+}

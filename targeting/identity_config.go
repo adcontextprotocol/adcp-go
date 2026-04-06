@@ -138,6 +138,24 @@ func batchLoadCampaignFreqConfigs(ctx context.Context, store Store, campaignIDs 
 	return result, nil
 }
 
+// SeedPackageIdentityConfig writes identity config for a package to any Store.
+func SeedPackageIdentityConfig(ctx context.Context, store Store, pkgID string, cfg PackageIdentityConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return store.Set(ctx, fmt.Sprintf("config:pkg:%s", pkgID), string(data), 0)
+}
+
+// SeedCampaignFreqConfig writes frequency config for a campaign to any Store.
+func SeedCampaignFreqConfig(ctx context.Context, store Store, campaignID string, cfg CampaignFreqConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return store.Set(ctx, fmt.Sprintf("config:campaign:%s", campaignID), string(data), 0)
+}
+
 // loadCampaignFreqConfig reads frequency cap config for a campaign from the Store.
 // Returns nil if no config is found.
 func loadCampaignFreqConfig(ctx context.Context, store Store, campaignID string) (*CampaignFreqConfig, error) {
