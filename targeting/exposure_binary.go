@@ -2,22 +2,49 @@ package targeting
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash/fnv"
 )
 
-// BinaryExposureEntry is a fixed-size exposure record (32 bytes).
-// Layout: timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8)
-const binaryEntrySize = 32
+// Binary exposure log format:
+//
+//	Header (4 bytes): version(uint16) + entrySize(uint16)
+//	Entries: N fixed-size records, layout depends on version.
+//
+// Version 1 entry (32 bytes):
+//
+//	timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8)
+const (
+	binaryHeaderSize  = 4
+	binaryVersion1    = 1
+	binaryEntrySize   = 32
+)
+
+var (
+	ErrBinaryTooShort      = errors.New("binary log too short for header")
+	ErrBinaryUnknownVersion = fmt.Errorf("unknown binary log version (supported: %d)", binaryVersion1)
+	ErrBinaryCorrupt       = errors.New("binary log size not aligned to entry size")
+)
 
 // BinaryExposureLog is a compact byte-slice exposure log.
-// No parsing needed — direct offset arithmetic.
+// Format: 4-byte header + N fixed-size entries.
 type BinaryExposureLog []byte
+
+// newBinaryLog allocates a versioned binary log buffer with capacity for n entries.
+func newBinaryLog(n int) []byte {
+	buf := make([]byte, binaryHeaderSize, binaryHeaderSize+n*binaryEntrySize)
+	binary.LittleEndian.PutUint16(buf[0:], binaryVersion1)
+	binary.LittleEndian.PutUint16(buf[2:], binaryEntrySize)
+	return buf
+}
 
 // EncodeBinaryExposureLog converts a JSON exposure log to binary format.
 func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
-	buf := make([]byte, len(log)*binaryEntrySize)
+	buf := newBinaryLog(len(log))
+	buf = buf[:binaryHeaderSize+len(log)*binaryEntrySize]
 	for i, e := range log {
-		offset := i * binaryEntrySize
+		offset := binaryHeaderSize + i*binaryEntrySize
 		binary.LittleEndian.PutUint64(buf[offset:], uint64(e.Timestamp)) //nolint:gosec // timestamp is always positive
 		binary.LittleEndian.PutUint64(buf[offset+8:], hashString(e.ImpressionID))
 		binary.LittleEndian.PutUint64(buf[offset+16:], hashString(e.PackageID))
@@ -26,35 +53,79 @@ func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
 	return buf
 }
 
-// Len returns the number of entries.
+// ValidateBinaryLog checks that the header is well-formed and the payload is aligned.
+func ValidateBinaryLog(b BinaryExposureLog) error {
+	if len(b) < binaryHeaderSize {
+		return ErrBinaryTooShort
+	}
+	version := binary.LittleEndian.Uint16(b[0:])
+	if version != binaryVersion1 {
+		return ErrBinaryUnknownVersion
+	}
+	entrySize := int(binary.LittleEndian.Uint16(b[2:]))
+	if entrySize != binaryEntrySize {
+		return ErrBinaryCorrupt
+	}
+	payload := len(b) - binaryHeaderSize
+	if payload%entrySize != 0 {
+		return ErrBinaryCorrupt
+	}
+	return nil
+}
+
+// Version returns the format version from the header. Returns 0 for nil/short slices.
+func (b BinaryExposureLog) Version() uint16 {
+	if len(b) < binaryHeaderSize {
+		return 0
+	}
+	return binary.LittleEndian.Uint16(b[0:])
+}
+
+// EntrySize returns the per-entry byte size from the header. Returns 0 for nil/short slices.
+func (b BinaryExposureLog) EntrySize() uint16 {
+	if len(b) < binaryHeaderSize {
+		return 0
+	}
+	return binary.LittleEndian.Uint16(b[2:])
+}
+
+// Len returns the number of entries. Returns 0 for nil/short/corrupt slices.
 func (b BinaryExposureLog) Len() int {
-	return len(b) / binaryEntrySize
+	if len(b) < binaryHeaderSize {
+		return 0
+	}
+	return (len(b) - binaryHeaderSize) / binaryEntrySize
+}
+
+// entryOffset returns the byte offset for entry i.
+// Caller must ensure 0 <= i < Len().
+func (b BinaryExposureLog) entryOffset(i int) int {
+	return binaryHeaderSize + i*binaryEntrySize
 }
 
 // Timestamp returns the timestamp of entry i.
 func (b BinaryExposureLog) Timestamp(i int) int64 {
-	return int64(binary.LittleEndian.Uint64(b[i*binaryEntrySize:])) //nolint:gosec // timestamp stored as uint64, always positive
+	return int64(binary.LittleEndian.Uint64(b[b.entryOffset(i):])) //nolint:gosec // timestamp stored as uint64, always positive
 }
 
 // ImpressionHash returns the impression ID hash of entry i.
 func (b BinaryExposureLog) ImpressionHash(i int) uint64 {
-	return binary.LittleEndian.Uint64(b[i*binaryEntrySize+8:])
+	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+8:])
 }
 
 // PackageHash returns the package ID hash of entry i.
 func (b BinaryExposureLog) PackageHash(i int) uint64 {
-	return binary.LittleEndian.Uint64(b[i*binaryEntrySize+16:])
+	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+16:])
 }
 
 // CampaignHash returns the campaign ID hash of entry i.
 func (b BinaryExposureLog) CampaignHash(i int) uint64 {
-	return binary.LittleEndian.Uint64(b[i*binaryEntrySize+24:])
+	return binary.LittleEndian.Uint64(b[b.entryOffset(i)+24:])
 }
 
 // MergeBinaryLogs merges multiple binary logs, deduplicating by impression hash.
-// Returns a new binary log.
+// Returns a new versioned binary log.
 func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
-	// Count total entries.
 	total := 0
 	for _, log := range logs {
 		total += log.Len()
@@ -64,7 +135,7 @@ func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 	}
 
 	seen := make(map[uint64]struct{}, total)
-	result := make([]byte, 0, total*binaryEntrySize)
+	result := newBinaryLog(total)
 
 	for _, log := range logs {
 		for i := range log.Len() {
@@ -73,7 +144,7 @@ func MergeBinaryLogs(logs ...BinaryExposureLog) BinaryExposureLog {
 				continue
 			}
 			seen[impHash] = struct{}{}
-			offset := i * binaryEntrySize
+			offset := log.entryOffset(i)
 			result = append(result, log[offset:offset+binaryEntrySize]...)
 		}
 	}
