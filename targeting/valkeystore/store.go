@@ -3,8 +3,8 @@ package valkeystore
 
 import (
 	"context"
-	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
@@ -61,16 +61,22 @@ func (s *Store) ZAdd(ctx context.Context, key string, score float64, member stri
 }
 
 func (s *Store) ZCount(ctx context.Context, key string, min, max float64) (int64, error) {
-	minStr := fmt.Sprintf("%f", min)
+	minStr := strconv.FormatFloat(min, 'f', -1, 64)
 	maxStr := "+inf"
 	if max != math.MaxFloat64 {
-		maxStr = fmt.Sprintf("%f", max)
+		maxStr = strconv.FormatFloat(max, 'f', -1, 64)
 	}
 	return s.rdb.ZCount(ctx, key, minStr, maxStr).Result()
 }
 
 func (s *Store) ZExpire(ctx context.Context, key string, ttl time.Duration) error {
 	return s.rdb.Expire(ctx, key, ttl).Err()
+}
+
+func (s *Store) ZRemRangeByScore(ctx context.Context, key string, min, max float64) error {
+	minStr := strconv.FormatFloat(min, 'f', -1, 64)
+	maxStr := strconv.FormatFloat(max, 'f', -1, 64)
+	return s.rdb.ZRemRangeByScore(ctx, key, minStr, maxStr).Err()
 }
 
 func (s *Store) SetMembers(ctx context.Context, key string) ([]string, error) {

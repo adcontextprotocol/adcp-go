@@ -1,0 +1,205 @@
+package valkeystore
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+)
+
+// setupIntegration creates an Engine backed by a real Redis (miniredis) Store.
+func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Miniredis) {
+	t.Helper()
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	store := New(rdb)
+	ctx := context.Background()
+
+	// Seed configs via Store.Set (same as production path).
+	seedJSON := func(key string, v any) {
+		t.Helper()
+		data, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.Set(ctx, key, string(data), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	seedJSON("config:pkg:pkg-alpha", targeting.PackageIdentityConfig{
+		CampaignID:     "campaign-x",
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
+		TargetSegments: []string{"sports"},
+	})
+	seedJSON("config:pkg:pkg-beta", targeting.PackageIdentityConfig{
+		CampaignID:     "campaign-x",
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+	})
+	seedJSON("config:campaign:campaign-x", targeting.CampaignFreqConfig{
+		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
+	})
+
+	// Add user to audience segment.
+	tokenHash := targeting.HashToken("user-valkey")
+	mr.SAdd("audience:sports", tokenHash)
+
+	engine := targeting.NewEngine(targeting.EngineConfig{
+		ProviderID: "test-valkey",
+		Store:      store,
+		Packages: []targeting.PackageConfig{
+			{PackageID: "pkg-alpha"},
+			{PackageID: "pkg-beta"},
+		},
+	})
+
+	return engine, store, mr
+}
+
+func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
+	engine, _, mr := setupIntegration(t)
+	defer mr.Close()
+	ctx := context.Background()
+
+	// Record 3 exposures (package cap = 3/24h).
+	for i := range 3 {
+		_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-valkey", PackageID: "pkg-alpha",
+			ImpressionID: fmt.Sprintf("imp-valkey-%d", i),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "valkey-pkg-cap", UserToken: "user-valkey",
+		PackageIDs: []string{"pkg-alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Eligibility[0].Eligible {
+		t.Error("pkg-alpha should be package-capped (3/3)")
+	}
+}
+
+func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
+	engine, _, mr := setupIntegration(t)
+	defer mr.Close()
+	ctx := context.Background()
+
+	// 3 on pkg-alpha + 2 on pkg-beta = 5 total (campaign cap = 5/7d).
+	for i := range 3 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-valkey", PackageID: "pkg-alpha",
+			ImpressionID: fmt.Sprintf("imp-v-camp-a-%d", i),
+		})
+	}
+	for i := range 2 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-valkey", PackageID: "pkg-beta",
+			ImpressionID: fmt.Sprintf("imp-v-camp-b-%d", i),
+		})
+	}
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "valkey-camp-cap", UserToken: "user-valkey",
+		PackageIDs: []string{"pkg-alpha", "pkg-beta"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range resp.Eligibility {
+		if e.Eligible {
+			t.Errorf("%s should be campaign-capped", e.PackageID)
+		}
+	}
+}
+
+func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
+	engine, _, mr := setupIntegration(t)
+	defer mr.Close()
+	ctx := context.Background()
+
+	// 3 exposures hits package cap.
+	for i := range 3 {
+		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+			UserToken: "user-valkey", PackageID: "pkg-alpha",
+			ImpressionID: fmt.Sprintf("imp-v-window-%d", i),
+		})
+	}
+
+	resp, _ := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "v-before", UserToken: "user-valkey",
+		PackageIDs: []string{"pkg-alpha"},
+	})
+	if resp.Eligibility[0].Eligible {
+		t.Error("should be capped")
+	}
+
+	// Fast-forward miniredis past the 24h window.
+	mr.FastForward(25 * time.Hour)
+	// Also advance engine time so ZCount cutoff is correct.
+	engine.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+
+	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "v-after", UserToken: "user-valkey",
+		PackageIDs: []string{"pkg-alpha"},
+	})
+	if !resp.Eligibility[0].Eligible {
+		t.Error("should be eligible after window expires")
+	}
+}
+
+func TestValkeyIntegration_IntentScore(t *testing.T) {
+	engine, _, mr := setupIntegration(t)
+	defer mr.Close()
+	ctx := context.Background()
+
+	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		UserToken: "user-valkey", PackageID: "pkg-alpha",
+	})
+
+	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+		RequestID: "v-intent", UserToken: "user-valkey",
+		PackageIDs: []string{"pkg-alpha"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Eligibility[0].IntentScore == nil || *resp.Eligibility[0].IntentScore < 0.99 {
+		t.Error("expected high intent score after recent exposure")
+	}
+}
+
+func TestValkeyIntegration_ExposureResponse(t *testing.T) {
+	engine, _, mr := setupIntegration(t)
+	defer mr.Close()
+	ctx := context.Background()
+
+	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		UserToken: "user-valkey", PackageID: "pkg-alpha",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.PackageID != "pkg-alpha" {
+		t.Errorf("expected pkg-alpha, got %s", resp.PackageID)
+	}
+	if resp.CampaignCount != 1 {
+		t.Errorf("expected campaign count 1, got %d", resp.CampaignCount)
+	}
+	if resp.CampaignRemaining != 4 {
+		t.Errorf("expected 4 remaining, got %d", resp.CampaignRemaining)
+	}
+}

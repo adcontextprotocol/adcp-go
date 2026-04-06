@@ -32,6 +32,9 @@ type Store interface {
 	// ZExpire sets a TTL on a sorted set key. Zero TTL means no expiry.
 	ZExpire(ctx context.Context, key string, ttl time.Duration) error
 
+	// ZRemRangeByScore removes members with scores in [min, max] from a sorted set.
+	ZRemRangeByScore(ctx context.Context, key string, min, max float64) error
+
 	// SetMembers returns all members of the set at key. Returns nil if the key does not exist.
 	SetMembers(ctx context.Context, key string) ([]string, error)
 
