@@ -841,7 +841,7 @@ func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
 
 	_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
 		SourceID:     "agent-cnn-v2",
-		UserToken:    "user-src2",
+		UserToken:    "user-source-stamp",
 		PackageID:    "pkg-display-001",
 		ImpressionID: "imp-src-2",
 	})
@@ -849,7 +849,7 @@ func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hash := HashToken("user-src2")
+	hash := HashToken("user-source-stamp")
 	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
 	blog := BinaryExposureLog(val)
 	if blog.Len() != 1 {
