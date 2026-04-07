@@ -359,6 +359,7 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 // Minimal Store calls: only suppression checks and artifact→topic resolution.
 // All targeting lookups (property, topic, URL) are in-memory.
 func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+	evalStart := time.Now()
 	rid := req.PropertyRID
 
 	// 1. Global property bitmap (in-memory).
@@ -465,6 +466,8 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 		segments = append(segments, cfg.EmitSegments...)
 	}
 
+	e.metrics.Latency("context_eval", time.Since(evalStart))
+
 	result := &ContextResult{
 		RequestID: req.RequestID,
 		Offers:    offers,
@@ -479,6 +482,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 // binary exposure logs, and lazy dedup. 1 MGet round-trip for all UIDs,
 // then all computation is local with zero allocations per package.
 func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
+	evalStart := time.Now()
 	now := e.now()
 	nowUnix := now.Unix()
 	identities := resolveIdentities(req)
@@ -575,6 +579,8 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		}
 		eligibility = append(eligibility, pe)
 	}
+
+	e.metrics.Latency("identity_eval", time.Since(evalStart))
 
 	return &IdentityResult{
 		RequestID:   req.RequestID,

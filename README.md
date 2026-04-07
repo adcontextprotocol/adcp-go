@@ -11,6 +11,7 @@ Go SDK and reference implementation for the [Ad Context Protocol (AdCP)](https:/
 | `targeting/prommetrics/` | Prometheus metrics (stdlib-only, zero external deps) |
 | `targeting/valkeystore/` | Valkey/Redis `Store` implementation |
 | `router/` | TMP Router — fan-out, merge, privacy enforcement, cached Ed25519 signing |
+| `cmd/router/` | Router binary — Prometheus metrics, env var config, graceful shutdown |
 | `reference/context-agent/` | Reference context match agent — Roaring bitmaps, topic matching |
 | `reference/identity-agent/` | Reference identity match agent — frequency capping, audience matching |
 | `registry/` | AgenticAdvertising.org registry sync client |

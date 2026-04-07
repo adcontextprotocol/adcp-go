@@ -103,7 +103,7 @@ The identity agent is the privacy boundary. When running in a TEE:
 - Frequency cap configurations (via Valkey replication)
 
 **Leaves the TEE (the pinhole):**
-- `PackageEligibility` per package: `{package_id, eligible (bool), intent_score (float64)}`
+- `PackageEligibility` per package: `{package_id, eligible (bool), intent_score (*float64, optional)}`
 - Exposure response: `{package_id, campaign_count, campaign_remaining}`
 - Prometheus metrics (counters and histograms, no user data)
 - Health check responses
@@ -173,17 +173,11 @@ When running in a TEE, Valkey runs as a local sidecar inside the enclave:
 - Data enters via Redis replication over vsock from external primary
 - All data encrypted at rest outside the TEE; decrypted inside
 
-Keys stored in Valkey:
-- `user:profile:<hash>` — segment memberships (JSON)
-- `user:exposures:<hash>` — binary exposure log
-- `freq:pkg:<pkg_id>:<hash>` — package frequency sorted set
-- `freq:campaign:<campaign_id>:<hash>` — campaign frequency sorted set
-- `intent:<pkg_id>:<hash>` — last exposure timestamp
-- `audience:<segment>` — set of user hashes in segment
-- `topics:package:<pkg_id>` — topic set for package
-- `topics:artifact:<url>` — topic set for URL
-- `url:blocklist:<pkg_id>` — blocked URL hashes
-- `url:allowlist:<pkg_id>` — allowed URL hashes
-- `pkg:identity:<pkg_id>` — package identity config (JSON)
-- `campaign:freq:<campaign_id>` — campaign frequency config (JSON)
-- `pkg:context:<pkg_id>` — package context config (JSON)
+Data categories stored in Valkey:
+- User profiles (segment memberships)
+- Exposure logs (binary format)
+- Frequency cap counters (package and campaign level)
+- Intent timestamps
+- Audience sets
+- Topic and URL indexes
+- Package and campaign configuration

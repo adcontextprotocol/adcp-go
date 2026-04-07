@@ -26,7 +26,7 @@ func validateProtocolVersion(v string) error {
 	if v == "" || v == "1.0" {
 		return nil
 	}
-	return fmt.Errorf("unsupported protocol_version: %s", v)
+	return errors.New("unsupported protocol_version")
 }
 
 // ValidateContextRequest checks that required fields are present on a context match request.
