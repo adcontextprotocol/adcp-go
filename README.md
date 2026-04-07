@@ -7,11 +7,24 @@ Go SDK and reference implementation for the [Ad Context Protocol (AdCP)](https:/
 | Package | Description |
 |---------|-------------|
 | `tmproto/` | TMP message types, provider interfaces, JSON codec |
+| `targeting/` | Data-driven targeting engine — property bitmaps, freq caps, audiences, intent |
+| `targeting/prommetrics/` | Prometheus metrics (stdlib-only, zero external deps) |
+| `targeting/valkeystore/` | Valkey/Redis `Store` implementation |
 | `router/` | TMP Router — fan-out, merge, privacy enforcement, cached Ed25519 signing |
-| `reference/context-agent/` | Reference context match agent — Roaring bitmaps, modular pipeline, Valkey |
-| `reference/identity-agent/` | Reference identity match agent — frequency capping, audience matching, expose endpoint |
+| `reference/context-agent/` | Reference context match agent — Roaring bitmaps, topic matching |
+| `reference/identity-agent/` | Reference identity match agent — frequency capping, audience matching |
+| `registry/` | AgenticAdvertising.org registry sync client |
+| `tmpclient/` | Publisher-side TMP client library |
 | `bench/` | Performance benchmarks — OpenRTB vs TMP JSON |
 | `e2e/` | End-to-end tests — multi-agent, chat simulation, frequency capping |
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [`docs/network-surface.md`](docs/network-surface.md) | Port map, data flow, TEE pinhole spec, env var reference |
+| [`docs/embedding.md`](docs/embedding.md) | Guide for embedding the router in existing systems (e.g., Prebid Server) |
+| [`AGENTS.md`](AGENTS.md) | Agent guidelines — hardening priorities, architecture, key files |
 
 ## Quick start
 
