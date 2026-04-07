@@ -1,5 +1,7 @@
 package targeting
 
+import "time"
+
 // Evaluation stage constants.
 const (
 	StagePropertyBitmap = "property_bitmap"
@@ -13,13 +15,14 @@ const (
 )
 
 // Metrics receives instrumentation callbacks from the targeting engine.
-// Implementations can map these to Prometheus counters, OpenTelemetry spans,
-// or structured logging. The noop default adds zero overhead.
+// Implementations can map these to Prometheus counters or structured logging.
+// The noop default adds zero overhead.
 type Metrics interface {
 	ContextEvaluated(packageID, stage string, passed bool)
 	IdentityEvaluated(packageID, stage string, passed bool)
 	ExposureRecorded(packageID string)
 	StoreError(operation string, err error)
+	Latency(stage string, d time.Duration)
 }
 
 type noopMetrics struct{}
@@ -28,3 +31,4 @@ func (noopMetrics) ContextEvaluated(string, string, bool) {}
 func (noopMetrics) IdentityEvaluated(string, string, bool) {}
 func (noopMetrics) ExposureRecorded(string) {}
 func (noopMetrics) StoreError(string, error) {}
+func (noopMetrics) Latency(string, time.Duration) {}

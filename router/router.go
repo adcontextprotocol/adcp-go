@@ -377,7 +377,6 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 
 	// Fan out to all identity providers (expose is idempotent).
 	var lastResp *tmproto.ExposeResponse
-	var lastErr error
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -402,18 +401,13 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 			}
 			mu.Lock()
 			lastResp = &expResp
-			lastErr = nil
 			mu.Unlock()
 		}(p)
 	}
 	wg.Wait()
 
 	if lastResp == nil {
-		if lastErr != nil {
-			writeError(w, "", tmproto.ErrorCodeProviderUnavailable, lastErr.Error())
-		} else {
-			writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
-		}
+		writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
 		return
 	}
 
