@@ -5,27 +5,40 @@ import (
 	"encoding/json"
 	"flag"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/targeting/valkeystore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/redis/go-redis/v9"
 )
 
+var version = "dev"
+
 func main() {
-	addr := flag.String("addr", ":8082", "Listen address")
+	addr := flag.String("addr", "", "Listen address")
 	redisAddr := flag.String("redis-addr", "", "Redis/Valkey address (e.g. localhost:6379). Falls back to in-memory store if empty or unreachable.")
 	flag.Parse()
 
-	store := initStore(*redisAddr)
+	// Resolve config: flags > env vars > defaults.
+	listenAddr := resolveAddr(*addr)
+	storeAddr := resolveRedisAddr(*redisAddr)
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	metrics := prommetrics.New()
+	store := initStore(storeAddr)
 	seedConfigs(store)
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "reference-identity-agent",
 		Store:      store,
+		Metrics:    metrics,
 		Packages: []targeting.PackageConfig{
 			{PackageID: "pkg-display-0041"},
 			{PackageID: "pkg-display-0042"},
@@ -36,6 +49,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -55,7 +69,7 @@ func main() {
 		}
 		result, err := engine.EvaluateIdentity(r.Context(), &req)
 		if err != nil {
-			log.Printf("EvaluateIdentity error: %v", err)
+			slog.Error("EvaluateIdentity failed", "request_id", req.RequestID, "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
 			return
@@ -66,6 +80,7 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
+		slog.Debug("identity match", "request_id", req.RequestID, "packages", len(req.PackageIDs), "latency_ms", time.Since(start).Milliseconds())
 	})
 
 	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +103,7 @@ func main() {
 		}
 		resp, err := engine.RecordExposure(r.Context(), &req)
 		if err != nil {
-			log.Printf("RecordExposure error: %v", err)
+			slog.Error("RecordExposure failed", "package_id", req.PackageID, "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
 			return
@@ -97,21 +112,50 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
+	mux.Handle("GET /metrics", metrics.Registry.Handler())
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"version": version,
+		})
+	})
+
 	srv := &http.Server{
-		Addr:         *addr,
+		Addr:         listenAddr,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	log.Printf("Identity Agent listening on %s", *addr)
-	log.Fatal(srv.ListenAndServe())
+	slog.Info("Identity Agent starting", "addr", listenAddr, "version", version)
+	if err := srv.ListenAndServe(); err != nil {
+		slog.Error("listen error", "error", err)
+		os.Exit(1)
+	}
+}
+
+func resolveAddr(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	if env := os.Getenv("TMP_IDENTITY_ADDR"); env != "" {
+		return env
+	}
+	return ":8082"
+}
+
+func resolveRedisAddr(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv("TMP_IDENTITY_REDIS_ADDR")
 }
 
 // initStore creates a ValkeyStore if redis-addr is provided and reachable,
 // otherwise falls back to an in-memory MockStore.
 func initStore(redisAddr string) targeting.Store {
 	if redisAddr == "" {
-		log.Println("No --redis-addr provided, using in-memory store")
+		slog.Info("No redis address configured, using in-memory store")
 		return targeting.NewMockStore()
 	}
 
@@ -128,11 +172,11 @@ func initStore(redisAddr string) targeting.Store {
 	defer cancel()
 
 	if err := rdb.Ping(ctx).Err(); err != nil {
-		log.Printf("Cannot reach Redis at %s (%v), falling back to in-memory store", redisAddr, err)
+		slog.Warn("Cannot reach Redis, falling back to in-memory store", "addr", redisAddr, "error", err)
 		return targeting.NewMockStore()
 	}
 
-	log.Printf("Connected to Redis/Valkey at %s", redisAddr)
+	slog.Info("Connected to Redis/Valkey", "addr", redisAddr)
 	return valkeystore.New(rdb)
 }
 
@@ -164,7 +208,8 @@ func seedConfigs(store targeting.Store) {
 	}
 	for _, c := range configs {
 		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
-			log.Fatalf("seed package config %s: %v", c.pkgID, err)
+			slog.Error("seed package config failed", "package_id", c.pkgID, "error", err)
+			os.Exit(1)
 		}
 	}
 
@@ -181,7 +226,8 @@ func seedConfigs(store targeting.Store) {
 	}
 	for _, c := range campaigns {
 		if err := targeting.SeedCampaignFreqConfig(ctx, store, c.campaignID, c.cfg); err != nil {
-			log.Fatalf("seed campaign config %s: %v", c.campaignID, err)
+			slog.Error("seed campaign config failed", "campaign_id", c.campaignID, "error", err)
+			os.Exit(1)
 		}
 	}
 }

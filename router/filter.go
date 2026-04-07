@@ -58,44 +58,28 @@ func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
 // matchGlob matches a simple glob pattern against a string.
 // Supports only '*' (matches any sequence of characters) and '?' (matches any single character).
 // Unlike filepath.Match, this has no platform-specific behavior.
+// Uses a linear-time NFA algorithm — O(len(pattern) * len(s)) worst case.
 func matchGlob(pattern, s string) bool {
-	return matchGlobBounded(pattern, s, 0)
-}
-
-func matchGlobBounded(pattern, s string, depth int) bool {
-	if depth > 100 {
-		return false
-	}
-	for len(pattern) > 0 {
-		switch pattern[0] {
-		case '*':
-			// Trim consecutive stars
-			for len(pattern) > 0 && pattern[0] == '*' {
-				pattern = pattern[1:]
-			}
-			if len(pattern) == 0 {
-				return true
-			}
-			// Try matching rest of pattern at every position
-			for i := 0; i <= len(s); i++ {
-				if matchGlobBounded(pattern, s[i:], depth+1) {
-					return true
-				}
-			}
+	px, sx := 0, 0
+	starPx, starSx := -1, -1
+	for sx < len(s) {
+		if px < len(pattern) && (pattern[px] == '?' || pattern[px] == s[sx]) {
+			px++
+			sx++
+		} else if px < len(pattern) && pattern[px] == '*' {
+			starPx = px
+			starSx = sx
+			px++
+		} else if starPx >= 0 {
+			starSx++
+			sx = starSx
+			px = starPx + 1
+		} else {
 			return false
-		case '?':
-			if len(s) == 0 {
-				return false
-			}
-			pattern = pattern[1:]
-			s = s[1:]
-		default:
-			if len(s) == 0 || pattern[0] != s[0] {
-				return false
-			}
-			pattern = pattern[1:]
-			s = s[1:]
 		}
 	}
-	return len(s) == 0
+	for px < len(pattern) && pattern[px] == '*' {
+		px++
+	}
+	return px == len(pattern)
 }

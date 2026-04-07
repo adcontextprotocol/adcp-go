@@ -5,10 +5,12 @@ go 1.25
 use (
 	.
 	./bench
+	./cmd/router
 	./e2e
 	./internal/generate
 	./reference/context-agent
 	./reference/identity-agent
 	./registry
+	./targeting/prommetrics
 	./targeting/valkeystore
 )

@@ -97,6 +97,7 @@ type ContextResult struct {
 //  3. Signature verification (sampling)
 //  4. Per-package: property bitmap → URL filter → topic match → offers + segments
 func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+	evalStart := time.Now()
 	rid := req.PropertyRID
 
 	// 1. Global property bitmap (in-memory, no degradation needed).
@@ -105,10 +106,12 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 	}
 
 	// 2. Suppression (graceful: skip on Store error).
+	suppressionStart := time.Now()
 	suppressed, err := e.isPropertySuppressed(ctx, rid)
 	if err != nil {
 		e.metrics.StoreError(StageSuppression, err)
 	} else if suppressed {
+		e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
 	if req.Geo != nil {
@@ -116,14 +119,18 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		if err != nil {
 			e.metrics.StoreError(StageSuppression, err)
 		} else if geoSuppressed {
+			e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
 			return &ContextResult{RequestID: req.RequestID}, nil
 		}
 	}
+	e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
 
 	// 3. Signature verification (not Store-dependent, errors are hard failures).
+	sigStart := time.Now()
 	if err := e.verifySignature(ctx, req); err != nil {
 		return nil, fmt.Errorf("signature verification for property %d: %w", rid, err)
 	}
+	e.metrics.Latency(StageSignature, time.Since(sigStart))
 
 	// 4. Per-package evaluation.
 	// In dynamic mode, batch-load all context configs from Store (1 MGet).
@@ -214,6 +221,8 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		segments = append(segments, emitSegments...)
 	}
 
+	e.metrics.Latency("context_eval", time.Since(evalStart))
+
 	result := &ContextResult{
 		RequestID: req.RequestID,
 		Offers:    offers,
@@ -238,6 +247,7 @@ type IdentityResult struct {
 //  3. Audience segment match
 //  4. Intent score
 func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
+	evalStart := time.Now()
 	tokenHash := HashToken(req.UserToken)
 	now := e.now()
 
@@ -337,6 +347,8 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 		eligibility = append(eligibility, pe)
 	}
 
+	e.metrics.Latency("identity_eval", time.Since(evalStart))
+
 	return &IdentityResult{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
@@ -347,6 +359,7 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 // Minimal Store calls: only suppression checks and artifact→topic resolution.
 // All targeting lookups (property, topic, URL) are in-memory.
 func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+	evalStart := time.Now()
 	rid := req.PropertyRID
 
 	// 1. Global property bitmap (in-memory).
@@ -453,6 +466,8 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 		segments = append(segments, cfg.EmitSegments...)
 	}
 
+	e.metrics.Latency("context_eval", time.Since(evalStart))
+
 	result := &ContextResult{
 		RequestID: req.RequestID,
 		Offers:    offers,
@@ -467,6 +482,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 // binary exposure logs, and lazy dedup. 1 MGet round-trip for all UIDs,
 // then all computation is local with zero allocations per package.
 func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
+	evalStart := time.Now()
 	now := e.now()
 	nowUnix := now.Unix()
 	identities := resolveIdentities(req)
@@ -563,6 +579,8 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		}
 		eligibility = append(eligibility, pe)
 	}
+
+	e.metrics.Latency("identity_eval", time.Since(evalStart))
 
 	return &IdentityResult{
 		RequestID:   req.RequestID,
