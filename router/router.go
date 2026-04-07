@@ -21,13 +21,29 @@ type Router struct {
 	sigCache  *SignatureCache // nil = no signing
 	health    *ProviderHealth // nil = no health tracking
 	client    *http.Client
+	logger    *slog.Logger
+}
+
+// RouterOption configures a Router.
+type RouterOption func(*Router)
+
+// WithHTTPClient sets the HTTP client used for provider calls.
+// Use this to inject custom TLS configuration, tracing middleware,
+// or connection pooling when embedding the router in another system.
+func WithHTTPClient(c *http.Client) RouterOption {
+	return func(r *Router) { r.client = c }
+}
+
+// WithLogger sets the logger for the router. Defaults to slog.Default().
+func WithLogger(l *slog.Logger) RouterOption {
+	return func(r *Router) { r.logger = l }
 }
 
 // NewRouter creates a router with the given provider configuration and registry.
 // sigCache is optional — pass nil to disable request signing.
-func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth) *Router {
+func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth, opts ...RouterOption) *Router {
 	maxPerHost := max(len(providers), 10)
-	return &Router{
+	r := &Router{
 		providers: providers,
 		registry:  registry,
 		sigCache:  sigCache,
@@ -39,26 +55,31 @@ func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *Signatu
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
+		logger: slog.Default(),
 	}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
 }
 
 // HandleContextMatch processes a context match request.
 func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
 	if err != nil {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
 
 	var cmReq tmproto.ContextMatchRequest
 	if err := json.Unmarshal(body, &cmReq); err != nil {
-		slog.Debug("invalid JSON in context match request", "error", err)
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
+		r.logger.Debug("invalid JSON in context match request", "error", err)
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 
 	if err := ValidateContextRequest(&cmReq); err != nil {
-		writeError(w, cmReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
+		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -98,7 +119,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
-		slog.Debug("failed to write context response", "error", err)
+		r.logger.Debug("failed to write context response", "error", err)
 	}
 }
 
@@ -106,19 +127,19 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
 	if err != nil {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
 
 	var imReq tmproto.IdentityMatchRequest
 	if err := json.Unmarshal(body, &imReq); err != nil {
-		slog.Debug("invalid JSON in identity match request", "error", err)
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
+		r.logger.Debug("invalid JSON in identity match request", "error", err)
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 
 	if err := ValidateIdentityRequest(&imReq); err != nil {
-		writeError(w, imReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
+		r.writeError(w, imReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
 		return
 	}
 
@@ -138,7 +159,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
-		slog.Debug("failed to write identity response", "error", err)
+		r.logger.Debug("failed to write identity response", "error", err)
 	}
 }
 
@@ -348,22 +369,22 @@ func mergeIdentityResponses(requestID string, responses []*tmproto.IdentityMatch
 func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024))
 	if err != nil {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
 
 	// Validate the request.
 	var expReq tmproto.ExposeRequest
 	if err := json.Unmarshal(body, &expReq); err != nil {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 	if expReq.PackageID == "" {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "package_id is required")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "package_id is required")
 		return
 	}
 	if expReq.UserToken == "" && len(expReq.Identities) == 0 {
-		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "user_token or identities is required")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "user_token or identities is required")
 		return
 	}
 
@@ -407,13 +428,13 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 	wg.Wait()
 
 	if lastResp == nil {
-		writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
+		r.writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(lastResp); err != nil {
-		slog.Debug("failed to write expose response", "error", err)
+		r.logger.Debug("failed to write expose response", "error", err)
 	}
 }
 
@@ -437,7 +458,7 @@ func filterPackagesForProvider(pkgs []tmproto.AvailablePackage, p *ProviderConfi
 
 // filterPackageIDsForProvider filters a PackageIDs list if the provider has PackageIDs configured.
 
-func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {
+func (r *Router) writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	status := http.StatusBadRequest
 	switch code {
@@ -456,6 +477,6 @@ func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode,
 		Code:      code,
 		Message:   message,
 	}); err != nil {
-		slog.Debug("failed to write error response", "error", err)
+		r.logger.Debug("failed to write error response", "error", err)
 	}
 }
