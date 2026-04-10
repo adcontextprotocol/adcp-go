@@ -1740,24 +1740,6 @@ type SyncAccountsRequest struct {
 	Ext any `json:"ext,omitempty"`
 }
 
-// SyncAccountsResponse is a discriminated union — use the appropriate variant type.
-type SyncAccountsResponse = any
-
-// SyncAccountsSuccess — Sync operation processed accounts (individual accounts may be pending or have action=failed)
-type SyncAccountsSuccess struct {
-	DryRun bool `json:"dry_run,omitempty"` // Whether this was a dry run (no actual changes made)
-	Accounts []any `json:"accounts"` // Results for each account processed
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// SyncAccountsError — Operation failed completely, no accounts were processed
-type SyncAccountsError struct {
-	Errors []AdcpError `json:"errors"` // Operation-level errors (e.g., authentication failure, service unavailable)
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
 // SyncGovernanceRequest — Sync governance agent endpoints against specific accounts. The seller persists these governance agen
 type SyncGovernanceRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
@@ -1989,49 +1971,12 @@ type SyncCatalogsRequest struct {
 	Ext any `json:"ext,omitempty"`
 }
 
-// SyncCatalogsResponse is a discriminated union — use the appropriate variant type.
-type SyncCatalogsResponse = any
-
-// SyncCatalogsSuccess — Success response - sync operation processed catalogs (may include per-catalog failures)
-type SyncCatalogsSuccess struct {
-	DryRun bool `json:"dry_run,omitempty"` // Whether this was a dry run (no actual changes made)
-	Catalogs []any `json:"catalogs"` // Results for each catalog processed. Items with action='failed' indicate per-cata
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// SyncCatalogsError — Error response - operation failed completely, no catalogs were processed
-type SyncCatalogsError struct {
-	Errors []AdcpError `json:"errors"` // Operation-level errors that prevented processing any catalogs (e.g., authenticat
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
 // SyncEventSourcesRequest — Request parameters for configuring event sources on an account with upsert semantics. Existing event
 type SyncEventSourcesRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	Account any `json:"account"` // Account to configure event sources for.
 	EventSources []any `json:"event_sources,omitempty"` // Event sources to sync (create or update). When omitted, the call is discovery-on
 	DeleteMissing bool `json:"delete_missing,omitempty"` // When true, event sources not included in this sync will be removed
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// SyncEventSourcesResponse is a discriminated union — use the appropriate variant type.
-type SyncEventSourcesResponse = any
-
-// SyncEventSourcesSuccess — Success response - sync operation processed event sources
-type SyncEventSourcesSuccess struct {
-	EventSources []any `json:"event_sources"` // Results for each event source, including both synced and seller-managed sources 
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// SyncEventSourcesError — Error response - operation failed completely
-type SyncEventSourcesError struct {
-	Errors []AdcpError `json:"errors"` // Operation-level errors that prevented processing
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2043,28 +1988,6 @@ type LogEventRequest struct {
 	TestEventCode string `json:"test_event_code,omitempty"` // Test event code for validation without affecting production data. Events with th
 	Events []any `json:"events"` // Events to log
 	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate event logging o
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// LogEventResponse is a discriminated union — use the appropriate variant type.
-type LogEventResponse = any
-
-// LogEventSuccess — Success response - events received and queued for processing
-type LogEventSuccess struct {
-	EventsReceived int `json:"events_received"` // Number of events received
-	EventsProcessed int `json:"events_processed"` // Number of events successfully queued for processing
-	PartialFailures []any `json:"partial_failures,omitempty"` // Events that failed validation
-	Warnings []string `json:"warnings,omitempty"` // Non-fatal issues (low match quality, missing recommended fields, deprecation not
-	MatchQuality float64 `json:"match_quality,omitempty"` // Overall match quality score for the batch (0.0 = no matches, 1.0 = all matched)
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// LogEventError — Error response - request failed entirely
-type LogEventError struct {
-	Errors []AdcpError `json:"errors"` // Operation-level errors
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2127,46 +2050,6 @@ type BuildCreativeRequest struct {
 	Ext any `json:"ext,omitempty"`
 }
 
-// BuildCreativeResponse is a discriminated union — use the appropriate variant type.
-type BuildCreativeResponse = any
-
-// BuildCreativeSuccess — Single-format success response. Returned when the request used target_format_id.
-type BuildCreativeSuccess struct {
-	CreativeManifest any `json:"creative_manifest"` // The generated or transformed creative manifest
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	ExpiresAt string `json:"expires_at,omitempty"` // ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the 
-	Preview any `json:"preview,omitempty"` // Preview renders included when the request set include_preview to true and the ag
-	PreviewError AdcpError `json:"preview_error,omitempty"` // When include_preview was true in the request but preview generation failed. Uses
-	PricingOptionID string `json:"pricing_option_id,omitempty"` // Which rate card pricing option was applied for this build. Present when the crea
-	VendorCost float64 `json:"vendor_cost,omitempty"` // Cost incurred for this build, denominated in currency. May be 0 for CPM-priced c
-	Currency string `json:"currency,omitempty"` // ISO 4217 currency code for vendor_cost.
-	Consumption any `json:"consumption,omitempty"` // Structured consumption details for this build. Informational — lets the buyer ve
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// BuildCreativeMultiSuccess — Multi-format success response. Returned when the request used target_format_ids. Contains one manife
-type BuildCreativeMultiSuccess struct {
-	CreativeManifests []any `json:"creative_manifests"` // Array of generated creative manifests, one per requested format. Each manifest c
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	ExpiresAt string `json:"expires_at,omitempty"` // ISO 8601 timestamp when the earliest generated asset URL expires across all mani
-	Preview any `json:"preview,omitempty"` // Preview renders included when the request set include_preview to true and the ag
-	PreviewError AdcpError `json:"preview_error,omitempty"` // When include_preview was true in the request but preview generation failed. Uses
-	PricingOptionID string `json:"pricing_option_id,omitempty"` // Which rate card pricing option was applied for this build. Represents the total 
-	VendorCost float64 `json:"vendor_cost,omitempty"` // Total cost incurred for this multi-format build, denominated in currency. May be
-	Currency string `json:"currency,omitempty"` // ISO 4217 currency code for vendor_cost.
-	Consumption any `json:"consumption,omitempty"` // Structured consumption details for this build. Informational — lets the buyer ve
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// BuildCreativeError — Error response - creative generation failed
-type BuildCreativeError struct {
-	Errors []AdcpError `json:"errors"` // Array of errors explaining why creative generation failed
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
 // SyncCreativesRequest — Request parameters for syncing creative assets with upsert semantics - supports bulk operations, sco
 type SyncCreativesRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
@@ -2200,54 +2083,8 @@ type ListCreativesRequest struct {
 	Ext any `json:"ext,omitempty"`
 }
 
-// ListCreativesResponse — Response from creative library query with filtered results, metadata, and optional enriched data
-type ListCreativesResponse struct {
-	QuerySummary any `json:"query_summary"` // Summary of the query that was executed
-	Pagination any `json:"pagination"`
-	Creatives []any `json:"creatives"` // Array of creative assets matching the query
-	FormatSummary map[string]any `json:"format_summary,omitempty"` // Breakdown of creatives by format. Keys are agent-defined format identifiers, opt
-	StatusSummary any `json:"status_summary,omitempty"` // Breakdown of creatives by status
-	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors (e.g., invalid filters, account not found)
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
 // PreviewCreativeRequest is a discriminated union — use the appropriate variant type.
 type PreviewCreativeRequest = any
-
-// PreviewCreativeResponse is a discriminated union — use the appropriate variant type.
-type PreviewCreativeResponse = any
-
-// PreviewCreativeSingleResponse — Single preview response - each preview URL returns an HTML page that can be embedded in an iframe
-type PreviewCreativeSingleResponse struct {
-	ResponseType string `json:"response_type"` // Discriminator indicating this is a single preview response
-	Previews []any `json:"previews"` // Array of preview variants. Each preview corresponds to an input set from the req
-	InteractiveURL string `json:"interactive_url,omitempty"` // Optional URL to an interactive testing page that shows all preview variants with
-	ExpiresAt string `json:"expires_at"` // ISO 8601 timestamp when preview links expire
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// PreviewCreativeBatchResponse — Batch preview response - contains results for multiple creative requests
-type PreviewCreativeBatchResponse struct {
-	ResponseType string `json:"response_type"` // Discriminator indicating this is a batch preview response
-	Results []any `json:"results"` // Array of preview results corresponding to each request in the same order. result
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// PreviewCreativeVariantResponse — Variant preview response - shows what a specific creative variant looked like when served during del
-type PreviewCreativeVariantResponse struct {
-	ResponseType string `json:"response_type"` // Discriminator indicating this is a variant preview response
-	VariantID string `json:"variant_id"` // Platform-assigned variant identifier
-	CreativeID string `json:"creative_id,omitempty"` // Creative identifier this variant belongs to
-	Previews []any `json:"previews"` // Array of rendered pieces for this variant. Most formats render as a single piece
-	Manifest any `json:"manifest,omitempty"` // The rendered creative manifest for this variant — the actual output that was ser
-	ExpiresAt string `json:"expires_at,omitempty"` // ISO 8601 timestamp when preview links expire
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
 
 // GetSignalsRequest — Request parameters for discovering and refining signals. Use signal_spec for natural language discov
 type GetSignalsRequest struct {
@@ -2283,24 +2120,6 @@ type ActivateSignalRequest struct {
 	PricingOptionID string `json:"pricing_option_id,omitempty"` // The pricing option selected from the signal's pricing_options in the get_signals
 	Account any `json:"account,omitempty"` // Account for this activation. Associates with a commercial relationship establish
 	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate activations on 
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// ActivateSignalResponse is a discriminated union — use the appropriate variant type.
-type ActivateSignalResponse = any
-
-// ActivateSignalSuccess — Success response - signal activated successfully to one or more deployment targets
-type ActivateSignalSuccess struct {
-	Deployments []Deployment `json:"deployments"` // Array of deployment results for each deployment target
-	Sandbox bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
-	Context any `json:"context,omitempty"`
-	Ext any `json:"ext,omitempty"`
-}
-
-// ActivateSignalError — Error response - operation failed, signal not activated
-type ActivateSignalError struct {
-	Errors []AdcpError `json:"errors"` // Array of errors explaining why activation failed (e.g., platform connectivity is
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }

@@ -43,7 +43,11 @@ KNOWN_TYPES = {
     # From errors.go
     'Error', 'ErrorOptions',
     # From responses.go
-    'SyncCreativesResponse',
+    'SyncCreativesResponse', 'SyncAccountsResponse', 'GovernanceResponse',
+    'ListCreativesResponse', 'PreviewCreativeResponse', 'BuildCreativeResponse',
+    'CreativeFormatsResponse', 'SignalsResponse', 'ActivateSignalResponse',
+    'SyncCatalogsResponse', 'SyncEventSourcesResponse', 'LogEventResponse',
+    'PerformanceFeedbackResponse',
     # From testcontroller.go
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
