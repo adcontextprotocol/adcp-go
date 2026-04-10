@@ -50,7 +50,7 @@ Use skill files to build complete agents with coding assistants (Claude, Codex).
 |-------|-----------|------------|--------|
 | [`build-seller-agent`](skills/build-seller-agent/) | Publisher, SSP | `media_buy_seller` | 9/9 validated |
 | [`build-signals-agent`](skills/build-signals-agent/) | CDP, data provider | `signal_owned` | 4/4 validated |
-| [`build-creative-agent`](skills/build-creative-agent/) | Ad server, CMP | `creative_lifecycle` | 5/6 validated |
+| [`build-creative-agent`](skills/build-creative-agent/) | Ad server, CMP | `creative_lifecycle` | 6/6 validated |
 | [`build-generative-seller-agent`](skills/build-generative-seller-agent/) | AI ad network | `media_buy_generative_seller` | 9/9 validated |
 | [`build-retail-media-agent`](skills/build-retail-media-agent/) | Retail media | `media_buy_catalog_creative` | 9/9 validated |
 

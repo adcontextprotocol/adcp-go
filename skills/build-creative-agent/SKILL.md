@@ -181,23 +181,32 @@ adcp.AddTool(server, "preview_creative", "Render a preview",
 
 ### 6. `build_creative`
 
+Handle both `creative_manifest` (direct build) and `creative_id` (store lookup). If neither is provided but `format_id` is, build a default manifest from the format.
+
 ```go
 adcp.AddTool(server, "build_creative", "Build serving tag",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.BuildCreativeInput) (*mcp.CallToolResult, any, error) {
-        s.mu.RLock()
-        c, ok := s.creatives[input.CreativeID]
-        s.mu.RUnlock()
+        var manifest map[string]any
 
-        if !ok {
-            return adcp.Errorf("NOT_FOUND", adcp.ErrorOptions{
-                Message: fmt.Sprintf("Creative %s not found", input.CreativeID),
+        if input.CreativeManifest != nil {
+            manifest = input.CreativeManifest
+        } else if input.CreativeID != "" {
+            s.mu.RLock()
+            c, ok := s.creatives[input.CreativeID]
+            s.mu.RUnlock()
+            if !ok {
+                return adcp.Errorf("NOT_FOUND", adcp.ErrorOptions{
+                    Message: fmt.Sprintf("Creative %s not found", input.CreativeID),
+                })
+            }
+            manifest = map[string]any{"format_id": c.FormatID, "name": c.Name, "assets": c.Assets}
+        } else if input.FormatID != nil {
+            // Build default manifest from format
+            manifest = map[string]any{"format_id": input.FormatID, "name": "Built Creative"}
+        } else {
+            return adcp.Errorf("INVALID_INPUT", adcp.ErrorOptions{
+                Message: "creative_id, creative_manifest, or format_id required",
             })
-        }
-
-        manifest := map[string]any{
-            "format_id": c.FormatID,
-            "name":      c.Name,
-            "assets":    c.Assets,
         }
 
         return adcp.BuildCreativeResponse(manifest, true)
