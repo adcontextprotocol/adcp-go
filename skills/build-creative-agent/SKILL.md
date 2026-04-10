@@ -141,23 +141,41 @@ adcp.AddTool(server, "list_creatives", "List creative library",
 
 ### 5. `preview_creative`
 
+The request can come as `creative_id` (lookup) or `creative_manifest` (render directly). Handle both:
+
 ```go
 adcp.AddTool(server, "preview_creative", "Render a preview",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.PreviewCreativeInput) (*mcp.CallToolResult, any, error) {
-        s.mu.RLock()
-        c, ok := s.creatives[input.CreativeID]
-        s.mu.RUnlock()
+        var creativeID, name string
+        var w, h int
 
-        if !ok {
-            return adcp.Errorf("NOT_FOUND", adcp.ErrorOptions{
-                Message: fmt.Sprintf("Creative %s not found", input.CreativeID),
-            })
+        if input.CreativeManifest != nil {
+            // Render from manifest directly
+            if fid, ok := input.CreativeManifest["format_id"].(map[string]any); ok {
+                if id, ok := fid["id"].(string); ok {
+                    w, h = formatDimensions(id)
+                }
+            }
+            name, _ = input.CreativeManifest["name"].(string)
+            creativeID = "preview-manifest"
+        } else if input.CreativeID != "" {
+            // Lookup from store
+            s.mu.RLock()
+            c, ok := s.creatives[input.CreativeID]
+            s.mu.RUnlock()
+            if !ok {
+                return adcp.Errorf("NOT_FOUND", adcp.ErrorOptions{
+                    Message: fmt.Sprintf("Creative %s not found", input.CreativeID),
+                })
+            }
+            creativeID = c.CreativeID
+            name = c.Name
+            w, h = formatDimensions(c.FormatID.ID)
         }
 
-        w, h := formatDimensions(c.FormatID.ID)
-        previewURL := "https://preview.example.com/" + c.CreativeID
-
-        return adcp.PreviewCreativeResponse(c.CreativeID, c.Name, previewURL, w, h)
+        if name == "" { name = "Preview" }
+        previewURL := "https://preview.example.com/" + creativeID
+        return adcp.PreviewCreativeResponse(creativeID, name, previewURL, w, h)
     })
 ```
 

@@ -98,13 +98,24 @@ type CreativeFilters struct {
 }
 
 // PreviewCreativeInput is the input for preview_creative.
+// The request schema uses request_type as a discriminator.
+// For "single" requests, creative_manifest contains the creative to preview.
+// creative_id may also be sent for lookup-based previews.
 type PreviewCreativeInput struct {
-	CreativeID string `json:"creative_id"`
+	RequestType      string         `json:"request_type,omitempty"`
+	CreativeID       string         `json:"creative_id,omitempty"`
+	CreativeManifest map[string]any `json:"creative_manifest,omitempty"`
+	FormatID         map[string]any `json:"format_id,omitempty"`
+	Inputs           []map[string]any `json:"inputs,omitempty"`
+	OutputFormat     string         `json:"output_format,omitempty"`
 }
 
 // BuildCreativeInput is the input for build_creative.
 type BuildCreativeInput struct {
-	CreativeID string `json:"creative_id"`
+	CreativeID       string         `json:"creative_id,omitempty"`
+	CreativeManifest map[string]any `json:"creative_manifest,omitempty"`
+	FormatID         map[string]any `json:"format_id,omitempty"`
+	OutputFormats    []string       `json:"output_formats,omitempty"`
 }
 
 // SyncCatalogsInput is the input for sync_catalogs.
