@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"slices"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -100,7 +101,7 @@ func allowAdditionalProperties(s *jsonschema.Schema) {
 		if isTrueSchema(prop) {
 			delete(s.Properties, name)
 			// Also remove from required if present
-			s.Required = removeString(s.Required, name)
+			s.Required = slices.DeleteFunc(s.Required, func(s string) bool { return s == name })
 		}
 	}
 
@@ -144,28 +145,12 @@ func isTrueSchema(s *jsonschema.Schema) bool {
 	return string(b) == "true"
 }
 
-// removeString returns a copy of ss with all occurrences of v removed.
-func removeString(ss []string, v string) []string {
-	out := make([]string, 0, len(ss))
-	for _, s := range ss {
-		if s != v {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// jsonRoundTrip marshals a value to JSON and back to map[string]any,
-// ensuring struct tags are respected in the result.
+// jsonRoundTrip marshals a value to JSON and back, ensuring struct tags
+// (like json:"name") are respected in the structured content output.
 func jsonRoundTrip(v any) any {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return v
-	}
+	b, _ := json.Marshal(v)
 	var m any
-	if err := json.Unmarshal(b, &m); err != nil {
-		return v
-	}
+	json.Unmarshal(b, &m)
 	return m
 }
 
