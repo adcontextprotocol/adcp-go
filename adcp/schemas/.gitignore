@@ -1,0 +1,7 @@
+# Downloaded schema files — regenerate with ./download.sh
+*.json
+!generate.py
+!download.sh
+!check-freshness.sh
+!VERSION
+!.gitignore

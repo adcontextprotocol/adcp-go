@@ -39,6 +39,12 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `cmd/router/main.go` | Router binary entry point — wires components, Prometheus metrics, env vars. |
 | `docs/network-surface.md` | Port map, data flow, pinhole spec, env var reference. |
 | `docs/embedding.md` | Guide for embedding the router in host applications. |
+| `adcp/serve.go` | One-liner HTTP server for AdCP MCP agents. |
+| `adcp/responses.go` | Response builders — `CapabilitiesResponse`, `ProductsResponse`, etc. |
+| `adcp/errors.go` | Structured AdCP error builder. |
+| `adcp/types.go` | AdCP domain types — products, media buys, signals, creatives. |
+| `adcp/testcontroller.go` | `RegisterTestController` — comply_test_controller for storyboard testing. |
+| `skills/` | SKILL.md files for coding agents to generate AdCP agents. |
 
 ## Testing
 
