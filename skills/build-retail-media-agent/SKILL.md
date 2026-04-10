@@ -290,7 +290,7 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_catalog_crea
 | `log_event` missing `events_received` | Required counter |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `get_delivery` returns `null` for empty arrays | Use `make([]T, 0)` |
-| `get_delivery` missing `media_buys` key | `adcp.DeliveryResponse` handles this |
+| `get_delivery` returns `null` for empty deliveries | Use `adcp.DeliveryResponse` |
 | Uppercase pricing model | Use `"cpm"`, `"cpc"` not `"CPM"` |
 | No mutex on maps | Use `sync.RWMutex` |
 

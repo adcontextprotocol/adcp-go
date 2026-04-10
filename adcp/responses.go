@@ -32,19 +32,8 @@ func MediaBuysResponse(mediaBuys []MediaBuyData, sandbox bool) (*mcp.CallToolRes
 }
 
 // DeliveryResponse builds a get_media_buy_delivery response.
-// Includes both media_buy_deliveries and media_buys keys for backwards compatibility.
 func DeliveryResponse(data *DeliveryData) (*mcp.CallToolResult, any, error) {
-	n := len(data.MediaBuyDeliveries)
-	s := "s"
-	if n == 1 {
-		s = ""
-	}
-	out := map[string]any{
-		"reporting_period":     data.ReportingPeriod,
-		"media_buy_deliveries": data.MediaBuyDeliveries,
-		"media_buys":          data.MediaBuyDeliveries,
-	}
-	return buildResult(fmt.Sprintf("Delivery data for %d media buy%s", n, s), out), out, nil
+	return buildResult(fmt.Sprintf("Delivery data for %d media buys", len(data.MediaBuyDeliveries)), data), data, nil
 }
 
 // SyncAccountsResponse builds a sync_accounts response.

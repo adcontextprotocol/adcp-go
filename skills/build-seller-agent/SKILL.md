@@ -187,7 +187,7 @@ adcp.AddTool(server, "sync_creatives", "Submit creatives",
 
 ### 9. `get_media_buy_delivery`
 
-Include both `media_buy_deliveries` and `media_buys` keys. Use `make([]T, 0)` for empty slices.
+Use `make([]T, 0)` for empty slices to ensure JSON `[]` not `null`.
 
 ```go
 adcp.AddTool(server, "get_media_buy_delivery", "Delivery metrics",
@@ -311,7 +311,7 @@ Fix failures, repeat until all 9 steps pass.
 | `sync_governance` response key `results` | Must be `accounts` |
 | `sync_creatives` status `"accepted"` | Use `"approved"` — valid: processing, pending_review, approved, rejected, archived |
 | `get_delivery` returns `null` for empty arrays | Use `make([]T, 0)` not `var x []T` |
-| `get_delivery` missing `media_buys` key | Include both `media_buy_deliveries` and `media_buys` |
+| `get_delivery` returns `null` for empty deliveries | Use `make([]T, 0)` or `adcp.DeliveryResponse` |
 | Uppercase pricing model | Use `"cpm"`, `"cpc"` not `"CPM"` |
 | No mutex on maps | Use `sync.RWMutex` |
 
