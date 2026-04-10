@@ -145,7 +145,6 @@ func isTrueSchema(s *jsonschema.Schema) bool {
 	return string(b) == "true"
 }
 
-
 // jsonRoundTrip marshals a value to JSON and back, ensuring struct tags
 // (like json:"name") are respected in the structured content output.
 func jsonRoundTrip(v any) any {
