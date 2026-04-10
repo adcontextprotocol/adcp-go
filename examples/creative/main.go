@@ -146,9 +146,9 @@ func main() {
 				}
 				assets, _ := c["assets"].(map[string]any)
 				s.creatives[creativeID] = &storedCreative{
-					CreativeID: creativeID, Name: name, FormatID: fid, Status: "accepted", Assets: assets,
+					CreativeID: creativeID, Name: name, FormatID: fid, Status: "approved", Assets: assets,
 				}
-				results = append(results, adcp.CreativeResult{CreativeID: creativeID, Action: action, Status: "accepted"})
+				results = append(results, adcp.CreativeResult{CreativeID: creativeID, Action: action, Status: "approved"})
 			}
 
 			return makeResult(map[string]any{"creatives": results, "results": results}, fmt.Sprintf("Synced %d creatives", len(results)))
