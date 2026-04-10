@@ -1,6 +1,6 @@
 ---
 name: build-retail-media-agent
-description: Use when building an AdCP retail media network agent in Go — a platform that sells on-site placements, supports product catalogs, tracks conversions, and reports performance.
+description: Use when building an AdCP retail media network agent in Go — sells on-site placements, supports product catalogs, tracks conversions.
 ---
 
 # Build a Retail Media Agent (Go)
@@ -12,27 +12,51 @@ A retail media agent sells advertising on a retailer's properties. It extends th
 ## When to Use
 
 - User wants to build a retail media network or commerce media platform in Go
-- User mentions catalogs, product feeds, conversion tracking, or performance feedback
 
 **Not this skill:** standard seller → `skills/build-seller-agent/`, generative → `skills/build-generative-seller-agent/`
 
 ## Before Writing Code
 
-Same as seller, plus:
-1. **Catalog support** — what product catalogs? Feed format, fields.
-2. **Event tracking** — what conversion events? Purchase, add_to_cart, page_view.
-3. **Performance feedback** — does the buyer send optimization metrics?
+Same as seller skill, plus: what catalogs, what conversion events, what feedback metrics?
 
-## Tools
+## Implementation
 
-All 9 seller tools apply (see `skills/build-seller-agent/SKILL.md`). Plus 4 additional tools:
+**Read the seller skill first:** `skills/build-seller-agent/SKILL.md` — it has the complete pattern for all 9 seller tools.
 
-### `get_adcp_capabilities`
+### Critical: supported_protocols
+
+The retail media storyboard checks for `conversion_tracking` capability. Without it, catalog and event tools are rejected.
+
 ```go
-SupportedProtocols: []string{"media_buy", "compliance_testing"}
+adcp.AddTool(server, "get_adcp_capabilities", "Agent capabilities",
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.EmptyInput) (*mcp.CallToolResult, any, error) {
+        return adcp.CapabilitiesResponse(&adcp.CapabilitiesData{
+            ADCP: &adcp.ADCPVersion{MajorVersions: []int{3}},
+            SupportedProtocols: []string{"media_buy", "conversion_tracking", "compliance_testing"},
+        })
+    })
 ```
 
-### 10. `sync_catalogs`
+### Products — must include `description`
+
+```go
+var products = []adcp.Product{
+    {
+        ProductID: "sponsored-product", Name: "Sponsored Product",
+        Description: "Promoted product listings in search results",
+        Channel: "retail_media", DeliveryType: "non_guaranteed",
+        PricingOptions: []adcp.PricingOption{
+            {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: 0.50, Currency: "USD"},
+        },
+        PublisherProperties: []string{},
+        FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "product-card"}},
+    },
+}
+```
+
+### Additional tools (beyond seller's 9)
+
+**10. `sync_catalogs`**
 
 ```go
 adcp.AddTool(server, "sync_catalogs", "Accept product catalog feeds",
@@ -40,7 +64,7 @@ adcp.AddTool(server, "sync_catalogs", "Accept product catalog feeds",
         var results []adcp.CatalogResult
         for _, c := range input.Catalogs {
             count := len(c.Items)
-            if count == 0 { count = 10 } // default for empty feeds
+            if count == 0 { count = 10 }
             results = append(results, adcp.CatalogResult{
                 CatalogID: c.CatalogID, Action: "created", ItemCount: count, ItemsApproved: count,
             })
@@ -54,7 +78,7 @@ Response JSON:
 {"catalogs": [{"catalog_id": "cat-1", "action": "created", "item_count": 10, "items_approved": 10}], "sandbox": true}
 ```
 
-### 11. `sync_event_sources`
+**11. `sync_event_sources`**
 
 ```go
 adcp.AddTool(server, "sync_event_sources", "Register event tracking",
@@ -67,7 +91,7 @@ adcp.AddTool(server, "sync_event_sources", "Register event tracking",
     })
 ```
 
-### 12. `log_event`
+**12. `log_event`**
 
 ```go
 adcp.AddTool(server, "log_event", "Accept conversion events",
@@ -78,7 +102,7 @@ adcp.AddTool(server, "log_event", "Accept conversion events",
     })
 ```
 
-### 13. `provide_performance_feedback`
+**13. `provide_performance_feedback`**
 
 ```go
 adcp.AddTool(server, "provide_performance_feedback", "Accept performance metrics",
@@ -87,11 +111,9 @@ adcp.AddTool(server, "provide_performance_feedback", "Accept performance metrics
     })
 ```
 
-## All Other Tools
+### All other tools
 
 Follow the seller skill exactly for: `sync_accounts`, `sync_governance`, `get_products`, `create_media_buy`, `get_media_buys`, `list_creative_formats`, `sync_creatives`, `get_media_buy_delivery`, and compliance testing.
-
-Products must include `publisher_properties: []` and `format_ids`. Use `adcp.SyncCreativesResponse` for sync_creatives. Use `adcp.DeliveryResponse` for delivery.
 
 ## Validation
 
@@ -104,13 +126,10 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_catalog_crea
 
 | Mistake | Fix |
 |---------|-----|
+| Missing `conversion_tracking` in supported_protocols | Storyboard rejects catalog/event tools without it |
+| Products missing `description` | Required field |
 | `sync_catalogs` missing `item_count` | Required field |
 | `log_event` missing `events_received` | Required counter |
-| Skip standard seller tools | Retail media extends seller, doesn't replace it |
 | All seller mistakes apply | See seller skill common mistakes table |
 
-## SDK Reference
-
-Same as seller skill, plus input types: `adcp.SyncCatalogsInput`, `adcp.SyncEventSourcesInput`, `adcp.LogEventInput`, `adcp.PerformanceFeedbackInput`
-
-The skill contains everything you need.
+The skill contains everything you need. Read the seller skill for the complete base pattern.

@@ -75,7 +75,6 @@ Types: [`adcp/types.go`](adcp/types.go) (hand-written SDK types) + [`adcp/types_
 |---------|-------------|
 | [`adcp/`](adcp/) | MCP server helpers — `AddTool`, response builders, test controller, `Serve()` |
 | [`skills/`](skills/) | SKILL.md files for coding agent generation |
-| [`examples/`](examples/) | Working example agents (seller, signals, creative, generative seller, retail media) |
 | [`tmproto/`](tmproto/) | TMP message types, provider interfaces, JSON codec |
 | [`targeting/`](targeting/) | Targeting engine — property bitmaps, freq caps, audiences, intent |
 | [`router/`](router/) | TMP Router — fan-out, merge, privacy enforcement, Ed25519 signing |

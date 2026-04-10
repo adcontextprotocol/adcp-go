@@ -7,12 +7,11 @@ description: Use when building an AdCP creative agent in Go — an ad server, cr
 
 ## Overview
 
-A creative agent manages the creative lifecycle: accepts assets, stores them, builds serving tags, and renders previews. It does not sell media.
+A creative agent manages the creative lifecycle: accepts assets, stores them in a library, builds serving tags, and renders previews.
 
 ## When to Use
 
 - User wants to build an ad server, CMP, or creative rendering service in Go
-- User mentions sync_creatives, preview_creative, build_creative, or creative formats
 
 **Not this skill:** selling inventory → `skills/build-seller-agent/`, audience data → `skills/build-signals-agent/`
 
@@ -20,7 +19,7 @@ A creative agent manages the creative lifecycle: accepts assets, stores them, bu
 
 1. **What formats?** Display (300x250, 728x90), video (30s), native (image + text). Each needs dimensions and accepted asset types.
 2. **What operations?** Sync (always), list, preview, build.
-3. **Review pipeline?** Instant accept, pending review, or rejection.
+3. **Review pipeline?** Instant approve or pending review.
 
 ## Tool Registration
 
@@ -44,90 +43,94 @@ adcp.AddTool(server, "get_adcp_capabilities", "Agent capabilities",
 
 Asset `item_type` must be `"individual"`.
 
-```go
-adcp.AddTool(server, "list_creative_formats", "Available formats",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativeFormatsInput) (*mcp.CallToolResult, any, error) {
-        return adcp.Result(map[string]any{"formats": formats}, "Formats")
-    })
-```
-
 Response JSON:
 ```json
-{
-  "formats": [{
-    "format_id": {"agent_url": "http://localhost:3001/mcp", "id": "display_300x250"},
-    "name": "Display 300x250",
-    "renders": [{"width": 300, "height": 250}],
-    "assets": [{"item_type": "individual", "asset_id": "image", "asset_type": "image", "required": true, "accepted_media_types": ["image/jpeg", "image/png"]}]
-  }]
-}
+{"formats": [{"format_id": {"agent_url": "http://localhost:3001/mcp", "id": "display_300x250"}, "name": "Display 300x250", "renders": [{"width": 300, "height": 250}], "assets": [{"item_type": "individual", "asset_id": "image", "asset_type": "image", "required": true, "accepted_media_types": ["image/jpeg", "image/png"]}]}]}
 ```
 
 ### 3. `sync_creatives`
 
-Input has `creatives[]` with `creative_id`, `format_id`, `name`, `assets`. Store in memory. Return both `creatives` and `results` keys.
+Input has `creatives[]` with `creative_id`, `format_id`, `name`, `assets`. Store in memory with `created_date` and `updated_date` timestamps.
 
+**Status must be a valid enum:** `"processing"`, `"pending_review"`, `"approved"`, `"rejected"`, `"archived"`. Use `"approved"` for instant-accept, NOT `"accepted"`.
+
+Response — include both `creatives` and `results` keys:
 ```go
-adcp.AddTool(server, "sync_creatives", "Accept and store creatives",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesInput) (*mcp.CallToolResult, any, error) {
-        var results []adcp.CreativeResult
-        for _, c := range input.Creatives {
-            // store creative, determine action "created"/"updated"
-            results = append(results, adcp.CreativeResult{
-                CreativeID: c.CreativeID, Action: action, Status: "accepted",
-            })
-        }
-        return adcp.SyncCreativesResponse(results, true)
-    })
+return adcp.SyncCreativesResponse(results, true)
 ```
 
 ### 4. `list_creatives`
 
-Support `filters.format_ids` filtering. Return stored creatives.
+**Required top-level fields:** `query_summary`, `pagination`, `creatives`.
+
+Each creative must include `created_date` and `updated_date` (ISO 8601).
 
 ```go
 adcp.AddTool(server, "list_creatives", "List creative library",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativesInput) (*mcp.CallToolResult, any, error) {
-        items := make([]adcp.CreativeListItem, 0)
-        // filter by input.Filters.FormatIDs if present
-        return adcp.Result(map[string]any{"creatives": items}, "Creatives")
+        items := make([]map[string]any, 0)
+        for _, c := range store.creatives {
+            // apply input.Filters.FormatIDs if present
+            items = append(items, map[string]any{
+                "creative_id":  c.CreativeID,
+                "name":         c.Name,
+                "format_id":    c.FormatID,
+                "status":       "approved",
+                "created_date": c.CreatedDate,
+                "updated_date": c.UpdatedDate,
+            })
+        }
+        return adcp.Result(map[string]any{
+            "query_summary": map[string]any{
+                "total_matching": len(items),
+                "returned":       len(items),
+            },
+            "pagination": map[string]any{
+                "has_more":    false,
+                "total_count": len(items),
+            },
+            "creatives": items,
+        }, fmt.Sprintf("Found %d creatives", len(items)))
     })
 ```
 
 ### 5. `preview_creative`
 
-Look up stored creative. Return `response_type: "single"`, preview with render.
+Response must have `response_type: "single"`. Each preview must have `preview_id`, `renders` array, and `input` with required `name` field. Each render needs `render_id`, `output_format`, `preview_url` (for URL format), `role`.
 
 ```go
 adcp.AddTool(server, "preview_creative", "Render a preview",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.PreviewCreativeInput) (*mcp.CallToolResult, any, error) {
-        // look up input.CreativeID from store
-        result := &adcp.PreviewResult{
-            ResponseType: "single",
-            Previews: []adcp.Preview{{
-                PreviewID: "preview-" + input.CreativeID,
-                Input: map[string]any{"format_id": c.FormatID, "name": c.Name},
-                Renders: []adcp.PreviewRender{{
-                    RenderID: "render-" + input.CreativeID,
-                    OutputFormat: "url",
-                    PreviewURL: "https://preview.example.com/" + input.CreativeID,
-                    Role: "primary",
-                    Dimensions: &adcp.Render{Width: 300, Height: 250},
+        c := store.creatives[input.CreativeID]
+        if c == nil {
+            return adcp.Errorf("NOT_FOUND", adcp.ErrorOptions{Message: "Creative not found"})
+        }
+        return adcp.Result(map[string]any{
+            "response_type": "single",
+            "previews": []map[string]any{{
+                "preview_id": "preview-" + c.CreativeID,
+                "input":      map[string]any{"name": c.Name},
+                "renders": []map[string]any{{
+                    "render_id":     "render-" + c.CreativeID,
+                    "output_format": "url",
+                    "preview_url":   "https://preview.example.com/" + c.CreativeID,
+                    "role":          "primary",
+                    "dimensions":    map[string]any{"width": 300, "height": 250},
                 }},
             }},
-            ExpiresAt: time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
-        }
-        return adcp.Result(result, "Preview generated")
+            "expires_at": time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339),
+        }, "Preview generated")
     })
 ```
 
 ### 6. `build_creative`
 
-Look up stored creative. Return `creative_manifest`.
+Response must include `creative_manifest`.
 
 ```go
 adcp.AddTool(server, "build_creative", "Build serving tag",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.BuildCreativeInput) (*mcp.CallToolResult, any, error) {
+        c := store.creatives[input.CreativeID]
         return adcp.Result(map[string]any{
             "creative_manifest": map[string]any{
                 "format_id": c.FormatID, "name": c.Name, "assets": c.Assets,
@@ -156,11 +159,13 @@ import (
 const agentURL = "http://localhost:3001/mcp"
 
 type storedCreative struct {
-    CreativeID string
-    Name       string
-    FormatID   adcp.CreativeFormatID
-    Status     string
-    Assets     map[string]any
+    CreativeID  string
+    Name        string
+    FormatID    adcp.CreativeFormatID
+    Status      string
+    Assets      map[string]any
+    CreatedDate string
+    UpdatedDate string
 }
 
 type store struct {
@@ -168,11 +173,11 @@ type store struct {
     creatives map[string]*storedCreative
 }
 
-var formats = []adcp.CreativeFormat{ /* define formats */ }
+var formats = []adcp.CreativeFormat{ /* define formats with item_type: "individual" */ }
 
 func createServer(s *store) *mcp.Server {
     server := mcp.NewServer(&mcp.Implementation{Name: "my-creative", Version: "1.0.0"}, nil)
-    // Register all 6 tools
+    // Register all 6 tools using adcp.AddTool
     return server
 }
 
@@ -193,12 +198,13 @@ npx @adcp/client storyboard run http://localhost:3001/mcp creative_lifecycle --j
 
 | Mistake | Fix |
 |---------|-----|
-| Using `mcp.AddTool` directly | Use `adcp.AddTool` |
+| Status `"accepted"` | Use `"approved"` — valid enum: processing, pending_review, approved, rejected, archived |
+| `list_creatives` missing `query_summary` | Required: `{total_matching: int, returned: int}` |
+| `list_creatives` missing `pagination` | Required: `{has_more: bool, total_count: int}` |
+| `list_creatives` missing dates | Each creative needs `created_date` and `updated_date` (ISO 8601) |
+| `preview_creative` missing `input.name` | Required field in each preview's `input` object |
 | `list_creatives` ignores format filter | Check `input.Filters.FormatIDs` |
-| `preview_creative` wrong response_type | Must be `"single"` |
-| `build_creative` missing creative_manifest | Required field |
 | No in-memory store | `list_creatives`/`preview_creative` need previously synced creatives |
-| `sync_creatives` missing `results` key | Use `adcp.SyncCreativesResponse` which includes both |
 
 ## SDK Reference
 
