@@ -45,11 +45,9 @@ func DeliveryResponse(data *DeliveryData) (*mcp.CallToolResult, any, error) {
 }
 
 // SyncCreativesResponse builds a sync_creatives response.
-// Includes both creatives and results keys (storyboards check both).
 func SyncCreativesResponse(creatives []CreativeResult, sandbox bool) (*mcp.CallToolResult, any, error) {
 	out := map[string]any{
 		"creatives": creatives,
-		"results":   creatives,
 		"sandbox":   sandbox,
 	}
 	return buildResult(fmt.Sprintf("Synced %d creatives", len(creatives)), out), out, nil

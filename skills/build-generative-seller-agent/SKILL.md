@@ -76,7 +76,7 @@ if strings.Contains(formatID, "generative") {
 }
 ```
 
-Use `adcp.SyncCreativesResponse(results, true)` for the dual-key response.
+Use `adcp.SyncCreativesResponse(results, true)` for the response.
 
 ### All other tools
 

@@ -213,7 +213,7 @@ npx @adcp/client storyboard run http://localhost:3001/mcp creative_lifecycle --j
 | `adcp.AddTool(server, name, desc, handler)` | Register tool |
 | `adcp.Serve(createAgent)` | HTTP server |
 | `adcp.CapabilitiesResponse(data)` | Capabilities |
-| `adcp.SyncCreativesResponse(results, sandbox)` | Sync creatives (dual-key) |
+| `adcp.SyncCreativesResponse(results, sandbox)` | Sync creatives response |
 | `adcp.Result(data, summary)` | Generic response |
 | `adcp.Errorf(code, opts)` | Error response |
 

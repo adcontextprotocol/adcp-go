@@ -172,18 +172,16 @@ adcp.AddTool(server, "list_creative_formats", "Available creative formats",
 
 ### 8. `sync_creatives`
 
-Include BOTH `creatives` and `results` keys in response.
-
 ```go
 adcp.AddTool(server, "sync_creatives", "Submit creatives",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesInput) (*mcp.CallToolResult, any, error) {
         var results []adcp.CreativeResult
         for _, c := range input.Creatives {
             results = append(results, adcp.CreativeResult{
-                CreativeID: c.CreativeID, Action: "created", Status: "accepted",
+                CreativeID: c.CreativeID, Action: "created", Status: "approved",
             })
         }
-        return adcp.Result(map[string]any{"creatives": results, "results": results, "sandbox": true}, "Synced")
+        return adcp.SyncCreativesResponse(results, true)
     })
 ```
 
@@ -311,7 +309,7 @@ Fix failures, repeat until all 9 steps pass.
 | Using `mcp.AddTool` directly | Use `adcp.AddTool` — it generates permissive schemas |
 | Missing `publisher_properties`/`format_ids` on products | Required fields |
 | `sync_governance` response key `results` | Must be `accounts` |
-| `sync_creatives` missing `results` key | Include both `creatives` and `results` |
+| `sync_creatives` status `"accepted"` | Use `"approved"` — valid: processing, pending_review, approved, rejected, archived |
 | `get_delivery` returns `null` for empty arrays | Use `make([]T, 0)` not `var x []T` |
 | `get_delivery` missing `media_buys` key | Include both `media_buy_deliveries` and `media_buys` |
 | Uppercase pricing model | Use `"cpm"`, `"cpc"` not `"CPM"` |
