@@ -135,8 +135,12 @@ func SyncEventSourcesResponse(sources []EventSourceResult, sandbox bool) (*mcp.C
 }
 
 // LogEventResponse builds a log_event response.
-func LogEventResponse(received, processed int, sandbox bool) (*mcp.CallToolResult, any, error) {
+// matchQuality is the attribution match quality score (0.0-1.0). Use 0 to omit.
+func LogEventResponse(received, processed int, matchQuality float64, sandbox bool) (*mcp.CallToolResult, any, error) {
 	out := map[string]any{"events_received": received, "events_processed": processed, "sandbox": sandbox}
+	if matchQuality > 0 {
+		out["match_quality"] = matchQuality
+	}
 	return buildResult(fmt.Sprintf("Logged %d events", received), out), out, nil
 }
 

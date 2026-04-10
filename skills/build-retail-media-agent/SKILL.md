@@ -186,7 +186,13 @@ adcp.AddTool(server, "sync_event_sources", "Register event tracking",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncEventSourcesInput) (*mcp.CallToolResult, any, error) {
         var results []adcp.EventSourceResult
         for _, es := range input.EventSources {
-            results = append(results, adcp.EventSourceResult{EventSourceID: es.EventSourceID, Action: "created"})
+            results = append(results, adcp.EventSourceResult{
+                EventSourceID: es.EventSourceID, Action: "created",
+                Setup: &adcp.EventSourceSetup{
+                    Snippet:     fmt.Sprintf("<script src=\"https://track.example.com/%s.js\"></script>", es.EventSourceID),
+                    Description: "Add this snippet to your checkout page",
+                },
+            })
         }
         return adcp.SyncEventSourcesResponse(results, true)
     })
@@ -197,7 +203,7 @@ adcp.AddTool(server, "sync_event_sources", "Register event tracking",
 ```go
 adcp.AddTool(server, "log_event", "Accept conversion events",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.LogEventInput) (*mcp.CallToolResult, any, error) {
-        return adcp.LogEventResponse(len(input.Events), len(input.Events), true)
+        return adcp.LogEventResponse(len(input.Events), len(input.Events), 0.85, true)
     })
 ```
 
@@ -288,6 +294,8 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_catalog_crea
 | Missing `publisher_properties`/`format_ids` | Required fields |
 | `sync_catalogs` missing `item_count` | Required field |
 | `log_event` missing `events_received` | Required counter |
+| `log_event` missing `match_quality` | Include match quality score (0.0-1.0) via `adcp.LogEventResponse` |
+| `sync_event_sources` missing `setup.snippet` | Include `Setup` with integration snippet on each event source |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `get_delivery` returns `null` for empty arrays | Use `make([]T, 0)` |
 | `get_delivery` returns `null` for empty deliveries | Use `adcp.DeliveryResponse` |

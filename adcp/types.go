@@ -277,8 +277,15 @@ type CatalogResult struct {
 }
 
 type EventSourceResult struct {
-	EventSourceID string `json:"event_source_id"`
-	Action        string `json:"action"`
+	EventSourceID string            `json:"event_source_id"`
+	Action        string            `json:"action"`
+	Setup         *EventSourceSetup `json:"setup,omitempty"`
+}
+
+// EventSourceSetup provides integration instructions for an event source.
+type EventSourceSetup struct {
+	Snippet     string `json:"snippet,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type LogEventResult struct {
