@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -14,12 +15,12 @@ import (
 //   - "mediabuy:seller:{sellerID}" → SET of media buy IDs
 //   - "mediabuy:{mediaBuyID}" → JSON MediaBuy
 type MediaBuy struct {
-	MediaBuyID  string           `json:"media_buy_id"`
-	SellerID    string           `json:"seller_id"`
-	StartDate   string           `json:"start_date"`   // "2026-01-01"
-	EndDate     string           `json:"end_date"`      // "2026-12-31"
-	Countries   []string         `json:"countries"`     // empty = all countries
-	PropertyIDs []string         `json:"property_ids"`  // empty = all seller properties
+	MediaBuyID  string            `json:"media_buy_id"`
+	SellerID    string            `json:"seller_id"`
+	StartDate   string            `json:"start_date"`   // "2026-01-01"
+	EndDate     string            `json:"end_date"`     // "2026-12-31"
+	Countries   []string          `json:"countries"`    // empty = all countries
+	PropertyIDs []string          `json:"property_ids"` // empty = all seller properties
 	Packages    []MediaBuyPackage `json:"packages"`
 }
 
@@ -223,22 +224,12 @@ func matchesGeo(mb MediaBuy, country string) bool {
 	if len(mb.Countries) == 0 {
 		return true
 	}
-	for _, c := range mb.Countries {
-		if c == country {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(mb.Countries, country)
 }
 
 func matchesProperty(mb MediaBuy, propertyID string) bool {
 	if len(mb.PropertyIDs) == 0 {
 		return true
 	}
-	for _, p := range mb.PropertyIDs {
-		if p == propertyID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(mb.PropertyIDs, propertyID)
 }
