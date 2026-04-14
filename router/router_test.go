@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,16 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// testRouter builds a Router without SSRF validation, suitable for use with
+// httptest.Server (which binds to localhost).
+func testRouter(providers []ProviderConfig) *Router {
+	return &Router{
+		providers: providers,
+		client:    &http.Client{Timeout: 10 * time.Second},
+		logger:    slog.Default(),
+	}
+}
 
 func TestValidateContextRequest_Valid(t *testing.T) {
 	req := &tmproto.ContextMatchRequest{
@@ -178,9 +189,9 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	router := NewRouter([]ProviderConfig{
+	router := testRouter([]ProviderConfig{
 		{ID: "test-provider", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil, nil)
+	})
 
 	reqBody := `{
 		"request_id": "ctx-e2e",
@@ -219,9 +230,9 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	router := NewRouter([]ProviderConfig{
+	router := testRouter([]ProviderConfig{
 		{ID: "test-provider", Endpoint: provider.URL, IdentityMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil, nil)
+	})
 
 	reqBody := `{
 		"request_id": "id-e2e",
@@ -265,10 +276,10 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	}))
 	defer fastProvider.Close()
 
-	router := NewRouter([]ProviderConfig{
+	router := testRouter([]ProviderConfig{
 		{ID: "slow", Endpoint: slowProvider.URL, ContextMatch: true, Timeout: 10 * time.Millisecond},
 		{ID: "fast", Endpoint: fastProvider.URL, ContextMatch: true, Timeout: 5 * time.Second},
-	}, nil, nil, nil)
+	})
 
 	reqBody := `{
 		"request_id": "ctx-timeout",

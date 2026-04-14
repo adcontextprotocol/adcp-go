@@ -2,8 +2,8 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
-	"time"
 )
 
 // ServerConfig is the JSON config file format for the router.
@@ -35,25 +35,19 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, err
 	}
+	for _, p := range cfg.Providers {
+		if err := ValidateProviderEndpoint(p.Endpoint); err != nil {
+			return nil, fmt.Errorf("provider %q: %w", p.ID, err)
+		}
+	}
 	return &cfg, nil
 }
 
-// DefaultServerConfig returns sensible defaults.
+// DefaultServerConfig returns sensible defaults with no providers configured.
+// Providers must be supplied via a config file or programmatically.
 func DefaultServerConfig() *ServerConfig {
 	return &ServerConfig{
-		Addr: ":8080",
-		Providers: []ProviderConfig{
-			{
-				ID: "reference-context", Endpoint: "http://localhost:8081",
-				ContextMatch: true, WireFormats: []string{"json"},
-				Timeout: 30 * time.Millisecond,
-			},
-			{
-				ID: "reference-identity", Endpoint: "http://localhost:8082",
-				IdentityMatch: true, WireFormats: []string{"json"},
-				Timeout: 30 * time.Millisecond,
-			},
-		},
+		Addr:     ":8080",
 		Health:   HealthConfig{FailureThreshold: 3, CooldownSeconds: 10},
 		Shutdown: ShutdownConfig{DrainSeconds: 5},
 	}

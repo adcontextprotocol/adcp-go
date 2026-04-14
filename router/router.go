@@ -16,12 +16,13 @@ import (
 
 // Router fans out TMP requests to registered providers and merges responses.
 type Router struct {
-	providers []ProviderConfig
-	registry  *Registry
-	sigCache  *SignatureCache // nil = no signing
-	health    *ProviderHealth // nil = no health tracking
-	client    *http.Client
-	logger    *slog.Logger
+	providers              []ProviderConfig
+	registry               *Registry
+	sigCache               *SignatureCache // nil = no signing
+	health                 *ProviderHealth // nil = no health tracking
+	client                 *http.Client
+	logger                 *slog.Logger
+	skipEndpointValidation bool
 }
 
 // RouterOption configures a Router.
@@ -39,9 +40,16 @@ func WithLogger(l *slog.Logger) RouterOption {
 	return func(r *Router) { r.logger = l }
 }
 
+// WithoutEndpointValidation disables SSRF validation of provider endpoints.
+// For use in tests only — never use in production.
+func WithoutEndpointValidation() RouterOption {
+	return func(r *Router) { r.skipEndpointValidation = true }
+}
+
 // NewRouter creates a router with the given provider configuration and registry.
 // sigCache is optional — pass nil to disable request signing.
-func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth, opts ...RouterOption) *Router {
+// Returns an error if any provider endpoint fails SSRF validation.
+func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth, opts ...RouterOption) (*Router, error) {
 	maxPerHost := max(len(providers), 10)
 	r := &Router{
 		providers: providers,
@@ -60,7 +68,14 @@ func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *Signatu
 	for _, o := range opts {
 		o(r)
 	}
-	return r
+	if !r.skipEndpointValidation {
+		for _, p := range providers {
+			if err := ValidateProviderEndpoint(p.Endpoint); err != nil {
+				return nil, fmt.Errorf("provider %q: %w", p.ID, err)
+			}
+		}
+	}
+	return r, nil
 }
 
 // HandleContextMatch processes a context match request.
@@ -101,7 +116,11 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Re-serialize with enriched + signed data for fan-out
-	body, _ = json.Marshal(&cmReq)
+	body, err = json.Marshal(&cmReq)
+	if err != nil {
+		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInternalError, "failed to serialize request")
+		return
+	}
 
 	// Find matching providers
 	var matching []ProviderConfig
@@ -165,14 +184,11 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, cmReq *tmproto.ContextMatchRequest, body []byte) []*tmproto.ContextMatchResponse {
 	var mu sync.Mutex
-	var results []*tmproto.ContextMatchResponse
+	results := make([]*tmproto.ContextMatchResponse, 0, len(providers))
 	var wg sync.WaitGroup
 
 	for _, p := range providers {
-		wg.Add(1)
-		go func(p ProviderConfig) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
 				return
 			}
@@ -189,11 +205,16 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			if len(p.PackageIDs) > 0 {
 				filtered := *cmReq
 				filtered.AvailablePkgs = filterPackagesForProvider(cmReq.AvailablePkgs, &p)
-				callBody, _ = json.Marshal(&filtered)
+				var err error
+				callBody, err = json.Marshal(&filtered)
+				if err != nil {
+					r.logger.Error("failed to serialize filtered request", "provider", p.ID, "error", err)
+					return
+				}
 			}
 
-			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody)
-			if err != nil {
+			var cmResp tmproto.ContextMatchResponse
+			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody, &cmResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -207,15 +228,10 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 				r.health.RecordSuccess(p.ID)
 			}
 
-			var cmResp tmproto.ContextMatchResponse
-			if err := json.Unmarshal(resp, &cmResp); err != nil {
-				return
-			}
-
 			mu.Lock()
 			results = append(results, &cmResp)
 			mu.Unlock()
-		}(p)
+		})
 	}
 
 	wg.Wait()
@@ -224,14 +240,11 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []*tmproto.IdentityMatchResponse {
 	var mu sync.Mutex
-	var results []*tmproto.IdentityMatchResponse
+	results := make([]*tmproto.IdentityMatchResponse, 0, len(providers))
 	var wg sync.WaitGroup
 
 	for _, p := range providers {
-		wg.Add(1)
-		go func(p ProviderConfig) {
-			defer wg.Done()
-
+		wg.Go(func() {
 			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
 				return
 			}
@@ -243,8 +256,8 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			callCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body)
-			if err != nil {
+			var imResp tmproto.IdentityMatchResponse
+			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body, &imResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -258,39 +271,37 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 				r.health.RecordSuccess(p.ID)
 			}
 
-			var imResp tmproto.IdentityMatchResponse
-			if err := json.Unmarshal(resp, &imResp); err != nil {
-				return
-			}
-
 			mu.Lock()
 			results = append(results, &imResp)
 			mu.Unlock()
-		}(p)
+		})
 	}
 
 	wg.Wait()
 	return results
 }
 
-func (r *Router) callProvider(ctx context.Context, url string, body []byte) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, target any) error {
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("provider returned %d", resp.StatusCode)
+		return fmt.Errorf("provider returned %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(io.LimitReader(resp.Body, 1024*1024)) // 1MB max response
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(target); err != nil {
+		return fmt.Errorf("decode provider response: %w", err)
+	}
+	return nil
 }
 
 // mergeContextResponses combines offers and signals from multiple providers.
@@ -396,15 +407,21 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Fan out to all identity providers (expose is idempotent).
-	var lastResp *tmproto.ExposeResponse
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	// Fan out to all identity providers; last successful response wins.
+	// Expose is a notification (fire-and-forget semantics per provider), so all
+	// providers are called regardless. We return the last success to the caller.
+	var (
+		mu       sync.Mutex
+		lastResp *tmproto.ExposeResponse
+		wg       sync.WaitGroup
+	)
 
 	for _, p := range matching {
-		wg.Add(1)
-		go func(p ProviderConfig) {
-			defer wg.Done()
+		wg.Go(func() {
+			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				return
+			}
+
 			timeout := p.Timeout
 			if timeout == 0 {
 				timeout = 30 * time.Millisecond
@@ -412,18 +429,26 @@ func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
 			callCtx, cancel := context.WithTimeout(req.Context(), timeout)
 			defer cancel()
 
-			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/expose", body)
-			if err != nil {
-				return
-			}
 			var expResp tmproto.ExposeResponse
-			if err := json.Unmarshal(resp, &expResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/expose", body, &expResp); err != nil {
+				r.logger.Debug("expose provider error", "provider", p.ID, "error", err)
+				if r.health != nil {
+					if callCtx.Err() != nil {
+						r.health.RecordTimeout(p.ID)
+					} else {
+						r.health.RecordFailure(p.ID)
+					}
+				}
 				return
 			}
+			if r.health != nil {
+				r.health.RecordSuccess(p.ID)
+			}
+			resp := expResp
 			mu.Lock()
-			lastResp = &expResp
+			lastResp = &resp
 			mu.Unlock()
-		}(p)
+		})
 	}
 	wg.Wait()
 

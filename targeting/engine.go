@@ -51,9 +51,9 @@ type EngineConfig struct {
 	Store             Store
 	Registry          PropertyRegistry // nil = no signature verification
 	Properties        PropertyList
-	Packages        []PackageConfig
-	DynamicPackages bool    // When true, load package configs from Store at eval time.
-	Metrics         Metrics // nil = noop
+	Packages          []PackageConfig
+	DynamicPackages   bool    // When true, load package configs from Store at eval time.
+	Metrics           Metrics // nil = noop
 	SigSampleRate     uint32  // 0-100. 0 disables verification.
 	RequireSignatures bool
 }
@@ -757,10 +757,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 				}
 			}
 			resp.CampaignCount = count
-			remaining := shortestRule.MaxCount - count
-			if remaining < 0 {
-				remaining = 0
-			}
+			remaining := max(shortestRule.MaxCount-count, 0)
 			resp.CampaignRemaining = remaining
 		}
 	}

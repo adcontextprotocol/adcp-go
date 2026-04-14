@@ -85,13 +85,18 @@ func (h *ProviderHealth) IsCircuitOpen(providerID string) bool {
 	if openUntil == 0 {
 		return false
 	}
-	if time.Now().UnixNano() >= openUntil {
-		// Cooldown expired, allow a probe request (half-open)
-		s.circuitOpenUntil.Store(0)
-		s.consecutiveFailures.Store(0)
-		return false
+	if time.Now().UnixNano() < openUntil {
+		return true
 	}
-	return true
+	// Cooldown expired. Exactly one goroutine wins the CAS and becomes the probe;
+	// it resets the circuit and clears consecutive failures. All other goroutines
+	// that raced to this point lost the CAS, meaning the winner already cleared
+	// openUntil — keep the circuit open for them so only the probe gets through.
+	if s.circuitOpenUntil.CompareAndSwap(openUntil, 0) {
+		s.consecutiveFailures.Store(0)
+		return false // this goroutine is the probe
+	}
+	return true // circuit still open for all other racers
 }
 
 // ProviderStats returns stats for a single provider.
@@ -104,17 +109,21 @@ type ProviderStatsSnapshot struct {
 }
 
 // Snapshot returns a snapshot of all provider stats.
+// Reads circuit state directly to avoid the write side-effect of IsCircuitOpen
+// and to prevent a re-entrant lock attempt on the same RWMutex.
 func (h *ProviderHealth) Snapshot() map[string]ProviderStatsSnapshot {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	out := make(map[string]ProviderStatsSnapshot, len(h.stats))
 	for id, s := range h.stats {
+		openUntil := s.circuitOpenUntil.Load()
+		circuitOpen := openUntil != 0 && time.Now().UnixNano() < openUntil
 		out[id] = ProviderStatsSnapshot{
 			Successes:           s.successes.Load(),
 			Failures:            s.failures.Load(),
 			Timeouts:            s.timeouts.Load(),
 			ConsecutiveFailures: s.consecutiveFailures.Load(),
-			CircuitOpen:         h.IsCircuitOpen(id),
+			CircuitOpen:         circuitOpen,
 		}
 	}
 	return out

@@ -33,5 +33,5 @@ reference/context-agent/context-agent
 reference/identity-agent/identity-agent
 
 # Editor/IDE
-# .idea/
+.idea/
 # .vscode/
