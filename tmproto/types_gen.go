@@ -199,9 +199,10 @@ type ExposeResponse struct {
 
 // ConsentSignals carries privacy consent signals for the identity agent.
 type ConsentSignals struct {
-	Gdpr       bool   `json:"gdpr,omitempty"`        // Whether GDPR applies to this request.
+	Gdpr       *bool  `json:"gdpr,omitempty"`        // Whether GDPR applies to this request. Use a pointer type so false is distinguishable from absent.
 	TcfConsent string `json:"tcf_consent,omitempty"` // IAB TCF v2.2 consent string. Present when gdpr is true.
 	Gpp        string `json:"gpp,omitempty"`         // IAB Global Privacy Platform string.
+	GppSid     string `json:"gpp_sid,omitempty"`     // IAB GPP Section ID(s) indicating which privacy framework sections apply. Comma-separated when multiple.
 	UsPrivacy  string `json:"us_privacy,omitempty"`  // US Privacy string (CCPA). Deprecated in favor of GPP but still widely used.
 }
 

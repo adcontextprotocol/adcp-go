@@ -42,7 +42,8 @@
       "properties": {
         "gdpr": {
           "type": "boolean",
-          "description": "Whether GDPR applies to this request.",
+          "description": "Whether GDPR applies to this request. Use a pointer type so false is distinguishable from absent.",
+          "x-go-pointer": true,
           "x-go-omitempty": true
         },
         "tcf_consent": {
@@ -53,6 +54,11 @@
         "gpp": {
           "type": "string",
           "description": "IAB Global Privacy Platform string.",
+          "x-go-omitempty": true
+        },
+        "gpp_sid": {
+          "type": "string",
+          "description": "IAB GPP Section ID(s) indicating which privacy framework sections apply. Comma-separated when multiple.",
           "x-go-omitempty": true
         },
         "us_privacy": {
