@@ -78,18 +78,23 @@ func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *Signatu
 		registry:  registry,
 		sigCache:  sigCache,
 		health:    health,
-		client: &http.Client{
-			Transport: &http.Transport{
-				DialContext:         safeDialContext,
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: maxPerHost,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		},
-		logger: slog.Default(),
+		logger:    slog.Default(),
 	}
 	for _, o := range opts {
 		o(r)
+	}
+	// Set default client if not overridden by options.
+	// Use safeDialContext in production to prevent DNS rebinding attacks.
+	if r.client == nil {
+		transport := &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: maxPerHost,
+			IdleConnTimeout:     90 * time.Second,
+		}
+		if !r.skipEndpointValidation {
+			transport.DialContext = safeDialContext
+		}
+		r.client = &http.Client{Transport: transport}
 	}
 	if !r.skipEndpointValidation {
 		for _, p := range r.providers.All() {
