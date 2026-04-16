@@ -71,6 +71,11 @@ type Product struct {
 	CreativeSpecs       []CreativeSpec  `json:"creative_specs,omitempty"`
 	PublisherProperties []string        `json:"publisher_properties"`
 	FormatIDs           []FormatRef     `json:"format_ids"`
+
+	// Business terms
+	CancellationPolicy *CancellationPolicy  `json:"cancellation_policy,omitempty"`
+	MeasurementTerms   *MeasurementTerms    `json:"measurement_terms,omitempty"`
+	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 }
 
 // FormatRef is a reference to a creative format.
@@ -117,6 +122,15 @@ type Package struct {
 	PricingOptionID string  `json:"pricing_option_id"`
 	Budget          float64 `json:"budget"`
 	Status          string  `json:"status,omitempty"`
+
+	// Business terms (negotiated on the package)
+	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
+	PerformanceStandards []PerformanceStandard  `json:"performance_standards,omitempty"`
+
+	// Broadcast / scheduling
+	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
+	StartTime            string `json:"start_time,omitempty"`
+	EndTime              string `json:"end_time,omitempty"`
 }
 
 type MediaBuyListItem struct {
@@ -291,4 +305,192 @@ type EventSourceSetup struct {
 type LogEventResult struct {
 	EventsReceived  int `json:"events_received"`
 	EventsProcessed int `json:"events_processed"`
+}
+
+// --- Collection domain ---
+
+// CollectionList is a managed collection list with optional dynamic filters.
+type CollectionList struct {
+	ListID             string                 `json:"list_id"`
+	Name               string                 `json:"name"`
+	Description        string                 `json:"description,omitempty"`
+	Principal          string                 `json:"principal,omitempty"`
+	BaseCollections    []BaseCollectionSource  `json:"base_collections,omitempty"`
+	Filters            *CollectionListFilters  `json:"filters,omitempty"`
+	Brand              *BrandReference         `json:"brand,omitempty"`
+	WebhookURL         string                 `json:"webhook_url,omitempty"`
+	CacheDurationHours int                    `json:"cache_duration_hours,omitempty"`
+	CreatedAt          string                 `json:"created_at,omitempty"`
+	UpdatedAt          string                 `json:"updated_at,omitempty"`
+	CollectionCount    int                    `json:"collection_count,omitempty"`
+}
+
+// BaseCollectionSource selects collections for a collection list.
+// Use one of the constructor functions: ByDistributionIDs, ByPublisherCollections, ByPublisherGenres.
+type BaseCollectionSource struct {
+	SelectionType   string           `json:"selection_type"`
+	Identifiers     []DistributionID `json:"identifiers,omitempty"`
+	PublisherDomain string           `json:"publisher_domain,omitempty"`
+	CollectionIDs   []string         `json:"collection_ids,omitempty"`
+	Genres          []string         `json:"genres,omitempty"`
+	GenreTaxonomy   string           `json:"genre_taxonomy,omitempty"`
+}
+
+// ByDistributionIDs creates a source that selects collections by platform-independent identifiers.
+func ByDistributionIDs(ids []DistributionID) BaseCollectionSource {
+	return BaseCollectionSource{
+		SelectionType: "distribution_ids",
+		Identifiers:   ids,
+	}
+}
+
+// ByPublisherCollections creates a source that selects specific collections within a publisher.
+func ByPublisherCollections(domain string, collectionIDs []string) BaseCollectionSource {
+	return BaseCollectionSource{
+		SelectionType:   "publisher_collections",
+		PublisherDomain: domain,
+		CollectionIDs:   collectionIDs,
+	}
+}
+
+// ByPublisherGenres creates a source that selects collections from a publisher by genre.
+func ByPublisherGenres(domain string, genres []string, taxonomy string) BaseCollectionSource {
+	return BaseCollectionSource{
+		SelectionType:   "publisher_genres",
+		PublisherDomain: domain,
+		Genres:          genres,
+		GenreTaxonomy:   taxonomy,
+	}
+}
+
+// DistributionID is a platform-independent identifier for cross-publisher matching.
+type DistributionID struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+// CollectionListFilters dynamically modify a collection list when resolved.
+// Include filters are allowlists; exclude filters are blocklists.
+// When both are present, include is applied first, then exclude narrows further.
+type CollectionListFilters struct {
+	ContentRatingsExclude  []ContentRating  `json:"content_ratings_exclude,omitempty"`
+	ContentRatingsInclude  []ContentRating  `json:"content_ratings_include,omitempty"`
+	GenresExclude          []string         `json:"genres_exclude,omitempty"`
+	GenresInclude          []string         `json:"genres_include,omitempty"`
+	GenreTaxonomy          string           `json:"genre_taxonomy,omitempty"`
+	Kinds                  []string         `json:"kinds,omitempty"`
+	ExcludeDistributionIDs []DistributionID `json:"exclude_distribution_ids,omitempty"`
+	ProductionQuality      []string         `json:"production_quality,omitempty"`
+}
+
+// ContentRating is a content advisory rating using a specified rating system.
+type ContentRating struct {
+	System string `json:"system"`
+	Rating string `json:"rating"`
+}
+
+// ResolvedCollection is a single collection entry in a get_collection_list response.
+type ResolvedCollection struct {
+	CollectionRID   string           `json:"collection_rid,omitempty"`
+	Name            string           `json:"name"`
+	DistributionIDs []DistributionID `json:"distribution_ids,omitempty"`
+	ContentRating   *ContentRating   `json:"content_rating,omitempty"`
+	Genre           []string         `json:"genre,omitempty"`
+	GenreTaxonomy   string           `json:"genre_taxonomy,omitempty"`
+	Kind            string           `json:"kind,omitempty"`
+}
+
+// CollectionPagination has higher limits than standard pagination
+// because collection lists can contain thousands of entries.
+type CollectionPagination struct {
+	MaxResults int    `json:"max_results,omitempty"` // 1-10000, default 1000
+	Cursor     string `json:"cursor,omitempty"`
+}
+
+// --- Business terms ---
+
+// Duration is a time duration expressed as an interval and unit.
+type Duration struct {
+	Interval int    `json:"interval"`
+	Unit     string `json:"unit"` // "seconds", "minutes", "hours", "days", "campaign"
+}
+
+// CancellationPolicy declares cancellation terms for a product.
+type CancellationPolicy struct {
+	NoticePeriod    Duration        `json:"notice_period"`
+	CancellationFee CancellationFee `json:"cancellation_fee"`
+}
+
+// CancellationFee describes the fee charged for insufficient cancellation notice.
+type CancellationFee struct {
+	Type   string  `json:"type"` // "percent_remaining", "full_commitment", "fixed_fee", "none"
+	Rate   float64 `json:"rate,omitempty"`
+	Amount float64 `json:"amount,omitempty"`
+}
+
+// CollectionListRef references an externally managed collection list.
+type CollectionListRef struct {
+	AgentURL  string `json:"agent_url"`
+	ListID    string `json:"list_id"`
+	AuthToken string `json:"auth_token,omitempty"`
+}
+
+// CreativeConsumption reports consumption metrics from paid creative generation.
+type CreativeConsumption struct {
+	Tokens          int     `json:"tokens,omitempty"`
+	ImagesGenerated int     `json:"images_generated,omitempty"`
+	Renders         int     `json:"renders,omitempty"`
+	DurationSeconds float64 `json:"duration_seconds,omitempty"`
+}
+
+// IndustryIdentifier is an industry-standard creative identifier (Ad-ID, ISCI, etc.).
+type IndustryIdentifier struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+}
+
+// MeasurementTerms declares billing measurement and makegood terms.
+type MeasurementTerms struct {
+	BillingMeasurement *BillingMeasurement `json:"billing_measurement,omitempty"`
+	MakegoodPolicy     *MakegoodPolicy     `json:"makegood_policy,omitempty"`
+}
+
+// BillingMeasurement identifies the vendor whose measurement is authoritative for invoicing.
+type BillingMeasurement struct {
+	Vendor             *BrandReference `json:"vendor"`
+	MaxVariancePercent float64         `json:"max_variance_percent,omitempty"`
+	MeasurementWindow  string          `json:"measurement_window,omitempty"`
+}
+
+// MakegoodPolicy declares available remedies when a threshold is breached.
+type MakegoodPolicy struct {
+	AvailableRemedies []string `json:"available_remedies"`
+}
+
+// MeasurementWindow defines a measurement maturation window for broadcast TV.
+type MeasurementWindow struct {
+	WindowID                 string `json:"window_id"`
+	Description              string `json:"description,omitempty"`
+	DurationDays             int    `json:"duration_days"`
+	ExpectedAvailabilityDays int    `json:"expected_availability_days,omitempty"`
+	IsGuaranteeBasis         bool   `json:"is_guarantee_basis,omitempty"`
+}
+
+// PerformanceStandard defines a rate threshold for a performance metric.
+type PerformanceStandard struct {
+	Metric    string          `json:"metric"`
+	Threshold float64         `json:"threshold"`
+	Standard  string          `json:"standard,omitempty"`
+	Vendor    *BrandReference `json:"vendor"`
+}
+
+// VendorPricingOption extends signal pricing with a pricing_option_id for vendor billing.
+type VendorPricingOption struct {
+	PricingOptionID string  `json:"pricing_option_id"`
+	Model           string  `json:"model"`
+	CPM             float64 `json:"cpm,omitempty"`
+	Percent         float64 `json:"percent,omitempty"`
+	Amount          float64 `json:"amount,omitempty"`
+	Period          string  `json:"period,omitempty"`
+	Currency        string  `json:"currency"`
 }

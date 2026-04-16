@@ -42,9 +42,9 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `adcp/serve.go` | One-liner HTTP server for AdCP MCP agents. |
 | `adcp/responses.go` | Response builders — `CapabilitiesResponse`, `ProductsResponse`, etc. |
 | `adcp/errors.go` | Structured AdCP error builder. |
-| `adcp/types.go` | AdCP domain types — products, media buys, signals, creatives. |
+| `adcp/types.go` | AdCP domain types — products, media buys, signals, creatives, collections, business terms. |
 | `adcp/testcontroller.go` | `RegisterTestController` — comply_test_controller for storyboard testing. |
-| `skills/` | SKILL.md files for coding agents to generate AdCP agents. |
+| `skills/` | SKILL.md files for coding agents to generate AdCP agents (seller, signals, creative, generative-seller, retail-media, collection). |
 
 ## Testing
 

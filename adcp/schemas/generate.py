@@ -30,16 +30,11 @@ KNOWN_TYPES = {
     'Preview', 'PreviewRender', 'BuildCreativeResult', 'Signal', 'SignalID',
     'SignalPricing', 'Deployment', 'ActivationKey', 'CatalogResult',
     'EventSourceResult', 'LogEventResult',
-    # From inputs.go
-    'EmptyInput', 'SyncAccountsInput', 'AccountInput', 'SyncGovernanceInput',
-    'GovernanceAccountInput', 'GetProductsInput', 'CreateMediaBuyInput',
-    'PackageInput', 'GetMediaBuysInput', 'ListCreativeFormatsInput',
-    'SyncCreativesInput', 'CreativeInput', 'GetMediaBuyDeliveryInput',
-    'ListCreativesInput', 'CreativeFilters', 'PreviewCreativeInput',
-    'BuildCreativeInput', 'SyncCatalogsInput', 'CatalogInput',
-    'SyncEventSourcesInput', 'EventSourceInput', 'LogEventInput',
-    'PerformanceFeedbackInput', 'GetSignalsInput', 'SignalFilters',
-    'ActivateSignalInput', 'DestinationInput',
+    # From inputs.go (hand-written types that need custom Go code)
+    'EmptyInput', 'PackageInput',
+    'AccountInput', 'GovernanceAccountInput',
+    'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
+    'CreativeFilters', 'SignalFilters',
     # From errors.go
     'Error', 'ErrorOptions',
     # From responses.go
@@ -52,6 +47,19 @@ KNOWN_TYPES = {
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
     'TestControllerError',
+    # Collection domain (from types.go)
+    'CollectionList', 'CollectionListFilters', 'BaseCollectionSource',
+    'DistributionID', 'ContentRating', 'ResolvedCollection',
+    'CollectionPagination',
+    # Collection response names (conflict with response builder funcs in responses.go)
+    'CreateCollectionListResponse', 'GetCollectionListResponse',
+    'UpdateCollectionListResponse', 'DeleteCollectionListResponse',
+    'ListCollectionListsResponse',
+    # New core types (from types.go)
+    'Duration', 'CancellationPolicy', 'CancellationFee',
+    'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
+    'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
+    'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -104,6 +112,17 @@ TOOL_SCHEMAS = [
     # Compliance
     "compliance/comply-test-controller-request.json",
     "compliance/comply-test-controller-response.json",
+    # Collection
+    "collection/create-collection-list-request.json",
+    "collection/create-collection-list-response.json",
+    "collection/get-collection-list-request.json",
+    "collection/get-collection-list-response.json",
+    "collection/update-collection-list-request.json",
+    "collection/update-collection-list-response.json",
+    "collection/delete-collection-list-request.json",
+    "collection/delete-collection-list-response.json",
+    "collection/list-collection-lists-request.json",
+    "collection/list-collection-lists-response.json",
 ]
 
 # Core types that tools reference via $ref
@@ -136,10 +155,55 @@ CORE_SCHEMAS = [
     "core/event.json",
     "core/performance-feedback.json",
     "core/creative-brief.json",
+    "core/cancellation-policy.json",
+    "core/collection-list-ref.json",
+    "core/creative-consumption.json",
+    "core/industry-identifier.json",
+    "core/measurement-terms.json",
+    "core/measurement-window.json",
+    "core/performance-standard.json",
+    "core/vendor-pricing-option.json",
+    "core/content-rating.json",
+    "core/duration.json",
 ]
+
+# Map $ref schema names to Go type names when the schema filename doesn't match
+# the Go type name (e.g., brand-ref.json -> BrandReference, not BrandRef).
+REF_ALIASES = {
+    'BrandRef': 'BrandReference',
+    'AccountRef': 'AccountReference',
+    'PackageRequest': 'PackageInput',
+    'FormatID': 'FormatRef',
+    'SignalDefinition': 'Signal',
+    'SignalPricingOption': 'SignalPricing',
+    'StartTiming': 'string',  # start_time is a string or "asap"
+    'AccountInput': 'AccountInput',
+    'GovernanceAccountInput': 'GovernanceAccountInput',
+    'CreativeInput': 'CreativeInput',
+    'DestinationInput': 'DestinationInput',
+}
+
+# Inline array item type hints: when a request schema has an array property whose
+# items are inline objects (no $ref), map (struct_name, field) -> Go item type.
+INLINE_TYPE_HINTS = {
+    ('SyncAccountsRequest', 'accounts'): 'AccountInput',
+    ('SyncGovernanceRequest', 'accounts'): 'GovernanceAccountInput',
+    ('SyncCreativesRequest', 'creatives'): 'CreativeInput',
+    ('ListCreativesRequest', 'filters'): 'CreativeFilters',
+    ('SyncCatalogsRequest', 'catalogs'): 'CatalogInput',
+    ('SyncEventSourcesRequest', 'event_sources'): 'EventSourceInput',
+    ('LogEventRequest', 'events'): 'map[string]any',
+    ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
+    ('GetSignalsRequest', 'filters'): 'SignalFilters',
+}
 
 # Enum schemas
 ENUM_DIR = "enums"
+
+def safe_comment(text, max_len=80):
+    """Sanitize text for embedding in a Go // comment. Strips newlines to
+    prevent code injection via schema descriptions."""
+    return text.replace('\n', ' ').replace('\r', '')[:max_len] if text else ''
 
 def load_schema(path):
     """Load a JSON schema file, preserving property order."""
@@ -184,6 +248,8 @@ def resolve_go_type(prop, required=False):
         # Error conflicts with the Error function in errors.go
         if name == 'Error':
             return 'AdcpError'
+        # Apply aliases for schema names that don't match Go type names
+        name = REF_ALIASES.get(name, name)
         # If the referenced type won't exist in the generated output, use any
         if name in KNOWN_TYPES:
             return name
@@ -233,22 +299,41 @@ def schema_to_struct(name, schema):
             continue
 
         go_name = pascal_case(json_name)
-        go_type = resolve_go_type(prop, json_name in required_set)
 
-        # Use pointer for optional complex types
-        omit = 'omitempty' if json_name not in required_set else ''
+        # Check inline array hints before default resolution
+        hint_key = (name, json_name)
+        if hint_key in INLINE_TYPE_HINTS:
+            hint_type = INLINE_TYPE_HINTS[hint_key]
+            prop_type = prop.get('type', '')
+            if prop_type == 'array':
+                go_type = f'[]{hint_type}'
+            else:
+                go_type = hint_type
+        else:
+            go_type = resolve_go_type(prop, json_name in required_set)
+
+        is_required = json_name in required_set
+
+        # Use pointer for optional booleans (need to distinguish absent from false)
+        # and optional struct references (need to distinguish absent from zero value)
+        if not is_required and go_type == 'bool':
+            go_type = '*bool'
+        elif not is_required and '$ref' in prop and go_type not in ('string', 'any', 'AdcpError') and not go_type.startswith('[]') and not go_type.startswith('map['):
+            go_type = f'*{go_type}'
+
+        omit = 'omitempty' if not is_required else ''
         tag = f'`json:"{json_name}'
         if omit:
             tag += f',{omit}'
         tag += '"`'
 
-        desc = prop.get('description', '')
-        comment = f' // {desc[:80]}' if desc else ''
+        desc = safe_comment(prop.get('description', ''), 80)
+        comment = f' // {desc}' if desc else ''
 
         fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
-    desc = schema.get('description', '')
-    doc = f'// {name} — {desc[:100]}\n' if desc else ''
+    desc = safe_comment(schema.get('description', ''), 100)
+    doc = f'// {name} — {desc}\n' if desc else ''
     return f'{doc}type {name} struct {{\n' + '\n'.join(fields) + '\n}\n'
 
 def generate_enums():
@@ -268,7 +353,7 @@ def generate_enums():
             continue
 
         desc = schema.get('description', '')
-        lines.append(f'// {name} — {desc[:80]}' if desc else f'// {name} enum values')
+        lines.append(f'// {name} — {safe_comment(desc, 80)}' if desc else f'// {name} enum values')
         lines.append(f'type {name} = string')
         lines.append('const (')
         for v in values:
