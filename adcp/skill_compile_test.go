@@ -232,18 +232,42 @@ func writeGoMod(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	goMod := `module skill_check
 
-go 1.26.2
+	// Read go version and MCP SDK version from the adcp module's go.mod
+	// so this test doesn't break when dependencies are bumped.
+	goVersion, mcpVersion := parseAdcpGoMod(t, filepath.Join(adcpDir, "go.mod"))
 
-require (
-	github.com/adcontextprotocol/adcp-go/adcp v0.0.0
-	github.com/modelcontextprotocol/go-sdk v1.5.0
-)
-
-replace github.com/adcontextprotocol/adcp-go/adcp => ` + adcpDir + "\n"
+	goMod := "module skill_check\n\ngo " + goVersion + "\n\n" +
+		"require (\n" +
+		"\tgithub.com/adcontextprotocol/adcp-go/adcp v0.0.0\n" +
+		"\tgithub.com/modelcontextprotocol/go-sdk " + mcpVersion + "\n" +
+		")\n\n" +
+		"replace github.com/adcontextprotocol/adcp-go/adcp => " + adcpDir + "\n"
 
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}
+}
+
+func parseAdcpGoMod(t *testing.T, path string) (goVersion, mcpVersion string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+	goVersion = "1.26.2" // fallback
+	mcpVersion = "v1.5.0"
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "go ") {
+			goVersion = strings.TrimPrefix(line, "go ")
+		}
+		if strings.Contains(line, "github.com/modelcontextprotocol/go-sdk") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				mcpVersion = parts[1]
+			}
+		}
+	}
+	return
 }
