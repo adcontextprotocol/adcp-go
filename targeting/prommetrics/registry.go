@@ -11,19 +11,26 @@ import (
 	"sync/atomic"
 )
 
-// Registry collects counters and histograms, and serves them in
+// Registry collects counters, gauges, and histograms, and serves them in
 // Prometheus text exposition format (v0.0.4).
 type Registry struct {
-	mu         sync.RWMutex
+	mu            sync.RWMutex
 	counterDefs   map[string]*counterDef
+	gaugeDefs     map[string]*gaugeDef
 	histogramDefs map[string]*histogramDef
 	order         []string // insertion order for stable output
 
 	counters   sync.Map // "name\x00label1\x00label2..." -> *atomic.Int64
+	gauges     sync.Map // "name\x00label1\x00label2..." -> *atomic.Int64 (value * 1e9)
 	histograms sync.Map // "name\x00label1\x00label2..." -> *histogram
 }
 
 type counterDef struct {
+	help   string
+	labels []string
+}
+
+type gaugeDef struct {
 	help   string
 	labels []string
 }
@@ -45,8 +52,30 @@ type histogram struct {
 func NewRegistry() *Registry {
 	return &Registry{
 		counterDefs:   make(map[string]*counterDef),
+		gaugeDefs:     make(map[string]*gaugeDef),
 		histogramDefs: make(map[string]*histogramDef),
 	}
+}
+
+// DefineGauge registers a gauge metric. Call once at init time.
+func (r *Registry) DefineGauge(name, help string, labels []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.gaugeDefs[name] = &gaugeDef{help: help, labels: labels}
+	r.order = append(r.order, name)
+}
+
+// GaugeSet sets a gauge to a specific value. Label values must match
+// the order of labels passed to DefineGauge.
+func (r *Registry) GaugeSet(name string, value float64, labelValues ...string) {
+	key := buildKey(name, labelValues)
+	encoded := int64(value * 1e9)
+	if v, ok := r.gauges.Load(key); ok {
+		v.(*atomic.Int64).Store(encoded)
+		return
+	}
+	v, _ := r.gauges.LoadOrStore(key, &atomic.Int64{})
+	v.(*atomic.Int64).Store(encoded)
 }
 
 // DefineCounter registers a counter metric. Call once at init time.
@@ -126,11 +155,14 @@ func (r *Registry) writeTo(b *strings.Builder) {
 
 		r.mu.RLock()
 		cDef := r.counterDefs[name]
+		gDef := r.gaugeDefs[name]
 		hDef := r.histogramDefs[name]
 		r.mu.RUnlock()
 
 		if cDef != nil {
 			r.writeCounter(b, name, cDef)
+		} else if gDef != nil {
+			r.writeGauge(b, name, gDef)
 		} else if hDef != nil {
 			r.writeHistogram(b, name, hDef)
 		}
@@ -167,6 +199,39 @@ func (r *Registry) writeCounter(b *strings.Builder, name string, def *counterDef
 	fmt.Fprintf(b, "# TYPE %s counter\n", name)
 	for _, e := range entries {
 		fmt.Fprintf(b, "%s%s %d\n", name, formatLabelPairs(def.labels, e.labels), e.value)
+	}
+}
+
+func (r *Registry) writeGauge(b *strings.Builder, name string, def *gaugeDef) {
+	type entry struct {
+		labels []string
+		value  float64
+	}
+	var entries []entry
+
+	prefix := name + "\x00"
+	r.gauges.Range(func(k, v any) bool {
+		key := k.(string)
+		if key == name || strings.HasPrefix(key, prefix) {
+			labels := parseLabels(key)
+			val := float64(v.(*atomic.Int64).Load()) / 1e9
+			entries = append(entries, entry{labels, val})
+		}
+		return true
+	})
+
+	if len(entries) == 0 {
+		return
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.Join(entries[i].labels, ",") < strings.Join(entries[j].labels, ",")
+	})
+
+	fmt.Fprintf(b, "# HELP %s %s\n", name, def.help)
+	fmt.Fprintf(b, "# TYPE %s gauge\n", name)
+	for _, e := range entries {
+		fmt.Fprintf(b, "%s%s %s\n", name, formatLabelPairs(def.labels, e.labels), formatFloat(e.value))
 	}
 }
 

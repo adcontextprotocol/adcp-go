@@ -1,6 +1,9 @@
 package router
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestValidateProviderEndpoint(t *testing.T) {
 	valid := []struct {
@@ -45,5 +48,164 @@ func TestValidateProviderEndpoint(t *testing.T) {
 				t.Errorf("expected error for %q, got nil", tt.endpoint)
 			}
 		})
+	}
+}
+
+func TestValidateProviderConfig(t *testing.T) {
+	budget := 50 * time.Millisecond
+
+	t.Run("valid context-only provider", func(t *testing.T) {
+		p := &ProviderConfig{ID: "p1", ContextMatch: true}
+		if err := ValidateProviderConfig(p, budget); err != nil {
+			t.Errorf("expected valid, got: %v", err)
+		}
+	})
+
+	t.Run("valid identity provider", func(t *testing.T) {
+		p := &ProviderConfig{ID: "p2", IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []string{"uid2"}}
+		if err := ValidateProviderConfig(p, budget); err != nil {
+			t.Errorf("expected valid, got: %v", err)
+		}
+	})
+
+	t.Run("valid both match types", func(t *testing.T) {
+		p := &ProviderConfig{ID: "p3", ContextMatch: true, IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []string{"uid2"}}
+		if err := ValidateProviderConfig(p, budget); err != nil {
+			t.Errorf("expected valid, got: %v", err)
+		}
+	})
+
+	t.Run("neither context nor identity", func(t *testing.T) {
+		p := &ProviderConfig{ID: "bad"}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error when neither match type is set")
+		}
+	})
+
+	t.Run("identity without countries", func(t *testing.T) {
+		p := &ProviderConfig{ID: "bad", IdentityMatch: true, UIDTypes: []string{"uid2"}}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error when identity_match without countries")
+		}
+	})
+
+	t.Run("identity without uid_types", func(t *testing.T) {
+		p := &ProviderConfig{ID: "bad", IdentityMatch: true, Countries: []string{"US"}}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error when identity_match without uid_types")
+		}
+	})
+
+	t.Run("timeout exceeds budget", func(t *testing.T) {
+		p := &ProviderConfig{ID: "slow", ContextMatch: true, Timeout: 100 * time.Millisecond}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error when timeout exceeds latency budget")
+		}
+	})
+
+	t.Run("timeout within budget", func(t *testing.T) {
+		p := &ProviderConfig{ID: "fast", ContextMatch: true, Timeout: 30 * time.Millisecond}
+		if err := ValidateProviderConfig(p, budget); err != nil {
+			t.Errorf("expected valid, got: %v", err)
+		}
+	})
+
+	t.Run("zero budget disables check", func(t *testing.T) {
+		p := &ProviderConfig{ID: "any", ContextMatch: true, Timeout: 500 * time.Millisecond}
+		if err := ValidateProviderConfig(p, 0); err != nil {
+			t.Errorf("expected valid with zero budget, got: %v", err)
+		}
+	})
+
+	t.Run("empty ID", func(t *testing.T) {
+		p := &ProviderConfig{ID: "", ContextMatch: true}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error for empty ID")
+		}
+	})
+
+	t.Run("ID too long", func(t *testing.T) {
+		long := string(make([]byte, 200))
+		p := &ProviderConfig{ID: long, ContextMatch: true}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error for overly long ID")
+		}
+	})
+
+	t.Run("ID with control characters", func(t *testing.T) {
+		p := &ProviderConfig{ID: "bad\x00id", ContextMatch: true}
+		if err := ValidateProviderConfig(p, budget); err == nil {
+			t.Error("expected error for ID with null byte")
+		}
+	})
+}
+
+func TestEffectiveStatus(t *testing.T) {
+	tests := []struct {
+		status ProviderStatus
+		want   ProviderStatus
+	}{
+		{"", ProviderStatusActive},
+		{ProviderStatusActive, ProviderStatusActive},
+		{ProviderStatusInactive, ProviderStatusInactive},
+		{ProviderStatusDraining, ProviderStatusDraining},
+	}
+	for _, tt := range tests {
+		p := &ProviderConfig{Status: tt.status}
+		if got := p.EffectiveStatus(); got != tt.want {
+			t.Errorf("EffectiveStatus(%q) = %q, want %q", tt.status, got, tt.want)
+		}
+	}
+}
+
+func TestEffectiveTimeout(t *testing.T) {
+	r := &Router{latencyBudget: 50 * time.Millisecond}
+
+	tests := []struct {
+		name            string
+		providerTimeout time.Duration
+		want            time.Duration
+	}{
+		{"zero defaults to 30ms", 0, 30 * time.Millisecond},
+		{"within budget", 40 * time.Millisecond, 40 * time.Millisecond},
+		{"exceeds budget clamped", 100 * time.Millisecond, 50 * time.Millisecond},
+		{"equal to budget", 50 * time.Millisecond, 50 * time.Millisecond},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := r.effectiveTimeout(tt.providerTimeout)
+			if got != tt.want {
+				t.Errorf("effectiveTimeout(%v) = %v, want %v", tt.providerTimeout, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("zero budget does not clamp", func(t *testing.T) {
+		r2 := &Router{}
+		got := r2.effectiveTimeout(100 * time.Millisecond)
+		if got != 100*time.Millisecond {
+			t.Errorf("expected 100ms with zero budget, got %v", got)
+		}
+	})
+}
+
+func TestProviderSet_ActiveFiltersByStatus(t *testing.T) {
+	ps := NewProviderSet([]ProviderConfig{
+		{ID: "active", Status: ProviderStatusActive, ContextMatch: true},
+		{ID: "empty-status", ContextMatch: true},         // defaults to active
+		{ID: "inactive", Status: ProviderStatusInactive, ContextMatch: true},
+		{ID: "draining", Status: ProviderStatusDraining, ContextMatch: true},
+	})
+
+	active := ps.Active()
+	if len(active) != 2 {
+		t.Fatalf("expected 2 active, got %d", len(active))
+	}
+	ids := map[string]bool{}
+	for _, p := range active {
+		ids[p.ID] = true
+	}
+	if !ids["active"] || !ids["empty-status"] {
+		t.Errorf("expected active and empty-status, got %v", ids)
 	}
 }

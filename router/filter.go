@@ -7,6 +7,7 @@ import (
 )
 
 // MatchesContextProvider checks if a context match request should be sent to this provider.
+// Assumes the caller has already filtered by status (e.g., via ProviderSet.Active()).
 func MatchesContextProvider(req *tmproto.ContextMatchRequest, p *ProviderConfig) bool {
 	if !p.ContextMatch {
 		return false
@@ -19,6 +20,7 @@ func MatchesContextProvider(req *tmproto.ContextMatchRequest, p *ProviderConfig)
 
 // MatchesIdentityProvider checks if an identity match request should be sent to this provider.
 // Filters by country and uid_type when configured on the provider.
+// Assumes the caller has already filtered by status (e.g., via ProviderSet.Active()).
 func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfig) bool {
 	if !p.IdentityMatch {
 		return false

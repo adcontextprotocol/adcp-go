@@ -15,14 +15,21 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
+// FanOutMetrics is called during fan-out to record provider exclusions.
+type FanOutMetrics interface {
+	IncExcluded(providerID string)
+}
+
 // Router fans out TMP requests to registered providers and merges responses.
 type Router struct {
-	providers              []ProviderConfig
+	providers              *ProviderSet
 	registry               *Registry
 	sigCache               *SignatureCache // nil = no signing
 	health                 *ProviderHealth // nil = no health tracking
+	latencyBudget          time.Duration
 	client                 *http.Client
 	logger                 *slog.Logger
+	metrics                FanOutMetrics
 	skipEndpointValidation bool
 }
 
@@ -47,30 +54,50 @@ func WithoutEndpointValidation() RouterOption {
 	return func(r *Router) { r.skipEndpointValidation = true }
 }
 
+// WithLatencyBudget sets the overall fan-out latency budget.
+// Per-provider timeouts are clamped to this value.
+func WithLatencyBudget(d time.Duration) RouterOption {
+	return func(r *Router) { r.latencyBudget = d }
+}
+
+// WithFanOutMetrics sets the metrics callback for fan-out exclusion tracking.
+func WithFanOutMetrics(m FanOutMetrics) RouterOption {
+	return func(r *Router) { r.metrics = m }
+}
+
+// Providers returns the router's provider set for use by health checkers and discovery.
+func (r *Router) Providers() *ProviderSet { return r.providers }
+
 // NewRouter creates a router with the given provider configuration and registry.
 // sigCache is optional — pass nil to disable request signing.
 // Returns an error if any provider endpoint fails SSRF validation.
 func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth, opts ...RouterOption) (*Router, error) {
 	maxPerHost := max(len(providers), 10)
 	r := &Router{
-		providers: providers,
+		providers: NewProviderSet(providers),
 		registry:  registry,
 		sigCache:  sigCache,
 		health:    health,
-		client: &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: maxPerHost,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		},
-		logger: slog.Default(),
+		logger:    slog.Default(),
 	}
 	for _, o := range opts {
 		o(r)
 	}
+	// Set default client if not overridden by options.
+	// Use safeDialContext in production to prevent DNS rebinding attacks.
+	if r.client == nil {
+		transport := &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: maxPerHost,
+			IdleConnTimeout:     90 * time.Second,
+		}
+		if !r.skipEndpointValidation {
+			transport.DialContext = safeDialContext
+		}
+		r.client = &http.Client{Transport: transport}
+	}
 	if !r.skipEndpointValidation {
-		for _, p := range providers {
+		for _, p := range r.providers.All() {
 			if err := ValidateProviderEndpoint(p.Endpoint); err != nil {
 				return nil, fmt.Errorf("provider %q: %w", p.ID, err)
 			}
@@ -125,7 +152,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 
 	// Find matching providers
 	var matching []ProviderConfig
-	for _, p := range r.providers {
+	for _, p := range r.providers.Active() {
 		if MatchesContextProvider(&cmReq, &p) {
 			matching = append(matching, p)
 		}
@@ -165,7 +192,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 
 	// Find matching providers (filtered by country + uid_type).
 	var matching []ProviderConfig
-	for _, p := range r.providers {
+	for _, p := range r.providers.Active() {
 		if MatchesIdentityProvider(&imReq, &p) {
 			matching = append(matching, p)
 		}
@@ -193,6 +220,18 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// effectiveTimeout returns the per-call timeout, clamped to the latency budget.
+func (r *Router) effectiveTimeout(providerTimeout time.Duration) time.Duration {
+	t := providerTimeout
+	if t == 0 {
+		t = 30 * time.Millisecond
+	}
+	if r.latencyBudget > 0 && t > r.latencyBudget {
+		t = r.latencyBudget
+	}
+	return t
+}
+
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, cmReq *tmproto.ContextMatchRequest, body []byte) []*tmproto.ContextMatchResponse {
 	var mu sync.Mutex
 	results := make([]*tmproto.ContextMatchResponse, 0, len(providers))
@@ -201,14 +240,17 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 	for _, p := range providers {
 		wg.Go(func() {
 			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				if r.metrics != nil {
+					r.metrics.IncExcluded(p.ID)
+				}
 				return
 			}
-
-			timeout := p.Timeout
-			if timeout == 0 {
-				timeout = 30 * time.Millisecond
+			if r.health != nil {
+				r.health.IncrInflight(p.ID)
+				defer r.health.DecrInflight(p.ID)
 			}
-			callCtx, cancel := context.WithTimeout(ctx, timeout)
+
+			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
 			defer cancel()
 
 			// Filter packages if provider has PackageIDs configured.
@@ -262,14 +304,17 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 	for _, p := range providers {
 		wg.Go(func() {
 			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				if r.metrics != nil {
+					r.metrics.IncExcluded(p.ID)
+				}
 				return
 			}
-
-			timeout := p.Timeout
-			if timeout == 0 {
-				timeout = 30 * time.Millisecond
+			if r.health != nil {
+				r.health.IncrInflight(p.ID)
+				defer r.health.DecrInflight(p.ID)
 			}
-			callCtx, cancel := context.WithTimeout(ctx, timeout)
+
+			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
 			defer cancel()
 
 			var imResp tmproto.IdentityMatchResponse

@@ -32,7 +32,10 @@ func main() {
 	// Initialize components
 	registry := router.NewRegistry("", "")
 	health := router.NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
-	r, err := router.NewRouter(cfg.Providers, registry, nil, health)
+	fanOutMetrics := &fanOutMetricsAdapter{} // set after metrics registry is created
+	r, err := router.NewRouter(cfg.Providers, registry, nil, health,
+		router.WithLatencyBudget(cfg.LatencyBudget()),
+		router.WithFanOutMetrics(fanOutMetrics))
 	if err != nil {
 		slog.Error("invalid router configuration", "error", err)
 		os.Exit(1)
@@ -43,6 +46,28 @@ func main() {
 	reg.DefineCounter("router_requests_total", "Total requests by type.", []string{"type"})
 	reg.DefineHistogram("router_request_duration_seconds", "Request latency by type.", []string{"type"},
 		[]float64{.001, .005, .01, .025, .05, .1, .25, .5, 1})
+	reg.DefineGauge("tmp_provider_health_status", "Provider health status (1=healthy, 0=unhealthy).", []string{"provider"})
+	reg.DefineHistogram("tmp_provider_health_check_duration_ms", "Health check latency.", []string{"provider"},
+		[]float64{1, 5, 10, 25, 50, 100, 500})
+	reg.DefineCounter("tmp_provider_excluded_total", "Times a provider was excluded from fan-out.", []string{"provider"})
+	reg.DefineCounter("tmp_provider_recovered_total", "Times a provider recovered from exclusion.", []string{"provider"})
+
+	// Wire fan-out metrics now that registry exists.
+	fanOutMetrics.reg = reg
+
+	// Health checker
+	hcMetrics := &healthCheckMetricsAdapter{reg: reg}
+	hc := router.NewHealthChecker(r.Providers(), health, cfg.HealthCheck,
+		router.WithHealthCheckMetrics(hcMetrics))
+	hc.Preflight(context.Background())
+	hc.Start()
+
+	// Optional dynamic discovery
+	var disc *router.Discovery
+	if cfg.Discovery.Endpoint != "" {
+		disc = router.NewDiscovery(r.Providers(), health, cfg.Discovery, cfg.LatencyBudget())
+		disc.Start()
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, req *http.Request) {
@@ -68,6 +93,20 @@ func main() {
 			"version": version,
 		})
 	})
+	mux.HandleFunc("GET /providers", func(w http.ResponseWriter, _ *http.Request) {
+		type providerInfo struct {
+			router.ProviderConfig
+			Health router.ProviderStatsSnapshot `json:"health"`
+		}
+		snap := health.Snapshot()
+		providers := r.Providers().All()
+		out := make([]providerInfo, len(providers))
+		for i, p := range providers {
+			out[i] = providerInfo{ProviderConfig: p, Health: snap[p.ID]}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(out)
+	})
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -89,6 +128,10 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 		defer cancel()
 
+		if disc != nil {
+			disc.Stop()
+		}
+		hc.Stop()
 		if err := srv.Shutdown(ctx); err != nil {
 			slog.Error("shutdown error", "error", err)
 		}
@@ -135,4 +178,40 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 	}
 
 	return cfg
+}
+
+// healthCheckMetricsAdapter bridges router.HealthCheckMetrics to prommetrics.
+type healthCheckMetricsAdapter struct {
+	reg *prommetrics.Registry
+}
+
+func (a *healthCheckMetricsAdapter) SetHealthStatus(providerID string, healthy bool) {
+	v := float64(0)
+	if healthy {
+		v = 1
+	}
+	a.reg.GaugeSet("tmp_provider_health_status", v, providerID)
+}
+
+func (a *healthCheckMetricsAdapter) ObserveCheckDuration(providerID string, ms float64) {
+	a.reg.HistogramObserve("tmp_provider_health_check_duration_ms", ms, providerID)
+}
+
+func (a *healthCheckMetricsAdapter) IncExcluded(providerID string) {
+	a.reg.CounterInc("tmp_provider_excluded_total", providerID)
+}
+
+func (a *healthCheckMetricsAdapter) IncRecovered(providerID string) {
+	a.reg.CounterInc("tmp_provider_recovered_total", providerID)
+}
+
+// fanOutMetricsAdapter bridges router.FanOutMetrics to prommetrics.
+type fanOutMetricsAdapter struct {
+	reg *prommetrics.Registry
+}
+
+func (a *fanOutMetricsAdapter) IncExcluded(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_provider_excluded_total", providerID)
+	}
 }

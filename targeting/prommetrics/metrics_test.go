@@ -51,6 +51,48 @@ func TestMetricsInterface(t *testing.T) {
 	}
 }
 
+func TestGaugeOutput(t *testing.T) {
+	reg := NewRegistry()
+	reg.DefineGauge("provider_health", "Health status.", []string{"provider"})
+	reg.GaugeSet("provider_health", 1, "acme")
+	reg.GaugeSet("provider_health", 0, "broken")
+
+	rec := httptest.NewRecorder()
+	reg.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body, _ := io.ReadAll(rec.Body)
+	text := string(body)
+
+	for _, want := range []string{
+		"# HELP provider_health Health status.",
+		"# TYPE provider_health gauge",
+		`provider_health{provider="acme"} 1`,
+		`provider_health{provider="broken"} 0`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("gauge output missing %q\n\ngot:\n%s", want, text)
+		}
+	}
+}
+
+func TestGaugeSet_Overwrite(t *testing.T) {
+	reg := NewRegistry()
+	reg.DefineGauge("my_gauge", "Test.", []string{"id"})
+	reg.GaugeSet("my_gauge", 5, "a")
+	reg.GaugeSet("my_gauge", 10, "a") // overwrite
+
+	rec := httptest.NewRecorder()
+	reg.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body, _ := io.ReadAll(rec.Body)
+	text := string(body)
+
+	if !strings.Contains(text, `my_gauge{id="a"} 10`) {
+		t.Errorf("gauge should be overwritten to 10, got:\n%s", text)
+	}
+	if strings.Contains(text, `my_gauge{id="a"} 5`) {
+		t.Errorf("old gauge value should not appear")
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	m := New()
 	done := make(chan struct{})

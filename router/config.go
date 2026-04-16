@@ -8,13 +8,23 @@ import (
 	"time"
 )
 
+// ProviderStatus represents the lifecycle state of a provider.
+type ProviderStatus string
+
+const (
+	ProviderStatusActive   ProviderStatus = "active"
+	ProviderStatusInactive ProviderStatus = "inactive"
+	ProviderStatusDraining ProviderStatus = "draining"
+)
+
 // ProviderConfig defines a registered TMP provider.
 type ProviderConfig struct {
-	ID            string   `json:"id"`
-	Endpoint      string   `json:"endpoint"`
-	ContextMatch  bool     `json:"context_match"`
-	IdentityMatch bool     `json:"identity_match"`
-	WireFormats   []string `json:"wire_formats"`
+	ID            string         `json:"id"`
+	Endpoint      string         `json:"endpoint"`
+	Status        ProviderStatus `json:"status,omitempty"` // default: active
+	ContextMatch  bool           `json:"context_match"`
+	IdentityMatch bool           `json:"identity_match"`
+	WireFormats   []string       `json:"wire_formats"`
 
 	// Provider-side filters — router skips this provider for non-matching requests.
 	PropertyIDs        []string `json:"property_ids,omitempty"`         // Only send these (empty = all)
@@ -27,6 +37,45 @@ type ProviderConfig struct {
 	UIDTypes  []string `json:"uid_types,omitempty"` // Identity types this provider can resolve
 
 	Timeout time.Duration `json:"timeout"`
+}
+
+// EffectiveStatus returns the provider's status, defaulting to active when empty.
+func (p *ProviderConfig) EffectiveStatus() ProviderStatus {
+	if p.Status == "" {
+		return ProviderStatusActive
+	}
+	return p.Status
+}
+
+// ValidateProviderConfig checks that a provider registration is valid.
+// latencyBudget of 0 disables the timeout check.
+func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) error {
+	if p.ID == "" {
+		return fmt.Errorf("provider ID must not be empty")
+	}
+	if len(p.ID) > 128 {
+		return fmt.Errorf("provider %q: ID exceeds maximum length of 128", p.ID[:64]+"...")
+	}
+	for _, c := range p.ID {
+		if c < 0x20 || c == 0x7f || c == 0x00 {
+			return fmt.Errorf("provider ID contains invalid characters")
+		}
+	}
+	if !p.ContextMatch && !p.IdentityMatch {
+		return fmt.Errorf("provider %q: at least one of context_match or identity_match must be true", p.ID)
+	}
+	if p.IdentityMatch {
+		if len(p.Countries) == 0 {
+			return fmt.Errorf("provider %q: countries must be non-empty when identity_match is true", p.ID)
+		}
+		if len(p.UIDTypes) == 0 {
+			return fmt.Errorf("provider %q: uid_types must be non-empty when identity_match is true", p.ID)
+		}
+	}
+	if latencyBudget > 0 && p.Timeout > 0 && p.Timeout > latencyBudget {
+		return fmt.Errorf("provider %q: timeout %v exceeds latency budget %v", p.ID, p.Timeout, latencyBudget)
+	}
+	return nil
 }
 
 // RouterConfig defines the router's runtime configuration.

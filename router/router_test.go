@@ -17,7 +17,7 @@ import (
 // httptest.Server (which binds to localhost).
 func testRouter(providers []ProviderConfig) *Router {
 	return &Router{
-		providers: providers,
+		providers: NewProviderSet(providers),
 		client:    &http.Client{Timeout: 10 * time.Second},
 		logger:    slog.Default(),
 	}
