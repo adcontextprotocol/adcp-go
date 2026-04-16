@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestSkillSkeletonsCompile extracts the "Complete Skeleton" code block from each
@@ -77,9 +79,7 @@ func TestSkillProductDefinitionsCompile(t *testing.T) {
 func extractGoBlocks(t *testing.T, path string) []string {
 	t.Helper()
 	f, err := os.Open(path)
-	if err != nil {
-		t.Fatalf("open %s: %v", path, err)
-	}
+	require.NoError(t, err, "open %s", path)
 	defer f.Close()
 
 	var blocks []string
@@ -133,22 +133,19 @@ func checkBlockCompiles(t *testing.T, block string) {
 	source := blankifyImports(block)
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644)
+	require.NoError(t, err, "write")
 	writeGoMod(t, dir)
 
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = dir
-	if out, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("go mod tidy:\n%s", out)
-	}
+	out, err := tidy.CombinedOutput()
+	require.NoError(t, err, "go mod tidy:\n%s", out)
 
 	build := exec.Command("go", "build", ".")
 	build.Dir = dir
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("skeleton does not compile:\n%s", out)
-	}
+	out, err = build.CombinedOutput()
+	require.NoError(t, err, "skeleton does not compile:\n%s", out)
 }
 
 // blankifyImports adds a block of `var _ = pkg.X` statements after the import
@@ -157,14 +154,14 @@ func checkBlockCompiles(t *testing.T, block string) {
 func blankifyImports(source string) string {
 	// Map of import paths to a reference that uses the package
 	refs := map[string]string{
-		`"context"`:     "var _ = context.Background",
-		`"crypto/rand"`: "var _ = rand.Read",
-		`"encoding/hex"`:  "var _ = hex.EncodeToString",
-		`"fmt"`:         "var _ = fmt.Sprintf",
-		`"log"`:         "var _ = log.Fatal",
-		`"strings"`:     "var _ = strings.Contains",
-		`"sync"`:        "var _ = sync.Mutex{}",
-		`"time"`:        "var _ = time.Now",
+		`"context"`:      "var _ = context.Background",
+		`"crypto/rand"`:  "var _ = rand.Read",
+		`"encoding/hex"`: "var _ = hex.EncodeToString",
+		`"fmt"`:          "var _ = fmt.Sprintf",
+		`"log"`:          "var _ = log.Fatal",
+		`"strings"`:      "var _ = strings.Contains",
+		`"sync"`:         "var _ = sync.Mutex{}",
+		`"time"`:         "var _ = time.Now",
 	}
 
 	// Find which packages are imported
@@ -208,30 +205,25 @@ var _ = adcp.EmptyInput{}
 `
 
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644); err != nil {
-		t.Fatalf("write: %v", err)
-	}
+	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644)
+	require.NoError(t, err, "write")
 	writeGoMod(t, dir)
 
 	tidy := exec.Command("go", "mod", "tidy")
 	tidy.Dir = dir
-	if out, err := tidy.CombinedOutput(); err != nil {
-		t.Fatalf("go mod tidy:\n%s", out)
-	}
+	out, err := tidy.CombinedOutput()
+	require.NoError(t, err, "go mod tidy:\n%s", out)
 
 	build := exec.Command("go", "build", ".")
 	build.Dir = dir
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("snippet does not compile:\n%s\n\n--- source ---\n%s", out, source)
-	}
+	out, err = build.CombinedOutput()
+	require.NoError(t, err, "snippet does not compile:\n%s\n\n--- source ---\n%s", out, source)
 }
 
 func writeGoMod(t *testing.T, dir string) {
 	t.Helper()
 	adcpDir, err := filepath.Abs(".")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Read go version and MCP SDK version from the adcp module's go.mod
 	// so this test doesn't break when dependencies are bumped.
@@ -244,17 +236,14 @@ func writeGoMod(t *testing.T, dir string) {
 		")\n\n" +
 		"replace github.com/adcontextprotocol/adcp-go/adcp => " + adcpDir + "\n"
 
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644); err != nil {
-		t.Fatalf("write go.mod: %v", err)
-	}
+	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644)
+	require.NoError(t, err, "write go.mod")
 }
 
 func parseAdcpGoMod(t *testing.T, path string) (goVersion, mcpVersion string) {
 	t.Helper()
 	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read go.mod: %v", err)
-	}
+	require.NoError(t, err, "read go.mod")
 	goVersion = "1.26.2" // fallback
 	mcpVersion = "v1.5.0"
 	for _, line := range strings.Split(string(data), "\n") {

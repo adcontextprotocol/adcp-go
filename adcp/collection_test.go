@@ -3,6 +3,9 @@ package adcp
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Discriminated union constructor tests ---
@@ -15,65 +18,42 @@ func TestByDistributionIDsJSON(t *testing.T) {
 		{Type: "gracenote_id", Value: "SH01234"},
 	})
 	b, err := json.Marshal(source)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	require.NoError(t, json.Unmarshal(b, &m))
 
-	if m["selection_type"] != "distribution_ids" {
-		t.Fatalf("expected selection_type=distribution_ids, got %v", m["selection_type"])
-	}
+	require.Equal(t, "distribution_ids", m["selection_type"])
 	ids, ok := m["identifiers"].([]any)
-	if !ok || len(ids) != 2 {
-		t.Fatalf("expected 2 identifiers, got %v", m["identifiers"])
-	}
-	if _, ok := m["publisher_domain"]; ok {
-		t.Fatal("distribution_ids source should not have publisher_domain")
-	}
-	if _, ok := m["collection_ids"]; ok {
-		t.Fatal("distribution_ids source should not have collection_ids")
-	}
-	if _, ok := m["genres"]; ok {
-		t.Fatal("distribution_ids source should not have genres")
-	}
+	require.True(t, ok, "expected identifiers to be []any")
+	require.Len(t, ids, 2)
+	assert.NotContains(t, m, "publisher_domain", "distribution_ids source should not have publisher_domain")
+	assert.NotContains(t, m, "collection_ids", "distribution_ids source should not have collection_ids")
+	assert.NotContains(t, m, "genres", "distribution_ids source should not have genres")
 }
 
 func TestByPublisherCollectionsJSON(t *testing.T) {
 	source := ByPublisherCollections("hulu.com", []string{"comedy-originals", "drama-catalog"})
-	b, _ := json.Marshal(source)
+	b, err := json.Marshal(source)
+	require.NoError(t, err)
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	require.NoError(t, json.Unmarshal(b, &m))
 
-	if m["selection_type"] != "publisher_collections" {
-		t.Fatalf("expected selection_type=publisher_collections, got %v", m["selection_type"])
-	}
-	if m["publisher_domain"] != "hulu.com" {
-		t.Fatalf("expected publisher_domain=hulu.com, got %v", m["publisher_domain"])
-	}
-	if _, ok := m["identifiers"]; ok {
-		t.Fatal("publisher_collections source should not have identifiers")
-	}
+	require.Equal(t, "publisher_collections", m["selection_type"])
+	require.Equal(t, "hulu.com", m["publisher_domain"])
+	assert.NotContains(t, m, "identifiers", "publisher_collections source should not have identifiers")
 }
 
 func TestByPublisherGenresJSON(t *testing.T) {
 	source := ByPublisherGenres("roku.com", []string{"Comedy", "Drama"}, "iab_content_3.0")
-	b, _ := json.Marshal(source)
+	b, err := json.Marshal(source)
+	require.NoError(t, err)
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	require.NoError(t, json.Unmarshal(b, &m))
 
-	if m["selection_type"] != "publisher_genres" {
-		t.Fatalf("expected selection_type=publisher_genres, got %v", m["selection_type"])
-	}
-	if m["genre_taxonomy"] != "iab_content_3.0" {
-		t.Fatalf("expected genre_taxonomy=iab_content_3.0, got %v", m["genre_taxonomy"])
-	}
-	if _, ok := m["identifiers"]; ok {
-		t.Fatal("publisher_genres source should not have identifiers")
-	}
-	if _, ok := m["collection_ids"]; ok {
-		t.Fatal("publisher_genres source should not have collection_ids")
-	}
+	require.Equal(t, "publisher_genres", m["selection_type"])
+	require.Equal(t, "iab_content_3.0", m["genre_taxonomy"])
+	assert.NotContains(t, m, "identifiers", "publisher_genres source should not have identifiers")
+	assert.NotContains(t, m, "collection_ids", "publisher_genres source should not have collection_ids")
 }
 
 // --- Generated type pointer semantics ---
@@ -83,20 +63,13 @@ func TestByPublisherGenresJSON(t *testing.T) {
 func TestGetCollectionListRequestResolveDefault(t *testing.T) {
 	raw := `{"list_id": "list-1"}`
 	var input GetCollectionListRequest
-	if err := json.Unmarshal([]byte(raw), &input); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if input.Resolve != nil {
-		t.Fatal("expected resolve to be nil when absent")
-	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
+	require.Nil(t, input.Resolve, "expected resolve to be nil when absent")
 
 	raw = `{"list_id": "list-1", "resolve": false}`
-	if err := json.Unmarshal([]byte(raw), &input); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if input.Resolve == nil || *input.Resolve != false {
-		t.Fatal("expected resolve=false")
-	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
+	require.NotNil(t, input.Resolve)
+	require.Equal(t, false, *input.Resolve, "expected resolve=false")
 }
 
 // --- Storyboard wire format ---
@@ -126,22 +99,12 @@ func TestBroadcastCreateMediaBuyWireFormat(t *testing.T) {
 		]
 	}`
 	var input CreateMediaBuyRequest
-	if err := json.Unmarshal([]byte(raw), &input); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if input.Brand.Domain != "novamotors.com" {
-		t.Fatal("expected brand.domain=novamotors.com")
-	}
-	if len(input.Packages) != 1 {
-		t.Fatalf("expected 1 package, got %d", len(input.Packages))
-	}
+	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
+	require.Equal(t, "novamotors.com", input.Brand.Domain)
+	require.Len(t, input.Packages, 1)
 	pkg := input.Packages[0]
-	if pkg.MeasurementTerms == nil {
-		t.Fatal("expected measurement_terms on package")
-	}
-	if pkg.MeasurementTerms.BillingMeasurement.MeasurementWindow != "c7" {
-		t.Fatalf("expected measurement_window=c7, got %s", pkg.MeasurementTerms.BillingMeasurement.MeasurementWindow)
-	}
+	require.NotNil(t, pkg.MeasurementTerms, "expected measurement_terms on package")
+	require.Equal(t, "c7", pkg.MeasurementTerms.BillingMeasurement.MeasurementWindow)
 }
 
 // --- Empty slice serialization ---
@@ -151,12 +114,8 @@ func TestListCollectionListsResponseEmpty(t *testing.T) {
 	_, out, _ := ListCollectionListsResponse([]CollectionList{}, nil)
 	m := out.(map[string]any)
 	lists, ok := m["lists"].([]CollectionList)
-	if !ok {
-		t.Fatalf("expected []CollectionList, got %T", m["lists"])
-	}
-	if lists == nil {
-		t.Fatal("expected empty slice, not nil")
-	}
+	require.True(t, ok, "expected []CollectionList, got %T", m["lists"])
+	require.NotNil(t, lists, "expected empty slice, not nil")
 }
 
 // --- Schema generation ---
@@ -164,16 +123,8 @@ func TestListCollectionListsResponseEmpty(t *testing.T) {
 
 func TestCollectionRequestSchemaGeneration(t *testing.T) {
 	schema := permissiveSchemaFor[CreateCollectionListRequest]()
-	if schema.Type != "object" {
-		t.Fatalf("expected type=object, got %s", schema.Type)
-	}
-	if _, ok := schema.Properties["name"]; !ok {
-		t.Fatal("expected 'name' property in schema")
-	}
-	if _, ok := schema.Properties["base_collections"]; !ok {
-		t.Fatal("expected 'base_collections' property in schema")
-	}
-	if schema.AdditionalProperties != nil {
-		t.Fatal("expected AdditionalProperties to be nil (permissive)")
-	}
+	require.Equal(t, "object", schema.Type)
+	assert.Contains(t, schema.Properties, "name", "expected 'name' property in schema")
+	assert.Contains(t, schema.Properties, "base_collections", "expected 'base_collections' property in schema")
+	assert.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil (permissive)")
 }

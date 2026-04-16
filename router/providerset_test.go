@@ -5,6 +5,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestProviderSet_ActiveFilters(t *testing.T) {
@@ -16,16 +19,13 @@ func TestProviderSet_ActiveFilters(t *testing.T) {
 	})
 
 	active := ps.Active()
-	if len(active) != 2 {
-		t.Fatalf("expected 2 active providers, got %d", len(active))
-	}
+	require.Len(t, active, 2, "expected 2 active providers")
 	ids := map[string]bool{}
 	for _, p := range active {
 		ids[p.ID] = true
 	}
-	if !ids["a"] || !ids["d"] {
-		t.Errorf("expected a and d, got %v", ids)
-	}
+	assert.True(t, ids["a"], "expected a to be active")
+	assert.True(t, ids["d"], "expected d to be active")
 }
 
 func TestProviderSet_All(t *testing.T) {
@@ -33,28 +33,20 @@ func TestProviderSet_All(t *testing.T) {
 		{ID: "a"},
 		{ID: "b", Status: ProviderStatusInactive},
 	})
-	if len(ps.All()) != 2 {
-		t.Errorf("expected 2, got %d", len(ps.All()))
-	}
+	assert.Len(t, ps.All(), 2)
 }
 
 func TestProviderSet_Swap(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{{ID: "old"}})
 	ps.Swap([]ProviderConfig{{ID: "new1"}, {ID: "new2"}})
-	if len(ps.All()) != 2 {
-		t.Fatalf("expected 2 after swap, got %d", len(ps.All()))
-	}
-	if ps.All()[0].ID != "new1" {
-		t.Errorf("expected new1, got %s", ps.All()[0].ID)
-	}
+	require.Len(t, ps.All(), 2, "expected 2 after swap")
+	assert.Equal(t, "new1", ps.All()[0].ID)
 }
 
 func TestProviderSet_SwapNil(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{{ID: "a"}})
 	ps.Swap(nil)
-	if len(ps.All()) != 0 {
-		t.Errorf("expected 0 after nil swap, got %d", len(ps.All()))
-	}
+	assert.Len(t, ps.All(), 0, "expected 0 after nil swap")
 }
 
 func TestProviderSet_SetStatus(t *testing.T) {
@@ -63,35 +55,26 @@ func TestProviderSet_SetStatus(t *testing.T) {
 		{ID: "b", Status: ProviderStatusActive},
 	})
 
-	if !ps.SetStatus("a", ProviderStatusDraining) {
-		t.Error("expected SetStatus to return true for existing provider")
-	}
+	assert.True(t, ps.SetStatus("a", ProviderStatusDraining), "expected SetStatus to return true for existing provider")
 	p, ok := ps.Get("a")
-	if !ok || p.Status != ProviderStatusDraining {
-		t.Errorf("expected draining, got %v", p.Status)
-	}
+	require.True(t, ok)
+	assert.Equal(t, ProviderStatusDraining, p.Status)
 
 	// b should be unchanged
 	p, _ = ps.Get("b")
-	if p.Status != ProviderStatusActive {
-		t.Errorf("b should still be active, got %v", p.Status)
-	}
+	assert.Equal(t, ProviderStatusActive, p.Status, "b should still be active")
 
-	if ps.SetStatus("nonexistent", ProviderStatusInactive) {
-		t.Error("expected SetStatus to return false for nonexistent provider")
-	}
+	assert.False(t, ps.SetStatus("nonexistent", ProviderStatusInactive), "expected SetStatus to return false for nonexistent provider")
 }
 
 func TestProviderSet_Get(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{{ID: "a", Endpoint: "http://a.com"}})
 	p, ok := ps.Get("a")
-	if !ok || p.Endpoint != "http://a.com" {
-		t.Errorf("expected to find provider a")
-	}
+	require.True(t, ok)
+	assert.Equal(t, "http://a.com", p.Endpoint)
+
 	_, ok = ps.Get("missing")
-	if ok {
-		t.Error("expected not found")
-	}
+	assert.False(t, ok, "expected not found")
 }
 
 func TestProviderSet_ConcurrentReadWrite(t *testing.T) {
@@ -127,19 +110,13 @@ func TestInflightTracking(t *testing.T) {
 
 	h.IncrInflight("p1")
 	h.IncrInflight("p1")
-	if got := h.Inflight("p1"); got != 2 {
-		t.Errorf("expected 2 inflight, got %d", got)
-	}
+	assert.Equal(t, int64(2), h.Inflight("p1"))
 
 	h.DecrInflight("p1")
-	if got := h.Inflight("p1"); got != 1 {
-		t.Errorf("expected 1 inflight, got %d", got)
-	}
+	assert.Equal(t, int64(1), h.Inflight("p1"))
 
 	snap := h.Snapshot()
-	if snap["p1"].Inflight != 1 {
-		t.Errorf("snapshot inflight: expected 1, got %d", snap["p1"].Inflight)
-	}
+	assert.Equal(t, int64(1), snap["p1"].Inflight)
 }
 
 func TestDrainProvider(t *testing.T) {
@@ -160,17 +137,11 @@ func TestDrainProvider(t *testing.T) {
 	defer cancel()
 
 	err := r.DrainProvider(ctx, "p1")
-	if err != nil {
-		t.Fatalf("drain failed: %v", err)
-	}
+	require.NoError(t, err, "drain failed")
 
 	p, ok := r.Providers().Get("p1")
-	if !ok {
-		t.Fatal("provider not found after drain")
-	}
-	if p.Status != ProviderStatusInactive {
-		t.Errorf("expected inactive after drain, got %v", p.Status)
-	}
+	require.True(t, ok, "provider not found after drain")
+	assert.Equal(t, ProviderStatusInactive, p.Status, "expected inactive after drain")
 }
 
 func TestDrainProvider_Timeout(t *testing.T) {
@@ -187,21 +158,15 @@ func TestDrainProvider_Timeout(t *testing.T) {
 	defer cancel()
 
 	err := r.DrainProvider(ctx, "p1")
-	if err == nil {
-		t.Fatal("expected timeout error")
-	}
+	require.Error(t, err, "expected timeout error")
 
 	// Should still be set to inactive on timeout
 	p, _ := r.Providers().Get("p1")
-	if p.Status != ProviderStatusInactive {
-		t.Errorf("expected inactive after drain timeout, got %v", p.Status)
-	}
+	assert.Equal(t, ProviderStatusInactive, p.Status, "expected inactive after drain timeout")
 }
 
 func TestDrainProvider_NotFound(t *testing.T) {
 	r, _ := NewRouter(nil, nil, nil, nil)
 	err := r.DrainProvider(context.Background(), "nonexistent")
-	if err == nil {
-		t.Error("expected error for nonexistent provider")
-	}
+	assert.Error(t, err, "expected error for nonexistent provider")
 }

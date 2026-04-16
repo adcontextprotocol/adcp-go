@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testMetrics struct {
@@ -71,9 +74,7 @@ func TestHealthChecker_BackgroundPolling(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	hc.Stop()
 
-	if callCount.Load() < 2 {
-		t.Errorf("expected at least 2 health checks, got %d", callCount.Load())
-	}
+	assert.GreaterOrEqual(t, callCount.Load(), int64(2), "expected at least 2 health checks")
 }
 
 func TestHealthChecker_CircuitOpensAfterFailures(t *testing.T) {
@@ -93,9 +94,7 @@ func TestHealthChecker_CircuitOpensAfterFailures(t *testing.T) {
 	hc.Stop()
 
 	snap := health.Snapshot()
-	if !snap["p1"].CircuitOpen {
-		t.Error("circuit should be open after multiple health check failures")
-	}
+	assert.True(t, snap["p1"].CircuitOpen, "circuit should be open after multiple health check failures")
 }
 
 func TestHealthChecker_Recovery(t *testing.T) {
@@ -122,22 +121,16 @@ func TestHealthChecker_Recovery(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // let circuit open
 
 	snap := health.Snapshot()
-	if !snap["p1"].CircuitOpen {
-		t.Fatal("circuit should be open")
-	}
+	require.True(t, snap["p1"].CircuitOpen, "circuit should be open")
 
 	healthy.Store(true)
 	time.Sleep(300 * time.Millisecond)
 	hc.Stop()
 
 	snap = health.Snapshot()
-	if snap["p1"].CircuitOpen {
-		t.Error("circuit should be closed after recovery")
-	}
+	assert.False(t, snap["p1"].CircuitOpen, "circuit should be closed after recovery")
 
-	if m.recovered.Load() < 1 {
-		t.Errorf("expected at least 1 recovery, got %d", m.recovered.Load())
-	}
+	assert.GreaterOrEqual(t, m.recovered.Load(), int64(1), "expected at least 1 recovery")
 }
 
 func TestHealthChecker_SkipsInactiveProviders(t *testing.T) {
@@ -158,7 +151,5 @@ func TestHealthChecker_SkipsInactiveProviders(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	hc.Stop()
 
-	if callCount.Load() != 0 {
-		t.Errorf("inactive provider should not be health checked, got %d calls", callCount.Load())
-	}
+	assert.Equal(t, int64(0), callCount.Load(), "inactive provider should not be health checked")
 }
