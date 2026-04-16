@@ -1,6 +1,7 @@
 package router
 
 import (
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,11 +16,12 @@ type ProviderHealth struct {
 }
 
 type providerStats struct {
-	successes          atomic.Int64
-	failures           atomic.Int64
-	timeouts           atomic.Int64
+	successes           atomic.Int64
+	failures            atomic.Int64
+	timeouts            atomic.Int64
 	consecutiveFailures atomic.Int64
-	circuitOpenUntil   atomic.Int64 // unix nano; 0 = closed
+	circuitOpenUntil    atomic.Int64 // unix nano; 0 = closed
+	inflight            atomic.Int64
 }
 
 // NewProviderHealth creates a health tracker.
@@ -99,13 +101,31 @@ func (h *ProviderHealth) IsCircuitOpen(providerID string) bool {
 	return true // circuit still open for all other racers
 }
 
-// ProviderStats returns stats for a single provider.
+// IncrInflight increments the in-flight request count for a provider.
+func (h *ProviderHealth) IncrInflight(providerID string) {
+	h.getOrCreate(providerID).inflight.Add(1)
+}
+
+// DecrInflight decrements the in-flight request count for a provider.
+func (h *ProviderHealth) DecrInflight(providerID string) {
+	if n := h.getOrCreate(providerID).inflight.Add(-1); n < 0 {
+		slog.Warn("inflight counter went negative", "provider", providerID, "value", n)
+	}
+}
+
+// Inflight returns the current in-flight request count for a provider.
+func (h *ProviderHealth) Inflight(providerID string) int64 {
+	return h.getOrCreate(providerID).inflight.Load()
+}
+
+// ProviderStatsSnapshot is a point-in-time snapshot of provider health stats.
 type ProviderStatsSnapshot struct {
-	Successes          int64 `json:"successes"`
-	Failures           int64 `json:"failures"`
-	Timeouts           int64 `json:"timeouts"`
+	Successes           int64 `json:"successes"`
+	Failures            int64 `json:"failures"`
+	Timeouts            int64 `json:"timeouts"`
 	ConsecutiveFailures int64 `json:"consecutive_failures"`
-	CircuitOpen        bool  `json:"circuit_open"`
+	CircuitOpen         bool  `json:"circuit_open"`
+	Inflight            int64 `json:"inflight"`
 }
 
 // Snapshot returns a snapshot of all provider stats.
@@ -124,6 +144,7 @@ func (h *ProviderHealth) Snapshot() map[string]ProviderStatsSnapshot {
 			Timeouts:            s.timeouts.Load(),
 			ConsecutiveFailures: s.consecutiveFailures.Load(),
 			CircuitOpen:         circuitOpen,
+			Inflight:            s.inflight.Load(),
 		}
 	}
 	return out
