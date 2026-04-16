@@ -7,6 +7,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRegistry_LoadFromData(t *testing.T) {
@@ -17,12 +20,8 @@ func TestRegistry_LoadFromData(t *testing.T) {
 		{PropertyID: "pub-pulsefit", PropertyRID: 1003, PropertyType: "mobile_app", Domain: "app.pulsefit.example"},
 	}, 42)
 
-	if reg.Count() != 3 {
-		t.Fatalf("expected 3 properties, got %d", reg.Count())
-	}
-	if reg.Sequence() != 42 {
-		t.Fatalf("expected sequence 42, got %d", reg.Sequence())
-	}
+	require.Equal(t, 3, reg.Count())
+	require.Equal(t, uint64(42), reg.Sequence())
 }
 
 func TestRegistry_LookupByID(t *testing.T) {
@@ -32,17 +31,11 @@ func TestRegistry_LookupByID(t *testing.T) {
 	}, 1)
 
 	p, ok := reg.LookupByID("pub-oakwood")
-	if !ok {
-		t.Fatal("expected to find pub-oakwood")
-	}
-	if p.PropertyRID != 1001 {
-		t.Errorf("expected RID 1001, got %d", p.PropertyRID)
-	}
+	require.True(t, ok, "expected to find pub-oakwood")
+	assert.Equal(t, uint64(1001), p.PropertyRID)
 
 	_, ok = reg.LookupByID("pub-nonexistent")
-	if ok {
-		t.Error("should not find nonexistent property")
-	}
+	assert.False(t, ok, "should not find nonexistent property")
 }
 
 func TestRegistry_LookupByRID(t *testing.T) {
@@ -52,12 +45,8 @@ func TestRegistry_LookupByRID(t *testing.T) {
 	}, 1)
 
 	p, ok := reg.LookupByRID(1001)
-	if !ok {
-		t.Fatal("expected to find RID 1001")
-	}
-	if p.PropertyID != "pub-oakwood" {
-		t.Errorf("expected pub-oakwood, got %s", p.PropertyID)
-	}
+	require.True(t, ok, "expected to find RID 1001")
+	assert.Equal(t, "pub-oakwood", p.PropertyID)
 }
 
 func TestRegistry_LookupByDomain(t *testing.T) {
@@ -67,12 +56,8 @@ func TestRegistry_LookupByDomain(t *testing.T) {
 	}, 1)
 
 	id, ok := reg.LookupByDomain("www.oakwood.example.com")
-	if !ok {
-		t.Fatal("expected to find domain")
-	}
-	if id != "pub-oakwood" {
-		t.Errorf("expected pub-oakwood, got %s", id)
-	}
+	require.True(t, ok, "expected to find domain")
+	assert.Equal(t, "pub-oakwood", id)
 }
 
 func TestRegistry_PropertyRID(t *testing.T) {
@@ -81,12 +66,8 @@ func TestRegistry_PropertyRID(t *testing.T) {
 		{PropertyID: "pub-oakwood", PropertyRID: 1001},
 	}, 1)
 
-	if rid := reg.PropertyRID("pub-oakwood"); rid != 1001 {
-		t.Errorf("expected 1001, got %d", rid)
-	}
-	if rid := reg.PropertyRID("pub-unknown"); rid != 0 {
-		t.Errorf("expected 0 for unknown property, got %d", rid)
-	}
+	assert.Equal(t, uint64(1001), reg.PropertyRID("pub-oakwood"))
+	assert.Equal(t, uint64(0), reg.PropertyRID("pub-unknown"))
 }
 
 func TestRegistry_ApplyUpdate_Add(t *testing.T) {
@@ -101,15 +82,10 @@ func TestRegistry_ApplyUpdate_Add(t *testing.T) {
 		Property: RegistryProperty{PropertyID: "pub-newsite", PropertyRID: 1004, Domain: "newsite.example.com"},
 	})
 
-	if reg.Count() != 2 {
-		t.Errorf("expected 2 properties after add, got %d", reg.Count())
-	}
-	if reg.Sequence() != 2 {
-		t.Errorf("expected sequence 2, got %d", reg.Sequence())
-	}
-	if _, ok := reg.LookupByID("pub-newsite"); !ok {
-		t.Error("expected to find newly added property")
-	}
+	assert.Equal(t, 2, reg.Count())
+	assert.Equal(t, uint64(2), reg.Sequence())
+	_, ok := reg.LookupByID("pub-newsite")
+	assert.True(t, ok, "expected to find newly added property")
 }
 
 func TestRegistry_ApplyUpdate_Remove(t *testing.T) {
@@ -125,15 +101,11 @@ func TestRegistry_ApplyUpdate_Remove(t *testing.T) {
 		Property: RegistryProperty{PropertyID: "pub-remove-me"},
 	})
 
-	if reg.Count() != 1 {
-		t.Errorf("expected 1 property after remove, got %d", reg.Count())
-	}
-	if _, ok := reg.LookupByID("pub-remove-me"); ok {
-		t.Error("removed property should not be findable")
-	}
-	if _, ok := reg.LookupByDomain("removeme.example.com"); ok {
-		t.Error("removed property's domain should not be findable")
-	}
+	assert.Equal(t, 1, reg.Count())
+	_, ok := reg.LookupByID("pub-remove-me")
+	assert.False(t, ok, "removed property should not be findable")
+	_, ok = reg.LookupByDomain("removeme.example.com")
+	assert.False(t, ok, "removed property's domain should not be findable")
 }
 
 func TestRegistry_HandleSnapshot(t *testing.T) {
@@ -147,22 +119,14 @@ func TestRegistry_HandleSnapshot(t *testing.T) {
 	req := httptest.NewRequest("GET", "/registry/snapshot", nil)
 	reg.HandleSnapshot(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
+	require.Equal(t, http.StatusOK, w.Code)
 
 	var snapshot RegistrySnapshot
 	_ = json.NewDecoder(w.Body).Decode(&snapshot)
 
-	if len(snapshot.Properties) != 2 {
-		t.Errorf("expected 2 properties in snapshot, got %d", len(snapshot.Properties))
-	}
-	if snapshot.Sequence != 99 {
-		t.Errorf("expected sequence 99, got %d", snapshot.Sequence)
-	}
-	if w.Header().Get("X-Registry-Sequence") != "99" {
-		t.Errorf("expected X-Registry-Sequence header, got %s", w.Header().Get("X-Registry-Sequence"))
-	}
+	assert.Equal(t, 2, len(snapshot.Properties))
+	assert.Equal(t, uint64(99), snapshot.Sequence)
+	assert.Equal(t, "99", w.Header().Get("X-Registry-Sequence"))
 }
 
 func TestRegistry_LoadSnapshot_FromRemote(t *testing.T) {
@@ -179,19 +143,11 @@ func TestRegistry_LoadSnapshot_FromRemote(t *testing.T) {
 	defer server.Close()
 
 	reg := NewRegistry(server.URL, "")
-	if err := reg.LoadSnapshot(); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, reg.LoadSnapshot())
 
-	if reg.Count() != 2 {
-		t.Errorf("expected 2 properties from remote, got %d", reg.Count())
-	}
-	if reg.Sequence() != 50 {
-		t.Errorf("expected sequence 50, got %d", reg.Sequence())
-	}
-	if rid := reg.PropertyRID("pub-remote-1"); rid != 2001 {
-		t.Errorf("expected RID 2001, got %d", rid)
-	}
+	assert.Equal(t, 2, reg.Count())
+	assert.Equal(t, uint64(50), reg.Sequence())
+	assert.Equal(t, uint64(2001), reg.PropertyRID("pub-remote-1"))
 }
 
 func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
@@ -234,7 +190,5 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	req.Body = io.NopCloser(strings.NewReader(reqBody))
 	router.HandleContextMatch(w, req)
 
-	if receivedRID != 1001 {
-		t.Errorf("expected provider to receive property_rid 1001, got %d", receivedRID)
-	}
+	assert.Equal(t, uint64(1001), receivedRID)
 }

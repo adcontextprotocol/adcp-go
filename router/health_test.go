@@ -3,6 +3,8 @@ package router
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestProviderHealth_Success(t *testing.T) {
@@ -11,12 +13,8 @@ func TestProviderHealth_Success(t *testing.T) {
 	h.RecordSuccess("p1")
 
 	snap := h.Snapshot()
-	if snap["p1"].Successes != 2 {
-		t.Errorf("expected 2 successes, got %d", snap["p1"].Successes)
-	}
-	if snap["p1"].CircuitOpen {
-		t.Error("circuit should be closed")
-	}
+	assert.Equal(t, int64(2), snap["p1"].Successes)
+	assert.False(t, snap["p1"].CircuitOpen, "circuit should be closed")
 }
 
 func TestProviderHealth_CircuitBreaker(t *testing.T) {
@@ -24,20 +22,14 @@ func TestProviderHealth_CircuitBreaker(t *testing.T) {
 
 	h.RecordFailure("p1")
 	h.RecordFailure("p1")
-	if h.IsCircuitOpen("p1") {
-		t.Error("circuit should not be open after 2 failures (threshold=3)")
-	}
+	assert.False(t, h.IsCircuitOpen("p1"), "circuit should not be open after 2 failures (threshold=3)")
 
 	h.RecordFailure("p1")
-	if !h.IsCircuitOpen("p1") {
-		t.Error("circuit should be open after 3 consecutive failures")
-	}
+	assert.True(t, h.IsCircuitOpen("p1"), "circuit should be open after 3 consecutive failures")
 
 	// Wait for cooldown
 	time.Sleep(150 * time.Millisecond)
-	if h.IsCircuitOpen("p1") {
-		t.Error("circuit should auto-close after cooldown")
-	}
+	assert.False(t, h.IsCircuitOpen("p1"), "circuit should auto-close after cooldown")
 }
 
 func TestProviderHealth_SuccessResetsConsecutive(t *testing.T) {
@@ -48,9 +40,7 @@ func TestProviderHealth_SuccessResetsConsecutive(t *testing.T) {
 	h.RecordSuccess("p1") // resets consecutive failures
 	h.RecordFailure("p1")
 
-	if h.IsCircuitOpen("p1") {
-		t.Error("circuit should not be open — success reset consecutive count")
-	}
+	assert.False(t, h.IsCircuitOpen("p1"), "circuit should not be open — success reset consecutive count")
 }
 
 func TestProviderHealth_Timeout(t *testing.T) {
@@ -59,10 +49,6 @@ func TestProviderHealth_Timeout(t *testing.T) {
 	h.RecordTimeout("p1")
 
 	snap := h.Snapshot()
-	if snap["p1"].Timeouts != 2 {
-		t.Errorf("expected 2 timeouts, got %d", snap["p1"].Timeouts)
-	}
-	if !snap["p1"].CircuitOpen {
-		t.Error("circuit should be open after 2 timeouts (threshold=2)")
-	}
+	assert.Equal(t, int64(2), snap["p1"].Timeouts)
+	assert.True(t, snap["p1"].CircuitOpen, "circuit should be open after 2 timeouts (threshold=2)")
 }

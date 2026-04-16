@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestSystem_HeavyUser creates a user with 1,500 exposures over 30 days
@@ -73,9 +75,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 	})
 	elapsed := time.Since(start)
 
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	eligible := 0
 	for _, e := range resp.Eligibility {
@@ -89,9 +89,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 
 	// All packages should be daily-capped (5 exposures/day, user has 5/day per pkg).
 	for _, e := range resp.Eligibility {
-		if e.Eligible {
-			t.Errorf("%s should be daily-capped (5/day)", e.PackageID)
-		}
+		assert.False(t, e.Eligible, "%s should be daily-capped (5/day)", e.PackageID)
 	}
 
 	// Benchmark: run 1000 evaluations.
@@ -227,18 +225,14 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	for _, e := range respA.Eligibility {
 		eligA[e.PackageID] = e.Eligible
 	}
-	if !eligA["pkg-food"] {
-		t.Error("Request A: pkg-food should be eligible (cooking_fans from cookie)")
-	}
+	assert.True(t, eligA["pkg-food"], "Request A: pkg-food should be eligible (cooking_fans from cookie)")
 
 	// Verify: Request B (uid2 only) sees sports_fans.
 	eligB := map[string]bool{}
 	for _, e := range respB.Eligibility {
 		eligB[e.PackageID] = e.Eligible
 	}
-	if !eligB["pkg-sports"] {
-		t.Error("Request B: pkg-sports should be eligible (sports_fans from uid2)")
-	}
+	assert.True(t, eligB["pkg-sports"], "Request B: pkg-sports should be eligible (sports_fans from uid2)")
 
 	// Verify: exposure dedup. Cookie has ~40 exposures (30 unique + 10 shared).
 	// Email has ~20 exposures (10 unique + 10 shared). Union should dedup the shared ones.
@@ -253,9 +247,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	t.Logf("  Cookie exposures: %d, Email exposures: %d, Merged (deduped): %d",
 		cookieBin.Len(), emailBin.Len(), mergedBin.Len())
 
-	if mergedBin.Len() >= cookieBin.Len()+emailBin.Len() {
-		t.Error("expected dedup to reduce total exposure count")
-	}
+	assert.Less(t, mergedBin.Len(), cookieBin.Len()+emailBin.Len(), "expected dedup to reduce total exposure count")
 }
 
 // TestSystem_RollingWindowExpiry simulates 35 days and verifies old exposures
@@ -298,9 +290,7 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 				PackageID:    "pkg-test",
 				ImpressionID: fmt.Sprintf("imp-d%d-i%d", day, i),
 			})
-			if err != nil {
-				t.Fatalf("day %d expose: %v", day, err)
-			}
+			require.NoError(t, err, "day %d expose", day)
 		}
 
 		// Evaluate eligibility.
@@ -309,18 +299,14 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 		})
 
 		// Should NOT be capped (2/5 per day, even with boundary overlap max is 4).
-		if !resp.Eligibility[0].Eligible {
-			t.Errorf("day %d: should be eligible (2/5 per day)", day)
-		}
+		assert.True(t, resp.Eligibility[0].Eligible, "day %d: should be eligible (2/5 per day)", day)
 	}
 
 	// Check the exposure log: should be pruned to ~30 days.
 	hash := HashToken("user-rolling")
 	val, _, _ := store.Get(context.Background(), "user:exposures:"+hash)
 	binLog := BinaryExposureLog(val)
-	if err := ValidateBinaryLog(binLog); err != nil {
-		t.Fatalf("exposure log validation failed: %v", err)
-	}
+	require.NoError(t, ValidateBinaryLog(binLog))
 
 	// Pruning happens on each write. Entries older than 30 days should be gone.
 	thirtyDaysAgo := currentTime.Add(-30 * 24 * time.Hour).Unix()
@@ -333,9 +319,7 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 
 	t.Logf("  After 35 days: %d entries in log, %d older than 30 days", binLog.Len(), oldEntries)
 
-	if oldEntries > 0 {
-		t.Errorf("expected 0 entries older than 30 days, got %d", oldEntries)
-	}
+	assert.Equal(t, 0, oldEntries, "expected 0 entries older than 30 days")
 
 	// Should have ~60 entries (30 days × 2/day, first 5 days pruned).
 	if binLog.Len() > 62 || binLog.Len() < 58 {

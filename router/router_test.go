@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testRouter builds a Router without SSRF validation, suitable for use with
@@ -33,9 +35,7 @@ func TestValidateContextRequest_Valid(t *testing.T) {
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	}
-	if err := ValidateContextRequest(req); err != nil {
-		t.Errorf("expected valid, got: %v", err)
-	}
+	assert.NoError(t, ValidateContextRequest(req))
 }
 
 func TestValidateContextRequest_MissingFields(t *testing.T) {
@@ -50,9 +50,7 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := ValidateContextRequest(&tt.req); err == nil {
-				t.Error("expected error")
-			}
+			assert.Error(t, ValidateContextRequest(&tt.req))
 		})
 	}
 }
@@ -64,9 +62,7 @@ func TestValidateIdentityRequest_Valid(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-1", "pkg-2"},
 	}
-	if err := ValidateIdentityRequest(req); err != nil {
-		t.Errorf("expected valid, got: %v", err)
-	}
+	assert.NoError(t, ValidateIdentityRequest(req))
 }
 
 func TestProviderFiltering_PropertyID(t *testing.T) {
@@ -78,12 +74,8 @@ func TestProviderFiltering_PropertyID(t *testing.T) {
 	match := &tmproto.ContextMatchRequest{PropertyID: "pub-oakwood-main", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 	noMatch := &tmproto.ContextMatchRequest{PropertyID: "pub-other-site", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 
-	if !MatchesContextProvider(match, provider) {
-		t.Error("should match pub-oakwood-main")
-	}
-	if MatchesContextProvider(noMatch, provider) {
-		t.Error("should not match pub-other-site")
-	}
+	assert.True(t, MatchesContextProvider(match, provider), "should match pub-oakwood-main")
+	assert.False(t, MatchesContextProvider(noMatch, provider), "should not match pub-other-site")
 }
 
 func TestProviderFiltering_ExcludeProperty(t *testing.T) {
@@ -93,9 +85,7 @@ func TestProviderFiltering_ExcludeProperty(t *testing.T) {
 	}
 
 	req := &tmproto.ContextMatchRequest{PropertyID: "pub-blocked-123", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
-	if MatchesContextProvider(req, provider) {
-		t.Error("should be excluded")
-	}
+	assert.False(t, MatchesContextProvider(req, provider), "should be excluded")
 }
 
 func TestProviderFiltering_PropertyType(t *testing.T) {
@@ -107,12 +97,8 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 	web := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 	ctv := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "ctv_app", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
 
-	if !MatchesContextProvider(web, provider) {
-		t.Error("should match website")
-	}
-	if MatchesContextProvider(ctv, provider) {
-		t.Error("should not match ctv_app")
-	}
+	assert.True(t, MatchesContextProvider(web, provider), "should match website")
+	assert.False(t, MatchesContextProvider(ctv, provider), "should not match ctv_app")
 }
 
 func TestMergeContextResponses(t *testing.T) {
@@ -132,12 +118,8 @@ func TestMergeContextResponses(t *testing.T) {
 
 	merged := mergeContextResponses("ctx-test", []*tmproto.ContextMatchResponse{r1, r2})
 
-	if len(merged.Offers) != 3 {
-		t.Errorf("expected 3 offers, got %d", len(merged.Offers))
-	}
-	if len(merged.Signals.Segments) != 2 {
-		t.Errorf("expected 2 segments, got %d", len(merged.Signals.Segments))
-	}
+	assert.Equal(t, 3, len(merged.Offers))
+	assert.Equal(t, 2, len(merged.Signals.Segments))
 }
 
 func TestMergeIdentityResponses(t *testing.T) {
@@ -162,23 +144,13 @@ func TestMergeIdentityResponses(t *testing.T) {
 	// AND semantics for duplicates: a package listed by all providers that mention it
 	// is eligible. Packages are provider-specific, so a package listed by one provider
 	// passes (100% of providers that listed it said eligible).
-	if !eligible["pkg-1"] {
-		t.Error("pkg-1 should be eligible (both providers include it)")
-	}
-	if !eligible["pkg-2"] {
-		t.Error("pkg-2 should be eligible (listed by its provider)")
-	}
-	if !eligible["pkg-3"] {
-		t.Error("pkg-3 should be eligible (listed by its provider)")
-	}
-	if len(merged.EligiblePackageIDs) != 3 {
-		t.Errorf("expected 3 eligible packages, got %d", len(merged.EligiblePackageIDs))
-	}
+	assert.True(t, eligible["pkg-1"], "pkg-1 should be eligible (both providers include it)")
+	assert.True(t, eligible["pkg-2"], "pkg-2 should be eligible (listed by its provider)")
+	assert.True(t, eligible["pkg-3"], "pkg-3 should be eligible (listed by its provider)")
+	assert.Equal(t, 3, len(merged.EligiblePackageIDs))
 
 	// TTL is the minimum across providers.
-	if merged.TTLSec != 300 {
-		t.Errorf("expected TTLSec 300 (min), got %d", merged.TTLSec)
-	}
+	assert.Equal(t, 300, merged.TTLSec)
 }
 
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
@@ -210,16 +182,13 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
 	router.HandleContextMatch(w, req)
 
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
+	require.Equal(t, 200, w.Code, w.Body.String())
 
 	var resp tmproto.ContextMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
-	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-1" {
-		t.Errorf("expected 1 offer for pkg-1, got: %+v", resp.Offers)
-	}
+	require.Equal(t, 1, len(resp.Offers))
+	assert.Equal(t, "pkg-1", resp.Offers[0].PackageID)
 }
 
 func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
@@ -247,19 +216,14 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	req := httptest.NewRequest("POST", "/tmp/identity", strings.NewReader(reqBody))
 	router.HandleIdentityMatch(w, req)
 
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
+	require.Equal(t, 200, w.Code, w.Body.String())
 
 	var resp tmproto.IdentityMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
-	if len(resp.EligiblePackageIDs) != 1 || resp.EligiblePackageIDs[0] != "pkg-1" {
-		t.Errorf("expected [pkg-1], got %v", resp.EligiblePackageIDs)
-	}
-	if resp.TTLSec != 300 {
-		t.Errorf("expected TTLSec 300, got %d", resp.TTLSec)
-	}
+	require.Equal(t, 1, len(resp.EligiblePackageIDs))
+	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
+	assert.Equal(t, 300, resp.TTLSec)
 }
 
 func TestIdentityFiltering_Country(t *testing.T) {
@@ -291,18 +255,10 @@ func TestIdentityFiltering_Country(t *testing.T) {
 		Country:    "DE",
 	}
 
-	if !MatchesIdentityProvider(usReq, usProvider) {
-		t.Error("US request should match US provider")
-	}
-	if MatchesIdentityProvider(usReq, euProvider) {
-		t.Error("US request should not match EU provider")
-	}
-	if MatchesIdentityProvider(deReq, usProvider) {
-		t.Error("DE request should not match US provider")
-	}
-	if !MatchesIdentityProvider(deReq, euProvider) {
-		t.Error("DE request should match EU provider")
-	}
+	assert.True(t, MatchesIdentityProvider(usReq, usProvider), "US request should match US provider")
+	assert.False(t, MatchesIdentityProvider(usReq, euProvider), "US request should not match EU provider")
+	assert.False(t, MatchesIdentityProvider(deReq, usProvider), "DE request should not match US provider")
+	assert.True(t, MatchesIdentityProvider(deReq, euProvider), "DE request should match EU provider")
 }
 
 func TestIdentityFiltering_UIDType(t *testing.T) {
@@ -325,12 +281,8 @@ func TestIdentityFiltering_UIDType(t *testing.T) {
 		PackageIDs: []string{"pkg-1"},
 	}
 
-	if !MatchesIdentityProvider(uid2Req, provider) {
-		t.Error("uid2 request should match uid2-only provider")
-	}
-	if MatchesIdentityProvider(euidReq, provider) {
-		t.Error("euid request should not match uid2-only provider")
-	}
+	assert.True(t, MatchesIdentityProvider(uid2Req, provider), "uid2 request should match uid2-only provider")
+	assert.False(t, MatchesIdentityProvider(euidReq, provider), "euid request should not match uid2-only provider")
 }
 
 func TestIdentityFiltering_NoFilters(t *testing.T) {
@@ -346,9 +298,7 @@ func TestIdentityFiltering_NoFilters(t *testing.T) {
 		Country:    "US",
 	}
 
-	if !MatchesIdentityProvider(req, provider) {
-		t.Error("provider with no country/uid_type filters should match all requests")
-	}
+	assert.True(t, MatchesIdentityProvider(req, provider), "provider with no country/uid_type filters should match all requests")
 }
 
 func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
@@ -380,23 +330,17 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 	req := httptest.NewRequest("POST", "/tmp/identity", strings.NewReader(reqBody))
 	router.HandleIdentityMatch(w, req)
 
-	if w.Code != 200 {
-		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
-	}
+	require.Equal(t, 200, w.Code, w.Body.String())
 
 	// Verify country was stripped from forwarded request.
 	var forwarded tmproto.IdentityMatchRequest
 	_ = json.Unmarshal(receivedBody, &forwarded)
-	if forwarded.Country != "" {
-		t.Errorf("country should be stripped before forwarding, got %q", forwarded.Country)
-	}
+	assert.Empty(t, forwarded.Country, "country should be stripped before forwarding")
 
 	// Verify TMPX in tmpx_providers map.
 	var resp tmproto.IdentityMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
-	if resp.TmpxProviders["test-provider"] != "k1.dGVzdC10b2tlbg" {
-		t.Errorf("expected TMPX in tmpx_providers, got %v", resp.TmpxProviders)
-	}
+	assert.Equal(t, "k1.dGVzdC10b2tlbg", resp.TmpxProviders["test-provider"])
 }
 
 func TestMergeIdentityResponses_TMPX(t *testing.T) {
@@ -413,16 +357,10 @@ func TestMergeIdentityResponses_TMPX(t *testing.T) {
 
 	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2})
 
-	// tmpx_providers should map provider ID → token.
-	if len(merged.TmpxProviders) != 2 {
-		t.Fatalf("expected 2 tmpx_providers entries, got %d", len(merged.TmpxProviders))
-	}
-	if merged.TmpxProviders["acme"] != "k1.acme-token" {
-		t.Errorf("acme TMPX: got %q, want k1.acme-token", merged.TmpxProviders["acme"])
-	}
-	if merged.TmpxProviders["nova"] != "k2.nova-token" {
-		t.Errorf("nova TMPX: got %q, want k2.nova-token", merged.TmpxProviders["nova"])
-	}
+	// tmpx_providers should map provider ID -> token.
+	require.Equal(t, 2, len(merged.TmpxProviders))
+	assert.Equal(t, "k1.acme-token", merged.TmpxProviders["acme"])
+	assert.Equal(t, "k2.nova-token", merged.TmpxProviders["nova"])
 }
 
 func TestMergeIdentityResponses_TMPXOmittedWhenEmpty(t *testing.T) {
@@ -431,9 +369,7 @@ func TestMergeIdentityResponses_TMPXOmittedWhenEmpty(t *testing.T) {
 		TTLSec:             300,
 	}
 	merged := mergeIdentityResponses("test", []string{"p1"}, []*tmproto.IdentityMatchResponse{r1})
-	if merged.TmpxProviders != nil {
-		t.Errorf("tmpx_providers should be nil when no tokens present, got %v", merged.TmpxProviders)
-	}
+	assert.Nil(t, merged.TmpxProviders, "tmpx_providers should be nil when no tokens present")
 }
 
 func TestRouterTimeout_ProviderExcluded(t *testing.T) {
@@ -477,7 +413,6 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	// Should only have the fast provider's offer
-	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-fast" {
-		t.Errorf("expected only pkg-fast, got: %+v", resp.Offers)
-	}
+	require.Equal(t, 1, len(resp.Offers))
+	assert.Equal(t, "pkg-fast", resp.Offers[0].PackageID)
 }

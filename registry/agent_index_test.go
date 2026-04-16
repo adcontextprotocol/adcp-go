@@ -3,6 +3,9 @@ package registry
 import (
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAgentIndex_CRUD(t *testing.T) {
@@ -18,17 +21,11 @@ func TestAgentIndex_CRUD(t *testing.T) {
 
 	idx.Put(p)
 
-	if idx.Count() != 1 {
-		t.Fatalf("count = %d, want 1", idx.Count())
-	}
+	require.Equal(t, 1, idx.Count(), "count after put")
 
 	got, ok := idx.Get("https://agent.example.com")
-	if !ok {
-		t.Fatal("Get: not found")
-	}
-	if got.PropertyCount != 42 {
-		t.Errorf("property_count = %d", got.PropertyCount)
-	}
+	require.True(t, ok, "Get: not found")
+	assert.Equal(t, 42, got.PropertyCount)
 
 	// Update
 	p2 := &AgentProfile{
@@ -37,24 +34,14 @@ func TestAgentIndex_CRUD(t *testing.T) {
 		PropertyCount: 100,
 	}
 	idx.Put(p2)
-	if idx.Count() != 1 {
-		t.Errorf("count after update = %d, want 1", idx.Count())
-	}
+	assert.Equal(t, 1, idx.Count(), "count after update")
 	got, _ = idx.Get("https://agent.example.com")
-	if got.PropertyCount != 100 {
-		t.Errorf("property_count after update = %d", got.PropertyCount)
-	}
+	assert.Equal(t, 100, got.PropertyCount, "property_count after update")
 
 	// Remove
-	if !idx.Remove("https://agent.example.com") {
-		t.Error("Remove returned false for existing agent")
-	}
-	if idx.Remove("https://agent.example.com") {
-		t.Error("Remove returned true for already-removed agent")
-	}
-	if idx.Count() != 0 {
-		t.Errorf("count after remove = %d", idx.Count())
-	}
+	assert.True(t, idx.Remove("https://agent.example.com"), "Remove returned false for existing agent")
+	assert.False(t, idx.Remove("https://agent.example.com"), "Remove returned true for already-removed agent")
+	assert.Equal(t, 0, idx.Count(), "count after remove")
 }
 
 func TestAgentIndex_List(t *testing.T) {
@@ -64,17 +51,13 @@ func TestAgentIndex_List(t *testing.T) {
 	idx.Put(&AgentProfile{AgentURL: "https://b.com"})
 
 	list := idx.List()
-	if len(list) != 2 {
-		t.Fatalf("list = %d, want 2", len(list))
-	}
+	require.Len(t, list, 2)
 }
 
 func TestAgentIndex_GetMissing(t *testing.T) {
 	idx := NewAgentIndex()
 	_, ok := idx.Get("https://nonexistent.com")
-	if ok {
-		t.Error("should not find nonexistent agent")
-	}
+	assert.False(t, ok, "should not find nonexistent agent")
 }
 
 func TestAgentIndex_Concurrent(t *testing.T) {

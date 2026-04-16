@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockRegistry implements PropertyRegistry for tests.
@@ -107,12 +109,8 @@ func TestContext_BitmapPreFilter_Targeted(t *testing.T) {
 		PropertyRID:   1,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 1 {
-		t.Errorf("expected 1 offer, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1)
 }
 
 func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
@@ -122,12 +120,8 @@ func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
 		PropertyRID:   999,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers)
 }
 
 func TestContext_PropertySuppression(t *testing.T) {
@@ -140,12 +134,8 @@ func TestContext_PropertySuppression(t *testing.T) {
 		PropertyRID:   2,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers for suppressed property, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers for suppressed property")
 }
 
 func TestContext_PerPackageTargeting(t *testing.T) {
@@ -170,12 +160,8 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 		PropertyRID:   1,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-scoped"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers (property not in package bitmap), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers (property not in package bitmap)")
 
 	// Property 3 is in both global and pkg-scoped.
 	resp, err = engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
@@ -183,12 +169,8 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 		PropertyRID:   3,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-scoped"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 1 {
-		t.Errorf("expected 1 offer, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1)
 }
 
 func TestContext_TopicMatch(t *testing.T) {
@@ -209,12 +191,8 @@ func TestContext_TopicMatch(t *testing.T) {
 		Artifacts:     []string{"article:pasta"},
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-food"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 1 {
-		t.Errorf("expected 1 offer (topic match), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1, "expected 1 offer (topic match)")
 }
 
 func TestContext_TopicMiss(t *testing.T) {
@@ -235,12 +213,8 @@ func TestContext_TopicMiss(t *testing.T) {
 		Artifacts:     []string{"article:cpu"},
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-food"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers (topic mismatch), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers (topic mismatch)")
 }
 
 func TestContext_URLBlocklist(t *testing.T) {
@@ -261,12 +235,8 @@ func TestContext_URLBlocklist(t *testing.T) {
 		Artifacts:     []string{"article:controversial"},
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-family"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers (URL blocked), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers (URL blocked)")
 }
 
 func TestContext_URLAllowlist(t *testing.T) {
@@ -288,12 +258,8 @@ func TestContext_URLAllowlist(t *testing.T) {
 		Artifacts:     []string{"article:safe-content"},
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-premium"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 1 {
-		t.Errorf("expected 1 offer (URL in allowlist), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1, "expected 1 offer (URL in allowlist)")
 
 	// Non-allowed URL should be blocked.
 	resp, err = engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
@@ -302,12 +268,8 @@ func TestContext_URLAllowlist(t *testing.T) {
 		Artifacts:     []string{"article:other-content"},
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-premium"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers (URL not in allowlist), got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers (URL not in allowlist)")
 }
 
 func TestContext_MultiplePackages_MixedResults(t *testing.T) {
@@ -335,20 +297,14 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 			{PackageID: "pkg-tech"},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	matched := map[string]bool{}
 	for _, o := range resp.Offers {
 		matched[o.PackageID] = true
 	}
-	if !matched["pkg-food"] {
-		t.Error("pkg-food should match")
-	}
-	if matched["pkg-tech"] {
-		t.Error("pkg-tech should not match")
-	}
+	assert.True(t, matched["pkg-food"], "pkg-food should match")
+	assert.False(t, matched["pkg-tech"], "pkg-tech should not match")
 }
 
 func TestContext_EmitSegments(t *testing.T) {
@@ -367,15 +323,9 @@ func TestContext_EmitSegments(t *testing.T) {
 		PropertyRID:   1,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Signals == nil {
-		t.Fatal("expected signals with segments")
-	}
-	if len(resp.Signals.Segments) != 2 {
-		t.Errorf("expected 2 segments, got %d", len(resp.Signals.Segments))
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp.Signals, "expected signals with segments")
+	assert.Len(t, resp.Signals.Segments, 2)
 }
 
 func TestContext_RequestIDPreserved(t *testing.T) {
@@ -385,12 +335,8 @@ func TestContext_RequestIDPreserved(t *testing.T) {
 		PropertyRID:   999,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.RequestID != "preserve-me" {
-		t.Errorf("expected request_id 'preserve-me', got %q", resp.RequestID)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "preserve-me", resp.RequestID)
 }
 
 func TestContext_UnknownPackageSkipped(t *testing.T) {
@@ -400,12 +346,8 @@ func TestContext_UnknownPackageSkipped(t *testing.T) {
 		PropertyRID:   1,
 		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-unknown"}},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 0 {
-		t.Errorf("expected 0 offers for unknown package, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "expected 0 offers for unknown package")
 }
 
 func TestContext_SignatureVerification(t *testing.T) {
@@ -435,19 +377,13 @@ func TestContext_SignatureVerification(t *testing.T) {
 	// Valid signature should work.
 	req.Signature = tmproto.SignRequest(req, priv)
 	resp, err := engine.EvaluateContext(context.Background(), req)
-	if err != nil {
-		t.Fatalf("valid signature rejected: %v", err)
-	}
-	if len(resp.Offers) != 1 {
-		t.Errorf("expected 1 offer with valid sig, got %d", len(resp.Offers))
-	}
+	require.NoError(t, err, "valid signature rejected")
+	assert.Len(t, resp.Offers, 1, "expected 1 offer with valid sig")
 
 	// Tampered signature should fail.
 	req.Signature = "AAAA" + req.Signature[4:]
 	_, err = engine.EvaluateContext(context.Background(), req)
-	if err == nil {
-		t.Error("tampered signature should be rejected")
-	}
+	assert.Error(t, err, "tampered signature should be rejected")
 }
 
 // --- Identity Tests (using resolved path with exposure logs) ---
@@ -460,15 +396,9 @@ func TestIdentity_ExposureIncrements(t *testing.T) {
 		UserToken: "user-abc",
 		PackageID: "pkg-display-001",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.CampaignCount != 1 {
-		t.Errorf("expected campaign count 1, got %d", resp.CampaignCount)
-	}
-	if resp.CampaignRemaining != 4 {
-		t.Errorf("expected 4 remaining, got %d", resp.CampaignRemaining)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, resp.CampaignCount)
+	assert.Equal(t, 4, resp.CampaignRemaining)
 }
 
 func TestIdentity_CampaignFrequencyCap(t *testing.T) {
@@ -490,13 +420,9 @@ func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, e := range resp.Eligibility {
-		if e.Eligible {
-			t.Errorf("%s should be campaign-capped", e.PackageID)
-		}
+		assert.False(t, e.Eligible, "%s should be campaign-capped", e.PackageID)
 	}
 }
 
@@ -516,20 +442,14 @@ func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	byPkg := map[string]tmproto.PackageEligibility{}
 	for _, e := range resp.Eligibility {
 		byPkg[e.PackageID] = e
 	}
-	if byPkg["pkg-display-001"].Eligible {
-		t.Error("pkg-display-001 should be package-capped (3/3)")
-	}
-	if !byPkg["pkg-display-002"].Eligible {
-		t.Error("pkg-display-002 should still be eligible")
-	}
+	assert.False(t, byPkg["pkg-display-001"].Eligible, "pkg-display-001 should be package-capped (3/3)")
+	assert.True(t, byPkg["pkg-display-002"].Eligible, "pkg-display-002 should still be eligible")
 }
 
 func TestIdentity_MultipleFrequencyRules(t *testing.T) {
@@ -545,12 +465,8 @@ func TestIdentity_MultipleFrequencyRules(t *testing.T) {
 		UserToken:  "user-abc",
 		PackageIDs: []string{"pkg-multi-rule"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].Eligible {
-		t.Error("should be capped by 12h rule (2/2)")
-	}
+	require.NoError(t, err)
+	assert.False(t, resp.Eligibility[0].Eligible, "should be capped by 12h rule (2/2)")
 }
 
 func TestIdentity_SlidingWindowExpiry(t *testing.T) {
@@ -568,9 +484,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-before", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
-	if resp.Eligibility[0].Eligible {
-		t.Error("should be capped (3/3)")
-	}
+	assert.False(t, resp.Eligibility[0].Eligible, "should be capped (3/3)")
 
 	// Advance past 24h window.
 	future := now.Add(25 * time.Hour)
@@ -580,9 +494,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-after", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
-	if !resp.Eligibility[0].Eligible {
-		t.Error("should be eligible after window expires")
-	}
+	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
 }
 
 func TestIdentity_IntentScore(t *testing.T) {
@@ -596,12 +508,9 @@ func TestIdentity_IntentScore(t *testing.T) {
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-intent", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].IntentScore == nil || *resp.Eligibility[0].IntentScore < 0.99 {
-		t.Error("expected high intent score after recent exposure")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp.Eligibility[0].IntentScore)
+	assert.GreaterOrEqual(t, *resp.Eligibility[0].IntentScore, 0.99, "expected high intent score after recent exposure")
 }
 
 func TestIdentity_AudienceNotInSegment(t *testing.T) {
@@ -610,9 +519,7 @@ func TestIdentity_AudienceNotInSegment(t *testing.T) {
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-audience", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
-	if resp.Eligibility[0].Eligible {
-		t.Error("should not be eligible (not in segment)")
-	}
+	assert.False(t, resp.Eligibility[0].Eligible, "should not be eligible (not in segment)")
 }
 
 func TestIdentity_NoCapPackage(t *testing.T) {
@@ -620,9 +527,7 @@ func TestIdentity_NoCapPackage(t *testing.T) {
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-nocap", UserToken: "user-abc", PackageIDs: []string{"pkg-no-cap"},
 	})
-	if !resp.Eligibility[0].Eligible {
-		t.Error("pkg-no-cap should always be eligible")
-	}
+	assert.True(t, resp.Eligibility[0].Eligible, "pkg-no-cap should always be eligible")
 }
 
 func TestIdentity_UnknownPackage(t *testing.T) {
@@ -631,9 +536,7 @@ func TestIdentity_UnknownPackage(t *testing.T) {
 		RequestID: "id-unknown", UserToken: "user-abc", PackageIDs: []string{"pkg-unknown"},
 	})
 	// Unknown package with no identity config → eligible (no restrictions).
-	if !resp.Eligibility[0].Eligible {
-		t.Error("unknown package with no identity config should be eligible")
-	}
+	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
 }
 
 func TestIdentity_RequestIDPreserved(t *testing.T) {
@@ -641,9 +544,7 @@ func TestIdentity_RequestIDPreserved(t *testing.T) {
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "keep-this", UserToken: "user-abc", PackageIDs: []string{"pkg-no-cap"},
 	})
-	if resp.RequestID != "keep-this" {
-		t.Errorf("expected request_id 'keep-this', got %q", resp.RequestID)
-	}
+	assert.Equal(t, "keep-this", resp.RequestID)
 }
 
 // --- Non-Resolved Identity Tests (sorted-set frequency capping) ---
@@ -660,21 +561,15 @@ func TestIdentityNonResolved_PackageFrequencyCap(t *testing.T) {
 			UserToken: "user-abc", PackageID: "pkg-display-001",
 			ImpressionID: fmt.Sprintf("imp-nr-%d", i),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "nr-pkg-cap", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].Eligible {
-		t.Error("pkg-display-001 should be package-capped via sorted set (3/3)")
-	}
+	require.NoError(t, err)
+	assert.False(t, resp.Eligibility[0].Eligible, "pkg-display-001 should be package-capped via sorted set (3/3)")
 }
 
 func TestIdentityNonResolved_CampaignFrequencyCap(t *testing.T) {
@@ -701,13 +596,9 @@ func TestIdentityNonResolved_CampaignFrequencyCap(t *testing.T) {
 		RequestID: "nr-camp-cap", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, e := range resp.Eligibility {
-		if e.Eligible {
-			t.Errorf("%s should be campaign-capped via sorted set", e.PackageID)
-		}
+		assert.False(t, e.Eligible, "%s should be campaign-capped via sorted set", e.PackageID)
 	}
 }
 
@@ -730,9 +621,7 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 		RequestID: "nr-before", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001"},
 	})
-	if resp.Eligibility[0].Eligible {
-		t.Error("should be capped (3/3)")
-	}
+	assert.False(t, resp.Eligibility[0].Eligible, "should be capped (3/3)")
 
 	// Advance past 24h window.
 	future := now.Add(25 * time.Hour)
@@ -743,9 +632,7 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 		RequestID: "nr-after", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001"},
 	})
-	if !resp.Eligibility[0].Eligible {
-		t.Error("should be eligible after window expires")
-	}
+	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
 }
 
 func TestIdentityNonResolved_IntentScore(t *testing.T) {
@@ -762,12 +649,9 @@ func TestIdentityNonResolved_IntentScore(t *testing.T) {
 		RequestID: "nr-intent", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].IntentScore == nil || *resp.Eligibility[0].IntentScore < 0.99 {
-		t.Error("expected high intent score after recent exposure")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp.Eligibility[0].IntentScore)
+	assert.GreaterOrEqual(t, *resp.Eligibility[0].IntentScore, 0.99, "expected high intent score after recent exposure")
 }
 
 func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
@@ -788,20 +672,14 @@ func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
 		RequestID: "nr-mixed", UserToken: "user-abc",
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	byPkg := map[string]tmproto.PackageEligibility{}
 	for _, e := range resp.Eligibility {
 		byPkg[e.PackageID] = e
 	}
-	if byPkg["pkg-display-001"].Eligible {
-		t.Error("pkg-display-001 should be package-capped (3/3)")
-	}
-	if !byPkg["pkg-display-002"].Eligible {
-		t.Error("pkg-display-002 should still be eligible")
-	}
+	assert.False(t, byPkg["pkg-display-001"].Eligible, "pkg-display-001 should be package-capped (3/3)")
+	assert.True(t, byPkg["pkg-display-002"].Eligible, "pkg-display-002 should still be eligible")
 }
 
 // --- Source Provenance Tests ---
@@ -816,23 +694,15 @@ func TestIdentity_SourceIDFallsBackToProviderID(t *testing.T) {
 		PackageID:    "pkg-display-001",
 		ImpressionID: "imp-src-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.PackageID != "pkg-display-001" {
-		t.Errorf("expected pkg-display-001, got %s", resp.PackageID)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "pkg-display-001", resp.PackageID)
 
 	// Read back the binary log and verify source hash = hash("test-provider").
 	hash := HashToken("user-src")
 	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
 	blog := BinaryExposureLog(val)
-	if blog.Len() != 1 {
-		t.Fatalf("expected 1 entry, got %d", blog.Len())
-	}
-	if blog.SourceHash(0) != hashString("test-provider") {
-		t.Error("expected source hash of 'test-provider' when source_id not provided")
-	}
+	require.Equal(t, 1, blog.Len())
+	assert.Equal(t, hashString("test-provider"), blog.SourceHash(0), "expected source hash of 'test-provider' when source_id not provided")
 }
 
 func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
@@ -845,19 +715,13 @@ func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
 		PackageID:    "pkg-display-001",
 		ImpressionID: "imp-src-2",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	hash := HashToken("user-source-stamp")
 	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
 	blog := BinaryExposureLog(val)
-	if blog.Len() != 1 {
-		t.Fatalf("expected 1 entry, got %d", blog.Len())
-	}
-	if blog.SourceHash(0) != hashString("agent-cnn-v2") {
-		t.Error("expected source hash of 'agent-cnn-v2'")
-	}
+	require.Equal(t, 1, blog.Len())
+	assert.Equal(t, hashString("agent-cnn-v2"), blog.SourceHash(0), "expected source hash of 'agent-cnn-v2'")
 }
 
 func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
@@ -882,10 +746,6 @@ func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
 	hash := HashToken("user-ns")
 	key := "freq:pkg:pkg-display-001:" + hash
 	count, err := engine.store.ZCount(ctx, key, 0, math.MaxFloat64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Errorf("expected 2 sorted set members (namespaced by source), got %d", count)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), count, "expected 2 sorted set members (namespaced by source)")
 }

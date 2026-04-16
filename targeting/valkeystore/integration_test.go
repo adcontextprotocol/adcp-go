@@ -11,15 +11,15 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // setupIntegration creates an Engine backed by a real Redis (miniredis) Store.
 func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	store := New(rdb)
 	ctx := context.Background()
@@ -28,12 +28,8 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	seedJSON := func(key string, v any) {
 		t.Helper()
 		data, err := json.Marshal(v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := store.Set(ctx, key, string(data), 0); err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
+		require.NoError(t, store.Set(ctx, key, string(data), 0))
 	}
 
 	seedJSON("config:pkg:pkg-alpha", targeting.PackageIdentityConfig{
@@ -76,21 +72,15 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-valkey-%d", i),
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "valkey-pkg-cap", UserToken: "user-valkey",
 		PackageIDs: []string{"pkg-alpha"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].Eligible {
-		t.Error("pkg-alpha should be package-capped (3/3)")
-	}
+	require.NoError(t, err)
+	assert.False(t, resp.Eligibility[0].Eligible, "pkg-alpha should be package-capped (3/3)")
 }
 
 func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
@@ -116,13 +106,9 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 		RequestID: "valkey-camp-cap", UserToken: "user-valkey",
 		PackageIDs: []string{"pkg-alpha", "pkg-beta"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	for _, e := range resp.Eligibility {
-		if e.Eligible {
-			t.Errorf("%s should be campaign-capped", e.PackageID)
-		}
+		assert.False(t, e.Eligible, "%s should be campaign-capped", e.PackageID)
 	}
 }
 
@@ -143,9 +129,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 		RequestID: "v-before", UserToken: "user-valkey",
 		PackageIDs: []string{"pkg-alpha"},
 	})
-	if resp.Eligibility[0].Eligible {
-		t.Error("should be capped")
-	}
+	assert.False(t, resp.Eligibility[0].Eligible, "should be capped")
 
 	// Fast-forward miniredis past the 24h window.
 	mr.FastForward(25 * time.Hour)
@@ -156,9 +140,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 		RequestID: "v-after", UserToken: "user-valkey",
 		PackageIDs: []string{"pkg-alpha"},
 	})
-	if !resp.Eligibility[0].Eligible {
-		t.Error("should be eligible after window expires")
-	}
+	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
 }
 
 func TestValkeyIntegration_IntentScore(t *testing.T) {
@@ -174,12 +156,9 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 		RequestID: "v-intent", UserToken: "user-valkey",
 		PackageIDs: []string{"pkg-alpha"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.Eligibility[0].IntentScore == nil || *resp.Eligibility[0].IntentScore < 0.99 {
-		t.Error("expected high intent score after recent exposure")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp.Eligibility[0].IntentScore, "expected intent score to be set")
+	assert.GreaterOrEqual(t, *resp.Eligibility[0].IntentScore, 0.99, "expected high intent score after recent exposure")
 }
 
 func TestValkeyIntegration_ExposureResponse(t *testing.T) {
@@ -190,16 +169,8 @@ func TestValkeyIntegration_ExposureResponse(t *testing.T) {
 	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.PackageID != "pkg-alpha" {
-		t.Errorf("expected pkg-alpha, got %s", resp.PackageID)
-	}
-	if resp.CampaignCount != 1 {
-		t.Errorf("expected campaign count 1, got %d", resp.CampaignCount)
-	}
-	if resp.CampaignRemaining != 4 {
-		t.Errorf("expected 4 remaining, got %d", resp.CampaignRemaining)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "pkg-alpha", resp.PackageID)
+	assert.Equal(t, 1, resp.CampaignCount)
+	assert.Equal(t, 4, resp.CampaignRemaining)
 }

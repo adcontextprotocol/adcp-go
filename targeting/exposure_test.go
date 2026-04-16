@@ -3,27 +3,23 @@ package targeting
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseExposureLog_Empty(t *testing.T) {
 	log := ParseExposureLog("")
-	if len(log) != 0 {
-		t.Errorf("expected empty, got %d entries", len(log))
-	}
+	assert.Empty(t, log)
 }
 
 func TestParseExposureLog_Valid(t *testing.T) {
 	data := `[{"id":"imp-1","pkg":"pkg-food","cmp":"acme","ts":1718438400},{"id":"imp-2","pkg":"pkg-tech","ts":1718352000}]`
 	log := ParseExposureLog(data)
-	if len(log) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(log))
-	}
-	if log[0].ImpressionID != "imp-1" || log[0].PackageID != "pkg-food" {
-		t.Errorf("unexpected first entry: %+v", log[0])
-	}
-	if log[1].CampaignID != "" {
-		t.Errorf("expected empty campaign on second entry, got %q", log[1].CampaignID)
-	}
+	require.Len(t, log, 2)
+	assert.Equal(t, "imp-1", log[0].ImpressionID)
+	assert.Equal(t, "pkg-food", log[0].PackageID)
+	assert.Empty(t, log[1].CampaignID)
 }
 
 func TestSerializeExposureLog_RoundTrip(t *testing.T) {
@@ -33,12 +29,9 @@ func TestSerializeExposureLog_RoundTrip(t *testing.T) {
 	}
 	data := SerializeExposureLog(original)
 	parsed := ParseExposureLog(data)
-	if len(parsed) != 2 {
-		t.Fatalf("expected 2 entries, got %d", len(parsed))
-	}
-	if parsed[0].ImpressionID != "imp-1" || parsed[1].ImpressionID != "imp-2" {
-		t.Errorf("round-trip mismatch: %+v", parsed)
-	}
+	require.Len(t, parsed, 2)
+	assert.Equal(t, "imp-1", parsed[0].ImpressionID)
+	assert.Equal(t, "imp-2", parsed[1].ImpressionID)
 }
 
 func TestMergeExposureLogs_Dedup(t *testing.T) {
@@ -52,13 +45,9 @@ func TestMergeExposureLogs_Dedup(t *testing.T) {
 	}
 
 	merged := MergeExposureLogs(log1, log2)
-	if len(merged) != 3 {
-		t.Fatalf("expected 3 entries (imp-1 deduped), got %d", len(merged))
-	}
+	require.Len(t, merged, 3, "expected 3 entries (imp-1 deduped)")
 	// Should be sorted newest first.
-	if merged[0].ImpressionID != "imp-3" {
-		t.Errorf("expected imp-3 first (newest), got %s", merged[0].ImpressionID)
-	}
+	assert.Equal(t, "imp-3", merged[0].ImpressionID, "expected imp-3 first (newest)")
 }
 
 func TestMergeExposureLogs_Disjoint(t *testing.T) {
@@ -67,9 +56,7 @@ func TestMergeExposureLogs_Disjoint(t *testing.T) {
 	log3 := ExposureLog{{ImpressionID: "c", Timestamp: 300}}
 
 	merged := MergeExposureLogs(log1, log2, log3)
-	if len(merged) != 3 {
-		t.Fatalf("expected 3, got %d", len(merged))
-	}
+	assert.Len(t, merged, 3)
 }
 
 func TestPruneExpired(t *testing.T) {
@@ -78,12 +65,8 @@ func TestPruneExpired(t *testing.T) {
 		{ImpressionID: "new", Timestamp: 1000},
 	}
 	pruned := PruneExpired(log, 500) // cutoff at 500
-	if len(pruned) != 1 {
-		t.Fatalf("expected 1 entry after pruning, got %d", len(pruned))
-	}
-	if pruned[0].ImpressionID != "new" {
-		t.Errorf("expected 'new' entry, got %s", pruned[0].ImpressionID)
-	}
+	require.Len(t, pruned, 1)
+	assert.Equal(t, "new", pruned[0].ImpressionID)
 }
 
 func TestCheckFrequencyRules_NotCapped(t *testing.T) {
@@ -94,9 +77,7 @@ func TestCheckFrequencyRules_NotCapped(t *testing.T) {
 	rules := []FrequencyRule{{MaxCount: 5, Window: 24 * time.Hour}}
 	now := time.Unix(3000, 0)
 
-	if CheckFrequencyRules(log, "pkg", "pkg-food", rules, now) {
-		t.Error("should not be capped (2/5)")
-	}
+	assert.False(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should not be capped (2/5)")
 }
 
 func TestCheckFrequencyRules_Capped(t *testing.T) {
@@ -108,9 +89,7 @@ func TestCheckFrequencyRules_Capped(t *testing.T) {
 	rules := []FrequencyRule{{MaxCount: 3, Window: 24 * time.Hour}}
 	now := time.Unix(4000, 0)
 
-	if !CheckFrequencyRules(log, "pkg", "pkg-food", rules, now) {
-		t.Error("should be capped (3/3)")
-	}
+	assert.True(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should be capped (3/3)")
 }
 
 func TestCheckFrequencyRules_MultiRule(t *testing.T) {
@@ -126,9 +105,7 @@ func TestCheckFrequencyRules_MultiRule(t *testing.T) {
 		{MaxCount: 5, Window: 24 * time.Hour},
 	}
 
-	if !CheckFrequencyRules(log, "pkg", "pkg-food", rules, now) {
-		t.Error("should be capped by 1h rule (2/2)")
-	}
+	assert.True(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should be capped by 1h rule (2/2)")
 }
 
 func TestCheckFrequencyRules_CampaignLevel(t *testing.T) {
@@ -143,9 +120,7 @@ func TestCheckFrequencyRules_CampaignLevel(t *testing.T) {
 	rules := []FrequencyRule{{MaxCount: 5, Window: 7 * 24 * time.Hour}}
 	now := time.Unix(6000, 0)
 
-	if !CheckFrequencyRules(log, "cmp", "acme", rules, now) {
-		t.Error("should be campaign-capped (5/5)")
-	}
+	assert.True(t, CheckFrequencyRules(log, "cmp", "acme", rules, now), "should be campaign-capped (5/5)")
 }
 
 func TestCheckFrequencyRules_WindowExpiry(t *testing.T) {
@@ -157,9 +132,7 @@ func TestCheckFrequencyRules_WindowExpiry(t *testing.T) {
 	}
 	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}} // 86400s window
 
-	if CheckFrequencyRules(log, "pkg", "pkg-food", rules, now) {
-		t.Error("should not be capped (only 1 in window)")
-	}
+	assert.False(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should not be capped (only 1 in window)")
 }
 
 func TestLatestExposureTime(t *testing.T) {
@@ -168,40 +141,41 @@ func TestLatestExposureTime(t *testing.T) {
 		{ImpressionID: "2", PackageID: "pkg-tech", Timestamp: 2000},
 		{ImpressionID: "3", PackageID: "pkg-food", Timestamp: 3000},
 	}
-	if ts := LatestExposureTime(log, "pkg-food"); ts != 3000 {
-		t.Errorf("expected 3000, got %d", ts)
-	}
-	if ts := LatestExposureTime(log, "pkg-missing"); ts != 0 {
-		t.Errorf("expected 0 for missing package, got %d", ts)
-	}
+	assert.Equal(t, int64(3000), LatestExposureTime(log, "pkg-food"))
+	assert.Equal(t, int64(0), LatestExposureTime(log, "pkg-missing"))
 }
 
 func TestComputeIntentScore(t *testing.T) {
 	now := time.Unix(1000000, 0)
 
-	// Just now.
-	score := ComputeIntentScore(now.Unix(), now)
-	if score < 0.99 {
-		t.Errorf("expected ~1.0 for just now, got %.2f", score)
+	tests := []struct {
+		name     string
+		lastTS   int64
+		minScore float64
+		maxScore float64
+		exact    *float64
+	}{
+		{"just now", now.Unix(), 0.99, 1.01, nil},
+		{"3.5 days ago", now.Add(-84 * time.Hour).Unix(), 0.49, 0.51, nil},
 	}
 
-	// 3.5 days ago.
-	score = ComputeIntentScore(now.Add(-84*time.Hour).Unix(), now)
-	if score < 0.49 || score > 0.51 {
-		t.Errorf("expected ~0.5 for 3.5 days, got %.2f", score)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			score := ComputeIntentScore(tt.lastTS, now)
+			assert.GreaterOrEqual(t, score, tt.minScore)
+			assert.LessOrEqual(t, score, tt.maxScore)
+		})
 	}
 
-	// 7 days ago.
-	score = ComputeIntentScore(now.Add(-168*time.Hour).Unix(), now)
-	if score != 0 {
-		t.Errorf("expected 0 for 7 days, got %.2f", score)
-	}
-
-	// No exposure.
-	score = ComputeIntentScore(0, now)
-	if score != 0 {
-		t.Errorf("expected 0 for no exposure, got %.2f", score)
-	}
+	// Exact zero cases.
+	t.Run("7 days ago", func(t *testing.T) {
+		score := ComputeIntentScore(now.Add(-168*time.Hour).Unix(), now)
+		assert.Equal(t, float64(0), score)
+	})
+	t.Run("no exposure", func(t *testing.T) {
+		score := ComputeIntentScore(0, now)
+		assert.Equal(t, float64(0), score)
+	})
 }
 
 func TestMergeUserProfiles(t *testing.T) {
@@ -209,24 +183,14 @@ func TestMergeUserProfiles(t *testing.T) {
 	p2 := &UserProfile{Segments: map[string]float64{"cooking_fans": 0.5, "tech": 0.9}}
 
 	merged := MergeUserProfiles(p1, p2)
-	if merged.Segments["cooking_fans"] != 0.8 {
-		t.Errorf("expected 0.8 (higher), got %.1f", merged.Segments["cooking_fans"])
-	}
-	if merged.Segments["sports"] != 0.3 {
-		t.Errorf("expected 0.3, got %.1f", merged.Segments["sports"])
-	}
-	if merged.Segments["tech"] != 0.9 {
-		t.Errorf("expected 0.9, got %.1f", merged.Segments["tech"])
-	}
-	if len(merged.Segments) != 3 {
-		t.Errorf("expected 3 segments, got %d", len(merged.Segments))
-	}
+	assert.Equal(t, 0.8, merged.Segments["cooking_fans"], "expected higher value")
+	assert.Equal(t, 0.3, merged.Segments["sports"])
+	assert.Equal(t, 0.9, merged.Segments["tech"])
+	assert.Len(t, merged.Segments, 3)
 }
 
 func TestMergeUserProfiles_WithNil(t *testing.T) {
 	p1 := &UserProfile{Segments: map[string]float64{"cooking": 0.5}}
 	merged := MergeUserProfiles(nil, p1, nil)
-	if len(merged.Segments) != 1 {
-		t.Errorf("expected 1 segment, got %d", len(merged.Segments))
-	}
+	assert.Len(t, merged.Segments, 1)
 }

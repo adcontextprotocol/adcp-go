@@ -7,29 +7,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFetchFeed_OK(t *testing.T) {
 	cursor := "019414a0-0000-7000-0000-000000000001"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			t.Errorf("method = %s, want GET", r.Method)
-		}
-		if r.URL.Path != "/api/registry/feed" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
-		if got := r.URL.Query().Get("cursor"); got != cursor {
-			t.Errorf("cursor = %q, want %q", got, cursor)
-		}
-		if got := r.URL.Query().Get("types"); got != "agent.*,property.*" {
-			t.Errorf("types = %q", got)
-		}
-		if got := r.URL.Query().Get("limit"); got != "500" {
-			t.Errorf("limit = %q", got)
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
-			t.Errorf("auth = %q", got)
-		}
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/api/registry/feed", r.URL.Path)
+		assert.Equal(t, cursor, r.URL.Query().Get("cursor"))
+		assert.Equal(t, "agent.*,property.*", r.URL.Query().Get("types"))
+		assert.Equal(t, "500", r.URL.Query().Get("limit"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(FeedResponse{
@@ -44,25 +35,15 @@ func TestFetchFeed_OK(t *testing.T) {
 
 	c := NewClient(srv.URL, "test-token")
 	resp, err := c.FetchFeed(context.Background(), cursor, []string{"agent.*", "property.*"}, 500)
-	if err != nil {
-		t.Fatalf("FetchFeed: %v", err)
-	}
-	if len(resp.Events) != 1 {
-		t.Fatalf("events = %d, want 1", len(resp.Events))
-	}
-	if resp.Events[0].EventType != "agent.discovered" {
-		t.Errorf("event_type = %q", resp.Events[0].EventType)
-	}
-	if resp.HasMore {
-		t.Error("has_more = true, want false")
-	}
+	require.NoError(t, err)
+	require.Len(t, resp.Events, 1)
+	assert.Equal(t, "agent.discovered", resp.Events[0].EventType)
+	assert.False(t, resp.HasMore)
 }
 
 func TestFetchFeed_NoCursor(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("cursor") != "" {
-			t.Error("cursor should not be set for initial fetch")
-		}
+		assert.Empty(t, r.URL.Query().Get("cursor"), "cursor should not be set for initial fetch")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(FeedResponse{Events: []FeedEvent{}, HasMore: false})
 	}))
@@ -70,12 +51,8 @@ func TestFetchFeed_NoCursor(t *testing.T) {
 
 	c := NewClient(srv.URL, "test-token")
 	resp, err := c.FetchFeed(context.Background(), "", nil, 0)
-	if err != nil {
-		t.Fatalf("FetchFeed: %v", err)
-	}
-	if len(resp.Events) != 0 {
-		t.Errorf("events = %d, want 0", len(resp.Events))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, resp.Events)
 }
 
 func TestFetchFeed_CursorExpired(t *testing.T) {
@@ -92,12 +69,8 @@ func TestFetchFeed_CursorExpired(t *testing.T) {
 	_, err := c.FetchFeed(context.Background(), "old-cursor", nil, 0)
 
 	var expired *CursorExpiredError
-	if !errors.As(err, &expired) {
-		t.Fatalf("err = %T (%v), want *CursorExpiredError", err, err)
-	}
-	if expired.Message != "Cursor is older than 90-day retention window." {
-		t.Errorf("message = %q", expired.Message)
-	}
+	require.True(t, errors.As(err, &expired), "err = %T (%v), want *CursorExpiredError", err, err)
+	assert.Equal(t, "Cursor is older than 90-day retention window.", expired.Message)
 }
 
 func TestFetchFeed_Unauthorized(t *testing.T) {
@@ -111,32 +84,18 @@ func TestFetchFeed_Unauthorized(t *testing.T) {
 	_, err := c.FetchFeed(context.Background(), "", nil, 0)
 
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) {
-		t.Fatalf("err = %T, want *APIError", err)
-	}
-	if apiErr.StatusCode != 401 {
-		t.Errorf("status = %d, want 401", apiErr.StatusCode)
-	}
+	require.True(t, errors.As(err, &apiErr), "err = %T, want *APIError", err)
+	assert.Equal(t, 401, apiErr.StatusCode)
 }
 
 func TestSearchAgents_OK(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/registry/agents/search" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
+		assert.Equal(t, "/api/registry/agents/search", r.URL.Path)
 		q := r.URL.Query()
-		if q.Get("channels") != "ctv,olv" {
-			t.Errorf("channels = %q", q.Get("channels"))
-		}
-		if q.Get("markets") != "US" {
-			t.Errorf("markets = %q", q.Get("markets"))
-		}
-		if q.Get("has_tmp") != "true" {
-			t.Errorf("has_tmp = %q", q.Get("has_tmp"))
-		}
-		if q.Get("limit") != "10" {
-			t.Errorf("limit = %q", q.Get("limit"))
-		}
+		assert.Equal(t, "ctv,olv", q.Get("channels"))
+		assert.Equal(t, "US", q.Get("markets"))
+		assert.Equal(t, "true", q.Get("has_tmp"))
+		assert.Equal(t, "10", q.Get("limit"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(SearchResponse{
@@ -156,31 +115,19 @@ func TestSearchAgents_OK(t *testing.T) {
 		HasTMP:   &hasTMP,
 		Limit:    10,
 	})
-	if err != nil {
-		t.Fatalf("SearchAgents: %v", err)
-	}
-	if len(resp.Results) != 1 {
-		t.Fatalf("results = %d, want 1", len(resp.Results))
-	}
-	if resp.Results[0].PropertyCount != 42 {
-		t.Errorf("property_count = %d, want 42", resp.Results[0].PropertyCount)
-	}
+	require.NoError(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, 42, resp.Results[0].PropertyCount)
 }
 
 func TestRequestCrawl_Accepted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/api/registry/crawl-request" {
-			t.Errorf("path = %s", r.URL.Path)
-		}
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/api/registry/crawl-request", r.URL.Path)
 
 		var req CrawlRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		if req.Domain != "example.com" {
-			t.Errorf("domain = %q", req.Domain)
-		}
+		assert.Equal(t, "example.com", req.Domain)
 
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(CrawlResponse{Message: "Crawl request accepted", Domain: "example.com"})
@@ -189,12 +136,8 @@ func TestRequestCrawl_Accepted(t *testing.T) {
 
 	c := NewClient(srv.URL, "test-token")
 	resp, err := c.RequestCrawl(context.Background(), "example.com")
-	if err != nil {
-		t.Fatalf("RequestCrawl: %v", err)
-	}
-	if resp.Domain != "example.com" {
-		t.Errorf("domain = %q", resp.Domain)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "example.com", resp.Domain)
 }
 
 func TestRequestCrawl_RateLimited(t *testing.T) {
@@ -211,19 +154,13 @@ func TestRequestCrawl_RateLimited(t *testing.T) {
 	_, err := c.RequestCrawl(context.Background(), "example.com")
 
 	var rl *RateLimitError
-	if !errors.As(err, &rl) {
-		t.Fatalf("err = %T (%v), want *RateLimitError", err, err)
-	}
-	if rl.RetryAfter != 180 {
-		t.Errorf("retry_after = %d, want 180", rl.RetryAfter)
-	}
+	require.True(t, errors.As(err, &rl), "err = %T (%v), want *RateLimitError", err, err)
+	assert.Equal(t, 180, rl.RetryAfter)
 }
 
 func TestNewClient_NoToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "" {
-			t.Error("Authorization header should not be set")
-		}
+		assert.Empty(t, r.Header.Get("Authorization"), "Authorization header should not be set")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(FeedResponse{Events: []FeedEvent{}, HasMore: false})
 	}))
@@ -231,9 +168,7 @@ func TestNewClient_NoToken(t *testing.T) {
 
 	c := NewClient(srv.URL, "")
 	_, err := c.FetchFeed(context.Background(), "", nil, 0)
-	if err != nil {
-		t.Fatalf("FetchFeed: %v", err)
-	}
+	require.NoError(t, err)
 }
 
 func strPtr(s string) *string { return &s }

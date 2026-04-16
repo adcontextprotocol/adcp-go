@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBinary_EncodeAndQuery(t *testing.T) {
@@ -15,24 +18,16 @@ func TestBinary_EncodeAndQuery(t *testing.T) {
 	}
 
 	bin := EncodeBinaryExposureLog(log)
-	if bin.Len() != 3 {
-		t.Fatalf("expected 3 entries, got %d", bin.Len())
-	}
-	if bin.Timestamp(0) != 1000 {
-		t.Errorf("expected ts 1000, got %d", bin.Timestamp(0))
-	}
+	require.Equal(t, 3, bin.Len())
+	assert.Equal(t, int64(1000), bin.Timestamp(0))
 
 	foodHash := hashString("pkg-food")
 	latest := LatestExposureBinary(bin, foodHash)
-	if latest != 3000 {
-		t.Errorf("expected latest 3000 for pkg-food, got %d", latest)
-	}
+	assert.Equal(t, int64(3000), latest)
 
 	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}}
 	capped := CheckFrequencyRulesBinary(bin, foodHash, false, rules, 4000)
-	if !capped {
-		t.Error("expected capped (2 food exposures, cap 2)")
-	}
+	assert.True(t, capped, "expected capped (2 food exposures, cap 2)")
 }
 
 func TestBinary_MergeDedup(t *testing.T) {
@@ -49,9 +44,7 @@ func TestBinary_MergeDedup(t *testing.T) {
 	bin2 := EncodeBinaryExposureLog(log2)
 	merged := MergeBinaryLogs(bin1, bin2)
 
-	if merged.Len() != 3 {
-		t.Fatalf("expected 3 after dedup, got %d", merged.Len())
-	}
+	assert.Equal(t, 3, merged.Len(), "expected 3 after dedup")
 }
 
 func TestBinary_VersionHeader(t *testing.T) {
@@ -60,19 +53,11 @@ func TestBinary_VersionHeader(t *testing.T) {
 	}
 	bin := EncodeBinaryExposureLog(log)
 
-	if bin.Version() != 2 {
-		t.Errorf("expected version 2, got %d", bin.Version())
-	}
-	if bin.EntrySize() != 40 {
-		t.Errorf("expected entry size 40, got %d", bin.EntrySize())
-	}
+	assert.Equal(t, uint16(2), bin.Version())
+	assert.Equal(t, uint16(40), bin.EntrySize())
 	// 4-byte header + 1*40 = 44 bytes total.
-	if len(bin) != 44 {
-		t.Errorf("expected 44 bytes, got %d", len(bin))
-	}
-	if err := ValidateBinaryLog(bin); err != nil {
-		t.Errorf("valid log failed validation: %v", err)
-	}
+	assert.Len(t, []byte(bin), 44)
+	assert.NoError(t, ValidateBinaryLog(bin))
 }
 
 func TestBinary_ValidateRejectsInvalid(t *testing.T) {
@@ -98,21 +83,15 @@ func TestBinary_ValidateRejectsInvalid(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateBinaryLog(tt.data)
-			if err != tt.err {
-				t.Errorf("expected %v, got %v", tt.err, err)
-			}
+			assert.Equal(t, tt.err, err)
 		})
 	}
 }
 
 func TestBinary_EmptyLog(t *testing.T) {
 	bin := EncodeBinaryExposureLog(nil)
-	if bin.Len() != 0 {
-		t.Errorf("expected 0 entries, got %d", bin.Len())
-	}
-	if err := ValidateBinaryLog(bin); err != nil {
-		t.Errorf("empty log failed validation: %v", err)
-	}
+	assert.Equal(t, 0, bin.Len())
+	assert.NoError(t, ValidateBinaryLog(bin))
 }
 
 func TestBinary_MergedLogIsVersioned(t *testing.T) {
@@ -123,15 +102,9 @@ func TestBinary_MergedLogIsVersioned(t *testing.T) {
 		{ImpressionID: "imp-2", PackageID: "pkg-b", Timestamp: 2000},
 	})
 	merged := MergeBinaryLogs(log1, log2)
-	if err := ValidateBinaryLog(merged); err != nil {
-		t.Errorf("merged log failed validation: %v", err)
-	}
-	if merged.Version() != 2 {
-		t.Errorf("expected version 2 on merged log, got %d", merged.Version())
-	}
-	if merged.Len() != 2 {
-		t.Errorf("expected 2 entries, got %d", merged.Len())
-	}
+	assert.NoError(t, ValidateBinaryLog(merged))
+	assert.Equal(t, uint16(2), merged.Version())
+	assert.Equal(t, 2, merged.Len())
 }
 
 func TestBinary_Truncate(t *testing.T) {
@@ -146,35 +119,21 @@ func TestBinary_Truncate(t *testing.T) {
 	bin := EncodeBinaryExposureLog(entries)
 
 	truncated := TruncateBinaryLog(bin, 10)
-	if err := ValidateBinaryLog(truncated); err != nil {
-		t.Fatalf("truncated log failed validation: %v", err)
-	}
-	if truncated.Len() != 10 {
-		t.Errorf("expected 10 entries, got %d", truncated.Len())
-	}
+	require.NoError(t, ValidateBinaryLog(truncated))
+	assert.Equal(t, 10, truncated.Len())
 	// Should keep the last 10 (timestamps 90-99).
-	if truncated.Timestamp(0) != 90 {
-		t.Errorf("expected first kept timestamp 90, got %d", truncated.Timestamp(0))
-	}
-	if truncated.Timestamp(9) != 99 {
-		t.Errorf("expected last kept timestamp 99, got %d", truncated.Timestamp(9))
-	}
+	assert.Equal(t, int64(90), truncated.Timestamp(0))
+	assert.Equal(t, int64(99), truncated.Timestamp(9))
 
 	// No-op when under limit.
 	same := TruncateBinaryLog(bin, 200)
-	if same.Len() != 100 {
-		t.Errorf("expected no truncation, got %d entries", same.Len())
-	}
+	assert.Equal(t, 100, same.Len())
 }
 
 func TestBinary_MergeEmptyReturnsValidLog(t *testing.T) {
 	merged := MergeBinaryLogs()
-	if err := ValidateBinaryLog(merged); err != nil {
-		t.Errorf("merge of nothing should produce valid empty log: %v", err)
-	}
-	if merged.Len() != 0 {
-		t.Errorf("expected 0 entries, got %d", merged.Len())
-	}
+	assert.NoError(t, ValidateBinaryLog(merged), "merge of nothing should produce valid empty log")
+	assert.Equal(t, 0, merged.Len())
 }
 
 func TestBinary_SourceHash(t *testing.T) {
@@ -187,12 +146,8 @@ func TestBinary_SourceHash(t *testing.T) {
 	cnnHash := hashString("agent-cnn")
 	nytHash := hashString("agent-nyt")
 
-	if bin.SourceHash(0) != cnnHash {
-		t.Errorf("entry 0: expected source hash %d, got %d", cnnHash, bin.SourceHash(0))
-	}
-	if bin.SourceHash(1) != nytHash {
-		t.Errorf("entry 1: expected source hash %d, got %d", nytHash, bin.SourceHash(1))
-	}
+	assert.Equal(t, cnnHash, bin.SourceHash(0))
+	assert.Equal(t, nytHash, bin.SourceHash(1))
 }
 
 func TestBinary_SourceHashOfEmptyString(t *testing.T) {
@@ -201,9 +156,7 @@ func TestBinary_SourceHashOfEmptyString(t *testing.T) {
 	}
 	bin := EncodeBinaryExposureLog(log)
 	emptyHash := hashString("")
-	if bin.SourceHash(0) != emptyHash {
-		t.Errorf("expected hash of empty string, got %d", bin.SourceHash(0))
-	}
+	assert.Equal(t, emptyHash, bin.SourceHash(0))
 }
 
 func TestBinary_V1ReadCompatibility(t *testing.T) {
@@ -229,26 +182,16 @@ func TestBinary_V1ReadCompatibility(t *testing.T) {
 	blog := BinaryExposureLog(v1)
 
 	// Validation passes.
-	if err := ValidateBinaryLog(blog); err != nil {
-		t.Fatalf("v1 log should validate: %v", err)
-	}
-	if blog.Len() != 2 {
-		t.Fatalf("expected 2 entries, got %d", blog.Len())
-	}
-	if blog.Timestamp(0) != 1000 {
-		t.Errorf("expected ts 1000, got %d", blog.Timestamp(0))
-	}
+	require.NoError(t, ValidateBinaryLog(blog))
+	require.Equal(t, 2, blog.Len())
+	assert.Equal(t, int64(1000), blog.Timestamp(0))
 	// V1 source hash returns 0.
-	if blog.SourceHash(0) != 0 {
-		t.Errorf("v1 source hash should be 0, got %d", blog.SourceHash(0))
-	}
+	assert.Equal(t, uint64(0), blog.SourceHash(0))
 
 	// Frequency check works on v1 logs.
 	rules := []FrequencyRule{{MaxCount: 1, Window: 24 * time.Hour}}
 	capped := CheckFrequencyRulesBinary(blog, hashString("pkg-a"), false, rules, 3000)
-	if !capped {
-		t.Error("expected capped for pkg-a (1 exposure, cap 1)")
-	}
+	assert.True(t, capped, "expected capped for pkg-a (1 exposure, cap 1)")
 }
 
 func TestBinary_V1UpgradeOnMerge(t *testing.T) {
@@ -269,23 +212,13 @@ func TestBinary_V1UpgradeOnMerge(t *testing.T) {
 
 	// Merge upgrades v1 entries to v2 format.
 	merged := MergeBinaryLogs(BinaryExposureLog(v1), v2)
-	if merged.Version() != 2 {
-		t.Errorf("expected v2 after merge, got %d", merged.Version())
-	}
-	if merged.Len() != 2 {
-		t.Fatalf("expected 2 entries, got %d", merged.Len())
-	}
-	if err := ValidateBinaryLog(merged); err != nil {
-		t.Fatalf("merged log should validate: %v", err)
-	}
+	assert.Equal(t, uint16(2), merged.Version())
+	require.Equal(t, 2, merged.Len())
+	require.NoError(t, ValidateBinaryLog(merged))
 
 	// V1 entry gets source hash 0, v2 entry keeps its source hash.
-	if merged.SourceHash(0) != 0 {
-		t.Errorf("upgraded v1 entry should have source hash 0, got %d", merged.SourceHash(0))
-	}
-	if merged.SourceHash(1) != hashString("agent-x") {
-		t.Errorf("v2 entry should keep source hash")
-	}
+	assert.Equal(t, uint64(0), merged.SourceHash(0))
+	assert.Equal(t, hashString("agent-x"), merged.SourceHash(1))
 }
 
 func TestBinary_V1TruncateUpgrades(t *testing.T) {
@@ -302,23 +235,13 @@ func TestBinary_V1TruncateUpgrades(t *testing.T) {
 	}
 
 	truncated := TruncateBinaryLog(BinaryExposureLog(v1), 5)
-	if err := ValidateBinaryLog(truncated); err != nil {
-		t.Fatalf("truncated log failed validation: %v", err)
-	}
-	if truncated.Version() != 2 {
-		t.Errorf("expected v2 after truncation, got %d", truncated.Version())
-	}
-	if truncated.Len() != 5 {
-		t.Fatalf("expected 5 entries, got %d", truncated.Len())
-	}
+	require.NoError(t, ValidateBinaryLog(truncated))
+	assert.Equal(t, uint16(2), truncated.Version())
+	require.Equal(t, 5, truncated.Len())
 	// Should keep last 5 entries (timestamps 1015-1019).
-	if truncated.Timestamp(0) != 1015 {
-		t.Errorf("expected first kept timestamp 1015, got %d", truncated.Timestamp(0))
-	}
+	assert.Equal(t, int64(1015), truncated.Timestamp(0))
 	// Upgraded entries should have source hash 0.
-	if truncated.SourceHash(0) != 0 {
-		t.Errorf("upgraded v1 entry should have source hash 0, got %d", truncated.SourceHash(0))
-	}
+	assert.Equal(t, uint64(0), truncated.SourceHash(0))
 }
 
 func TestBinary_V1UnderLimitUpgrades(t *testing.T) {
@@ -335,12 +258,8 @@ func TestBinary_V1UnderLimitUpgrades(t *testing.T) {
 	}
 
 	upgraded := TruncateBinaryLog(BinaryExposureLog(v1), 100)
-	if upgraded.Version() != 2 {
-		t.Errorf("expected v2 after upgrade, got %d", upgraded.Version())
-	}
-	if upgraded.Len() != 2 {
-		t.Errorf("expected 2 entries preserved, got %d", upgraded.Len())
-	}
+	assert.Equal(t, uint16(2), upgraded.Version())
+	assert.Equal(t, 2, upgraded.Len())
 }
 
 func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
@@ -364,15 +283,11 @@ func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
 
 	// 2 entries for pkg-a, cap=2 → capped.
 	capped := CheckFrequencyRulesMultiLog(logs, hashString("pkg-a"), false, rules, 3000)
-	if !capped {
-		t.Error("expected capped with mixed v1+v2 logs")
-	}
+	assert.True(t, capped, "expected capped with mixed v1+v2 logs")
 
 	// latest across mixed versions.
 	latest := LatestExposureMultiLog(logs, hashString("pkg-a"))
-	if latest != 2000 {
-		t.Errorf("expected latest 2000, got %d", latest)
-	}
+	assert.Equal(t, int64(2000), latest)
 }
 
 func TestScale_JSONvsBinary(t *testing.T) {

@@ -6,12 +6,14 @@ import (
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testInput struct {
-	Name    string `json:"name"`
-	Age     int    `json:"age,omitempty"`
-	Nested  *nested `json:"nested,omitempty"`
+	Name   string  `json:"name"`
+	Age    int     `json:"age,omitempty"`
+	Nested *nested `json:"nested,omitempty"`
 }
 
 type nested struct {
@@ -21,25 +23,15 @@ type nested struct {
 func TestPermissiveSchemaFor(t *testing.T) {
 	schema := permissiveSchemaFor[testInput]()
 
-	if schema.Type != "object" {
-		t.Fatalf("expected type object, got %s", schema.Type)
-	}
+	require.Equal(t, "object", schema.Type, "expected type object")
 
 	// AdditionalProperties should be nil (permissive), not false
-	if schema.AdditionalProperties != nil {
-		t.Fatal("expected AdditionalProperties to be nil (permissive)")
-	}
+	require.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil (permissive)")
 
 	// Properties should still be documented
-	if schema.Properties == nil {
-		t.Fatal("expected properties to be set")
-	}
-	if _, ok := schema.Properties["name"]; !ok {
-		t.Fatal("expected 'name' property")
-	}
-	if _, ok := schema.Properties["age"]; !ok {
-		t.Fatal("expected 'age' property")
-	}
+	require.NotNil(t, schema.Properties, "expected properties to be set")
+	assert.Contains(t, schema.Properties, "name", "expected 'name' property")
+	assert.Contains(t, schema.Properties, "age", "expected 'age' property")
 }
 
 func TestPermissiveSchemaForNested(t *testing.T) {
@@ -48,14 +40,12 @@ func TestPermissiveSchemaForNested(t *testing.T) {
 	// Check that nested object types also have additionalProperties removed.
 	// The nested type might be in $defs or inline.
 	nestedProp := schema.Properties["nested"]
-	if nestedProp == nil {
-		t.Fatal("expected 'nested' property")
-	}
+	require.NotNil(t, nestedProp, "expected 'nested' property")
 
 	// The nested schema might be a $ref. Walk $defs too.
 	for _, def := range schema.Defs {
-		if def.Type == "object" && def.AdditionalProperties != nil {
-			t.Fatal("expected nested object $def to have nil AdditionalProperties")
+		if def.Type == "object" {
+			assert.Nil(t, def.AdditionalProperties, "expected nested object $def to have nil AdditionalProperties")
 		}
 	}
 }
@@ -72,12 +62,8 @@ func TestAllowAdditionalProperties(t *testing.T) {
 
 	allowAdditionalProperties(schema)
 
-	if schema.AdditionalProperties != nil {
-		t.Fatal("expected AdditionalProperties to be nil after patching")
-	}
-	if schema.Properties["foo"] == nil {
-		t.Fatal("expected properties to be preserved")
-	}
+	assert.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil after patching")
+	assert.NotNil(t, schema.Properties["foo"], "expected properties to be preserved")
 }
 
 func TestJsonRoundTrip(t *testing.T) {
@@ -90,102 +76,64 @@ func TestJsonRoundTrip(t *testing.T) {
 	result := jsonRoundTrip(input)
 
 	m, ok := result.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", result)
-	}
+	require.True(t, ok, "expected map[string]any, got %T", result)
 
 	// Verify struct tags were respected (product_id not ProductID)
-	if _, ok := m["product_id"]; !ok {
-		t.Fatal("expected 'product_id' key (from json tag)")
-	}
-	if _, ok := m["ProductID"]; ok {
-		t.Fatal("unexpected 'ProductID' key (struct tag not applied)")
-	}
+	assert.Contains(t, m, "product_id", "expected 'product_id' key (from json tag)")
+	assert.NotContains(t, m, "ProductID", "unexpected 'ProductID' key (struct tag not applied)")
 }
 
 func TestBuildResultSetsStructuredContent(t *testing.T) {
 	data := map[string]any{"foo": "bar"}
 	result := buildResult("test", data)
 
-	if result.StructuredContent == nil {
-		t.Fatal("expected StructuredContent to be set")
-	}
+	require.NotNil(t, result.StructuredContent, "expected StructuredContent to be set")
 
 	sc, ok := result.StructuredContent.(map[string]any)
-	if !ok {
-		t.Fatalf("expected map[string]any, got %T", result.StructuredContent)
-	}
-	if sc["foo"] != "bar" {
-		t.Fatalf("expected foo=bar, got %v", sc["foo"])
-	}
+	require.True(t, ok, "expected map[string]any, got %T", result.StructuredContent)
+	assert.Equal(t, "bar", sc["foo"], "expected foo=bar")
 }
 
 func TestPermissiveSchemaPreservesRequired(t *testing.T) {
 	schema := permissiveSchemaFor[testInput]()
 
 	// "name" should be required (no omitempty), "age" should not
-	found := false
-	for _, r := range schema.Required {
-		if r == "name" {
-			found = true
-		}
-		if r == "age" {
-			t.Fatal("'age' should not be required (has omitempty)")
-		}
-	}
-	if !found {
-		t.Fatal("expected 'name' to be required")
-	}
+	assert.Contains(t, schema.Required, "name", "expected 'name' to be required")
+	assert.NotContains(t, schema.Required, "age", "'age' should not be required (has omitempty)")
 }
 
 func TestPermissiveSchemaForAny(t *testing.T) {
 	// any type falls back to empty object schema since jsonschema can't infer interface{}
 	schema := permissiveSchemaFor[any]()
 	// Should at least not panic and return a usable schema
-	if schema == nil {
-		t.Fatal("expected non-nil schema")
-	}
+	require.NotNil(t, schema, "expected non-nil schema")
 }
 
 func TestPermissiveSchemaSerializesToJSON(t *testing.T) {
 	schema := permissiveSchemaFor[testInput]()
 
 	b, err := json.Marshal(schema)
-	if err != nil {
-		t.Fatalf("failed to marshal schema: %v", err)
-	}
+	require.NoError(t, err, "failed to marshal schema")
 
 	var m map[string]any
 	json.Unmarshal(b, &m)
 
 	// Should have type: "object" and properties but NO additionalProperties
-	if m["type"] != "object" {
-		t.Fatalf("expected type=object in JSON, got %v", m["type"])
-	}
-	if _, ok := m["additionalProperties"]; ok {
-		t.Fatal("expected no additionalProperties key in JSON")
-	}
-	if m["properties"] == nil {
-		t.Fatal("expected properties in JSON")
-	}
+	assert.Equal(t, "object", m["type"], "expected type=object in JSON")
+	assert.NotContains(t, m, "additionalProperties", "expected no additionalProperties key in JSON")
+	assert.NotNil(t, m["properties"], "expected properties in JSON")
 }
 
 func TestPermissiveSchemaVsDefaultSchema(t *testing.T) {
 	// Generate the default schema (which has additionalProperties: false)
 	rt := reflect.TypeFor[testInput]()
 	defaultSchema, err := jsonschema.ForType(rt, &jsonschema.ForOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Default should have additionalProperties set (false schema)
-	if defaultSchema.AdditionalProperties == nil {
-		t.Fatal("expected default schema to have additionalProperties set")
-	}
+	require.NotNil(t, defaultSchema.AdditionalProperties, "expected default schema to have additionalProperties set")
 
 	// Our permissive schema should NOT
 	permissive := permissiveSchemaFor[testInput]()
-	if permissive.AdditionalProperties != nil {
-		t.Fatal("expected permissive schema to have nil additionalProperties")
-	}
+	assert.Nil(t, permissive.AdditionalProperties, "expected permissive schema to have nil additionalProperties")
 }

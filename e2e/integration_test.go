@@ -14,6 +14,8 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmpclient"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testStack holds all components for an integration test.
@@ -121,9 +123,7 @@ func setupStack(t *testing.T) *testStack {
 		{ID: "ctx-agent", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id-agent", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
 	}, reg, nil, health, router.WithoutEndpointValidation())
-	if err != nil {
-		t.Fatalf("failed to create router: %v", err)
-	}
+	require.NoError(t, err, "failed to create router")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
@@ -244,9 +244,7 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-food", "pkg-tech", "pkg-family"},
 	})
-	if err != nil {
-		t.Fatalf("Activate failed: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	// pkg-food should activate: topic match (pasta → food.cooking) + alice is in cooking_fans.
 	// pkg-tech should NOT: topic mismatch (pasta article, tech topics).
@@ -257,32 +255,21 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 		t.Logf("activated: %s (mediaBuyID=%s)", a.PackageID, a.MediaBuyID)
 	}
 
-	if !activated["pkg-food"] {
-		t.Error("pkg-food should be activated (topic match + audience match)")
-	}
-	if activated["pkg-tech"] {
-		t.Error("pkg-tech should NOT be activated (topic mismatch)")
-	}
-	if !activated["pkg-family"] {
-		t.Error("pkg-family should be activated (no blocklist hit, no audience gate)")
-	}
+	assert.True(t, activated["pkg-food"], "pkg-food should be activated (topic match + audience match)")
+	assert.False(t, activated["pkg-tech"], "pkg-tech should NOT be activated (topic mismatch)")
+	assert.True(t, activated["pkg-family"], "pkg-family should be activated (no blocklist hit, no audience gate)")
 
 	// Verify signals contain food segments.
-	if result.Signals == nil {
-		t.Fatal("expected signals")
-	}
+	require.NotNil(t, result.Signals, "expected signals")
 	segSet := map[string]bool{}
 	for _, seg := range result.Signals.Segments {
 		segSet[seg] = true
 	}
-	if !segSet["food"] || !segSet["cooking"] {
-		t.Errorf("expected food+cooking segments, got %v", result.Signals.Segments)
-	}
+	assert.True(t, segSet["food"] && segSet["cooking"], "expected food+cooking segments, got %v", result.Signals.Segments)
 
 	// Verify raw responses are present.
-	if result.Context == nil || result.Identity == nil {
-		t.Error("expected raw context and identity responses")
-	}
+	assert.NotNil(t, result.Context, "expected raw context response")
+	assert.NotNil(t, result.Identity, "expected raw identity response")
 }
 
 func TestIntegration_FrequencyCapping(t *testing.T) {
@@ -304,32 +291,22 @@ func TestIntegration_FrequencyCapping(t *testing.T) {
 	// Record exposures directly via the engine (TMPX replaces router-based expose).
 	for i := range 3 {
 		result, err := s.client.Activate(ctx, params)
-		if err != nil {
-			t.Fatalf("activate %d: %v", i, err)
-		}
-		if len(result.Activations) == 0 {
-			t.Fatalf("activate %d: expected activation before cap", i)
-		}
+		require.NoError(t, err, "activate %d", i)
+		require.NotEmpty(t, result.Activations, "activate %d: expected activation before cap", i)
 		_, err = s.identityEngine.RecordExposure(ctx, &tmproto.ExposeRequest{
 			UserToken:    "tok-alice",
 			PackageID:    "pkg-food",
 			ImpressionID: fmt.Sprintf("imp-fcap-%d", i),
 		})
-		if err != nil {
-			t.Fatalf("expose %d: %v", i, err)
-		}
+		require.NoError(t, err, "expose %d", i)
 	}
 
 	// 4th activation — should be capped.
 	result, err := s.client.Activate(ctx, params)
-	if err != nil {
-		t.Fatalf("activate after cap: %v", err)
-	}
+	require.NoError(t, err, "activate after cap")
 
 	for _, a := range result.Activations {
-		if a.PackageID == "pkg-food" {
-			t.Error("pkg-food should be capped after 3 exposures")
-		}
+		assert.NotEqual(t, "pkg-food", a.PackageID, "pkg-food should be capped after 3 exposures")
 	}
 	t.Logf("freq cap working: %d activations after 3 exposures", len(result.Activations))
 }
@@ -348,14 +325,10 @@ func TestIntegration_AudienceGating(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	})
-	if err != nil {
-		t.Fatalf("Activate failed: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	for _, a := range result.Activations {
-		if a.PackageID == "pkg-food" {
-			t.Error("pkg-food should NOT activate for bob (not in cooking_fans)")
-		}
+		assert.NotEqual(t, "pkg-food", a.PackageID, "pkg-food should NOT activate for bob (not in cooking_fans)")
 	}
 }
 
@@ -372,14 +345,10 @@ func TestIntegration_URLBlocklist(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-family"},
 	})
-	if err != nil {
-		t.Fatalf("Activate failed: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	for _, a := range result.Activations {
-		if a.PackageID == "pkg-family" {
-			t.Error("pkg-family should NOT activate (URL is blocklisted)")
-		}
+		assert.NotEqual(t, "pkg-family", a.PackageID, "pkg-family should NOT activate (URL is blocklisted)")
 	}
 }
 
@@ -400,12 +369,8 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 
 	// First activate — should be eligible.
 	result1, err := s.client.Activate(ctx, params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result1.Activations) == 0 {
-		t.Fatal("expected activation")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, result1.Activations, "expected activation")
 
 	// Record exposure directly via the engine (TMPX replaces router-based expose).
 	expResp, err := s.identityEngine.RecordExposure(ctx, &tmproto.ExposeRequest{
@@ -413,21 +378,13 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 		PackageID:    "pkg-food",
 		ImpressionID: "imp-state-1",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if expResp.CampaignCount != 1 {
-		t.Errorf("expected campaign count 1, got %d", expResp.CampaignCount)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, expResp.CampaignCount, "expected campaign count 1")
 
 	// Second activate — should still be eligible (1 exposure, cap is 3).
 	result2, err := s.client.Activate(ctx, params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result2.Activations) == 0 {
-		t.Fatal("expected activation after 1 exposure (cap is 3)")
-	}
+	require.NoError(t, err)
+	require.NotEmpty(t, result2.Activations, "expected activation after 1 exposure (cap is 3)")
 	t.Logf("still activated after 1 exposure: %s", result2.Activations[0].PackageID)
 }
 
@@ -447,14 +404,10 @@ func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	})
-	if err != nil {
-		t.Fatalf("Activate failed: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	// Context engine should return zero offers (PropertyRID=0 not in bitmap).
-	if len(result.Activations) != 0 {
-		t.Errorf("expected 0 activations for unknown property, got %d", len(result.Activations))
-	}
+	assert.Empty(t, result.Activations, "expected 0 activations for unknown property")
 }
 
 func TestIntegration_Mediation(t *testing.T) {
@@ -546,9 +499,7 @@ func TestIntegration_Mediation(t *testing.T) {
 		{ID: "ctx", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
 	}, reg, nil, health, router.WithoutEndpointValidation())
-	if err != nil {
-		t.Fatalf("failed to create router: %v", err)
-	}
+	require.NoError(t, err, "failed to create router")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
@@ -573,14 +524,10 @@ func TestIntegration_Mediation(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
 	})
-	if err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	// All 3 should activate (all topic match + alice in cooking_fans).
-	if len(result.Activations) != 3 {
-		t.Fatalf("expected 3 activations, got %d", len(result.Activations))
-	}
+	require.Len(t, result.Activations, 3, "expected 3 activations")
 
 	t.Log("")
 	t.Log("=== Mediation: Competing Offers ===")
@@ -601,21 +548,13 @@ func TestIntegration_Mediation(t *testing.T) {
 
 	// Verify offers carry full data.
 	olive := result.Activations[0] // sorted by intent, olive has highest
-	if olive.Offer.Brand == nil || olive.Offer.Brand.Name != "Meridian Foods" {
-		t.Error("expected brand on olive oil offer")
-	}
-	if olive.Offer.Price == nil || olive.Offer.Price.Amount != 12.50 {
-		t.Error("expected price on olive oil offer")
-	}
-	if olive.Offer.Summary == "" {
-		t.Error("expected summary on olive oil offer")
-	}
-	if len(olive.Offer.CreativeManifest) == 0 {
-		t.Error("expected creative manifest on olive oil offer")
-	}
-	if olive.Offer.Macros["click_url"] == "" {
-		t.Error("expected click_url macro on olive oil offer")
-	}
+	require.NotNil(t, olive.Offer.Brand, "expected brand on olive oil offer")
+	assert.Equal(t, "Meridian Foods", olive.Offer.Brand.Name)
+	require.NotNil(t, olive.Offer.Price, "expected price on olive oil offer")
+	assert.Equal(t, 12.50, olive.Offer.Price.Amount)
+	assert.NotEmpty(t, olive.Offer.Summary, "expected summary on olive oil offer")
+	assert.NotEmpty(t, olive.Offer.CreativeManifest, "expected creative manifest on olive oil offer")
+	assert.NotEmpty(t, olive.Offer.Macros["click_url"], "expected click_url macro on olive oil offer")
 
 	// Publisher mediation: pick by price.
 	t.Log("=== Publisher Mediation Decision ===")
@@ -637,14 +576,10 @@ func TestIntegration_Mediation(t *testing.T) {
 	t.Logf("  Winner: %s (price=$%.2f)", bestPkg, bestPrice)
 	t.Log("")
 
-	if bestPkg == "" {
-		t.Error("expected a mediation winner")
-	}
+	assert.NotEmpty(t, bestPkg, "expected a mediation winner")
 
 	// Verify signals.
-	if result.Signals == nil {
-		t.Fatal("expected signals")
-	}
+	require.NotNil(t, result.Signals, "expected signals")
 	t.Logf("  Segments: %v", result.Signals.Segments)
 }
 
@@ -709,9 +644,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		{ID: "ctx", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
 	}, reg, nil, health, router.WithoutEndpointValidation())
-	if err != nil {
-		t.Fatalf("failed to create router: %v", err)
-	}
+	require.NoError(t, err, "failed to create router")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
@@ -731,14 +664,10 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-premium-food"},
 	})
-	if err != nil {
-		t.Fatalf("Activate: %v", err)
-	}
+	require.NoError(t, err, "Activate failed")
 
 	// 3 deals should produce 3 activations, all for the same package.
-	if len(result.Activations) != 3 {
-		t.Fatalf("expected 3 activations (3 deals for 1 package), got %d", len(result.Activations))
-	}
+	require.Len(t, result.Activations, 3, "expected 3 activations (3 deals for 1 package)")
 
 	t.Log("")
 	t.Log("=== Multi-Deal Auction: 3 brands competing for pkg-premium-food ===")
@@ -747,9 +676,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 	var bestBrand string
 	var bestPrice float64
 	for i, a := range result.Activations {
-		if a.PackageID != "pkg-premium-food" {
-			t.Errorf("activation %d: expected pkg-premium-food, got %s", i, a.PackageID)
-		}
+		assert.Equal(t, "pkg-premium-food", a.PackageID, "activation %d: unexpected package", i)
 		brand := "?"
 		if a.Offer.Brand != nil {
 			brand = a.Offer.Brand.Name
@@ -770,12 +697,8 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 	t.Logf("  Highest bidder: %s at $%.2f CPM", bestBrand, bestPrice)
 	t.Log("")
 
-	if bestBrand != "Vino Select" {
-		t.Errorf("expected Vino Select as highest bidder, got %s", bestBrand)
-	}
-	if bestPrice != 18.75 {
-		t.Errorf("expected $18.75, got $%.2f", bestPrice)
-	}
+	assert.Equal(t, "Vino Select", bestBrand, "expected Vino Select as highest bidder")
+	assert.Equal(t, 18.75, bestPrice, "expected $18.75")
 
 	// Verify all 3 offers have distinct brands.
 	brands := map[string]bool{}
@@ -784,9 +707,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 			brands[a.Offer.Brand.Name] = true
 		}
 	}
-	if len(brands) != 3 {
-		t.Errorf("expected 3 distinct brands, got %d: %v", len(brands), brands)
-	}
+	assert.Len(t, brands, 3, "expected 3 distinct brands: %v", brands)
 }
 
 func TestIntegration_Throughput(t *testing.T) {
@@ -822,7 +743,5 @@ func TestIntegration_Throughput(t *testing.T) {
 	qps := float64(iterations) / elapsed.Seconds()
 	t.Logf("throughput: %d iterations in %v (avg=%v, qps=%.0f, errors=%d)", iterations, elapsed, avg, qps, errors)
 
-	if errors > 0 {
-		t.Errorf("%d errors in %d iterations", errors, iterations)
-	}
+	assert.Zero(t, errors, "%d errors in %d iterations", errors, iterations)
 }

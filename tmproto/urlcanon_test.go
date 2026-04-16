@@ -1,6 +1,10 @@
 package tmproto
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestCanonicalizeURL(t *testing.T) {
 	tests := []struct {
@@ -20,9 +24,7 @@ func TestCanonicalizeURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			got := CanonicalizeURL(tt.input)
-			if got != tt.expected {
-				t.Errorf("CanonicalizeURL(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
+			assert.Equal(t, tt.expected, got, "CanonicalizeURL(%q)", tt.input)
 		})
 	}
 }
@@ -36,16 +38,12 @@ func TestHashURL_SameURLsDifferentForms(t *testing.T) {
 	}
 	hash0 := HashURL(urls[0])
 	for _, u := range urls[1:] {
-		if HashURL(u) != hash0 {
-			t.Errorf("HashURL(%q) != HashURL(%q)", u, urls[0])
-		}
+		assert.Equal(t, hash0, HashURL(u), "HashURL(%q) != HashURL(%q)", u, urls[0])
 	}
 }
 
 func TestHashURL_DifferentURLs(t *testing.T) {
 	h1 := HashURL("https://oakwood.example.com/page-a")
 	h2 := HashURL("https://oakwood.example.com/page-b")
-	if h1 == h2 {
-		t.Error("different URLs should produce different hashes")
-	}
+	assert.NotEqual(t, h1, h2, "different URLs should produce different hashes")
 }

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContextMatchRequest_RoundTrip(t *testing.T) {
@@ -32,27 +35,16 @@ func TestContextMatchRequest_RoundTrip(t *testing.T) {
 	}
 
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	var got ContextMatchRequest
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
 
-	if got.RequestID != req.RequestID {
-		t.Errorf("request_id: got %q, want %q", got.RequestID, req.RequestID)
-	}
-	if got.PropertyType != req.PropertyType {
-		t.Errorf("property_type: got %q, want %q", got.PropertyType, req.PropertyType)
-	}
-	if len(got.AvailablePkgs) != 2 {
-		t.Errorf("available_packages: got %d, want 2", len(got.AvailablePkgs))
-	}
-	if len(got.AvailablePkgs[1].Catalogs) != 1 {
-		t.Errorf("catalogs: got %d, want 1", len(got.AvailablePkgs[1].Catalogs))
-	}
+	assert.Equal(t, req.RequestID, got.RequestID, "request_id")
+	assert.Equal(t, req.PropertyType, got.PropertyType, "property_type")
+	assert.Len(t, got.AvailablePkgs, 2, "available_packages")
+	assert.Len(t, got.AvailablePkgs[1].Catalogs, 1, "catalogs")
 }
 
 func TestContextMatchRequest_NoIdentityFields(t *testing.T) {
@@ -67,15 +59,11 @@ func TestContextMatchRequest_NoIdentityFields(t *testing.T) {
 	}
 
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	s := string(data)
 	for _, forbidden := range []string{"user_token", "uid_type", "user_id", "device_id", "ip_address"} {
-		if strings.Contains(s, forbidden) {
-			t.Errorf("context match request contains identity field %q", forbidden)
-		}
+		assert.NotContains(t, s, forbidden, "context match request contains identity field %q", forbidden)
 	}
 }
 
@@ -88,15 +76,11 @@ func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 	}
 
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	s := string(data)
 	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids", "identities"} {
-		if strings.Contains(s, forbidden) {
-			t.Errorf("identity match request contains context field %q", forbidden)
-		}
+		assert.NotContains(t, s, forbidden, "identity match request contains context field %q", forbidden)
 	}
 }
 
@@ -108,27 +92,16 @@ func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
 	}
 
 	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	var got IdentityMatchResponse
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
 
-	if len(got.EligiblePackageIDs) != 2 {
-		t.Fatalf("eligible_package_ids: got %d, want 2", len(got.EligiblePackageIDs))
-	}
-	if got.EligiblePackageIDs[0] != "pkg-1" {
-		t.Errorf("eligible_package_ids[0]: got %q, want pkg-1", got.EligiblePackageIDs[0])
-	}
-	if got.EligiblePackageIDs[1] != "pkg-3" {
-		t.Errorf("eligible_package_ids[1]: got %q, want pkg-3", got.EligiblePackageIDs[1])
-	}
-	if got.TTLSec != 300 {
-		t.Errorf("ttl_sec: got %d, want 300", got.TTLSec)
-	}
+	require.Len(t, got.EligiblePackageIDs, 2, "eligible_package_ids")
+	assert.Equal(t, "pkg-1", got.EligiblePackageIDs[0], "eligible_package_ids[0]")
+	assert.Equal(t, "pkg-3", got.EligiblePackageIDs[1], "eligible_package_ids[1]")
+	assert.Equal(t, 300, got.TTLSec, "ttl_sec")
 }
 
 func TestIdentityMatchRequest_Country(t *testing.T) {
@@ -141,21 +114,14 @@ func TestIdentityMatchRequest_Country(t *testing.T) {
 	}
 
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
-	if !strings.Contains(string(data), `"country":"US"`) {
-		t.Error("expected country in JSON output")
-	}
+	assert.Contains(t, string(data), `"country":"US"`, "expected country in JSON output")
 
 	var got IdentityMatchRequest
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got.Country != "US" {
-		t.Errorf("country: got %q, want US", got.Country)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
+	assert.Equal(t, "US", got.Country, "country")
 }
 
 func TestIdentityMatchRequest_CountryOmittedWhenEmpty(t *testing.T) {
@@ -166,13 +132,9 @@ func TestIdentityMatchRequest_CountryOmittedWhenEmpty(t *testing.T) {
 	}
 
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
-	if strings.Contains(string(data), `"country"`) {
-		t.Error("country should be omitted when empty")
-	}
+	assert.NotContains(t, string(data), `"country"`, "country should be omitted when empty")
 }
 
 func TestIdentityMatchResponse_TMPX(t *testing.T) {
@@ -184,21 +146,14 @@ func TestIdentityMatchResponse_TMPX(t *testing.T) {
 	}
 
 	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
-	if !strings.Contains(string(data), `"tmpx":"k1.dGVzdC10b2tlbg"`) {
-		t.Error("expected tmpx in JSON output")
-	}
+	assert.Contains(t, string(data), `"tmpx":"k1.dGVzdC10b2tlbg"`, "expected tmpx in JSON output")
 
 	var got IdentityMatchResponse
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got.Tmpx != "k1.dGVzdC10b2tlbg" {
-		t.Errorf("tmpx: got %q, want k1.dGVzdC10b2tlbg", got.Tmpx)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
+	assert.Equal(t, "k1.dGVzdC10b2tlbg", got.Tmpx, "tmpx")
 }
 
 func TestIdentityMatchResponse_TmpxProviders(t *testing.T) {
@@ -213,20 +168,13 @@ func TestIdentityMatchResponse_TmpxProviders(t *testing.T) {
 	}
 
 	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	var got IdentityMatchResponse
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got.TmpxProviders["acme"] != "k1.acme-token" {
-		t.Errorf("acme: got %q, want k1.acme-token", got.TmpxProviders["acme"])
-	}
-	if got.TmpxProviders["scope3"] != "k2.scope3-token" {
-		t.Errorf("scope3: got %q, want k2.scope3-token", got.TmpxProviders["scope3"])
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
+	assert.Equal(t, "k1.acme-token", got.TmpxProviders["acme"], "acme")
+	assert.Equal(t, "k2.scope3-token", got.TmpxProviders["scope3"], "scope3")
 }
 
 func TestIdentityMatchResponse_TMPXOmittedWhenEmpty(t *testing.T) {
@@ -237,37 +185,22 @@ func TestIdentityMatchResponse_TMPXOmittedWhenEmpty(t *testing.T) {
 	}
 
 	data, err := json.Marshal(resp)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
-	if strings.Contains(string(data), `"tmpx"`) {
-		t.Error("tmpx should be omitted when empty")
-	}
-	if strings.Contains(string(data), `"tmpx_providers"`) {
-		t.Error("tmpx_providers should be omitted when empty")
-	}
+	assert.NotContains(t, string(data), `"tmpx"`, "tmpx should be omitted when empty")
+	assert.NotContains(t, string(data), `"tmpx_providers"`, "tmpx_providers should be omitted when empty")
 }
 
 func TestOffer_SimpleActivation(t *testing.T) {
 	offer := &Offer{PackageID: "pkg-display-001"}
 
 	data, err := json.Marshal(offer)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	s := string(data)
-	if !strings.Contains(s, `"package_id":"pkg-display-001"`) {
-		t.Errorf("expected package_id in output: %s", s)
-	}
-	// Simple offer should not contain optional fields
-	if strings.Contains(s, `"brand"`) {
-		t.Error("simple offer should not contain brand")
-	}
-	if strings.Contains(s, `"price"`) {
-		t.Error("simple offer should not contain price")
-	}
+	assert.Contains(t, s, `"package_id":"pkg-display-001"`, "expected package_id in output")
+	assert.NotContains(t, s, `"brand"`, "simple offer should not contain brand")
+	assert.NotContains(t, s, `"price"`, "simple offer should not contain price")
 }
 
 func TestOffer_RichResponse(t *testing.T) {
@@ -280,49 +213,35 @@ func TestOffer_RichResponse(t *testing.T) {
 	}
 
 	data, err := json.Marshal(offer)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	var got Offer
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
 
-	if got.Brand == nil || got.Brand.Name != "Acme Corp" {
-		t.Error("brand should be Acme Corp")
-	}
-	if got.Price == nil || got.Price.Amount != 12.50 {
-		t.Error("price should be 12.50")
-	}
-	if got.Price.Model != PriceModelCPM {
-		t.Errorf("price model: got %q, want cpm", got.Price.Model)
-	}
-	if got.Macros["click_url"] != "https://track.example.com/c/123" {
-		t.Error("macros should contain click_url")
-	}
+	require.NotNil(t, got.Brand, "brand should not be nil")
+	assert.Equal(t, "Acme Corp", got.Brand.Name, "brand name")
+	require.NotNil(t, got.Price, "price should not be nil")
+	assert.Equal(t, 12.50, got.Price.Amount, "price amount")
+	assert.Equal(t, PriceModelCPM, got.Price.Model, "price model")
+	assert.Equal(t, "https://track.example.com/c/123", got.Macros["click_url"], "macros click_url")
 }
 
 func TestErrorResponse_RoundTrip(t *testing.T) {
-	err := &ErrorResponse{
+	errResp := &ErrorResponse{
 		RequestID: "ctx-err-001",
 		Code:      ErrorCodeRateLimited,
 		Message:   "Too many requests",
 	}
 
-	data, marshalErr := json.Marshal(err)
-	if marshalErr != nil {
-		t.Fatalf("marshal: %v", marshalErr)
-	}
+	data, err := json.Marshal(errResp)
+	require.NoError(t, err, "marshal")
 
 	var got ErrorResponse
-	if unmarshalErr := json.Unmarshal(data, &got); unmarshalErr != nil {
-		t.Fatalf("unmarshal: %v", unmarshalErr)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
 
-	if got.Code != ErrorCodeRateLimited {
-		t.Errorf("code: got %q, want rate_limited", got.Code)
-	}
+	assert.Equal(t, ErrorCodeRateLimited, got.Code, "code")
 }
 
 func TestMarshalJSON_RoundTrip(t *testing.T) {
@@ -337,18 +256,13 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 	}
 
 	data, err := MarshalJSON(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
+	require.NoError(t, err, "marshal")
 
 	var got ContextMatchRequest
-	if err := UnmarshalJSON(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	err = UnmarshalJSON(data, &got)
+	require.NoError(t, err, "unmarshal")
 
-	if got.PropertyType != PropertyTypeAIAssistant {
-		t.Errorf("property_type: got %q, want ai_assistant", got.PropertyType)
-	}
+	assert.Equal(t, PropertyTypeAIAssistant, got.PropertyType, "property_type")
 }
 
 func TestValidateExposeRequest(t *testing.T) {
@@ -429,8 +343,10 @@ func TestValidateExposeRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateExposeRequest(&tt.req)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateExposeRequest() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err, "ValidateExposeRequest() expected error")
+			} else {
+				assert.NoError(t, err, "ValidateExposeRequest() unexpected error")
 			}
 		})
 	}
@@ -445,18 +361,11 @@ func TestExposeRequest_SourceID_RoundTrip(t *testing.T) {
 		CampaignID:   "campaign-acme",
 	}
 	data, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal: %v", err)
-	}
-	if !strings.Contains(string(data), `"source_id":"aao-agent-cnn-identity-v2"`) {
-		t.Error("source_id missing from JSON output")
-	}
+	require.NoError(t, err, "marshal")
+	assert.Contains(t, string(data), `"source_id":"aao-agent-cnn-identity-v2"`, "source_id missing from JSON output")
 
 	var got ExposeRequest
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if got.SourceID != "aao-agent-cnn-identity-v2" {
-		t.Errorf("source_id: got %q, want aao-agent-cnn-identity-v2", got.SourceID)
-	}
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
+	assert.Equal(t, "aao-agent-cnn-identity-v2", got.SourceID, "source_id")
 }

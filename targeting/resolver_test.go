@@ -4,17 +4,16 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolver_NoMediaBuys(t *testing.T) {
 	store := NewMockStore()
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "US", time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 0 {
-		t.Errorf("expected 0 packages, got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, pkgs)
 }
 
 func TestResolver_ActiveMediaBuy(t *testing.T) {
@@ -34,18 +33,11 @@ func TestResolver_ActiveMediaBuy(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-oakwood", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 2 {
-		t.Fatalf("expected 2 packages, got %d", len(pkgs))
-	}
-	if pkgs[0].PackageID != "pkg-food" || pkgs[1].PackageID != "pkg-tech" {
-		t.Errorf("unexpected packages: %+v", pkgs)
-	}
-	if pkgs[0].MediaBuyID != "mb-1" {
-		t.Errorf("expected media_buy_id mb-1, got %s", pkgs[0].MediaBuyID)
-	}
+	require.NoError(t, err)
+	require.Len(t, pkgs, 2)
+	assert.Equal(t, "pkg-food", pkgs[0].PackageID)
+	assert.Equal(t, "pkg-tech", pkgs[1].PackageID)
+	assert.Equal(t, "mb-1", pkgs[0].MediaBuyID)
 }
 
 func TestResolver_ExpiredMediaBuy(t *testing.T) {
@@ -60,12 +52,8 @@ func TestResolver_ExpiredMediaBuy(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 0 {
-		t.Errorf("expected 0 packages (expired), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, pkgs, "expected 0 packages (expired)")
 }
 
 func TestResolver_FutureMediaBuy(t *testing.T) {
@@ -80,12 +68,8 @@ func TestResolver_FutureMediaBuy(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 0 {
-		t.Errorf("expected 0 packages (future), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, pkgs, "expected 0 packages (future)")
 }
 
 func TestResolver_GeoMismatch(t *testing.T) {
@@ -101,12 +85,8 @@ func TestResolver_GeoMismatch(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 0 {
-		t.Errorf("expected 0 packages (geo mismatch), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, pkgs, "expected 0 packages (geo mismatch)")
 }
 
 func TestResolver_PropertyMismatch(t *testing.T) {
@@ -122,12 +102,8 @@ func TestResolver_PropertyMismatch(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-other", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 0 {
-		t.Errorf("expected 0 packages (property mismatch), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, pkgs, "expected 0 packages (property mismatch)")
 }
 
 func TestResolver_EmptyCountries_AllGeos(t *testing.T) {
@@ -143,12 +119,8 @@ func TestResolver_EmptyCountries_AllGeos(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "JP", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 1 {
-		t.Errorf("expected 1 package (all geos), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Len(t, pkgs, 1, "expected 1 package (all geos)")
 }
 
 func TestResolver_EmptyPropertyIDs_AllProperties(t *testing.T) {
@@ -164,12 +136,8 @@ func TestResolver_EmptyPropertyIDs_AllProperties(t *testing.T) {
 
 	now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "any-property", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 1 {
-		t.Errorf("expected 1 package (all properties), got %d", len(pkgs))
-	}
+	require.NoError(t, err)
+	assert.Len(t, pkgs, 1, "expected 1 package (all properties)")
 }
 
 func TestResolve_BuildsIndexes(t *testing.T) {
@@ -223,74 +191,46 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	})
 
 	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Check packages resolved.
-	if len(resolved.Packages) != 2 {
-		t.Fatalf("expected 2 packages, got %d", len(resolved.Packages))
-	}
+	require.Len(t, resolved.Packages, 2)
 
 	// PropertyIndex: RID 1 should map to both packages.
-	if pkgs := resolved.PropertyIndex[1]; len(pkgs) != 2 {
-		t.Errorf("PropertyIndex[1]: expected 2 packages, got %d", len(pkgs))
-	}
+	assert.Len(t, resolved.PropertyIndex[1], 2, "PropertyIndex[1]: expected 2 packages")
 	// RID 4 should map to pkg-tech only.
-	if pkgs := resolved.PropertyIndex[4]; len(pkgs) != 1 || pkgs[0] != "pkg-tech" {
-		t.Errorf("PropertyIndex[4]: expected [pkg-tech], got %v", pkgs)
-	}
+	require.Len(t, resolved.PropertyIndex[4], 1)
+	assert.Equal(t, "pkg-tech", resolved.PropertyIndex[4][0])
 
 	// TopicIndex.
-	if pkgs := resolved.TopicIndex["food.cooking"]; len(pkgs) != 1 || pkgs[0] != "pkg-food" {
-		t.Errorf("TopicIndex[food.cooking]: expected [pkg-food], got %v", pkgs)
-	}
-	if pkgs := resolved.TopicIndex["tech.gadgets"]; len(pkgs) != 1 || pkgs[0] != "pkg-tech" {
-		t.Errorf("TopicIndex[tech.gadgets]: expected [pkg-tech], got %v", pkgs)
-	}
+	require.Len(t, resolved.TopicIndex["food.cooking"], 1)
+	assert.Equal(t, "pkg-food", resolved.TopicIndex["food.cooking"][0])
+	require.Len(t, resolved.TopicIndex["tech.gadgets"], 1)
+	assert.Equal(t, "pkg-tech", resolved.TopicIndex["tech.gadgets"][0])
 
 	// URLBlocklistIndex.
 	badHash := HashURL("article:bad")
-	if pkgs := resolved.URLBlocklistIndex[badHash]; len(pkgs) != 1 || pkgs[0] != "pkg-food" {
-		t.Errorf("URLBlocklistIndex: expected [pkg-food], got %v", pkgs)
-	}
+	require.Len(t, resolved.URLBlocklistIndex[badHash], 1)
+	assert.Equal(t, "pkg-food", resolved.URLBlocklistIndex[badHash][0])
 
 	// SegmentIndex.
-	if pkgs := resolved.SegmentIndex["cooking_fans"]; len(pkgs) != 2 {
-		t.Errorf("SegmentIndex[cooking_fans]: expected 2 packages, got %d", len(pkgs))
-	}
-	if pkgs := resolved.SegmentIndex["tech_enthusiasts"]; len(pkgs) != 1 {
-		t.Errorf("SegmentIndex[tech_enthusiasts]: expected 1 package, got %d", len(pkgs))
-	}
+	assert.Len(t, resolved.SegmentIndex["cooking_fans"], 2)
+	assert.Len(t, resolved.SegmentIndex["tech_enthusiasts"], 1)
 
 	// Configs loaded.
-	if resolved.ContextConfigs["pkg-food"] == nil {
-		t.Error("expected context config for pkg-food")
-	}
-	if resolved.IdentityConfigs["pkg-food"] == nil {
-		t.Error("expected identity config for pkg-food")
-	}
-	if resolved.CampaignConfigs["campaign-1"] == nil {
-		t.Error("expected campaign config for campaign-1")
-	}
+	assert.NotNil(t, resolved.ContextConfigs["pkg-food"], "expected context config for pkg-food")
+	assert.NotNil(t, resolved.IdentityConfigs["pkg-food"], "expected identity config for pkg-food")
+	assert.NotNil(t, resolved.CampaignConfigs["campaign-1"], "expected campaign config for campaign-1")
 
 	// Test helper methods.
-	if resolved.IsURLBlocked("pkg-food", badHash) != true {
-		t.Error("expected article:bad to be blocked for pkg-food")
-	}
-	if resolved.IsURLBlocked("pkg-tech", badHash) != false {
-		t.Error("expected article:bad to NOT be blocked for pkg-tech")
-	}
+	assert.True(t, resolved.IsURLBlocked("pkg-food", badHash))
+	assert.False(t, resolved.IsURLBlocked("pkg-tech", badHash))
 
 	candidates := resolved.TopicCandidates([]string{"food.cooking", "tech.gadgets"})
-	if len(candidates) != 2 {
-		t.Errorf("TopicCandidates: expected 2, got %d", len(candidates))
-	}
+	assert.Len(t, candidates, 2)
 
 	segCandidates := resolved.SegmentCandidates([]string{"cooking_fans"})
-	if len(segCandidates) != 2 {
-		t.Errorf("SegmentCandidates: expected 2, got %d", len(segCandidates))
-	}
+	assert.Len(t, segCandidates, 2)
 }
 
 func TestResolver_MultipleMediaBuys_MixedResults(t *testing.T) {
@@ -327,13 +267,7 @@ func TestResolver_MultipleMediaBuys_MixedResults(t *testing.T) {
 	})
 
 	pkgs, err := ResolvePackages(context.Background(), store, "seller-1", "pub-1", "US", now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkgs) != 1 {
-		t.Errorf("expected 1 package, got %d", len(pkgs))
-	}
-	if len(pkgs) > 0 && pkgs[0].PackageID != "pkg-active" {
-		t.Errorf("expected pkg-active, got %s", pkgs[0].PackageID)
-	}
+	require.NoError(t, err)
+	require.Len(t, pkgs, 1)
+	assert.Equal(t, "pkg-active", pkgs[0].PackageID)
 }

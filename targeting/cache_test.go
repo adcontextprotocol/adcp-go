@@ -3,6 +3,8 @@ package targeting
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCache_SetAndGet(t *testing.T) {
@@ -10,17 +12,14 @@ func TestCache_SetAndGet(t *testing.T) {
 	c.Set("key", "value")
 
 	val, ok := c.Get("key")
-	if !ok || val != "value" {
-		t.Errorf("expected value, got %v ok=%v", val, ok)
-	}
+	assert.True(t, ok)
+	assert.Equal(t, "value", val)
 }
 
 func TestCache_Miss(t *testing.T) {
 	c := NewCache(10 * time.Second)
 	_, ok := c.Get("missing")
-	if ok {
-		t.Error("expected miss")
-	}
+	assert.False(t, ok, "expected miss")
 }
 
 func TestCache_TTLExpiry(t *testing.T) {
@@ -32,17 +31,14 @@ func TestCache_TTLExpiry(t *testing.T) {
 
 	// Still valid.
 	val, ok := c.Get("key")
-	if !ok || val != "value" {
-		t.Error("expected hit before expiry")
-	}
+	assert.True(t, ok, "expected hit before expiry")
+	assert.Equal(t, "value", val)
 
 	// Advance past TTL.
 	c.now = func() time.Time { return now.Add(6 * time.Second) }
 
 	_, ok = c.Get("key")
-	if ok {
-		t.Error("expected miss after expiry")
-	}
+	assert.False(t, ok, "expected miss after expiry")
 }
 
 func TestCache_Overwrite(t *testing.T) {
@@ -51,9 +47,8 @@ func TestCache_Overwrite(t *testing.T) {
 	c.Set("key", "v2")
 
 	val, ok := c.Get("key")
-	if !ok || val != "v2" {
-		t.Errorf("expected v2, got %v", val)
-	}
+	assert.True(t, ok)
+	assert.Equal(t, "v2", val)
 }
 
 func TestCache_DifferentTypes(t *testing.T) {
@@ -63,15 +58,11 @@ func TestCache_DifferentTypes(t *testing.T) {
 	c.Set("slice", []string{"a", "b"})
 
 	val, _ := c.Get("str")
-	if val != "hello" {
-		t.Error("string mismatch")
-	}
+	assert.Equal(t, "hello", val)
 	val, _ = c.Get("int")
-	if val != 42 {
-		t.Error("int mismatch")
-	}
+	assert.Equal(t, 42, val)
 	val, _ = c.Get("slice")
-	if s, ok := val.([]string); !ok || len(s) != 2 {
-		t.Error("slice mismatch")
-	}
+	s, ok := val.([]string)
+	assert.True(t, ok, "expected []string type")
+	assert.Len(t, s, 2)
 }
