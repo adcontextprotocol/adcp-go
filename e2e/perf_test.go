@@ -106,13 +106,13 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			json.Unmarshal(ctxData, &cmResp)
 			json.Unmarshal(idData, &imResp)
 
-			eligMap := make(map[string]bool)
-			for _, e := range imResp.Eligibility {
-				eligMap[e.PackageID] = e.Eligible
+			eligSet := make(map[string]bool)
+			for _, id := range imResp.EligiblePackageIDs {
+				eligSet[id] = true
 			}
 			var activated []string
 			for _, o := range cmResp.Offers {
-				if eligMap[o.PackageID] {
+				if eligSet[o.PackageID] {
 					activated = append(activated, o.PackageID)
 				}
 			}
@@ -279,19 +279,15 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 			json.Unmarshal(idData, &imResp)
 
 			// Find best eligible package and expose
-			for _, e := range imResp.Eligibility {
-				if e.Eligible && e.PackageID == "pkg-a" {
-					postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-						UserToken: token,
-						PackageID: "pkg-a",
-					})
-					totalExposures++
-					break
-				}
-				if !e.Eligible && e.PackageID == "pkg-a" {
-					cappedCount++
-					break
-				}
+			eligSet := make(map[string]bool)
+			for _, id := range imResp.EligiblePackageIDs {
+				eligSet[id] = true
+			}
+			if eligSet["pkg-a"] {
+				idAgent.recordExposure(token, "pkg-a")
+				totalExposures++
+			} else {
+				cappedCount++
 			}
 		}
 	}

@@ -59,12 +59,6 @@ func main() {
 		reg.HistogramObserve("router_request_duration_seconds", time.Since(start).Seconds(), "identity")
 		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", time.Since(start).Milliseconds())
 	})
-	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, req *http.Request) {
-		start := time.Now()
-		reg.CounterInc("router_requests_total", "expose")
-		r.HandleExpose(w, req)
-		reg.HistogramObserve("router_request_duration_seconds", time.Since(start).Seconds(), "expose")
-	})
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.Handle("GET /metrics", reg.Handler())
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {

@@ -22,6 +22,10 @@ type ProviderConfig struct {
 	PropertyTypes      []string `json:"property_types,omitempty"`       // Only these types (empty = all)
 	PackageIDs         []string `json:"package_ids,omitempty"`          // Only send these packages (empty = all)
 
+	// Identity match routing — required when IdentityMatch is true.
+	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 codes this provider serves
+	UIDTypes  []string `json:"uid_types,omitempty"` // Identity types this provider can resolve
+
 	Timeout time.Duration `json:"timeout"`
 }
 

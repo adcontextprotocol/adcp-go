@@ -20,7 +20,7 @@
     },
     "identities": {
       "type": "array",
-      "items": { "$ref": "identity_match_request.json#/$defs/UserIdentity" },
+      "items": { "$ref": "#/$defs/UserIdentity" },
       "x-go-omitempty": true
     },
     "impression_id": {
@@ -38,6 +38,22 @@
       "type": "integer",
       "x-go-type": "int64",
       "x-go-omitempty": true
+    }
+  },
+  "$defs": {
+    "UserIdentity": {
+      "type": "object",
+      "description": "UserIdentity represents a single user identifier.",
+      "required": ["user_token"],
+      "properties": {
+        "user_token": {
+          "type": "string"
+        },
+        "uid_type": {
+          "$ref": "enums.json#/$defs/UIDType",
+          "x-go-omitempty": true
+        }
+      }
     }
   }
 }

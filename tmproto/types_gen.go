@@ -172,6 +172,12 @@ type ErrorResponse struct {
 	Message   string    `json:"message,omitempty"`
 }
 
+// UserIdentity represents a single user identifier.
+type UserIdentity struct {
+	UserToken string  `json:"user_token"`
+	UIDType   UIDType `json:"uid_type,omitempty"`
+}
+
 // ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.
 type ExposeRequest struct {
 	SourceID     string         `json:"source_id,omitempty"` // Identifies the agent or system that recorded this exposure. Used for dedup namespacing, rollback, and audit.
@@ -191,17 +197,13 @@ type ExposeResponse struct {
 	CampaignRemaining int    `json:"campaign_remaining,omitempty"`
 }
 
-// ConsentSignals carries privacy consent strings for the identity agent.
+// ConsentSignals carries privacy consent signals for the identity agent.
 type ConsentSignals struct {
-	Tcf string `json:"tcf,omitempty"` // IAB TCF 2.0 consent string
-	Gpp string `json:"gpp,omitempty"` // IAB GPP string
-	Usp string `json:"usp,omitempty"` // US Privacy string (legacy)
-}
-
-// UserIdentity represents a single user identifier.
-type UserIdentity struct {
-	UserToken string  `json:"user_token"`
-	UIDType   UIDType `json:"uid_type,omitempty"`
+	Gdpr       *bool  `json:"gdpr,omitempty"`        // Whether GDPR applies to this request. Use a pointer type so false is distinguishable from absent.
+	TcfConsent string `json:"tcf_consent,omitempty"` // IAB TCF v2.2 consent string. Present when gdpr is true.
+	Gpp        string `json:"gpp,omitempty"`         // IAB Global Privacy Platform string.
+	GppSid     string `json:"gpp_sid,omitempty"`     // IAB GPP Section ID(s) indicating which privacy framework sections apply. Comma-separated when multiple.
+	UsPrivacy  string `json:"us_privacy,omitempty"`  // US Privacy string (CCPA). Deprecated in favor of GPP but still widely used.
 }
 
 // IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.
@@ -209,21 +211,17 @@ type IdentityMatchRequest struct {
 	ProtocolVersion string          `json:"protocol_version,omitempty"`
 	RequestID       string          `json:"request_id"`
 	UserToken       string          `json:"user_token"`
-	UIDType         UIDType         `json:"uid_type,omitempty"`
-	Identities      []UserIdentity  `json:"identities,omitempty"`
+	UIDType         UIDType         `json:"uid_type"`
 	PackageIDs      []string        `json:"package_ids"`
 	Consent         *ConsentSignals `json:"consent,omitempty"`
+	Country         string          `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent.
 }
 
-// PackageEligibility is an identity-based eligibility determination. The buyer computes eligibility from frequency caps, audience membership, etc. and returns an opaque boolean. The publisher does not learn why.
-type PackageEligibility struct {
-	PackageID   string   `json:"package_id"`
-	Eligible    bool     `json:"eligible"`
-	IntentScore *float64 `json:"intent_score,omitempty"`
-}
-
-// IdentityMatchResponse contains per-package eligibility determinations.
+// IdentityMatchResponse indicates which packages the user is eligible for. The ttl_sec field defines a caching contract.
 type IdentityMatchResponse struct {
-	RequestID   string               `json:"request_id"`
-	Eligibility []PackageEligibility `json:"eligibility"`
+	RequestID          string            `json:"request_id"`
+	EligiblePackageIDs []string          `json:"eligible_package_ids"`     // Package IDs the user is eligible for. Packages not listed are ineligible.
+	TTLSec             int               `json:"ttl_sec"`                  // How long the router should cache this response, in seconds. 0 means do not cache.
+	Tmpx               string            `json:"tmpx,omitempty"`           // HPKE-encrypted exposure token from a single buyer agent. The router collects these into tmpx_providers keyed by provider ID.
+	TmpxProviders      map[string]string `json:"tmpx_providers,omitempty"` // Provider-keyed TMPX tokens. Populated by the router during merge.
 }

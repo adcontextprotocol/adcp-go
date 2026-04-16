@@ -4,7 +4,7 @@
   "type": "object",
   "description": "IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.",
   "x-go-name": "IdentityMatchRequest",
-  "required": ["request_id", "user_token", "package_ids"],
+  "required": ["request_id", "user_token", "uid_type", "package_ids"],
   "properties": {
     "protocol_version": {
       "type": "string",
@@ -17,13 +17,7 @@
       "type": "string"
     },
     "uid_type": {
-      "$ref": "enums.json#/$defs/UIDType",
-      "x-go-omitempty": true
-    },
-    "identities": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/UserIdentity" },
-      "x-go-omitempty": true
+      "$ref": "enums.json#/$defs/UIDType"
     },
     "package_ids": {
       "type": "array",
@@ -34,40 +28,42 @@
       "$ref": "#/$defs/ConsentSignals",
       "x-go-pointer": true,
       "x-go-omitempty": true
+    },
+    "country": {
+      "type": "string",
+      "description": "ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent.",
+      "x-go-omitempty": true
     }
   },
   "$defs": {
-    "UserIdentity": {
-      "type": "object",
-      "description": "UserIdentity represents a single user identifier.",
-      "required": ["user_token"],
-      "properties": {
-        "user_token": {
-          "type": "string"
-        },
-        "uid_type": {
-          "$ref": "enums.json#/$defs/UIDType",
-          "x-go-omitempty": true
-        }
-      }
-    },
     "ConsentSignals": {
       "type": "object",
-      "description": "ConsentSignals carries privacy consent strings for the identity agent.",
+      "description": "ConsentSignals carries privacy consent signals for the identity agent.",
       "properties": {
-        "tcf": {
+        "gdpr": {
+          "type": "boolean",
+          "description": "Whether GDPR applies to this request. Use a pointer type so false is distinguishable from absent.",
+          "x-go-pointer": true,
+          "x-go-omitempty": true
+        },
+        "tcf_consent": {
           "type": "string",
-          "description": "IAB TCF 2.0 consent string",
+          "description": "IAB TCF v2.2 consent string. Present when gdpr is true.",
           "x-go-omitempty": true
         },
         "gpp": {
           "type": "string",
-          "description": "IAB GPP string",
+          "description": "IAB Global Privacy Platform string.",
           "x-go-omitempty": true
         },
-        "usp": {
+        "gpp_sid": {
           "type": "string",
-          "description": "US Privacy string (legacy)",
+          "description": "IAB GPP Section ID(s) indicating which privacy framework sections apply. Comma-separated when multiple.",
+          "x-go-omitempty": true
+        },
+        "us_privacy": {
+          "type": "string",
+          "description": "US Privacy string (CCPA). Deprecated in favor of GPP but still widely used.",
           "x-go-omitempty": true
         }
       }

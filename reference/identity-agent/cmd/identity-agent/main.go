@@ -62,9 +62,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
-		if req.UserToken == "" && len(req.Identities) == 0 {
+		if req.UserToken == "" {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "user_token or identities required"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "user_token required"})
 			return
 		}
 		result, err := engine.EvaluateIdentity(r.Context(), &req)
@@ -74,42 +74,20 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
 			return
 		}
+		var eligible []string
+		for _, e := range result.Eligibility {
+			if e.Eligible {
+				eligible = append(eligible, e.PackageID)
+			}
+		}
 		resp := &tmproto.IdentityMatchResponse{
-			RequestID:   result.RequestID,
-			Eligibility: result.Eligibility,
+			RequestID:          result.RequestID,
+			EligiblePackageIDs: eligible,
+			TTLSec:             60,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 		slog.Debug("identity match", "request_id", req.RequestID, "packages", len(req.PackageIDs), "latency_ms", time.Since(start).Milliseconds())
-	})
-
-	mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "failed to read request body"})
-			return
-		}
-		var req tmproto.ExposeRequest
-		if err := json.Unmarshal(body, &req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
-			return
-		}
-		if err := tmproto.ValidateExposeRequest(&req); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
-			return
-		}
-		resp, err := engine.RecordExposure(r.Context(), &req)
-		if err != nil {
-			slog.Error("RecordExposure failed", "package_id", req.PackageID, "error", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	mux.Handle("GET /metrics", metrics.Registry.Handler())
