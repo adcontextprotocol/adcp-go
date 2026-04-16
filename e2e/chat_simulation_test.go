@@ -114,8 +114,6 @@ func (a *chatIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/tmp/identity":
 		a.handleIdentity(w, r)
-	case "/tmp/expose":
-		a.handleExpose(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -159,15 +157,21 @@ func (a *chatIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request)
 	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	a.mu.Lock()
-	if a.freqCounts[req.UserToken] == nil {
-		a.freqCounts[req.UserToken] = make(map[string]int)
-	}
-	a.freqCounts[req.UserToken][req.PackageID]++
-	a.mu.Unlock()
+	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
+}
+
+// recordExposure records an exposure directly without HTTP.
+func (a *chatIdentityAgent) recordExposure(userToken, packageID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.freqCounts[userToken] == nil {
+		a.freqCounts[userToken] = make(map[string]int)
+	}
+	a.freqCounts[userToken][packageID]++
 }
 
 func TestSimulation_AIAssistantChat(t *testing.T) {
@@ -388,10 +392,7 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			}
 
 			// 5. Report exposure
-			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-				UserToken: userToken,
-				PackageID: bestOffer.PackageID,
-			})
+			idAgent.recordExposure(userToken, bestOffer.PackageID)
 			t.Logf("  → Exposed: %s (frequency count incremented)", bestOffer.PackageID)
 		} else {
 			t.Logf("  Addie responds (no sponsored content this turn)")
@@ -483,10 +484,7 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 			if eligSet[offer.PackageID] {
 				showed = true
 				impressionCount++
-				postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-					UserToken: token,
-					PackageID: offer.PackageID,
-				})
+				idAgent.recordExposure(token, offer.PackageID)
 			}
 		}
 

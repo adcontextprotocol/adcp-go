@@ -87,8 +87,6 @@ func (a *mockIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/tmp/identity":
 		a.handleIdentity(w, r)
-	case "/tmp/expose":
-		a.handleExpose(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -132,18 +130,23 @@ func (a *mockIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request)
 	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.exposures[req.UserToken] == nil {
-		a.exposures[req.UserToken] = make(map[string]int)
-	}
-	a.exposures[req.UserToken][req.PackageID]++
+	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.ExposeResponse{
 		PackageID: req.PackageID,
 	})
+}
+
+// recordExposure records an exposure directly without HTTP.
+func (a *mockIdentityAgent) recordExposure(userToken, packageID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.exposures[userToken] == nil {
+		a.exposures[userToken] = make(map[string]int)
+	}
+	a.exposures[userToken][packageID]++
 }
 
 // --- Mock Router ---
@@ -396,12 +399,9 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	})
 	defer router.Close()
 
-	// Record 2 exposures directly to the identity agent
+	// Record 2 exposures directly on the identity agent
 	for range 2 {
-		postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-			UserToken: "tok-user-freq",
-			PackageID: "pkg-food-display",
-		})
+		idAgent.recordExposure("tok-user-freq", "pkg-food-display")
 	}
 
 	// Now check eligibility
@@ -575,10 +575,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	}
 
 	// 3. Expose (ad was shown)
-	postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-		UserToken: "tok-loop-user",
-		PackageID: "pkg-food",
-	})
+	idAgent.recordExposure("tok-loop-user", "pkg-food")
 
 	// 4. Identity match again (should be capped)
 	idResp2 := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{

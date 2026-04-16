@@ -203,8 +203,6 @@ func (a *simulatedIdentityAgent) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	switch r.URL.Path {
 	case "/tmp/identity":
 		a.handleIdentity(w, r)
-	case "/tmp/expose":
-		a.handleExpose(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -266,15 +264,21 @@ func (a *simulatedIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Req
 	var req tmproto.ExposeRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	a.mu.Lock()
-	if a.freqCounts[req.UserToken] == nil {
-		a.freqCounts[req.UserToken] = make(map[string]int)
-	}
-	a.freqCounts[req.UserToken][req.PackageID]++
-	a.mu.Unlock()
+	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
+}
+
+// recordExposure records an exposure directly without HTTP.
+func (a *simulatedIdentityAgent) recordExposure(userToken, packageID string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.freqCounts[userToken] == nil {
+		a.freqCounts[userToken] = make(map[string]int)
+	}
+	a.freqCounts[userToken][packageID]++
 }
 
 // --- Simulation Tests ---
@@ -497,10 +501,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		token := "tok-user-charlie"
 
 		for range 3 {
-			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-				UserToken: token,
-				PackageID: "pkg-coffee-sponsored",
-			})
+			identityAgent.recordExposure(token, "pkg-coffee-sponsored")
 		}
 
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
@@ -692,10 +693,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 
 		// Report exposure for the best package
 		if bestPkg != "" {
-			postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-				UserToken: token,
-				PackageID: bestPkg,
-			})
+			idAgent.recordExposure(token, bestPkg)
 			t.Logf("  Exposed: %s", bestPkg)
 		}
 	}

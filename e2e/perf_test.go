@@ -284,10 +284,7 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 				eligSet[id] = true
 			}
 			if eligSet["pkg-a"] {
-				postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-					UserToken: token,
-					PackageID: "pkg-a",
-				})
+				idAgent.recordExposure(token, "pkg-a")
 				totalExposures++
 			} else {
 				cappedCount++

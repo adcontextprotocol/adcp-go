@@ -211,25 +211,6 @@ func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved ...*targeting.
 			})
 		})
 
-		mux.HandleFunc("POST /tmp/expose", func(w http.ResponseWriter, r *http.Request) {
-			body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
-			if err != nil {
-				writeAgentError(w, "", "failed to read body")
-				return
-			}
-			var req tmproto.ExposeRequest
-			if err := json.Unmarshal(body, &req); err != nil {
-				writeAgentError(w, "", "invalid JSON")
-				return
-			}
-			resp, err := idEngine.RecordExposure(r.Context(), &req)
-			if err != nil {
-				writeAgentError(w, "", err.Error())
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(resp)
-		})
 	}
 
 	return mux

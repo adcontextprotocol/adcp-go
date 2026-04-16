@@ -59,7 +59,6 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/tmp/identity` | Evaluate identity match |
-| `POST` | `/tmp/expose` | Record exposure |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/health` | Health check |
 
