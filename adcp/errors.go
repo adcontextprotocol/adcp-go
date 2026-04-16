@@ -2,6 +2,7 @@ package adcp
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -14,6 +15,43 @@ type ErrorOptions struct {
 	Suggestion string
 	RetryAfter int
 	Details    map[string]any
+}
+
+// NewError creates an error that Register handlers can return to produce a
+// typed AdCP error response instead of a generic INTERNAL_ERROR.
+//
+// Usage in a handler:
+//
+//	return nil, adcp.NewError("BUDGET_TOO_LOW", adcp.ErrorOptions{
+//	    Message: "Budget $500 is below the $1,000 minimum for video",
+//	    Field:   "budget",
+//	})
+func NewError(code string, opts ErrorOptions) error {
+	return &handlerError{code: code, opts: opts}
+}
+
+type handlerError struct {
+	code string
+	opts ErrorOptions
+}
+
+func (e *handlerError) Error() string {
+	if e.opts.Message != "" {
+		return e.opts.Message
+	}
+	return e.code
+}
+
+// errorToResult converts a handler error to an MCP CallToolResult. If the
+// error is an AdCP typed error (from NewError), it uses the code and options.
+// Otherwise it wraps as INTERNAL_ERROR.
+func errorToResult(err error) (*mcp.CallToolResult, any, error) {
+	var he *handlerError
+	if errors.As(err, &he) {
+		return Errorf(he.code, he.opts)
+	}
+	// Don't leak internal error details to the calling agent.
+	return Errorf("INTERNAL_ERROR", ErrorOptions{Message: "An internal error occurred"})
 }
 
 type adcpErrorPayload struct {
@@ -73,7 +111,8 @@ func defaultRecovery(code string) string {
 	switch code {
 	case "RATE_LIMITED":
 		return "retry"
-	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD":
+	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
+		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
 		return "revise"
 	case "INTERNAL_ERROR", "SERVICE_UNAVAILABLE":
 		return "contact_support"

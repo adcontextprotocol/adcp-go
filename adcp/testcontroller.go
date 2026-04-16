@@ -189,7 +189,7 @@ func handleSimulateDelivery(store *TestControllerStore, params map[string]any) (
 	var p SimulateDeliveryParams
 	b, _ := json.Marshal(params)
 	if err := json.Unmarshal(b, &p); err != nil {
-		return controllerErr("INVALID_PARAMS", fmt.Sprintf("Invalid params: %v", err), "")
+		return controllerErr("INVALID_PARAMS", "Invalid params: could not parse delivery simulation parameters", "")
 	}
 	result, err := store.SimulateDelivery(mediaBuyID, p)
 	return wrapSimResult(result, err)
@@ -202,7 +202,7 @@ func handleSimulateBudget(store *TestControllerStore, params map[string]any) (*m
 	var p SimulateBudgetParams
 	b, _ := json.Marshal(params)
 	if err := json.Unmarshal(b, &p); err != nil {
-		return controllerErr("INVALID_PARAMS", fmt.Sprintf("Invalid params: %v", err), "")
+		return controllerErr("INVALID_PARAMS", "Invalid params: could not parse budget simulation parameters", "")
 	}
 	if p.AccountID == "" && p.MediaBuyID == "" {
 		return controllerErr("INVALID_PARAMS", "simulate_budget_spend requires params.account_id or params.media_buy_id", "")

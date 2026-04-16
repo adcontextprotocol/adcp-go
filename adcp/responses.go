@@ -150,6 +150,47 @@ func PerformanceFeedbackResponse(sandbox bool) (*mcp.CallToolResult, any, error)
 	return buildResult("Feedback received", out), out, nil
 }
 
+// --- Collection responses ---
+
+// CreateCollectionListResponse builds a create_collection_list response.
+func CreateCollectionListResponse(list *CollectionList, authToken string) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"list": list, "auth_token": authToken}
+	return buildResult(fmt.Sprintf("Collection list %q created", list.Name), out), out, nil
+}
+
+// GetCollectionListResponse builds a get_collection_list response.
+func GetCollectionListResponse(list *CollectionList, collections []ResolvedCollection, pagination *PaginationResponse) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"list": list}
+	if collections != nil {
+		out["collections"] = collections
+	}
+	if pagination != nil {
+		out["pagination"] = pagination
+	}
+	return buildResult(fmt.Sprintf("Collection list %q (%d collections)", list.Name, len(collections)), out), out, nil
+}
+
+// UpdateCollectionListResponse builds an update_collection_list response.
+func UpdateCollectionListResponse(list *CollectionList) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"list": list}
+	return buildResult(fmt.Sprintf("Collection list %q updated", list.Name), out), out, nil
+}
+
+// DeleteCollectionListResponse builds a delete_collection_list response.
+func DeleteCollectionListResponse(listID string) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"deleted": true, "list_id": listID}
+	return buildResult(fmt.Sprintf("Collection list %s deleted", listID), out), out, nil
+}
+
+// ListCollectionListsResponse builds a list_collection_lists response.
+func ListCollectionListsResponse(lists []CollectionList, pagination *PaginationResponse) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"lists": lists}
+	if pagination != nil {
+		out["pagination"] = pagination
+	}
+	return buildResult(fmt.Sprintf("Found %d collection lists", len(lists)), out), out, nil
+}
+
 // --- Generic ---
 
 // Result builds a generic tool response with StructuredContent.
