@@ -8,9 +8,8 @@ import (
 
 // Maximum sizes for request arrays to prevent denial-of-service.
 const (
-	MaxPackagesPerRequest = 500
-	MaxArtifactsPerRequest = 50
-	MaxIdentitiesPerRequest = 10
+	MaxPackagesPerRequest   = 500
+	MaxArtifactRefsPerRequest = 20
 )
 
 // MaxIDLength caps identifier fields to prevent oversized store keys.
@@ -40,11 +39,20 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if err := validateProtocolVersion(req.ProtocolVersion); err != nil {
 		return err
 	}
+	if err := validateSafeID("request_id", req.RequestID); err != nil {
+		return err
+	}
 	if req.RequestID == "" {
 		return errors.New("request_id is required")
 	}
 	if req.PropertyID == "" {
 		return errors.New("property_id is required")
+	}
+	if err := validateSafeID("property_id", req.PropertyID); err != nil {
+		return err
+	}
+	if err := validateSafeID("property_rid", req.PropertyRID); err != nil {
+		return err
 	}
 	if req.PropertyType == "" {
 		return errors.New("property_type is required")
@@ -52,17 +60,17 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if req.PlacementID == "" {
 		return errors.New("placement_id is required")
 	}
-	if len(req.AvailablePkgs) == 0 {
-		return errors.New("available_packages must not be empty")
+	if err := validateSafeID("placement_id", req.PlacementID); err != nil {
+		return err
 	}
-	if len(req.AvailablePkgs) > MaxPackagesPerRequest {
-		return fmt.Errorf("available_packages exceeds maximum of %d", MaxPackagesPerRequest)
+	if len(req.PackageIDs) > MaxPackagesPerRequest {
+		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)
 	}
-	if len(req.Artifacts) > MaxArtifactsPerRequest {
-		return fmt.Errorf("artifacts exceeds maximum of %d", MaxArtifactsPerRequest)
+	if len(req.ArtifactRefs) > MaxArtifactRefsPerRequest {
+		return fmt.Errorf("artifact_refs exceeds maximum of %d", MaxArtifactRefsPerRequest)
 	}
-	for _, pkg := range req.AvailablePkgs {
-		if err := validateSafeID("package_id", pkg.PackageID); err != nil {
+	for _, id := range req.PackageIDs {
+		if err := validateSafeID("package_id", id); err != nil {
 			return err
 		}
 	}
@@ -76,6 +84,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	}
 	if req.RequestID == "" {
 		return errors.New("request_id is required")
+	}
+	if err := validateSafeID("request_id", req.RequestID); err != nil {
+		return err
 	}
 	if req.UserToken == "" {
 		return errors.New("user_token is required")
@@ -103,34 +114,3 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	return nil
 }
 
-// ValidateExposeRequest checks that required fields are present on an expose request.
-func ValidateExposeRequest(req *ExposeRequest) error {
-	if req.UserToken == "" && len(req.Identities) == 0 {
-		return errors.New("user_token or identities is required")
-	}
-	if len(req.Identities) > MaxIdentitiesPerRequest {
-		return fmt.Errorf("identities exceeds maximum of %d", MaxIdentitiesPerRequest)
-	}
-	if req.PackageID == "" {
-		return errors.New("package_id is required")
-	}
-	if err := validateSafeID("package_id", req.PackageID); err != nil {
-		return err
-	}
-	if req.SourceID != "" {
-		if err := validateSafeID("source_id", req.SourceID); err != nil {
-			return err
-		}
-	}
-	if req.ImpressionID != "" {
-		if err := validateSafeID("impression_id", req.ImpressionID); err != nil {
-			return err
-		}
-	}
-	if req.CampaignID != "" {
-		if err := validateSafeID("campaign_id", req.CampaignID); err != nil {
-			return err
-		}
-	}
-	return nil
-}

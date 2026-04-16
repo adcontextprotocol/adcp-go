@@ -78,10 +78,16 @@ func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, cou
 		}
 
 		for _, pkg := range mb.Packages {
+			// Convert string format IDs to json.RawMessage for the wire type.
+			var fmtIDs []json.RawMessage
+			for _, fid := range pkg.FormatIDs {
+				b, _ := json.Marshal(fid)
+				fmtIDs = append(fmtIDs, b)
+			}
 			result = append(result, tmproto.AvailablePackage{
 				PackageID:  pkg.PackageID,
 				MediaBuyID: pkg.MediaBuyID,
-				FormatIDs:  pkg.FormatIDs,
+				FormatIDs:  fmtIDs,
 			})
 		}
 	}
@@ -136,7 +142,7 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 	}
 
 	// Step 5: Build indexes.
-	propertyIdx := make(map[uint64][]string)
+	propertyIdx := make(map[string][]string)
 	topicIdx := make(map[string][]string)
 	urlBlockIdx := make(map[string][]string)
 	urlAllowlists := make(map[string]map[string]struct{})

@@ -68,9 +68,7 @@ func TestGaugeOutput(t *testing.T) {
 		`provider_health{provider="acme"} 1`,
 		`provider_health{provider="broken"} 0`,
 	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("gauge output missing %q\n\ngot:\n%s", want, text)
-		}
+		assert.Contains(t, text, want, "gauge output missing expected string")
 	}
 }
 
@@ -85,12 +83,8 @@ func TestGaugeSet_Overwrite(t *testing.T) {
 	body, _ := io.ReadAll(rec.Body)
 	text := string(body)
 
-	if !strings.Contains(text, `my_gauge{id="a"} 10`) {
-		t.Errorf("gauge should be overwritten to 10, got:\n%s", text)
-	}
-	if strings.Contains(text, `my_gauge{id="a"} 5`) {
-		t.Errorf("old gauge value should not appear")
-	}
+	assert.Contains(t, text, `my_gauge{id="a"} 10`, "gauge should be overwritten to 10")
+	assert.NotContains(t, text, `my_gauge{id="a"} 5`, "old gauge value should not appear")
 }
 
 func TestConcurrentAccess(t *testing.T) {

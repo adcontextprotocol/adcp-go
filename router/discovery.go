@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // DiscoveryConfig controls dynamic provider discovery.
@@ -136,16 +138,17 @@ func (d *Discovery) poll(ctx context.Context) error {
 		return err
 	}
 
-	var incoming []ProviderConfig
-	if err := json.Unmarshal(body, &incoming); err != nil {
+	var wire []tmproto.ProviderRegistration
+	if err := json.Unmarshal(body, &wire); err != nil {
 		return err
 	}
 
 	const maxDiscoveredProviders = 500
 
-	// Validate and filter incoming providers.
-	valid := make([]ProviderConfig, 0, len(incoming))
-	for _, p := range incoming {
+	// Convert wire registrations to router configs, validate, and filter.
+	valid := make([]ProviderConfig, 0, len(wire))
+	for i := range wire {
+		p := ProviderConfigFromRegistration(&wire[i])
 		if err := ValidateProviderEndpoint(p.Endpoint); err != nil {
 			d.logger.Warn("discovery: skipping provider with invalid endpoint",
 				"provider", p.ID, "error", err)

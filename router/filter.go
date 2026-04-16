@@ -12,7 +12,7 @@ func MatchesContextProvider(req *tmproto.ContextMatchRequest, p *ProviderConfig)
 	if !p.ContextMatch {
 		return false
 	}
-	if !matchesProperty(req.PropertyID, string(req.PropertyType), p) {
+	if !matchesProperty(req.PropertyID, req.PropertyRID, string(req.PropertyType), p) {
 		return false
 	}
 	return true
@@ -40,15 +40,15 @@ func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfi
 	return true
 }
 
-func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
-	// Check exclusions first
+func matchesProperty(propertyID, propertyRID, propertyType string, p *ProviderConfig) bool {
+	// Check exclusions first (by slug)
 	for _, pattern := range p.ExcludePropertyIDs {
 		if matchGlob(pattern, propertyID) {
 			return false
 		}
 	}
 
-	// Check property ID allowlist
+	// Check property ID allowlist (by slug)
 	if len(p.PropertyIDs) > 0 {
 		found := false
 		for _, pattern := range p.PropertyIDs {
@@ -58,6 +58,14 @@ func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
 			}
 		}
 		if !found {
+			return false
+		}
+	}
+
+	// Check property RID allowlist (exact UUID match).
+	// Populated by discovery from ProviderRegistration.Properties.
+	if len(p.PropertyRIDs) > 0 {
+		if propertyRID == "" || !slices.Contains(p.PropertyRIDs, propertyRID) {
 			return false
 		}
 	}

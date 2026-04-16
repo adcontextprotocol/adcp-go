@@ -162,12 +162,12 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 		PackageID:    "pkg-food",
 		TopicTargets: true,
 		URLBlocklist: true,
-		PropertyRIDs: []uint64{1, 2, 3},
+		PropertyRIDs: []string{"1", "2", "3"},
 	})
 	store.SetPackageContextConfig("pkg-tech", PackageContextConfig{
 		PackageID:    "pkg-tech",
 		TopicTargets: true,
-		PropertyRIDs: []uint64{1, 4},
+		PropertyRIDs: []string{"1", "4"},
 	})
 
 	// Topic data.
@@ -197,10 +197,10 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	require.Len(t, resolved.Packages, 2)
 
 	// PropertyIndex: RID 1 should map to both packages.
-	assert.Len(t, resolved.PropertyIndex[1], 2, "PropertyIndex[1]: expected 2 packages")
+	assert.Len(t, resolved.PropertyIndex["1"], 2, "PropertyIndex[1]: expected 2 packages")
 	// RID 4 should map to pkg-tech only.
-	require.Len(t, resolved.PropertyIndex[4], 1)
-	assert.Equal(t, "pkg-tech", resolved.PropertyIndex[4][0])
+	require.Len(t, resolved.PropertyIndex["4"], 1)
+	assert.Equal(t, "pkg-tech", resolved.PropertyIndex["4"][0])
 
 	// TopicIndex.
 	require.Len(t, resolved.TopicIndex["food.cooking"], 1)

@@ -105,29 +105,20 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	idReqID := c.genRequestID()
 
 	ctxReq := &tmproto.ContextMatchRequest{
-		RequestID:     ctxReqID,
-		PropertyID:    params.PropertyID,
-		PropertyType:  params.PropertyType,
-		PlacementID:   params.PlacementID,
-		Artifacts:     params.Artifacts,
-		Geo:           params.Geo,
-		AvailablePkgs: params.Packages,
-	}
-
-	// Derive PackageIDs from Packages if not explicitly set.
-	packageIDs := params.PackageIDs
-	if len(packageIDs) == 0 {
-		packageIDs = make([]string, len(params.Packages))
-		for i, p := range params.Packages {
-			packageIDs[i] = p.PackageID
-		}
+		RequestID:    ctxReqID,
+		PropertyID:   params.PropertyID,
+		PropertyType: params.PropertyType,
+		PlacementID:  params.PlacementID,
+		Geo:          params.Geo,
+		ArtifactRefs: params.ArtifactRefs,
+		PackageIDs:   params.PackageIDs,
 	}
 
 	idReq := &tmproto.IdentityMatchRequest{
 		RequestID:  idReqID,
 		UserToken:  params.UserToken,
 		UIDType:    params.UIDType,
-		PackageIDs: packageIDs,
+		PackageIDs: params.PackageIDs,
 		Consent:    params.Consent,
 		Country:    params.Country,
 	}
@@ -168,29 +159,23 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	}
 
 	// Join results.
-	activations := joinResults(ctxResp, idResp, params.Packages)
+	activations := joinResults(ctxResp, idResp)
 
 	return &ActivateResult{
-		Activations:   activations,
-		Signals:       ctxResp.Signals,
-		TmpxProviders: idResp.TmpxProviders,
-		Context:       ctxResp,
-		Identity:      idResp,
+		Activations: activations,
+		Signals:     ctxResp.Signals,
+		Tmpx:        idResp.Tmpx,
+		Context:     ctxResp,
+		Identity:    idResp,
 	}, nil
 }
 
 // joinResults intersects context offers with identity eligibility.
-func joinResults(ctxResp *tmproto.ContextMatchResponse, idResp *tmproto.IdentityMatchResponse, packages []tmproto.AvailablePackage) []Activation {
+func joinResults(ctxResp *tmproto.ContextMatchResponse, idResp *tmproto.IdentityMatchResponse) []Activation {
 	// Build eligibility set from flat list.
 	eligSet := make(map[string]bool, len(idResp.EligiblePackageIDs))
 	for _, id := range idResp.EligiblePackageIDs {
 		eligSet[id] = true
-	}
-
-	// Build media buy ID map from packages.
-	mediaBuyMap := make(map[string]string, len(packages))
-	for _, p := range packages {
-		mediaBuyMap[p.PackageID] = p.MediaBuyID
 	}
 
 	var activations []Activation
@@ -199,9 +184,8 @@ func joinResults(ctxResp *tmproto.ContextMatchResponse, idResp *tmproto.Identity
 			continue
 		}
 		activations = append(activations, Activation{
-			PackageID:  offer.PackageID,
-			MediaBuyID: mediaBuyMap[offer.PackageID],
-			Offer:      offer,
+			PackageID: offer.PackageID,
+			Offer:     offer,
 		})
 	}
 

@@ -14,7 +14,7 @@ import (
 // RegistryProperty represents a property in the registry.
 type RegistryProperty struct {
 	PropertyID   string   `json:"property_id"`
-	PropertyRID  uint64   `json:"property_rid"`
+	PropertyRID  string   `json:"property_rid"`
 	PropertyType string   `json:"property_type"`
 	Domain       string   `json:"domain"`
 	Placements   []string `json:"placements,omitempty"`
@@ -42,8 +42,8 @@ type Registry struct {
 	// property_id → RegistryProperty (full metadata)
 	byID map[string]*RegistryProperty
 
-	// property_rid → RegistryProperty (integer ID lookup)
-	byRID map[uint64]*RegistryProperty
+	// property_rid → RegistryProperty (UUID lookup)
+	byRID map[string]*RegistryProperty
 
 	// domain → property_id (reverse domain lookup)
 	byDomain map[string]string
@@ -61,7 +61,7 @@ type Registry struct {
 func NewRegistry(snapshotURL, incrementalURL string) *Registry {
 	return &Registry{
 		byID:           make(map[string]*RegistryProperty),
-		byRID:          make(map[uint64]*RegistryProperty),
+		byRID:          make(map[string]*RegistryProperty),
 		byDomain:       make(map[string]string),
 		snapshotURL:    snapshotURL,
 		incrementalURL: incrementalURL,
@@ -79,8 +79,8 @@ func (r *Registry) LookupByID(propertyID string) (*RegistryProperty, bool) {
 	return p, ok
 }
 
-// LookupByRID returns a property by its integer registry ID. O(1).
-func (r *Registry) LookupByRID(rid uint64) (*RegistryProperty, bool) {
+// LookupByRID returns a property by its registry ID. O(1).
+func (r *Registry) LookupByRID(rid string) (*RegistryProperty, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	p, ok := r.byRID[rid]
@@ -95,15 +95,15 @@ func (r *Registry) LookupByDomain(domain string) (string, bool) {
 	return id, ok
 }
 
-// PropertyRID returns the integer registry ID for a property_id.
-// Returns 0 if not found (unregistered property).
-func (r *Registry) PropertyRID(propertyID string) uint64 {
+// PropertyRID returns the registry ID for a property_id.
+// Returns "" if not found (unregistered property).
+func (r *Registry) PropertyRID(propertyID string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if p, ok := r.byID[propertyID]; ok {
 		return p.PropertyRID
 	}
-	return 0
+	return ""
 }
 
 // Count returns the number of properties in the registry.
@@ -154,7 +154,7 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 	// Build new indexes without holding any lock so readers are not blocked
 	// during the O(n) construction phase.
 	byID := make(map[string]*RegistryProperty, len(snapshot.Properties))
-	byRID := make(map[uint64]*RegistryProperty, len(snapshot.Properties))
+	byRID := make(map[string]*RegistryProperty, len(snapshot.Properties))
 	byDomain := make(map[string]string, len(snapshot.Properties))
 
 	for i := range snapshot.Properties {
@@ -195,7 +195,7 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 	case "remove":
 		if existing, ok := r.byID[update.Property.PropertyID]; ok {
 			delete(r.byID, existing.PropertyID)
-			if existing.PropertyRID != 0 {
+			if existing.PropertyRID != "" {
 				delete(r.byRID, existing.PropertyRID)
 			}
 			if existing.Domain != "" {

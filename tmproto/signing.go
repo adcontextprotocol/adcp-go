@@ -22,14 +22,13 @@ func CurrentEpoch() int64 {
 // Covers: property_id, property_rid, property_type, placement_id, sorted package_ids, epoch.
 func CanonicalizeForSigning(req *ContextMatchRequest, epoch int64) []byte {
 	// Length-prefix variable fields to prevent delimiter collision attacks.
-	// PropertyID and PlacementID are user-controlled strings that could contain pipes.
-	ids := make([]string, len(req.AvailablePkgs))
-	for i, p := range req.AvailablePkgs {
-		ids[i] = fmt.Sprintf("%d:%s", len(p.PackageID), p.PackageID)
+	ids := make([]string, len(req.PackageIDs))
+	for i, pkgID := range req.PackageIDs {
+		ids[i] = fmt.Sprintf("%d:%s", len(pkgID), pkgID)
 	}
 	sort.Strings(ids)
 
-	payload := fmt.Sprintf("%d:%s|%d|%s|%d:%s|%s|%d",
+	payload := fmt.Sprintf("%d:%s|%s|%s|%d:%s|%s|%d",
 		len(req.PropertyID), req.PropertyID,
 		req.PropertyRID,
 		req.PropertyType,

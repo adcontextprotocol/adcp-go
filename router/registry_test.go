@@ -15,9 +15,9 @@ import (
 func TestRegistry_LoadFromData(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, PropertyType: "website", Domain: "www.oakwood.example.com"},
-		{PropertyID: "pub-riverview", PropertyRID: 1002, PropertyType: "ctv_app", Domain: "app.riverview.example"},
-		{PropertyID: "pub-pulsefit", PropertyRID: 1003, PropertyType: "mobile_app", Domain: "app.pulsefit.example"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website", Domain: "www.oakwood.example.com"},
+		{PropertyID: "pub-riverview", PropertyRID: "rid-1002", PropertyType: "ctv_app", Domain: "app.riverview.example"},
+		{PropertyID: "pub-pulsefit", PropertyRID: "rid-1003", PropertyType: "mobile_app", Domain: "app.pulsefit.example"},
 	}, 42)
 
 	require.Equal(t, 3, reg.Count())
@@ -27,12 +27,12 @@ func TestRegistry_LoadFromData(t *testing.T) {
 func TestRegistry_LookupByID(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, PropertyType: "website", Domain: "www.oakwood.example.com"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website", Domain: "www.oakwood.example.com"},
 	}, 1)
 
 	p, ok := reg.LookupByID("pub-oakwood")
 	require.True(t, ok, "expected to find pub-oakwood")
-	assert.Equal(t, uint64(1001), p.PropertyRID)
+	assert.Equal(t, "rid-1001", p.PropertyRID)
 
 	_, ok = reg.LookupByID("pub-nonexistent")
 	assert.False(t, ok, "should not find nonexistent property")
@@ -41,18 +41,18 @@ func TestRegistry_LookupByID(t *testing.T) {
 func TestRegistry_LookupByRID(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, PropertyType: "website"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website"},
 	}, 1)
 
-	p, ok := reg.LookupByRID(1001)
-	require.True(t, ok, "expected to find RID 1001")
+	p, ok := reg.LookupByRID("rid-1001")
+	require.True(t, ok, "expected to find RID rid-1001")
 	assert.Equal(t, "pub-oakwood", p.PropertyID)
 }
 
 func TestRegistry_LookupByDomain(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, Domain: "www.oakwood.example.com"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", Domain: "www.oakwood.example.com"},
 	}, 1)
 
 	id, ok := reg.LookupByDomain("www.oakwood.example.com")
@@ -63,23 +63,23 @@ func TestRegistry_LookupByDomain(t *testing.T) {
 func TestRegistry_PropertyRID(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001"},
 	}, 1)
 
-	assert.Equal(t, uint64(1001), reg.PropertyRID("pub-oakwood"))
-	assert.Equal(t, uint64(0), reg.PropertyRID("pub-unknown"))
+	assert.Equal(t, "rid-1001", reg.PropertyRID("pub-oakwood"))
+	assert.Equal(t, "", reg.PropertyRID("pub-unknown"))
 }
 
 func TestRegistry_ApplyUpdate_Add(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001"},
 	}, 1)
 
 	reg.ApplyUpdate(&RegistryUpdate{
 		Sequence: 2,
 		Action:   "add",
-		Property: RegistryProperty{PropertyID: "pub-newsite", PropertyRID: 1004, Domain: "newsite.example.com"},
+		Property: RegistryProperty{PropertyID: "pub-newsite", PropertyRID: "rid-1004", Domain: "newsite.example.com"},
 	})
 
 	assert.Equal(t, 2, reg.Count())
@@ -91,8 +91,8 @@ func TestRegistry_ApplyUpdate_Add(t *testing.T) {
 func TestRegistry_ApplyUpdate_Remove(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, Domain: "oakwood.example.com"},
-		{PropertyID: "pub-remove-me", PropertyRID: 1002, Domain: "removeme.example.com"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", Domain: "oakwood.example.com"},
+		{PropertyID: "pub-remove-me", PropertyRID: "rid-1002", Domain: "removeme.example.com"},
 	}, 1)
 
 	reg.ApplyUpdate(&RegistryUpdate{
@@ -111,8 +111,8 @@ func TestRegistry_ApplyUpdate_Remove(t *testing.T) {
 func TestRegistry_HandleSnapshot(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, PropertyType: "website"},
-		{PropertyID: "pub-riverview", PropertyRID: 1002, PropertyType: "ctv_app"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website"},
+		{PropertyID: "pub-riverview", PropertyRID: "rid-1002", PropertyType: "ctv_app"},
 	}, 99)
 
 	w := httptest.NewRecorder()
@@ -135,8 +135,8 @@ func TestRegistry_LoadSnapshot_FromRemote(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(RegistrySnapshot{
 			Sequence: 50,
 			Properties: []RegistryProperty{
-				{PropertyID: "pub-remote-1", PropertyRID: 2001, PropertyType: "website", Domain: "remote1.example.com"},
-				{PropertyID: "pub-remote-2", PropertyRID: 2002, PropertyType: "mobile_app"},
+				{PropertyID: "pub-remote-1", PropertyRID: "rid-2001", PropertyType: "website", Domain: "remote1.example.com"},
+				{PropertyID: "pub-remote-2", PropertyRID: "rid-2002", PropertyType: "mobile_app"},
 			},
 		})
 	}))
@@ -147,20 +147,20 @@ func TestRegistry_LoadSnapshot_FromRemote(t *testing.T) {
 
 	assert.Equal(t, 2, reg.Count())
 	assert.Equal(t, uint64(50), reg.Sequence())
-	assert.Equal(t, uint64(2001), reg.PropertyRID("pub-remote-1"))
+	assert.Equal(t, "rid-2001", reg.PropertyRID("pub-remote-1"))
 }
 
 func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{
-		{PropertyID: "pub-oakwood", PropertyRID: 1001, PropertyType: "website"},
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website"},
 	}, 1)
 
 	// Create a router with registry and a mock provider that echoes property_rid
-	var receivedRID uint64
+	var receivedRID string
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			PropertyRID uint64 `json:"property_rid"`
+			PropertyRID string `json:"property_rid"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		receivedRID = req.PropertyRID
@@ -182,7 +182,7 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 		"property_id": "pub-oakwood",
 		"property_type": "website",
 		"placement_id": "sidebar",
-		"available_packages": [{"package_id": "pkg-1", "media_buy_id": "mb-1"}]
+		"package_ids": ["pkg-1"]
 	}`
 
 	w := httptest.NewRecorder()
@@ -190,5 +190,5 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	req.Body = io.NopCloser(strings.NewReader(reqBody))
 	router.HandleContextMatch(w, req)
 
-	assert.Equal(t, uint64(1001), receivedRID)
+	assert.Equal(t, "rid-1001", receivedRID)
 }

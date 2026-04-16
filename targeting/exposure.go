@@ -2,11 +2,47 @@ package targeting
 
 import (
 	"encoding/json"
+	"errors"
 	"sort"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// UserIdentity represents a user identity token with its type.
+type UserIdentity struct {
+	UserToken string `json:"user_token"`
+	UIDType   string `json:"uid_type"`
+}
+
+// ExposeRequest records an ad impression against a user.
+type ExposeRequest struct {
+	PackageID    string         `json:"package_id"`
+	UserToken    string         `json:"user_token,omitempty"`
+	UIDType      string         `json:"uid_type,omitempty"`
+	Identities   []UserIdentity `json:"identities,omitempty"`
+	ImpressionID string         `json:"impression_id,omitempty"`
+	CampaignID   string         `json:"campaign_id,omitempty"`
+	SourceID     string         `json:"source_id,omitempty"`
+}
+
+// ExposeResponse is returned after recording an exposure.
+type ExposeResponse struct {
+	PackageID         string `json:"package_id"`
+	CampaignCount     int    `json:"campaign_count,omitempty"`
+	CampaignRemaining int    `json:"campaign_remaining,omitempty"`
+}
+
+// ValidateExposeRequest checks that required fields are present.
+func ValidateExposeRequest(req *ExposeRequest) error {
+	if req.PackageID == "" {
+		return errors.New("package_id is required")
+	}
+	if req.UserToken == "" && len(req.Identities) == 0 {
+		return errors.New("user_token or identities is required")
+	}
+	return nil
+}
 
 // ExposureEntry represents a single ad impression recorded against a user.
 type ExposureEntry struct {
@@ -160,21 +196,21 @@ func ComputeIntentScore(exposureTime int64, now time.Time) float64 {
 	return score
 }
 
-// resolveIdentities extracts UserIdentity entries from a request.
-func resolveIdentities(req *tmproto.IdentityMatchRequest) []tmproto.UserIdentity {
+// resolveIdentities extracts UserIdentity entries from an identity match request.
+func resolveIdentities(req *tmproto.IdentityMatchRequest) []UserIdentity {
 	if req.UserToken != "" {
-		return []tmproto.UserIdentity{{UserToken: req.UserToken, UIDType: req.UIDType}}
+		return []UserIdentity{{UserToken: req.UserToken, UIDType: string(req.UIDType)}}
 	}
 	return nil
 }
 
 // resolveExposeIdentities extracts UserIdentity entries from an expose request.
-func resolveExposeIdentities(req *tmproto.ExposeRequest) []tmproto.UserIdentity {
+func resolveExposeIdentities(req *ExposeRequest) []UserIdentity {
 	if len(req.Identities) > 0 {
 		return req.Identities
 	}
 	if req.UserToken != "" {
-		return []tmproto.UserIdentity{{UserToken: req.UserToken, UIDType: req.UIDType}}
+		return []UserIdentity{{UserToken: req.UserToken, UIDType: req.UIDType}}
 	}
 	return nil
 }

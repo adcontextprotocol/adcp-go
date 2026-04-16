@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,13 +22,13 @@ func testDiscovery(ps *ProviderSet, health *ProviderHealth, endpoint string, bud
 }
 
 func TestDiscovery_AddsNewProviders(t *testing.T) {
-	providers := []ProviderConfig{
-		{ID: "new-1", Endpoint: "https://example.com", ContextMatch: true},
-		{ID: "new-2", Endpoint: "https://example.com", IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []string{"uid2"}},
+	regs := []tmproto.ProviderRegistration{
+		{ProviderID: "new-1", Endpoint: "https://example.com", ContextMatch: true},
+		{ProviderID: "new-2", Endpoint: "https://example.com", IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []tmproto.UIDType{tmproto.UIDTypeUID2}},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(providers)
+		_ = json.NewEncoder(w).Encode(regs)
 	}))
 	defer srv.Close()
 
@@ -45,8 +46,8 @@ func TestDiscovery_AddsNewProviders(t *testing.T) {
 
 func TestDiscovery_RemovesProviders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]ProviderConfig{
-			{ID: "kept", Endpoint: "https://example.com", ContextMatch: true},
+		_ = json.NewEncoder(w).Encode([]tmproto.ProviderRegistration{
+			{ProviderID: "kept", Endpoint: "https://example.com", ContextMatch: true},
 		})
 	}))
 	defer srv.Close()
@@ -67,11 +68,9 @@ func TestDiscovery_RemovesProviders(t *testing.T) {
 }
 
 func TestDiscovery_DrainsRemovedWithInflight(t *testing.T) {
-	// Discovery returns a single provider; the "draining" provider from current set
-	// is not in the response but has inflight > 0.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]ProviderConfig{
-			{ID: "kept", Endpoint: "https://example.com", ContextMatch: true},
+		_ = json.NewEncoder(w).Encode([]tmproto.ProviderRegistration{
+			{ProviderID: "kept", Endpoint: "https://example.com", ContextMatch: true},
 		})
 	}))
 	defer srv.Close()
@@ -100,8 +99,8 @@ func TestDiscovery_DrainsRemovedWithInflight(t *testing.T) {
 
 func TestDiscovery_UpdatesChangedProviders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]ProviderConfig{
-			{ID: "p1", Endpoint: "https://new-endpoint.com", ContextMatch: true, Timeout: 25 * time.Millisecond},
+		_ = json.NewEncoder(w).Encode([]tmproto.ProviderRegistration{
+			{ProviderID: "p1", Endpoint: "https://new-endpoint.com", ContextMatch: true, TimeoutMs: 25},
 		})
 	}))
 	defer srv.Close()
@@ -123,10 +122,10 @@ func TestDiscovery_UpdatesChangedProviders(t *testing.T) {
 
 func TestDiscovery_SkipsInvalidProviders(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]ProviderConfig{
-			{ID: "valid", Endpoint: "https://example.com", ContextMatch: true},
-			{ID: "no-match", Endpoint: "https://example.com"}, // neither context nor identity
-			{ID: "bad-endpoint", Endpoint: "http://localhost:8080", ContextMatch: true},
+		_ = json.NewEncoder(w).Encode([]tmproto.ProviderRegistration{
+			{ProviderID: "valid", Endpoint: "https://example.com", ContextMatch: true},
+			{ProviderID: "no-match", Endpoint: "https://example.com"},                            // neither context nor identity
+			{ProviderID: "bad-endpoint", Endpoint: "http://localhost:8080", ContextMatch: true}, // SSRF
 		})
 	}))
 	defer srv.Close()
@@ -160,7 +159,6 @@ func TestDiscovery_EndpointFailure(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	d.Stop()
 
-	// Existing providers should be preserved on failure.
 	all := ps.All()
 	require.Len(t, all, 1, "existing providers should be preserved on discovery failure")
 	assert.Equal(t, "existing", all[0].ID)
@@ -170,7 +168,7 @@ func TestDiscovery_EndpointFailure(t *testing.T) {
 
 func TestDiscovery_EmptyResponsePreservesCurrent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode([]ProviderConfig{})
+		_ = json.NewEncoder(w).Encode([]tmproto.ProviderRegistration{})
 	}))
 	defer srv.Close()
 

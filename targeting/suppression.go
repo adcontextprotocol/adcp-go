@@ -7,8 +7,8 @@ import (
 )
 
 // isPropertySuppressed checks if a property RID is suppressed for this provider.
-func (e *Engine) isPropertySuppressed(ctx context.Context, rid uint64) (bool, error) {
-	key := fmt.Sprintf("suppress:%s:property:%d", e.providerID, rid)
+func (e *Engine) isPropertySuppressed(ctx context.Context, rid string) (bool, error) {
+	key := fmt.Sprintf("suppress:%s:property:%s", e.providerID, rid)
 	return e.store.Exists(ctx, key)
 }
 
@@ -22,8 +22,8 @@ func (e *Engine) isGeoSuppressed(ctx context.Context, countryCode string) (bool,
 }
 
 // SuppressProperty adds a property suppression with a TTL.
-func (e *Engine) SuppressProperty(ctx context.Context, rid uint64, ttl time.Duration) error {
-	key := fmt.Sprintf("suppress:%s:property:%d", e.providerID, rid)
+func (e *Engine) SuppressProperty(ctx context.Context, rid string, ttl time.Duration) error {
+	key := fmt.Sprintf("suppress:%s:property:%s", e.providerID, rid)
 	return e.store.Set(ctx, key, "1", ttl)
 }
 

@@ -24,13 +24,11 @@ type BrandSafetyModule struct {
 	blockedKeywords map[string][]string
 }
 
-func (m *BrandSafetyModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
-	blocked := m.blockedKeywords[pkg.PackageID]
+func (m *BrandSafetyModule) Evaluate(req *tmproto.ContextMatchRequest, pkgID string) (bool, float32) {
+	blocked := m.blockedKeywords[pkgID]
 	for _, kw := range blocked {
-		for _, art := range req.Artifacts {
-			if strings.Contains(strings.ToLower(art), kw) {
-				return false, 0
-			}
+		if strings.Contains(strings.ToLower(req.PlacementID), kw) {
+			return false, 0
 		}
 	}
 	return true, 1.0
@@ -43,18 +41,16 @@ type TopicRelevanceModule struct {
 	topicKeywords map[string][]string
 }
 
-func (m *TopicRelevanceModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
-	topics := m.topicKeywords[pkg.PackageID]
+func (m *TopicRelevanceModule) Evaluate(req *tmproto.ContextMatchRequest, pkgID string) (bool, float32) {
+	topics := m.topicKeywords[pkgID]
 	if len(topics) == 0 {
 		return true, 0.5 // No topic targeting = pass with neutral score
 	}
 	matchCount := 0
+	checkStr := strings.ToLower(req.PlacementID)
 	for _, topic := range topics {
-		for _, art := range req.Artifacts {
-			if strings.Contains(strings.ToLower(art), topic) {
-				matchCount++
-				break
-			}
+		if strings.Contains(checkStr, topic) {
+			matchCount++
 		}
 	}
 	if matchCount == 0 {
@@ -71,16 +67,15 @@ type CatalogMatchModule struct {
 	catalogRelevance map[string][]string
 }
 
-func (m *CatalogMatchModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
-	keywords := m.catalogRelevance[pkg.PackageID]
+func (m *CatalogMatchModule) Evaluate(req *tmproto.ContextMatchRequest, pkgID string) (bool, float32) {
+	keywords := m.catalogRelevance[pkgID]
 	if len(keywords) == 0 {
 		return false, 0 // No catalog data for this package — don't activate
 	}
+	checkStr := strings.ToLower(req.PlacementID)
 	for _, kw := range keywords {
-		for _, art := range req.Artifacts {
-			if strings.Contains(strings.ToLower(art), kw) {
-				return true, 0.9
-			}
+		if strings.Contains(checkStr, kw) {
+			return true, 0.9
 		}
 	}
 	return false, 0
@@ -93,8 +88,8 @@ type PropertyTargetingModule struct {
 	allowedProperties map[string]map[string]bool
 }
 
-func (m *PropertyTargetingModule) Evaluate(req *tmproto.ContextMatchRequest, pkg tmproto.AvailablePackage) (bool, float32) {
-	allowed := m.allowedProperties[pkg.PackageID]
+func (m *PropertyTargetingModule) Evaluate(req *tmproto.ContextMatchRequest, pkgID string) (bool, float32) {
+	allowed := m.allowedProperties[pkgID]
 	if allowed == nil {
 		return true, 1.0 // No property targeting = run everywhere
 	}
@@ -109,7 +104,7 @@ func (m *PropertyTargetingModule) Evaluate(req *tmproto.ContextMatchRequest, pkg
 type simulatedContextAgent struct {
 	name    string
 	modules []interface {
-		Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+		Evaluate(*tmproto.ContextMatchRequest, string) (bool, float32)
 	}
 }
 
@@ -122,13 +117,13 @@ func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request
 	json.NewDecoder(r.Body).Decode(&req)
 
 	var offers []tmproto.Offer
-	for _, pkg := range req.AvailablePkgs {
+	for _, pkgID := range req.PackageIDs {
 		activate := true
 		var totalScore float32
 		moduleCount := 0
 
 		for _, mod := range a.modules {
-			ok, score := mod.Evaluate(&req, pkg)
+			ok, score := mod.Evaluate(&req, pkgID)
 			if !ok {
 				activate = false
 				break
@@ -140,27 +135,24 @@ func (a *simulatedContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request
 		if activate && moduleCount > 0 {
 			avgScore := totalScore / float32(moduleCount)
 			offer := tmproto.Offer{
-				PackageID: pkg.PackageID,
+				PackageID: pkgID,
 				Summary:   fmt.Sprintf("Activated by %s (score: %.2f)", a.name, avgScore),
 			}
 			offers = append(offers, offer)
 		}
 	}
 
+	signals := map[string]any{
+		"provider": a.name,
+	}
+	for _, o := range offers {
+		signals["adcp_pkg"] = o.PackageID
+	}
+
 	resp := tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
-		Signals: &tmproto.Signals{
-			Segments: []string{},
-			TargetingKVs: []tmproto.KeyValuePair{
-				{Key: "provider", Value: a.name},
-			},
-		},
-	}
-	for _, o := range offers {
-		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmproto.KeyValuePair{
-			Key: "adcp_pkg", Value: o.PackageID,
-		})
+		Signals:   signals,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -262,13 +254,16 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 }
 
 func (a *simulatedIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmproto.ExposeRequest
+	var req struct {
+		UserToken string `json:"user_token"`
+		PackageID string `json:"package_id"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
+	json.NewEncoder(w).Encode(map[string]string{"package_id": req.PackageID})
 }
 
 // recordExposure records an exposure directly without HTTP.
@@ -294,7 +289,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	contextualAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "contextual-provider",
 		modules: []interface {
-			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, string) (bool, float32)
 		}{
 			// Brand safety runs first — blocks before any other evaluation
 			&BrandSafetyModule{
@@ -330,7 +325,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	catalogAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "catalog-provider",
 		modules: []interface {
-			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, string) (bool, float32)
 		}{
 			&CatalogMatchModule{
 				catalogRelevance: map[string][]string{
@@ -366,7 +361,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	router := httptest.NewServer(&mockRouter{
 		contextAgents:  []*httptest.Server{contextualAgent, catalogAgent},
 		identityAgents: []*httptest.Server{idServer},
-		registryRIDs:   map[string]uint64{"pub-grocery-main": 2001, "pub-recipe-blog": 2002},
+		registryRIDs:   map[string]string{"pub-grocery-main": "rid-2001", "pub-recipe-blog": "rid-2002"},
 	})
 	defer router.Close()
 
@@ -375,15 +370,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-coffee-001",
 			PropertyID:  "pub-grocery-main",
-			PlacementID: "category-sponsored-products",
-			Artifacts:   []string{"category:beverages-coffee", "search:cold-brew-espresso"},
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-coffee-sponsored", MediaBuyID: "mb-coffee-q1"},
-				{PackageID: "pkg-snacks-display", MediaBuyID: "mb-snacks-q1"},
-				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
-				{PackageID: "pkg-pharma-native", MediaBuyID: "mb-pharma-q1"},
-				{PackageID: "pkg-cleaning-carousel", MediaBuyID: "mb-cleaning-q1"},
-			},
+			PlacementID: "category-beverages-coffee-cold-brew-espresso",
+			PackageIDs:  []string{"pkg-coffee-sponsored", "pkg-snacks-display", "pkg-alcohol-display", "pkg-pharma-native", "pkg-cleaning-carousel"},
 		})
 
 		var cmResp tmproto.ContextMatchResponse
@@ -468,12 +456,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-children-001",
 			PropertyID:  "pub-grocery-main",
-			PlacementID: "category-sponsored",
-			Artifacts:   []string{"article:healthy-snacks-for-children-school-lunches"},
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-snacks-display", MediaBuyID: "mb-snacks-q1"},
-				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
-			},
+			PlacementID: "healthy-snacks-for-children-school-lunches",
+			PackageIDs:  []string{"pkg-snacks-display", "pkg-alcohol-display"},
 		})
 
 		var cmResp tmproto.ContextMatchResponse
@@ -520,12 +504,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   "ctx-sim-blog-001",
 			PropertyID:  "pub-recipe-blog",
-			PlacementID: "sidebar",
-			Artifacts:   []string{"article:best-coffee-beans-2026"},
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-coffee-sponsored", MediaBuyID: "mb-coffee-q1"},
-				{PackageID: "pkg-alcohol-display", MediaBuyID: "mb-alcohol-q1"},
-			},
+			PlacementID: "best-coffee-beans-2026",
+			PackageIDs:  []string{"pkg-coffee-sponsored", "pkg-alcohol-display"},
 		})
 
 		var cmResp tmproto.ContextMatchResponse
@@ -555,7 +535,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 	ctxAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "contextual-agent",
 		modules: []interface {
-			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, string) (bool, float32)
 		}{
 			&TopicRelevanceModule{
 				topicKeywords: map[string][]string{
@@ -584,33 +564,24 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 	allPackages := []string{"pkg-food", "pkg-tech", "pkg-auto", "pkg-travel"}
 
 	pages := []struct {
-		name      string
-		artifacts []string
-		packages  []tmproto.AvailablePackage
+		name        string
+		placementID string
+		packageIDs  []string
 	}{
 		{
-			name:      "recipe page",
-			artifacts: []string{"article:pasta-recipe-carbonara"},
-			packages: []tmproto.AvailablePackage{
-				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
-			},
+			name:        "recipe page",
+			placementID: "article-pasta-recipe-carbonara",
+			packageIDs:  []string{"pkg-food", "pkg-tech"},
 		},
 		{
-			name:      "gadget review",
-			artifacts: []string{"article:best-kitchen-gadgets-review"},
-			packages: []tmproto.AvailablePackage{
-				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
-			},
+			name:        "gadget review",
+			placementID: "article-best-kitchen-gadgets-review",
+			packageIDs:  []string{"pkg-food", "pkg-tech"},
 		},
 		{
-			name:      "another recipe",
-			artifacts: []string{"article:cooking-with-cast-iron"},
-			packages: []tmproto.AvailablePackage{
-				{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-				{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
-			},
+			name:        "another recipe",
+			placementID: "article-cooking-with-cast-iron",
+			packageIDs:  []string{"pkg-food", "pkg-tech"},
 		},
 	}
 
@@ -625,11 +596,10 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-				RequestID:     fmt.Sprintf("ctx-life-%d", i),
-				PropertyID:    "pub-foodie",
-				PlacementID:   "main-content",
-				Artifacts:     page.artifacts,
-				AvailablePkgs: page.packages,
+				RequestID:   fmt.Sprintf("ctx-life-%d", i),
+				PropertyID:  "pub-foodie",
+				PlacementID: page.placementID,
+				PackageIDs:  page.packageIDs,
 			})
 		}()
 		go func() {

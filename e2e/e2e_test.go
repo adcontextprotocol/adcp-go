@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -33,37 +32,23 @@ func (a *mockContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	var offers []tmproto.Offer
-	for _, pkg := range req.AvailablePkgs {
-		keywords, ok := a.rules[pkg.PackageID]
-		if !ok {
-			continue
-		}
-		for _, kw := range keywords {
-			matched := false
-			for _, art := range req.Artifacts {
-				if strings.Contains(art, kw) {
-					matched = true
-					break
-				}
-			}
-			if matched {
-				offers = append(offers, tmproto.Offer{PackageID: pkg.PackageID})
-				break
-			}
+	for _, pkgID := range req.PackageIDs {
+		if _, ok := a.rules[pkgID]; ok {
+			offers = append(offers, tmproto.Offer{PackageID: pkgID})
 		}
 	}
 
+	var signals map[string]any
+	if len(offers) > 0 {
+		signals = map[string]any{}
+		for _, o := range offers {
+			signals["adcp_pkg"] = o.PackageID
+		}
+	}
 	resp := tmproto.ContextMatchResponse{
 		RequestID: req.RequestID,
 		Offers:    offers,
-		Signals: &tmproto.Signals{
-			TargetingKVs: []tmproto.KeyValuePair{},
-		},
-	}
-	for _, o := range offers {
-		resp.Signals.TargetingKVs = append(resp.Signals.TargetingKVs, tmproto.KeyValuePair{
-			Key: "adcp_pkg", Value: o.PackageID,
-		})
+		Signals:   signals,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -129,14 +114,17 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *mockIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmproto.ExposeRequest
+	var req struct {
+		UserToken string `json:"user_token"`
+		PackageID string `json:"package_id"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmproto.ExposeResponse{
-		PackageID: req.PackageID,
+	json.NewEncoder(w).Encode(map[string]string{
+		"package_id": req.PackageID,
 	})
 }
 
@@ -157,7 +145,7 @@ func (a *mockIdentityAgent) recordExposure(userToken, packageID string) {
 type mockRouter struct {
 	contextAgents  []*httptest.Server
 	identityAgents []*httptest.Server
-	registryRIDs   map[string]uint64 // property_id -> property_rid
+	registryRIDs   map[string]string // property_id -> property_rid
 }
 
 func (rt *mockRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -184,17 +172,11 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 		req.PropertyRID = rid
 	}
 
-	// Compute URL hash
-	if len(req.Artifacts) > 0 {
-		req.URLHash = tmproto.HashURL(req.Artifacts[0])
-	}
-
 	enrichedBody, _ := json.Marshal(req)
 
 	// Fan out to all context agents
 	var allOffers []tmproto.Offer
-	var allKVs []tmproto.KeyValuePair
-	var allSegments []string
+	mergedSignals := map[string]any{}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -211,9 +193,8 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(resp.Body).Decode(&cmResp)
 			mu.Lock()
 			allOffers = append(allOffers, cmResp.Offers...)
-			if cmResp.Signals != nil {
-				allKVs = append(allKVs, cmResp.Signals.TargetingKVs...)
-				allSegments = append(allSegments, cmResp.Signals.Segments...)
+			for k, v := range cmResp.Signals {
+				mergedSignals[k] = v
 			}
 			mu.Unlock()
 		}(agent.URL)
@@ -224,11 +205,8 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 		RequestID: req.RequestID,
 		Offers:    allOffers,
 	}
-	if len(allKVs) > 0 || len(allSegments) > 0 {
-		merged.Signals = &tmproto.Signals{
-			TargetingKVs: allKVs,
-			Segments:     allSegments,
-		}
+	if len(mergedSignals) > 0 {
+		merged.Signals = mergedSignals
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -312,7 +290,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	router := httptest.NewServer(&mockRouter{
 		contextAgents:  []*httptest.Server{ctxAgent},
 		identityAgents: []*httptest.Server{idAgent},
-		registryRIDs:   map[string]uint64{"pub-oakwood": 1001},
+		registryRIDs:   map[string]string{"pub-oakwood": "rid-1001"},
 	})
 	defer router.Close()
 
@@ -322,19 +300,20 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar-300x250",
-		Artifacts:    []string{"article:cooking-with-herbs"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food-display", MediaBuyID: "mb-1"},
-			{PackageID: "pkg-tech-native", MediaBuyID: "mb-2"},
-			{PackageID: "pkg-auto-video", MediaBuyID: "mb-3"},
-		},
+		PackageIDs:   []string{"pkg-food-display", "pkg-tech-native", "pkg-auto-video"},
 	})
 
 	var cmResp tmproto.ContextMatchResponse
 	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
 
-	require.Len(t, cmResp.Offers, 1, "expected 1 offer")
-	require.Equal(t, "pkg-food-display", cmResp.Offers[0].PackageID)
+	// Both pkg-food-display and pkg-tech-native are in the agent's rules, so both activate.
+	require.Len(t, cmResp.Offers, 2, "expected 2 offers")
+	offerSet := make(map[string]bool)
+	for _, o := range cmResp.Offers {
+		offerSet[o.PackageID] = true
+	}
+	assert.True(t, offerSet["pkg-food-display"], "expected pkg-food-display in offers")
+	assert.True(t, offerSet["pkg-tech-native"], "expected pkg-tech-native in offers")
 
 	// 2. Identity Match (ALL active packages, not just page-specific)
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
@@ -374,7 +353,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 			activated = append(activated, pkgID)
 		}
 	}
-	require.Equal(t, []string{"pkg-food-display"}, activated)
+	require.Len(t, activated, 2, "expected 2 activated packages, got %v", activated)
 }
 
 func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
@@ -432,11 +411,7 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 		RequestID:   "ctx-merge-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
-		Artifacts:   []string{"article:cooking-tips"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-			{PackageID: "pkg-sports", MediaBuyID: "mb-2"},
-		},
+		PackageIDs:  []string{"pkg-food", "pkg-sports"},
 	})
 
 	var cmResp tmproto.ContextMatchResponse
@@ -447,11 +422,7 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 
 func TestPackageSetDecorrelation(t *testing.T) {
 	// Context match: 3 packages (per-placement)
-	contextPackages := []tmproto.AvailablePackage{
-		{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		{PackageID: "pkg-2", MediaBuyID: "mb-2"},
-		{PackageID: "pkg-3", MediaBuyID: "mb-3"},
-	}
+	contextPackages := []string{"pkg-1", "pkg-2", "pkg-3"}
 
 	// Identity match: 6 packages (all active for buyer)
 	identityPackages := []string{
@@ -486,10 +457,7 @@ func TestProviderTimeout_Excluded(t *testing.T) {
 		RequestID:   "ctx-timeout-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
-		Artifacts:   []string{"article:test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-fast", MediaBuyID: "mb-1"},
-		},
+		PackageIDs:  []string{"pkg-fast"},
 	})
 	resp, err := client.Post(fastAgent.URL+"/tmp/context", "application/json", bytes.NewReader(body))
 	require.NoError(t, err, "fast agent should respond")
@@ -523,10 +491,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		RequestID:   "ctx-loop-001",
 		PropertyID:  "pub-test",
 		PlacementID: "main",
-		Artifacts:   []string{"article:cooking"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-		},
+		PackageIDs:  []string{"pkg-food"},
 	})
 	var cmResp tmproto.ContextMatchResponse
 	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
@@ -566,7 +531,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 
 func TestRouterEnrichment_PropertyRID(t *testing.T) {
 	// Context agent that echoes the property_rid it received
-	var receivedRID uint64
+	var receivedRID string
 	echoAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req tmproto.ContextMatchRequest
 		json.NewDecoder(r.Body).Decode(&req)
@@ -580,7 +545,7 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 
 	router := httptest.NewServer(&mockRouter{
 		contextAgents: []*httptest.Server{echoAgent},
-		registryRIDs:  map[string]uint64{"pub-oakwood": 1001},
+		registryRIDs:  map[string]string{"pub-oakwood": "rid-1001"},
 	})
 	defer router.Close()
 
@@ -588,45 +553,10 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 		RequestID:   "ctx-rid-001",
 		PropertyID:  "pub-oakwood",
 		PlacementID: "main",
-		Artifacts:   []string{"article:test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		PackageIDs:  []string{"pkg-1"},
 	})
 
-	assert.Equal(t, uint64(1001), receivedRID, "expected property_rid 1001")
-}
-
-func TestRouterEnrichment_URLHash(t *testing.T) {
-	var receivedHash uint64
-	echoAgent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req tmproto.ContextMatchRequest
-		json.NewDecoder(r.Body).Decode(&req)
-		receivedHash = req.URLHash
-		json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
-			RequestID: req.RequestID,
-			Offers:    []tmproto.Offer{},
-		})
-	}))
-	defer echoAgent.Close()
-
-	router := httptest.NewServer(&mockRouter{
-		contextAgents: []*httptest.Server{echoAgent},
-	})
-	defer router.Close()
-
-	postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-		RequestID:   "ctx-hash-001",
-		PropertyID:  "pub-test",
-		PlacementID: "main",
-		Artifacts:   []string{"https://www.oakwood.example.com/cooking"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
-	})
-
-	expectedHash := tmproto.HashURL("https://www.oakwood.example.com/cooking")
-	assert.Equal(t, expectedHash, receivedHash, "url_hash mismatch")
+	assert.Equal(t, "rid-1001", receivedRID, "expected property_rid rid-1001")
 }
 
 func TestTimingReport(t *testing.T) {
@@ -641,7 +571,7 @@ func TestTimingReport(t *testing.T) {
 	router := httptest.NewServer(&mockRouter{
 		contextAgents:  []*httptest.Server{ctxAgent},
 		identityAgents: []*httptest.Server{idAgent},
-		registryRIDs:   map[string]uint64{"pub-oakwood": 1001},
+		registryRIDs:   map[string]string{"pub-oakwood": "rid-1001"},
 	})
 	defer router.Close()
 
@@ -649,10 +579,7 @@ func TestTimingReport(t *testing.T) {
 		RequestID:   "ctx-timing",
 		PropertyID:  "pub-oakwood",
 		PlacementID: "sidebar",
-		Artifacts:   []string{"article:cooking"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-		},
+		PackageIDs:  []string{"pkg-food"},
 	}
 	idReq := tmproto.IdentityMatchRequest{
 		RequestID:  "id-timing",

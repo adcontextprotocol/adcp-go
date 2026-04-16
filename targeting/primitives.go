@@ -2,24 +2,23 @@ package targeting
 
 import "time"
 
-// Bitmap is a set of uint64 values with O(1) membership test.
-// The reference agents wrap *roaring64.Bitmap to satisfy this interface.
+// Bitmap is a set of string values with O(1) membership test.
 // For small sets (<10K), MapBitmap is a stdlib-only alternative.
 type Bitmap interface {
-	Contains(v uint64) bool
+	Contains(v string) bool
 }
 
 // MapBitmap is a stdlib-only Bitmap backed by a map.
-type MapBitmap map[uint64]struct{}
+type MapBitmap map[string]struct{}
 
 // Contains reports whether v is in the bitmap.
-func (m MapBitmap) Contains(v uint64) bool {
+func (m MapBitmap) Contains(v string) bool {
 	_, ok := m[v]
 	return ok
 }
 
 // NewMapBitmap creates a MapBitmap from a slice of values.
-func NewMapBitmap(values ...uint64) MapBitmap {
+func NewMapBitmap(values ...string) MapBitmap {
 	m := make(MapBitmap, len(values))
 	for _, v := range values {
 		m[v] = struct{}{}
@@ -41,7 +40,7 @@ type PropertyList struct {
 }
 
 // ContainsGlobal checks if a property RID passes the global filter.
-func (p *PropertyList) ContainsGlobal(rid uint64) bool {
+func (p *PropertyList) ContainsGlobal(rid string) bool {
 	if p.Global == nil {
 		return true
 	}
@@ -50,7 +49,7 @@ func (p *PropertyList) ContainsGlobal(rid uint64) bool {
 
 // ContainsPackage checks if a property RID is eligible for a package.
 // Returns true if no per-package targeting is configured.
-func (p *PropertyList) ContainsPackage(packageID string, rid uint64) bool {
+func (p *PropertyList) ContainsPackage(packageID string, rid string) bool {
 	if p.ByPackage == nil {
 		return true
 	}

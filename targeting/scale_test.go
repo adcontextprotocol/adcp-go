@@ -18,7 +18,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 	for _, n := range []int{100, 1_000, 10_000, 100_000, 1_000_000} {
 		bm := make(MapBitmap, n)
 		for i := range n {
-			bm[uint64(i)] = struct{}{} //nolint:gosec // test
+			bm[fmt.Sprintf("%d", i)] = struct{}{}
 		}
 
 		store := NewMockStore()
@@ -31,8 +31,8 @@ func TestScale_PropertyBitmap(t *testing.T) {
 
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   uint64(n / 2), //nolint:gosec // test value
-			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+			PropertyRID: fmt.Sprintf("%d", n/2),
+			PackageIDs:  []string{"pkg-1"},
 		}
 
 		const iterations = 1_000
@@ -208,15 +208,15 @@ func TestScale_TopicSetSize(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap(1)},
+			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   []PackageConfig{{PackageID: "pkg-1", TopicTargets: true}},
 		})
 
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   1,
-			Artifacts:     []string{"article:test"},
-			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+			PropertyRID:  "1",
+			ArtifactRefs: []map[string]any{{"url": "article:test"}},
+			PackageIDs:   []string{"pkg-1"},
 		}
 
 		const iterations = 500
@@ -246,16 +246,16 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap(1)},
+			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   []PackageConfig{{PackageID: "pkg-1", URLBlocklist: true}},
 		})
 
 		// Check a URL that is NOT blocked (worst case: full lookup, no short-circuit).
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   1,
-			Artifacts:     []string{"article:safe-content"},
-			AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+			PropertyRID:  "1",
+			ArtifactRefs: []map[string]any{{"url": "article:safe-content"}},
+			PackageIDs:   []string{"pkg-1"},
 		}
 
 		const iterations = 1_000
@@ -280,12 +280,10 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 
 		// Setup for BOTH modes.
 		var staticPkgs []PackageConfig
-		var available []tmproto.AvailablePackage
 		var pkgIDs []string
 		for i := range numPkgs {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			staticPkgs = append(staticPkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
-			available = append(available, tmproto.AvailablePackage{PackageID: pkgID})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
 			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
@@ -302,7 +300,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		staticEngine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap(1)},
+			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   staticPkgs,
 		})
 
@@ -310,15 +308,15 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		dynamicEngine := NewEngine(EngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
-			Properties:      PropertyList{Global: NewMapBitmap(1)},
+			Properties:      PropertyList{Global: NewMapBitmap("1")},
 			DynamicPackages: true,
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   1,
-			Artifacts:     []string{"article:food"},
-			AvailablePkgs: available,
+			PropertyRID:  "1",
+			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
@@ -401,19 +399,17 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 
 		// Set up a seller with media buys.
 		var mbPkgs []MediaBuyPackage
-		var available []tmproto.AvailablePackage
 		var pkgIDs []string
 		for i := range numPkgs {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			mbPkgs = append(mbPkgs, MediaBuyPackage{PackageID: pkgID, MediaBuyID: "mb-1"})
-			available = append(available, tmproto.AvailablePackage{PackageID: pkgID})
 			pkgIDs = append(pkgIDs, pkgID)
 
 			store.SetAdd("topics:package:"+pkgID, "food.cooking")
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
 				TopicTargets: true,
-				PropertyRIDs: []uint64{1},
+				PropertyRIDs: []string{"1"},
 			})
 			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
 				TargetSegments: []string{"cooking_fans"},
@@ -438,15 +434,15 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
-			Properties:      PropertyList{Global: NewMapBitmap(1)},
+			Properties:      PropertyList{Global: NewMapBitmap("1")},
 			DynamicPackages: true,
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   1,
-			Artifacts:     []string{"article:food"},
-			AvailablePkgs: available,
+			PropertyRID:  "1",
+			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
@@ -489,12 +485,10 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		store := NewMockStore()
 
 		var pkgs []PackageConfig
-		var available []tmproto.AvailablePackage
 		var pkgIDs []string
 		for i := range numPkgs {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
-			available = append(available, tmproto.AvailablePackage{PackageID: pkgID})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
 			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
@@ -506,15 +500,15 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap(1)},
+			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   pkgs,
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
-			PropertyRID:   1,
-			Artifacts:     []string{"article:food"},
-			AvailablePkgs: available,
+			PropertyRID:  "1",
+			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",

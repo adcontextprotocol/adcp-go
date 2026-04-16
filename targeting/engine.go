@@ -14,20 +14,16 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
-
-const signatureFailureTTL = 5 * time.Minute
 
 // Engine is the data-driven targeting engine. Push data (property lists,
 // entity configs) and it evaluates. No data for a dimension = no-op.
 type Engine struct {
 	providerID string
 	store      Store
-	registry   PropertyRegistry
 
 	properties PropertyList
 
@@ -36,10 +32,6 @@ type Engine struct {
 
 	metrics Metrics
 
-	sigSampleRate     uint32
-	requireSignatures bool
-	sigCounter        atomic.Uint64
-
 	// Now returns the current time. Defaults to time.Now.
 	// Override in tests to control time.
 	Now func() time.Time
@@ -47,15 +39,12 @@ type Engine struct {
 
 // EngineConfig holds all configuration for creating an Engine.
 type EngineConfig struct {
-	ProviderID        string
-	Store             Store
-	Registry          PropertyRegistry // nil = no signature verification
-	Properties        PropertyList
-	Packages          []PackageConfig
-	DynamicPackages   bool    // When true, load package configs from Store at eval time.
-	Metrics           Metrics // nil = noop
-	SigSampleRate     uint32  // 0-100. 0 disables verification.
-	RequireSignatures bool
+	ProviderID      string
+	Store           Store
+	Properties      PropertyList
+	Packages        []PackageConfig
+	DynamicPackages bool    // When true, load package configs from Store at eval time.
+	Metrics         Metrics // nil = noop
 }
 
 // NewEngine creates a targeting engine.
@@ -69,16 +58,13 @@ func NewEngine(cfg EngineConfig) *Engine {
 		metrics = noopMetrics{}
 	}
 	return &Engine{
-		providerID:        cfg.ProviderID,
-		store:             cfg.Store,
-		registry:          cfg.Registry,
-		properties:        cfg.Properties,
-		packages:          pkgMap,
-		dynamicPackages:   cfg.DynamicPackages,
-		metrics:           metrics,
-		sigSampleRate:     cfg.SigSampleRate,
-		requireSignatures: cfg.RequireSignatures,
-		Now:               time.Now,
+		providerID:      cfg.ProviderID,
+		store:           cfg.Store,
+		properties:      cfg.Properties,
+		packages:        pkgMap,
+		dynamicPackages: cfg.DynamicPackages,
+		metrics:         metrics,
+		Now:             time.Now,
 	}
 }
 
@@ -86,7 +72,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 type ContextResult struct {
 	RequestID string
 	Offers    []tmproto.Offer
-	Signals   *tmproto.Signals
+	Signals   map[string]any
 }
 
 // EvaluateContext evaluates available packages against content context.
@@ -94,8 +80,7 @@ type ContextResult struct {
 // Pipeline:
 //  1. Global property bitmap check
 //  2. Suppression check (property + geo)
-//  3. Signature verification (sampling)
-//  4. Per-package: property bitmap → URL filter → topic match → offers + segments
+//  3. Per-package: property bitmap → URL filter → topic match → offers + segments
 func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 	evalStart := time.Now()
 	rid := req.PropertyRID
@@ -114,8 +99,8 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
-	if req.Geo != nil {
-		geoSuppressed, err := e.isGeoSuppressed(ctx, req.Geo.Country)
+	if country, _ := req.Geo["country"].(string); country != "" {
+		geoSuppressed, err := e.isGeoSuppressed(ctx, country)
 		if err != nil {
 			e.metrics.StoreError(StageSuppression, err)
 		} else if geoSuppressed {
@@ -125,23 +110,15 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 	}
 	e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
 
-	// 3. Signature verification (not Store-dependent, errors are hard failures).
-	sigStart := time.Now()
-	if err := e.verifySignature(ctx, req); err != nil {
-		return nil, fmt.Errorf("signature verification for property %d: %w", rid, err)
-	}
-	e.metrics.Latency(StageSignature, time.Since(sigStart))
+	// Extract artifact refs as string keys for URL/topic checks.
+	artifactRefs := extractArtifactRefURLs(req)
 
 	// 4. Per-package evaluation.
 	// In dynamic mode, batch-load all context configs from Store (1 MGet).
 	var dynCtxConfigs map[string]*PackageContextConfig
 	if e.dynamicPackages {
-		pkgIDs := make([]string, len(req.AvailablePkgs))
-		for i, p := range req.AvailablePkgs {
-			pkgIDs[i] = p.PackageID
-		}
 		var err error
-		dynCtxConfigs, err = batchLoadPackageContextConfigs(ctx, e.store, pkgIDs)
+		dynCtxConfigs, err = batchLoadPackageContextConfigs(ctx, e.store, req.PackageIDs)
 		if err != nil {
 			e.metrics.StoreError("load_context_configs", err)
 			dynCtxConfigs = make(map[string]*PackageContextConfig)
@@ -151,7 +128,7 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 	var offers []tmproto.Offer
 	var segments []string
 
-	for _, pkg := range req.AvailablePkgs {
+	for _, pkgID := range req.PackageIDs {
 		// Resolve config: dynamic or static.
 		var urlBlocklist, urlAllowlist, topicTargets bool
 		var emitSegments []string
@@ -159,7 +136,7 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		var propertyBitmap Bitmap
 
 		if e.dynamicPackages {
-			dCfg := dynCtxConfigs[pkg.PackageID]
+			dCfg := dynCtxConfigs[pkgID]
 			if dCfg == nil {
 				continue
 			}
@@ -170,9 +147,9 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 			if len(dCfg.PropertyRIDs) > 0 {
 				propertyBitmap = NewMapBitmap(dCfg.PropertyRIDs...)
 			}
-			pkgOffers = buildOffersFromDynamic(pkg.PackageID, dCfg)
+			pkgOffers = buildOffersFromDynamic(pkgID, dCfg)
 		} else {
-			cfg, known := e.packages[pkg.PackageID]
+			cfg, known := e.packages[pkgID]
 			if !known {
 				continue
 			}
@@ -186,37 +163,37 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 
 		// Per-package property bitmap.
 		if propertyBitmap != nil && !propertyBitmap.Contains(rid) {
-			e.metrics.ContextEvaluated(pkg.PackageID, StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
 			continue
 		}
-		if !e.properties.ContainsPackage(pkg.PackageID, rid) {
-			e.metrics.ContextEvaluated(pkg.PackageID, StagePropertyBitmap, false)
+		if !e.properties.ContainsPackage(pkgID, rid) {
+			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
 			continue
 		}
 
 		// URL filter (graceful: skip on Store error).
 		if urlBlocklist || urlAllowlist {
-			blocked, err := e.checkURLFilter(ctx, req.Artifacts, pkg.PackageID, PackageConfig{URLBlocklist: urlBlocklist, URLAllowlist: urlAllowlist})
+			blocked, err := e.checkURLFilter(ctx, artifactRefs, pkgID, PackageConfig{URLBlocklist: urlBlocklist, URLAllowlist: urlAllowlist})
 			if err != nil {
 				e.metrics.StoreError(StageURLFilter, err)
 			} else if blocked {
-				e.metrics.ContextEvaluated(pkg.PackageID, StageURLFilter, false)
+				e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
 				continue
 			}
 		}
 
 		// Topic match (graceful: skip on Store error).
 		if topicTargets {
-			matched, err := e.checkTopicMatch(ctx, req.Artifacts, pkg.PackageID)
+			matched, err := e.checkTopicMatch(ctx, artifactRefs, pkgID)
 			if err != nil {
 				e.metrics.StoreError(StageTopicMatch, err)
 			} else if !matched {
-				e.metrics.ContextEvaluated(pkg.PackageID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated(pkg.PackageID, "", true)
+		e.metrics.ContextEvaluated(pkgID, "", true)
 		offers = append(offers, pkgOffers...)
 		segments = append(segments, emitSegments...)
 	}
@@ -228,7 +205,7 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		Offers:    offers,
 	}
 	if len(segments) > 0 {
-		result.Signals = &tmproto.Signals{Segments: segments}
+		result.Signals = map[string]any{"segments": segments}
 	}
 	return result, nil
 }
@@ -375,17 +352,15 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
 
-	// 3. Signature verification.
-	if err := e.verifySignature(ctx, req); err != nil {
-		return nil, fmt.Errorf("signature verification for property %d: %w", rid, err)
-	}
-
-	// 4. PropertyIndex: which packages target this property?
+	// 3. PropertyIndex: which packages target this property?
 	propertyCandidates := resolved.ContextCandidates(rid)
+
+	// Extract artifact refs as string keys for URL/topic checks.
+	artifactRefs := extractArtifactRefURLs(req)
 
 	// 5. Resolve artifact topics from Store (per-request, can't cache).
 	var artifactTopics []string
-	for _, artifact := range req.Artifacts {
+	for _, artifact := range artifactRefs {
 		topics, err := e.store.SetMembers(ctx, "topics:artifact:"+artifact)
 		if err != nil {
 			e.metrics.StoreError(StageTopicMatch, err)
@@ -396,7 +371,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 
 	// 6. Compute URL hashes for artifacts.
 	var artifactHashes []string
-	for _, artifact := range req.Artifacts {
+	for _, artifact := range artifactRefs {
 		artifactHashes = append(artifactHashes, HashURL(artifact))
 	}
 
@@ -406,8 +381,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 	var offers []tmproto.Offer
 	var segments []string
 
-	for _, pkg := range req.AvailablePkgs {
-		pkgID := pkg.PackageID
+	for _, pkgID := range req.PackageIDs {
 		cfg := resolved.ContextConfigs[pkgID]
 		if cfg == nil {
 			continue
@@ -422,7 +396,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 		}
 
 		// TopicIndex check (pre-computed above, in-memory lookup).
-		if cfg.TopicTargets && len(req.Artifacts) > 0 {
+		if cfg.TopicTargets && len(artifactRefs) > 0 {
 			if len(topicCandidates) == 0 {
 				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
 				continue
@@ -473,7 +447,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 		Offers:    offers,
 	}
 	if len(segments) > 0 {
-		result.Signals = &tmproto.Signals{Segments: segments}
+		result.Signals = map[string]any{"segments": segments}
 	}
 	return result, nil
 }
@@ -608,8 +582,8 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 // capping (slightly under-counting is benign). For strict counting, use
 // Valkey Lua scripting for atomic append.
 // TODO: Add Store.Append method for atomic binary append.
-func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest) (*tmproto.ExposeResponse, error) {
-	if err := tmproto.ValidateExposeRequest(req); err != nil {
+func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*ExposeResponse, error) {
+	if err := ValidateExposeRequest(req); err != nil {
 		return nil, fmt.Errorf("invalid expose request: %w", err)
 	}
 	now := e.now()
@@ -736,7 +710,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *tmproto.ExposeRequest)
 	e.metrics.ExposureRecorded(req.PackageID)
 
 	// Compute campaign count from the first UID's log (already in memory, no re-read).
-	resp := &tmproto.ExposeResponse{PackageID: req.PackageID}
+	resp := &ExposeResponse{PackageID: req.PackageID}
 	if campaignID != "" && firstLog.Len() > 0 {
 		campHash := hashString(campaignID)
 
@@ -885,12 +859,10 @@ func buildOffers(cfg PackageConfig) []tmproto.Offer {
 		for i, o := range cfg.Offers {
 			offers[i] = tmproto.Offer{
 				PackageID:        cfg.PackageID,
-				DealID:           o.DealID,
 				Brand:            o.Brand,
 				Price:            o.Price,
 				Summary:          o.Summary,
-				ManifestType:     o.ManifestType,
-				CreativeManifest: o.CreativeManifest,
+				CreativeManifest: rawMessagePtr(o.CreativeManifest),
 				Macros:           o.Macros,
 			}
 		}
@@ -901,10 +873,17 @@ func buildOffers(cfg PackageConfig) []tmproto.Offer {
 		Brand:            cfg.Brand,
 		Price:            cfg.Price,
 		Summary:          cfg.Summary,
-		ManifestType:     cfg.ManifestType,
-		CreativeManifest: cfg.CreativeManifest,
+		CreativeManifest: rawMessagePtr(cfg.CreativeManifest),
 		Macros:           cfg.Macros,
 	}}
+}
+
+// rawMessagePtr returns a pointer to the given json.RawMessage, or nil if empty.
+func rawMessagePtr(m json.RawMessage) *json.RawMessage {
+	if len(m) == 0 {
+		return nil
+	}
+	return &m
 }
 
 // buildOffersFromDynamic builds offers from a dynamic PackageContextConfig.
@@ -913,23 +892,32 @@ func buildOffersFromDynamic(pkgID string, cfg *PackageContextConfig) []tmproto.O
 		offers := make([]tmproto.Offer, len(cfg.Offers))
 		for i, o := range cfg.Offers {
 			offers[i] = tmproto.Offer{
-				PackageID:    pkgID,
-				DealID:       o.DealID,
-				Brand:        o.Brand,
-				Price:        o.Price,
-				Summary:      o.Summary,
-				ManifestType: o.ManifestType,
-				Macros:       o.Macros,
+				PackageID: pkgID,
+				Brand:     o.Brand,
+				Price:     o.Price,
+				Summary:   o.Summary,
+				Macros:    o.Macros,
 			}
 		}
 		return offers
 	}
 	return []tmproto.Offer{{
-		PackageID:    pkgID,
-		Brand:        cfg.Brand,
-		Price:        cfg.Price,
-		Summary:      cfg.Summary,
-		ManifestType: cfg.ManifestType,
-		Macros:       cfg.Macros,
+		PackageID: pkgID,
+		Brand:     cfg.Brand,
+		Price:     cfg.Price,
+		Summary:   cfg.Summary,
+		Macros:    cfg.Macros,
 	}}
+}
+
+// extractArtifactRefURLs extracts URL strings from ArtifactRefs for URL/topic checks.
+// Each artifact ref is a map with a "url" key.
+func extractArtifactRefURLs(req *tmproto.ContextMatchRequest) []string {
+	var urls []string
+	for _, ref := range req.ArtifactRefs {
+		if u, ok := ref["url"].(string); ok {
+			urls = append(urls, u)
+		}
+	}
+	return urls
 }

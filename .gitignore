@@ -36,3 +36,4 @@ reference/identity-agent/identity-agent
 # Editor/IDE
 .idea/
 # .vscode/
+.claude/

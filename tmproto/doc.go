@@ -1,3 +1,3 @@
-//go:generate sh -c "cd ../internal/generate && go run . -schema ../../schema/tmp -out ../../tmproto/types_gen.go -pkg tmproto"
+//go:generate sh -c "cd ../internal/generate && go run . -schema ../../adcp/schemas/tmp -enums ../../adcp/schemas/enums -overlay go-overlays.json -out ../../tmproto/types_gen.go -pkg tmproto"
 
 package tmproto

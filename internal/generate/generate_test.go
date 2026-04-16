@@ -3,48 +3,54 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func schemaDir(t *testing.T) string {
+func testDirs(t *testing.T) (schemaDir, enumDir, overlayPath string) {
 	t.Helper()
-	// Find schema dir relative to this test file.
-	dir := filepath.Join("..", "..", "schema", "tmp")
-	if _, err := os.Stat(dir); err != nil {
+	schemaDir = filepath.Join("..", "..", "adcp", "schemas", "tmp")
+	if _, err := os.Stat(schemaDir); err != nil {
 		t.Skipf("schema dir not found: %v", err)
 	}
-	abs, _ := filepath.Abs(dir)
-	return abs
+	schemaDir, _ = filepath.Abs(schemaDir)
+
+	enumDir = filepath.Join("..", "..", "adcp", "schemas", "enums")
+	if _, err := os.Stat(enumDir); err != nil {
+		t.Skipf("enum dir not found: %v", err)
+	}
+	enumDir, _ = filepath.Abs(enumDir)
+
+	overlayPath = "go-overlays.json"
+	if _, err := os.Stat(overlayPath); err != nil {
+		t.Skipf("overlay file not found: %v", err)
+	}
+
+	return schemaDir, enumDir, overlayPath
 }
 
 func TestLoadSchemas(t *testing.T) {
-	ir, err := LoadSchemas(schemaDir(t))
+	schemaDir, enumDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
-	assert.Len(t, ir.Enums, 5, "enums count")
+	// Expected enums from overlay.
+	assert.Len(t, ir.Enums, 7, "enums count")
 
-	// Check all expected struct names exist.
+	// Check all expected struct names exist (post-overlay rename).
 	want := map[string]bool{
-		"ContextMatchRequest":  true,
-		"ContextMatchResponse": true,
-		"IdentityMatchRequest": true,
+		"ContextMatchRequest":   true,
+		"ContextMatchResponse":  true,
+		"IdentityMatchRequest":  true,
 		"IdentityMatchResponse": true,
-		"ExposeRequest":        true,
-		"ExposeResponse":       true,
-		"ErrorResponse":        true,
-		"Geo":                  true,
-		"Metro":                true,
-		"Offer":                true,
-		"OfferPrice":           true,
-		"AvailablePackage":     true,
-		"Catalog":              true,
-		"BrandRef":             true,
-		"Signals":              true,
-		"KeyValuePair":         true,
-		"PackageEligibility":   true,
+		"ErrorResponse":         true,
+		"ProviderRegistration":  true,
+		"Offer":                 true,
+		"OfferPrice":            true,
+		"AvailablePackage":      true,
 	}
 	got := make(map[string]bool)
 	for _, s := range ir.Structs {
@@ -57,7 +63,8 @@ func TestLoadSchemas(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	ir, err := LoadSchemas(schemaDir(t))
+	schemaDir, enumDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	src, err := Render("tmproto", ir)
@@ -73,17 +80,18 @@ func TestRender(t *testing.T) {
 
 	// Spot-check key types.
 	checks := []struct {
-		name    string
-		substr  string
+		name   string
+		substr string
 	}{
 		{"ContextMatchRequest struct", "type ContextMatchRequest struct"},
 		{"PropertyType string", "type PropertyType string"},
 		{"PropertyTypeWebsite", "PropertyTypeWebsite"},
-		{"json available_packages", `json:"available_packages"`},
-		{"AvailablePkgs", "AvailablePkgs"},
-		{"*Geo pointer", "*Geo"},
-		{"*float64 pointer", "*float64"},
-		{"map[string]string", "map[string]string"},
+		{"UIDType string", "type UIDType string"},
+		{"UIDTypeRampID", "UIDTypeRampID"},
+		{"OfferPrice struct", "type OfferPrice struct"},
+		{"Offer struct", "type Offer struct"},
+		{"request_id json", `json:"request_id"`},
+		{"property_type json", `json:"property_type"`},
 	}
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
@@ -93,7 +101,8 @@ func TestRender(t *testing.T) {
 }
 
 func TestGoldenFile(t *testing.T) {
-	ir, err := LoadSchemas(schemaDir(t))
+	schemaDir, enumDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	generated, err := Render("tmproto", ir)
@@ -107,7 +116,8 @@ func TestGoldenFile(t *testing.T) {
 }
 
 func TestEnumCompleteness(t *testing.T) {
-	ir, err := LoadSchemas(schemaDir(t))
+	schemaDir, enumDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	// Each enum should have at least 2 values.
@@ -116,4 +126,87 @@ func TestEnumCompleteness(t *testing.T) {
 			assert.GreaterOrEqual(t, len(e.Values), 2, "enum %s has too few values", e.Name)
 		})
 	}
+}
+
+func TestOverlayFieldOverrides(t *testing.T) {
+	schemaDir, enumDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	require.NoError(t, err, "LoadSchemas")
+
+	src, err := Render("tmproto", ir)
+	require.NoError(t, err, "Render")
+
+	code := string(src)
+
+	// Overlay sets ContextMatchRequest.artifact to *json.RawMessage.
+	assert.True(t, strings.Contains(code, "*json.RawMessage"), "expected *json.RawMessage from overlay field override")
+
+	// Overlay sets refs for /schemas/core/property-id.json to string.
+	// So ContextMatchRequest.property_id should be string.
+	assert.True(t, strings.Contains(code, "PropertyID") && strings.Contains(code, `json:"property_id`), "expected PropertyID field from overlay ref override")
+}
+
+func TestRefToGoType(t *testing.T) {
+	ctx := &loadContext{
+		overlay: &Overlay{
+			Refs: map[string]string{
+				"/schemas/core/property-id.json": "string",
+			},
+		},
+		enumReg:   enumRegistry{"/schemas/enums/property-type.json": "PropertyType"},
+		structReg: structRegistry{"/schemas/tmp/offer.json": "Offer"},
+	}
+
+	tests := []struct {
+		ref  string
+		want string
+	}{
+		{"/schemas/enums/property-type.json", "PropertyType"},
+		{"/schemas/tmp/offer.json", "Offer"},
+		{"/schemas/core/property-id.json", "string"},
+		{"enums.json#/$defs/PropertyType", "PropertyType"},
+	}
+
+	for _, tt := range tests {
+		got := refToGoType(tt.ref, ctx)
+		assert.Equal(t, tt.want, got, "refToGoType(%q)", tt.ref)
+	}
+}
+
+func TestTitleToPascalCase(t *testing.T) {
+	tests := []struct {
+		title string
+		want  string
+	}{
+		{"Context Match Request", "ContextMatchRequest"},
+		{"TMP Error", "TmpError"},
+		{"Property Type", "PropertyType"},
+		{"UID Type", "UIDType"},
+		{"Offer Price", "OfferPrice"},
+	}
+	for _, tt := range tests {
+		got := titleToPascalCase(tt.title)
+		assert.Equal(t, tt.want, got, "titleToPascalCase(%q)", tt.title)
+	}
+}
+
+func TestLoadWithoutOverlay(t *testing.T) {
+	schemaDir := filepath.Join("..", "..", "adcp", "schemas", "tmp")
+	if _, err := os.Stat(schemaDir); err != nil {
+		t.Skipf("schema dir not found: %v", err)
+	}
+	schemaDir, _ = filepath.Abs(schemaDir)
+
+	enumDir := filepath.Join("..", "..", "adcp", "schemas", "enums")
+	if _, err := os.Stat(enumDir); err != nil {
+		t.Skipf("enum dir not found: %v", err)
+	}
+	enumDir, _ = filepath.Abs(enumDir)
+
+	// Without overlay: all enums should be loaded.
+	ir, err := LoadSchemas(schemaDir, enumDir, "")
+	require.NoError(t, err, "LoadSchemas without overlay")
+
+	assert.NotEmpty(t, ir.Enums, "expected enums when loading without overlay")
+	assert.NotEmpty(t, ir.Structs, "expected structs when loading without overlay")
 }

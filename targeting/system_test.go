@@ -39,13 +39,11 @@ func TestSystem_EndToEnd(t *testing.T) {
 
 	// Create media buys.
 	var allPkgIDs []string
-	var allAvailable []tmproto.AvailablePackage
 	for mb := range numMediaBuys {
 		var mbPkgs []MediaBuyPackage
 		for p := range packagesPerBuy {
 			pkgID := fmt.Sprintf("pkg-%d-%d", mb, p)
 			allPkgIDs = append(allPkgIDs, pkgID)
-			allAvailable = append(allAvailable, tmproto.AvailablePackage{PackageID: pkgID, MediaBuyID: fmt.Sprintf("mb-%d", mb)})
 			mbPkgs = append(mbPkgs, MediaBuyPackage{PackageID: pkgID, MediaBuyID: fmt.Sprintf("mb-%d", mb)})
 		}
 		store.SetMediaBuy(MediaBuy{
@@ -73,10 +71,9 @@ func TestSystem_EndToEnd(t *testing.T) {
 			PackageID:    pkgID,
 			TopicTargets: true,
 			URLBlocklist: true,
-			PropertyRIDs: []uint64{1},
+			PropertyRIDs: []string{"1"},
 			EmitSegments: []string{fmt.Sprintf("emit-%d", i%5)},
-			Brand:        &tmproto.BrandRef{Name: fmt.Sprintf("Brand-%d", i)},
-			Price:        &tmproto.OfferPrice{Amount: float64(5+i%20), Currency: "USD", Model: tmproto.PriceModelCPM},
+			Price:        tmproto.OfferPrice{Amount: float64(5 + i%20), Currency: "USD", Model: string(tmproto.PriceModelCPM)},
 		})
 
 		// Topics: each package has a few topics, with some overlap.
@@ -155,7 +152,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	staticEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(1)},
+		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages:   staticPkgs,
 	})
 	staticEngine.Now = func() time.Time { return now }
@@ -163,7 +160,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	dynamicEngine := NewEngine(EngineConfig{
 		ProviderID:      "bench",
 		Store:           store,
-		Properties:      PropertyList{Global: NewMapBitmap(1)},
+		Properties:      PropertyList{Global: NewMapBitmap("1")},
 		DynamicPackages: true,
 	})
 	dynamicEngine.Now = func() time.Time { return now }
@@ -171,17 +168,17 @@ func TestSystem_EndToEnd(t *testing.T) {
 	resolvedEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(1)},
+		Properties: PropertyList{Global: NewMapBitmap("1")},
 	})
 	resolvedEngine.Now = func() time.Time { return now }
 
 	// --- Benchmark: simulate user sessions ---
 
 	ctxReq := &tmproto.ContextMatchRequest{
-		RequestID:     "bench",
-		PropertyRID:   1,
-		Artifacts:     []string{"article:food"},
-		AvailablePkgs: allAvailable,
+		RequestID:    "bench",
+		PropertyRID:  "1",
+		ArtifactRefs: []map[string]any{{"url": "article:food"}},
+		PackageIDs:   allPkgIDs,
 	}
 
 	type result struct {

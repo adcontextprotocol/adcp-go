@@ -11,22 +11,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RoaringBitmap/roaring/roaring64"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// BenchmarkBitmapCheck tests Roaring bitmap Contains() with 50K properties, targeting 1K.
+// BenchmarkBitmapCheck tests the string-set bitmap Contains() with 50K properties, targeting 1K.
 func BenchmarkBitmapCheck(b *testing.B) {
-	bm := roaring64.New()
-	for i := range uint64(1000) {
-		bm.Add(i * 50)
+	bm := NewSetBitmap()
+	for i := range 1000 {
+		bm.Add(fmt.Sprintf("prop-%d", i*50))
 	}
-	bm.RunOptimize()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rid := uint64(i % 50000)
+		rid := fmt.Sprintf("prop-%d", i%50000)
 		_ = bm.Contains(rid)
 	}
 }
@@ -36,13 +34,11 @@ func BenchmarkSignatureVerify(b *testing.B) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sig",
-		PropertyRID:  1,
+		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		PackageIDs:   []string{"pkg-1"},
 	}
 	sig := tmproto.SignRequest(req, priv)
 
@@ -58,17 +54,16 @@ func BenchmarkFullPipeline(b *testing.B) {
 	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.baking", "food.italian")
 	store.SetAdd("topics:artifact:article:pasta-recipe", "food.cooking", "food.italian")
 
-	bm := roaring64.New()
-	for i := uint64(1); i <= 1000; i++ {
-		bm.Add(i)
+	bm := NewSetBitmap()
+	for i := 1; i <= 1000; i++ {
+		bm.Add(fmt.Sprintf("prop-%d", i))
 	}
-	bm.RunOptimize()
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "bench-provider",
 		Store:      store,
 		Properties: targeting.PropertyList{
-			Global: &RoaringBitmap{Bitmap: bm},
+			Global: bm,
 		},
 		Packages: []targeting.PackageConfig{
 			{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true},
@@ -77,13 +72,10 @@ func BenchmarkFullPipeline(b *testing.B) {
 	})
 
 	req := &tmproto.ContextMatchRequest{
-		RequestID:   "bench-pipeline",
-		PropertyRID: 500,
-		Artifacts:   []string{"article:pasta-recipe"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-			{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
-		},
+		RequestID:    "bench-pipeline",
+		PropertyRID:  "prop-500",
+		ArtifactRefs: []map[string]any{{"url": "article:pasta-recipe"}},
+		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	}
 
 	ctx := context.Background()
@@ -101,9 +93,9 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	}
 	pub, _, _ := ed25519.GenerateKey(rand.Reader)
 	s := snapshot{Sequence: 1}
-	for i := range uint64(50000) {
+	for i := range 50000 {
 		s.Records = append(s.Records, &PropertyRecord{
-			RID:       i,
+			RID:       fmt.Sprintf("prop-%d", i),
 			Domain:    fmt.Sprintf("prop-%d.example.com", i),
 			PublicKey: pub,
 		})
@@ -137,13 +129,11 @@ func BenchmarkSignatureSign(b *testing.B) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sign",
-		PropertyRID:  1,
+		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		PackageIDs:   []string{"pkg-1"},
 	}
 
 	b.ResetTimer()
@@ -159,13 +149,11 @@ func BenchmarkHMACSign(b *testing.B) {
 
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-hmac",
-		PropertyRID:  1,
+		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		PackageIDs:   []string{"pkg-1"},
 	}
 	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
 
@@ -185,13 +173,11 @@ func BenchmarkHMACVerify(b *testing.B) {
 
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-hmac-v",
-		PropertyRID:  1,
+		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		Artifacts:    []string{"article:benchmark-test"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		PackageIDs:   []string{"pkg-1"},
 	}
 	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
 
@@ -217,11 +203,9 @@ func BenchmarkCachedSignature(b *testing.B) {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i)
 		req := &tmproto.ContextMatchRequest{
 			RequestID:   fmt.Sprintf("req-%d", i),
-			PropertyRID: uint64(i),
+			PropertyRID: fmt.Sprintf("prop-%d", i),
 			PlacementID: fmt.Sprintf("placement-%d", i),
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-			},
+			PackageIDs:  []string{"pkg-1"},
 		}
 		cache[key] = tmproto.SignRequest(req, priv)
 	}

@@ -13,7 +13,7 @@ type ResolvedPackages struct {
 	Packages []tmproto.AvailablePackage
 
 	// Context indexes (zero Store calls at eval time).
-	PropertyIndex     map[uint64][]string            // propertyRID → packageIDs
+	PropertyIndex     map[string][]string             // propertyRID → packageIDs
 	TopicIndex        map[string][]string            // topic → packageIDs
 	URLBlocklistIndex map[string][]string            // urlHash → packageIDs that block it
 	URLAllowlists     map[string]map[string]struct{} // pkgID → set of allowed urlHashes
@@ -29,7 +29,7 @@ type ResolvedPackages struct {
 
 // ContextCandidates returns package IDs that could match the given property.
 // Returns nil if no PropertyIndex entry exists (all packages are candidates).
-func (r *ResolvedPackages) ContextCandidates(propertyRID uint64) map[string]struct{} {
+func (r *ResolvedPackages) ContextCandidates(propertyRID string) map[string]struct{} {
 	pkgIDs, ok := r.PropertyIndex[propertyRID]
 	if !ok {
 		return nil

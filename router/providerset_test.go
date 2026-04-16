@@ -123,7 +123,7 @@ func TestDrainProvider(t *testing.T) {
 	health := NewProviderHealth(3, 10*time.Second)
 	r, _ := NewRouter(
 		[]ProviderConfig{{ID: "p1", ContextMatch: true, Endpoint: "https://example.com"}},
-		nil, nil, health,
+		nil, health,
 	)
 
 	// Simulate an in-flight request that completes after 200ms
@@ -148,7 +148,7 @@ func TestDrainProvider_Timeout(t *testing.T) {
 	health := NewProviderHealth(3, 10*time.Second)
 	r, _ := NewRouter(
 		[]ProviderConfig{{ID: "p1", ContextMatch: true, Endpoint: "https://example.com"}},
-		nil, nil, health,
+		nil, health,
 	)
 
 	// In-flight that never completes
@@ -166,7 +166,7 @@ func TestDrainProvider_Timeout(t *testing.T) {
 }
 
 func TestDrainProvider_NotFound(t *testing.T) {
-	r, _ := NewRouter(nil, nil, nil, nil)
+	r, _ := NewRouter(nil, nil, nil)
 	err := r.DrainProvider(context.Background(), "nonexistent")
 	assert.Error(t, err, "expected error for nonexistent provider")
 }
