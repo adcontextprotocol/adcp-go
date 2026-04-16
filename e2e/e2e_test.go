@@ -331,7 +331,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	})
 
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(ctxResp, &cmResp)
+	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
 
 	require.Len(t, cmResp.Offers, 1, "expected 1 offer")
 	require.Equal(t, "pkg-food-display", cmResp.Offers[0].PackageID)
@@ -348,7 +348,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	})
 
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 
 	// All requested should be eligible (no exposures yet)
 	eligiblePkgs := make(map[string]bool)
@@ -402,7 +402,7 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	})
 
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 
 	eligSet := make(map[string]bool)
 	for _, id := range imResp.EligiblePackageIDs {
@@ -440,7 +440,7 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 	})
 
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(resp, &cmResp)
+	require.NoError(t, json.Unmarshal(resp, &cmResp))
 
 	require.Len(t, cmResp.Offers, 2, "expected 2 merged offers: %+v", cmResp.Offers)
 }
@@ -529,7 +529,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		},
 	})
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(ctxResp, &cmResp)
+	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
 	require.Len(t, cmResp.Offers, 1, "expected 1 offer")
 
 	// 2. Identity match (should be eligible)
@@ -539,7 +539,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 	eligSet := make(map[string]bool)
 	for _, id := range imResp.EligiblePackageIDs {
 		eligSet[id] = true
@@ -556,7 +556,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp2 tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp2, &imResp2)
+	require.NoError(t, json.Unmarshal(idResp2, &imResp2))
 	eligSet2 := make(map[string]bool)
 	for _, id := range imResp2.EligiblePackageIDs {
 		eligSet2[id] = true

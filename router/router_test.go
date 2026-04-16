@@ -118,8 +118,8 @@ func TestMergeContextResponses(t *testing.T) {
 
 	merged := mergeContextResponses("ctx-test", []*tmproto.ContextMatchResponse{r1, r2})
 
-	assert.Equal(t, 3, len(merged.Offers))
-	assert.Equal(t, 2, len(merged.Signals.Segments))
+	assert.Len(t, merged.Offers, 3)
+	assert.Len(t, merged.Signals.Segments, 2)
 }
 
 func TestMergeIdentityResponses(t *testing.T) {
@@ -147,7 +147,7 @@ func TestMergeIdentityResponses(t *testing.T) {
 	assert.True(t, eligible["pkg-1"], "pkg-1 should be eligible (both providers include it)")
 	assert.True(t, eligible["pkg-2"], "pkg-2 should be eligible (listed by its provider)")
 	assert.True(t, eligible["pkg-3"], "pkg-3 should be eligible (listed by its provider)")
-	assert.Equal(t, 3, len(merged.EligiblePackageIDs))
+	assert.Len(t, merged.EligiblePackageIDs, 3)
 
 	// TTL is the minimum across providers.
 	assert.Equal(t, 300, merged.TTLSec)
@@ -187,7 +187,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	var resp tmproto.ContextMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
-	require.Equal(t, 1, len(resp.Offers))
+	require.Len(t, resp.Offers, 1)
 	assert.Equal(t, "pkg-1", resp.Offers[0].PackageID)
 }
 
@@ -221,7 +221,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	var resp tmproto.IdentityMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
-	require.Equal(t, 1, len(resp.EligiblePackageIDs))
+	require.Len(t, resp.EligiblePackageIDs, 1)
 	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
 	assert.Equal(t, 300, resp.TTLSec)
 }
@@ -358,7 +358,7 @@ func TestMergeIdentityResponses_TMPX(t *testing.T) {
 	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2})
 
 	// tmpx_providers should map provider ID -> token.
-	require.Equal(t, 2, len(merged.TmpxProviders))
+	require.Len(t, merged.TmpxProviders, 2)
 	assert.Equal(t, "k1.acme-token", merged.TmpxProviders["acme"])
 	assert.Equal(t, "k2.nova-token", merged.TmpxProviders["nova"])
 }
@@ -413,6 +413,6 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&resp)
 
 	// Should only have the fast provider's offer
-	require.Equal(t, 1, len(resp.Offers))
+	require.Len(t, resp.Offers, 1)
 	assert.Equal(t, "pkg-fast", resp.Offers[0].PackageID)
 }

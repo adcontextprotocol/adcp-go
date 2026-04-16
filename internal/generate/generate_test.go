@@ -24,7 +24,7 @@ func TestLoadSchemas(t *testing.T) {
 	ir, err := LoadSchemas(schemaDir(t))
 	require.NoError(t, err, "LoadSchemas")
 
-	assert.Equal(t, 5, len(ir.Enums), "enums count")
+	assert.Len(t, ir.Enums, 5, "enums count")
 
 	// Check all expected struct names exist.
 	want := map[string]bool{

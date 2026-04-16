@@ -91,7 +91,7 @@ func TestBuildResultSetsStructuredContent(t *testing.T) {
 
 	sc, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok, "expected map[string]any, got %T", result.StructuredContent)
-	assert.Equal(t, "bar", sc["foo"], "expected foo=bar")
+	require.Equal(t, "bar", sc["foo"], "expected foo=bar")
 }
 
 func TestPermissiveSchemaPreservesRequired(t *testing.T) {

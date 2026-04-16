@@ -45,8 +45,8 @@ func TestApplyEvents_DeactivateRemovesFromTargeting(t *testing.T) {
 		{Sequence: 2, Action: "deactivate", Record: PropertyRecord{RID: 100}},
 	})
 
-	assert.Nil(t, registry.Get(100), "expected RID 100 removed from registry")
-	assert.False(t, targeting.ContainsProperty(100), "expected RID 100 removed from targeting bitmap")
+	require.Nil(t, registry.Get(100), "expected RID 100 removed from registry")
+	require.False(t, targeting.ContainsProperty(100), "expected RID 100 removed from targeting bitmap")
 }
 
 func TestApplyEvents_UpdateExistingProperty(t *testing.T) {

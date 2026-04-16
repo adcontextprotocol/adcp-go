@@ -124,7 +124,7 @@ func TestRegistry_HandleSnapshot(t *testing.T) {
 	var snapshot RegistrySnapshot
 	_ = json.NewDecoder(w.Body).Decode(&snapshot)
 
-	assert.Equal(t, 2, len(snapshot.Properties))
+	assert.Len(t, snapshot.Properties, 2)
 	assert.Equal(t, uint64(99), snapshot.Sequence)
 	assert.Equal(t, "99", w.Header().Get("X-Registry-Sequence"))
 }
