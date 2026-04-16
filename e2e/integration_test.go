@@ -125,7 +125,6 @@ func setupStack(t *testing.T) *testStack {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
 	mux.HandleFunc("POST /tmp/identity", r.HandleIdentityMatch)
-	mux.HandleFunc("POST /tmp/expose", r.HandleExpose)
 	routerSrv := httptest.NewServer(mux)
 	t.Cleanup(routerSrv.Close)
 
@@ -194,10 +193,18 @@ func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved ...*targeting.
 				writeAgentError(w, req.RequestID, evalErr.Error())
 				return
 			}
+			// Convert internal IdentityResult to wire format.
+			var eligible []string
+			for _, e := range result.Eligibility {
+				if e.Eligible {
+					eligible = append(eligible, e.PackageID)
+				}
+			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
-				RequestID:   result.RequestID,
-				Eligibility: result.Eligibility,
+				RequestID:          result.RequestID,
+				EligiblePackageIDs: eligible,
+				TTLSec:             60,
 			})
 		})
 
@@ -250,6 +257,7 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 			{PackageID: "pkg-family", MediaBuyID: "mb-family"},
 		},
 		UserToken:  "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-food", "pkg-tech", "pkg-family"},
 	})
 	if err != nil {
@@ -262,7 +270,7 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 	activated := map[string]bool{}
 	for _, a := range result.Activations {
 		activated[a.PackageID] = true
-		t.Logf("activated: %s (mediaBuyID=%s, intent=%v)", a.PackageID, a.MediaBuyID, a.IntentScore)
+		t.Logf("activated: %s (mediaBuyID=%s)", a.PackageID, a.MediaBuyID)
 	}
 
 	if !activated["pkg-food"] {
@@ -304,10 +312,12 @@ func TestIntegration_FrequencyCapping(t *testing.T) {
 		Artifacts:    []string{"article:pasta"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-food", MediaBuyID: "mb-food"}},
 		UserToken:    "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	}
 
 	// 3 exposures (hits 3/24h cap on pkg-food).
+	// Record exposures directly via the engine (TMPX replaces router-based expose).
 	for i := range 3 {
 		result, err := s.client.Activate(ctx, params)
 		if err != nil {
@@ -316,8 +326,7 @@ func TestIntegration_FrequencyCapping(t *testing.T) {
 		if len(result.Activations) == 0 {
 			t.Fatalf("activate %d: expected activation before cap", i)
 		}
-		// Report exposure with unique impression ID.
-		_, err = s.client.Expose(ctx, &tmproto.ExposeRequest{
+		_, err = s.identityEngine.RecordExposure(ctx, &tmproto.ExposeRequest{
 			UserToken:    "tok-alice",
 			PackageID:    "pkg-food",
 			ImpressionID: fmt.Sprintf("imp-fcap-%d", i),
@@ -352,6 +361,7 @@ func TestIntegration_AudienceGating(t *testing.T) {
 		Artifacts:    []string{"article:pasta"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-food", MediaBuyID: "mb-food"}},
 		UserToken:    "tok-bob",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	})
 	if err != nil {
@@ -375,6 +385,7 @@ func TestIntegration_URLBlocklist(t *testing.T) {
 		Artifacts:    []string{"article:adult-content"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-family", MediaBuyID: "mb-family"}},
 		UserToken:    "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-family"},
 	})
 	if err != nil {
@@ -399,10 +410,11 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 		Artifacts:    []string{"article:pasta"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-food", MediaBuyID: "mb-food"}},
 		UserToken:    "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	}
 
-	// First activate — no intent score yet.
+	// First activate — should be eligible.
 	result1, err := s.client.Activate(ctx, params)
 	if err != nil {
 		t.Fatal(err)
@@ -410,12 +422,9 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 	if len(result1.Activations) == 0 {
 		t.Fatal("expected activation")
 	}
-	if result1.Activations[0].IntentScore != nil {
-		t.Logf("initial intent score: %v (expected nil)", *result1.Activations[0].IntentScore)
-	}
 
-	// Report exposure.
-	expResp, err := s.client.Expose(ctx, &tmproto.ExposeRequest{
+	// Record exposure directly via the engine (TMPX replaces router-based expose).
+	expResp, err := s.identityEngine.RecordExposure(ctx, &tmproto.ExposeRequest{
 		UserToken:    "tok-alice",
 		PackageID:    "pkg-food",
 		ImpressionID: "imp-state-1",
@@ -427,22 +436,15 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 		t.Errorf("expected campaign count 1, got %d", expResp.CampaignCount)
 	}
 
-	// Second activate — should have intent score now.
+	// Second activate — should still be eligible (1 exposure, cap is 3).
 	result2, err := s.client.Activate(ctx, params)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(result2.Activations) == 0 {
-		t.Fatal("expected activation")
+		t.Fatal("expected activation after 1 exposure (cap is 3)")
 	}
-	if result2.Activations[0].IntentScore == nil {
-		t.Error("expected intent score after exposure")
-	} else {
-		t.Logf("intent score after exposure: %.3f", *result2.Activations[0].IntentScore)
-		if *result2.Activations[0].IntentScore < 0.9 {
-			t.Error("expected high intent score for recent exposure")
-		}
-	}
+	t.Logf("still activated after 1 exposure: %s", result2.Activations[0].PackageID)
 }
 
 func TestIntegration_PropertyBitmapFilter(t *testing.T) {
@@ -458,6 +460,7 @@ func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 		Artifacts:    []string{"article:pasta"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-food"}},
 		UserToken:    "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-food"},
 	})
 	if err != nil {
@@ -580,6 +583,7 @@ func TestIntegration_Mediation(t *testing.T) {
 			{PackageID: "pkg-wine", MediaBuyID: "mb-vino"},
 		},
 		UserToken:  "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
 	})
 	if err != nil {
@@ -603,12 +607,8 @@ func TestIntegration_Mediation(t *testing.T) {
 		if a.Offer.Brand != nil {
 			brand = a.Offer.Brand.Name
 		}
-		intent := "none"
-		if a.IntentScore != nil {
-			intent = fmt.Sprintf("%.2f", *a.IntentScore)
-		}
-		t.Logf("  #%d %-16s brand=%-20s price=%-12s intent=%-6s summary=%q",
-			i+1, a.PackageID, brand, price, intent, a.Offer.Summary)
+		t.Logf("  #%d %-16s brand=%-20s price=%-12s summary=%q",
+			i+1, a.PackageID, brand, price, a.Offer.Summary)
 	}
 	t.Log("")
 
@@ -630,29 +630,24 @@ func TestIntegration_Mediation(t *testing.T) {
 		t.Error("expected click_url macro on olive oil offer")
 	}
 
-	// Publisher mediation: pick by price × intent.
+	// Publisher mediation: pick by price.
 	t.Log("=== Publisher Mediation Decision ===")
 	t.Log("")
 	var bestPkg string
-	var bestScore float64
+	var bestPrice float64
 	for _, a := range result.Activations {
 		price := 0.0
 		if a.Offer.Price != nil {
 			price = a.Offer.Price.Amount
 		}
-		intent := 0.5 // default for nil
-		if a.IntentScore != nil {
-			intent = *a.IntentScore
-		}
-		score := price * intent
-		t.Logf("  %-16s price=$%.2f × intent=%.2f = score=%.2f", a.PackageID, price, intent, score)
-		if score > bestScore {
-			bestScore = score
+		t.Logf("  %-16s price=$%.2f", a.PackageID, price)
+		if price > bestPrice {
+			bestPrice = price
 			bestPkg = a.PackageID
 		}
 	}
 	t.Logf("")
-	t.Logf("  Winner: %s (score=%.2f)", bestPkg, bestScore)
+	t.Logf("  Winner: %s (price=$%.2f)", bestPkg, bestPrice)
 	t.Log("")
 
 	if bestPkg == "" {
@@ -743,6 +738,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		Artifacts:    []string{"article:pasta"},
 		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-premium-food", MediaBuyID: "mb-premium"}},
 		UserToken:    "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-premium-food"},
 	})
 	if err != nil {
@@ -817,6 +813,7 @@ func TestIntegration_Throughput(t *testing.T) {
 			{PackageID: "pkg-family", MediaBuyID: "mb-family"},
 		},
 		UserToken:  "tok-alice",
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-food", "pkg-family"},
 	}
 

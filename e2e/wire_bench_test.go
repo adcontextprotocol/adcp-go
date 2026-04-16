@@ -35,7 +35,6 @@ func TestWire_JSONCost(t *testing.T) {
 		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-auto-video", "pkg-travel-sponsored", "pkg-pharma-awareness"},
 	}
 
-	intent := 0.85
 	ctxResp := tmproto.ContextMatchResponse{
 		RequestID: "bench-ctx-001",
 		Offers: []tmproto.Offer{
@@ -46,15 +45,9 @@ func TestWire_JSONCost(t *testing.T) {
 	}
 
 	idResp := tmproto.IdentityMatchResponse{
-		RequestID: "bench-id-001",
-		Eligibility: []tmproto.PackageEligibility{
-			{PackageID: "pkg-food-display", Eligible: true, IntentScore: &intent},
-			{PackageID: "pkg-tech-native", Eligible: true},
-			{PackageID: "pkg-family-safe", Eligible: true},
-			{PackageID: "pkg-auto-video", Eligible: false},
-			{PackageID: "pkg-travel-sponsored", Eligible: false},
-			{PackageID: "pkg-pharma-awareness", Eligible: false},
-		},
+		RequestID:          "bench-id-001",
+		EligiblePackageIDs: []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe"},
+		TTLSec:             300,
 	}
 
 	const iterations = 100_000

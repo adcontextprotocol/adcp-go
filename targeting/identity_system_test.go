@@ -186,37 +186,31 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	t.Log("=== Identity Graph: 3 UIDs, inconsistent pairs ===")
 	t.Log("")
 
-	// Request A: cookie + UID2.
+	// Request A: cookie.
 	respA, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "req-A",
-		Identities: []tmproto.UserIdentity{
-			{UserToken: cookie, UIDType: tmproto.UIDTypePublisherFirstParty},
-			{UserToken: uid2, UIDType: tmproto.UIDTypeUID2},
-		},
+		RequestID:  "req-A",
+		UserToken:  cookie,
+		UIDType:    tmproto.UIDTypePublisherFirstParty,
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
-	// Request B: UID2 + email.
+	// Request B: UID2.
 	respB, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "req-B",
-		Identities: []tmproto.UserIdentity{
-			{UserToken: uid2, UIDType: tmproto.UIDTypeUID2},
-			{UserToken: email, UIDType: tmproto.UIDTypeHashedEmail},
-		},
+		RequestID:  "req-B",
+		UserToken:  uid2,
+		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
-	// Request C: cookie + email.
+	// Request C: email.
 	respC, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "req-C",
-		Identities: []tmproto.UserIdentity{
-			{UserToken: cookie, UIDType: tmproto.UIDTypePublisherFirstParty},
-			{UserToken: email, UIDType: tmproto.UIDTypeHashedEmail},
-		},
+		RequestID:  "req-C",
+		UserToken:  email,
+		UIDType:    tmproto.UIDTypeHashedEmail,
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
-	for label, resp := range map[string]*IdentityResult{"A(cookie+uid2)": respA, "B(uid2+email)": respB, "C(cookie+email)": respC} {
+	for label, resp := range map[string]*IdentityResult{"A(cookie)": respA, "B(uid2)": respB, "C(email)": respC} {
 		t.Logf("  Request %s:", label)
 		for _, e := range resp.Eligibility {
 			intent := "none"
@@ -228,7 +222,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	}
 	t.Log("")
 
-	// Verify: Request A (cookie + UID2) should see cooking_fans + sports_fans segments.
+	// Verify: Request A (cookie only) sees cooking_fans.
 	eligA := map[string]bool{}
 	for _, e := range respA.Eligibility {
 		eligA[e.PackageID] = e.Eligible
@@ -236,23 +230,14 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	if !eligA["pkg-food"] {
 		t.Error("Request A: pkg-food should be eligible (cooking_fans from cookie)")
 	}
-	if !eligA["pkg-sports"] {
-		t.Error("Request A: pkg-sports should be eligible (sports_fans from uid2)")
-	}
-	if eligA["pkg-tech"] {
-		t.Error("Request A: pkg-tech should NOT be eligible (tech_enthusiasts not in cookie or uid2)")
-	}
 
-	// Verify: Request B (UID2 + email) should see sports_fans + cooking_fans + tech_enthusiasts.
+	// Verify: Request B (uid2 only) sees sports_fans.
 	eligB := map[string]bool{}
 	for _, e := range respB.Eligibility {
 		eligB[e.PackageID] = e.Eligible
 	}
-	if !eligB["pkg-food"] {
-		t.Error("Request B: pkg-food should be eligible (cooking_fans from email)")
-	}
-	if !eligB["pkg-tech"] {
-		t.Error("Request B: pkg-tech should be eligible (tech_enthusiasts from email)")
+	if !eligB["pkg-sports"] {
+		t.Error("Request B: pkg-sports should be eligible (sports_fans from uid2)")
 	}
 
 	// Verify: exposure dedup. Cookie has ~40 exposures (30 unique + 10 shared).

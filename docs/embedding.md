@@ -19,7 +19,6 @@ r := router.NewRouter(providers, registry, sigCache, health,
 // Mount handlers on your existing mux.
 mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
 mux.HandleFunc("POST /tmp/identity", r.HandleIdentityMatch)
-mux.HandleFunc("POST /tmp/expose", r.HandleExpose)
 ```
 
 ## Injecting your HTTP client
@@ -101,14 +100,15 @@ The router returns generic error messages to callers. If you wrap the handlers w
 
 ### The pinhole
 
-If you're running the identity agent in a TEE, the response types define the pinhole. Only these fields should leave the enclave:
+If you're running the identity agent in a TEE, the wire response defines the pinhole. Only these fields should leave the enclave:
 
-- `PackageEligibility.PackageID` (string)
-- `PackageEligibility.Eligible` (bool)
-- `PackageEligibility.IntentScore` (*float64)
-- `ExposeResponse.PackageID`, `.CampaignCount`, `.CampaignRemaining`
+- `eligible_package_ids` ([]string) — package IDs the user is eligible for
+- `ttl_sec` (int) — caching duration
+- `tmpx` (string) — HPKE-encrypted exposure token, opaque to the router and publisher
 
-If you add fields to response types, you widen the pinhole. Review carefully.
+The TMPX token is encrypted by the read replica inside the TEE using HPKE. The router and publisher pass it through without decryption. Only the buyer's cluster master can decrypt it.
+
+If you add fields to the wire response, you widen the pinhole. Review carefully.
 
 ### Dependencies
 

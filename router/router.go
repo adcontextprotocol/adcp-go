@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sort"
 	"net/http"
 	"sync"
 	"time"
@@ -143,19 +144,29 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Find matching providers
+	// Find matching providers (filtered by country + uid_type).
 	var matching []ProviderConfig
 	for _, p := range r.providers {
-		if MatchesIdentityProvider(&p) {
+		if MatchesIdentityProvider(&imReq, &p) {
 			matching = append(matching, p)
 		}
 	}
 
-	// Fan out
-	responses := r.fanOutIdentity(req.Context(), matching, body)
+	// Strip country before forwarding — it's a routing directive, not an identity signal.
+	imReq.Country = ""
+	body, _ = json.Marshal(&imReq)
 
-	// Merge
-	merged := mergeIdentityResponses(imReq.RequestID, responses)
+	// Fan out
+	results := r.fanOutIdentity(req.Context(), matching, body)
+
+	// Merge — extract parallel slices for provider IDs and responses.
+	providerIDs := make([]string, len(results))
+	responses := make([]*tmproto.IdentityMatchResponse, len(results))
+	for i, r := range results {
+		providerIDs[i] = r.providerID
+		responses[i] = r.response
+	}
+	merged := mergeIdentityResponses(imReq.RequestID, providerIDs, responses)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
@@ -222,9 +233,14 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 	return results
 }
 
-func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []*tmproto.IdentityMatchResponse {
+type identityResult struct {
+	providerID string
+	response   *tmproto.IdentityMatchResponse
+}
+
+func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []identityResult {
 	var mu sync.Mutex
-	var results []*tmproto.IdentityMatchResponse
+	var results []identityResult
 	var wg sync.WaitGroup
 
 	for _, p := range providers {
@@ -264,7 +280,7 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			mu.Lock()
-			results = append(results, &imResp)
+			results = append(results, identityResult{providerID: p.ID, response: &imResp})
 			mu.Unlock()
 		}(p)
 	}
@@ -322,120 +338,45 @@ func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchRe
 }
 
 // mergeIdentityResponses combines eligibility from multiple providers.
-// AND semantics: eligible only if NO provider says ineligible. intent_score = max.
-func mergeIdentityResponses(requestID string, responses []*tmproto.IdentityMatchResponse) *tmproto.IdentityMatchResponse {
-	type mergedElig struct {
-		eligible    bool
-		intentScore *float64
-	}
-	byPkg := make(map[string]*mergedElig)
+// Packages are provider-specific — duplicates across providers are a config error.
+// Merge is union: a package listed by any provider is eligible.
+// TTL: minimum across providers. TMPX: collected per provider ID.
+func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse) *tmproto.IdentityMatchResponse {
+	eligibleSet := make(map[string]struct{})
+	tmpxProviders := make(map[string]string)
+	minTTL := -1
 
-	for _, resp := range responses {
-		for _, e := range resp.Eligibility {
-			m, ok := byPkg[e.PackageID]
-			if !ok {
-				// First time seeing this package: use provider's value
-				m = &mergedElig{eligible: e.Eligible}
-				byPkg[e.PackageID] = m
-			} else if !e.Eligible {
-				// AND: if any provider says ineligible, final is ineligible
-				m.eligible = false
-			}
-			if e.IntentScore != nil {
-				if m.intentScore == nil || *e.IntentScore > *m.intentScore {
-					score := *e.IntentScore
-					m.intentScore = &score
-				}
-			}
+	for i, resp := range responses {
+		if resp.Tmpx != "" && i < len(providerIDs) {
+			tmpxProviders[providerIDs[i]] = resp.Tmpx
+		}
+		if minTTL < 0 || resp.TTLSec < minTTL {
+			minTTL = resp.TTLSec
+		}
+		for _, pkgID := range resp.EligiblePackageIDs {
+			eligibleSet[pkgID] = struct{}{}
 		}
 	}
 
-	var eligibility []tmproto.PackageEligibility
-	for pkgID, m := range byPkg {
-		eligibility = append(eligibility, tmproto.PackageEligibility{
-			PackageID:   pkgID,
-			Eligible:    m.eligible,
-			IntentScore: m.intentScore,
-		})
+	eligible := make([]string, 0, len(eligibleSet))
+	for pkgID := range eligibleSet {
+		eligible = append(eligible, pkgID)
+	}
+	sort.Strings(eligible)
+
+	if minTTL < 0 {
+		minTTL = 0
 	}
 
-	return &tmproto.IdentityMatchResponse{
-		RequestID:   requestID,
-		Eligibility: eligibility,
+	merged := &tmproto.IdentityMatchResponse{
+		RequestID:          requestID,
+		EligiblePackageIDs: eligible,
+		TTLSec:             minTTL,
 	}
-}
-
-// HandleExpose processes an exposure notification and fans out to identity providers.
-func (r *Router) HandleExpose(w http.ResponseWriter, req *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024))
-	if err != nil {
-		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
-		return
+	if len(tmpxProviders) > 0 {
+		merged.TmpxProviders = tmpxProviders
 	}
-
-	// Validate the request.
-	var expReq tmproto.ExposeRequest
-	if err := json.Unmarshal(body, &expReq); err != nil {
-		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
-		return
-	}
-	if expReq.PackageID == "" {
-		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "package_id is required")
-		return
-	}
-	if expReq.UserToken == "" && len(expReq.Identities) == 0 {
-		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "user_token or identities is required")
-		return
-	}
-
-	// Find identity providers.
-	var matching []ProviderConfig
-	for _, p := range r.providers {
-		if MatchesIdentityProvider(&p) {
-			matching = append(matching, p)
-		}
-	}
-
-	// Fan out to all identity providers (expose is idempotent).
-	var lastResp *tmproto.ExposeResponse
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, p := range matching {
-		wg.Add(1)
-		go func(p ProviderConfig) {
-			defer wg.Done()
-			timeout := p.Timeout
-			if timeout == 0 {
-				timeout = 30 * time.Millisecond
-			}
-			callCtx, cancel := context.WithTimeout(req.Context(), timeout)
-			defer cancel()
-
-			resp, err := r.callProvider(callCtx, p.Endpoint+"/tmp/expose", body)
-			if err != nil {
-				return
-			}
-			var expResp tmproto.ExposeResponse
-			if err := json.Unmarshal(resp, &expResp); err != nil {
-				return
-			}
-			mu.Lock()
-			lastResp = &expResp
-			mu.Unlock()
-		}(p)
-	}
-	wg.Wait()
-
-	if lastResp == nil {
-		r.writeError(w, "", tmproto.ErrorCodeProviderUnavailable, "no identity providers available")
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(lastResp); err != nil {
-		r.logger.Debug("failed to write expose response", "error", err)
-	}
+	return merged
 }
 
 // filterPackagesForProvider filters AvailablePackage list if the provider has PackageIDs configured.

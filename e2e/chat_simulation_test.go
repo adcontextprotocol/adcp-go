@@ -128,10 +128,9 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	var eligibility []tmproto.PackageEligibility
+	var eligible []string
 	for _, pkgID := range req.PackageIDs {
-		eligible := true
-		intent := 0.5
+		isEligible := true
 
 		if cap, ok := a.freqCaps[pkgID]; ok {
 			count := 0
@@ -139,26 +138,20 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 				count = counts[pkgID]
 			}
 			if count >= cap {
-				eligible = false
-			}
-			// Returning users get higher intent
-			if count > 0 && count < cap {
-				intent = 0.8
+				isEligible = false
 			}
 		}
 
-		score := intent
-		eligibility = append(eligibility, tmproto.PackageEligibility{
-			PackageID:   pkgID,
-			Eligible:    eligible,
-			IntentScore: &score,
-		})
+		if isEligible {
+			eligible = append(eligible, pkgID)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
-		RequestID:   req.RequestID,
-		Eligibility: eligibility,
+		RequestID:          req.RequestID,
+		EligiblePackageIDs: eligible,
+		TTLSec:             60,
 	})
 }
 
@@ -338,13 +331,12 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 		json.Unmarshal(idResp, &imResp)
 
 		// 3. Publisher join
-		eligMap := make(map[string]tmproto.PackageEligibility)
-		for _, e := range imResp.Eligibility {
-			eligMap[e.PackageID] = e
+		eligSet := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligSet[id] = true
 		}
 
 		var bestOffer *tmproto.Offer
-		var bestIntent float64 = -1
 		seen := make(map[string]bool)
 		for _, offer := range cmResp.Offers {
 			if seen[offer.PackageID] {
@@ -352,15 +344,12 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			}
 			seen[offer.PackageID] = true
 
-			e, ok := eligMap[offer.PackageID]
-			if !ok || !e.Eligible {
+			if !eligSet[offer.PackageID] {
 				t.Logf("  [skip] %s — not eligible", offer.PackageID)
 				continue
 			}
-			intent := safeIntent(e.IntentScore)
-			t.Logf("  [candidate] %s — eligible, intent=%.2f", offer.PackageID, intent)
-			if intent > bestIntent {
-				bestIntent = intent
+			t.Logf("  [candidate] %s — eligible", offer.PackageID)
+			if bestOffer == nil {
 				offerCopy := offer
 				bestOffer = &offerCopy
 			}
@@ -485,17 +474,19 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 		json.Unmarshal(idResp, &imResp)
 
 		// Check if we can show the ad
+		eligSet := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligSet[id] = true
+		}
 		showed := false
 		for _, offer := range cmResp.Offers {
-			for _, e := range imResp.Eligibility {
-				if e.PackageID == offer.PackageID && e.Eligible {
-					showed = true
-					impressionCount++
-					postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
-						UserToken: token,
-						PackageID: offer.PackageID,
-					})
-				}
+			if eligSet[offer.PackageID] {
+				showed = true
+				impressionCount++
+				postJSON(t, idServer.URL+"/tmp/expose", tmproto.ExposeRequest{
+					UserToken: token,
+					PackageID: offer.PackageID,
+				})
 			}
 		}
 

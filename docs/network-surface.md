@@ -41,8 +41,7 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/tmp/context` | Context match (fans out to context agents) |
-| `POST` | `/tmp/identity` | Identity match (fans out to identity agents) |
-| `POST` | `/tmp/expose` | Exposure recording (fans out to identity agents) |
+| `POST` | `/tmp/identity` | Identity match (fans out to identity agents, returns TMPX tokens) |
 | `GET` | `/registry/snapshot` | Registry snapshot for agents |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/health` | Health check (returns version) |
@@ -79,18 +78,22 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 
 ### Identity Match
 
-1. Publisher client sends `POST /tmp/identity` to router with `user_token` (or `identities`), `package_ids`
-2. Router fans out to matching identity agents (30ms timeout)
-3. Each identity agent evaluates: campaign freq cap → package freq cap → audience → intent score
-4. Router merges with AND semantics (eligible only if NO agent says ineligible), intent score = max
-5. Response to publisher: per-package eligibility booleans + intent scores
+1. Publisher client sends `POST /tmp/identity` to router with `user_token` (or `identities`), `package_ids`, `country`
+2. Router filters providers by `country` and `uid_type`, strips `country` before forwarding
+3. Router fans out to matching identity agents (30ms timeout)
+4. Each identity agent evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
+5. Router merges eligible package lists (union — packages are provider-specific)
+6. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
+7. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
 
-### Exposure Recording
+### Exposure Tracking (TMPX)
 
-1. Publisher sends `POST /tmp/expose` with `package_id`, `user_token`
-2. Router fans out to identity agents
-3. Identity agent: reads exposure log from Valkey, appends entry, prunes old entries, writes back
-4. Updates frequency sorted sets and intent timestamp
+Exposure tracking uses encrypted TMPX tokens instead of a dedicated endpoint:
+
+1. Identity agent generates an HPKE-encrypted TMPX token containing resolved user identity tokens
+2. Token flows through the router to the publisher as an opaque string
+3. Publisher substitutes provider-specific TMPX values into creative tracking URLs (e.g., `{TMPX_S3}`)
+4. Buyer's impression pixel receives the token, decrypts it, and updates per-user frequency state
 
 ## Pinhole Specification
 
@@ -103,8 +106,9 @@ The identity agent is the privacy boundary. When running in a TEE:
 - Frequency cap configurations (via Valkey replication)
 
 **Leaves the TEE (the pinhole):**
-- `PackageEligibility` per package: `{package_id, eligible (bool), intent_score (*float64, optional)}`
-- Exposure response: `{package_id, campaign_count, campaign_remaining}`
+- `eligible_package_ids` ([]string) — package IDs the user is eligible for
+- `ttl_sec` (int) — caching duration
+- `tmpx` (string) — HPKE-encrypted exposure token (opaque, only buyer's cluster master can decrypt)
 - Prometheus metrics (counters and histograms, no user data)
 - Health check responses
 

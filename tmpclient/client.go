@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -97,22 +96,6 @@ func (c *Client) IdentityMatch(ctx context.Context, req *tmproto.IdentityMatchRe
 	return &resp, nil
 }
 
-// Expose reports an impression through the router, which fans out to identity providers.
-func (c *Client) Expose(ctx context.Context, req *tmproto.ExposeRequest) (*tmproto.ExposeResponse, error) {
-	if req.UserToken == "" {
-		return nil, fmt.Errorf("user_token is required")
-	}
-	if req.PackageID == "" {
-		return nil, fmt.Errorf("package_id is required")
-	}
-
-	var resp tmproto.ExposeResponse
-	if err := c.post(ctx, c.routerURL+"/tmp/expose", req, &resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
 // Activate runs the full TMP flow:
 //  1. Fire ContextMatch and IdentityMatch in parallel
 //  2. Join results locally (intersect context offers with identity eligibility)
@@ -146,6 +129,7 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 		UIDType:    params.UIDType,
 		PackageIDs: packageIDs,
 		Consent:    params.Consent,
+		Country:    params.Country,
 	}
 
 	// Validate both before firing either.
@@ -187,20 +171,20 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	activations := joinResults(ctxResp, idResp, params.Packages)
 
 	return &ActivateResult{
-		Activations: activations,
-		Signals:     ctxResp.Signals,
-		Context:     ctxResp,
-		Identity:    idResp,
+		Activations:   activations,
+		Signals:       ctxResp.Signals,
+		TmpxProviders: idResp.TmpxProviders,
+		Context:       ctxResp,
+		Identity:      idResp,
 	}, nil
 }
 
 // joinResults intersects context offers with identity eligibility.
-// Sorted by intent score descending (nil scores last).
 func joinResults(ctxResp *tmproto.ContextMatchResponse, idResp *tmproto.IdentityMatchResponse, packages []tmproto.AvailablePackage) []Activation {
-	// Build eligibility map.
-	eligMap := make(map[string]tmproto.PackageEligibility, len(idResp.Eligibility))
-	for _, e := range idResp.Eligibility {
-		eligMap[e.PackageID] = e
+	// Build eligibility set from flat list.
+	eligSet := make(map[string]bool, len(idResp.EligiblePackageIDs))
+	for _, id := range idResp.EligiblePackageIDs {
+		eligSet[id] = true
 	}
 
 	// Build media buy ID map from packages.
@@ -211,32 +195,15 @@ func joinResults(ctxResp *tmproto.ContextMatchResponse, idResp *tmproto.Identity
 
 	var activations []Activation
 	for _, offer := range ctxResp.Offers {
-		e, ok := eligMap[offer.PackageID]
-		if !ok || !e.Eligible {
+		if !eligSet[offer.PackageID] {
 			continue
 		}
 		activations = append(activations, Activation{
-			PackageID:   offer.PackageID,
-			MediaBuyID:  mediaBuyMap[offer.PackageID],
-			Offer:       offer,
-			IntentScore: e.IntentScore,
+			PackageID:  offer.PackageID,
+			MediaBuyID: mediaBuyMap[offer.PackageID],
+			Offer:      offer,
 		})
 	}
-
-	// Sort by intent score descending; nil scores last.
-	sort.Slice(activations, func(i, j int) bool {
-		si, sj := activations[i].IntentScore, activations[j].IntentScore
-		if si == nil && sj == nil {
-			return false
-		}
-		if si == nil {
-			return false
-		}
-		if sj == nil {
-			return true
-		}
-		return *si > *sj
-	})
 
 	return activations
 }

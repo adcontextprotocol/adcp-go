@@ -103,30 +103,28 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 
 	userExposures := a.exposures[req.UserToken]
 
-	var eligibility []tmproto.PackageEligibility
+	var eligible []string
 	for _, pkgID := range req.PackageIDs {
-		eligible := true
+		isEligible := true
 		if cap, ok := a.freqCaps[pkgID]; ok {
 			count := 0
 			if userExposures != nil {
 				count = userExposures[pkgID]
 			}
 			if count >= cap {
-				eligible = false
+				isEligible = false
 			}
 		}
-		intent := 0.75
-		eligibility = append(eligibility, tmproto.PackageEligibility{
-			PackageID:   pkgID,
-			Eligible:    eligible,
-			IntentScore: &intent,
-		})
+		if isEligible {
+			eligible = append(eligible, pkgID)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
-		RequestID:   req.RequestID,
-		Eligibility: eligibility,
+		RequestID:          req.RequestID,
+		EligiblePackageIDs: eligible,
+		TTLSec:             60,
 	})
 }
 
@@ -235,12 +233,8 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 
-	// Fan out to all identity agents
-	type mergedElig struct {
-		eligible    bool
-		intentScore *float64
-	}
-	byPkg := make(map[string]*mergedElig)
+	// Fan out to all identity agents, merge eligible package IDs (union).
+	eligSet := make(map[string]bool)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
@@ -256,19 +250,8 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 			var imResp tmproto.IdentityMatchResponse
 			json.NewDecoder(resp.Body).Decode(&imResp)
 			mu.Lock()
-			for _, e := range imResp.Eligibility {
-				m, ok := byPkg[e.PackageID]
-				if !ok {
-					m = &mergedElig{}
-					byPkg[e.PackageID] = m
-				}
-				if e.Eligible {
-					m.eligible = true
-				}
-				if e.IntentScore != nil && (m.intentScore == nil || *e.IntentScore > *m.intentScore) {
-					s := *e.IntentScore
-					m.intentScore = &s
-				}
+			for _, id := range imResp.EligiblePackageIDs {
+				eligSet[id] = true
 			}
 			mu.Unlock()
 		}(agent.URL)
@@ -278,19 +261,16 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	var req tmproto.IdentityMatchRequest
 	json.Unmarshal(body, &req)
 
-	var eligibility []tmproto.PackageEligibility
-	for pkgID, m := range byPkg {
-		eligibility = append(eligibility, tmproto.PackageEligibility{
-			PackageID:   pkgID,
-			Eligible:    m.eligible,
-			IntentScore: m.intentScore,
-		})
+	var eligible []string
+	for id := range eligSet {
+		eligible = append(eligible, id)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
-		RequestID:   req.RequestID,
-		Eligibility: eligibility,
+		RequestID:          req.RequestID,
+		EligiblePackageIDs: eligible,
+		TTLSec:             60,
 	})
 }
 
@@ -373,10 +353,17 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
 
-	// All should be eligible (no exposures yet)
-	for _, e := range imResp.Eligibility {
-		if !e.Eligible {
-			t.Errorf("expected %s to be eligible", e.PackageID)
+	// All requested should be eligible (no exposures yet)
+	eligiblePkgs := make(map[string]bool)
+	for _, id := range imResp.EligiblePackageIDs {
+		eligiblePkgs[id] = true
+	}
+	for _, pkgID := range []string{
+		"pkg-food-display", "pkg-tech-native", "pkg-auto-video",
+		"pkg-other-site-1", "pkg-other-site-2", "pkg-other-site-3",
+	} {
+		if !eligiblePkgs[pkgID] {
+			t.Errorf("expected %s to be eligible", pkgID)
 		}
 	}
 
@@ -384,12 +371,6 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	contextOffers := make(map[string]bool)
 	for _, o := range cmResp.Offers {
 		contextOffers[o.PackageID] = true
-	}
-	eligiblePkgs := make(map[string]bool)
-	for _, e := range imResp.Eligibility {
-		if e.Eligible {
-			eligiblePkgs[e.PackageID] = true
-		}
 	}
 
 	var activated []string
@@ -433,17 +414,15 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
 
-	for _, e := range imResp.Eligibility {
-		switch e.PackageID {
-		case "pkg-food-display":
-			if e.Eligible {
-				t.Error("pkg-food-display should be capped after 2 exposures")
-			}
-		case "pkg-tech-native":
-			if !e.Eligible {
-				t.Error("pkg-tech-native should still be eligible")
-			}
-		}
+	eligSet := make(map[string]bool)
+	for _, id := range imResp.EligiblePackageIDs {
+		eligSet[id] = true
+	}
+	if eligSet["pkg-food-display"] {
+		t.Error("pkg-food-display should be capped after 2 exposures")
+	}
+	if !eligSet["pkg-tech-native"] {
+		t.Error("pkg-tech-native should still be eligible")
 	}
 }
 
@@ -587,7 +566,11 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	})
 	var imResp tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp, &imResp)
-	if !imResp.Eligibility[0].Eligible {
+	eligSet := make(map[string]bool)
+	for _, id := range imResp.EligiblePackageIDs {
+		eligSet[id] = true
+	}
+	if !eligSet["pkg-food"] {
 		t.Error("should be eligible before exposure")
 	}
 
@@ -605,7 +588,11 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	})
 	var imResp2 tmproto.IdentityMatchResponse
 	json.Unmarshal(idResp2, &imResp2)
-	if imResp2.Eligibility[0].Eligible {
+	eligSet2 := make(map[string]bool)
+	for _, id := range imResp2.EligiblePackageIDs {
+		eligSet2[id] = true
+	}
+	if eligSet2["pkg-food"] {
 		t.Error("should be capped after 1 exposure")
 	}
 }

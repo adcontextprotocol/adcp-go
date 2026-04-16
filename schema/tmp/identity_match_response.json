@@ -2,36 +2,35 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "identity_match_response.json",
   "type": "object",
-  "description": "IdentityMatchResponse contains per-package eligibility determinations.",
+  "description": "IdentityMatchResponse indicates which packages the user is eligible for. The ttl_sec field defines a caching contract.",
   "x-go-name": "IdentityMatchResponse",
-  "required": ["request_id", "eligibility"],
+  "required": ["request_id", "eligible_package_ids", "ttl_sec"],
   "properties": {
     "request_id": {
       "type": "string"
     },
-    "eligibility": {
+    "eligible_package_ids": {
       "type": "array",
-      "items": { "$ref": "#/$defs/PackageEligibility" }
-    }
-  },
-  "$defs": {
-    "PackageEligibility": {
+      "description": "Package IDs the user is eligible for. Packages not listed are ineligible.",
+      "items": { "type": "string" },
+      "x-go-name": "EligiblePackageIDs"
+    },
+    "ttl_sec": {
+      "type": "integer",
+      "description": "How long the router should cache this response, in seconds. 0 means do not cache.",
+      "x-go-name": "TTLSec"
+    },
+    "tmpx": {
+      "type": "string",
+      "description": "HPKE-encrypted exposure token from a single buyer agent. The router collects these into tmpx_providers keyed by provider ID.",
+      "x-go-omitempty": true
+    },
+    "tmpx_providers": {
       "type": "object",
-      "description": "PackageEligibility is an identity-based eligibility determination. The buyer computes eligibility from frequency caps, audience membership, etc. and returns an opaque boolean. The publisher does not learn why.",
-      "required": ["package_id", "eligible"],
-      "properties": {
-        "package_id": {
-          "type": "string"
-        },
-        "eligible": {
-          "type": "boolean"
-        },
-        "intent_score": {
-          "type": "number",
-          "x-go-pointer": true,
-          "x-go-omitempty": true
-        }
-      }
+      "description": "Provider-keyed TMPX tokens. Populated by the router during merge.",
+      "additionalProperties": { "type": "string" },
+      "x-go-name": "TmpxProviders",
+      "x-go-omitempty": true
     }
   }
 }

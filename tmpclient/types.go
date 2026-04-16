@@ -35,20 +35,21 @@ type ActivateParams struct {
 	UIDType    tmproto.UIDType
 	PackageIDs []string // ALL buyer packages (may be superset of Packages)
 	Consent    *tmproto.ConsentSignals
+	Country    string // ISO 3166-1 alpha-2 routing directive for identity match
 }
 
 // Activation is a package that passed both context and identity checks.
 type Activation struct {
-	PackageID   string
-	MediaBuyID  string
-	Offer       tmproto.Offer
-	IntentScore *float64
+	PackageID  string
+	MediaBuyID string
+	Offer      tmproto.Offer
 }
 
 // ActivateResult is the joined output of parallel context + identity calls.
 type ActivateResult struct {
-	Activations []Activation
-	Signals     *tmproto.Signals
-	Context     *tmproto.ContextMatchResponse
-	Identity    *tmproto.IdentityMatchResponse
+	Activations   []Activation
+	Signals       *tmproto.Signals
+	TmpxProviders map[string]string // Provider ID → HPKE-encrypted exposure token
+	Context       *tmproto.ContextMatchResponse
+	Identity      *tmproto.IdentityMatchResponse
 }

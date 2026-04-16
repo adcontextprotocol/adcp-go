@@ -93,7 +93,7 @@ func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 	}
 
 	s := string(data)
-	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids"} {
+	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids", "identities"} {
 		if strings.Contains(s, forbidden) {
 			t.Errorf("identity match request contains context field %q", forbidden)
 		}
@@ -101,14 +101,10 @@ func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 }
 
 func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
-	score := 0.82
 	resp := &IdentityMatchResponse{
-		RequestID: "id-test-002",
-		Eligibility: []PackageEligibility{
-			{PackageID: "pkg-1", Eligible: true, IntentScore: &score},
-			{PackageID: "pkg-2", Eligible: false},
-			{PackageID: "pkg-3", Eligible: true},
-		},
+		RequestID:          "id-test-002",
+		EligiblePackageIDs: []string{"pkg-1", "pkg-3"},
+		TTLSec:             300,
 	}
 
 	data, err := json.Marshal(resp)
@@ -121,20 +117,135 @@ func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if len(got.Eligibility) != 3 {
-		t.Fatalf("eligibility: got %d, want 3", len(got.Eligibility))
+	if len(got.EligiblePackageIDs) != 2 {
+		t.Fatalf("eligible_package_ids: got %d, want 2", len(got.EligiblePackageIDs))
 	}
-	if !got.Eligibility[0].Eligible {
-		t.Error("pkg-1 should be eligible")
+	if got.EligiblePackageIDs[0] != "pkg-1" {
+		t.Errorf("eligible_package_ids[0]: got %q, want pkg-1", got.EligiblePackageIDs[0])
 	}
-	if got.Eligibility[0].IntentScore == nil || *got.Eligibility[0].IntentScore != 0.82 {
-		t.Error("pkg-1 intent_score should be 0.82")
+	if got.EligiblePackageIDs[1] != "pkg-3" {
+		t.Errorf("eligible_package_ids[1]: got %q, want pkg-3", got.EligiblePackageIDs[1])
 	}
-	if got.Eligibility[1].Eligible {
-		t.Error("pkg-2 should not be eligible")
+	if got.TTLSec != 300 {
+		t.Errorf("ttl_sec: got %d, want 300", got.TTLSec)
 	}
-	if got.Eligibility[1].IntentScore != nil {
-		t.Error("pkg-2 should have no intent_score")
+}
+
+func TestIdentityMatchRequest_Country(t *testing.T) {
+	req := &IdentityMatchRequest{
+		RequestID:  "id-country-001",
+		UserToken:  "tok_uid2_abc",
+		UIDType:    UIDTypeUID2,
+		PackageIDs: []string{"pkg-1"},
+		Country:    "US",
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"country":"US"`) {
+		t.Error("expected country in JSON output")
+	}
+
+	var got IdentityMatchRequest
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Country != "US" {
+		t.Errorf("country: got %q, want US", got.Country)
+	}
+}
+
+func TestIdentityMatchRequest_CountryOmittedWhenEmpty(t *testing.T) {
+	req := &IdentityMatchRequest{
+		RequestID:  "id-omit-001",
+		UserToken:  "tok_abc",
+		PackageIDs: []string{"pkg-1"},
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(data), `"country"`) {
+		t.Error("country should be omitted when empty")
+	}
+}
+
+func TestIdentityMatchResponse_TMPX(t *testing.T) {
+	resp := &IdentityMatchResponse{
+		RequestID:          "id-tmpx-001",
+		EligiblePackageIDs: []string{"pkg-1"},
+		TTLSec:             60,
+		Tmpx:               "k1.dGVzdC10b2tlbg",
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if !strings.Contains(string(data), `"tmpx":"k1.dGVzdC10b2tlbg"`) {
+		t.Error("expected tmpx in JSON output")
+	}
+
+	var got IdentityMatchResponse
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Tmpx != "k1.dGVzdC10b2tlbg" {
+		t.Errorf("tmpx: got %q, want k1.dGVzdC10b2tlbg", got.Tmpx)
+	}
+}
+
+func TestIdentityMatchResponse_TmpxProviders(t *testing.T) {
+	resp := &IdentityMatchResponse{
+		RequestID:          "id-tmpx-map",
+		EligiblePackageIDs: []string{"pkg-1"},
+		TTLSec:             120,
+		TmpxProviders: map[string]string{
+			"acme":   "k1.acme-token",
+			"scope3": "k2.scope3-token",
+		},
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var got IdentityMatchResponse
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.TmpxProviders["acme"] != "k1.acme-token" {
+		t.Errorf("acme: got %q, want k1.acme-token", got.TmpxProviders["acme"])
+	}
+	if got.TmpxProviders["scope3"] != "k2.scope3-token" {
+		t.Errorf("scope3: got %q, want k2.scope3-token", got.TmpxProviders["scope3"])
+	}
+}
+
+func TestIdentityMatchResponse_TMPXOmittedWhenEmpty(t *testing.T) {
+	resp := &IdentityMatchResponse{
+		RequestID:          "id-omit-002",
+		EligiblePackageIDs: []string{"pkg-1"},
+		TTLSec:             60,
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	if strings.Contains(string(data), `"tmpx"`) {
+		t.Error("tmpx should be omitted when empty")
+	}
+	if strings.Contains(string(data), `"tmpx_providers"`) {
+		t.Error("tmpx_providers should be omitted when empty")
 	}
 }
 

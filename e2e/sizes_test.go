@@ -55,18 +55,10 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 	}
 
 	// Identity response.
-	intentHigh := 0.92
-	intentLow := 0.35
 	idResp := tmproto.IdentityMatchResponse{
-		RequestID: idReq.RequestID,
-		Eligibility: []tmproto.PackageEligibility{
-			{PackageID: "pkg-food-display", Eligible: true, IntentScore: &intentHigh},
-			{PackageID: "pkg-tech-native", Eligible: true},
-			{PackageID: "pkg-family-safe", Eligible: true, IntentScore: &intentLow},
-			{PackageID: "pkg-auto-video", Eligible: false},
-			{PackageID: "pkg-travel-sponsored", Eligible: true},
-			{PackageID: "pkg-pharma-awareness", Eligible: false},
-		},
+		RequestID:          idReq.RequestID,
+		EligiblePackageIDs: []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-travel-sponsored"},
+		TTLSec:             300,
 	}
 
 	// Expose request.

@@ -77,17 +77,20 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if req.RequestID == "" {
 		return errors.New("request_id is required")
 	}
-	if req.UserToken == "" && len(req.Identities) == 0 {
-		return errors.New("user_token or identities is required")
+	if req.UserToken == "" {
+		return errors.New("user_token is required")
+	}
+	if req.UIDType == "" {
+		return errors.New("uid_type is required")
+	}
+	if req.Country != "" && len(req.Country) != 2 {
+		return errors.New("country must be a 2-letter ISO 3166-1 alpha-2 code")
 	}
 	if len(req.PackageIDs) == 0 {
 		return errors.New("package_ids must not be empty")
 	}
 	if len(req.PackageIDs) > MaxPackagesPerRequest {
 		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)
-	}
-	if len(req.Identities) > MaxIdentitiesPerRequest {
-		return fmt.Errorf("identities exceeds maximum of %d", MaxIdentitiesPerRequest)
 	}
 	for _, id := range req.PackageIDs {
 		if err := validateSafeID("package_id", id); err != nil {

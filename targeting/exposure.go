@@ -161,11 +161,7 @@ func ComputeIntentScore(exposureTime int64, now time.Time) float64 {
 }
 
 // resolveIdentities extracts UserIdentity entries from a request.
-// Handles backward compat: if Identities is empty, uses UserToken.
 func resolveIdentities(req *tmproto.IdentityMatchRequest) []tmproto.UserIdentity {
-	if len(req.Identities) > 0 {
-		return req.Identities
-	}
 	if req.UserToken != "" {
 		return []tmproto.UserIdentity{{UserToken: req.UserToken, UIDType: req.UIDType}}
 	}

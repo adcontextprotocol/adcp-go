@@ -217,10 +217,9 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	var eligibility []tmproto.PackageEligibility
+	var eligible []string
 	for _, pkgID := range req.PackageIDs {
-		eligible := true
-		intentScore := 0.5
+		isEligible := true
 
 		// Check frequency cap
 		if cap, ok := a.freqCaps[pkgID]; ok {
@@ -229,50 +228,37 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 				count = userCounts[pkgID]
 			}
 			if count >= cap {
-				eligible = false
-			}
-			// Intent decays with frequency
-			if count > 0 {
-				intentScore = 0.8 - (float64(count) * 0.1)
-				if intentScore < 0.1 {
-					intentScore = 0.1
-				}
+				isEligible = false
 			}
 		}
 
 		// Check audience segments
-		if eligible {
+		if isEligible {
 			reqSegments := a.packageSegments[pkgID]
 			if len(reqSegments) > 0 {
 				inAudience := false
 				for _, seg := range reqSegments {
 					if a.audiences[seg] != nil && a.audiences[seg][req.UserToken] {
 						inAudience = true
-						intentScore += 0.2 // Audience match boosts intent
 						break
 					}
 				}
 				if !inAudience {
-					eligible = false
+					isEligible = false
 				}
 			}
 		}
 
-		if intentScore > 1.0 {
-			intentScore = 1.0
+		if isEligible {
+			eligible = append(eligible, pkgID)
 		}
-		score := intentScore
-		eligibility = append(eligibility, tmproto.PackageEligibility{
-			PackageID:   pkgID,
-			Eligible:    eligible,
-			IntentScore: &score,
-		})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
-		RequestID:   req.RequestID,
-		Eligibility: eligibility,
+		RequestID:          req.RequestID,
+		EligiblePackageIDs: eligible,
+		TTLSec:             60,
 	})
 }
 
@@ -430,16 +416,14 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
-		t.Logf("Identity Match for Alice:")
-		for _, e := range imResp.Eligibility {
-			t.Logf("  - %s: eligible=%v intent=%.2f", e.PackageID, e.Eligible, safeIntent(e.IntentScore))
+		eligMap := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligMap[id] = true
 		}
 
+		t.Logf("Identity Match for Alice: eligible=%v", imResp.EligiblePackageIDs)
+
 		// Alice is in health_conscious, so pharma should be eligible
-		eligMap := make(map[string]bool)
-		for _, e := range imResp.Eligibility {
-			eligMap[e.PackageID] = e.Eligible
-		}
 		if !eligMap["pkg-pharma-native"] {
 			t.Error("Alice should be eligible for pharma (she's in health_conscious)")
 		}
@@ -470,10 +454,12 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
-		for _, e := range imResp.Eligibility {
-			if e.PackageID == "pkg-pharma-native" && e.Eligible {
-				t.Error("Bob should NOT be eligible for pharma (not in health_conscious)")
-			}
+		eligSet := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligSet[id] = true
+		}
+		if eligSet["pkg-pharma-native"] {
+			t.Error("Bob should NOT be eligible for pharma (not in health_conscious)")
 		}
 		t.Log("Bob correctly excluded from pharma package (not in audience)")
 	})
@@ -526,18 +512,16 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		var imResp tmproto.IdentityMatchResponse
 		json.Unmarshal(idResp, &imResp)
 
-		for _, e := range imResp.Eligibility {
-			switch e.PackageID {
-			case "pkg-coffee-sponsored":
-				if e.Eligible {
-					t.Error("coffee should be capped after 3 exposures (cap=3)")
-				}
-				t.Logf("Coffee capped: eligible=%v intent=%.2f", e.Eligible, safeIntent(e.IntentScore))
-			case "pkg-snacks-display":
-				if !e.Eligible {
-					t.Error("snacks should still be eligible (no exposures)")
-				}
-			}
+		eligSet := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligSet[id] = true
+		}
+		if eligSet["pkg-coffee-sponsored"] {
+			t.Error("coffee should be capped after 3 exposures (cap=3)")
+		}
+		t.Logf("Coffee capped: eligible=%v", eligSet["pkg-coffee-sponsored"])
+		if !eligSet["pkg-snacks-display"] {
+			t.Error("snacks should still be eligible (no exposures)")
 		}
 	})
 
@@ -685,26 +669,22 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		for _, o := range cmResp.Offers {
 			contextOffers[o.PackageID] = o
 		}
-		eligMap := make(map[string]tmproto.PackageEligibility)
-		for _, e := range imResp.Eligibility {
-			eligMap[e.PackageID] = e
+		eligSet := make(map[string]bool)
+		for _, id := range imResp.EligiblePackageIDs {
+			eligSet[id] = true
 		}
 
 		var activated []string
 		var bestPkg string
-		var bestIntent float64 = -1
 		for pkgID, offer := range contextOffers {
-			e, ok := eligMap[pkgID]
-			if ok && e.Eligible {
+			if eligSet[pkgID] {
 				activated = append(activated, pkgID)
-				intent := safeIntent(e.IntentScore)
-				t.Logf("  Eligible: %s (intent=%.2f) - %s", pkgID, intent, offer.Summary)
-				if intent > bestIntent {
-					bestIntent = intent
+				t.Logf("  Eligible: %s - %s", pkgID, offer.Summary)
+				if bestPkg == "" {
 					bestPkg = pkgID
 				}
-			} else if ok && !e.Eligible {
-				t.Logf("  Capped:   %s (intent=%.2f)", pkgID, safeIntent(e.IntentScore))
+			} else {
+				t.Logf("  Capped:   %s", pkgID)
 			}
 		}
 
@@ -721,9 +701,3 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 	}
 }
 
-func safeIntent(score *float64) float64 {
-	if score == nil {
-		return 0
-	}
-	return *score
-}

@@ -18,8 +18,22 @@ func MatchesContextProvider(req *tmproto.ContextMatchRequest, p *ProviderConfig)
 }
 
 // MatchesIdentityProvider checks if an identity match request should be sent to this provider.
-func MatchesIdentityProvider(p *ProviderConfig) bool {
-	return p.IdentityMatch
+// Filters by country and uid_type when configured on the provider.
+func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfig) bool {
+	if !p.IdentityMatch {
+		return false
+	}
+	if len(p.Countries) > 0 && req.Country != "" {
+		if !slices.Contains(p.Countries, req.Country) {
+			return false
+		}
+	}
+	if len(p.UIDTypes) > 0 && req.UIDType != "" {
+		if !slices.Contains(p.UIDTypes, string(req.UIDType)) {
+			return false
+		}
+	}
+	return true
 }
 
 func matchesProperty(propertyID, propertyType string, p *ProviderConfig) bool {
