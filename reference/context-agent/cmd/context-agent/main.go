@@ -41,7 +41,7 @@ func main() {
 		slog.Info("Loaded properties from registry", "count", registry.Len())
 	}
 
-	// Build global property bitmap from registry using Roaring.
+	// Build global property bitmap from registry.
 	tc := contextagent.NewTargetingConfig()
 	for _, rid := range registry.AllRIDs() {
 		tc.AddProperties(rid)
@@ -58,7 +58,7 @@ func main() {
 		Store:      store,
 		Metrics:    metrics,
 		Properties: targeting.PropertyList{
-			Global: &contextagent.RoaringBitmap{Bitmap: tc.PropertyBitmap},
+			Global: tc.PropertyBitmap,
 		},
 		Packages: []targeting.PackageConfig{
 			{PackageID: "pkg-display-0041", TopicTargets: true, EmitSegments: []string{"food", "lifestyle"}},

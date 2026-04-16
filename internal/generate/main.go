@@ -11,12 +11,14 @@ import (
 
 func main() {
 	schemaDir := flag.String("schema", "", "directory containing JSON Schema files")
+	enumDir := flag.String("enums", "", "directory containing individual enum JSON files")
+	overlayFile := flag.String("overlay", "", "path to Go overlay JSON file")
 	outFile := flag.String("out", "", "output Go file path")
 	pkg := flag.String("pkg", "tmproto", "Go package name for generated file")
 	flag.Parse()
 
 	if *schemaDir == "" || *outFile == "" {
-		fmt.Fprintln(os.Stderr, "usage: generate -schema <dir> -out <file> [-pkg <name>]")
+		fmt.Fprintln(os.Stderr, "usage: generate -schema <dir> [-enums <dir>] [-overlay <file>] -out <file> [-pkg <name>]")
 		os.Exit(1)
 	}
 
@@ -26,7 +28,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	ir, err := LoadSchemas(absSchema)
+	var absEnums string
+	if *enumDir != "" {
+		absEnums, err = filepath.Abs(*enumDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "resolve enum dir: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	ir, err := LoadSchemas(absSchema, absEnums, *overlayFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load schemas: %v\n", err)
 		os.Exit(1)

@@ -1,0 +1,55 @@
+{
+  "enums": {
+    "PropertyType": {
+      "prefix": "PropertyType",
+      "names": ["Website", "MobileApp", "CTVApp", "DesktopApp", "DOOH", "Podcast", "Radio", "LinearTV", "StreamingAudio", "AIAssistant"]
+    },
+    "UIDType": {
+      "prefix": "UIDType",
+      "names": ["RampID", "ID5", "UID2", "EUID", "PairID", "MAID", "HashedEmail", "PublisherFirstParty", "Other"]
+    },
+    "MetroAreaSystem": {
+      "prefix": "MetroSystem",
+      "names": ["NielsenDMA", "UKITL1", "UKITL2", "EurostatNUTS2", "Custom"]
+    },
+    "PricingModel": {
+      "prefix": "PriceModel",
+      "names": ["CPM", "VCPM", "CPC", "CPCV", "CPV", "CPP", "CPA", "FlatRate", "Time"]
+    },
+    "TmpResponseType": {
+      "prefix": "ResponseType",
+      "names": ["Activation", "CatalogItems", "Creative", "Deal"]
+    },
+    "ProviderStatus": {
+      "prefix": "ProviderStatus",
+      "names": ["Active", "Inactive", "Draining"],
+      "values": ["active", "inactive", "draining"],
+      "description": "Provider lifecycle status."
+    },
+    "ErrorCode": {
+      "prefix": "ErrorCode",
+      "names": ["InvalidRequest", "UnknownPackage", "RateLimited", "Timeout", "InternalError", "ProviderUnavailable"],
+      "values": ["invalid_request", "unknown_package", "rate_limited", "timeout", "internal_error", "provider_unavailable"],
+      "description": "Machine-readable TMP error code."
+    }
+  },
+  "structs": {
+    "TmpError": "ErrorResponse",
+    "TmpProviderRegistration": "ProviderRegistration"
+  },
+  "fields": {
+    "ContextMatchRequest.artifact": {"type": "json.RawMessage", "pointer": true},
+    "ContextMatchRequest.context_signals": {"type": "json.RawMessage", "pointer": true},
+    "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
+    "ProviderRegistration.status": {"type": "ProviderStatus"},
+    "ErrorResponse.code": {"type": "ErrorCode"}
+  },
+  "refs": {
+    "/schemas/core/property-id.json": "string",
+    "/schemas/core/format-id.json": "json.RawMessage",
+    "/schemas/core/catalog.json": "json.RawMessage",
+    "/schemas/core/brand-ref.json": "json.RawMessage",
+    "/schemas/core/creative-manifest.json": "json.RawMessage",
+    "/schemas/content-standards/artifact.json": "json.RawMessage"
+  }
+}

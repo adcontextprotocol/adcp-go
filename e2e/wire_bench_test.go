@@ -15,33 +15,29 @@ func TestWire_JSONCost(t *testing.T) {
 		ProtocolVersion: "1.0",
 		RequestID:       "bench-ctx-001",
 		PropertyID:      "pub-oakwood",
-		PropertyRID:     1,
+		PropertyRID:     "rid-pub-oakwood",
 		PropertyType:    tmproto.PropertyTypeWebsite,
 		PlacementID:     "sidebar-300x250",
-		Artifacts:       []string{"article:cooking-with-herbs", "article:pasta-carbonara"},
-		Geo:             &tmproto.Geo{Country: "US", Region: "NY"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food-display", MediaBuyID: "mb-acme-q1", FormatIDs: []string{"banner-300x250", "native-card"}},
-			{PackageID: "pkg-tech-native", MediaBuyID: "mb-nova-spring", FormatIDs: []string{"native-card"}},
-			{PackageID: "pkg-family-safe", MediaBuyID: "mb-family-q2", FormatIDs: []string{"banner-728x90"}},
-		},
+		Geo:             map[string]any{"country": "US", "region": "NY"},
+		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe"},
 	}
 
 	idReq := tmproto.IdentityMatchRequest{
 		ProtocolVersion: "1.0",
 		RequestID:       "bench-id-001",
-		UserToken:       "tok_uid2_BhY3NzY2OTA2MjUwMjY0NjEwOQ",
+		UserToken:       "tok_uid2_example_not_a_real_token",
 		UIDType:         tmproto.UIDTypeUID2,
 		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-auto-video", "pkg-travel-sponsored", "pkg-pharma-awareness"},
 	}
 
+	brandJSON, _ := json.Marshal(map[string]string{"name": "Meridian Foods"})
 	ctxResp := tmproto.ContextMatchResponse{
 		RequestID: "bench-ctx-001",
 		Offers: []tmproto.Offer{
-			{PackageID: "pkg-food-display", Brand: &tmproto.BrandRef{Name: "Meridian Foods"}, Price: &tmproto.OfferPrice{Amount: 12.50, Currency: "USD", Model: tmproto.PriceModelCPM}, Summary: "Olive oil sponsored"},
+			{PackageID: "pkg-food-display", Brand: json.RawMessage(brandJSON), Price: tmproto.OfferPrice{Amount: 12.50, Currency: "USD", Model: string(tmproto.PriceModelCPM)}, Summary: "Olive oil sponsored"},
 			{PackageID: "pkg-family-safe"},
 		},
-		Signals: &tmproto.Signals{Segments: []string{"food", "cooking"}},
+		Signals: map[string]any{"segments": []string{"food", "cooking"}},
 	}
 
 	idResp := tmproto.IdentityMatchResponse{

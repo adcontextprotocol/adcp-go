@@ -15,7 +15,7 @@ import (
 var (
 	identifierRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 	goTypeRe     = regexp.MustCompile(`^[\[\]*]*(?:map\[string\])?[A-Za-z_][A-Za-z0-9_.]*$`)
-	enumValueRe  = regexp.MustCompile(`^[a-z0-9_]+$`)
+	enumValueRe  = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
 )
 
 func validateIdentifier(context, value string) error {
@@ -33,10 +33,39 @@ func validateGoType(context, value string) error {
 }
 
 func sanitizeComment(s string) string {
-	// Strip newlines to prevent breaking out of // comments into code.
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", " ")
+	// Defense-in-depth: if generated output ever uses block comments,
+	// prevent a description from closing the comment early.
+	s = strings.ReplaceAll(s, "*/", "* /")
 	return s
+}
+
+// Overlay types for Go-specific annotations.
+
+// Overlay holds Go-specific overrides applied on top of upstream schemas.
+type Overlay struct {
+	Enums   map[string]EnumOverlay  `json:"enums"`   // keyed by Go type name (derived from title)
+	Structs map[string]string       `json:"structs"` // derived name -> desired name
+	Fields  map[string]FieldOverlay `json:"fields"`  // keyed by "StructName.json_field_name" (uses final name after rename)
+	Refs    map[string]string       `json:"refs"`    // $ref path -> Go type
+}
+
+// EnumOverlay customizes enum const naming.
+// When Values is set, the enum is synthetic (not from a file).
+type EnumOverlay struct {
+	Prefix      string   `json:"prefix"`
+	Names       []string `json:"names"`
+	Values      []string `json:"values,omitempty"`
+	Description string   `json:"description,omitempty"`
+}
+
+// FieldOverlay customizes a struct field.
+type FieldOverlay struct {
+	Type      string `json:"type,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Pointer   bool   `json:"pointer,omitempty"`
+	OmitEmpty *bool  `json:"omit_empty,omitempty"`
 }
 
 // IR types for codegen
@@ -76,39 +105,284 @@ type IR struct {
 	Structs []GoStruct
 }
 
-// LoadSchemas reads all JSON Schema files from dir and returns an IR.
-func LoadSchemas(dir string) (*IR, error) {
+// enumRegistry maps $ref paths (e.g., "/schemas/enums/property-type.json") to Go type names.
+type enumRegistry map[string]string
+
+// structRegistry maps $ref paths (e.g., "/schemas/tmp/offer.json") to Go type names.
+type structRegistry map[string]string
+
+// loadContext holds state shared across loading functions.
+type loadContext struct {
+	overlay    *Overlay
+	enumReg    enumRegistry
+	structReg  structRegistry
+	seen       map[string]string // struct name -> source file (for duplicate detection)
+}
+
+// LoadSchemas reads JSON Schema files from schemaDir, enum files from enumDir,
+// and applies overlay overrides. enumDir and overlayPath may be empty.
+func LoadSchemas(schemaDir, enumDir, overlayPath string) (*IR, error) {
 	ir := &IR{}
 
-	// Load enums first (other schemas reference them).
-	enumPath := filepath.Join(dir, "enums.json")
-	if err := loadEnums(enumPath, ir); err != nil {
-		return nil, fmt.Errorf("enums: %w", err)
+	// Load overlay.
+	var overlay *Overlay
+	if overlayPath != "" {
+		var err error
+		overlay, err = loadOverlay(overlayPath)
+		if err != nil {
+			return nil, fmt.Errorf("overlay: %w", err)
+		}
 	}
 
-	// Track struct names to detect duplicates across schema files.
-	seen := make(map[string]string) // name -> source file
+	ctx := &loadContext{
+		overlay:   overlay,
+		enumReg:   make(enumRegistry),
+		structReg: make(structRegistry),
+		seen:      make(map[string]string),
+	}
 
-	// Load all other schema files.
-	entries, err := os.ReadDir(dir)
+	// Load enums.
+	if enumDir != "" {
+		if err := loadEnumsDir(enumDir, overlay, ir, ctx); err != nil {
+			return nil, fmt.Errorf("enums: %w", err)
+		}
+	} else {
+		// Legacy: look for enums.json in schemaDir.
+		enumPath := filepath.Join(schemaDir, "enums.json")
+		if _, err := os.Stat(enumPath); err == nil {
+			if err := loadEnumsLegacy(enumPath, ir); err != nil {
+				return nil, fmt.Errorf("enums: %w", err)
+			}
+		}
+	}
+
+	// Build struct registry from schema filenames before loading.
+	entries, err := os.ReadDir(schemaDir)
 	if err != nil {
 		return nil, err
 	}
-
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || e.Name() == "enums.json" {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		if err := loadObjectSchema(path, ir, seen); err != nil {
+		path := filepath.Join(schemaDir, e.Name())
+		s, err := readSchema(path)
+		if err != nil {
+			continue // will be caught during full load
+		}
+		goName := deriveStructName(s, e.Name())
+		if goName != "" {
+			// Apply struct rename from overlay so $refs resolve to the final name.
+			if overlay != nil {
+				if renamed, ok := overlay.Structs[goName]; ok {
+					goName = renamed
+				}
+			}
+			// Infer the $id or construct ref path from filename.
+			refPath := s.ID
+			if refPath == "" {
+				refPath = "/schemas/tmp/" + e.Name()
+			}
+			ctx.structReg[refPath] = goName
+		}
+	}
+
+	// Load all schema files.
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || e.Name() == "enums.json" {
+			continue
+		}
+		path := filepath.Join(schemaDir, e.Name())
+		if err := loadObjectSchema(path, ir, ctx); err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
+		}
+	}
+
+	// Generate synthetic enums from overlay (enums with inline values, not from files).
+	if overlay != nil {
+		for name, eo := range overlay.Enums {
+			if len(eo.Values) == 0 {
+				continue // file-backed enum, already loaded
+			}
+			prefix := eo.Prefix
+			if prefix == "" {
+				prefix = name
+			}
+			ge := GoEnum{Name: name, Description: sanitizeComment(eo.Description)}
+			for i, v := range eo.Values {
+				constName := prefix + pascalCase(v)
+				if i < len(eo.Names) {
+					constName = prefix + eo.Names[i]
+				}
+				ge.Values = append(ge.Values, GoEnumValue{ConstName: constName, Value: v})
+			}
+			ir.Enums = append(ir.Enums, ge)
+		}
+		// Sort enums by name for deterministic output.
+		sort.Slice(ir.Enums, func(i, j int) bool { return ir.Enums[i].Name < ir.Enums[j].Name })
+	}
+
+	// Apply struct renames from overlay.
+	if overlay != nil && len(overlay.Structs) > 0 {
+		for i, s := range ir.Structs {
+			if newName, ok := overlay.Structs[s.Name]; ok {
+				ir.Structs[i].Name = newName
+			}
 		}
 	}
 
 	return ir, nil
 }
 
-func loadEnums(path string, ir *IR) error {
+func loadOverlay(path string) (*Overlay, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var o Overlay
+	if err := json.Unmarshal(data, &o); err != nil {
+		return nil, fmt.Errorf("parse overlay: %w", err)
+	}
+	return &o, nil
+}
+
+// loadEnumsDir reads individual enum JSON files from dir.
+// Only enums listed in the overlay are included.
+func loadEnumsDir(dir string, overlay *Overlay, ir *IR, ctx *loadContext) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	// Build a map of all enum files by their $id or derived ref path.
+	type enumFile struct {
+		path   string
+		schema *jsonschema.Schema
+		refID  string // the $id or constructed ref path
+	}
+	var files []enumFile
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		s, err := readSchema(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", e.Name(), err)
+		}
+		refID := s.ID
+		if refID == "" {
+			refID = "/schemas/enums/" + e.Name()
+		}
+		files = append(files, enumFile{path: path, schema: s, refID: refID})
+	}
+
+	// Derive Go type names for all enum files and populate the registry.
+	// This allows $ref resolution even for enums we don't generate.
+	for _, f := range files {
+		goName := titleToPascalCase(f.schema.Title)
+		if goName == "" {
+			goName = filenameToPascalCase(filepath.Base(f.path))
+		}
+		ctx.enumReg[f.refID] = goName
+	}
+
+	// Only generate enums listed in the overlay (if overlay is provided).
+	// If no overlay, generate all enums.
+	overlayEnumNames := make(map[string]bool)
+	if overlay != nil && len(overlay.Enums) > 0 {
+		for name := range overlay.Enums {
+			overlayEnumNames[name] = true
+		}
+	}
+
+	// Sort for deterministic output.
+	sort.Slice(files, func(i, j int) bool {
+		ni := ctx.enumReg[files[i].refID]
+		nj := ctx.enumReg[files[j].refID]
+		return ni < nj
+	})
+
+	for _, f := range files {
+		goName := ctx.enumReg[f.refID]
+		if goName == "" {
+			continue
+		}
+
+		// If overlay specifies which enums to generate, only include those.
+		if len(overlayEnumNames) > 0 && !overlayEnumNames[goName] {
+			continue
+		}
+		// Skip file-based generation for synthetic enums (defined with Values in overlay).
+		if overlay != nil {
+			if eo, ok := overlay.Enums[goName]; ok && len(eo.Values) > 0 {
+				continue
+			}
+		}
+
+		if err := validateIdentifier("enum type", goName); err != nil {
+			return err
+		}
+
+		var eo *EnumOverlay
+		if overlay != nil {
+			if v, ok := overlay.Enums[goName]; ok {
+				eo = &v
+			}
+		}
+
+		ge, err := buildEnum(goName, f.schema, eo)
+		if err != nil {
+			return err
+		}
+		ir.Enums = append(ir.Enums, ge)
+	}
+
+	return nil
+}
+
+func buildEnum(name string, s *jsonschema.Schema, eo *EnumOverlay) (GoEnum, error) {
+	prefix := name
+	if eo != nil && eo.Prefix != "" {
+		prefix = eo.Prefix
+	}
+
+	// Enforce positional names match schema length, so upstream insertions
+	// produce a clear failure instead of silently mislabeling constants.
+	if eo != nil && len(eo.Names) > 0 && len(eo.Names) != len(s.Enum) {
+		return GoEnum{}, fmt.Errorf("enum %s: overlay names length %d != schema enum length %d — update overlay for upstream schema change",
+			name, len(eo.Names), len(s.Enum))
+	}
+
+	ge := GoEnum{
+		Name:        name,
+		Description: sanitizeComment(s.Description),
+	}
+
+	for i, v := range s.Enum {
+		sv, ok := v.(string)
+		if !ok {
+			continue
+		}
+		if !enumValueRe.MatchString(sv) {
+			return GoEnum{}, fmt.Errorf("enum %s: value %q contains invalid characters", name, sv)
+		}
+
+		constName := prefix + pascalCase(sv)
+		if eo != nil && i < len(eo.Names) {
+			constName = prefix + eo.Names[i]
+		}
+		if err := validateIdentifier("enum const", constName); err != nil {
+			return GoEnum{}, err
+		}
+		ge.Values = append(ge.Values, GoEnumValue{ConstName: constName, Value: sv})
+	}
+
+	return ge, nil
+}
+
+// loadEnumsLegacy loads enums from a single enums.json with $defs (backward compat).
+func loadEnumsLegacy(path string, ir *IR) error {
 	s, err := readSchema(path)
 	if err != nil {
 		return err
@@ -117,7 +391,6 @@ func loadEnums(path string, ir *IR) error {
 		return fmt.Errorf("enums.json has no $defs")
 	}
 
-	// Sort enum names for deterministic output.
 	names := make([]string, 0, len(s.Defs))
 	for name := range s.Defs {
 		names = append(names, name)
@@ -161,7 +434,19 @@ func loadEnums(path string, ir *IR) error {
 	return nil
 }
 
-func loadObjectSchema(path string, ir *IR, seen map[string]string) error {
+// deriveStructName returns the Go struct name for a schema, using x-go-name, title, or filename.
+func deriveStructName(s *jsonschema.Schema, filename string) string {
+	if goName := extraString(s, "x-go-name"); goName != "" {
+		return goName
+	}
+	if s.Title != "" {
+		return titleToPascalCase(s.Title)
+	}
+	stem := strings.TrimSuffix(filename, ".json")
+	return filenameToPascalCase(stem)
+}
+
+func loadObjectSchema(path string, ir *IR, ctx *loadContext) error {
 	s, err := readSchema(path)
 	if err != nil {
 		return err
@@ -180,12 +465,12 @@ func loadObjectSchema(path string, ir *IR, seen map[string]string) error {
 			if err := validateIdentifier("$defs struct", name); err != nil {
 				return err
 			}
-			if prev, ok := seen[name]; ok {
+			if prev, ok := ctx.seen[name]; ok {
 				return fmt.Errorf("duplicate struct name %q (first in %s, also in %s)", name, prev, file)
 			}
-			seen[name] = file
+			ctx.seen[name] = file
 			def := s.Defs[name]
-			gs, err := schemaToStruct(name, def)
+			gs, err := schemaToStruct(name, def, ctx)
 			if err != nil {
 				return err
 			}
@@ -193,19 +478,20 @@ func loadObjectSchema(path string, ir *IR, seen map[string]string) error {
 		}
 	}
 
-	// Process the top-level object.
-	goName := extraString(s, "x-go-name")
+	// Derive the top-level struct name.
+	goName := deriveStructName(s, file)
 	if goName == "" {
-		return nil // skip schemas without x-go-name
+		return nil
 	}
 	if err := validateIdentifier("top-level struct", goName); err != nil {
 		return err
 	}
-	if prev, ok := seen[goName]; ok {
+	if prev, ok := ctx.seen[goName]; ok {
 		return fmt.Errorf("duplicate struct name %q (first in %s, also in %s)", goName, prev, file)
 	}
-	seen[goName] = file
-	gs, err := schemaToStruct(goName, s)
+	ctx.seen[goName] = file
+
+	gs, err := schemaToStruct(goName, s, ctx)
 	if err != nil {
 		return err
 	}
@@ -214,10 +500,18 @@ func loadObjectSchema(path string, ir *IR, seen map[string]string) error {
 	return nil
 }
 
-func schemaToStruct(name string, s *jsonschema.Schema) (GoStruct, error) {
+func schemaToStruct(name string, s *jsonschema.Schema, ctx *loadContext) (GoStruct, error) {
 	gs := GoStruct{
 		Name:        name,
 		Description: sanitizeComment(s.Description),
+	}
+
+	// For overlay field lookups, use the final struct name (after rename).
+	overlayName := name
+	if ctx.overlay != nil {
+		if renamed, ok := ctx.overlay.Structs[name]; ok {
+			overlayName = renamed
+		}
 	}
 
 	requiredSet := make(map[string]bool, len(s.Required))
@@ -230,7 +524,6 @@ func schemaToStruct(name string, s *jsonschema.Schema) (GoStruct, error) {
 	for pn := range s.Properties {
 		propNames = append(propNames, pn)
 	}
-	// Use PropertyOrder if available, otherwise sort alphabetically.
 	if len(s.PropertyOrder) > 0 {
 		propNames = s.PropertyOrder
 	} else {
@@ -243,25 +536,69 @@ func schemaToStruct(name string, s *jsonschema.Schema) (GoStruct, error) {
 			continue
 		}
 
+		// Skip $schema property — it's a JSON Schema meta-field, not data.
+		if jsonName == "$schema" {
+			continue
+		}
+
 		fname := fieldName(jsonName, prop)
+
+		// Apply overlay field name override.
+		overlayKey := overlayName + "." + jsonName
+		if ctx.overlay != nil {
+			if fo, ok := ctx.overlay.Fields[overlayKey]; ok {
+				if fo.Name != "" {
+					fname = fo.Name
+				}
+			}
+		}
+
 		if err := validateIdentifier(fmt.Sprintf("field %s.%s", name, jsonName), fname); err != nil {
 			return GoStruct{}, err
 		}
 
-		goType := resolveType(prop)
+		goType := resolveType(prop, ctx)
+
+		// Apply overlay field type override.
+		if ctx.overlay != nil {
+			if fo, ok := ctx.overlay.Fields[overlayKey]; ok {
+				if fo.Type != "" {
+					goType = fo.Type
+				}
+				if fo.Pointer {
+					goType = "*" + goType
+				}
+			}
+		}
+
+		// Legacy x-go-pointer support.
 		if extraBool(prop, "x-go-pointer") {
 			goType = "*" + goType
 		}
-		// Validate all resolved types (covers $ref, x-go-type, and computed types).
+
 		if err := validateGoType(fmt.Sprintf("field %s.%s type", name, jsonName), goType); err != nil {
 			return GoStruct{}, err
+		}
+
+		omitEmpty := !requiredSet[jsonName]
+		if extraBool(prop, "x-go-omitempty") {
+			omitEmpty = true
+		}
+
+		// Apply overlay omit_empty override.
+		if ctx.overlay != nil {
+			if fo, ok := ctx.overlay.Fields[overlayKey]; ok {
+				if fo.OmitEmpty != nil {
+					omitEmpty = *fo.OmitEmpty
+				}
+			}
 		}
 
 		field := GoField{
 			Name:      fname,
 			Type:      goType,
 			JSONName:  jsonName,
-			OmitEmpty: extraBool(prop, "x-go-omitempty") || !requiredSet[jsonName],
+			OmitEmpty: omitEmpty,
 			Comment:   sanitizeComment(prop.Description),
 		}
 
@@ -271,15 +608,15 @@ func schemaToStruct(name string, s *jsonschema.Schema) (GoStruct, error) {
 	return gs, nil
 }
 
-func resolveType(s *jsonschema.Schema) string {
+func resolveType(s *jsonschema.Schema, ctx *loadContext) string {
 	// x-go-type takes precedence.
 	if goType := extraString(s, "x-go-type"); goType != "" {
 		return goType
 	}
 
-	// $ref to an enum or struct.
+	// $ref to an enum, struct, or external type.
 	if s.Ref != "" {
-		return refToGoType(s.Ref)
+		return refToGoType(s.Ref, ctx)
 	}
 
 	switch s.Type {
@@ -293,12 +630,12 @@ func resolveType(s *jsonschema.Schema) string {
 		return "bool"
 	case "array":
 		if s.Items != nil {
-			return "[]" + resolveType(s.Items)
+			return "[]" + resolveType(s.Items, ctx)
 		}
 		return "[]any"
 	case "object":
 		if s.AdditionalProperties != nil {
-			return "map[string]" + resolveType(s.AdditionalProperties)
+			return "map[string]" + resolveType(s.AdditionalProperties, ctx)
 		}
 		return "map[string]any"
 	default:
@@ -306,10 +643,35 @@ func resolveType(s *jsonschema.Schema) string {
 	}
 }
 
-// refToGoType extracts the Go type name from a $ref like "enums.json#/$defs/PropertyType".
-func refToGoType(ref string) string {
-	parts := strings.Split(ref, "/")
-	return parts[len(parts)-1]
+// refToGoType resolves a $ref path to a Go type name.
+func refToGoType(ref string, ctx *loadContext) string {
+	// Check overlay refs first.
+	if ctx.overlay != nil {
+		if goType, ok := ctx.overlay.Refs[ref]; ok {
+			return goType
+		}
+	}
+
+	// Check enum registry.
+	if goType, ok := ctx.enumReg[ref]; ok {
+		return goType
+	}
+
+	// Check struct registry.
+	if goType, ok := ctx.structReg[ref]; ok {
+		return goType
+	}
+
+	// Legacy: "enums.json#/$defs/PropertyType" -> extract last segment.
+	if strings.Contains(ref, "#/") {
+		parts := strings.Split(ref, "/")
+		return parts[len(parts)-1]
+	}
+
+	// Fall back: last path segment, strip .json, convert to PascalCase.
+	base := filepath.Base(ref)
+	stem := strings.TrimSuffix(base, ".json")
+	return filenameToPascalCase(stem)
 }
 
 func fieldName(jsonName string, s *jsonschema.Schema) string {
@@ -319,20 +681,71 @@ func fieldName(jsonName string, s *jsonschema.Schema) string {
 	return pascalCase(jsonName)
 }
 
+// wordSplitRe splits on underscores, hyphens, dots, and slashes.
+var wordSplitRe = regexp.MustCompile(`[_\-./]+`)
+
 func pascalCase(s string) string {
-	parts := strings.Split(s, "_")
+	parts := wordSplitRe.Split(s, -1)
 	for i, p := range parts {
 		if p == "" {
 			continue
 		}
-		// Common acronyms that should be fully uppercased.
 		upper := strings.ToUpper(p)
 		switch upper {
 		case "ID", "URL", "URI", "API", "HTTP", "HTTPS", "HTML", "CSS", "JSON", "XML",
-			"SQL", "RID", "IP", "UID":
+			"SQL", "RID", "IP", "UID", "TTL", "KVS":
+			parts[i] = upper
+		case "IDS":
+			parts[i] = "IDs"
+		default:
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// titleToPascalCase converts a title like "Context Match Request" to "ContextMatchRequest".
+// Splits on whitespace and hyphens.
+func titleToPascalCase(title string) string {
+	if title == "" {
+		return ""
+	}
+	// Split on whitespace first, then split each word on hyphens.
+	spaceWords := strings.Fields(title)
+	var words []string
+	for _, sw := range spaceWords {
+		parts := strings.Split(sw, "-")
+		words = append(words, parts...)
+	}
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		upper := strings.ToUpper(w)
+		switch upper {
+		case "ID", "URL", "URI", "API", "HTTP", "HTTPS", "HTML", "CSS", "JSON", "XML",
+			"SQL", "RID", "IP", "UID", "TTL":
+			words[i] = upper
+		default:
+			words[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+		}
+	}
+	return strings.Join(words, "")
+}
+
+// filenameToPascalCase converts "context-match-request" to "ContextMatchRequest".
+func filenameToPascalCase(stem string) string {
+	parts := strings.Split(stem, "-")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		upper := strings.ToUpper(p)
+		switch upper {
+		case "ID", "URL", "URI", "API", "HTTP", "HTTPS", "HTML", "CSS", "JSON", "XML",
+			"SQL", "RID", "IP", "UID", "TMP", "TTL":
 			parts[i] = upper
 		default:
-			// Capitalize first letter, keep rest as-is.
 			parts[i] = strings.ToUpper(p[:1]) + p[1:]
 		}
 	}

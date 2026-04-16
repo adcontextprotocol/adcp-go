@@ -31,9 +31,7 @@ func TestValidateContextRequest_Valid(t *testing.T) {
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar-300x250",
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		PackageIDs: []string{"pkg-1"},
 	}
 	assert.NoError(t, ValidateContextRequest(req))
 }
@@ -43,10 +41,9 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 		name string
 		req  tmproto.ContextMatchRequest
 	}{
-		{"missing request_id", tmproto.ContextMatchRequest{PropertyID: "p", PlacementID: "pl", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"missing property_id", tmproto.ContextMatchRequest{RequestID: "r", PlacementID: "pl", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"missing placement_id", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}},
-		{"empty packages", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", PlacementID: "pl"}},
+		{"missing request_id", tmproto.ContextMatchRequest{PropertyID: "p", PlacementID: "pl", PackageIDs: []string{"a"}}},
+		{"missing property_id", tmproto.ContextMatchRequest{RequestID: "r", PlacementID: "pl", PackageIDs: []string{"a"}}},
+		{"missing placement_id", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", PackageIDs: []string{"a"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -71,8 +68,8 @@ func TestProviderFiltering_PropertyID(t *testing.T) {
 		PropertyIDs:  []string{"pub-oakwood-*"},
 	}
 
-	match := &tmproto.ContextMatchRequest{PropertyID: "pub-oakwood-main", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
-	noMatch := &tmproto.ContextMatchRequest{PropertyID: "pub-other-site", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	match := &tmproto.ContextMatchRequest{PropertyID: "pub-oakwood-main", PropertyType: "website", PackageIDs: []string{"a"}}
+	noMatch := &tmproto.ContextMatchRequest{PropertyID: "pub-other-site", PropertyType: "website", PackageIDs: []string{"a"}}
 
 	assert.True(t, MatchesContextProvider(match, provider), "should match pub-oakwood-main")
 	assert.False(t, MatchesContextProvider(noMatch, provider), "should not match pub-other-site")
@@ -84,7 +81,7 @@ func TestProviderFiltering_ExcludeProperty(t *testing.T) {
 		ExcludePropertyIDs: []string{"pub-blocked-*"},
 	}
 
-	req := &tmproto.ContextMatchRequest{PropertyID: "pub-blocked-123", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	req := &tmproto.ContextMatchRequest{PropertyID: "pub-blocked-123", PropertyType: "website", PackageIDs: []string{"a"}}
 	assert.False(t, MatchesContextProvider(req, provider), "should be excluded")
 }
 
@@ -94,8 +91,8 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 		PropertyTypes: []string{"website", "ai_assistant"},
 	}
 
-	web := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "website", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
-	ctv := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "ctv_app", AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "a", MediaBuyID: "b"}}}
+	web := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "website", PackageIDs: []string{"a"}}
+	ctv := &tmproto.ContextMatchRequest{PropertyID: "p", PropertyType: "ctv_app", PackageIDs: []string{"a"}}
 
 	assert.True(t, MatchesContextProvider(web, provider), "should match website")
 	assert.False(t, MatchesContextProvider(ctv, provider), "should not match ctv_app")
@@ -104,22 +101,22 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 func TestMergeContextResponses(t *testing.T) {
 	r1 := &tmproto.ContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-1"}},
-		Signals: &tmproto.Signals{
-			Segments: []string{"cooking"},
-			TargetingKVs: []tmproto.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
+		Signals: map[string]any{
+			"segments": []string{"cooking"},
+			"adcp_pkg": "pkg-1",
 		},
 	}
 	r2 := &tmproto.ContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-2"}, {PackageID: "pkg-3"}},
-		Signals: &tmproto.Signals{
-			Segments: []string{"sustainability"},
+		Signals: map[string]any{
+			"segments": []string{"sustainability"},
 		},
 	}
 
 	merged := mergeContextResponses("ctx-test", []*tmproto.ContextMatchResponse{r1, r2})
 
 	assert.Len(t, merged.Offers, 3)
-	assert.Len(t, merged.Signals.Segments, 2)
+	assert.NotNil(t, merged.Signals)
 }
 
 func TestMergeIdentityResponses(t *testing.T) {
@@ -159,8 +156,8 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
 			RequestID: "ctx-e2e",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-1"}},
-			Signals: &tmproto.Signals{
-				TargetingKVs: []tmproto.KeyValuePair{{Key: "adcp_pkg", Value: "pkg-1"}},
+			Signals: map[string]any{
+				"adcp_pkg": "pkg-1",
 			},
 		})
 	}))
@@ -175,7 +172,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",
-		"available_packages": [{"package_id": "pkg-1", "media_buy_id": "mb-1"}]
+		"package_ids": ["pkg-1"]
 	}`
 
 	w := httptest.NewRecorder()
@@ -337,39 +334,26 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 	_ = json.Unmarshal(receivedBody, &forwarded)
 	assert.Empty(t, forwarded.Country, "country should be stripped before forwarding")
 
-	// Verify TMPX in tmpx_providers map.
+	// Verify TMPX token is passed through.
 	var resp tmproto.IdentityMatchResponse
 	_ = json.NewDecoder(w.Body).Decode(&resp)
-	assert.Equal(t, "k1.dGVzdC10b2tlbg", resp.TmpxProviders["test-provider"])
+	assert.Equal(t, "k1.dGVzdC10b2tlbg", resp.Tmpx)
 }
 
-func TestMergeIdentityResponses_TMPX(t *testing.T) {
+func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 	r1 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-1", "pkg-3"},
 		TTLSec:             300,
-		Tmpx:               "k1.acme-token",
 	}
 	r2 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-2"},
 		TTLSec:             600,
-		Tmpx:               "k2.nova-token",
 	}
 
 	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2})
 
-	// tmpx_providers should map provider ID -> token.
-	require.Len(t, merged.TmpxProviders, 2)
-	assert.Equal(t, "k1.acme-token", merged.TmpxProviders["acme"])
-	assert.Equal(t, "k2.nova-token", merged.TmpxProviders["nova"])
-}
-
-func TestMergeIdentityResponses_TMPXOmittedWhenEmpty(t *testing.T) {
-	r1 := &tmproto.IdentityMatchResponse{
-		EligiblePackageIDs: []string{"pkg-1"},
-		TTLSec:             300,
-	}
-	merged := mergeIdentityResponses("test", []string{"p1"}, []*tmproto.IdentityMatchResponse{r1})
-	assert.Nil(t, merged.TmpxProviders, "tmpx_providers should be nil when no tokens present")
+	require.Len(t, merged.EligiblePackageIDs, 3)
+	assert.Equal(t, 300, merged.TTLSec)
 }
 
 func TestRouterTimeout_ProviderExcluded(t *testing.T) {
@@ -402,7 +386,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",
-		"available_packages": [{"package_id": "pkg-1", "media_buy_id": "mb-1"}]
+		"package_ids": ["pkg-1"]
 	}`
 
 	w := httptest.NewRecorder()

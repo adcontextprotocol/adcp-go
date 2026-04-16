@@ -36,8 +36,8 @@ type PackageConfig struct {
 	Offers []OfferConfig
 
 	// Package-level offer fields — used when Offers is empty (single-brand package).
-	Brand            *tmproto.BrandRef
-	Price            *tmproto.OfferPrice
+	Brand            json.RawMessage
+	Price            tmproto.OfferPrice
 	Summary          string
 	ManifestType     string
 	CreativeManifest json.RawMessage
@@ -56,11 +56,11 @@ type PackageContextConfig struct {
 	URLBlocklist bool                `json:"url_blocklist,omitempty"`
 	URLAllowlist bool                `json:"url_allowlist,omitempty"`
 	TopicTargets bool                `json:"topic_targets,omitempty"`
-	PropertyRIDs []uint64            `json:"property_rids,omitempty"` // per-package property targeting
+	PropertyRIDs []string             `json:"property_rids,omitempty"` // per-package property targeting
 	EmitSegments []string            `json:"emit_segments,omitempty"`
 	Offers       []OfferConfigJSON   `json:"offers,omitempty"`
-	Brand        *tmproto.BrandRef   `json:"brand,omitempty"`
-	Price        *tmproto.OfferPrice `json:"price,omitempty"`
+	Brand        json.RawMessage   `json:"brand,omitempty"`
+	Price        tmproto.OfferPrice `json:"price,omitempty"`
 	Summary      string              `json:"summary,omitempty"`
 	ManifestType string              `json:"manifest_type,omitempty"`
 	Macros       map[string]string   `json:"macros,omitempty"`
@@ -69,8 +69,8 @@ type PackageContextConfig struct {
 // OfferConfigJSON is the JSON-serializable form of OfferConfig.
 type OfferConfigJSON struct {
 	DealID       string              `json:"deal_id,omitempty"`
-	Brand        *tmproto.BrandRef   `json:"brand,omitempty"`
-	Price        *tmproto.OfferPrice `json:"price,omitempty"`
+	Brand        json.RawMessage   `json:"brand,omitempty"`
+	Price        tmproto.OfferPrice `json:"price,omitempty"`
 	Summary      string              `json:"summary,omitempty"`
 	ManifestType string              `json:"manifest_type,omitempty"`
 	Macros       map[string]string   `json:"macros,omitempty"`
@@ -79,8 +79,8 @@ type OfferConfigJSON struct {
 // OfferConfig represents a single brand's offer competing for a package.
 type OfferConfig struct {
 	DealID           string // Optional reference to a commercial arrangement.
-	Brand            *tmproto.BrandRef
-	Price            *tmproto.OfferPrice
+	Brand            json.RawMessage
+	Price            tmproto.OfferPrice
 	Summary          string
 	ManifestType     string
 	CreativeManifest json.RawMessage

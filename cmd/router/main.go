@@ -33,7 +33,7 @@ func main() {
 	registry := router.NewRegistry("", "")
 	health := router.NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
 	fanOutMetrics := &fanOutMetricsAdapter{} // set after metrics registry is created
-	r, err := router.NewRouter(cfg.Providers, registry, nil, health,
+	r, err := router.NewRouter(cfg.Providers, registry, health,
 		router.WithLatencyBudget(cfg.LatencyBudget()),
 		router.WithFanOutMetrics(fanOutMetrics))
 	if err != nil {

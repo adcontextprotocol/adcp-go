@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 )
 
-// ErrorCode is a machine-readable error code.
+// Machine-readable TMP error code.
 type ErrorCode string
 
 const (
@@ -23,18 +23,33 @@ const (
 	ErrorCodeProviderUnavailable ErrorCode = "provider_unavailable"
 )
 
-// PriceModel identifies the pricing model for an offer.
-type PriceModel string
+// Metro area classification systems for geographic targeting
+type MetroAreaSystem string
 
 const (
-	PriceModelCPM  PriceModel = "cpm"
-	PriceModelCPC  PriceModel = "cpc"
-	PriceModelCPCV PriceModel = "cpcv"
-	PriceModelCPA  PriceModel = "cpa"
-	PriceModelFlat PriceModel = "flat"
+	MetroSystemNielsenDMA    MetroAreaSystem = "nielsen_dma"
+	MetroSystemUKITL1        MetroAreaSystem = "uk_itl1"
+	MetroSystemUKITL2        MetroAreaSystem = "uk_itl2"
+	MetroSystemEurostatNUTS2 MetroAreaSystem = "eurostat_nuts2"
+	MetroSystemCustom        MetroAreaSystem = "custom"
 )
 
-// PropertyType identifies the type of publisher property.
+// Supported pricing models for advertising products
+type PricingModel string
+
+const (
+	PriceModelCPM      PricingModel = "cpm"
+	PriceModelVCPM     PricingModel = "vcpm"
+	PriceModelCPC      PricingModel = "cpc"
+	PriceModelCPCV     PricingModel = "cpcv"
+	PriceModelCPV      PricingModel = "cpv"
+	PriceModelCPP      PricingModel = "cpp"
+	PriceModelCPA      PricingModel = "cpa"
+	PriceModelFlatRate PricingModel = "flat_rate"
+	PriceModelTime     PricingModel = "time"
+)
+
+// Types of addressable advertising properties with verifiable ownership. Property types are a subset of media channels - they represent inventory surfaces that can be validated via adagents.json.
 type PropertyType string
 
 const (
@@ -45,27 +60,37 @@ const (
 	PropertyTypeDOOH           PropertyType = "dooh"
 	PropertyTypePodcast        PropertyType = "podcast"
 	PropertyTypeRadio          PropertyType = "radio"
+	PropertyTypeLinearTV       PropertyType = "linear_tv"
 	PropertyTypeStreamingAudio PropertyType = "streaming_audio"
 	PropertyTypeAIAssistant    PropertyType = "ai_assistant"
 )
 
-// ResponseType declares what a publisher can accept back from context match.
-type ResponseType string
+// Provider lifecycle status.
+type ProviderStatus string
 
 const (
-	ResponseTypeActivation   ResponseType = "activation"
-	ResponseTypeCatalogItems ResponseType = "catalog_items"
-	ResponseTypeCreative     ResponseType = "creative"
-	ResponseTypeDeal         ResponseType = "deal"
+	ProviderStatusActive   ProviderStatus = "active"
+	ProviderStatusInactive ProviderStatus = "inactive"
+	ProviderStatusDraining ProviderStatus = "draining"
 )
 
-// UIDType identifies the type of user identifier token.
+// What the publisher wants back from a TMP context match. Determines the richness level of the buyer's offer response.
+type TmpResponseType string
+
+const (
+	ResponseTypeActivation   TmpResponseType = "activation"
+	ResponseTypeCatalogItems TmpResponseType = "catalog_items"
+	ResponseTypeCreative     TmpResponseType = "creative"
+	ResponseTypeDeal         TmpResponseType = "deal"
+)
+
+// Type of user identifier. Used in audience sync, event logging, and TMP identity match requests to tell the receiver which identity graph to resolve against.
 type UIDType string
 
 const (
-	UIDTypeUID2                UIDType = "uid2"
 	UIDTypeRampID              UIDType = "rampid"
 	UIDTypeID5                 UIDType = "id5"
+	UIDTypeUID2                UIDType = "uid2"
 	UIDTypeEUID                UIDType = "euid"
 	UIDTypePairID              UIDType = "pairid"
 	UIDTypeMAID                UIDType = "maid"
@@ -74,154 +99,97 @@ const (
 	UIDTypeOther               UIDType = "other"
 )
 
-// AvailablePackage is a lightweight projection of a media buy package with the fields needed for real-time evaluation.
+// A package available for contextual matching. Synced to providers at media buy creation time — not sent per request. Providers cache this metadata and use it when evaluating context match requests for the placement.
 type AvailablePackage struct {
-	PackageID  string    `json:"package_id"`
-	MediaBuyID string    `json:"media_buy_id"`
-	FormatIDs  []string  `json:"format_ids,omitempty"`
-	Catalogs   []Catalog `json:"catalogs,omitempty"`
+	PackageID  string            `json:"package_id"`           // Unique identifier for the package
+	MediaBuyID string            `json:"media_buy_id"`         // Media buy that this package belongs to
+	FormatIDs  []json.RawMessage `json:"format_ids,omitempty"` // Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.
+	Catalogs   []json.RawMessage `json:"catalogs,omitempty"`   // The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.
 }
 
-// Catalog is a lightweight reference to a buyer's product catalog with selectors scoping which items are in play.
-type Catalog struct {
-	CatalogID string   `json:"catalog_id"`
-	Type      string   `json:"type,omitempty"`
-	GTINs     []string `json:"gtins,omitempty"`
-	IDs       []string `json:"ids,omitempty"`
-	Tags      []string `json:"tags,omitempty"`
-	Category  string   `json:"category,omitempty"`
-	Query     string   `json:"query,omitempty"`
-}
-
-// Geo describes the geographic context of the impression. Publisher controls granularity — country for volume filtering, finer for valuation. Describes where the ad serves, not where the user is.
-type Geo struct {
-	Country string `json:"country,omitempty"` // ISO 3166-1 alpha-2
-	Region  string `json:"region,omitempty"`  // ISO 3166-2 subdivision
-	Metro   *Metro `json:"metro,omitempty"`   // Metro area per AdCP metro-system enum
-}
-
-// Metro identifies a metro area using an AdCP-standard classification system.
-type Metro struct {
-	System string `json:"system"` // "nielsen_dma", "uk_itl2", "eurostat_nuts2", "custom"
-	Value  string `json:"value"`  // Code within the system (e.g., "501" for NY DMA)
-}
-
-// ContextMatchRequest is sent by the publisher to evaluate available packages against content context. MUST NOT contain user identity.
+// Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.
 type ContextMatchRequest struct {
-	ProtocolVersion string             `json:"protocol_version,omitempty"`
-	RequestID       string             `json:"request_id"`
-	PropertyID      string             `json:"property_id"`
-	PropertyRID     uint64             `json:"property_rid,omitempty"` // Registry integer ID, enriched by router
-	PropertyType    PropertyType       `json:"property_type"`
-	PlacementID     string             `json:"placement_id"`
-	Artifacts       []string           `json:"artifacts,omitempty"`
-	Geo             *Geo               `json:"geo,omitempty"`      // Geographic context, publisher controls granularity
-	URLHash         uint64             `json:"url_hash,omitempty"` // FNV-1a of canonicalized URL, enriched by router
-	AvailablePkgs   []AvailablePackage `json:"available_packages"`
-	Signature       string             `json:"signature,omitempty"` // Ed25519 signature from publisher/router
+	AdcpMajorVersion int              `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
+	Type             string           `json:"type"`                         // Message type discriminator for deserialization.
+	ProtocolVersion  string           `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
+	RequestID        string           `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any identity match request_id.
+	PropertyRID      string           `json:"property_rid"`                 // Property catalog UUID (UUID v7). Globally unique, stable identifier assigned by the property catalog. The primary key for TMP matching and property list targeting.
+	PropertyID       string           `json:"property_id,omitempty"`        // Publisher's human-readable property slug (e.g., 'cnn_homepage'). Optional when property_rid is present. Useful for logging and debugging.
+	PropertyType     PropertyType     `json:"property_type"`                // Type of the publisher property
+	PlacementID      string           `json:"placement_id"`                 // Placement identifier from the publisher's placement registry in adagents.json. Identifies where on the property this ad opportunity exists. One placement per request.
+	Artifact         *json.RawMessage `json:"artifact,omitempty"`           // Full content artifact adjacent to this ad opportunity. Same schema used for content standards evaluation. The publisher sends the artifact when they want the buyer to evaluate the full content. Contractual protections govern buyer use. TEE deployment upgrades contractual trust to cryptographic verification. Publishers MUST NOT include asset access credentials (bearer tokens, service accounts) — the router fans out to multiple buyer agents. For secured assets, use signed URLs with short expiry. Routers MUST strip access fields from artifacts before forwarding.
+	ArtifactRefs     []map[string]any `json:"artifact_refs,omitempty"`      // Public content references adjacent to this ad opportunity. Each artifact identifies content via a public identifier the buyer can resolve independently — no private registry sync required.
+	Geo              map[string]any   `json:"geo,omitempty"`                // Coarse geographic location of the viewer. Publisher controls granularity — country is sufficient for regulatory compliance and volume filtering, region or metro helps with campaign targeting and valuation. Coarsened to prevent user identification: no postcode, no coordinates. All fields optional.
+	ContextSignals   *json.RawMessage `json:"context_signals,omitempty"`    // Pre-computed classifier outputs for the content environment. Use when the publisher wants to provide classified context without sharing content or public references. Can supplement artifact_refs (e.g., URL + pre-classified topics) or replace them entirely (e.g., ephemeral conversation turns). Raw content MUST NOT be included — only classified outputs. The publisher is the classifier boundary.
+	PackageIDs       []string         `json:"package_ids,omitempty"`        // Restrict evaluation to specific packages. When omitted, the provider evaluates all eligible packages for this placement (the common case). MUST NOT vary by user — the same package_ids must be sent for every user on a given placement. User-dependent filtering leaks identity into the context path.
 }
 
-// BrandRef identifies a brand on an offer.
-type BrandRef struct {
-	Name             string `json:"name"`
-	AdvertiserDomain string `json:"advertiser_domain,omitempty"`
-}
-
-// KeyValuePair is a targeting key-value pair for ad server integration.
-type KeyValuePair struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// Offer is a buyer's response for a single package. For simple GAM activation, only PackageID is needed. For richer integrations, the buyer can include brand, price, summary, and creative manifest.
-type Offer struct {
-	PackageID        string            `json:"package_id"`
-	DealID           string            `json:"deal_id,omitempty"`
-	Brand            *BrandRef         `json:"brand,omitempty"`
-	Price            *OfferPrice       `json:"price,omitempty"`
-	Summary          string            `json:"summary,omitempty"`
-	ManifestType     string            `json:"manifest_type,omitempty"` // Creative manifest format: html, vast, native, activation_only
-	CreativeManifest json.RawMessage   `json:"creative_manifest,omitempty"`
-	Macros           map[string]string `json:"macros,omitempty"`
-}
-
-// OfferPrice represents a variable price for a TMP offer.
-type OfferPrice struct {
-	Amount   float64    `json:"amount"`
-	Currency string     `json:"currency,omitempty"`
-	Model    PriceModel `json:"model"`
-}
-
-// Signals contains response-level targeting signals for ad server pass-through.
-type Signals struct {
-	Segments     []string       `json:"segments,omitempty"`
-	TargetingKVs []KeyValuePair `json:"targeting_kvs,omitempty"`
-}
-
-// ContextMatchResponse contains offers for matched packages and optional response-level targeting signals for ad server pass-through.
+// Response from router or provider with offers for matched packages. An empty offers array means no packages matched. For simple GAM integration, package_id flows as a macro via signals. For rich integrations, the offer includes brand, price, summary, and optionally an inline creative manifest. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.
 type ContextMatchResponse struct {
-	RequestID string   `json:"request_id"`
-	Offers    []Offer  `json:"offers"`
-	Signals   *Signals `json:"signals,omitempty"`
+	Type      string         `json:"type"`                // Message type discriminator for deserialization.
+	RequestID string         `json:"request_id"`          // Echoed request identifier from the context match request
+	Offers    []Offer        `json:"offers"`              // Offers from the buyer, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.
+	CacheTTL  int            `json:"cache_ttl,omitempty"` // Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).
+	Signals   map[string]any `json:"signals,omitempty"`   // Response-level targeting signals for ad server pass-through. In the GAM case, these carry the key-value pairs that trigger line items. Not per-offer — applies to the response as a whole.
 }
 
-// ErrorResponse is returned when a provider or router cannot process a request.
+// Error response from a TMP provider or router. Returned instead of a normal response when the provider cannot process the request. Distinguishes errors from empty results (an empty offers array is a valid response meaning no matches, not an error).
 type ErrorResponse struct {
-	RequestID string    `json:"request_id"`
-	Code      ErrorCode `json:"code"`
-	Message   string    `json:"message,omitempty"`
+	Type      string    `json:"type"`              // Message type discriminator for deserialization.
+	RequestID string    `json:"request_id"`        // Echoed request identifier from the original request
+	Code      ErrorCode `json:"code"`              // Machine-readable error code
+	Message   string    `json:"message,omitempty"` // Human-readable error description for debugging
 }
 
-// UserIdentity represents a single user identifier.
-type UserIdentity struct {
-	UserToken string  `json:"user_token"`
-	UIDType   UIDType `json:"uid_type,omitempty"`
-}
-
-// ExposeRequest notifies the identity provider that a user was exposed to a package. Sent by the publisher AFTER rendering the ad. This closes the frequency cap loop. campaign_id enables cross-publisher, cross-media-buy frequency management.
-type ExposeRequest struct {
-	SourceID     string         `json:"source_id,omitempty"` // Identifies the agent or system that recorded this exposure. Used for dedup namespacing, rollback, and audit.
-	UserToken    string         `json:"user_token"`
-	UIDType      UIDType        `json:"uid_type,omitempty"`
-	Identities   []UserIdentity `json:"identities,omitempty"`
-	ImpressionID string         `json:"impression_id,omitempty"`
-	PackageID    string         `json:"package_id"`
-	CampaignID   string         `json:"campaign_id,omitempty"`
-	Timestamp    int64          `json:"timestamp,omitempty"`
-}
-
-// ExposeResponse acknowledges an exposure notification.
-type ExposeResponse struct {
-	PackageID         string `json:"package_id"`
-	CampaignCount     int    `json:"campaign_count,omitempty"`
-	CampaignRemaining int    `json:"campaign_remaining,omitempty"`
-}
-
-// ConsentSignals carries privacy consent signals for the identity agent.
-type ConsentSignals struct {
-	Gdpr       *bool  `json:"gdpr,omitempty"`        // Whether GDPR applies to this request. Use a pointer type so false is distinguishable from absent.
-	TcfConsent string `json:"tcf_consent,omitempty"` // IAB TCF v2.2 consent string. Present when gdpr is true.
-	Gpp        string `json:"gpp,omitempty"`         // IAB Global Privacy Platform string.
-	GppSid     string `json:"gpp_sid,omitempty"`     // IAB GPP Section ID(s) indicating which privacy framework sections apply. Comma-separated when multiple.
-	UsPrivacy  string `json:"us_privacy,omitempty"`  // US Privacy string (CCPA). Deprecated in favor of GPP but still widely used.
-}
-
-// IdentityMatchRequest is sent by the publisher to evaluate user eligibility. MUST NOT contain page context. package_ids MUST include ALL active packages for the buyer, not just those on the current page.
+// Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
 type IdentityMatchRequest struct {
-	ProtocolVersion string          `json:"protocol_version,omitempty"`
-	RequestID       string          `json:"request_id"`
-	UserToken       string          `json:"user_token"`
-	UIDType         UIDType         `json:"uid_type"`
-	PackageIDs      []string        `json:"package_ids"`
-	Consent         *ConsentSignals `json:"consent,omitempty"`
-	Country         string          `json:"country,omitempty"` // ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent.
+	AdcpMajorVersion int            `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
+	Type             string         `json:"type"`                         // Message type discriminator for deserialization.
+	ProtocolVersion  string         `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
+	RequestID        string         `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any context match request_id.
+	UserToken        string         `json:"user_token"`                   // Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated
+	UIDType          UIDType        `json:"uid_type"`                     // Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching.
+	Consent          map[string]any `json:"consent,omitempty"`            // Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.
+	PackageIDs       []string       `json:"package_ids"`                  // ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.
+	Country          string         `json:"country,omitempty"`            // ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal.
 }
 
-// IdentityMatchResponse indicates which packages the user is eligible for. The ttl_sec field defines a caching contract.
+// Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
 type IdentityMatchResponse struct {
-	RequestID          string            `json:"request_id"`
-	EligiblePackageIDs []string          `json:"eligible_package_ids"`     // Package IDs the user is eligible for. Packages not listed are ineligible.
-	TTLSec             int               `json:"ttl_sec"`                  // How long the router should cache this response, in seconds. 0 means do not cache.
-	Tmpx               string            `json:"tmpx,omitempty"`           // HPKE-encrypted exposure token from a single buyer agent. The router collects these into tmpx_providers keyed by provider ID.
-	TmpxProviders      map[string]string `json:"tmpx_providers,omitempty"` // Provider-keyed TMPX tokens. Populated by the router during merge.
+	Type               string   `json:"type"`                 // Message type discriminator for deserialization.
+	RequestID          string   `json:"request_id"`           // Echoed request identifier from the identity match request
+	EligiblePackageIDs []string `json:"eligible_package_ids"` // Package IDs the user is eligible for. Packages not listed are ineligible.
+	TTLSec             int      `json:"ttl_sec"`              // How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.
+	Tmpx               string   `json:"tmpx,omitempty"`       // HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data.
+}
+
+// Lightweight price for a TMP offer. Used when the product supports variable pricing and the buyer specifies a price at match time.
+type OfferPrice struct {
+	Amount   float64 `json:"amount"`             // Price amount in the specified currency
+	Currency string  `json:"currency,omitempty"` // ISO 4217 currency code
+	Model    string  `json:"model"`              // Pricing model for this offer
+}
+
+// A buyer's response to a context match request. Generalizes package activation — a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.
+type Offer struct {
+	PackageID        string            `json:"package_id"`                  // Package identifier from the media buy.
+	Brand            json.RawMessage   `json:"brand,omitempty"`             // Brand for this offer. Required when the product allows dynamic brands (brand selected at match time rather than fixed on the package). For single-brand packages, the brand is already known from the media buy.
+	Price            OfferPrice        `json:"price,omitempty"`             // Price for this offer. Only present when the product supports variable pricing. For fixed-price packages, price is already set on the media buy.
+	Summary          string            `json:"summary,omitempty"`           // Buyer-generated description of the offer, for the publisher to judge relevance. E.g., '50% off Goldenfield mayo — recipe integration'. The publisher (or their AI assistant) uses this to decide whether the offer fits the context.
+	CreativeManifest *json.RawMessage  `json:"creative_manifest,omitempty"` // Full creative details, inline. When present, the publisher has everything needed to render. Inline for small creatives (markdown, product card). For large creatives (VAST, video), the manifest references external assets via URLs.
+	Macros           map[string]string `json:"macros,omitempty"`            // Key-value pairs the buyer passes for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Not tied to user identity — attribution reconciliation happens via delivery reporting or clean room.
+}
+
+// Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning.
+type ProviderRegistration struct {
+	ProviderID    string         `json:"provider_id"`              // Stable identifier for this provider registration. Used in logs, metrics, and cache keys. Publishers assign this — it is not the provider's agent_url.
+	Endpoint      string         `json:"endpoint"`                 // Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. Must be HTTPS in production.
+	ContextMatch  bool           `json:"context_match,omitempty"`  // Provider handles Context Match requests (POST /context).
+	IdentityMatch bool           `json:"identity_match,omitempty"` // Provider handles Identity Match requests (POST /identity).
+	Countries     []string       `json:"countries,omitempty"`      // ISO 3166-1 alpha-2 country codes this provider serves. The router filters Identity Match providers by the request's country field. MUST be present and non-empty when identity_match is true.
+	UIDTypes      []UIDType      `json:"uid_types,omitempty"`      // Identity types this provider can resolve. The router filters Identity Match providers whose uid_types includes the request's uid_type. MUST be present and non-empty when identity_match is true.
+	Properties    []string       `json:"properties,omitempty"`     // Property RIDs (UUID v7) this provider serves. When present, the router only sends requests from these properties to this provider. When absent, the provider serves all properties.
+	TimeoutMs     int            `json:"timeout_ms,omitempty"`     // Per-provider timeout in milliseconds. The router skips this provider if it does not respond within this budget. Must be less than or equal to the router's overall latency_budget_ms. The router may further reduce this based on adaptive timeout allocation.
+	Priority      int            `json:"priority,omitempty"`       // Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.
+	Status        ProviderStatus `json:"status,omitempty"`         // Provider lifecycle status. Active providers receive requests. Inactive providers are skipped entirely. Draining providers stop receiving new requests but in-flight requests complete normally.
 }

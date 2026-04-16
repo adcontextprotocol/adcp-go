@@ -16,23 +16,18 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 		ProtocolVersion: "1.0",
 		RequestID:       "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
 		PropertyID:      "pub-oakwood",
-		PropertyRID:     1,
+		PropertyRID:     "rid-pub-oakwood",
 		PropertyType:    tmproto.PropertyTypeWebsite,
 		PlacementID:     "sidebar-300x250",
-		Artifacts:       []string{"article:cooking-with-herbs", "article:pasta-carbonara"},
-		Geo:             &tmproto.Geo{Country: "US", Region: "NY"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food-display", MediaBuyID: "mb-acme-q1", FormatIDs: []string{"banner-300x250", "native-card"}},
-			{PackageID: "pkg-tech-native", MediaBuyID: "mb-nova-spring", FormatIDs: []string{"native-card"}},
-			{PackageID: "pkg-family-safe", MediaBuyID: "mb-family-q2", FormatIDs: []string{"banner-728x90"}},
-		},
+		Geo:             map[string]any{"country": "US", "region": "NY"},
+		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe"},
 	}
 
 	// Identity match request.
 	idReq := tmproto.IdentityMatchRequest{
 		ProtocolVersion: "1.0",
 		RequestID:       "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
-		UserToken:       "tok_uid2_BhY3NzY2OTA2MjUwMjY0NjEwOQ",
+		UserToken:       "tok_uid2_example_not_a_real_token",
 		UIDType:         tmproto.UIDTypeUID2,
 		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-auto-video", "pkg-travel-sponsored", "pkg-pharma-awareness"},
 	}
@@ -44,13 +39,10 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 			{PackageID: "pkg-food-display", Summary: "Meridian olive oil sponsored content"},
 			{PackageID: "pkg-family-safe"},
 		},
-		Signals: &tmproto.Signals{
-			Segments: []string{"food", "cooking", "recipes", "lifestyle"},
-			TargetingKVs: []tmproto.KeyValuePair{
-				{Key: "topic", Value: "food.cooking"},
-				{Key: "topic", Value: "food.italian"},
-				{Key: "brand_ok", Value: "true"},
-			},
+		Signals: map[string]any{
+			"segments": []string{"food", "cooking", "recipes", "lifestyle"},
+			"topic":    "food.italian",
+			"brand_ok": "true",
 		},
 	}
 
@@ -61,19 +53,19 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 		TTLSec:             300,
 	}
 
-	// Expose request.
-	expReq := tmproto.ExposeRequest{
-		UserToken:  "tok_uid2_BhY3NzY2OTA2MjUwMjY0NjEwOQ",
-		UIDType:    tmproto.UIDTypeUID2,
-		PackageID:  "pkg-food-display",
-		CampaignID: "campaign-acme-q1",
-		Timestamp:  time.Now().Unix(),
+	// Expose request (local types — not part of tmproto wire format).
+	expReq := map[string]any{
+		"user_token":  "tok_uid2_example_not_a_real_token",
+		"uid_type":    "uid2",
+		"package_id":  "pkg-food-display",
+		"campaign_id": "campaign-acme-q1",
+		"timestamp":   time.Now().Unix(),
 	}
 
-	expResp := tmproto.ExposeResponse{
-		PackageID:         "pkg-food-display",
-		CampaignCount:     3,
-		CampaignRemaining: 7,
+	expResp := map[string]any{
+		"package_id":         "pkg-food-display",
+		"campaign_count":     3,
+		"campaign_remaining": 7,
 	}
 
 	sizes := []struct {
@@ -109,7 +101,7 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 	t.Log("")
 
 	// Compare with OpenRTB equivalent.
-	ortbReq := `{"id":"auction-123","imp":[{"id":"imp-1","banner":{"w":300,"h":250,"format":[{"w":300,"h":250},{"w":320,"h":50}]},"bidfloor":0.5,"bidfloorcur":"USD","ext":{"skadn":{"versions":["2.0","3.0"]}}}],"site":{"domain":"oakwoodpublishing.example.com","page":"https://oakwoodpublishing.example.com/recipes/pasta-carbonara","cat":["IAB8","IAB8-5","IAB8-18"],"publisher":{"id":"pub-12345","name":"Oakwood Publishing","domain":"oakwoodpublishing.example.com"}},"device":{"ua":"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)","ip":"203.0.113.42","geo":{"lat":40.7128,"lon":-74.006,"type":2,"country":"USA","region":"NY","metro":"501","city":"New York","zip":"10001"},"devicetype":4,"make":"Apple","model":"iPhone","os":"iOS","osv":"17.4","language":"en","carrier":"AT&T","connectiontype":6,"ifa":"6D92078A-8246-4BA4-AE5B-76104861E7DC"},"user":{"id":"user-hash-abc123","buyeruid":"buyer-uid-xyz","ext":{"eids":[{"source":"uidapi.com","uids":[{"id":"BhY3NzY2OTA2MjUwMjY0NjEwOQ","atype":3}]}]}},"at":1,"tmax":100,"cur":["USD"],"bcat":["IAB25","IAB26"],"badv":["competitor.com"]}`
+	ortbReq := `{"id":"auction-123","imp":[{"id":"imp-1","banner":{"w":300,"h":250,"format":[{"w":300,"h":250},{"w":320,"h":50}]},"bidfloor":0.5,"bidfloorcur":"USD","ext":{"skadn":{"versions":["2.0","3.0"]}}}],"site":{"domain":"oakwoodpublishing.example.com","page":"https://oakwoodpublishing.example.com/recipes/pasta-carbonara","cat":["IAB8","IAB8-5","IAB8-18"],"publisher":{"id":"pub-12345","name":"Oakwood Publishing","domain":"oakwoodpublishing.example.com"}},"device":{"ua":"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X)","ip":"203.0.113.42","geo":{"lat":40.7128,"lon":-74.006,"type":2,"country":"USA","region":"NY","metro":"501","city":"New York","zip":"10001"},"devicetype":4,"make":"Apple","model":"iPhone","os":"iOS","osv":"17.4","language":"en","carrier":"AT&T","connectiontype":6,"ifa":"6D92078A-8246-4BA4-AE5B-76104861E7DC"},"user":{"id":"user-hash-abc123","buyeruid":"buyer-uid-xyz","ext":{"eids":[{"source":"uidapi.com","uids":[{"id":"uid2-example-not-real","atype":3}]}]}},"at":1,"tmax":100,"cur":["USD"],"bcat":["IAB25","IAB26"],"badv":["competitor.com"]}`
 
 	ortbResp := `{"id":"auction-123","seatbid":[{"bid":[{"id":"bid-abc-001","impid":"imp-1","price":2.35,"adid":"creative-12345","nurl":"https://tracker.example.com/win?price=${AUCTION_PRICE}","adm":"<div class=\"ad\"><a href=\"https://advertiser.example.com/landing?utm_source=oakwood&utm_medium=display\"><img src=\"https://cdn.example.com/creative/olive-oil-300x250.jpg\" width=\"300\" height=\"250\" alt=\"Meridian Olive Oil\"/></a><img src=\"https://tracker.example.com/imp?id=bid-abc-001\" width=\"1\" height=\"1\"/></div>","adomain":["meridian-foods.example.com"],"crid":"creative-12345","w":300,"h":250,"cat":["IAB8"]}],"seat":"seat-meridian"}],"cur":"USD"}`
 
@@ -148,14 +140,14 @@ func TestMeasure_TargetingScale(t *testing.T) {
 	for _, n := range []int{1000, 10_000, 50_000, 100_000} {
 		bm := make(targeting.MapBitmap, n)
 		for i := range n {
-			bm[uint64(i*7)] = struct{}{} // sparse distribution
+			bm[fmt.Sprintf("rid-%d", i*7)] = struct{}{} // sparse distribution
 		}
 		// Measure lookup time.
 		start := time.Now()
 		const lookups = 1_000_000
 		hits := 0
 		for i := range lookups {
-			if bm.Contains(uint64(i % (n * 10))) {
+			if bm.Contains(fmt.Sprintf("rid-%d", i%(n*10))) {
 				hits++
 			}
 		}

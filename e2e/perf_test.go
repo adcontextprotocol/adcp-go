@@ -19,7 +19,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 	ctxAgent := httptest.NewServer(&simulatedContextAgent{
 		name: "perf-ctx",
 		modules: []interface {
-			Evaluate(*tmproto.ContextMatchRequest, tmproto.AvailablePackage) (bool, float32)
+			Evaluate(*tmproto.ContextMatchRequest, string) (bool, float32)
 		}{
 			&TopicRelevanceModule{
 				topicKeywords: map[string][]string{
@@ -54,20 +54,14 @@ func TestPerformance_EndToEnd(t *testing.T) {
 		"pkg-food", "pkg-tech", "pkg-auto", "pkg-travel", "pkg-finance",
 		"pkg-health", "pkg-sports", "pkg-fashion", "pkg-home", "pkg-garden",
 	}
-	pkgs := []tmproto.AvailablePackage{
-		{PackageID: "pkg-food", MediaBuyID: "mb-1"},
-		{PackageID: "pkg-tech", MediaBuyID: "mb-2"},
-		{PackageID: "pkg-auto", MediaBuyID: "mb-3"},
-		{PackageID: "pkg-travel", MediaBuyID: "mb-4"},
-		{PackageID: "pkg-finance", MediaBuyID: "mb-5"},
-	}
+	pkgIDs := []string{"pkg-food", "pkg-tech", "pkg-auto", "pkg-travel", "pkg-finance"}
 
 	// Warm up
 	for i := range 10 {
 		postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID: fmt.Sprintf("warmup-%d", i), PropertyID: "pub-perf",
-			PlacementID: "main", Artifacts: []string{"article:cooking-recipe"},
-			AvailablePkgs: pkgs,
+			PlacementID: "article-cooking-recipe",
+			PackageIDs:  pkgIDs,
 		})
 	}
 
@@ -82,11 +76,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			// Context match
 			ctxStart := time.Now()
 			ctxData := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-				RequestID:     fmt.Sprintf("perf-ctx-%d", i),
-				PropertyID:    "pub-perf",
-				PlacementID:   "main",
-				Artifacts:     []string{"article:cooking-recipe"},
-				AvailablePkgs: pkgs,
+				RequestID:   fmt.Sprintf("perf-ctx-%d", i),
+				PropertyID:  "pub-perf",
+				PlacementID: "article-cooking-recipe",
+				PackageIDs:  pkgIDs,
 			})
 			totalCtx += time.Since(ctxStart)
 
@@ -141,11 +134,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-					RequestID:     fmt.Sprintf("par-ctx-%d", i),
-					PropertyID:    "pub-perf",
-					PlacementID:   "main",
-					Artifacts:     []string{"article:cooking-recipe"},
-					AvailablePkgs: pkgs,
+					RequestID:   fmt.Sprintf("par-ctx-%d", i),
+					PropertyID:  "pub-perf",
+					PlacementID: "article-cooking-recipe",
+					PackageIDs:  pkgIDs,
 				})
 			}()
 			go func() {
@@ -205,11 +197,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 					go func() {
 						defer inner.Done()
 						ctxData = postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
-							RequestID:     fmt.Sprintf("tp-%d-%d", workerID, i),
-							PropertyID:    "pub-perf",
-							PlacementID:   "main",
-							Artifacts:     []string{"article:cooking-recipe"},
-							AvailablePkgs: pkgs,
+							RequestID:   fmt.Sprintf("tp-%d-%d", workerID, i),
+							PropertyID:  "pub-perf",
+							PlacementID: "article-cooking-recipe",
+							PackageIDs:  pkgIDs,
 						})
 					}()
 					go func() {

@@ -2,8 +2,6 @@ package targeting
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"fmt"
 	"math"
 	"testing"
@@ -14,20 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockRegistry implements PropertyRegistry for tests.
-type mockRegistry struct {
-	keys map[uint64]ed25519.PublicKey
-}
-
-func (r *mockRegistry) GetPublicKey(rid uint64) ed25519.PublicKey {
-	return r.keys[rid]
-}
-
 func setupContextEngine(t *testing.T) (*Engine, *MockStore) {
 	t.Helper()
 	store := NewMockStore()
 	props := PropertyList{
-		Global: NewMapBitmap(1, 2, 3, 4, 5),
+		Global: NewMapBitmap("1", "2", "3", "4", "5"),
 	}
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
@@ -105,9 +94,9 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 func TestContext_BitmapPreFilter_Targeted(t *testing.T) {
 	engine, _ := setupContextEngine(t)
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-1",
-		PropertyRID:   1,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		RequestID:   "test-1",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1)
@@ -116,9 +105,9 @@ func TestContext_BitmapPreFilter_Targeted(t *testing.T) {
 func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
 	engine, _ := setupContextEngine(t)
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-2",
-		PropertyRID:   999,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		RequestID:   "test-2",
+		PropertyRID: "999",
+		PackageIDs:  []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers)
@@ -127,12 +116,12 @@ func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
 func TestContext_PropertySuppression(t *testing.T) {
 	engine, _ := setupContextEngine(t)
 	ctx := context.Background()
-	_ = engine.SuppressProperty(ctx, 2, time.Hour)
+	_ = engine.SuppressProperty(ctx, "2", time.Hour)
 
 	resp, err := engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:     "test-3",
-		PropertyRID:   2,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		RequestID:   "test-3",
+		PropertyRID: "2",
+		PackageIDs:  []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers for suppressed property")
@@ -144,8 +133,8 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{
-			Global:    NewMapBitmap(1, 3),
-			ByPackage: map[string]Bitmap{"pkg-scoped": NewMapBitmap(3)},
+			Global:    NewMapBitmap("1", "3"),
+			ByPackage: map[string]Bitmap{"pkg-scoped": NewMapBitmap("3")},
 		},
 		Packages: []PackageConfig{
 			{PackageID: "pkg-scoped"},
@@ -156,18 +145,18 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 
 	// Property 1 is in global but not in pkg-scoped.
 	resp, err := engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:     "test-4a",
-		PropertyRID:   1,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-scoped"}},
+		RequestID:   "test-4a",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-scoped"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers (property not in package bitmap)")
 
 	// Property 3 is in both global and pkg-scoped.
 	resp, err = engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:     "test-4b",
-		PropertyRID:   3,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-scoped"}},
+		RequestID:   "test-4b",
+		PropertyRID: "3",
+		PackageIDs:  []string{"pkg-scoped"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1)
@@ -181,15 +170,15 @@ func TestContext_TopicMatch(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(10)},
+		Properties: PropertyList{Global: NewMapBitmap("10")},
 		Packages:   []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-topic",
-		PropertyRID:   10,
-		Artifacts:     []string{"article:pasta"},
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-food"}},
+		RequestID:    "test-topic",
+		PropertyRID:  "10",
+		ArtifactRefs: []map[string]any{{"url": "article:pasta"}},
+		PackageIDs:   []string{"pkg-food"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1, "expected 1 offer (topic match)")
@@ -203,15 +192,15 @@ func TestContext_TopicMiss(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(10)},
+		Properties: PropertyList{Global: NewMapBitmap("10")},
 		Packages:   []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-topic-miss",
-		PropertyRID:   10,
-		Artifacts:     []string{"article:cpu"},
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-food"}},
+		RequestID:    "test-topic-miss",
+		PropertyRID:  "10",
+		ArtifactRefs: []map[string]any{{"url": "article:cpu"}},
+		PackageIDs:   []string{"pkg-food"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers (topic mismatch)")
@@ -225,15 +214,15 @@ func TestContext_URLBlocklist(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(20)},
+		Properties: PropertyList{Global: NewMapBitmap("20")},
 		Packages:   []PackageConfig{{PackageID: "pkg-family", URLBlocklist: true}},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-block",
-		PropertyRID:   20,
-		Artifacts:     []string{"article:controversial"},
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-family"}},
+		RequestID:    "test-block",
+		PropertyRID:  "20",
+		ArtifactRefs: []map[string]any{{"url": "article:controversial"}},
+		PackageIDs:   []string{"pkg-family"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers (URL blocked)")
@@ -247,26 +236,26 @@ func TestContext_URLAllowlist(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(20)},
+		Properties: PropertyList{Global: NewMapBitmap("20")},
 		Packages:   []PackageConfig{{PackageID: "pkg-premium", URLAllowlist: true}},
 	})
 
 	// Allowed URL should produce an offer.
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-allow-hit",
-		PropertyRID:   20,
-		Artifacts:     []string{"article:safe-content"},
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-premium"}},
+		RequestID:    "test-allow-hit",
+		PropertyRID:  "20",
+		ArtifactRefs: []map[string]any{{"url": "article:safe-content"}},
+		PackageIDs:   []string{"pkg-premium"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1, "expected 1 offer (URL in allowlist)")
 
 	// Non-allowed URL should be blocked.
 	resp, err = engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-allow-miss",
-		PropertyRID:   20,
-		Artifacts:     []string{"article:other-content"},
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-premium"}},
+		RequestID:    "test-allow-miss",
+		PropertyRID:  "20",
+		ArtifactRefs: []map[string]any{{"url": "article:other-content"}},
+		PackageIDs:   []string{"pkg-premium"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers (URL not in allowlist)")
@@ -281,7 +270,7 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(30)},
+		Properties: PropertyList{Global: NewMapBitmap("30")},
 		Packages: []PackageConfig{
 			{PackageID: "pkg-food", TopicTargets: true},
 			{PackageID: "pkg-tech", TopicTargets: true},
@@ -289,13 +278,10 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "test-multi",
-		PropertyRID: 30,
-		Artifacts:   []string{"article:pasta"},
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food"},
-			{PackageID: "pkg-tech"},
-		},
+		RequestID:    "test-multi",
+		PropertyRID:  "30",
+		ArtifactRefs: []map[string]any{{"url": "article:pasta"}},
+		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	})
 	require.NoError(t, err)
 
@@ -312,28 +298,30 @@ func TestContext_EmitSegments(t *testing.T) {
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap(1)},
+		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages: []PackageConfig{
 			{PackageID: "pkg-1", EmitSegments: []string{"sports_lovers", "premium_audience"}},
 		},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-segments",
-		PropertyRID:   1,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		RequestID:   "test-segments",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Signals, "expected signals with segments")
-	assert.Len(t, resp.Signals.Segments, 2)
+	segs, ok := resp.Signals["segments"].([]string)
+	require.True(t, ok, "segments should be []string, got %v", resp.Signals["segments"])
+	assert.Len(t, segs, 2)
 }
 
 func TestContext_RequestIDPreserved(t *testing.T) {
 	engine, _ := setupContextEngine(t)
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "preserve-me",
-		PropertyRID:   999,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		RequestID:   "preserve-me",
+		PropertyRID: "999",
+		PackageIDs:  []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "preserve-me", resp.RequestID)
@@ -342,48 +330,12 @@ func TestContext_RequestIDPreserved(t *testing.T) {
 func TestContext_UnknownPackageSkipped(t *testing.T) {
 	engine, _ := setupContextEngine(t)
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:     "test-unknown-pkg",
-		PropertyRID:   1,
-		AvailablePkgs: []tmproto.AvailablePackage{{PackageID: "pkg-unknown"}},
+		RequestID:   "test-unknown-pkg",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-unknown"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers for unknown package")
-}
-
-func TestContext_SignatureVerification(t *testing.T) {
-	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	store := NewMockStore()
-	reg := &mockRegistry{keys: map[uint64]ed25519.PublicKey{100: pub}}
-
-	engine := NewEngine(EngineConfig{
-		ProviderID:    "test-provider",
-		Store:         store,
-		Registry:      reg,
-		Properties:    PropertyList{Global: NewMapBitmap(100)},
-		Packages:      []PackageConfig{{PackageID: "pkg-1"}},
-		SigSampleRate: 100, // verify all
-	})
-
-	req := &tmproto.ContextMatchRequest{
-		RequestID:    "signed-1",
-		PropertyRID:  100,
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1"},
-		},
-	}
-
-	// Valid signature should work.
-	req.Signature = tmproto.SignRequest(req, priv)
-	resp, err := engine.EvaluateContext(context.Background(), req)
-	require.NoError(t, err, "valid signature rejected")
-	assert.Len(t, resp.Offers, 1, "expected 1 offer with valid sig")
-
-	// Tampered signature should fail.
-	req.Signature = "AAAA" + req.Signature[4:]
-	_, err = engine.EvaluateContext(context.Background(), req)
-	assert.Error(t, err, "tampered signature should be rejected")
 }
 
 // --- Identity Tests (using resolved path with exposure logs) ---
@@ -392,7 +344,7 @@ func TestIdentity_ExposureIncrements(t *testing.T) {
 	engine, _, _ := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
 		UserToken: "user-abc",
 		PackageID: "pkg-display-001",
 	})
@@ -409,10 +361,10 @@ func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 
 	// 5 exposures across two packages in campaign-acme (cap is 5/7d).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-001-%d", i)})
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-001-%d", i)})
 	}
 	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002", ImpressionID: fmt.Sprintf("imp-002-%d", i)})
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002", ImpressionID: fmt.Sprintf("imp-002-%d", i)})
 	}
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
@@ -434,7 +386,7 @@ func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
 
 	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-cap-%d", i)})
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-cap-%d", i)})
 	}
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
@@ -457,8 +409,8 @@ func TestIdentity_MultipleFrequencyRules(t *testing.T) {
 	ctx := context.Background()
 
 	// pkg-multi-rule: 2 per 12h AND 5 per 7d.
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-1"})
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-2"})
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-1"})
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-2"})
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-multi",
@@ -478,7 +430,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 
 	// 3 exposures (hits cap).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-window-%d", i)})
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-window-%d", i)})
 	}
 
 	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
@@ -503,7 +455,7 @@ func TestIdentity_IntentScore(t *testing.T) {
 
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
 
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-intent", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
@@ -515,7 +467,7 @@ func TestIdentity_IntentScore(t *testing.T) {
 
 func TestIdentity_AudienceNotInSegment(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
-	// No user profile set → user has no segments → should fail audience gate.
+	// No user profile set -> user has no segments -> should fail audience gate.
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-audience", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
 	})
@@ -535,7 +487,7 @@ func TestIdentity_UnknownPackage(t *testing.T) {
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-unknown", UserToken: "user-abc", PackageIDs: []string{"pkg-unknown"},
 	})
-	// Unknown package with no identity config → eligible (no restrictions).
+	// Unknown package with no identity config -> eligible (no restrictions).
 	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
 }
 
@@ -557,7 +509,7 @@ func TestIdentityNonResolved_PackageFrequencyCap(t *testing.T) {
 
 	// Record 3 exposures (package cap = 3/24h).
 	for i := range 3 {
-		_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, err := engine.RecordExposure(ctx, &ExposeRequest{
 			UserToken: "user-abc", PackageID: "pkg-display-001",
 			ImpressionID: fmt.Sprintf("imp-nr-%d", i),
 		})
@@ -580,13 +532,13 @@ func TestIdentityNonResolved_CampaignFrequencyCap(t *testing.T) {
 
 	// 5 exposures across two packages in campaign-acme (cap = 5/7d).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 			UserToken: "user-abc", PackageID: "pkg-display-001",
 			ImpressionID: fmt.Sprintf("imp-nr-camp-1-%d", i),
 		})
 	}
 	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 			UserToken: "user-abc", PackageID: "pkg-display-002",
 			ImpressionID: fmt.Sprintf("imp-nr-camp-2-%d", i),
 		})
@@ -611,7 +563,7 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 
 	// 3 exposures (hits package cap of 3/24h).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 			UserToken: "user-abc", PackageID: "pkg-display-001",
 			ImpressionID: fmt.Sprintf("imp-nr-window-%d", i),
 		})
@@ -641,7 +593,7 @@ func TestIdentityNonResolved_IntentScore(t *testing.T) {
 
 	store.SetAdd("audience:cooking", HashToken("user-abc"))
 
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 		UserToken: "user-abc", PackageID: "pkg-display-001",
 	})
 
@@ -662,7 +614,7 @@ func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
 
 	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 			UserToken: "user-abc", PackageID: "pkg-display-001",
 			ImpressionID: fmt.Sprintf("imp-nr-mixed-%d", i),
 		})
@@ -688,8 +640,8 @@ func TestIdentity_SourceIDFallsBackToProviderID(t *testing.T) {
 	engine, _, _ := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	// No source_id → engine uses providerID ("test-provider").
-	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	// No source_id -> engine uses providerID ("test-provider").
+	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
 		UserToken:    "user-src",
 		PackageID:    "pkg-display-001",
 		ImpressionID: "imp-src-1",
@@ -709,7 +661,7 @@ func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
 	engine, _, _ := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, err := engine.RecordExposure(ctx, &ExposeRequest{
 		SourceID:     "agent-cnn-v2",
 		UserToken:    "user-source-stamp",
 		PackageID:    "pkg-display-001",
@@ -729,13 +681,13 @@ func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
 	ctx := context.Background()
 
 	// Two different sources submit the same impression_id.
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 		SourceID:     "agent-a",
 		UserToken:    "user-ns",
 		PackageID:    "pkg-display-001",
 		ImpressionID: "imp-dup",
 	})
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
 		SourceID:     "agent-b",
 		UserToken:    "user-ns",
 		PackageID:    "pkg-display-001",

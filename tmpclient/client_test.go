@@ -39,9 +39,7 @@ func TestContextMatch_HappyPath(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "top-banner",
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
-		},
+		PackageIDs: []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Offers, 1)
@@ -94,9 +92,7 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1"},
-		},
+		PackageIDs: []string{"pkg-1"},
 	})
 	require.Error(t, err)
 	var tmpErr *TMPError
@@ -137,9 +133,7 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		AvailablePkgs: []tmproto.AvailablePackage{
-			{PackageID: "pkg-1"},
-		},
+		PackageIDs: []string{"pkg-1"},
 		// RequestID intentionally empty.
 	})
 	require.NoError(t, err)
@@ -160,7 +154,7 @@ func TestActivate_HappyPath(t *testing.T) {
 					{PackageID: "pkg-food"},
 					{PackageID: "pkg-tech"},
 				},
-				Signals: &tmproto.Signals{Segments: []string{"cooking"}},
+				Signals: map[string]any{"segments": []any{"cooking"}},
 			})
 		case "/tmp/identity":
 			identityCalled.Store(true)
@@ -178,13 +172,9 @@ func TestActivate_HappyPath(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages: []tmproto.AvailablePackage{
-			{PackageID: "pkg-food", MediaBuyID: "mb-food"},
-			{PackageID: "pkg-tech", MediaBuyID: "mb-tech"},
-		},
-		UserToken:  "tok-abc",
-		UIDType:    tmproto.UIDTypeUID2,
-		PackageIDs: []string{"pkg-food", "pkg-tech"},
+		PackageIDs:   []string{"pkg-food", "pkg-tech"},
+		UserToken:    "tok-abc",
+		UIDType:      tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -195,9 +185,10 @@ func TestActivate_HappyPath(t *testing.T) {
 
 	a := result.Activations[0]
 	assert.Equal(t, "pkg-food", a.PackageID)
-	assert.Equal(t, "mb-food", a.MediaBuyID)
 	require.NotNil(t, result.Signals)
-	assert.Len(t, result.Signals.Segments, 1)
+	segs, ok := result.Signals["segments"].([]any)
+	require.True(t, ok, "segments should be []any, got %T", result.Signals["segments"])
+	assert.Len(t, segs, 1)
 }
 
 func TestActivate_NoOverlap(t *testing.T) {
@@ -221,10 +212,9 @@ func TestActivate_NoOverlap(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-a"}},
+		PackageIDs:   []string{"pkg-a", "pkg-b"},
 		UserToken:    "tok-abc",
 		UIDType:      tmproto.UIDTypeUID2,
-		PackageIDs:   []string{"pkg-b"},
 	})
 	require.NoError(t, err)
 	assert.Empty(t, result.Activations, "expected 0 activations (no overlap)")
@@ -248,10 +238,9 @@ func TestActivate_ContextFails(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		PackageIDs:   []string{"pkg-1"},
 		UserToken:    "tok-abc",
 		UIDType:      tmproto.UIDTypeUID2,
-		PackageIDs:   []string{"pkg-1"},
 	})
 	assert.Error(t, err, "expected error when context match fails")
 }
@@ -282,14 +271,9 @@ func TestActivate_MultiPackage(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages: []tmproto.AvailablePackage{
-			{PackageID: "pkg-a", MediaBuyID: "mb-a"},
-			{PackageID: "pkg-b", MediaBuyID: "mb-b"},
-			{PackageID: "pkg-c", MediaBuyID: "mb-c"},
-		},
-		UserToken:  "tok-abc",
-		UIDType:    tmproto.UIDTypeUID2,
-		PackageIDs: []string{"pkg-a", "pkg-b", "pkg-c"},
+		PackageIDs:   []string{"pkg-a", "pkg-b", "pkg-c"},
+		UserToken:    "tok-abc",
+		UIDType:      tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -300,7 +284,7 @@ func TestActivate_MultiPackage(t *testing.T) {
 	assert.Equal(t, "pkg-c", result.Activations[2].PackageID, "expected pkg-c third")
 }
 
-func TestActivate_DerivesPackageIDs(t *testing.T) {
+func TestActivate_PackageIDsSentToBothEndpoints(t *testing.T) {
 	var receivedPkgIDs []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -322,20 +306,15 @@ func TestActivate_DerivesPackageIDs(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages: []tmproto.AvailablePackage{
-			{PackageID: "pkg-a"},
-			{PackageID: "pkg-b"},
-		},
-		UserToken: "tok-abc",
-		UIDType:   tmproto.UIDTypeUID2,
-		// PackageIDs not set — should derive from Packages.
+		PackageIDs:   []string{"pkg-a", "pkg-b"},
+		UserToken:    "tok-abc",
+		UIDType:      tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"pkg-a", "pkg-b"}, receivedPkgIDs, "expected derived [pkg-a pkg-b]")
+	assert.Equal(t, []string{"pkg-a", "pkg-b"}, receivedPkgIDs, "expected [pkg-a pkg-b]")
 }
 
-func TestActivate_TmpxProviders(t *testing.T) {
-	// Mock acts as router — returns tmpx_providers map (as router would after merge).
+func TestActivate_Tmpx(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -346,9 +325,7 @@ func TestActivate_TmpxProviders(t *testing.T) {
 		case "/tmp/identity":
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				EligiblePackageIDs: []string{"pkg-1"},
-				TmpxProviders: map[string]string{
-					"scope3": "k1.dGVzdC10bXB4LXRva2Vu",
-				},
+				Tmpx:               "k1.dGVzdC10bXB4LXRva2Vu",
 			})
 		}
 	}))
@@ -359,15 +336,14 @@ func TestActivate_TmpxProviders(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		PackageIDs:   []string{"pkg-1"},
 		UserToken:    "tok-abc",
 		UIDType:      tmproto.UIDTypeUID2,
-		PackageIDs:   []string{"pkg-1"},
 		Country:      "US",
 	})
 	require.NoError(t, err)
 	require.Len(t, result.Activations, 1)
-	assert.Equal(t, "k1.dGVzdC10bXB4LXRva2Vu", result.TmpxProviders["scope3"])
+	assert.Equal(t, "k1.dGVzdC10bXB4LXRva2Vu", result.Tmpx)
 }
 
 func TestActivate_CountryPassedThrough(t *testing.T) {
@@ -392,10 +368,9 @@ func TestActivate_CountryPassedThrough(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		Packages:     []tmproto.AvailablePackage{{PackageID: "pkg-1"}},
+		PackageIDs:   []string{"pkg-1"},
 		UserToken:    "tok-abc",
 		UIDType:      tmproto.UIDTypeUID2,
-		PackageIDs:   []string{"pkg-1"},
 		Country:      "DE",
 	})
 	require.NoError(t, err)
@@ -406,7 +381,6 @@ func TestJoinResults_Empty(t *testing.T) {
 	result := joinResults(
 		&tmproto.ContextMatchResponse{},
 		&tmproto.IdentityMatchResponse{},
-		nil,
 	)
 	assert.Empty(t, result, "expected 0 activations")
 }

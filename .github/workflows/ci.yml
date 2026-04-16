@@ -24,6 +24,12 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Download upstream schemas
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: adcp/schemas
+        run: ./download.sh
+
       - name: Check generated code is up to date
         run: |
           go generate ./tmproto/...

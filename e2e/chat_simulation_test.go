@@ -50,22 +50,22 @@ func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	var offers []tmproto.Offer
-	for _, pkg := range req.AvailablePkgs {
-		topics := a.packageTopics[pkg.PackageID]
+	for _, pkgID := range req.PackageIDs {
+		topics := a.packageTopics[pkgID]
 		if len(topics) == 0 {
 			continue
 		}
 
-		// Check if any artifact topics match package topics
+		// Check if the placement ID or request context matches package topics.
+		// In the real protocol, context signals come via artifact/artifact_refs/context_signals.
+		// For this mock, we check if any topic keyword appears in the placement_id.
 		matched := false
 		var score float32
-		for _, art := range req.Artifacts {
-			artLower := strings.ToLower(art)
-			for _, topic := range topics {
-				if strings.Contains(artLower, topic) {
-					matched = true
-					score += 0.3
-				}
+		checkStr := strings.ToLower(req.PlacementID)
+		for _, topic := range topics {
+			if strings.Contains(checkStr, topic) {
+				matched = true
+				score += 0.3
 			}
 		}
 		if score > 1.0 {
@@ -74,23 +74,26 @@ func (a *chatContextAgent) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		if matched {
 			offer := tmproto.Offer{
-				PackageID: pkg.PackageID,
+				PackageID: pkgID,
 			}
 
 			// Add brand if available
-			if brand, ok := a.packageBrands[pkg.PackageID]; ok {
-				offer.Brand = &tmproto.BrandRef{
-					Name:             brand.name,
-					AdvertiserDomain: brand.domain,
-				}
+			if brand, ok := a.packageBrands[pkgID]; ok {
+				brandJSON, _ := json.Marshal(map[string]string{
+					"name":              brand.name,
+					"advertiser_domain": brand.domain,
+				})
+				offer.Brand = json.RawMessage(brandJSON)
 			}
 
 			// Add summary for relevance judgment
-			offer.Summary = fmt.Sprintf("Contextual match (score: %.1f) for %s", score, pkg.PackageID)
+			offer.Summary = fmt.Sprintf("Contextual match (score: %.1f) for %s", score, pkgID)
 
 			// Add creative manifest if available
-			if creative, ok := a.packageCreatives[pkg.PackageID]; ok {
-				offer.CreativeManifest, _ = json.Marshal(creative)
+			if creative, ok := a.packageCreatives[pkgID]; ok {
+				cm, _ := json.Marshal(creative)
+				raw := json.RawMessage(cm)
+				offer.CreativeManifest = &raw
 			}
 
 			offers = append(offers, offer)
@@ -155,13 +158,16 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 }
 
 func (a *chatIdentityAgent) handleExpose(w http.ResponseWriter, r *http.Request) {
-	var req tmproto.ExposeRequest
+	var req struct {
+		UserToken string `json:"user_token"`
+		PackageID string `json:"package_id"`
+	}
 	json.NewDecoder(r.Body).Decode(&req)
 
 	a.recordExposure(req.UserToken, req.PackageID)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmproto.ExposeResponse{PackageID: req.PackageID})
+	json.NewEncoder(w).Encode(map[string]string{"package_id": req.PackageID})
 }
 
 // recordExposure records an exposure directly without HTTP.
@@ -310,15 +316,8 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			RequestID:    fmt.Sprintf("ctx-chat-%d", i),
 			PropertyID:   "pub-addie-assistant",
 			PropertyType: tmproto.PropertyTypeAIAssistant,
-			PlacementID:  "conversation-inline",
-			Artifacts:    []string{turn.ArtifactID},
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-olive-oil", MediaBuyID: "mb-meridian-q1"},
-				{PackageID: "pkg-knife-set", MediaBuyID: "mb-edgecraft-q1"},
-				{PackageID: "pkg-meal-kit", MediaBuyID: "mb-freshbox-q1"},
-				{PackageID: "pkg-running-shoe", MediaBuyID: "mb-stridemax-q1"},
-				{PackageID: "pkg-protein", MediaBuyID: "mb-corefuel-q1"},
-			},
+			PlacementID:  turn.ArtifactID,
+			PackageIDs:   allPackages,
 		})
 
 		var cmResp tmproto.ContextMatchResponse
@@ -367,9 +366,9 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 			t.Logf("")
 
 			// Extract creative details
-			if len(bestOffer.CreativeManifest) > 0 {
+			if bestOffer.CreativeManifest != nil && len(*bestOffer.CreativeManifest) > 0 {
 				var assets map[string]any
-				if json.Unmarshal(bestOffer.CreativeManifest, &assets) == nil {
+				if json.Unmarshal(*bestOffer.CreativeManifest, &assets) == nil {
 					if assetsMap, ok := assets["assets"].(map[string]any); ok {
 						disclosure := "Sponsored"
 						if d, ok := assetsMap["disclosure"].(string); ok {
@@ -456,11 +455,8 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 		ctxResp := postJSON(t, router.URL+"/tmp/context", tmproto.ContextMatchRequest{
 			RequestID:   fmt.Sprintf("ctx-freq-%d", turn),
 			PropertyID:  "pub-addie",
-			PlacementID: "inline",
-			Artifacts:   []string{"turn:coffee-discussion"},
-			AvailablePkgs: []tmproto.AvailablePackage{
-				{PackageID: "pkg-coffee", MediaBuyID: "mb-1"},
-			},
+			PlacementID: "coffee-morning-drink",
+			PackageIDs:  []string{"pkg-coffee"},
 		})
 
 		var cmResp tmproto.ContextMatchResponse

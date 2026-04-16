@@ -129,7 +129,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	for day := range 10 {
 		for i := range 3 {
 			ts := now.Add(-time.Duration(30-day) * 24 * time.Hour)
-			_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+			_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
 				UserToken: cookie, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-cookie-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -139,7 +139,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 11-20: UID2 only.
 	for day := 10; day < 20; day++ {
 		for i := range 2 {
-			_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+			_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
 				UserToken: uid2, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-uid2-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -148,17 +148,17 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 21-30: hashed email. Some impressions shared with cookie (same impression ID).
 	for day := 20; day < 30; day++ {
 		// Unique impressions under email.
-		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-email-d%d", day),
 			CampaignID: "campaign-food",
 		})
 		// Shared impression: also record under cookie with same impression ID.
 		sharedImpID := fmt.Sprintf("imp-shared-d%d", day)
-		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})
-		_, _ = engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
 			UserToken: cookie, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})
@@ -285,7 +285,7 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 		store.Now = func() time.Time { return currentTime }
 
 		for i := range 2 {
-			_, err := engine.RecordExposure(context.Background(), &tmproto.ExposeRequest{
+			_, err := engine.RecordExposure(context.Background(), &ExposeRequest{
 				UserToken:    "user-rolling",
 				PackageID:    "pkg-test",
 				ImpressionID: fmt.Sprintf("imp-d%d-i%d", day, i),

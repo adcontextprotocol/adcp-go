@@ -6,18 +6,24 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// ProviderStatus represents the lifecycle state of a provider.
-type ProviderStatus string
+// ProviderStatus is the schema-generated provider lifecycle type.
+// Aliased here so the router package can use it without importing tmproto everywhere.
+type ProviderStatus = tmproto.ProviderStatus
 
 const (
-	ProviderStatusActive   ProviderStatus = "active"
-	ProviderStatusInactive ProviderStatus = "inactive"
-	ProviderStatusDraining ProviderStatus = "draining"
+	ProviderStatusActive   = tmproto.ProviderStatusActive
+	ProviderStatusInactive = tmproto.ProviderStatusInactive
+	ProviderStatusDraining = tmproto.ProviderStatusDraining
 )
 
 // ProviderConfig defines a registered TMP provider.
+// Core fields (ID, Endpoint, Status, etc.) align with the schema-generated
+// tmproto.ProviderRegistration type. Router-specific fields (PropertyIDs,
+// ExcludePropertyIDs, etc.) extend the registration for routing logic.
 type ProviderConfig struct {
 	ID            string         `json:"id"`
 	Endpoint      string         `json:"endpoint"`
@@ -27,8 +33,9 @@ type ProviderConfig struct {
 	WireFormats   []string       `json:"wire_formats"`
 
 	// Provider-side filters — router skips this provider for non-matching requests.
-	PropertyIDs        []string `json:"property_ids,omitempty"`         // Only send these (empty = all)
-	ExcludePropertyIDs []string `json:"exclude_property_ids,omitempty"` // Never send these
+	PropertyIDs        []string `json:"property_ids,omitempty"`         // Match on publisher's property_id slug (empty = all)
+	PropertyRIDs       []string `json:"property_rids,omitempty"`        // Match on registry property_rid UUID (empty = all). Populated by discovery from ProviderRegistration.Properties.
+	ExcludePropertyIDs []string `json:"exclude_property_ids,omitempty"` // Never send these (matches property_id slug)
 	PropertyTypes      []string `json:"property_types,omitempty"`       // Only these types (empty = all)
 	PackageIDs         []string `json:"package_ids,omitempty"`          // Only send these packages (empty = all)
 
@@ -76,6 +83,30 @@ func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) erro
 		return fmt.Errorf("provider %q: timeout %v exceeds latency budget %v", p.ID, p.Timeout, latencyBudget)
 	}
 	return nil
+}
+
+// ProviderConfigFromRegistration converts a schema-generated ProviderRegistration
+// (the wire format from discovery endpoints) into a router ProviderConfig.
+//
+// Note: Priority is not currently used by the router. It is captured on
+// ProviderRegistration in the spec for future use (merge conflict resolution,
+// adaptive timeout allocation) but has no effect on routing today.
+func ProviderConfigFromRegistration(r *tmproto.ProviderRegistration) ProviderConfig {
+	uidTypes := make([]string, len(r.UIDTypes))
+	for i, u := range r.UIDTypes {
+		uidTypes[i] = string(u)
+	}
+	return ProviderConfig{
+		ID:            r.ProviderID,
+		Endpoint:      r.Endpoint,
+		Status:        r.Status,
+		ContextMatch:  r.ContextMatch,
+		IdentityMatch: r.IdentityMatch,
+		Countries:     r.Countries,
+		UIDTypes:      uidTypes,
+		PropertyRIDs:  r.Properties, // Properties in the spec are registry RIDs (UUIDs), not slugs.
+		Timeout:       time.Duration(r.TimeoutMs) * time.Millisecond,
+	}
 }
 
 // RouterConfig defines the router's runtime configuration.

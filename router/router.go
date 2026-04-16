@@ -24,7 +24,6 @@ type FanOutMetrics interface {
 type Router struct {
 	providers              *ProviderSet
 	registry               *Registry
-	sigCache               *SignatureCache // nil = no signing
 	health                 *ProviderHealth // nil = no health tracking
 	latencyBudget          time.Duration
 	client                 *http.Client
@@ -69,14 +68,14 @@ func WithFanOutMetrics(m FanOutMetrics) RouterOption {
 func (r *Router) Providers() *ProviderSet { return r.providers }
 
 // NewRouter creates a router with the given provider configuration and registry.
-// sigCache is optional — pass nil to disable request signing.
 // Returns an error if any provider endpoint fails SSRF validation.
-func NewRouter(providers []ProviderConfig, registry *Registry, sigCache *SignatureCache, health *ProviderHealth, opts ...RouterOption) (*Router, error) {
+// Transport-layer authentication (mTLS, bearer tokens) is the deployer's
+// responsibility — the TMP spec no longer defines request-level signing.
+func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderHealth, opts ...RouterOption) (*Router, error) {
 	maxPerHost := max(len(providers), 10)
 	r := &Router{
 		providers: NewProviderSet(providers),
 		registry:  registry,
-		sigCache:  sigCache,
 		health:    health,
 		logger:    slog.Default(),
 	}
@@ -133,17 +132,11 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Compute URL hash from first artifact for fast blocklist/allowlist checks
-	if len(cmReq.Artifacts) > 0 {
-		cmReq.URLHash = tmproto.HashURL(cmReq.Artifacts[0])
-	}
-
-	// Sign the request (cached — ~57ns for cache hit vs ~14μs for cold sign)
-	if r.sigCache != nil {
-		cmReq.Signature = r.sigCache.SignOrCache(&cmReq)
-	}
-
-	// Re-serialize with enriched + signed data for fan-out
+	// Re-serialize with enriched data for fan-out.
+	// TODO: the spec says routers MUST strip access fields from artifacts
+	// (bearer tokens, service accounts, credentials) before forwarding.
+	// Today we rely on publishers not to include them. Add a sanitizer
+	// that walks cmReq.Artifact and removes known credential-bearing keys.
 	body, err = json.Marshal(&cmReq)
 	if err != nil {
 		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInternalError, "failed to serialize request")
@@ -257,7 +250,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			callBody := body
 			if len(p.PackageIDs) > 0 {
 				filtered := *cmReq
-				filtered.AvailablePkgs = filterPackagesForProvider(cmReq.AvailablePkgs, &p)
+				filtered.PackageIDs = filterPackageIDsForProvider(cmReq.PackageIDs, &p)
 				var err error
 				callBody, err = json.Marshal(&filtered)
 				if err != nil {
@@ -372,22 +365,17 @@ func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchRe
 		Offers:    []tmproto.Offer{},
 	}
 
-	var allSegments []string
-	var allKVs []tmproto.KeyValuePair
+	mergedSignals := make(map[string]any)
 
 	for _, resp := range responses {
 		merged.Offers = append(merged.Offers, resp.Offers...)
-		if resp.Signals != nil {
-			allSegments = append(allSegments, resp.Signals.Segments...)
-			allKVs = append(allKVs, resp.Signals.TargetingKVs...)
+		for k, v := range resp.Signals {
+			mergedSignals[k] = v
 		}
 	}
 
-	if len(allSegments) > 0 || len(allKVs) > 0 {
-		merged.Signals = &tmproto.Signals{
-			Segments:     allSegments,
-			TargetingKVs: allKVs,
-		}
+	if len(mergedSignals) > 0 {
+		merged.Signals = mergedSignals
 	}
 
 	return merged
@@ -399,12 +387,12 @@ func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchRe
 // TTL: minimum across providers. TMPX: collected per provider ID.
 func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
-	tmpxProviders := make(map[string]string)
 	minTTL := -1
+	var tmpx string
 
-	for i, resp := range responses {
-		if resp.Tmpx != "" && i < len(providerIDs) {
-			tmpxProviders[providerIDs[i]] = resp.Tmpx
+	for _, resp := range responses {
+		if resp.Tmpx != "" {
+			tmpx = resp.Tmpx
 		}
 		if minTTL < 0 || resp.TTLSec < minTTL {
 			minTTL = resp.TTLSec
@@ -428,32 +416,28 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
 		TTLSec:             minTTL,
-	}
-	if len(tmpxProviders) > 0 {
-		merged.TmpxProviders = tmpxProviders
+		Tmpx:               tmpx,
 	}
 	return merged
 }
 
-// filterPackagesForProvider filters AvailablePackage list if the provider has PackageIDs configured.
-func filterPackagesForProvider(pkgs []tmproto.AvailablePackage, p *ProviderConfig) []tmproto.AvailablePackage {
+// filterPackageIDsForProvider filters a PackageIDs list if the provider has PackageIDs configured.
+func filterPackageIDsForProvider(pkgIDs []string, p *ProviderConfig) []string {
 	if len(p.PackageIDs) == 0 {
-		return pkgs
+		return pkgIDs
 	}
 	allowed := make(map[string]bool, len(p.PackageIDs))
 	for _, id := range p.PackageIDs {
 		allowed[id] = true
 	}
-	var filtered []tmproto.AvailablePackage
-	for _, pkg := range pkgs {
-		if allowed[pkg.PackageID] {
-			filtered = append(filtered, pkg)
+	var filtered []string
+	for _, id := range pkgIDs {
+		if allowed[id] {
+			filtered = append(filtered, id)
 		}
 	}
 	return filtered
 }
-
-// filterPackageIDsForProvider filters a PackageIDs list if the provider has PackageIDs configured.
 
 func (r *Router) writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string) {
 	w.Header().Set("Content-Type", "application/json")
