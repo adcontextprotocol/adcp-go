@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -35,26 +36,33 @@ type RouterConfig struct {
 }
 
 // ValidateProviderEndpoint checks that a provider endpoint URL is safe
-// (not pointing at localhost, metadata services, or private ranges).
+// (not pointing at localhost, metadata services, or private/RFC-1918 ranges).
 func ValidateProviderEndpoint(endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		return fmt.Errorf("invalid endpoint URL: %w", err)
 	}
-	host := u.Hostname()
-	if host == "localhost" || host == "" {
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("endpoint must use http or https scheme: %s", endpoint)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("endpoint must be an absolute URL with scheme and host: %s", endpoint)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" {
 		return fmt.Errorf("endpoint must not target localhost: %s", endpoint)
 	}
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return nil // hostname, not IP — DNS resolution happens later
 	}
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return fmt.Errorf("endpoint must not target local/link-local address: %s", endpoint)
+	// Unwrap IPv4-mapped IPv6 addresses (e.g. ::ffff:192.168.1.1) so that
+	// IsPrivate/IsLoopback correctly identify the underlying IPv4 range.
+	if v4 := ip.To4(); v4 != nil {
+		ip = v4
 	}
-	// Block cloud metadata endpoints (169.254.169.254).
-	if ip.Equal(net.ParseIP("169.254.169.254")) {
-		return fmt.Errorf("endpoint must not target metadata service: %s", endpoint)
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return fmt.Errorf("endpoint must not target local/private address: %s", endpoint)
 	}
 	return nil
 }

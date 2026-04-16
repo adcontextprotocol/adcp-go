@@ -1,6 +1,8 @@
 package targeting
 
 import (
+	"slices"
+
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -52,12 +54,7 @@ func (r *ResolvedPackages) TopicCandidates(topics []string) map[string]struct{} 
 
 // IsURLBlocked checks if a URL hash is blocked for a given package.
 func (r *ResolvedPackages) IsURLBlocked(pkgID, urlHash string) bool {
-	for _, blocked := range r.URLBlocklistIndex[urlHash] {
-		if blocked == pkgID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.URLBlocklistIndex[urlHash], pkgID)
 }
 
 // IsURLAllowed checks if a URL hash is in the package's allowlist.

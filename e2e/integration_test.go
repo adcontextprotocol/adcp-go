@@ -117,10 +117,13 @@ func setupStack(t *testing.T) *testStack {
 		{PropertyID: "pub-techblog", PropertyRID: 2, PropertyType: "website", Domain: "techblog.example.com"},
 	}, 1)
 	health := router.NewProviderHealth(3, 10*time.Second)
-	r := router.NewRouter([]router.ProviderConfig{
+	r, err := router.NewRouter([]router.ProviderConfig{
 		{ID: "ctx-agent", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id-agent", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
-	}, reg, nil, health)
+	}, reg, nil, health, router.WithoutEndpointValidation())
+	if err != nil {
+		t.Fatalf("failed to create router: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
@@ -558,10 +561,13 @@ func TestIntegration_Mediation(t *testing.T) {
 		{PropertyID: "pub-oakwood", PropertyRID: 1, PropertyType: "website"},
 	}, 1)
 	health := router.NewProviderHealth(3, 10*time.Second)
-	r := router.NewRouter([]router.ProviderConfig{
+	r, err := router.NewRouter([]router.ProviderConfig{
 		{ID: "ctx", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
-	}, reg, nil, health)
+	}, reg, nil, health, router.WithoutEndpointValidation())
+	if err != nil {
+		t.Fatalf("failed to create router: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)
@@ -718,10 +724,13 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		{PropertyID: "pub-oakwood", PropertyRID: 1, PropertyType: "website"},
 	}, 1)
 	health := router.NewProviderHealth(3, 10*time.Second)
-	r := router.NewRouter([]router.ProviderConfig{
+	r, err := router.NewRouter([]router.ProviderConfig{
 		{ID: "ctx", Endpoint: ctxSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
 		{ID: "id", Endpoint: idSrv.URL, IdentityMatch: true, Timeout: 5 * time.Second},
-	}, reg, nil, health)
+	}, reg, nil, health, router.WithoutEndpointValidation())
+	if err != nil {
+		t.Fatalf("failed to create router: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /tmp/context", r.HandleContextMatch)

@@ -151,23 +151,30 @@ func (r *Registry) LoadSnapshot() error {
 }
 
 func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// Rebuild all indexes from scratch
-	r.byID = make(map[string]*RegistryProperty, len(snapshot.Properties))
-	r.byRID = make(map[uint64]*RegistryProperty, len(snapshot.Properties))
-	r.byDomain = make(map[string]string, len(snapshot.Properties))
+	// Build new indexes without holding any lock so readers are not blocked
+	// during the O(n) construction phase.
+	byID := make(map[string]*RegistryProperty, len(snapshot.Properties))
+	byRID := make(map[uint64]*RegistryProperty, len(snapshot.Properties))
+	byDomain := make(map[string]string, len(snapshot.Properties))
 
 	for i := range snapshot.Properties {
 		p := &snapshot.Properties[i]
-		r.byID[p.PropertyID] = p
-		r.byRID[p.PropertyRID] = p
+		byID[p.PropertyID] = p
+		byRID[p.PropertyRID] = p
 		if p.Domain != "" {
-			r.byDomain[p.Domain] = p.PropertyID
+			byDomain[p.Domain] = p.PropertyID
 		}
 	}
 
+	// Swap the map pointers under the lock (O(1)), then publish the new sequence
+	// number after the unlock. Storing sequence after Unlock ensures that any
+	// goroutine observing the advanced sequence via the lock-free Sequence() call
+	// will also see the new maps once it acquires RLock.
+	r.mu.Lock()
+	r.byID = byID
+	r.byRID = byRID
+	r.byDomain = byDomain
+	r.mu.Unlock()
 	r.sequence.Store(snapshot.Sequence)
 }
 
@@ -188,7 +195,9 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 	case "remove":
 		if existing, ok := r.byID[update.Property.PropertyID]; ok {
 			delete(r.byID, existing.PropertyID)
-			delete(r.byRID, existing.PropertyRID)
+			if existing.PropertyRID != 0 {
+				delete(r.byRID, existing.PropertyRID)
+			}
 			if existing.Domain != "" {
 				delete(r.byDomain, existing.Domain)
 			}

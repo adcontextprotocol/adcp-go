@@ -32,7 +32,11 @@ func main() {
 	// Initialize components
 	registry := router.NewRegistry("", "")
 	health := router.NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
-	r := router.NewRouter(cfg.Providers, registry, nil, health)
+	r, err := router.NewRouter(cfg.Providers, registry, nil, health)
+	if err != nil {
+		slog.Error("invalid router configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// Metrics
 	reg := prommetrics.NewRegistry()
