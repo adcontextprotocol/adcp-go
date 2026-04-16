@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFileCursorStore_RoundTrip(t *testing.T) {
@@ -15,34 +18,20 @@ func TestFileCursorStore_RoundTrip(t *testing.T) {
 
 	// Load from missing file returns empty
 	cursor, err := store.Load(ctx)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cursor != "" {
-		t.Errorf("cursor = %q, want empty", cursor)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, cursor)
 
 	// Save and reload
-	if err := store.Save(ctx, "019414a0-0000-7000-0000-000000000001"); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, store.Save(ctx, "019414a0-0000-7000-0000-000000000001"))
 
 	cursor, err = store.Load(ctx)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cursor != "019414a0-0000-7000-0000-000000000001" {
-		t.Errorf("cursor = %q", cursor)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "019414a0-0000-7000-0000-000000000001", cursor)
 
 	// Overwrite
-	if err := store.Save(ctx, "019414a0-0000-7000-0000-000000000002"); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
+	require.NoError(t, store.Save(ctx, "019414a0-0000-7000-0000-000000000002"))
 	cursor, _ = store.Load(ctx)
-	if cursor != "019414a0-0000-7000-0000-000000000002" {
-		t.Errorf("cursor = %q", cursor)
-	}
+	assert.Equal(t, "019414a0-0000-7000-0000-000000000002", cursor)
 }
 
 func TestFileCursorStore_AtomicWrite(t *testing.T) {
@@ -56,9 +45,7 @@ func TestFileCursorStore_AtomicWrite(t *testing.T) {
 	// After save, no temp files should remain
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if e.Name() != "cursor" {
-			t.Errorf("unexpected file: %s", e.Name())
-		}
+		assert.Equal(t, "cursor", e.Name(), "unexpected file: %s", e.Name())
 	}
 }
 
@@ -67,13 +54,9 @@ func TestMemoryCursorStore(t *testing.T) {
 	ctx := context.Background()
 
 	cursor, _ := store.Load(ctx)
-	if cursor != "" {
-		t.Errorf("initial = %q", cursor)
-	}
+	assert.Empty(t, cursor, "initial cursor should be empty")
 
 	_ = store.Save(ctx, "abc")
 	cursor, _ = store.Load(ctx)
-	if cursor != "abc" {
-		t.Errorf("cursor = %q", cursor)
-	}
+	assert.Equal(t, "abc", cursor)
 }

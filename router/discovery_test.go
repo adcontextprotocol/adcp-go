@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testDiscovery creates a Discovery that bypasses safeDialContext for httptest.Server.
@@ -36,12 +39,8 @@ func TestDiscovery_AddsNewProviders(t *testing.T) {
 	d.Stop()
 
 	all := ps.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 providers, got %d", len(all))
-	}
-	if all[0].EffectiveStatus() != ProviderStatusActive {
-		t.Errorf("new provider should be active, got %v", all[0].Status)
-	}
+	require.Len(t, all, 2, "expected 2 providers")
+	assert.Equal(t, ProviderStatusActive, all[0].EffectiveStatus(), "new provider should be active")
 }
 
 func TestDiscovery_RemovesProviders(t *testing.T) {
@@ -63,12 +62,8 @@ func TestDiscovery_RemovesProviders(t *testing.T) {
 	d.Stop()
 
 	all := ps.All()
-	if len(all) != 1 {
-		t.Fatalf("expected 1 provider, got %d", len(all))
-	}
-	if all[0].ID != "kept" {
-		t.Errorf("expected kept, got %s", all[0].ID)
-	}
+	require.Len(t, all, 1, "expected 1 provider")
+	assert.Equal(t, "kept", all[0].ID)
 }
 
 func TestDiscovery_DrainsRemovedWithInflight(t *testing.T) {
@@ -95,16 +90,12 @@ func TestDiscovery_DrainsRemovedWithInflight(t *testing.T) {
 	d.Stop()
 
 	all := ps.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 providers (kept + draining), got %d", len(all))
-	}
+	require.Len(t, all, 2, "expected 2 providers (kept + draining)")
 	byID := map[string]ProviderConfig{}
 	for _, p := range all {
 		byID[p.ID] = p
 	}
-	if byID["draining"].Status != ProviderStatusDraining {
-		t.Errorf("expected draining, got %v", byID["draining"].Status)
-	}
+	assert.Equal(t, ProviderStatusDraining, byID["draining"].Status)
 }
 
 func TestDiscovery_UpdatesChangedProviders(t *testing.T) {
@@ -125,15 +116,9 @@ func TestDiscovery_UpdatesChangedProviders(t *testing.T) {
 	d.Stop()
 
 	p, ok := ps.Get("p1")
-	if !ok {
-		t.Fatal("p1 should still exist")
-	}
-	if p.Endpoint != "https://new-endpoint.com" {
-		t.Errorf("endpoint should be updated, got %s", p.Endpoint)
-	}
-	if p.Status != ProviderStatusActive {
-		t.Errorf("status should be preserved as active, got %v", p.Status)
-	}
+	require.True(t, ok, "p1 should still exist")
+	assert.Equal(t, "https://new-endpoint.com", p.Endpoint, "endpoint should be updated")
+	assert.Equal(t, ProviderStatusActive, p.Status, "status should be preserved as active")
 }
 
 func TestDiscovery_SkipsInvalidProviders(t *testing.T) {
@@ -154,12 +139,8 @@ func TestDiscovery_SkipsInvalidProviders(t *testing.T) {
 	d.Stop()
 
 	all := ps.All()
-	if len(all) != 1 {
-		t.Fatalf("expected 1 valid provider, got %d", len(all))
-	}
-	if all[0].ID != "valid" {
-		t.Errorf("expected valid, got %s", all[0].ID)
-	}
+	require.Len(t, all, 1, "expected 1 valid provider")
+	assert.Equal(t, "valid", all[0].ID)
 }
 
 func TestDiscovery_EndpointFailure(t *testing.T) {
@@ -181,13 +162,10 @@ func TestDiscovery_EndpointFailure(t *testing.T) {
 
 	// Existing providers should be preserved on failure.
 	all := ps.All()
-	if len(all) != 1 || all[0].ID != "existing" {
-		t.Errorf("existing providers should be preserved on discovery failure, got %v", all)
-	}
+	require.Len(t, all, 1, "existing providers should be preserved on discovery failure")
+	assert.Equal(t, "existing", all[0].ID)
 
-	if callCount.Load() < 2 {
-		t.Errorf("expected at least 2 poll attempts, got %d", callCount.Load())
-	}
+	assert.GreaterOrEqual(t, callCount.Load(), int64(2), "expected at least 2 poll attempts")
 }
 
 func TestDiscovery_EmptyResponsePreservesCurrent(t *testing.T) {
@@ -206,9 +184,8 @@ func TestDiscovery_EmptyResponsePreservesCurrent(t *testing.T) {
 	d.Stop()
 
 	all := ps.All()
-	if len(all) != 1 || all[0].ID != "existing" {
-		t.Errorf("empty discovery should preserve current providers, got %v", all)
-	}
+	require.Len(t, all, 1, "empty discovery should preserve current providers")
+	assert.Equal(t, "existing", all[0].ID)
 }
 
 func TestReconcile_PreservesStatus(t *testing.T) {
@@ -222,10 +199,6 @@ func TestReconcile_PreservesStatus(t *testing.T) {
 	}
 
 	result := d.reconcile(current, incoming)
-	if len(result) != 1 {
-		t.Fatalf("expected 1, got %d", len(result))
-	}
-	if result[0].Status != ProviderStatusDraining {
-		t.Errorf("status should be preserved, got %v", result[0].Status)
-	}
+	require.Len(t, result, 1)
+	assert.Equal(t, ProviderStatusDraining, result[0].Status, "status should be preserved")
 }

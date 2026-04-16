@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Mock Context Agent ---
@@ -283,14 +285,10 @@ func postJSON(t *testing.T, url string, body any) []byte {
 	t.Helper()
 	b, _ := json.Marshal(body)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
-	if err != nil {
-		t.Fatalf("POST %s: %v", url, err)
-	}
+	require.NoError(t, err, "POST %s", url)
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		t.Fatalf("POST %s: status %d, body: %s", url, resp.StatusCode, string(data))
-	}
+	require.Equal(t, 200, resp.StatusCode, "POST %s: body: %s", url, string(data))
 	return data
 }
 
@@ -333,14 +331,10 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	})
 
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(ctxResp, &cmResp)
+	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
 
-	if len(cmResp.Offers) != 1 {
-		t.Fatalf("expected 1 offer, got %d", len(cmResp.Offers))
-	}
-	if cmResp.Offers[0].PackageID != "pkg-food-display" {
-		t.Fatalf("expected pkg-food-display, got %s", cmResp.Offers[0].PackageID)
-	}
+	require.Len(t, cmResp.Offers, 1, "expected 1 offer")
+	require.Equal(t, "pkg-food-display", cmResp.Offers[0].PackageID)
 
 	// 2. Identity Match (ALL active packages, not just page-specific)
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
@@ -354,7 +348,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 	})
 
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 
 	// All requested should be eligible (no exposures yet)
 	eligiblePkgs := make(map[string]bool)
@@ -365,9 +359,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 		"pkg-food-display", "pkg-tech-native", "pkg-auto-video",
 		"pkg-other-site-1", "pkg-other-site-2", "pkg-other-site-3",
 	} {
-		if !eligiblePkgs[pkgID] {
-			t.Errorf("expected %s to be eligible", pkgID)
-		}
+		assert.True(t, eligiblePkgs[pkgID], "expected %s to be eligible", pkgID)
 	}
 
 	// 3. Publisher joins locally
@@ -382,9 +374,7 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 			activated = append(activated, pkgID)
 		}
 	}
-	if len(activated) != 1 || activated[0] != "pkg-food-display" {
-		t.Fatalf("expected [pkg-food-display], got %v", activated)
-	}
+	require.Equal(t, []string{"pkg-food-display"}, activated)
 }
 
 func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
@@ -412,18 +402,14 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	})
 
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 
 	eligSet := make(map[string]bool)
 	for _, id := range imResp.EligiblePackageIDs {
 		eligSet[id] = true
 	}
-	if eligSet["pkg-food-display"] {
-		t.Error("pkg-food-display should be capped after 2 exposures")
-	}
-	if !eligSet["pkg-tech-native"] {
-		t.Error("pkg-tech-native should still be eligible")
-	}
+	assert.False(t, eligSet["pkg-food-display"], "pkg-food-display should be capped after 2 exposures")
+	assert.True(t, eligSet["pkg-tech-native"], "pkg-tech-native should still be eligible")
 }
 
 func TestMultipleProviders_MergedResponse(t *testing.T) {
@@ -454,11 +440,9 @@ func TestMultipleProviders_MergedResponse(t *testing.T) {
 	})
 
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(resp, &cmResp)
+	require.NoError(t, json.Unmarshal(resp, &cmResp))
 
-	if len(cmResp.Offers) != 2 {
-		t.Fatalf("expected 2 merged offers, got %d: %+v", len(cmResp.Offers), cmResp.Offers)
-	}
+	require.Len(t, cmResp.Offers, 2, "expected 2 merged offers: %+v", cmResp.Offers)
 }
 
 func TestPackageSetDecorrelation(t *testing.T) {
@@ -475,12 +459,8 @@ func TestPackageSetDecorrelation(t *testing.T) {
 		"pkg-4", "pkg-5", "pkg-6",
 	}
 
-	if len(contextPackages) == len(identityPackages) {
-		t.Error("context and identity package sets should be different sizes for decorrelation")
-	}
-	if len(identityPackages) <= len(contextPackages) {
-		t.Error("identity set should be larger than context set (all active vs per-placement)")
-	}
+	assert.NotEqual(t, len(contextPackages), len(identityPackages), "context and identity package sets should be different sizes for decorrelation")
+	assert.Greater(t, len(identityPackages), len(contextPackages), "identity set should be larger than context set (all active vs per-placement)")
 }
 
 func TestProviderTimeout_Excluded(t *testing.T) {
@@ -512,16 +492,12 @@ func TestProviderTimeout_Excluded(t *testing.T) {
 		},
 	})
 	resp, err := client.Post(fastAgent.URL+"/tmp/context", "application/json", bytes.NewReader(body))
-	if err != nil {
-		t.Fatalf("fast agent should respond: %v", err)
-	}
+	require.NoError(t, err, "fast agent should respond")
 	resp.Body.Close()
 
 	// Slow agent times out
 	_, err = client.Post(slowAgent.URL+"/tmp/context", "application/json", bytes.NewReader(body))
-	if err == nil {
-		t.Error("slow agent should have timed out")
-	}
+	assert.Error(t, err, "slow agent should have timed out")
 }
 
 func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
@@ -553,10 +529,8 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		},
 	})
 	var cmResp tmproto.ContextMatchResponse
-	json.Unmarshal(ctxResp, &cmResp)
-	if len(cmResp.Offers) != 1 {
-		t.Fatalf("expected 1 offer, got %d", len(cmResp.Offers))
-	}
+	require.NoError(t, json.Unmarshal(ctxResp, &cmResp))
+	require.Len(t, cmResp.Offers, 1, "expected 1 offer")
 
 	// 2. Identity match (should be eligible)
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
@@ -565,14 +539,12 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp, &imResp)
+	require.NoError(t, json.Unmarshal(idResp, &imResp))
 	eligSet := make(map[string]bool)
 	for _, id := range imResp.EligiblePackageIDs {
 		eligSet[id] = true
 	}
-	if !eligSet["pkg-food"] {
-		t.Error("should be eligible before exposure")
-	}
+	assert.True(t, eligSet["pkg-food"], "should be eligible before exposure")
 
 	// 3. Expose (ad was shown)
 	idAgent.recordExposure("tok-loop-user", "pkg-food")
@@ -584,14 +556,12 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp2 tmproto.IdentityMatchResponse
-	json.Unmarshal(idResp2, &imResp2)
+	require.NoError(t, json.Unmarshal(idResp2, &imResp2))
 	eligSet2 := make(map[string]bool)
 	for _, id := range imResp2.EligiblePackageIDs {
 		eligSet2[id] = true
 	}
-	if eligSet2["pkg-food"] {
-		t.Error("should be capped after 1 exposure")
-	}
+	assert.False(t, eligSet2["pkg-food"], "should be capped after 1 exposure")
 }
 
 func TestRouterEnrichment_PropertyRID(t *testing.T) {
@@ -624,9 +594,7 @@ func TestRouterEnrichment_PropertyRID(t *testing.T) {
 		},
 	})
 
-	if receivedRID != 1001 {
-		t.Errorf("expected property_rid 1001, got %d", receivedRID)
-	}
+	assert.Equal(t, uint64(1001), receivedRID, "expected property_rid 1001")
 }
 
 func TestRouterEnrichment_URLHash(t *testing.T) {
@@ -658,9 +626,7 @@ func TestRouterEnrichment_URLHash(t *testing.T) {
 	})
 
 	expectedHash := tmproto.HashURL("https://www.oakwood.example.com/cooking")
-	if receivedHash != expectedHash {
-		t.Errorf("expected url_hash %d, got %d", expectedHash, receivedHash)
-	}
+	assert.Equal(t, expectedHash, receivedHash, "url_hash mismatch")
 }
 
 func TestTimingReport(t *testing.T) {

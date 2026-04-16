@@ -8,6 +8,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSyncer_AppliesPropertyEvents(t *testing.T) {
@@ -42,21 +45,15 @@ func TestSyncer_AppliesPropertyEvents(t *testing.T) {
 	waitFor(t, func() bool { return props.Count() == 1 })
 
 	p, ok := props.LookupByID("pub1.example.com/home")
-	if !ok {
-		t.Fatal("property not found")
-	}
-	if p.PropertyRID != 1001 {
-		t.Errorf("rid = %d", p.PropertyRID)
-	}
-	if len(p.Placements) != 1 || p.Placements[0] != "top" {
-		t.Errorf("placements = %v", p.Placements)
-	}
+	require.True(t, ok, "property not found")
+	assert.Equal(t, uint64(1001), p.PropertyRID)
+	require.Len(t, p.Placements, 1)
+	assert.Equal(t, "top", p.Placements[0])
 
 	// Reverse lookup: RID → property
 	p2, ok := props.LookupByRID(1001)
-	if !ok || p2.PropertyID != "pub1.example.com/home" {
-		t.Error("reverse lookup by RID failed")
-	}
+	require.True(t, ok, "reverse lookup by RID failed")
+	assert.Equal(t, "pub1.example.com/home", p2.PropertyID)
 }
 
 func TestSyncer_AppliesPropertyRemoved(t *testing.T) {
@@ -89,9 +86,8 @@ func TestSyncer_AppliesPropertyRemoved(t *testing.T) {
 
 	waitFor(t, func() bool { return props.Count() == 0 })
 
-	if _, ok := props.LookupByRID(100); ok {
-		t.Error("removed property should not be in RID index")
-	}
+	_, ok := props.LookupByRID(100)
+	assert.False(t, ok, "removed property should not be in RID index")
 }
 
 func TestSyncer_AppliesPropertyMerged(t *testing.T) {
@@ -127,17 +123,14 @@ func TestSyncer_AppliesPropertyMerged(t *testing.T) {
 	waitFor(t, func() bool { return props.Count() == 1 })
 
 	// Alias should be removed
-	if _, ok := props.LookupByID("alias-prop"); ok {
-		t.Error("alias property should be removed after merge")
-	}
-	if _, ok := props.LookupByRID(100); ok {
-		t.Error("alias RID should be removed after merge")
-	}
+	_, ok := props.LookupByID("alias-prop")
+	assert.False(t, ok, "alias property should be removed after merge")
+	_, ok = props.LookupByRID(100)
+	assert.False(t, ok, "alias RID should be removed after merge")
 
 	// Canonical should remain
-	if _, ok := props.LookupByID("canonical-prop"); !ok {
-		t.Error("canonical property should still exist")
-	}
+	_, ok = props.LookupByID("canonical-prop")
+	assert.True(t, ok, "canonical property should still exist")
 }
 
 func TestSyncer_AppliesAuthorizationEvents(t *testing.T) {
@@ -166,9 +159,7 @@ func TestSyncer_AppliesAuthorizationEvents(t *testing.T) {
 
 	waitFor(t, func() bool { return auth.Count() > 0 })
 
-	if !auth.Check("https://agent.com", "example.com") {
-		t.Error("agent should be authorized")
-	}
+	assert.True(t, auth.Check("https://agent.com", "example.com"), "agent should be authorized")
 }
 
 func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
@@ -232,12 +223,8 @@ func TestSyncer_AppliesAgentEvents(t *testing.T) {
 	waitFor(t, func() bool { return agents.Count() > 0 })
 
 	p, ok := agents.Get("https://agent.example.com")
-	if !ok {
-		t.Fatal("agent not found")
-	}
-	if p.PropertyCount != 10 {
-		t.Errorf("property_count = %d", p.PropertyCount)
-	}
+	require.True(t, ok, "agent not found")
+	assert.Equal(t, 10, p.PropertyCount)
 }
 
 func TestSyncer_AgentRemovedCleansAuth(t *testing.T) {
@@ -274,9 +261,7 @@ func TestSyncer_AgentRemovedCleansAuth(t *testing.T) {
 
 	waitFor(t, func() bool { return agents.Count() == 0 })
 
-	if auth.Check("https://agent.com", "pub.com") {
-		t.Error("auth should be cleaned up when agent is removed")
-	}
+	assert.False(t, auth.Check("https://agent.com", "pub.com"), "auth should be cleaned up when agent is removed")
 }
 
 func TestSyncer_CursorPersisted(t *testing.T) {
@@ -350,9 +335,8 @@ func TestSyncer_CursorExpiredClearsAndRebootstraps(t *testing.T) {
 	})
 
 	// Stale data should have been cleared
-	if _, ok := agents.Get("https://stale.com"); ok {
-		t.Error("stale agent should be cleared on cursor-expired re-bootstrap")
-	}
+	_, ok := agents.Get("https://stale.com")
+	assert.False(t, ok, "stale agent should be cleared on cursor-expired re-bootstrap")
 }
 
 func TestSyncer_HasMoreDrainsImmediately(t *testing.T) {
@@ -385,9 +369,7 @@ func TestSyncer_HasMoreDrainsImmediately(t *testing.T) {
 
 	waitFor(t, func() bool { return agents.Count() >= 2 })
 
-	if callCount.Load() < 2 {
-		t.Error("should have made at least 2 calls to drain has_more")
-	}
+	assert.GreaterOrEqual(t, callCount.Load(), int32(2), "should have made at least 2 calls to drain has_more")
 }
 
 // --- Helpers ---

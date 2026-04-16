@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
 )
 
 // ChatTurn simulates a user message and the AI assistant's response.
@@ -491,8 +492,6 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 		t.Logf("Turn %d: showed=%v (total impressions: %d)", turn+1, showed, impressionCount)
 	}
 
-	if impressionCount != 2 {
-		t.Errorf("expected exactly 2 impressions (cap=2), got %d", impressionCount)
-	}
+	assert.Equal(t, 2, impressionCount, "expected exactly 2 impressions (cap=2)")
 	t.Logf("Frequency cap correctly limited to %d impressions", impressionCount)
 }

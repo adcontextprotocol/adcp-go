@@ -2,6 +2,9 @@ package contextagent
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestApplyEvents_RegisterAddsToTargeting(t *testing.T) {
@@ -23,21 +26,11 @@ func TestApplyEvents_RegisterAddsToTargeting(t *testing.T) {
 
 	ApplyEvents(registry, targeting, events)
 
-	if registry.Get(100) == nil {
-		t.Fatal("expected RID 100 in registry")
-	}
-	if registry.Get(200) == nil {
-		t.Fatal("expected RID 200 in registry")
-	}
-	if !targeting.ContainsProperty(100) {
-		t.Fatal("expected RID 100 in targeting bitmap")
-	}
-	if !targeting.ContainsProperty(200) {
-		t.Fatal("expected RID 200 in targeting bitmap")
-	}
-	if registry.Sequence != 2 {
-		t.Fatalf("expected sequence 2, got %d", registry.Sequence)
-	}
+	require.NotNil(t, registry.Get(100), "expected RID 100 in registry")
+	require.NotNil(t, registry.Get(200), "expected RID 200 in registry")
+	require.True(t, targeting.ContainsProperty(100), "expected RID 100 in targeting bitmap")
+	require.True(t, targeting.ContainsProperty(200), "expected RID 200 in targeting bitmap")
+	assert.Equal(t, uint64(2), registry.Sequence)
 }
 
 func TestApplyEvents_DeactivateRemovesFromTargeting(t *testing.T) {
@@ -52,12 +45,8 @@ func TestApplyEvents_DeactivateRemovesFromTargeting(t *testing.T) {
 		{Sequence: 2, Action: "deactivate", Record: PropertyRecord{RID: 100}},
 	})
 
-	if registry.Get(100) != nil {
-		t.Fatal("expected RID 100 removed from registry")
-	}
-	if targeting.ContainsProperty(100) {
-		t.Fatal("expected RID 100 removed from targeting bitmap")
-	}
+	require.Nil(t, registry.Get(100), "expected RID 100 removed from registry")
+	require.False(t, targeting.ContainsProperty(100), "expected RID 100 removed from targeting bitmap")
 }
 
 func TestApplyEvents_UpdateExistingProperty(t *testing.T) {
@@ -73,15 +62,9 @@ func TestApplyEvents_UpdateExistingProperty(t *testing.T) {
 	})
 
 	rec := registry.Get(100)
-	if rec == nil {
-		t.Fatal("expected RID 100 in registry after update")
-	}
-	if rec.Domain != "new.com" {
-		t.Fatalf("expected updated domain, got %s", rec.Domain)
-	}
-	if !targeting.ContainsProperty(100) {
-		t.Fatal("expected RID 100 still in targeting after update")
-	}
+	require.NotNil(t, rec, "expected RID 100 in registry after update")
+	assert.Equal(t, "new.com", rec.Domain)
+	assert.True(t, targeting.ContainsProperty(100), "expected RID 100 still in targeting after update")
 }
 
 func TestApplyEvents_EmptyEvents(t *testing.T) {
@@ -90,7 +73,5 @@ func TestApplyEvents_EmptyEvents(t *testing.T) {
 
 	ApplyEvents(registry, targeting, nil)
 
-	if registry.Sequence != 0 {
-		t.Fatalf("expected sequence 0 for empty events, got %d", registry.Sequence)
-	}
+	assert.Equal(t, uint64(0), registry.Sequence)
 }

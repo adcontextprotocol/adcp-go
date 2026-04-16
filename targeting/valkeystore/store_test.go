@@ -8,14 +8,14 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setup(t *testing.T) (*Store, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	return New(rdb), mr
 }
@@ -29,28 +29,17 @@ func TestSetOperations(t *testing.T) {
 	mr.SAdd("warm", "red", "orange")
 
 	ok, err := s.SetIsMember(ctx, "colors", "red")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok {
-		t.Error("expected red in colors")
-	}
+	require.NoError(t, err)
+	assert.True(t, ok, "expected red in colors")
 
 	ok, err = s.SetIsMember(ctx, "colors", "purple")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("expected purple not in colors")
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected purple not in colors")
 
 	result, err := s.SetIntersect(ctx, "colors", "warm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result) != 1 || result[0] != "red" {
-		t.Errorf("expected [red], got %v", result)
-	}
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	assert.Equal(t, "red", result[0])
 }
 
 func TestStringOperations(t *testing.T) {
@@ -59,43 +48,26 @@ func TestStringOperations(t *testing.T) {
 	ctx := context.Background()
 
 	_, ok, err := s.Get(ctx, "missing")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("expected ok=false for missing key")
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected ok=false for missing key")
 
-	if err := s.Set(ctx, "name", "alice", 0); err != nil {
-		t.Fatal(err)
-	}
+	err = s.Set(ctx, "name", "alice", 0)
+	require.NoError(t, err)
 	val, ok, err := s.Get(ctx, "name")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok || val != "alice" {
-		t.Errorf("expected alice, got %q ok=%v", val, ok)
-	}
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, "alice", val)
 
 	ok2, err := s.Exists(ctx, "name")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ok2 {
-		t.Error("expected key to exist")
-	}
+	require.NoError(t, err)
+	assert.True(t, ok2, "expected key to exist")
 
-	if err := s.Set(ctx, "temp", "val", 10*time.Second); err != nil {
-		t.Fatal(err)
-	}
+	err = s.Set(ctx, "temp", "val", 10*time.Second)
+	require.NoError(t, err)
 	mr.FastForward(11 * time.Second)
 	_, ok, err = s.Get(ctx, "temp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok {
-		t.Error("expected expired key to be gone")
-	}
+	require.NoError(t, err)
+	assert.False(t, ok, "expected expired key to be gone")
 }
 
 func TestSortedSetOperations(t *testing.T) {
@@ -103,33 +75,17 @@ func TestSortedSetOperations(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	if err := s.ZAdd(ctx, "events", 100, "a"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ZAdd(ctx, "events", 200, "b"); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.ZAdd(ctx, "events", 300, "c"); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.ZAdd(ctx, "events", 100, "a"))
+	require.NoError(t, s.ZAdd(ctx, "events", 200, "b"))
+	require.NoError(t, s.ZAdd(ctx, "events", 300, "c"))
 
 	count, err := s.ZCount(ctx, "events", 150, math.MaxFloat64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 2 {
-		t.Errorf("expected 2, got %d", count)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), count)
 
-	if err := s.ZExpire(ctx, "events", 5*time.Second); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, s.ZExpire(ctx, "events", 5*time.Second))
 	mr.FastForward(6 * time.Second)
 	count, err = s.ZCount(ctx, "events", 0, math.MaxFloat64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Errorf("expected 0 after expiry, got %d", count)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), count, "expected 0 after expiry")
 }

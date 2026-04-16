@@ -11,16 +11,14 @@ import (
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContextMatch_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/tmp/context" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
+		assert.Equal(t, "/tmp/context", r.URL.Path, "unexpected path")
+		assert.Equal(t, http.MethodPost, r.Method, "expected POST")
 
 		var req tmproto.ContextMatchRequest
 		body, _ := io.ReadAll(r.Body)
@@ -45,12 +43,9 @@ func TestContextMatch_HappyPath(t *testing.T) {
 			{PackageID: "pkg-1", MediaBuyID: "mb-1"},
 		},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Offers) != 1 || resp.Offers[0].PackageID != "pkg-1" {
-		t.Errorf("unexpected offers: %+v", resp.Offers)
-	}
+	require.NoError(t, err)
+	require.Len(t, resp.Offers, 1)
+	assert.Equal(t, "pkg-1", resp.Offers[0].PackageID)
 }
 
 func TestIdentityMatch_HappyPath(t *testing.T) {
@@ -76,15 +71,10 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-1"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.EligiblePackageIDs) != 1 || resp.EligiblePackageIDs[0] != "pkg-1" {
-		t.Errorf("unexpected eligible IDs: %+v", resp.EligiblePackageIDs)
-	}
-	if resp.TTLSec != 300 {
-		t.Errorf("expected TTLSec 300, got %d", resp.TTLSec)
-	}
+	require.NoError(t, err)
+	require.Len(t, resp.EligiblePackageIDs, 1)
+	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
+	assert.Equal(t, 300, resp.TTLSec)
 }
 
 func TestContextMatch_ErrorResponse(t *testing.T) {
@@ -108,16 +98,10 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 			{PackageID: "pkg-1"},
 		},
 	})
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	require.Error(t, err)
 	var tmpErr *TMPError
-	if !errors.As(err, &tmpErr) {
-		t.Fatalf("expected TMPError, got %T: %v", err, err)
-	}
-	if tmpErr.Code != tmproto.ErrorCodeInvalidRequest {
-		t.Errorf("expected code invalid_request, got %s", tmpErr.Code)
-	}
+	require.True(t, errors.As(err, &tmpErr), "expected TMPError, got %T: %v", err, err)
+	assert.Equal(t, tmproto.ErrorCodeInvalidRequest, tmpErr.Code)
 }
 
 func TestContextMatch_ValidationFailure(t *testing.T) {
@@ -131,12 +115,8 @@ func TestContextMatch_ValidationFailure(t *testing.T) {
 	_, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
 		// Missing required fields.
 	})
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
-	if called.Load() {
-		t.Error("server should not be called on validation failure")
-	}
+	require.Error(t, err, "expected validation error")
+	assert.False(t, called.Load(), "server should not be called on validation failure")
 }
 
 func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
@@ -162,12 +142,8 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 		},
 		// RequestID intentionally empty.
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if receivedID == "" {
-		t.Error("expected auto-generated request ID")
-	}
+	require.NoError(t, err)
+	assert.NotEmpty(t, receivedID, "expected auto-generated request ID")
 }
 
 func TestActivate_HappyPath(t *testing.T) {
@@ -210,28 +186,18 @@ func TestActivate_HappyPath(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-food", "pkg-tech"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if !contextCalled.Load() || !identityCalled.Load() {
-		t.Error("both endpoints should be called")
-	}
+	assert.True(t, contextCalled.Load(), "context endpoint should be called")
+	assert.True(t, identityCalled.Load(), "identity endpoint should be called")
 
-	if len(result.Activations) != 1 {
-		t.Fatalf("expected 1 activation, got %d", len(result.Activations))
-	}
+	require.Len(t, result.Activations, 1)
 
 	a := result.Activations[0]
-	if a.PackageID != "pkg-food" {
-		t.Errorf("expected pkg-food, got %s", a.PackageID)
-	}
-	if a.MediaBuyID != "mb-food" {
-		t.Errorf("expected mb-food, got %s", a.MediaBuyID)
-	}
-	if result.Signals == nil || len(result.Signals.Segments) != 1 {
-		t.Error("expected signals with 1 segment")
-	}
+	assert.Equal(t, "pkg-food", a.PackageID)
+	assert.Equal(t, "mb-food", a.MediaBuyID)
+	require.NotNil(t, result.Signals)
+	assert.Len(t, result.Signals.Segments, 1)
 }
 
 func TestActivate_NoOverlap(t *testing.T) {
@@ -260,12 +226,8 @@ func TestActivate_NoOverlap(t *testing.T) {
 		UIDType:      tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-b"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Activations) != 0 {
-		t.Errorf("expected 0 activations (no overlap), got %d", len(result.Activations))
-	}
+	require.NoError(t, err)
+	assert.Empty(t, result.Activations, "expected 0 activations (no overlap)")
 }
 
 func TestActivate_ContextFails(t *testing.T) {
@@ -291,9 +253,7 @@ func TestActivate_ContextFails(t *testing.T) {
 		UIDType:      tmproto.UIDTypeUID2,
 		PackageIDs:   []string{"pkg-1"},
 	})
-	if err == nil {
-		t.Error("expected error when context match fails")
-	}
+	assert.Error(t, err, "expected error when context match fails")
 }
 
 func TestActivate_MultiPackage(t *testing.T) {
@@ -331,23 +291,13 @@ func TestActivate_MultiPackage(t *testing.T) {
 		UIDType:    tmproto.UIDTypeUID2,
 		PackageIDs: []string{"pkg-a", "pkg-b", "pkg-c"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if len(result.Activations) != 3 {
-		t.Fatalf("expected 3, got %d", len(result.Activations))
-	}
+	require.Len(t, result.Activations, 3)
 	// Activations should follow context offer order.
-	if result.Activations[0].PackageID != "pkg-a" {
-		t.Errorf("expected pkg-a first, got %s", result.Activations[0].PackageID)
-	}
-	if result.Activations[1].PackageID != "pkg-b" {
-		t.Errorf("expected pkg-b second, got %s", result.Activations[1].PackageID)
-	}
-	if result.Activations[2].PackageID != "pkg-c" {
-		t.Errorf("expected pkg-c third, got %s", result.Activations[2].PackageID)
-	}
+	assert.Equal(t, "pkg-a", result.Activations[0].PackageID, "expected pkg-a first")
+	assert.Equal(t, "pkg-b", result.Activations[1].PackageID, "expected pkg-b second")
+	assert.Equal(t, "pkg-c", result.Activations[2].PackageID, "expected pkg-c third")
 }
 
 func TestActivate_DerivesPackageIDs(t *testing.T) {
@@ -380,12 +330,8 @@ func TestActivate_DerivesPackageIDs(t *testing.T) {
 		UIDType:   tmproto.UIDTypeUID2,
 		// PackageIDs not set — should derive from Packages.
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(receivedPkgIDs) != 2 || receivedPkgIDs[0] != "pkg-a" || receivedPkgIDs[1] != "pkg-b" {
-		t.Errorf("expected derived [pkg-a pkg-b], got %v", receivedPkgIDs)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pkg-a", "pkg-b"}, receivedPkgIDs, "expected derived [pkg-a pkg-b]")
 }
 
 func TestActivate_TmpxProviders(t *testing.T) {
@@ -419,15 +365,9 @@ func TestActivate_TmpxProviders(t *testing.T) {
 		PackageIDs:   []string{"pkg-1"},
 		Country:      "US",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(result.Activations) != 1 {
-		t.Fatalf("expected 1 activation, got %d", len(result.Activations))
-	}
-	if result.TmpxProviders["scope3"] != "k1.dGVzdC10bXB4LXRva2Vu" {
-		t.Errorf("expected TMPX for scope3, got %v", result.TmpxProviders)
-	}
+	require.NoError(t, err)
+	require.Len(t, result.Activations, 1)
+	assert.Equal(t, "k1.dGVzdC10bXB4LXRva2Vu", result.TmpxProviders["scope3"])
 }
 
 func TestActivate_CountryPassedThrough(t *testing.T) {
@@ -458,12 +398,8 @@ func TestActivate_CountryPassedThrough(t *testing.T) {
 		PackageIDs:   []string{"pkg-1"},
 		Country:      "DE",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if receivedCountry != "DE" {
-		t.Errorf("expected country DE sent to router, got %q", receivedCountry)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "DE", receivedCountry, "expected country DE sent to router")
 }
 
 func TestJoinResults_Empty(t *testing.T) {
@@ -472,7 +408,5 @@ func TestJoinResults_Empty(t *testing.T) {
 		&tmproto.IdentityMatchResponse{},
 		nil,
 	)
-	if len(result) != 0 {
-		t.Errorf("expected 0 activations, got %d", len(result))
-	}
+	assert.Empty(t, result, "expected 0 activations")
 }

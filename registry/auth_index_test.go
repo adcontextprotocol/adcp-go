@@ -4,6 +4,9 @@ import (
 	"sort"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthIndex_AddAndCheck(t *testing.T) {
@@ -15,18 +18,10 @@ func TestAuthIndex_AddAndCheck(t *testing.T) {
 		AuthorizationType: "publisher_properties",
 	})
 
-	if !idx.Check("https://agent1.example.com", "pub.com") {
-		t.Error("should be authorized")
-	}
-	if idx.Check("https://agent1.example.com", "other.com") {
-		t.Error("should not be authorized for other domain")
-	}
-	if idx.Check("https://unknown.com", "pub.com") {
-		t.Error("unknown agent should not be authorized")
-	}
-	if idx.Count() != 1 {
-		t.Errorf("count = %d, want 1", idx.Count())
-	}
+	assert.True(t, idx.Check("https://agent1.example.com", "pub.com"), "should be authorized")
+	assert.False(t, idx.Check("https://agent1.example.com", "other.com"), "should not be authorized for other domain")
+	assert.False(t, idx.Check("https://unknown.com", "pub.com"), "unknown agent should not be authorized")
+	assert.Equal(t, 1, idx.Count())
 }
 
 func TestAuthIndex_MultipleEntries(t *testing.T) {
@@ -45,12 +40,8 @@ func TestAuthIndex_MultipleEntries(t *testing.T) {
 	})
 
 	entries := idx.GetEntries("https://agent1.example.com", "pub.com")
-	if len(entries) != 2 {
-		t.Fatalf("entries = %d, want 2", len(entries))
-	}
-	if idx.Count() != 2 {
-		t.Errorf("count = %d, want 2", idx.Count())
-	}
+	require.Len(t, entries, 2)
+	assert.Equal(t, 2, idx.Count())
 }
 
 func TestAuthIndex_DeduplicatesByType(t *testing.T) {
@@ -71,15 +62,10 @@ func TestAuthIndex_DeduplicatesByType(t *testing.T) {
 	})
 
 	entries := idx.GetEntries("https://agent1.example.com", "pub.com")
-	if len(entries) != 1 {
-		t.Fatalf("entries = %d, want 1 (dedup by type)", len(entries))
-	}
-	if len(entries[0].PropertyIDs) != 1 || entries[0].PropertyIDs[0] != "prop-b" {
-		t.Errorf("expected replaced entry with prop-b, got %v", entries[0].PropertyIDs)
-	}
-	if idx.Count() != 1 {
-		t.Errorf("count = %d, want 1", idx.Count())
-	}
+	require.Len(t, entries, 1, "dedup by type")
+	require.Len(t, entries[0].PropertyIDs, 1)
+	assert.Equal(t, "prop-b", entries[0].PropertyIDs[0])
+	assert.Equal(t, 1, idx.Count())
 }
 
 func TestAuthIndex_ReverseIndex(t *testing.T) {
@@ -91,21 +77,15 @@ func TestAuthIndex_ReverseIndex(t *testing.T) {
 
 	agents := idx.GetAuthorizedAgents("pub.com")
 	sort.Strings(agents)
-	if len(agents) != 2 {
-		t.Fatalf("agents = %d, want 2", len(agents))
-	}
-	if agents[0] != "https://agent1.com" || agents[1] != "https://agent2.com" {
-		t.Errorf("agents = %v", agents)
-	}
+	require.Len(t, agents, 2)
+	assert.Equal(t, "https://agent1.com", agents[0])
+	assert.Equal(t, "https://agent2.com", agents[1])
 
 	agents = idx.GetAuthorizedAgents("other.com")
-	if len(agents) != 1 || agents[0] != "https://agent1.com" {
-		t.Errorf("other.com agents = %v", agents)
-	}
+	require.Len(t, agents, 1)
+	assert.Equal(t, "https://agent1.com", agents[0])
 
-	if agents := idx.GetAuthorizedAgents("unknown.com"); agents != nil {
-		t.Errorf("unknown domain should return nil, got %v", agents)
-	}
+	assert.Nil(t, idx.GetAuthorizedAgents("unknown.com"), "unknown domain should return nil")
 }
 
 func TestAuthIndex_RemoveEntry(t *testing.T) {
@@ -116,15 +96,9 @@ func TestAuthIndex_RemoveEntry(t *testing.T) {
 
 	idx.RemoveEntry("https://agent1.com", "pub.com")
 
-	if idx.Check("https://agent1.com", "pub.com") {
-		t.Error("should no longer be authorized for pub.com")
-	}
-	if !idx.Check("https://agent1.com", "other.com") {
-		t.Error("should still be authorized for other.com")
-	}
-	if agents := idx.GetAuthorizedAgents("pub.com"); agents != nil {
-		t.Errorf("reverse index for pub.com should be empty, got %v", agents)
-	}
+	assert.False(t, idx.Check("https://agent1.com", "pub.com"), "should no longer be authorized for pub.com")
+	assert.True(t, idx.Check("https://agent1.com", "other.com"), "should still be authorized for other.com")
+	assert.Nil(t, idx.GetAuthorizedAgents("pub.com"), "reverse index for pub.com should be empty")
 }
 
 func TestAuthIndex_RemoveAgent(t *testing.T) {
@@ -136,26 +110,17 @@ func TestAuthIndex_RemoveAgent(t *testing.T) {
 
 	idx.RemoveAgent("https://agent1.com")
 
-	if idx.Check("https://agent1.com", "pub1.com") {
-		t.Error("agent1 should be fully removed")
-	}
-	if idx.Check("https://agent1.com", "pub2.com") {
-		t.Error("agent1 should be fully removed")
-	}
+	assert.False(t, idx.Check("https://agent1.com", "pub1.com"), "agent1 should be fully removed")
+	assert.False(t, idx.Check("https://agent1.com", "pub2.com"), "agent1 should be fully removed")
 
 	// agent2 should be unaffected
-	if !idx.Check("https://agent2.com", "pub1.com") {
-		t.Error("agent2 should still be authorized")
-	}
+	assert.True(t, idx.Check("https://agent2.com", "pub1.com"), "agent2 should still be authorized")
 
 	// Reverse index should be updated
 	agents := idx.GetAuthorizedAgents("pub1.com")
-	if len(agents) != 1 || agents[0] != "https://agent2.com" {
-		t.Errorf("pub1.com agents = %v", agents)
-	}
-	if agents := idx.GetAuthorizedAgents("pub2.com"); agents != nil {
-		t.Errorf("pub2.com should be empty, got %v", agents)
-	}
+	require.Len(t, agents, 1)
+	assert.Equal(t, "https://agent2.com", agents[0])
+	assert.Nil(t, idx.GetAuthorizedAgents("pub2.com"), "pub2.com should be empty")
 }
 
 func TestAuthIndex_GetEntries_ReturnsCopy(t *testing.T) {
@@ -168,9 +133,7 @@ func TestAuthIndex_GetEntries_ReturnsCopy(t *testing.T) {
 
 	// Original should be unchanged
 	original := idx.GetEntries("https://agent1.com", "pub.com")
-	if original[0].AuthorizationType != "publisher_properties" {
-		t.Error("GetEntries should return a copy")
-	}
+	assert.Equal(t, "publisher_properties", original[0].AuthorizationType, "GetEntries should return a copy")
 }
 
 func TestAuthIndex_Concurrent(t *testing.T) {

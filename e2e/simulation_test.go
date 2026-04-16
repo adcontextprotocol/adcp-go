@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/assert"
 )
 
 // --- Realistic Module Implementations ---
@@ -401,9 +402,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		for _, o := range cmResp.Offers {
 			hasOffer[o.PackageID] = true
 		}
-		if !hasOffer["pkg-coffee-sponsored"] {
-			t.Error("expected pkg-coffee-sponsored to activate (coffee content)")
-		}
+		assert.True(t, hasOffer["pkg-coffee-sponsored"], "expected pkg-coffee-sponsored to activate (coffee content)")
 
 		// Identity match for Alice
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
@@ -428,9 +427,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		t.Logf("Identity Match for Alice: eligible=%v", imResp.EligiblePackageIDs)
 
 		// Alice is in health_conscious, so pharma should be eligible
-		if !eligMap["pkg-pharma-native"] {
-			t.Error("Alice should be eligible for pharma (she's in health_conscious)")
-		}
+		assert.True(t, eligMap["pkg-pharma-native"], "Alice should be eligible for pharma (she's in health_conscious)")
 
 		// Publisher joins: intersect deduped context offers with identity eligibility
 		var activated []string
@@ -462,9 +459,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		for _, id := range imResp.EligiblePackageIDs {
 			eligSet[id] = true
 		}
-		if eligSet["pkg-pharma-native"] {
-			t.Error("Bob should NOT be eligible for pharma (not in health_conscious)")
-		}
+		assert.False(t, eligSet["pkg-pharma-native"], "Bob should NOT be eligible for pharma (not in health_conscious)")
 		t.Log("Bob correctly excluded from pharma package (not in audience)")
 	})
 
@@ -490,9 +485,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		}
 
 		for _, o := range cmResp.Offers {
-			if o.PackageID == "pkg-alcohol-display" {
-				t.Error("brand safety should have blocked alcohol on children's content")
-			}
+			assert.NotEqual(t, "pkg-alcohol-display", o.PackageID, "brand safety should have blocked alcohol on children's content")
 		}
 	})
 
@@ -517,13 +510,9 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		for _, id := range imResp.EligiblePackageIDs {
 			eligSet[id] = true
 		}
-		if eligSet["pkg-coffee-sponsored"] {
-			t.Error("coffee should be capped after 3 exposures (cap=3)")
-		}
+		assert.False(t, eligSet["pkg-coffee-sponsored"], "coffee should be capped after 3 exposures (cap=3)")
 		t.Logf("Coffee capped: eligible=%v", eligSet["pkg-coffee-sponsored"])
-		if !eligSet["pkg-snacks-display"] {
-			t.Error("snacks should still be eligible (no exposures)")
-		}
+		assert.True(t, eligSet["pkg-snacks-display"], "snacks should still be eligible (no exposures)")
 	})
 
 	// --- Scenario 5: Property targeting --- different property, fewer packages match ---
@@ -548,14 +537,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 		}
 
 		// Coffee is targeted to pub-recipe-blog, alcohol is NOT
-		hasAlcohol := false
 		for _, o := range cmResp.Offers {
-			if o.PackageID == "pkg-alcohol-display" {
-				hasAlcohol = true
-			}
-		}
-		if hasAlcohol {
-			t.Error("alcohol should not activate on pub-recipe-blog (property targeting)")
+			assert.NotEqual(t, "pkg-alcohol-display", o.PackageID, "alcohol should not activate on pub-recipe-blog (property targeting)")
 		}
 	})
 }
