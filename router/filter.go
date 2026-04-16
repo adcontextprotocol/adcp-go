@@ -23,6 +23,8 @@ func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfi
 	if !p.IdentityMatch {
 		return false
 	}
+	// Country filter: skip when request has no country (backward compat —
+	// requests that don't know user country fan out to all providers).
 	if len(p.Countries) > 0 && req.Country != "" {
 		if !slices.Contains(p.Countries, req.Country) {
 			return false

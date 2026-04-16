@@ -83,8 +83,11 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if req.UIDType == "" {
 		return errors.New("uid_type is required")
 	}
-	if req.Country != "" && len(req.Country) != 2 {
-		return errors.New("country must be a 2-letter ISO 3166-1 alpha-2 code")
+	if req.Country != "" {
+		req.Country = strings.ToUpper(req.Country)
+		if len(req.Country) != 2 || req.Country[0] < 'A' || req.Country[0] > 'Z' || req.Country[1] < 'A' || req.Country[1] > 'Z' {
+			return errors.New("country must be a 2-letter ISO 3166-1 alpha-2 code")
+		}
 	}
 	if len(req.PackageIDs) == 0 {
 		return errors.New("package_ids must not be empty")
@@ -104,6 +107,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 func ValidateExposeRequest(req *ExposeRequest) error {
 	if req.UserToken == "" && len(req.Identities) == 0 {
 		return errors.New("user_token or identities is required")
+	}
+	if len(req.Identities) > MaxIdentitiesPerRequest {
+		return fmt.Errorf("identities exceeds maximum of %d", MaxIdentitiesPerRequest)
 	}
 	if req.PackageID == "" {
 		return errors.New("package_id is required")
