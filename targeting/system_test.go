@@ -30,9 +30,11 @@ func TestSystem_EndToEnd(t *testing.T) {
 		pagesPerUser    = 5
 	)
 
-	store := NewMockStore()
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	store.Now = func() time.Time { return now }
+	clock := exposure.ClockFunc(func() time.Time { return now })
+
+	store := NewMockStore()
+	store.Clock = clock
 
 	t.Logf("")
 	t.Logf("=== System Test: %d packages, %d segments × %d members, %d campaigns ===", totalPackages, numSegments, membersPerSeg, numCampaigns)
@@ -153,25 +155,25 @@ func TestSystem_EndToEnd(t *testing.T) {
 	staticEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
+		Clock:      clock,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages:   staticPkgs,
 	})
-	staticEngine.Now = func() time.Time { return now }
 
 	dynamicEngine := NewEngine(EngineConfig{
 		ProviderID:      "bench",
 		Store:           store,
+		Clock:           clock,
 		Properties:      PropertyList{Global: NewMapBitmap("1")},
 		DynamicPackages: true,
 	})
-	dynamicEngine.Now = func() time.Time { return now }
 
 	resolvedEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
+		Clock:      clock,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 	})
-	resolvedEngine.Now = func() time.Time { return now }
 
 	// --- Benchmark: simulate user sessions ---
 

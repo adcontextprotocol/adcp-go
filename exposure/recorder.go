@@ -25,14 +25,6 @@ type ClockFunc func() time.Time
 
 func (f ClockFunc) Now() time.Time { return f() }
 
-// Store is the Store surface required by RecordExposure. It combines the
-// exposure-log reader/writer operations with the sorted-set append used
-// for the frequency-cap bookkeeping and the config reader needed to resolve
-// campaign IDs.
-type Store interface {
-	RecorderStore
-}
-
 // RecorderConfig holds configuration for Recorder.
 type RecorderConfig struct {
 	// ProviderID is the source identifier to record on impressions that do
@@ -41,7 +33,7 @@ type RecorderConfig struct {
 
 	// Store persists exposure logs, frequency-cap sorted sets, intent
 	// timestamps, and reads package/campaign configs.
-	Store Store
+	Store RecorderStore
 
 	// Metrics receives per-exposure instrumentation callbacks. nil = noop.
 	Metrics Metrics
@@ -59,7 +51,7 @@ type RecorderConfig struct {
 // engine's EvaluateIdentity path).
 type Recorder struct {
 	providerID string
-	store      Store
+	store      RecorderStore
 	metrics    Metrics
 	clock      Clock
 }

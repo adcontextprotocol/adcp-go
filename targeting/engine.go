@@ -38,9 +38,10 @@ type Engine struct {
 
 	metrics Metrics
 
-	// Now returns the current time. Defaults to time.Now.
-	// Override in tests to control time.
-	Now func() time.Time
+	// Clock is the time source used by identity-freq cutoffs. Share the same
+	// Clock with the Store and with any exposure.Recorder driving the store
+	// so read and write sides agree on "now." Override in tests to control time.
+	Clock exposure.Clock
 }
 
 // EngineConfig holds all configuration for creating an Engine.
@@ -49,8 +50,9 @@ type EngineConfig struct {
 	Store           Store
 	Properties      PropertyList
 	Packages        []PackageConfig
-	DynamicPackages bool    // When true, load package configs from Store at eval time.
-	Metrics         Metrics // nil = noop
+	DynamicPackages bool           // When true, load package configs from Store at eval time.
+	Metrics         Metrics        // nil = noop
+	Clock           exposure.Clock // nil = wall clock
 }
 
 // NewEngine creates a targeting engine.
@@ -63,6 +65,10 @@ func NewEngine(cfg EngineConfig) *Engine {
 	if metrics == nil {
 		metrics = noopMetrics{}
 	}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = exposure.ClockFunc(time.Now)
+	}
 	return &Engine{
 		providerID:      cfg.ProviderID,
 		store:           cfg.Store,
@@ -70,7 +76,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		packages:        pkgMap,
 		dynamicPackages: cfg.DynamicPackages,
 		metrics:         metrics,
-		Now:             time.Now,
+		Clock:           clock,
 	}
 }
 
@@ -684,8 +690,8 @@ func (e *Engine) computeIntentScore(ctx context.Context, tokenHash, packageID st
 }
 
 func (e *Engine) now() time.Time {
-	if e.Now != nil {
-		return e.Now()
+	if e.Clock != nil {
+		return e.Clock.Now()
 	}
 	return time.Now()
 }

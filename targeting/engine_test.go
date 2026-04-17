@@ -75,9 +75,12 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages, 
 		},
 	}
 
+	clock := exposure.ClockFunc(func() time.Time { return now })
+	store.Clock = clock
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
+		Clock:      clock,
 		Packages: []PackageConfig{
 			{PackageID: "pkg-display-001"},
 			{PackageID: "pkg-display-002"},
@@ -85,9 +88,6 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages, 
 			{PackageID: "pkg-no-cap"},
 		},
 	})
-	clock := exposure.ClockFunc(func() time.Time { return now })
-	engine.Now = clock.Now
-	store.Now = clock.Now
 	recorder := exposure.NewRecorder(exposure.RecorderConfig{
 		ProviderID: "test-provider",
 		Store:      store,
@@ -447,8 +447,8 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 
 	// Advance past 24h window.
 	future := now.Add(25 * time.Hour)
-	engine.Now = func() time.Time { return future }
-	store.Now = func() time.Time { return future }
+	engine.Clock = exposure.ClockFunc(func() time.Time { return future })
+	store.Clock = exposure.ClockFunc(func() time.Time { return future })
 
 	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-after", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
@@ -584,8 +584,8 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 
 	// Advance past 24h window.
 	future := now.Add(25 * time.Hour)
-	engine.Now = func() time.Time { return future }
-	store.Now = func() time.Time { return future }
+	engine.Clock = exposure.ClockFunc(func() time.Time { return future })
+	store.Clock = exposure.ClockFunc(func() time.Time { return future })
 
 	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "nr-after", UserToken: "user-abc",

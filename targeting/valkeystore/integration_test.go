@@ -140,7 +140,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 	// Fast-forward miniredis past the 24h window.
 	mr.FastForward(25 * time.Hour)
 	// Also advance engine time so ZCount cutoff is correct.
-	engine.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	engine.Clock = exposure.ClockFunc(func() time.Time { return time.Now().Add(25 * time.Hour) })
 
 	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
 		RequestID: "v-after", UserToken: "user-valkey",

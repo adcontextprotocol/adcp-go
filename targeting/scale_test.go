@@ -150,9 +150,11 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 	t.Log("")
 
 	for _, numExposures := range []int{0, 10, 100, 1_000, 10_000} {
-		store := NewMockStore()
 		now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-		store.Now = func() time.Time { return now }
+		clock := exposure.ClockFunc(func() time.Time { return now })
+
+		store := NewMockStore()
+		store.Clock = clock
 
 		store.SetPackageIdentityConfig("pkg-1", exposure.PackageIdentityConfig{
 			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 100_000, WindowSeconds: 86400}},
@@ -169,9 +171,9 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
+			Clock:      clock,
 			Packages:   []PackageConfig{{PackageID: "pkg-1"}},
 		})
-		engine.Now = func() time.Time { return now }
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",

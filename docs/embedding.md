@@ -51,38 +51,68 @@ r := router.NewRouter(providers, registry, nil, health,
 )
 ```
 
-## Implementing targeting.Metrics
+## Implementing targeting.Metrics and exposure.Metrics
 
-The `targeting.Metrics` interface is the observability hook for the evaluation engine. If your host application already has Prometheus (or any metrics system), implement the interface directly:
+Observability is split across two interfaces. The evaluation engine emits
+`targeting.Metrics` callbacks (context/identity evaluation outcomes, stage
+latency, store errors). The impression recorder in the `exposure` package
+emits `exposure.Metrics` callbacks (exposure recorded, store errors during
+write). A single type can satisfy both — that is what `targeting/prommetrics`
+does.
 
 ```go
 type MyMetrics struct {
-    contextEval *prometheus.CounterVec
-    latency     *prometheus.HistogramVec
-    // ...
+    contextEval     *prometheus.CounterVec
+    identityEval    *prometheus.CounterVec
+    exposureRecord  *prometheus.CounterVec
+    storeErrors     *prometheus.CounterVec
+    latency         *prometheus.HistogramVec
 }
 
+// targeting.Metrics — read path (evaluation).
 func (m *MyMetrics) ContextEvaluated(packageID, stage string, passed bool) {
     m.contextEval.WithLabelValues(stage, strconv.FormatBool(passed)).Inc()
 }
+func (m *MyMetrics) IdentityEvaluated(packageID, stage string, passed bool) { /* ... */ }
+func (m *MyMetrics) Latency(stage string, d time.Duration)                  { /* ... */ }
 
-func (m *MyMetrics) Latency(stage string, d time.Duration) {
-    m.latency.WithLabelValues(stage).Observe(d.Seconds())
+// Shared with exposure.Metrics — both interfaces include StoreError.
+func (m *MyMetrics) StoreError(operation string, err error) { /* ... */ }
+
+// exposure.Metrics — write path (impression recording).
+func (m *MyMetrics) ExposureRecorded(packageID string) {
+    m.exposureRecord.WithLabelValues().Inc()
 }
-
-// ... implement remaining methods
 ```
 
-Then pass it to the engine:
+Wire each interface where it's consumed:
 
 ```go
 engine := targeting.NewEngine(targeting.EngineConfig{
-    Metrics: &MyMetrics{...},
+    Metrics: &MyMetrics{...}, // satisfies targeting.Metrics
+    // ...
+})
+
+recorder := exposure.NewRecorder(exposure.RecorderConfig{
+    Metrics: &MyMetrics{...}, // satisfies exposure.Metrics
     // ...
 })
 ```
 
-The `targeting/prommetrics` sub-module is a reference implementation with zero external dependencies. Use it directly or as a template for your own.
+The `targeting/prommetrics` sub-module is a reference implementation with
+zero external dependencies that satisfies both interfaces on a single struct.
+Use it directly or as a template.
+
+### Breaking change in this split
+
+Prior versions exposed `ExposureRecorded` on `targeting.Metrics` because the
+engine owned impression recording. Recording is now owned by
+`exposure.Recorder`, and the callback lives on `exposure.Metrics`. External
+implementations that defined `ExposureRecorded` on their `targeting.Metrics`
+type still compile (extra methods don't break satisfaction), but the engine
+no longer invokes that method. To continue receiving the callback, pass the
+same implementation as `exposure.RecorderConfig.Metrics` when constructing
+the recorder.
 
 ## Security considerations for embedders
 

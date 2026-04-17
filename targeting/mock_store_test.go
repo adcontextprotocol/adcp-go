@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,7 +74,7 @@ func TestMockStore_StringOperations(t *testing.T) {
 
 	t.Run("TTLExpiry", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		s.Now = func() time.Time { return now }
+		s.Clock = exposure.ClockFunc(func() time.Time { return now })
 
 		err := s.Set(ctx, "temp", "value", 10*time.Second)
 		require.NoError(t, err)
@@ -84,7 +85,7 @@ func TestMockStore_StringOperations(t *testing.T) {
 		assert.Equal(t, "value", val)
 
 		// Advance past TTL.
-		s.Now = func() time.Time { return now.Add(11 * time.Second) }
+		s.Clock = exposure.ClockFunc(func() time.Time { return now.Add(11 * time.Second) })
 
 		_, ok, err = s.Get(ctx, "temp")
 		require.NoError(t, err)
@@ -130,7 +131,7 @@ func TestMockStore_SortedSetOperations(t *testing.T) {
 
 	t.Run("ZExpire", func(t *testing.T) {
 		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		s.Now = func() time.Time { return now }
+		s.Clock = exposure.ClockFunc(func() time.Time { return now })
 
 		require.NoError(t, s.ZAdd(ctx, "expiring", 1, "x"))
 		require.NoError(t, s.ZExpire(ctx, "expiring", 5*time.Second))
@@ -139,7 +140,7 @@ func TestMockStore_SortedSetOperations(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, int64(1), count)
 
-		s.Now = func() time.Time { return now.Add(6 * time.Second) }
+		s.Clock = exposure.ClockFunc(func() time.Time { return now.Add(6 * time.Second) })
 
 		count, err = s.ZCount(ctx, "expiring", 0, 10)
 		require.NoError(t, err)

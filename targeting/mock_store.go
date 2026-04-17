@@ -20,9 +20,10 @@ type MockStore struct {
 	zsets   map[string][]zsetMember
 	expiry  map[string]time.Time // key -> expiry time
 
-	// Now returns the current time. Defaults to time.Now.
+	// Clock drives TTL expiry checks. Share it with the Engine and any
+	// exposure.Recorder using the same store so all three agree on "now."
 	// Override in tests to control time.
-	Now func() time.Time
+	Clock exposure.Clock
 }
 
 type stringEntry struct {
@@ -35,15 +36,24 @@ type zsetMember struct {
 	member string
 }
 
-// NewMockStore creates an empty MockStore.
+// NewMockStore creates an empty MockStore with a wall-clock source.
 func NewMockStore() *MockStore {
 	return &MockStore{
 		sets:    make(map[string]map[string]struct{}),
 		strings: make(map[string]stringEntry),
 		zsets:   make(map[string][]zsetMember),
 		expiry:  make(map[string]time.Time),
-		Now:     time.Now,
+		Clock:   exposure.ClockFunc(time.Now),
 	}
+}
+
+// now returns the current time from the configured Clock, falling back to
+// wall time when Clock is nil.
+func (m *MockStore) now() time.Time {
+	if m.Clock != nil {
+		return m.Clock.Now()
+	}
+	return time.Now()
 }
 
 // SetAdd adds members to a set. Test helper, not part of Store interface.
@@ -194,7 +204,7 @@ func (m *MockStore) Get(_ context.Context, key string) (string, bool, error) {
 	if !ok {
 		return "", false, nil
 	}
-	if !entry.expiry.IsZero() && m.Now().After(entry.expiry) {
+	if !entry.expiry.IsZero() && m.now().After(entry.expiry) {
 		return "", false, nil
 	}
 	return entry.value, true, nil
@@ -205,7 +215,7 @@ func (m *MockStore) Set(_ context.Context, key, value string, ttl time.Duration)
 	defer m.mu.Unlock()
 	entry := stringEntry{value: value}
 	if ttl > 0 {
-		entry.expiry = m.Now().Add(ttl)
+		entry.expiry = m.now().Add(ttl)
 	}
 	m.strings[key] = entry
 	return nil
@@ -215,7 +225,7 @@ func (m *MockStore) Exists(_ context.Context, key string) (bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if entry, ok := m.strings[key]; ok {
-		if !entry.expiry.IsZero() && m.Now().After(entry.expiry) {
+		if !entry.expiry.IsZero() && m.now().After(entry.expiry) {
 			return false, nil
 		}
 		return true, nil
@@ -267,7 +277,7 @@ func (m *MockStore) ZExpire(_ context.Context, key string, ttl time.Duration) er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if ttl > 0 {
-		m.expiry[key] = m.Now().Add(ttl)
+		m.expiry[key] = m.now().Add(ttl)
 	} else {
 		delete(m.expiry, key)
 	}
@@ -315,7 +325,7 @@ func (m *MockStore) MGet(_ context.Context, keys ...string) ([]string, error) {
 		if !ok {
 			continue
 		}
-		if !entry.expiry.IsZero() && m.Now().After(entry.expiry) {
+		if !entry.expiry.IsZero() && m.now().After(entry.expiry) {
 			continue
 		}
 		results[i] = entry.value
@@ -329,5 +339,5 @@ func (m *MockStore) isExpired(key string) bool {
 	if !ok {
 		return false
 	}
-	return m.Now().After(exp)
+	return m.now().After(exp)
 }

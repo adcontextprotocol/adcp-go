@@ -16,9 +16,11 @@ import (
 // (50/day across 10 packages) and verifies fcap evaluation works correctly
 // with the single-pull exposure log model.
 func TestSystem_HeavyUser(t *testing.T) {
-	store := NewMockStore()
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	store.Now = func() time.Time { return now }
+	clock := exposure.ClockFunc(func() time.Time { return now })
+
+	store := NewMockStore()
+	store.Clock = clock
 
 	// Build 1,500 exposures: 50/day × 30 days across 10 packages.
 	var entries []exposure.ExposureEntry
@@ -61,8 +63,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 		CampaignConfigs: campConfigs,
 	}
 
-	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
-	engine.Now = func() time.Time { return now }
+	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store, Clock: clock})
 
 	pkgIDs := make([]string, 10)
 	for i := range 10 {
@@ -108,9 +109,11 @@ func TestSystem_HeavyUser(t *testing.T) {
 // TestSystem_IdentityGraph tests 3 UIDs for the same user with inconsistent
 // pairs per request. Verifies segment union and exposure dedup.
 func TestSystem_IdentityGraph(t *testing.T) {
-	store := NewMockStore()
 	now := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
-	store.Now = func() time.Time { return now }
+	clock := exposure.ClockFunc(func() time.Time { return now })
+
+	store := NewMockStore()
+	store.Clock = clock
 
 	// 3 UIDs: cookie, UID2, hashed email.
 	cookie := "tok-cookie-abc"
@@ -122,12 +125,11 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	store.SetUserProfile(uid2, map[string]float64{"sports_fans": 0.5})
 	store.SetUserProfile(email, map[string]float64{"cooking_fans": 0.6, "tech_enthusiasts": 0.9})
 
-	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
-	engine.Now = func() time.Time { return now }
+	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store, Clock: clock})
 	recorder := exposure.NewRecorder(exposure.RecorderConfig{
 		ProviderID: "test",
 		Store:      store,
-		Clock:      exposure.ClockFunc(func() time.Time { return now }),
+		Clock:      clock,
 	})
 
 	// Record exposures under different UIDs at different times.
@@ -259,14 +261,13 @@ func TestSystem_IdentityGraph(t *testing.T) {
 // TestSystem_RollingWindowExpiry simulates 35 days and verifies old exposures
 // are pruned and fcap rules correctly ignore expired entries.
 func TestSystem_RollingWindowExpiry(t *testing.T) {
-	store := NewMockStore()
 	baseTime := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	currentTime := baseTime
-	store.Now = func() time.Time { return currentTime }
-
 	clock := exposure.ClockFunc(func() time.Time { return currentTime })
-	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
-	engine.Now = clock.Now
+
+	store := NewMockStore()
+	store.Clock = clock
+	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store, Clock: clock})
 	recorder := exposure.NewRecorder(exposure.RecorderConfig{
 		ProviderID: "test",
 		Store:      store,
@@ -290,10 +291,11 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	t.Log("=== Rolling Window Expiry: 35 days simulated ===")
 	t.Log("")
 
-	// Simulate 35 days, recording 2 exposures per day.
+	// Simulate 35 days, recording 2 exposures per day. All three clock
+	// consumers (store, engine, recorder) read through the same clock
+	// closure, so mutating currentTime is enough to advance them.
 	for day := range 35 {
 		currentTime = baseTime.Add(time.Duration(day) * 24 * time.Hour)
-		store.Now = clock.Now
 
 		for i := range 2 {
 			_, err := recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
