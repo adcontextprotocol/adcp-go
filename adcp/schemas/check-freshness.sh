@@ -1,10 +1,15 @@
 #!/bin/bash
-# Checks whether the pinned schema version matches the latest AdCP release or RC.
+# Checks whether the pinned schema bundle is up to date against the published
+# artifact at https://adcontextprotocol.org/protocol/{VERSION}.tgz.
 # Returns exit code 0 if up to date, 1 if stale.
 #
 # Usage:
-#   ./check-freshness.sh          # check against latest tag
-#   ./check-freshness.sh --rc     # check against latest RC tag
+#   ./check-freshness.sh
+#
+# For VERSION=latest (dev snapshot), freshness is determined by comparing the
+# pinned bundle's SHA-256 against the current upstream sidecar. For pinned
+# releases (e.g. 3.1.0), the bundle is immutable — freshness is determined by
+# checking whether a newer release is listed in the /protocol/ manifest.
 #
 # Intended for CI: run on a schedule or as a PR check.
 
@@ -12,28 +17,60 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
+HASH_FILE="$SCRIPT_DIR/.bundle-sha256"
 PINNED=$(cat "$VERSION_FILE" | tr -d '[:space:]')
-REPO="adcontextprotocol/adcp"
+BASE="https://adcontextprotocol.org/protocol"
 
-if [ "${1:-}" = "--rc" ]; then
-  # Get latest tag (including RCs)
-  LATEST=$(gh api "repos/$REPO/tags" --jq '.[0].name')
-else
-  # Get latest stable release
-  LATEST=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || echo "none")
-  if [ "$LATEST" = "none" ]; then
-    # No stable release — fall back to latest tag
-    LATEST=$(gh api "repos/$REPO/tags" --jq '.[0].name')
-  fi
+if ! [[ "$PINNED" =~ ^(latest|[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?)$ ]]; then
+  echo "invalid VERSION: '$PINNED'" >&2
+  exit 2
 fi
 
-echo "Pinned:  $PINNED"
-echo "Latest:  $LATEST"
+CURL_OPTS=(--fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 30)
 
-if [ "$PINNED" = "$LATEST" ]; then
-  echo "Up to date."
-  exit 0
-else
-  echo "Stale. Run: cd adcp/schemas && ./download.sh $LATEST && python3 generate.py > ../types_gen.go"
+if [ "$PINNED" = "latest" ]; then
+  UPSTREAM=$(curl "${CURL_OPTS[@]}" "$BASE/latest.tgz.sha256" | cut -d' ' -f1)
+  if ! [[ "$UPSTREAM" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "could not read upstream sha256" >&2
+    exit 2
+  fi
+  PINNED_HASH=""
+  if [ -f "$HASH_FILE" ]; then
+    PINNED_HASH=$(cat "$HASH_FILE" | tr -d '[:space:]')
+  fi
+  echo "Pinned:  latest @ ${PINNED_HASH:-unknown}"
+  echo "Latest:  latest @ $UPSTREAM"
+  if [ "$PINNED_HASH" = "$UPSTREAM" ]; then
+    echo "Up to date."
+    exit 0
+  fi
+  echo "Stale. Run: cd adcp/schemas && ./download.sh && python3 generate.py > ../types_gen.go"
   exit 1
 fi
+
+# Pinned release: check the manifest for newer released versions.
+MANIFEST=$(curl "${CURL_OPTS[@]}" "$BASE/")
+LATEST=$(python3 -c '
+import json, sys, re
+m = json.load(sys.stdin)
+versions = m.get("versions") or []
+def key(v):
+    v = v.lstrip("v")
+    parts = v.split("-", 1)
+    nums = tuple(int(x) for x in parts[0].split(".") if x.isdigit())
+    pre = parts[1] if len(parts) > 1 else ""
+    return (nums, pre == "", pre)
+released = [v for v in versions if re.match(r"^v?\d+\.\d+\.\d+", v)]
+released.sort(key=key)
+print(released[-1] if released else "")
+' <<<"$MANIFEST")
+
+echo "Pinned:  $PINNED"
+echo "Latest:  ${LATEST:-<no released versions>}"
+
+if [ -z "$LATEST" ] || [ "$PINNED" = "$LATEST" ]; then
+  echo "Up to date."
+  exit 0
+fi
+echo "Stale. Run: cd adcp/schemas && ./download.sh $LATEST && python3 generate.py > ../types_gen.go"
+exit 1
