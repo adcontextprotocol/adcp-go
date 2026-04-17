@@ -1,4 +1,4 @@
-package targeting
+package exposure
 
 import (
 	"encoding/binary"
@@ -21,7 +21,7 @@ func TestBinary_EncodeAndQuery(t *testing.T) {
 	require.Equal(t, 3, bin.Len())
 	assert.Equal(t, int64(1000), bin.Timestamp(0))
 
-	foodHash := hashString("pkg-food")
+	foodHash := HashString("pkg-food")
 	latest := LatestExposureBinary(bin, foodHash)
 	assert.Equal(t, int64(3000), latest)
 
@@ -73,11 +73,11 @@ func TestBinary_ValidateRejectsInvalid(t *testing.T) {
 		{"wrong entry size v1", BinaryExposureLog{0x01, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
 		{"unaligned payload v2", append(
 			BinaryExposureLog{0x02, 0x00, 0x28, 0x00}, // valid v2 header
-			make([]byte, 15)...,                         // 15 bytes, not multiple of 40
+			make([]byte, 15)..., // 15 bytes, not multiple of 40
 		), ErrBinaryCorrupt},
 		{"unaligned payload v1", append(
 			BinaryExposureLog{0x01, 0x00, 0x20, 0x00}, // valid v1 header
-			make([]byte, 15)...,                         // 15 bytes, not multiple of 32
+			make([]byte, 15)..., // 15 bytes, not multiple of 32
 		), ErrBinaryCorrupt},
 	}
 	for _, tt := range tests {
@@ -143,8 +143,8 @@ func TestBinary_SourceHash(t *testing.T) {
 	}
 	bin := EncodeBinaryExposureLog(log)
 
-	cnnHash := hashString("agent-cnn")
-	nytHash := hashString("agent-nyt")
+	cnnHash := HashString("agent-cnn")
+	nytHash := HashString("agent-nyt")
 
 	assert.Equal(t, cnnHash, bin.SourceHash(0))
 	assert.Equal(t, nytHash, bin.SourceHash(1))
@@ -155,7 +155,7 @@ func TestBinary_SourceHashOfEmptyString(t *testing.T) {
 		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000},
 	}
 	bin := EncodeBinaryExposureLog(log)
-	emptyHash := hashString("")
+	emptyHash := HashString("")
 	assert.Equal(t, emptyHash, bin.SourceHash(0))
 }
 
@@ -168,16 +168,16 @@ func TestBinary_V1ReadCompatibility(t *testing.T) {
 	// Entry 0: ts=1000, imp=hash("imp-1"), pkg=hash("pkg-a"), camp=hash("c1")
 	off := binaryHeaderSize
 	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	binary.LittleEndian.PutUint64(v1[off+8:], HashString("imp-1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 
 	// Entry 1: ts=2000
 	off = binaryHeaderSize + binaryEntrySize1
 	binary.LittleEndian.PutUint64(v1[off:], 2000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-2"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-b"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	binary.LittleEndian.PutUint64(v1[off+8:], HashString("imp-2"))
+	binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-b"))
+	binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 
 	blog := BinaryExposureLog(v1)
 
@@ -190,7 +190,7 @@ func TestBinary_V1ReadCompatibility(t *testing.T) {
 
 	// Frequency check works on v1 logs.
 	rules := []FrequencyRule{{MaxCount: 1, Window: 24 * time.Hour}}
-	capped := CheckFrequencyRulesBinary(blog, hashString("pkg-a"), false, rules, 3000)
+	capped := CheckFrequencyRulesBinary(blog, HashString("pkg-a"), false, rules, 3000)
 	assert.True(t, capped, "expected capped for pkg-a (1 exposure, cap 1)")
 }
 
@@ -201,9 +201,9 @@ func TestBinary_V1UpgradeOnMerge(t *testing.T) {
 	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
 	off := binaryHeaderSize
 	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	binary.LittleEndian.PutUint64(v1[off+8:], HashString("imp-v1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 
 	// Build a v2 log.
 	v2 := EncodeBinaryExposureLog(ExposureLog{
@@ -218,7 +218,7 @@ func TestBinary_V1UpgradeOnMerge(t *testing.T) {
 
 	// V1 entry gets source hash 0, v2 entry keeps its source hash.
 	assert.Equal(t, uint64(0), merged.SourceHash(0))
-	assert.Equal(t, hashString("agent-x"), merged.SourceHash(1))
+	assert.Equal(t, HashString("agent-x"), merged.SourceHash(1))
 }
 
 func TestBinary_V1TruncateUpgrades(t *testing.T) {
@@ -229,9 +229,9 @@ func TestBinary_V1TruncateUpgrades(t *testing.T) {
 	for i := range 20 {
 		off := binaryHeaderSize + i*binaryEntrySize1
 		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
-		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
-		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+		binary.LittleEndian.PutUint64(v1[off+8:], HashString(fmt.Sprintf("imp-%d", i)))
+		binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-a"))
+		binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 	}
 
 	truncated := TruncateBinaryLog(BinaryExposureLog(v1), 5)
@@ -252,9 +252,9 @@ func TestBinary_V1UnderLimitUpgrades(t *testing.T) {
 	for i := range 2 {
 		off := binaryHeaderSize + i*binaryEntrySize1
 		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
-		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
-		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+		binary.LittleEndian.PutUint64(v1[off+8:], HashString(fmt.Sprintf("imp-%d", i)))
+		binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-a"))
+		binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 	}
 
 	upgraded := TruncateBinaryLog(BinaryExposureLog(v1), 100)
@@ -269,9 +269,9 @@ func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
 	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
 	off := binaryHeaderSize
 	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
+	binary.LittleEndian.PutUint64(v1[off+8:], HashString("imp-v1"))
+	binary.LittleEndian.PutUint64(v1[off+16:], HashString("pkg-a"))
+	binary.LittleEndian.PutUint64(v1[off+24:], HashString("c1"))
 
 	// V2 log with 1 entry for pkg-a (different impression).
 	v2 := EncodeBinaryExposureLog(ExposureLog{
@@ -282,11 +282,11 @@ func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
 	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}}
 
 	// 2 entries for pkg-a, cap=2 → capped.
-	capped := CheckFrequencyRulesMultiLog(logs, hashString("pkg-a"), false, rules, 3000)
+	capped := CheckFrequencyRulesMultiLog(logs, HashString("pkg-a"), false, rules, 3000)
 	assert.True(t, capped, "expected capped with mixed v1+v2 logs")
 
 	// latest across mixed versions.
-	latest := LatestExposureMultiLog(logs, hashString("pkg-a"))
+	latest := LatestExposureMultiLog(logs, HashString("pkg-a"))
 	assert.Equal(t, int64(2000), latest)
 }
 
@@ -315,8 +315,8 @@ func TestScale_JSONvsBinary(t *testing.T) {
 	t.Logf("")
 
 	const iterations = 1000
-	pkgHash := hashString("pkg-0")
-	campHash := hashString("campaign-0")
+	pkgHash := HashString("pkg-0")
+	campHash := HashString("campaign-0")
 	rules := []FrequencyRule{{MaxCount: 50, Window: 24 * time.Hour}}
 	nowUnix := now.Unix()
 

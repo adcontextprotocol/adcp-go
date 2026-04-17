@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/targeting/valkeystore"
@@ -164,20 +165,20 @@ func seedConfigs(store targeting.Store) {
 
 	configs := []struct {
 		pkgID string
-		cfg   targeting.PackageIdentityConfig
+		cfg   exposure.PackageIdentityConfig
 	}{
-		{"pkg-display-0041", targeting.PackageIdentityConfig{
+		{"pkg-display-0041", exposure.PackageIdentityConfig{
 			CampaignID:     "campaign-acme-q1",
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
 		}},
-		{"pkg-display-0042", targeting.PackageIdentityConfig{
+		{"pkg-display-0042", exposure.PackageIdentityConfig{
 			CampaignID:     "campaign-acme-q1",
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 43200}},
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 43200}},
 		}},
-		{"pkg-native-0078", targeting.PackageIdentityConfig{
+		{"pkg-native-0078", exposure.PackageIdentityConfig{
 			CampaignID: "campaign-nova-spring",
-			FrequencyRules: []targeting.FrequencyRuleJSON{
+			FrequencyRules: []exposure.FrequencyRuleJSON{
 				{MaxCount: 2, WindowSeconds: 43200},
 				{MaxCount: 5, WindowSeconds: 604800},
 			},
@@ -185,7 +186,7 @@ func seedConfigs(store targeting.Store) {
 		}},
 	}
 	for _, c := range configs {
-		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
+		if err := exposure.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
 			slog.Error("seed package config failed", "package_id", c.pkgID, "error", err)
 			os.Exit(1)
 		}
@@ -193,17 +194,17 @@ func seedConfigs(store targeting.Store) {
 
 	campaigns := []struct {
 		campaignID string
-		cfg        targeting.CampaignFreqConfig
+		cfg        exposure.CampaignFreqConfig
 	}{
-		{"campaign-acme-q1", targeting.CampaignFreqConfig{
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
+		{"campaign-acme-q1", exposure.CampaignFreqConfig{
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
 		}},
-		{"campaign-nova-spring", targeting.CampaignFreqConfig{
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 15, WindowSeconds: 2592000}},
+		{"campaign-nova-spring", exposure.CampaignFreqConfig{
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 15, WindowSeconds: 2592000}},
 		}},
 	}
 	for _, c := range campaigns {
-		if err := targeting.SeedCampaignFreqConfig(ctx, store, c.campaignID, c.cfg); err != nil {
+		if err := exposure.SeedCampaignFreqConfig(ctx, store, c.campaignID, c.cfg); err != nil {
 			slog.Error("seed campaign config failed", "campaign_id", c.campaignID, "error", err)
 			os.Exit(1)
 		}

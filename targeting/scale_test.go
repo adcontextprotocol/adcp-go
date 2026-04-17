@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -30,7 +31,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:   "bench",
 			PropertyRID: fmt.Sprintf("%d", n/2),
 			PackageIDs:  []string{"pkg-1"},
 		}
@@ -58,8 +59,8 @@ func TestScale_Campaigns(t *testing.T) {
 
 		// Create N campaigns in the Store.
 		for i := range numCampaigns {
-			store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), CampaignFreqConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
+			store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), exposure.CampaignFreqConfig{
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
 		}
 
@@ -68,9 +69,9 @@ func TestScale_Campaigns(t *testing.T) {
 		for i := range 5 {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID})
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
+			store.SetPackageIdentityConfig(pkgID, exposure.PackageIdentityConfig{
 				CampaignID:     fmt.Sprintf("campaign-%d", numCampaigns-1),
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			})
 		}
 
@@ -111,12 +112,12 @@ func TestScale_AudienceSegmentSize(t *testing.T) {
 			store.SetAdd("audience:big-segment", fmt.Sprintf("hash-%d", i))
 		}
 
-		store.SetPackageIdentityConfig("pkg-1", PackageIdentityConfig{
+		store.SetPackageIdentityConfig("pkg-1", exposure.PackageIdentityConfig{
 			TargetSegments: []string{"big-segment"},
 		})
 
 		// The lookup user IS in the segment (worst case for "check then pass").
-		targetHash := HashToken("tok-bench")
+		targetHash := exposure.HashToken("tok-bench")
 		store.SetAdd("audience:big-segment", targetHash)
 
 		engine := NewEngine(EngineConfig{
@@ -153,12 +154,12 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 		store.Now = func() time.Time { return now }
 
-		store.SetPackageIdentityConfig("pkg-1", PackageIdentityConfig{
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100_000, WindowSeconds: 86400}},
+		store.SetPackageIdentityConfig("pkg-1", exposure.PackageIdentityConfig{
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 100_000, WindowSeconds: 86400}},
 		})
 
 		// Pre-populate exposure history.
-		tokenHash := HashToken("tok-bench")
+		tokenHash := exposure.HashToken("tok-bench")
 		key := fmt.Sprintf("freq:pkg:pkg-1:%s", tokenHash)
 		for i := range numExposures {
 			ts := float64(now.Add(-time.Duration(i) * time.Minute).UnixMilli())
@@ -213,7 +214,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []map[string]any{{"url": "article:test"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -252,7 +253,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 
 		// Check a URL that is NOT blocked (worst case: full lookup, no short-circuit).
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []map[string]any{{"url": "article:safe-content"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -286,8 +287,8 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			staticPkgs = append(staticPkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
+			store.SetPackageIdentityConfig(pkgID, exposure.PackageIdentityConfig{
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
@@ -313,7 +314,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []map[string]any{{"url": "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -411,9 +412,9 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 				TopicTargets: true,
 				PropertyRIDs: []string{"1"},
 			})
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
+			store.SetPackageIdentityConfig(pkgID, exposure.PackageIdentityConfig{
 				TargetSegments: []string{"cooking_fans"},
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
 		}
 		store.SetMediaBuy(MediaBuy{
@@ -423,7 +424,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			Packages: mbPkgs,
 		})
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
-		store.SetAdd("audience:cooking_fans", HashToken("tok-bench"))
+		store.SetAdd("audience:cooking_fans", exposure.HashToken("tok-bench"))
 
 		// Build resolved once.
 		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
@@ -439,7 +440,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []map[string]any{{"url": "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -491,8 +492,8 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
+			store.SetPackageIdentityConfig(pkgID, exposure.PackageIdentityConfig{
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
 		}
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
@@ -505,7 +506,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []map[string]any{{"url": "article:food"}},
 			PackageIDs:   pkgIDs,

@@ -1,10 +1,9 @@
-package targeting
+package exposure
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/fnv"
 )
 
 // Binary exposure log format:
@@ -20,18 +19,18 @@ import (
 //
 //	timestamp(8) + impressionHash(8) + packageHash(8) + campaignHash(8) + sourceHash(8)
 const (
-	binaryHeaderSize    = 4
-	binaryVersion1      = 1
-	binaryVersion2      = 2
-	binaryEntrySize1    = 32
-	binaryEntrySize     = 40 // current write format (v2)
-	maxExposureEntries  = 10000 // cap per-user log to bound linear scan cost (~400 KB)
+	binaryHeaderSize   = 4
+	binaryVersion1     = 1
+	binaryVersion2     = 2
+	binaryEntrySize1   = 32
+	binaryEntrySize    = 40    // current write format (v2)
+	maxExposureEntries = 10000 // cap per-user log to bound linear scan cost (~400 KB)
 )
 
 var (
-	ErrBinaryTooShort      = errors.New("binary log too short for header")
+	ErrBinaryTooShort       = errors.New("binary log too short for header")
 	ErrBinaryUnknownVersion = fmt.Errorf("unknown binary log version (supported: %d, %d)", binaryVersion1, binaryVersion2)
-	ErrBinaryCorrupt       = errors.New("binary log size not aligned to entry size")
+	ErrBinaryCorrupt        = errors.New("binary log size not aligned to entry size")
 )
 
 // BinaryExposureLog is a compact byte-slice exposure log.
@@ -53,10 +52,10 @@ func EncodeBinaryExposureLog(log ExposureLog) BinaryExposureLog {
 	for i, e := range log {
 		offset := binaryHeaderSize + i*binaryEntrySize
 		binary.LittleEndian.PutUint64(buf[offset:], uint64(e.Timestamp)) //nolint:gosec // timestamp is always positive
-		binary.LittleEndian.PutUint64(buf[offset+8:], hashString(e.ImpressionID))
-		binary.LittleEndian.PutUint64(buf[offset+16:], hashString(e.PackageID))
-		binary.LittleEndian.PutUint64(buf[offset+24:], hashString(e.CampaignID))
-		binary.LittleEndian.PutUint64(buf[offset+32:], hashString(e.SourceID))
+		binary.LittleEndian.PutUint64(buf[offset+8:], HashString(e.ImpressionID))
+		binary.LittleEndian.PutUint64(buf[offset+16:], HashString(e.PackageID))
+		binary.LittleEndian.PutUint64(buf[offset+24:], HashString(e.CampaignID))
+		binary.LittleEndian.PutUint64(buf[offset+32:], HashString(e.SourceID))
 	}
 	return buf
 }
@@ -298,14 +297,4 @@ func TruncateBinaryLog(b BinaryExposureLog, maxEntries int) BinaryExposureLog {
 		result = append(result, 0, 0, 0, 0, 0, 0, 0, 0)
 	}
 	return result
-}
-
-// hashString returns an FNV-1a 64-bit hash. Used for compact binary storage
-// of package/campaign/impression IDs. Collision probability is ~0.0003% at
-// 10M unique strings (birthday bound). Acceptable for frequency cap counting
-// where an occasional collision causes slight over/under-counting.
-func hashString(s string) uint64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(s)) // fnv.Write never returns an error
-	return h.Sum64()
 }

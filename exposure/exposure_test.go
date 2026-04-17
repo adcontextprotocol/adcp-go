@@ -1,4 +1,4 @@
-package targeting
+package exposure
 
 import (
 	"testing"

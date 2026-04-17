@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,12 +21,12 @@ func TestSystem_HeavyUser(t *testing.T) {
 	store.Now = func() time.Time { return now }
 
 	// Build 1,500 exposures: 50/day × 30 days across 10 packages.
-	var entries []ExposureEntry
+	var entries []exposure.ExposureEntry
 	for day := range 30 {
 		for imp := range 50 {
 			pkgIdx := imp % 10
 			ts := now.Add(-time.Duration(30-day) * 24 * time.Hour).Add(time.Duration(imp) * time.Minute)
-			entries = append(entries, ExposureEntry{
+			entries = append(entries, exposure.ExposureEntry{
 				ImpressionID: fmt.Sprintf("imp-d%d-i%d", day, imp),
 				PackageID:    fmt.Sprintf("pkg-%d", pkgIdx),
 				CampaignID:   fmt.Sprintf("campaign-%d", pkgIdx/3),
@@ -39,18 +40,18 @@ func TestSystem_HeavyUser(t *testing.T) {
 	t.Logf("Loaded %d exposures for heavy user", len(entries))
 
 	// Build identity configs.
-	idConfigs := make(map[string]*PackageIdentityConfig)
-	campConfigs := make(map[string]*CampaignFreqConfig)
+	idConfigs := make(map[string]*exposure.PackageIdentityConfig)
+	campConfigs := make(map[string]*exposure.CampaignFreqConfig)
 	for i := range 10 {
 		pkgID := fmt.Sprintf("pkg-%d", i)
 		campID := fmt.Sprintf("campaign-%d", i/3)
-		idConfigs[pkgID] = &PackageIdentityConfig{
+		idConfigs[pkgID] = &exposure.PackageIdentityConfig{
 			CampaignID:     campID,
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},  // 5/day
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}}, // 5/day
 			TargetSegments: []string{"premium_audience"},
 		}
-		campConfigs[campID] = &CampaignFreqConfig{
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}}, // 20/week
+		campConfigs[campID] = &exposure.CampaignFreqConfig{
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}}, // 20/week
 		}
 	}
 
@@ -85,7 +86,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 	}
 
 	t.Logf("Heavy user: %d/%d eligible, evaluated in %v", eligible, len(pkgIDs), elapsed)
-	t.Logf("Exposure log size: %d bytes", len(SerializeExposureLog(entries)))
+	t.Logf("Exposure log size: %d bytes", len(exposure.SerializeExposureLog(entries)))
 
 	// All packages should be daily-capped (5 exposures/day, user has 5/day per pkg).
 	for _, e := range resp.Eligibility {
@@ -123,13 +124,18 @@ func TestSystem_IdentityGraph(t *testing.T) {
 
 	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
 	engine.Now = func() time.Time { return now }
+	recorder := exposure.NewRecorder(exposure.RecorderConfig{
+		ProviderID: "test",
+		Store:      store,
+		Clock:      exposure.ClockFunc(func() time.Time { return now }),
+	})
 
 	// Record exposures under different UIDs at different times.
 	// Day 1-10: cookie only.
 	for day := range 10 {
 		for i := range 3 {
 			ts := now.Add(-time.Duration(30-day) * 24 * time.Hour)
-			_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
+			_, _ = recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 				UserToken: cookie, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-cookie-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -139,7 +145,7 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 11-20: UID2 only.
 	for day := 10; day < 20; day++ {
 		for i := range 2 {
-			_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
+			_, _ = recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 				UserToken: uid2, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-uid2-d%d-i%d", day, i),
 				CampaignID: "campaign-food",
 			})
@@ -148,17 +154,17 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Day 21-30: hashed email. Some impressions shared with cookie (same impression ID).
 	for day := 20; day < 30; day++ {
 		// Unique impressions under email.
-		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
+		_, _ = recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: fmt.Sprintf("imp-email-d%d", day),
 			CampaignID: "campaign-food",
 		})
 		// Shared impression: also record under cookie with same impression ID.
 		sharedImpID := fmt.Sprintf("imp-shared-d%d", day)
-		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
+		_, _ = recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 			UserToken: email, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})
-		_, _ = engine.RecordExposure(context.Background(), &ExposeRequest{
+		_, _ = recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 			UserToken: cookie, PackageID: "pkg-food", ImpressionID: sharedImpID,
 			CampaignID: "campaign-food",
 		})
@@ -170,13 +176,13 @@ func TestSystem_IdentityGraph(t *testing.T) {
 			"sports_fans":      {"pkg-sports"},
 			"tech_enthusiasts": {"pkg-tech"},
 		},
-		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-food":   {CampaignID: "campaign-food", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}, TargetSegments: []string{"cooking_fans"}},
+		IdentityConfigs: map[string]*exposure.PackageIdentityConfig{
+			"pkg-food":   {CampaignID: "campaign-food", FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}, TargetSegments: []string{"cooking_fans"}},
 			"pkg-sports": {TargetSegments: []string{"sports_fans"}},
 			"pkg-tech":   {TargetSegments: []string{"tech_enthusiasts"}},
 		},
-		CampaignConfigs: map[string]*CampaignFreqConfig{
-			"campaign-food": {FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}},
+		CampaignConfigs: map[string]*exposure.CampaignFreqConfig{
+			"campaign-food": {FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}},
 		},
 	}
 
@@ -237,13 +243,13 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Verify: exposure dedup. Cookie has ~40 exposures (30 unique + 10 shared).
 	// Email has ~20 exposures (10 unique + 10 shared). Union should dedup the shared ones.
 	// Total unique impressions across cookie+email should be less than sum of both.
-	cookieHash := HashToken(cookie)
-	emailHash := HashToken(email)
+	cookieHash := exposure.HashToken(cookie)
+	emailHash := exposure.HashToken(email)
 	cookieVal, _, _ := store.Get(context.Background(), "user:exposures:"+cookieHash)
 	emailVal, _, _ := store.Get(context.Background(), "user:exposures:"+emailHash)
-	cookieBin := BinaryExposureLog(cookieVal)
-	emailBin := BinaryExposureLog(emailVal)
-	mergedBin := MergeBinaryLogs(cookieBin, emailBin)
+	cookieBin := exposure.BinaryExposureLog(cookieVal)
+	emailBin := exposure.BinaryExposureLog(emailVal)
+	mergedBin := exposure.MergeBinaryLogs(cookieBin, emailBin)
 	t.Logf("  Cookie exposures: %d, Email exposures: %d, Merged (deduped): %d",
 		cookieBin.Len(), emailBin.Len(), mergedBin.Len())
 
@@ -258,20 +264,26 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	currentTime := baseTime
 	store.Now = func() time.Time { return currentTime }
 
+	clock := exposure.ClockFunc(func() time.Time { return currentTime })
 	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
-	engine.Now = func() time.Time { return currentTime }
+	engine.Now = clock.Now
+	recorder := exposure.NewRecorder(exposure.RecorderConfig{
+		ProviderID: "test",
+		Store:      store,
+		Clock:      clock,
+	})
 
 	store.SetUserProfile("user-rolling", map[string]float64{"all": 0})
 
 	resolved := &ResolvedPackages{
 		SegmentIndex: map[string][]string{"all": {"pkg-test"}},
-		IdentityConfigs: map[string]*PackageIdentityConfig{
+		IdentityConfigs: map[string]*exposure.PackageIdentityConfig{
 			"pkg-test": {
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}}, // 5/day
+				FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}}, // 5/day
 				TargetSegments: []string{"all"},
 			},
 		},
-		CampaignConfigs: map[string]*CampaignFreqConfig{},
+		CampaignConfigs: map[string]*exposure.CampaignFreqConfig{},
 	}
 
 	t.Log("")
@@ -281,11 +293,10 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	// Simulate 35 days, recording 2 exposures per day.
 	for day := range 35 {
 		currentTime = baseTime.Add(time.Duration(day) * 24 * time.Hour)
-		engine.Now = func() time.Time { return currentTime }
-		store.Now = func() time.Time { return currentTime }
+		store.Now = clock.Now
 
 		for i := range 2 {
-			_, err := engine.RecordExposure(context.Background(), &ExposeRequest{
+			_, err := recorder.RecordExposure(context.Background(), &exposure.ExposeRequest{
 				UserToken:    "user-rolling",
 				PackageID:    "pkg-test",
 				ImpressionID: fmt.Sprintf("imp-d%d-i%d", day, i),
@@ -303,10 +314,10 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	}
 
 	// Check the exposure log: should be pruned to ~30 days.
-	hash := HashToken("user-rolling")
+	hash := exposure.HashToken("user-rolling")
 	val, _, _ := store.Get(context.Background(), "user:exposures:"+hash)
-	binLog := BinaryExposureLog(val)
-	require.NoError(t, ValidateBinaryLog(binLog))
+	binLog := exposure.BinaryExposureLog(val)
+	require.NoError(t, exposure.ValidateBinaryLog(binLog))
 
 	// Pruning happens on each write. Entries older than 30 days should be gone.
 	thirtyDaysAgo := currentTime.Add(-30 * 24 * time.Hour).Unix()

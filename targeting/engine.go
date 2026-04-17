@@ -6,6 +6,11 @@
 //
 // The engine evaluates both context match and identity match requests,
 // replacing the need for separate agent implementations.
+//
+// Impression recording and frequency-cap bookkeeping live in the exposure
+// package. The engine consumes the same store schema that exposure.Recorder
+// writes to — so any reader/writer pair sharing the Store contract will
+// interoperate.
 package targeting
 
 import (
@@ -16,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -225,14 +231,14 @@ type IdentityResult struct {
 //  4. Intent score
 func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 	evalStart := time.Now()
-	tokenHash := HashToken(req.UserToken)
+	tokenHash := exposure.HashToken(req.UserToken)
 	now := e.now()
 
 	// Batch-load all identity configs (1 MGet) and campaign configs (1 MGet).
-	idConfigs, err := batchLoadPackageIdentityConfigs(ctx, e.store, req.PackageIDs)
+	idConfigs, err := exposure.BatchLoadPackageIdentityConfigs(ctx, e.store, req.PackageIDs)
 	if err != nil {
 		e.metrics.StoreError("load_identity_configs", err)
-		idConfigs = make(map[string]*PackageIdentityConfig)
+		idConfigs = make(map[string]*exposure.PackageIdentityConfig)
 	}
 
 	// Collect unique campaign IDs for batch campaign config load.
@@ -246,10 +252,10 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 	for id := range campaignIDSet {
 		campaignIDs = append(campaignIDs, id)
 	}
-	campConfigs, err := batchLoadCampaignFreqConfigs(ctx, e.store, campaignIDs)
+	campConfigs, err := exposure.BatchLoadCampaignFreqConfigs(ctx, e.store, campaignIDs)
 	if err != nil {
 		e.metrics.StoreError("load_campaign_configs", err)
-		campConfigs = make(map[string]*CampaignFreqConfig)
+		campConfigs = make(map[string]*exposure.CampaignFreqConfig)
 	}
 
 	var eligibility []tmproto.PackageEligibility
@@ -274,7 +280,7 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 			campCfg := campConfigs[idCfg.CampaignID]
 			if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
 				key := fmt.Sprintf("freq:campaign:%s:%s", idCfg.CampaignID, tokenHash)
-				rules := toFrequencyRules(campCfg.FrequencyRules)
+				rules := exposure.ToFrequencyRules(campCfg.FrequencyRules)
 				capped, err := e.checkFrequencyRules(ctx, key, rules, now)
 				if err != nil {
 					e.metrics.StoreError(StageCampaignFreq, err)
@@ -288,7 +294,7 @@ func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatc
 		// Package frequency cap (graceful: skip on Store error).
 		if eligible && idCfg != nil && len(idCfg.FrequencyRules) > 0 {
 			key := fmt.Sprintf("freq:pkg:%s:%s", pkgID, tokenHash)
-			rules := toFrequencyRules(idCfg.FrequencyRules)
+			rules := exposure.ToFrequencyRules(idCfg.FrequencyRules)
 			capped, err := e.checkFrequencyRules(ctx, key, rules, now)
 			if err != nil {
 				e.metrics.StoreError(StagePackageFreq, err)
@@ -464,7 +470,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	// 1. Build MGet keys: profile + exposures for each UID.
 	keys := make([]string, 0, len(identities)*2)
 	for _, uid := range identities {
-		hash := HashToken(uid.UserToken)
+		hash := exposure.HashToken(uid.UserToken)
 		keys = append(keys, "user:profile:"+hash)
 		keys = append(keys, "user:exposures:"+hash)
 	}
@@ -477,22 +483,22 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}
 
 	// 3. Parse profiles (JSON, small) and exposure logs (binary, zero-copy).
-	profiles := make([]*UserProfile, 0, len(identities))
-	firstLogs := make([]BinaryExposureLog, 0, len(identities))
+	profiles := make([]*exposure.UserProfile, 0, len(identities))
+	firstLogs := make([]exposure.BinaryExposureLog, 0, len(identities))
 	for i := range identities {
 		profileData := values[i*2]
 		exposureData := values[i*2+1]
-		profiles = append(profiles, ParseUserProfile(profileData))
-		binLog := BinaryExposureLog(exposureData)
+		profiles = append(profiles, exposure.ParseUserProfile(profileData))
+		binLog := exposure.BinaryExposureLog(exposureData)
 		if len(exposureData) > 0 {
-			if err := ValidateBinaryLog(binLog); err != nil {
+			if err := exposure.ValidateBinaryLog(binLog); err != nil {
 				e.metrics.StoreError("corrupt_exposure_log", err)
 				binLog = nil
 			}
 		}
 		firstLogs = append(firstLogs, binLog)
 	}
-	mergedProfile := MergeUserProfiles(profiles...)
+	mergedProfile := exposure.MergeUserProfiles(profiles...)
 
 	// 4. Extract segment names from merged profile.
 	var userSegments []string
@@ -521,9 +527,9 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		if eligible && idCfg != nil && idCfg.CampaignID != "" {
 			campCfg := resolved.CampaignConfigs[idCfg.CampaignID]
 			if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
-				rules := toFrequencyRules(campCfg.FrequencyRules)
-				campHash := hashString(idCfg.CampaignID)
-				if CheckFrequencyRulesMultiLog(firstLogs, campHash, true, rules, nowUnix) {
+				rules := exposure.ToFrequencyRules(campCfg.FrequencyRules)
+				campHash := exposure.HashString(idCfg.CampaignID)
+				if exposure.CheckFrequencyRulesMultiLog(firstLogs, campHash, true, rules, nowUnix) {
 					eligible = false
 					e.metrics.IdentityEvaluated(pkgID, StageCampaignFreq, false)
 				}
@@ -531,10 +537,10 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		}
 
 		// Package frequency cap (binary lazy dedup across all UID logs).
-		pkgHash := hashString(pkgID)
+		pkgHash := exposure.HashString(pkgID)
 		if eligible && idCfg != nil && len(idCfg.FrequencyRules) > 0 {
-			rules := toFrequencyRules(idCfg.FrequencyRules)
-			if CheckFrequencyRulesMultiLog(firstLogs, pkgHash, false, rules, nowUnix) {
+			rules := exposure.ToFrequencyRules(idCfg.FrequencyRules)
+			if exposure.CheckFrequencyRulesMultiLog(firstLogs, pkgHash, false, rules, nowUnix) {
 				eligible = false
 				e.metrics.IdentityEvaluated(pkgID, StagePackageFreq, false)
 			}
@@ -542,9 +548,9 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 
 		// Intent score (binary, scan across all UID logs).
 		var intent float64
-		latestTS := LatestExposureMultiLog(firstLogs, pkgHash)
+		latestTS := exposure.LatestExposureMultiLog(firstLogs, pkgHash)
 		if latestTS > 0 {
-			intent = ComputeIntentScore(latestTS, now)
+			intent = exposure.ComputeIntentScore(latestTS, now)
 		}
 
 		pe := tmproto.PackageEligibility{PackageID: pkgID, Eligible: eligible}
@@ -564,179 +570,13 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 
 // SetUserProfile writes a user's segment memberships to the profile key.
 func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments map[string]float64) error {
-	hash := HashToken(userToken)
-	profile := UserProfile{Segments: segments}
+	hash := exposure.HashToken(userToken)
+	profile := exposure.UserProfile{Segments: segments}
 	data, err := json.Marshal(profile)
 	if err != nil {
 		return err
 	}
 	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
-}
-
-// RecordExposure records an impression to the exposure log for all UIDs.
-// Each UID's exposure log is read, the new entry is appended,
-// old entries are pruned, and the log is written back.
-//
-// NOTE: The read-modify-write is not atomic. Concurrent RecordExposure calls
-// for the same user may lose an exposure. This is acceptable for frequency
-// capping (slightly under-counting is benign). For strict counting, use
-// Valkey Lua scripting for atomic append.
-// TODO: Add Store.Append method for atomic binary append.
-func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*ExposeResponse, error) {
-	if err := ValidateExposeRequest(req); err != nil {
-		return nil, fmt.Errorf("invalid expose request: %w", err)
-	}
-	now := e.now()
-	identities := resolveExposeIdentities(req)
-
-	// Resolve source ID: use request field, fall back to engine's provider ID.
-	sourceID := req.SourceID
-	if sourceID == "" {
-		sourceID = e.providerID
-	}
-
-	// Resolve campaign ID.
-	campaignID := req.CampaignID
-	if campaignID == "" {
-		idCfg, _ := loadPackageIdentityConfig(ctx, e.store, req.PackageID)
-		if idCfg != nil {
-			campaignID = idCfg.CampaignID
-		}
-	}
-
-	// Generate impression ID if not provided.
-	impressionID := req.ImpressionID
-	if impressionID == "" {
-		impressionID = fmt.Sprintf("%d:%s", now.UnixNano(), req.PackageID)
-	}
-
-	entry := ExposureEntry{
-		ImpressionID: impressionID,
-		PackageID:    req.PackageID,
-		CampaignID:   campaignID,
-		SourceID:     sourceID,
-		Timestamp:    now.Unix(),
-	}
-
-	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
-	nowMs := float64(now.UnixMilli())
-	pruneBeforeMs := float64(now.Add(-30 * 24 * time.Hour).UnixMilli())
-	nowStr := fmt.Sprintf("%d", now.Unix())
-
-	// Pre-compute token hashes (SHA-256, avoid re-hashing per loop).
-	hashes := make([]string, len(identities))
-	for i, uid := range identities {
-		hashes[i] = HashToken(uid.UserToken)
-	}
-
-	// Write to each UID's exposure log. Capture the first UID's log for the response.
-	var firstLog BinaryExposureLog
-	for i, hash := range hashes {
-		key := "user:exposures:" + hash
-
-		val, _, err := e.store.Get(ctx, key)
-		if err != nil {
-			e.metrics.StoreError("read_exposure_log", err)
-			continue
-		}
-
-		// Prune expired entries and append new one, upgrading v1→v2 if needed.
-		existing := BinaryExposureLog(val)
-		if len(val) > 0 {
-			if err := ValidateBinaryLog(existing); err != nil {
-				e.metrics.StoreError("corrupt_exposure_log", err)
-				existing = nil
-			}
-		}
-		newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
-
-		pruned := newBinaryLog(existing.Len() + 1)
-		es := int(existing.EntrySize())
-		for j := range existing.Len() {
-			if existing.Timestamp(j) >= cutoff {
-				off := existing.entryOffset(j)
-				if es == binaryEntrySize {
-					pruned = append(pruned, existing[off:off+binaryEntrySize]...)
-				} else {
-					// Upgrade v1 entry: copy 32 bytes + 8 zero bytes for source hash.
-					pruned = append(pruned, existing[off:off+binaryEntrySize1]...)
-					pruned = append(pruned, 0, 0, 0, 0, 0, 0, 0, 0)
-				}
-			}
-		}
-		// Append the new v2 entry's payload (skip its header).
-		pruned = append(pruned, newEntry[binaryHeaderSize:]...)
-		pruned = TruncateBinaryLog(pruned, maxExposureEntries)
-
-		if err := e.store.Set(ctx, key, string(pruned), 30*24*time.Hour); err != nil {
-			e.metrics.StoreError("write_exposure_log", err)
-		}
-		if i == 0 {
-			firstLog = BinaryExposureLog(pruned)
-		}
-
-		// Package frequency sorted set.
-		member := sourceID + ":" + impressionID
-		pkgFreqKey := fmt.Sprintf("freq:pkg:%s:%s", req.PackageID, hash)
-		if err := e.store.ZAdd(ctx, pkgFreqKey, nowMs, member); err != nil {
-			e.metrics.StoreError("zadd_pkg_freq", err)
-		} else {
-			if err := e.store.ZRemRangeByScore(ctx, pkgFreqKey, 0, pruneBeforeMs); err != nil {
-				e.metrics.StoreError("zremrangebyscore_pkg_freq", err)
-			}
-			_ = e.store.ZExpire(ctx, pkgFreqKey, 30*24*time.Hour)
-		}
-
-		// Campaign frequency sorted set.
-		if campaignID != "" {
-			campFreqKey := fmt.Sprintf("freq:campaign:%s:%s", campaignID, hash)
-			if err := e.store.ZAdd(ctx, campFreqKey, nowMs, member); err != nil {
-				e.metrics.StoreError("zadd_campaign_freq", err)
-			} else {
-				if err := e.store.ZRemRangeByScore(ctx, campFreqKey, 0, pruneBeforeMs); err != nil {
-					e.metrics.StoreError("zremrangebyscore_campaign_freq", err)
-				}
-				_ = e.store.ZExpire(ctx, campFreqKey, 30*24*time.Hour)
-			}
-		}
-
-		// Intent timestamp.
-		intentKey := fmt.Sprintf("intent:%s:%s", req.PackageID, hash)
-		if err := e.store.Set(ctx, intentKey, nowStr, 7*24*time.Hour); err != nil {
-			e.metrics.StoreError("set_intent", err)
-		}
-	}
-
-	e.metrics.ExposureRecorded(req.PackageID)
-
-	// Compute campaign count from the first UID's log (already in memory, no re-read).
-	resp := &ExposeResponse{PackageID: req.PackageID}
-	if campaignID != "" && firstLog.Len() > 0 {
-		campHash := hashString(campaignID)
-
-		campCfg, _ := loadCampaignFreqConfig(ctx, e.store, campaignID)
-		if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
-			rules := toFrequencyRules(campCfg.FrequencyRules)
-			shortestRule := rules[0]
-			for _, r := range rules[1:] {
-				if r.Window < shortestRule.Window {
-					shortestRule = r
-				}
-			}
-			windowStart := now.Add(-shortestRule.Window).Unix()
-			count := 0
-			for i := range firstLog.Len() {
-				if firstLog.CampaignHash(i) == campHash && firstLog.Timestamp(i) >= windowStart {
-					count++
-				}
-			}
-			resp.CampaignCount = count
-			remaining := max(shortestRule.MaxCount-count, 0)
-			resp.CampaignRemaining = remaining
-		}
-	}
-
-	return resp, nil
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.
@@ -794,7 +634,7 @@ func (e *Engine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID 
 
 // checkFrequencyRules checks all rules against a sorted set.
 // Returns true (capped) if ANY rule is exceeded.
-func (e *Engine) checkFrequencyRules(ctx context.Context, key string, rules []FrequencyRule, now time.Time) (bool, error) {
+func (e *Engine) checkFrequencyRules(ctx context.Context, key string, rules []exposure.FrequencyRule, now time.Time) (bool, error) {
 	for _, rule := range rules {
 		cutoff := float64(now.Add(-rule.Window).UnixMilli())
 		count, err := e.store.ZCount(ctx, key, cutoff, math.MaxFloat64)
@@ -848,6 +688,14 @@ func (e *Engine) now() time.Time {
 		return e.Now()
 	}
 	return time.Now()
+}
+
+// resolveIdentities extracts identity entries from an identity match request.
+func resolveIdentities(req *tmproto.IdentityMatchRequest) []exposure.UserIdentity {
+	if req.UserToken != "" {
+		return []exposure.UserIdentity{{UserToken: req.UserToken, UIDType: string(req.UIDType)}}
+	}
+	return nil
 }
 
 // buildOffers returns one or more Offers for an activated package.

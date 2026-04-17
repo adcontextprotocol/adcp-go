@@ -3,6 +3,7 @@ package targeting
 import (
 	"slices"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -13,7 +14,7 @@ type ResolvedPackages struct {
 	Packages []tmproto.AvailablePackage
 
 	// Context indexes (zero Store calls at eval time).
-	PropertyIndex     map[string][]string             // propertyRID → packageIDs
+	PropertyIndex     map[string][]string            // propertyRID → packageIDs
 	TopicIndex        map[string][]string            // topic → packageIDs
 	URLBlocklistIndex map[string][]string            // urlHash → packageIDs that block it
 	URLAllowlists     map[string]map[string]struct{} // pkgID → set of allowed urlHashes
@@ -22,9 +23,9 @@ type ResolvedPackages struct {
 	SegmentIndex map[string][]string // segment → packageIDs
 
 	// Pre-loaded configs.
-	ContextConfigs  map[string]*PackageContextConfig  // pkgID → config
-	IdentityConfigs map[string]*PackageIdentityConfig // pkgID → config
-	CampaignConfigs map[string]*CampaignFreqConfig    // campaignID → config
+	ContextConfigs  map[string]*PackageContextConfig           // pkgID → config
+	IdentityConfigs map[string]*exposure.PackageIdentityConfig // pkgID → config
+	CampaignConfigs map[string]*exposure.CampaignFreqConfig    // campaignID → config
 }
 
 // ContextCandidates returns package IDs that could match the given property.

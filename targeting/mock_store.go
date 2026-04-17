@@ -7,6 +7,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/exposure"
 )
 
 // MockStore is an in-memory Store for testing. It supports sets, strings,
@@ -59,7 +61,7 @@ func (m *MockStore) SetAdd(key string, members ...string) {
 }
 
 // SetPackageIdentityConfig stores identity config for a package. Test helper.
-func (m *MockStore) SetPackageIdentityConfig(pkgID string, cfg PackageIdentityConfig) {
+func (m *MockStore) SetPackageIdentityConfig(pkgID string, cfg exposure.PackageIdentityConfig) {
 	data, _ := json.Marshal(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -67,7 +69,7 @@ func (m *MockStore) SetPackageIdentityConfig(pkgID string, cfg PackageIdentityCo
 }
 
 // SetCampaignFreqConfig stores frequency config for a campaign. Test helper.
-func (m *MockStore) SetCampaignFreqConfig(campaignID string, cfg CampaignFreqConfig) {
+func (m *MockStore) SetCampaignFreqConfig(campaignID string, cfg exposure.CampaignFreqConfig) {
 	data, _ := json.Marshal(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -93,8 +95,8 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 
 // SetUserProfile stores a user's segment memberships. Test helper.
 func (m *MockStore) SetUserProfile(token string, segments map[string]float64) {
-	hash := HashToken(token)
-	profile := UserProfile{Segments: segments}
+	hash := exposure.HashToken(token)
+	profile := exposure.UserProfile{Segments: segments}
 	data, _ := json.Marshal(profile)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -102,23 +104,23 @@ func (m *MockStore) SetUserProfile(token string, segments map[string]float64) {
 }
 
 // SetUserExposures stores a user's exposure log in binary format. Test helper.
-func (m *MockStore) SetUserExposures(token string, entries []ExposureEntry) {
-	hash := HashToken(token)
-	bin := EncodeBinaryExposureLog(entries)
+func (m *MockStore) SetUserExposures(token string, entries []exposure.ExposureEntry) {
+	hash := exposure.HashToken(token)
+	bin := exposure.EncodeBinaryExposureLog(entries)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.strings["user:exposures:"+hash] = stringEntry{value: string(bin)}
 }
 
 // AddExposure appends an exposure entry to a user's log. Test helper.
-func (m *MockStore) AddExposure(token string, entry ExposureEntry) {
-	hash := HashToken(token)
+func (m *MockStore) AddExposure(token string, entry exposure.ExposureEntry) {
+	hash := exposure.HashToken(token)
 	key := "user:exposures:" + hash
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	existing := BinaryExposureLog(m.strings[key].value)
-	newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
-	merged := MergeBinaryLogs(existing, newEntry)
+	existing := exposure.BinaryExposureLog(m.strings[key].value)
+	newEntry := exposure.EncodeBinaryExposureLog(exposure.ExposureLog{entry})
+	merged := exposure.MergeBinaryLogs(existing, newEntry)
 	m.strings[key] = stringEntry{value: string(merged)}
 }
 

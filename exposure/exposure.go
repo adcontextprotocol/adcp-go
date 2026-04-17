@@ -1,12 +1,24 @@
-package targeting
+// Package exposure provides frequency-capping and ad exposure recording.
+//
+// It exposes:
+//   - Wire types (ExposeRequest, ExposeResponse, UserIdentity, UserProfile)
+//     shared between recorders and identity-match agents.
+//   - Binary exposure log format used for compact per-user history storage.
+//   - Package/campaign frequency configuration and JSON serialization.
+//   - ExposureRecorder — a standalone writer that persists impressions and
+//     frequency-cap state to a Store.
+//
+// The package is consumed by the targeting engine (which reads exposure
+// state during identity evaluation) and can also be embedded directly in
+// systems that own impression recording without pulling in the rest of the
+// targeting engine.
+package exposure
 
 import (
 	"encoding/json"
 	"errors"
 	"sort"
 	"time"
-
-	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // UserIdentity represents a user identity token with its type.
@@ -59,6 +71,12 @@ type ExposureLog []ExposureEntry
 // UserProfile holds a user's segment memberships with optional intent scores.
 type UserProfile struct {
 	Segments map[string]float64 `json:"segments"` // segment name → intent score (0 = member, no score)
+}
+
+// FrequencyRule defines a sliding-window impression cap.
+type FrequencyRule struct {
+	MaxCount int
+	Window   time.Duration
 }
 
 // ParseExposureLog parses a JSON-serialized exposure log.
@@ -196,16 +214,9 @@ func ComputeIntentScore(exposureTime int64, now time.Time) float64 {
 	return score
 }
 
-// resolveIdentities extracts UserIdentity entries from an identity match request.
-func resolveIdentities(req *tmproto.IdentityMatchRequest) []UserIdentity {
-	if req.UserToken != "" {
-		return []UserIdentity{{UserToken: req.UserToken, UIDType: string(req.UIDType)}}
-	}
-	return nil
-}
-
-// resolveExposeIdentities extracts UserIdentity entries from an expose request.
-func resolveExposeIdentities(req *ExposeRequest) []UserIdentity {
+// ResolveExposeIdentities extracts UserIdentity entries from an expose request.
+// Prefers an explicit Identities slice, falls back to the top-level UserToken.
+func ResolveExposeIdentities(req *ExposeRequest) []UserIdentity {
 	if len(req.Identities) > 0 {
 		return req.Identities
 	}

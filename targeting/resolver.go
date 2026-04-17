@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -120,9 +121,9 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 	}
 
 	// Step 3: Batch-load identity configs (1 MGet).
-	idConfigs, err := batchLoadPackageIdentityConfigs(ctx, store, pkgIDs)
+	idConfigs, err := exposure.BatchLoadPackageIdentityConfigs(ctx, store, pkgIDs)
 	if err != nil {
-		idConfigs = make(map[string]*PackageIdentityConfig)
+		idConfigs = make(map[string]*exposure.PackageIdentityConfig)
 	}
 
 	// Step 4: Collect unique campaign IDs, batch-load (1 MGet).
@@ -136,9 +137,9 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 	for id := range campIDSet {
 		campIDs = append(campIDs, id)
 	}
-	campConfigs, err := batchLoadCampaignFreqConfigs(ctx, store, campIDs)
+	campConfigs, err := exposure.BatchLoadCampaignFreqConfigs(ctx, store, campIDs)
 	if err != nil {
-		campConfigs = make(map[string]*CampaignFreqConfig)
+		campConfigs = make(map[string]*exposure.CampaignFreqConfig)
 	}
 
 	// Step 5: Build indexes.

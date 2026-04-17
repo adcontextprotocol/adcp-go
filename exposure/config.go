@@ -1,4 +1,4 @@
-package targeting
+package exposure
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 // PackageIdentityConfig is the identity-side configuration for a package,
 // stored in the Store as JSON at key "config:pkg:{packageID}".
 type PackageIdentityConfig struct {
-	CampaignID     string             `json:"campaign_id,omitempty"`
+	CampaignID     string              `json:"campaign_id,omitempty"`
 	FrequencyRules []FrequencyRuleJSON `json:"frequency_rules,omitempty"`
-	TargetSegments []string           `json:"target_segments,omitempty"`
+	TargetSegments []string            `json:"target_segments,omitempty"`
 }
 
 // CampaignFreqConfig is the frequency cap configuration for a campaign,
@@ -27,8 +27,8 @@ type FrequencyRuleJSON struct {
 	WindowSeconds int `json:"window_seconds"`
 }
 
-// toFrequencyRules converts JSON rules to engine rules.
-func toFrequencyRules(rules []FrequencyRuleJSON) []FrequencyRule {
+// ToFrequencyRules converts JSON rules to engine rules.
+func ToFrequencyRules(rules []FrequencyRuleJSON) []FrequencyRule {
 	out := make([]FrequencyRule, len(rules))
 	for i, r := range rules {
 		out[i] = FrequencyRule{
@@ -39,9 +39,9 @@ func toFrequencyRules(rules []FrequencyRuleJSON) []FrequencyRule {
 	return out
 }
 
-// loadPackageIdentityConfig reads identity config for a package from the Store.
+// LoadPackageIdentityConfig reads identity config for a package from the Store.
 // Returns nil if no config is found (package has no identity dimensions).
-func loadPackageIdentityConfig(ctx context.Context, store Store, pkgID string) (*PackageIdentityConfig, error) {
+func LoadPackageIdentityConfig(ctx context.Context, store ConfigStore, pkgID string) (*PackageIdentityConfig, error) {
 	key := fmt.Sprintf("config:pkg:%s", pkgID)
 	val, ok, err := store.Get(ctx, key)
 	if err != nil {
@@ -57,35 +57,26 @@ func loadPackageIdentityConfig(ctx context.Context, store Store, pkgID string) (
 	return &cfg, nil
 }
 
-// batchLoadPackageContextConfigs loads context configs for multiple packages in one MGet.
-func batchLoadPackageContextConfigs(ctx context.Context, store Store, pkgIDs []string) (map[string]*PackageContextConfig, error) {
-	if len(pkgIDs) == 0 {
-		return nil, nil
-	}
-	keys := make([]string, len(pkgIDs))
-	for i, id := range pkgIDs {
-		keys[i] = fmt.Sprintf("config:pkg:%s:context", id)
-	}
-	values, err := store.MGet(ctx, keys...)
+// LoadCampaignFreqConfig reads frequency cap config for a campaign from the Store.
+// Returns nil if no config is found.
+func LoadCampaignFreqConfig(ctx context.Context, store ConfigStore, campaignID string) (*CampaignFreqConfig, error) {
+	key := fmt.Sprintf("config:campaign:%s", campaignID)
+	val, ok, err := store.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	result := make(map[string]*PackageContextConfig, len(pkgIDs))
-	for i, val := range values {
-		if val == "" {
-			continue
-		}
-		var cfg PackageContextConfig
-		if err := json.Unmarshal([]byte(val), &cfg); err != nil {
-			continue // skip unparseable
-		}
-		result[pkgIDs[i]] = &cfg
+	if !ok {
+		return nil, nil
 	}
-	return result, nil
+	var cfg CampaignFreqConfig
+	if err := json.Unmarshal([]byte(val), &cfg); err != nil {
+		return nil, fmt.Errorf("parse campaign config for %s: %w", campaignID, err)
+	}
+	return &cfg, nil
 }
 
-// batchLoadPackageIdentityConfigs loads identity configs for multiple packages in one MGet.
-func batchLoadPackageIdentityConfigs(ctx context.Context, store Store, pkgIDs []string) (map[string]*PackageIdentityConfig, error) {
+// BatchLoadPackageIdentityConfigs loads identity configs for multiple packages in one MGet.
+func BatchLoadPackageIdentityConfigs(ctx context.Context, store BatchStore, pkgIDs []string) (map[string]*PackageIdentityConfig, error) {
 	if len(pkgIDs) == 0 {
 		return nil, nil
 	}
@@ -111,8 +102,8 @@ func batchLoadPackageIdentityConfigs(ctx context.Context, store Store, pkgIDs []
 	return result, nil
 }
 
-// batchLoadCampaignFreqConfigs loads campaign configs for multiple campaigns in one MGet.
-func batchLoadCampaignFreqConfigs(ctx context.Context, store Store, campaignIDs []string) (map[string]*CampaignFreqConfig, error) {
+// BatchLoadCampaignFreqConfigs loads campaign configs for multiple campaigns in one MGet.
+func BatchLoadCampaignFreqConfigs(ctx context.Context, store BatchStore, campaignIDs []string) (map[string]*CampaignFreqConfig, error) {
 	if len(campaignIDs) == 0 {
 		return nil, nil
 	}
@@ -139,7 +130,7 @@ func batchLoadCampaignFreqConfigs(ctx context.Context, store Store, campaignIDs 
 }
 
 // SeedPackageIdentityConfig writes identity config for a package to any Store.
-func SeedPackageIdentityConfig(ctx context.Context, store Store, pkgID string, cfg PackageIdentityConfig) error {
+func SeedPackageIdentityConfig(ctx context.Context, store ConfigStore, pkgID string, cfg PackageIdentityConfig) error {
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return err
@@ -148,28 +139,10 @@ func SeedPackageIdentityConfig(ctx context.Context, store Store, pkgID string, c
 }
 
 // SeedCampaignFreqConfig writes frequency config for a campaign to any Store.
-func SeedCampaignFreqConfig(ctx context.Context, store Store, campaignID string, cfg CampaignFreqConfig) error {
+func SeedCampaignFreqConfig(ctx context.Context, store ConfigStore, campaignID string, cfg CampaignFreqConfig) error {
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return err
 	}
 	return store.Set(ctx, fmt.Sprintf("config:campaign:%s", campaignID), string(data), 0)
-}
-
-// loadCampaignFreqConfig reads frequency cap config for a campaign from the Store.
-// Returns nil if no config is found.
-func loadCampaignFreqConfig(ctx context.Context, store Store, campaignID string) (*CampaignFreqConfig, error) {
-	key := fmt.Sprintf("config:campaign:%s", campaignID)
-	val, ok, err := store.Get(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, nil
-	}
-	var cfg CampaignFreqConfig
-	if err := json.Unmarshal([]byte(val), &cfg); err != nil {
-		return nil, fmt.Errorf("parse campaign config for %s: %w", campaignID, err)
-	}
-	return &cfg, nil
 }

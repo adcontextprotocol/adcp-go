@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -17,16 +18,16 @@ func TestSystem_EndToEnd(t *testing.T) {
 	// --- Setup: realistic seller with many media buys ---
 
 	const (
-		numMediaBuys     = 50
-		packagesPerBuy   = 10
-		totalPackages    = numMediaBuys * packagesPerBuy // 500
-		numSegments      = 20
-		membersPerSeg    = 10_000
-		topicsPerPkg     = 5
-		blocklistPerPkg  = 100
-		numCampaigns     = 10
-		numUsers         = 100
-		pagesPerUser     = 5
+		numMediaBuys    = 50
+		packagesPerBuy  = 10
+		totalPackages   = numMediaBuys * packagesPerBuy // 500
+		numSegments     = 20
+		membersPerSeg   = 10_000
+		topicsPerPkg    = 5
+		blocklistPerPkg = 100
+		numCampaigns    = 10
+		numUsers        = 100
+		pagesPerUser    = 5
 	)
 
 	store := NewMockStore()
@@ -88,17 +89,17 @@ func TestSystem_EndToEnd(t *testing.T) {
 
 		// Identity config.
 		targetSegs := []string{segments[i%numSegments], segments[(i+1)%numSegments]}
-		store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
+		store.SetPackageIdentityConfig(pkgID, exposure.PackageIdentityConfig{
 			CampaignID:     campID,
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			TargetSegments: targetSegs,
 		})
 	}
 
 	// Campaign configs.
 	for i := range numCampaigns {
-		store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), CampaignFreqConfig{
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}},
+		store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), exposure.CampaignFreqConfig{
+			FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}},
 		})
 	}
 
@@ -106,7 +107,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	userTokens := make([]string, numUsers)
 	for u := range numUsers {
 		userTokens[u] = fmt.Sprintf("tok-user-%d", u)
-		hash := HashToken(userTokens[u])
+		hash := exposure.HashToken(userTokens[u])
 		// Each user is in 2-3 segments.
 		store.SetAdd("audience:"+segments[u%numSegments], hash)
 		store.SetAdd("audience:"+segments[(u+3)%numSegments], hash)
@@ -182,13 +183,13 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	type result struct {
-		name            string
-		totalTime       time.Duration
-		contextTime     time.Duration
-		identityTime    time.Duration
-		contextOffers   int
+		name             string
+		totalTime        time.Duration
+		contextTime      time.Duration
+		identityTime     time.Duration
+		contextOffers    int
 		identityEligible int
-		requests        int
+		requests         int
 	}
 
 	runBench := func(name string, evalCtx func(context.Context, *tmproto.ContextMatchRequest) (*ContextResult, error), evalId func(context.Context, *tmproto.IdentityMatchRequest) (*IdentityResult, error)) result {

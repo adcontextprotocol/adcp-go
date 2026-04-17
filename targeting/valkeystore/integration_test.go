@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/alicebob/miniredis/v2"
@@ -15,8 +16,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// setupIntegration creates an Engine backed by a real Redis (miniredis) Store.
-func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Miniredis) {
+// setupIntegration creates an Engine and Recorder backed by a real Redis
+// (miniredis) Store. The recorder writes exposure state; the engine reads it.
+func setupIntegration(t *testing.T) (*targeting.Engine, *exposure.Recorder, *Store, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
@@ -32,21 +34,21 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 		require.NoError(t, store.Set(ctx, key, string(data), 0))
 	}
 
-	seedJSON("config:pkg:pkg-alpha", targeting.PackageIdentityConfig{
+	seedJSON("config:pkg:pkg-alpha", exposure.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"sports"},
 	})
-	seedJSON("config:pkg:pkg-beta", targeting.PackageIdentityConfig{
+	seedJSON("config:pkg:pkg-beta", exposure.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 	})
-	seedJSON("config:campaign:campaign-x", targeting.CampaignFreqConfig{
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
+	seedJSON("config:campaign:campaign-x", exposure.CampaignFreqConfig{
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
 	})
 
 	// Add user to audience segment.
-	tokenHash := targeting.HashToken("user-valkey")
+	tokenHash := exposure.HashToken("user-valkey")
 	mr.SAdd("audience:sports", tokenHash)
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
@@ -57,18 +59,22 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 			{PackageID: "pkg-beta"},
 		},
 	})
+	recorder := exposure.NewRecorder(exposure.RecorderConfig{
+		ProviderID: "test-valkey",
+		Store:      store,
+	})
 
-	return engine, store, mr
+	return engine, recorder, store, mr
 }
 
 func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, recorder, _, mr := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
 	// Record 3 exposures (package cap = 3/24h).
 	for i := range 3 {
-		_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, err := recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-valkey-%d", i),
 		})
@@ -84,19 +90,19 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 }
 
 func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, recorder, _, mr := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
 	// 3 on pkg-alpha + 2 on pkg-beta = 5 total (campaign cap = 5/7d).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-v-camp-a-%d", i),
 		})
 	}
 	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-beta",
 			ImpressionID: fmt.Sprintf("imp-v-camp-b-%d", i),
 		})
@@ -113,13 +119,13 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 }
 
 func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, recorder, _, mr := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
 	// 3 exposures hits package cap.
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-v-window-%d", i),
 		})
@@ -144,11 +150,11 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 }
 
 func TestValkeyIntegration_IntentScore(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, recorder, _, mr := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, _ = recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
 
@@ -162,11 +168,11 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 }
 
 func TestValkeyIntegration_ExposureResponse(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	_, recorder, _, mr := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	resp, err := recorder.RecordExposure(ctx, &exposure.ExposeRequest{
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
 	require.NoError(t, err)

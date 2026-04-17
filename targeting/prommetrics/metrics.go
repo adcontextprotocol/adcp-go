@@ -8,16 +8,20 @@ package prommetrics
 import (
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 )
 
-// Metrics implements targeting.Metrics backed by a Registry.
+// Metrics implements targeting.Metrics and exposure.Metrics backed by a Registry.
 type Metrics struct {
 	Registry *Registry
 }
 
-// Ensure Metrics satisfies the targeting.Metrics interface.
-var _ targeting.Metrics = (*Metrics)(nil)
+// Ensure Metrics satisfies both Metrics interfaces.
+var (
+	_ targeting.Metrics = (*Metrics)(nil)
+	_ exposure.Metrics  = (*Metrics)(nil)
+)
 
 // New creates a Metrics instance with pre-registered targeting metrics.
 func New() *Metrics {

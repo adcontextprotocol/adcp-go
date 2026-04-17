@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/adcontextprotocol/adcp-go/router"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmpclient"
@@ -20,10 +21,11 @@ import (
 
 // testStack holds all components for an integration test.
 type testStack struct {
-	client         *tmpclient.Client
-	store          *targeting.MockStore
-	contextEngine  *targeting.Engine
-	identityEngine *targeting.Engine
+	client           *tmpclient.Client
+	store            *targeting.MockStore
+	contextEngine    *targeting.Engine
+	identityEngine   *targeting.Engine
+	exposureRecorder *exposure.Recorder
 }
 
 func setupStack(t *testing.T) *testStack {
@@ -41,8 +43,8 @@ func setupStack(t *testing.T) *testStack {
 	store.SetAdd("url:blocklist:pkg-family", targeting.HashURL("article:adult-content"))
 
 	// Seed audience segments.
-	aliceHash := targeting.HashToken("tok-alice")
-	bobHash := targeting.HashToken("tok-bob")
+	aliceHash := exposure.HashToken("tok-alice")
+	bobHash := exposure.HashToken("tok-bob")
 	store.SetAdd("audience:cooking_fans", aliceHash)
 	store.SetAdd("audience:sports_fans", bobHash)
 
@@ -61,17 +63,17 @@ func setupStack(t *testing.T) *testStack {
 	})
 
 	// Seed identity config in Store (data-driven, not static config).
-	store.SetPackageIdentityConfig("pkg-food", targeting.PackageIdentityConfig{
+	store.SetPackageIdentityConfig("pkg-food", exposure.PackageIdentityConfig{
 		CampaignID:     "campaign-acme",
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"cooking_fans"},
 	})
 	// pkg-tech: no identity config = always eligible
-	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
+	store.SetPackageIdentityConfig("pkg-family", exposure.PackageIdentityConfig{
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
 	})
-	store.SetCampaignFreqConfig("campaign-acme", targeting.CampaignFreqConfig{
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
+	store.SetCampaignFreqConfig("campaign-acme", exposure.CampaignFreqConfig{
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
 	})
 
 	// User profiles for identity evaluation.
@@ -94,13 +96,13 @@ func setupStack(t *testing.T) *testStack {
 		SegmentIndex: map[string][]string{
 			"cooking_fans": {"pkg-food"},
 		},
-		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food":   {CampaignID: "campaign-acme", FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking_fans"}},
+		IdentityConfigs: map[string]*exposure.PackageIdentityConfig{
+			"pkg-food":   {CampaignID: "campaign-acme", FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking_fans"}},
 			"pkg-tech":   {},
-			"pkg-family": {FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
+			"pkg-family": {FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
 		},
-		CampaignConfigs: map[string]*targeting.CampaignFreqConfig{
-			"campaign-acme": {FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
+		CampaignConfigs: map[string]*exposure.CampaignFreqConfig{
+			"campaign-acme": {FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
 		},
 	}
 
@@ -139,6 +141,10 @@ func setupStack(t *testing.T) *testStack {
 		store:          store,
 		contextEngine:  contextEngine,
 		identityEngine: identityEngine,
+		exposureRecorder: exposure.NewRecorder(exposure.RecorderConfig{
+			ProviderID: "integration-identity",
+			Store:      store,
+		}),
 	}
 }
 
@@ -290,7 +296,7 @@ func TestIntegration_FrequencyCapping(t *testing.T) {
 		result, err := s.client.Activate(ctx, params)
 		require.NoError(t, err, "activate %d", i)
 		require.NotEmpty(t, result.Activations, "activate %d: expected activation before cap", i)
-		_, err = s.identityEngine.RecordExposure(ctx, &targeting.ExposeRequest{
+		_, err = s.exposureRecorder.RecordExposure(ctx, &exposure.ExposeRequest{
 			UserToken:    "tok-alice",
 			PackageID:    "pkg-food",
 			ImpressionID: fmt.Sprintf("imp-fcap-%d", i),
@@ -367,7 +373,7 @@ func TestIntegration_ExposeUpdatesState(t *testing.T) {
 	require.NotEmpty(t, result1.Activations, "expected activation")
 
 	// Record exposure directly via the engine (TMPX replaces router-based expose).
-	expResp, err := s.identityEngine.RecordExposure(ctx, &targeting.ExposeRequest{
+	expResp, err := s.exposureRecorder.RecordExposure(ctx, &exposure.ExposeRequest{
 		UserToken:    "tok-alice",
 		PackageID:    "pkg-food",
 		ImpressionID: "imp-state-1",
@@ -413,7 +419,7 @@ func TestIntegration_Mediation(t *testing.T) {
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
 	// Audience: alice is a cooking fan.
-	store.SetAdd("audience:cooking_fans", targeting.HashToken("tok-alice"))
+	store.SetAdd("audience:cooking_fans", exposure.HashToken("tok-alice"))
 
 	creativeManifest, _ := json.Marshal(map[string]any{
 		"format_id": "sponsored_card",
@@ -463,9 +469,9 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	// Seed identity config for mediation packages.
-	store.SetPackageIdentityConfig("pkg-olive-oil", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
-	store.SetPackageIdentityConfig("pkg-cookware", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
-	store.SetPackageIdentityConfig("pkg-wine", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
+	store.SetPackageIdentityConfig("pkg-olive-oil", exposure.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
+	store.SetPackageIdentityConfig("pkg-cookware", exposure.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
+	store.SetPackageIdentityConfig("pkg-wine", exposure.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
 
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "mediation-identity",
@@ -478,7 +484,7 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	// Seed intent scores directly in store to simulate prior exposure history.
-	oliveHash := targeting.HashToken("tok-alice")
+	oliveHash := exposure.HashToken("tok-alice")
 	_ = store.Set(context.Background(), "intent:pkg-olive-oil:"+oliveHash, fmt.Sprintf("%d", time.Now().Add(-6*time.Hour).Unix()), 7*24*time.Hour)
 	_ = store.Set(context.Background(), "intent:pkg-wine:"+oliveHash, fmt.Sprintf("%d", time.Now().Add(-4*24*time.Hour).Unix()), 7*24*time.Hour)
 

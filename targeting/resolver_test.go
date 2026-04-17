@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/exposure"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -178,16 +179,16 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	store.SetAdd("url:blocklist:pkg-food", HashURL("article:bad"))
 
 	// Identity configs.
-	store.SetPackageIdentityConfig("pkg-food", PackageIdentityConfig{
+	store.SetPackageIdentityConfig("pkg-food", exposure.PackageIdentityConfig{
 		CampaignID:     "campaign-1",
 		TargetSegments: []string{"cooking_fans"},
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 	})
-	store.SetPackageIdentityConfig("pkg-tech", PackageIdentityConfig{
+	store.SetPackageIdentityConfig("pkg-tech", exposure.PackageIdentityConfig{
 		TargetSegments: []string{"tech_enthusiasts", "cooking_fans"},
 	})
-	store.SetCampaignFreqConfig("campaign-1", CampaignFreqConfig{
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
+	store.SetCampaignFreqConfig("campaign-1", exposure.CampaignFreqConfig{
+		FrequencyRules: []exposure.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
 	})
 
 	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)

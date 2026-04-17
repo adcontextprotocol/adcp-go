@@ -1,7 +1,5 @@
 package targeting
 
-import "time"
-
 // Bitmap is a set of string values with O(1) membership test.
 // For small sets (<10K), MapBitmap is a stdlib-only alternative.
 type Bitmap interface {
@@ -58,10 +56,4 @@ func (p *PropertyList) ContainsPackage(packageID string, rid string) bool {
 		return true
 	}
 	return bm.Contains(rid)
-}
-
-// FrequencyRule defines a sliding-window impression cap.
-type FrequencyRule struct {
-	MaxCount int
-	Window   time.Duration
 }
