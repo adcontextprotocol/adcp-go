@@ -51,29 +51,29 @@ type PackageConfig struct {
 // stored in the Store as JSON at key "config:pkg:{packageID}:context".
 // Used when DynamicPackages is true on the Engine.
 type PackageContextConfig struct {
-	PackageID    string              `json:"package_id"`
-	MediaBuyID   string              `json:"media_buy_id,omitempty"`
-	URLBlocklist bool                `json:"url_blocklist,omitempty"`
-	URLAllowlist bool                `json:"url_allowlist,omitempty"`
-	TopicTargets bool                `json:"topic_targets,omitempty"`
-	PropertyRIDs []string             `json:"property_rids,omitempty"` // per-package property targeting
-	EmitSegments []string            `json:"emit_segments,omitempty"`
-	Offers       []OfferConfigJSON   `json:"offers,omitempty"`
-	Brand        json.RawMessage   `json:"brand,omitempty"`
-	Price        tmproto.OfferPrice `json:"price,omitempty"`
-	Summary      string              `json:"summary,omitempty"`
-	ManifestType string              `json:"manifest_type,omitempty"`
-	Macros       map[string]string   `json:"macros,omitempty"`
+	PackageID    string             `json:"package_id"`
+	MediaBuyID   string             `json:"media_buy_id,omitempty"`
+	URLBlocklist bool               `json:"url_blocklist,omitempty"`
+	URLAllowlist bool               `json:"url_allowlist,omitempty"`
+	TopicTargets bool               `json:"topic_targets,omitempty"`
+	PropertyRIDs []string           `json:"property_rids,omitempty"` // per-package property targeting
+	EmitSegments []string           `json:"emit_segments,omitempty"`
+	Offers       []OfferConfigJSON  `json:"offers,omitempty"`
+	Brand        json.RawMessage    `json:"brand,omitempty"`
+	Price        tmproto.OfferPrice `json:"price"`
+	Summary      string             `json:"summary,omitempty"`
+	ManifestType string             `json:"manifest_type,omitempty"`
+	Macros       map[string]string  `json:"macros,omitempty"`
 }
 
 // OfferConfigJSON is the JSON-serializable form of OfferConfig.
 type OfferConfigJSON struct {
-	DealID       string              `json:"deal_id,omitempty"`
-	Brand        json.RawMessage   `json:"brand,omitempty"`
-	Price        tmproto.OfferPrice `json:"price,omitempty"`
-	Summary      string              `json:"summary,omitempty"`
-	ManifestType string              `json:"manifest_type,omitempty"`
-	Macros       map[string]string   `json:"macros,omitempty"`
+	DealID       string             `json:"deal_id,omitempty"`
+	Brand        json.RawMessage    `json:"brand,omitempty"`
+	Price        tmproto.OfferPrice `json:"price"`
+	Summary      string             `json:"summary,omitempty"`
+	ManifestType string             `json:"manifest_type,omitempty"`
+	Macros       map[string]string  `json:"macros,omitempty"`
 }
 
 // OfferConfig represents a single brand's offer competing for a package.
@@ -86,4 +86,3 @@ type OfferConfig struct {
 	CreativeManifest json.RawMessage
 	Macros           map[string]string
 }
-
