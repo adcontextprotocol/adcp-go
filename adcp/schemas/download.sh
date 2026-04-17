@@ -18,6 +18,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 BASE="https://adcontextprotocol.org/protocol"
 
+# Sigstore identity the upstream release workflow signs under.
+# See adcontextprotocol/adcp#2273.
+COSIGN_IDENTITY='^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$'
+COSIGN_ISSUER='https://token.actions.githubusercontent.com'
+
+# Set ADCP_STRICT_VERIFY=1 to fail when signature sidecars are missing or when
+# cosign is unavailable. Default behavior: verify when possible, fall back to
+# checksum-only trust otherwise (expected for latest.tgz and older releases).
+STRICT="${ADCP_STRICT_VERIFY:-0}"
+
 # Files in $SCRIPT_DIR that sit alongside the schema tree and must survive
 # the rsync --delete. Add to this list when introducing new sibling files.
 PROTECTED=(
@@ -55,6 +65,36 @@ ACTUAL=$(shasum -a 256 "$WORK/bundle.tgz" | cut -d' ' -f1)
 if [ "$EXPECTED" != "$ACTUAL" ]; then
   echo "SHA-256 mismatch: expected $EXPECTED, got $ACTUAL" >&2
   exit 1
+fi
+
+# Optional Sigstore verification — proves the bundle was produced by the
+# upstream release workflow, not just served from the same origin.
+# latest.tgz and pre-signing releases do not ship sidecars; treat as
+# checksum-only unless ADCP_STRICT_VERIFY=1 is set.
+SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
+CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
+if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
+  if command -v cosign >/dev/null 2>&1; then
+    cosign verify-blob \
+      --signature "$WORK/bundle.tgz.sig" \
+      --certificate "$WORK/bundle.tgz.crt" \
+      --certificate-identity-regexp "$COSIGN_IDENTITY" \
+      --certificate-oidc-issuer "$COSIGN_ISSUER" \
+      "$WORK/bundle.tgz"
+    echo "Sigstore verification passed."
+  elif [ "$STRICT" = "1" ]; then
+    echo "cosign not installed but signature sidecars are available (ADCP_STRICT_VERIFY=1)" >&2
+    exit 1
+  else
+    echo "cosign not installed — skipping signature verification (checksum-only)."
+  fi
+else
+  rm -f "$WORK/bundle.tgz.sig" "$WORK/bundle.tgz.crt"
+  if [ "$STRICT" = "1" ]; then
+    echo "no signature sidecars for $VERSION (ADCP_STRICT_VERIFY=1)" >&2
+    exit 1
+  fi
+  echo "No signature sidecars for $VERSION — checksum-only trust."
 fi
 
 # Reject archive entries that would escape the extraction directory before
