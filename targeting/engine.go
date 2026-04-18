@@ -223,6 +223,12 @@ type IdentityResult struct {
 //  2. Package frequency cap
 //  3. Audience segment match
 //  4. Intent score
+//
+// Frequency caps, audience lookups, and intent scores key on Identities[0]
+// only. Multi-identity resolution (selecting which identity graph the buyer
+// resolves against) is a router concern that runs upstream of this pipeline.
+// Callers that need cross-identity aggregation must pre-resolve to a
+// canonical token before calling EvaluateIdentity.
 func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 	evalStart := time.Now()
 	// Frequency caps and audience lookups are keyed on a single token hash;

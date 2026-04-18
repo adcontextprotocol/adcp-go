@@ -27,6 +27,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 BASE="https://adcontextprotocol.org/protocol"
 
+# Sigstore verification policy — pinned in-tree deliberately. Sourcing these
+# from the /protocol/ manifest would let an attacker with origin write access
+# (same host that serves the tarball + sidecars) swap the identity regex to
+# match whatever cert they've obtained. Hardcoding means origin compromise
+# alone is insufficient — an attacker would also need to run a workflow from
+# adcontextprotocol/adcp that passes this exact identity match.
+COSIGN_IDENTITY='^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$'
+COSIGN_ISSUER='https://token.actions.githubusercontent.com'
+
 STRICT="${ADCP_STRICT_VERIFY:-0}"
 
 # Files in $SCRIPT_DIR that sit alongside the schema tree and must survive
@@ -55,24 +64,6 @@ trap 'rm -rf "$WORK"' EXIT
 
 CURL_OPTS=(--fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 60)
 
-# Fetch manifest so we can pin to the upstream-declared Sigstore identity
-# rather than hardcoding it. The manifest also advertises whether a version
-# is signed via per-version entries.
-MANIFEST=$(curl "${CURL_OPTS[@]}" "$BASE/")
-read -r COSIGN_IDENTITY COSIGN_ISSUER < <(python3 -c '
-import json, sys
-m = json.load(sys.stdin)
-sv = m.get("signature_verification") or {}
-ident = sv.get("certificate_identity_regexp", "")
-issuer = sv.get("certificate_oidc_issuer", "")
-print(ident, issuer)
-' <<<"$MANIFEST")
-
-if [ -z "$COSIGN_IDENTITY" ] || [ -z "$COSIGN_ISSUER" ]; then
-  echo "manifest missing signature_verification metadata" >&2
-  exit 1
-fi
-
 curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz" "$BASE/$VERSION.tgz"
 curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz.sha256" "$BASE/$VERSION.tgz.sha256"
 
@@ -95,9 +86,17 @@ if [ "$VERSION" = "latest" ] && [ "$STRICT" != "1" ]; then
 fi
 
 SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
+[ "$SIG_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.sig"
 CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
+[ "$CRT_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.crt"
 
 if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
+  # A CDN returning 200 with an HTML error body would otherwise produce an
+  # opaque cosign unmarshal error. Fail fast with a clear message.
+  if ! grep -q "BEGIN CERTIFICATE" "$WORK/bundle.tgz.crt"; then
+    echo "signature certificate for $VERSION is not a PEM certificate (CDN misbehaving?)" >&2
+    exit 1
+  fi
   if ! command -v cosign >/dev/null 2>&1; then
     echo "cosign not installed but signature sidecars are available for $VERSION" >&2
     echo "install cosign (https://docs.sigstore.dev/system_config/installation/) to verify" >&2
@@ -111,7 +110,6 @@ if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
     "$WORK/bundle.tgz"
   echo "Sigstore verification passed."
 else
-  rm -f "$WORK/bundle.tgz.sig" "$WORK/bundle.tgz.crt"
   if [ "$SIG_REQUIRED" = "1" ]; then
     echo "no signature sidecars for $VERSION — released bundles must be signed" >&2
     exit 1

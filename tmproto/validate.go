@@ -101,6 +101,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		if id.UserToken == "" {
 			return fmt.Errorf("identities[%d].user_token is required", i)
 		}
+		if len(id.UserToken) > MaxIDLength {
+			return fmt.Errorf("identities[%d].user_token exceeds %d bytes", i, MaxIDLength)
+		}
 		if id.UIDType == "" {
 			return fmt.Errorf("identities[%d].uid_type is required", i)
 		}

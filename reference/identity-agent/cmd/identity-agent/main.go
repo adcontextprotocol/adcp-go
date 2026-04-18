@@ -62,9 +62,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
-		if len(req.Identities) == 0 {
+		if err := tmproto.ValidateIdentityRequest(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "identities required"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		result, err := engine.EvaluateIdentity(r.Context(), &req)
