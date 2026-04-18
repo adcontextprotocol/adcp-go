@@ -34,6 +34,15 @@ var DefaultExcludePaths = []string{
 
 // CanonicalJSONSHA256 is the default HashFn: RFC 8785 JCS canonicalization
 // followed by SHA-256. The top-level exclude list is applied before hashing.
+//
+// Known limitation — integer precision beyond 2^53: JCS §3.2.2.3 mandates
+// ECMAScript Number.prototype.toString form, which goes through IEEE-754
+// double-precision. Integers above 2^53 (9,007,199,254,740,992) lose
+// precision, so e.g. {"amount":9007199254740993} and {"amount":9007199254740992}
+// canonicalize to the same bytes and therefore the same hash. This matches
+// RFC 8785 and every other spec-compliant JCS implementation. If your AdCP
+// payloads can exceed this range (uncommon: currencies use cents, IDs are
+// strings), either scale values or represent them as strings before hashing.
 var CanonicalJSONSHA256 = NewCanonicalJSONSHA256(DefaultExcludePaths)
 
 // NewCanonicalJSONSHA256 returns a HashFn that strips the given dotted JSON
