@@ -55,8 +55,7 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 func TestValidateIdentityRequest_Valid(t *testing.T) {
 	req := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-001",
-		UserToken:  "tok_abc",
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1", "pkg-2"},
 	}
 	assert.NoError(t, ValidateIdentityRequest(req))
@@ -204,8 +203,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-e2e",
-		"user_token": "tok_test_abc",
-		"uid_type": "uid2",
+		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1", "pkg-2", "pkg-3"]
 	}`
 
@@ -239,15 +237,13 @@ func TestIdentityFiltering_Country(t *testing.T) {
 
 	usReq := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-us",
-		UserToken:  "tok",
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 		Country:    "US",
 	}
 	deReq := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-de",
-		UserToken:  "tok",
-		UIDType:    tmproto.UIDTypeEUID,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok", UIDType: tmproto.UIDTypeEUID}},
 		PackageIDs: []string{"pkg-1"},
 		Country:    "DE",
 	}
@@ -267,14 +263,12 @@ func TestIdentityFiltering_UIDType(t *testing.T) {
 
 	uid2Req := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-1",
-		UserToken:  "tok",
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 	}
 	euidReq := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-2",
-		UserToken:  "tok",
-		UIDType:    tmproto.UIDTypeEUID,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok", UIDType: tmproto.UIDTypeEUID}},
 		PackageIDs: []string{"pkg-1"},
 	}
 
@@ -289,8 +283,7 @@ func TestIdentityFiltering_NoFilters(t *testing.T) {
 	}
 	req := &tmproto.IdentityMatchRequest{
 		RequestID:  "id-1",
-		UserToken:  "tok",
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 		Country:    "US",
 	}
@@ -317,8 +310,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-strip",
-		"user_token": "tok_test",
-		"uid_type": "uid2",
+		"identities": [{"user_token": "tok_test", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1"],
 		"country": "US"
 	}`

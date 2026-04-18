@@ -130,13 +130,18 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	userToken := ""
+	if len(req.Identities) > 0 {
+		userToken = req.Identities[0].UserToken
+	}
+
 	var eligible []string
 	for _, pkgID := range req.PackageIDs {
 		isEligible := true
 
 		if cap, ok := a.freqCaps[pkgID]; ok {
 			count := 0
-			if counts, ok := a.freqCounts[req.UserToken]; ok {
+			if counts, ok := a.freqCounts[userToken]; ok {
 				count = counts[pkgID]
 			}
 			if count >= cap {
@@ -326,8 +331,7 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 		// 2. Identity Match (in parallel in production, sequential here for clarity)
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  fmt.Sprintf("id-chat-%d", i),
-			UserToken:  userToken,
-			UIDType:    tmproto.UIDTypePublisherFirstParty,
+			Identities: []tmproto.IdentityToken{{UserToken: userToken, UIDType: tmproto.UIDTypePublisherFirstParty}},
 			PackageIDs: allPackages,
 		})
 
@@ -464,7 +468,7 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  fmt.Sprintf("id-freq-%d", turn),
-			UserToken:  token,
+			Identities: []tmproto.IdentityToken{{UserToken: token}},
 			PackageIDs: []string{"pkg-coffee"},
 		})
 

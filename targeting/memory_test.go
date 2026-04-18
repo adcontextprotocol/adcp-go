@@ -109,7 +109,7 @@ func TestScale_IdentityNoTargeting(t *testing.T) {
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: pkgIDs,
 		}
 

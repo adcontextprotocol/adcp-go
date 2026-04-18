@@ -198,10 +198,14 @@ func ComputeIntentScore(exposureTime int64, now time.Time) float64 {
 
 // resolveIdentities extracts UserIdentity entries from an identity match request.
 func resolveIdentities(req *tmproto.IdentityMatchRequest) []UserIdentity {
-	if req.UserToken != "" {
-		return []UserIdentity{{UserToken: req.UserToken, UIDType: string(req.UIDType)}}
+	if len(req.Identities) == 0 {
+		return nil
 	}
-	return nil
+	out := make([]UserIdentity, len(req.Identities))
+	for i, id := range req.Identities {
+		out[i] = UserIdentity{UserToken: id.UserToken, UIDType: string(id.UIDType)}
+	}
+	return out
 }
 
 // resolveExposeIdentities extracts UserIdentity entries from an expose request.

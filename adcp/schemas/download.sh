@@ -1,10 +1,22 @@
 #!/bin/bash
-# Downloads AdCP JSON schemas from the spec repo at the pinned version.
+# Downloads AdCP JSON schemas from the published protocol bundle at the pinned version.
 #
 # Usage:
 #   ./download.sh              # download at pinned VERSION
-#   ./download.sh v3.0.0       # download at specific version
-#   ./download.sh main         # download from main branch
+#   ./download.sh 3.1.0        # download a specific released version
+#   ./download.sh latest       # download the dev snapshot
+#
+# The bundle is fetched from https://adcontextprotocol.org/protocol/{version}.tgz
+# with a SHA-256 sidecar for integrity and (for released versions) a Sigstore
+# signature that proves the bundle came from the upstream release workflow.
+#
+# Trust model:
+#   - Released versions (e.g. 3.1.0): signature verification is required.
+#     cosign must be on PATH; fails closed if sidecars or cosign are missing.
+#   - latest (dev snapshot): unsigned by design. Verified by SHA-256 only.
+#
+# Set ADCP_STRICT_VERIFY=1 to require signatures for latest too (useful if
+# upstream opts in to signing latest.tgz).
 #
 # After downloading, regenerate Go types:
 #   python3 generate.py > ../types_gen.go
@@ -13,29 +25,132 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
+BASE="https://adcontextprotocol.org/protocol"
 
-# Use argument, or fall back to VERSION file
-REF="${1:-$(cat "$VERSION_FILE" | tr -d '[:space:]')}"
-REPO="adcontextprotocol/adcp"
+# Sigstore verification policy — pinned in-tree deliberately. Sourcing these
+# from the /protocol/ manifest would let an attacker with origin write access
+# (same host that serves the tarball + sidecars) swap the identity regex to
+# match whatever cert they've obtained. Hardcoding means origin compromise
+# alone is insufficient — an attacker would also need to run a workflow from
+# adcontextprotocol/adcp that passes this exact identity match.
+COSIGN_IDENTITY='^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$'
+COSIGN_ISSUER='https://token.actions.githubusercontent.com'
 
-echo "Downloading schemas from $REPO @ $REF"
+STRICT="${ADCP_STRICT_VERIFY:-0}"
 
-# Get all schema file paths
-PATHS=$(gh api -X GET "repos/$REPO/git/trees/$REF?recursive=1" \
-  --jq '.tree[].path' | grep '^static/schemas/source/.*\.json$')
+# Files in $SCRIPT_DIR that sit alongside the schema tree and must survive
+# the rsync --delete. Add to this list when introducing new sibling files.
+PROTECTED=(
+  VERSION
+  .gitignore
+  .bundle-sha256
+  download.sh
+  check-freshness.sh
+  generate.py
+)
 
-COUNT=$(echo "$PATHS" | wc -l | tr -d ' ')
-echo "Found $COUNT schema files"
+VERSION="${1:-$(cat "$VERSION_FILE" | tr -d '[:space:]')}"
 
-# Download each file
-echo "$PATHS" | while IFS= read -r path; do
-  rel="${path#static/schemas/source/}"
-  dir="$(dirname "$rel")"
-  mkdir -p "$SCRIPT_DIR/$dir"
-  gh api "repos/$REPO/contents/$path?ref=$REF" \
-    -H 'Accept: application/vnd.github.raw' \
-    > "$SCRIPT_DIR/$rel" 2>/dev/null
+# Validate VERSION to keep it safe for URL + filesystem interpolation.
+if ! [[ "$VERSION" =~ ^(latest|[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?)$ ]]; then
+  echo "invalid version: '$VERSION' (expected 'latest' or semver like 3.1.0)" >&2
+  exit 1
+fi
+
+echo "Downloading AdCP protocol bundle @ $VERSION"
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+CURL_OPTS=(--fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 60)
+
+curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz" "$BASE/$VERSION.tgz"
+curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz.sha256" "$BASE/$VERSION.tgz.sha256"
+
+EXPECTED=$(cut -d' ' -f1 "$WORK/bundle.tgz.sha256")
+if ! [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]]; then
+  echo "invalid sidecar hash: '$EXPECTED'" >&2
+  exit 1
+fi
+ACTUAL=$(shasum -a 256 "$WORK/bundle.tgz" | cut -d' ' -f1)
+if [ "$EXPECTED" != "$ACTUAL" ]; then
+  echo "SHA-256 mismatch: expected $EXPECTED, got $ACTUAL" >&2
+  exit 1
+fi
+
+# Signature verification. Released versions must be signed; latest is unsigned
+# by design (rebuilt continuously — signatures would go stale immediately).
+SIG_REQUIRED=1
+if [ "$VERSION" = "latest" ] && [ "$STRICT" != "1" ]; then
+  SIG_REQUIRED=0
+fi
+
+SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
+[ "$SIG_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.sig"
+CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
+[ "$CRT_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.crt"
+
+if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
+  # A CDN returning 200 with an HTML error body would otherwise produce an
+  # opaque cosign unmarshal error. Fail fast with a clear message.
+  if ! grep -q "BEGIN CERTIFICATE" "$WORK/bundle.tgz.crt"; then
+    echo "signature certificate for $VERSION is not a PEM certificate (CDN misbehaving?)" >&2
+    exit 1
+  fi
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "cosign not installed but signature sidecars are available for $VERSION" >&2
+    echo "install cosign (https://docs.sigstore.dev/system_config/installation/) to verify" >&2
+    exit 1
+  fi
+  cosign verify-blob \
+    --signature "$WORK/bundle.tgz.sig" \
+    --certificate "$WORK/bundle.tgz.crt" \
+    --certificate-identity-regexp "$COSIGN_IDENTITY" \
+    --certificate-oidc-issuer "$COSIGN_ISSUER" \
+    "$WORK/bundle.tgz"
+  echo "Sigstore verification passed."
+else
+  if [ "$SIG_REQUIRED" = "1" ]; then
+    echo "no signature sidecars for $VERSION — released bundles must be signed" >&2
+    exit 1
+  fi
+  echo "No signature sidecars for $VERSION — checksum-only trust (dev snapshot)."
+fi
+
+# Reject archive entries that would escape the extraction directory before
+# calling tar. The sha256 check proves the bundle matches upstream, but does
+# not attest the bundle's contents are safe.
+if tar tzf "$WORK/bundle.tgz" | grep -qE '(^/|(^|/)\.\.(/|$))'; then
+  echo "bundle contains unsafe paths" >&2
+  exit 1
+fi
+
+tar xzf "$WORK/bundle.tgz" -C "$WORK" --no-same-owner
+
+# Reject bundles containing symlinks — they would be preserved by rsync -a
+# and could point anywhere (incl. outside the repo) when later tools follow them.
+if find "$WORK/adcp-$VERSION" -type l -print -quit | grep -q .; then
+  echo "bundle contains symlinks — refusing to extract" >&2
+  exit 1
+fi
+
+SRC="$WORK/adcp-$VERSION/schemas"
+if [ ! -d "$SRC" ]; then
+  echo "bundle layout unexpected: missing $SRC" >&2
+  ls "$WORK" >&2
+  exit 1
+fi
+
+# Preserve the scripts and sidecar files that live alongside the schema tree.
+EXCLUDE_ARGS=()
+for f in "${PROTECTED[@]}"; do
+  EXCLUDE_ARGS+=(--exclude "$f")
 done
+rsync -a --delete "${EXCLUDE_ARGS[@]}" "$SRC/" "$SCRIPT_DIR/"
+
+# Record the bundle's SHA-256 so check-freshness.sh can detect drift against
+# the upstream artifact (meaningful for the "latest" dev snapshot).
+echo "$EXPECTED" > "$SCRIPT_DIR/.bundle-sha256"
 
 # Update VERSION file if a specific version was passed
 if [ -n "${1:-}" ]; then

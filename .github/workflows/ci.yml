@@ -24,11 +24,17 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
       - name: Download upstream schemas
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         working-directory: adcp/schemas
         run: ./download.sh
+
+      - name: Check adcp/types_gen.go is up to date
+        run: |
+          (cd adcp/schemas && python3 generate.py > ../types_gen.go)
+          git diff --exit-code adcp/types_gen.go
 
       - name: Check generated code is up to date
         run: |

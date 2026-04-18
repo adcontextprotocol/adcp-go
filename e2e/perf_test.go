@@ -87,7 +87,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			idStart := time.Now()
 			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("perf-id-%d", i),
-				UserToken:  fmt.Sprintf("tok-user-%d", i%50),
+				Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
 				PackageIDs: allPkgIDs,
 			})
 			totalId += time.Since(idStart)
@@ -144,7 +144,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 				defer wg.Done()
 				idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 					RequestID:  fmt.Sprintf("par-id-%d", i),
-					UserToken:  fmt.Sprintf("tok-user-%d", i%50),
+					Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
 					PackageIDs: allPkgIDs,
 				})
 			}()
@@ -207,7 +207,7 @@ func TestPerformance_EndToEnd(t *testing.T) {
 						defer inner.Done()
 						idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 							RequestID:  fmt.Sprintf("tp-id-%d-%d", workerID, i),
-							UserToken:  fmt.Sprintf("tok-%d-%d", workerID, i),
+							Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-%d-%d", workerID, i)}},
 							PackageIDs: allPkgIDs,
 						})
 					}()
@@ -261,7 +261,7 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 			// Identity match
 			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("freq-%d-%d", u, p),
-				UserToken:  token,
+				Identities: []tmproto.IdentityToken{{UserToken: token}},
 				PackageIDs: allPkgIDs,
 			})
 			totalRequests++

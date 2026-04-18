@@ -65,8 +65,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 	c := NewClient(srv.URL)
 	resp, err := c.IdentityMatch(context.Background(), &tmproto.IdentityMatchRequest{
 		RequestID:  "id-1",
-		UserToken:  "tok-abc",
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-abc", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 	})
 	require.NoError(t, err)

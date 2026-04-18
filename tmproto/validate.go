@@ -8,8 +8,11 @@ import (
 
 // Maximum sizes for request arrays to prevent denial-of-service.
 const (
-	MaxPackagesPerRequest   = 500
+	MaxPackagesPerRequest     = 500
 	MaxArtifactRefsPerRequest = 20
+	// MaxIdentitiesPerRequest mirrors the TMP schema's maxItems on identities
+	// — matches the TMPX plaintext budget (~120 bytes after HPKE overhead).
+	MaxIdentitiesPerRequest = 3
 )
 
 // MaxIDLength caps identifier fields to prevent oversized store keys.
@@ -88,11 +91,22 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if err := validateSafeID("request_id", req.RequestID); err != nil {
 		return err
 	}
-	if req.UserToken == "" {
-		return errors.New("user_token is required")
+	if len(req.Identities) == 0 {
+		return errors.New("identities must not be empty")
 	}
-	if req.UIDType == "" {
-		return errors.New("uid_type is required")
+	if len(req.Identities) > MaxIdentitiesPerRequest {
+		return fmt.Errorf("identities exceeds maximum of %d", MaxIdentitiesPerRequest)
+	}
+	for i, id := range req.Identities {
+		if id.UserToken == "" {
+			return fmt.Errorf("identities[%d].user_token is required", i)
+		}
+		if len(id.UserToken) > MaxIDLength {
+			return fmt.Errorf("identities[%d].user_token exceeds %d bytes", i, MaxIDLength)
+		}
+		if id.UIDType == "" {
+			return fmt.Errorf("identities[%d].uid_type is required", i)
+		}
 	}
 	if req.Country != "" {
 		req.Country = strings.ToUpper(req.Country)

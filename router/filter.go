@@ -32,8 +32,17 @@ func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfi
 			return false
 		}
 	}
-	if len(p.UIDTypes) > 0 && req.UIDType != "" {
-		if !slices.Contains(p.UIDTypes, string(req.UIDType)) {
+	// Provider passes if any identity in the request matches a uid_type the
+	// provider can resolve. An empty provider UIDTypes list matches anything.
+	if len(p.UIDTypes) > 0 && len(req.Identities) > 0 {
+		matched := false
+		for _, id := range req.Identities {
+			if slices.Contains(p.UIDTypes, string(id.UIDType)) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			return false
 		}
 	}

@@ -4,4 +4,5 @@
 !download.sh
 !check-freshness.sh
 !VERSION
+!.bundle-sha256
 !.gitignore
