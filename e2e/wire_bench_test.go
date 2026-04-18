@@ -25,8 +25,7 @@ func TestWire_JSONCost(t *testing.T) {
 	idReq := tmproto.IdentityMatchRequest{
 		ProtocolVersion: "1.0",
 		RequestID:       "bench-id-001",
-		UserToken:       "tok_uid2_example_not_a_real_token",
-		UIDType:         tmproto.UIDTypeUID2,
+		Identities:      []tmproto.IdentityToken{{UserToken: "tok_uid2_example_not_a_real_token", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-auto-video", "pkg-travel-sponsored", "pkg-pharma-awareness"},
 	}
 

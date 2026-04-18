@@ -62,9 +62,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
-		if req.UserToken == "" {
+		if len(req.Identities) == 0 {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "user_token required"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "identities required"})
 			return
 		}
 		result, err := engine.EvaluateIdentity(r.Context(), &req)

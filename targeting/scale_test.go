@@ -82,7 +82,7 @@ func TestScale_Campaigns(t *testing.T) {
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: []string{"pkg-0", "pkg-1", "pkg-2", "pkg-3", "pkg-4"},
 		}
 
@@ -127,7 +127,7 @@ func TestScale_AudienceSegmentSize(t *testing.T) {
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: []string{"pkg-1"},
 		}
 
@@ -174,7 +174,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: []string{"pkg-1"},
 		}
 
@@ -320,7 +320,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: pkgIDs,
 		}
 
@@ -446,7 +446,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: pkgIDs,
 		}
 
@@ -512,7 +512,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		}
 		idReq := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",
-			UserToken:  "tok-bench",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: pkgIDs,
 		}
 

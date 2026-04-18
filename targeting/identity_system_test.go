@@ -71,7 +71,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 	// Evaluate.
 	start := time.Now()
 	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "heavy-1", UserToken: "user-heavy", PackageIDs: pkgIDs,
+		RequestID: "heavy-1", Identities: []tmproto.IdentityToken{{UserToken: "user-heavy"}}, PackageIDs: pkgIDs,
 	})
 	elapsed := time.Since(start)
 
@@ -97,7 +97,7 @@ func TestSystem_HeavyUser(t *testing.T) {
 	benchStart := time.Now()
 	for range iterations {
 		_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-			RequestID: "bench", UserToken: "user-heavy", PackageIDs: pkgIDs,
+			RequestID: "bench", Identities: []tmproto.IdentityToken{{UserToken: "user-heavy"}}, PackageIDs: pkgIDs,
 		})
 	}
 	benchElapsed := time.Since(benchStart)
@@ -187,24 +187,21 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Request A: cookie.
 	respA, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "req-A",
-		UserToken:  cookie,
-		UIDType:    tmproto.UIDTypePublisherFirstParty,
+		Identities: []tmproto.IdentityToken{{UserToken: cookie, UIDType: tmproto.UIDTypePublisherFirstParty}},
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
 	// Request B: UID2.
 	respB, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "req-B",
-		UserToken:  uid2,
-		UIDType:    tmproto.UIDTypeUID2,
+		Identities: []tmproto.IdentityToken{{UserToken: uid2, UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
 	// Request C: email.
 	respC, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "req-C",
-		UserToken:  email,
-		UIDType:    tmproto.UIDTypeHashedEmail,
+		Identities: []tmproto.IdentityToken{{UserToken: email, UIDType: tmproto.UIDTypeHashedEmail}},
 		PackageIDs: []string{"pkg-food", "pkg-sports", "pkg-tech"},
 	})
 
@@ -295,7 +292,7 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 
 		// Evaluate eligibility.
 		resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-			RequestID: fmt.Sprintf("eval-d%d", day), UserToken: "user-rolling", PackageIDs: []string{"pkg-test"},
+			RequestID: fmt.Sprintf("eval-d%d", day), Identities: []tmproto.IdentityToken{{UserToken: "user-rolling"}}, PackageIDs: []string{"pkg-test"},
 		})
 
 		// Should NOT be capped (2/5 per day, even with boundary overlap max is 4).

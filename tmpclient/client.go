@@ -115,9 +115,10 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	}
 
 	idReq := &tmproto.IdentityMatchRequest{
-		RequestID:  idReqID,
-		UserToken:  params.UserToken,
-		UIDType:    params.UIDType,
+		RequestID: idReqID,
+		Identities: []tmproto.IdentityToken{
+			{UserToken: params.UserToken, UIDType: params.UIDType},
+		},
 		PackageIDs: params.PackageIDs,
 		Consent:    params.Consent,
 		Country:    params.Country,

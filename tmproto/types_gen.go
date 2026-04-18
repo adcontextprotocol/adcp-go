@@ -89,6 +89,7 @@ type UIDType string
 
 const (
 	UIDTypeRampID              UIDType = "rampid"
+	UIDTypeRampIDDerived       UIDType = "rampid_derived"
 	UIDTypeID5                 UIDType = "id5"
 	UIDTypeUID2                UIDType = "uid2"
 	UIDTypeEUID                UIDType = "euid"
@@ -143,15 +144,14 @@ type ErrorResponse struct {
 
 // Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The package_ids MUST include ALL active packages for the buyer, not just those on the current page, to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
 type IdentityMatchRequest struct {
-	AdcpMajorVersion int            `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
-	Type             string         `json:"type"`                         // Message type discriminator for deserialization.
-	ProtocolVersion  string         `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
-	RequestID        string         `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any context match request_id.
-	UserToken        string         `json:"user_token"`                   // Opaque token from an identity provider (ID5, LiveRamp, UID2) or publisher-generated
-	UIDType          UIDType        `json:"uid_type"`                     // Type of the user identifier. Tells the buyer which identity graph to resolve against, avoiding trial-and-error matching.
-	Consent          map[string]any `json:"consent,omitempty"`            // Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.
-	PackageIDs       []string       `json:"package_ids"`                  // ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.
-	Country          string         `json:"country,omitempty"`            // ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal.
+	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
+	Type             string          `json:"type"`                         // Message type discriminator for deserialization.
+	ProtocolVersion  string          `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
+	RequestID        string          `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any context match request_id.
+	Identities       []IdentityToken `json:"identities"`                   // Identity tokens for the user, each tagged with its type. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches. Entry order is not semantically significant; buyers use their own preference order when multiple entries resolve. Duplicate `(uid_type, user_token)` pairs MUST NOT appear; routers MAY reject or dedupe. `maxItems: 3` matches the TMPX plaintext budget (~120 bytes after HPKE overhead fits three 32-byte tokens); exceeding it forces buyer-side truncation.
+	Consent          map[string]any  `json:"consent,omitempty"`            // Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process the user token without consent information.
+	PackageIDs       []string        `json:"package_ids"`                  // ALL active package identifiers for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent correlation with Context Match requests.
+	Country          string          `json:"country,omitempty"`            // ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal.
 }
 
 // Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
@@ -180,14 +180,14 @@ type Offer struct {
 	Macros           map[string]string `json:"macros,omitempty"`            // Key-value pairs the buyer passes for dynamic creative rendering or attribution tracking. In the GAM case, these flow as macro values. Not tied to user identity — attribution reconciliation happens via delivery reporting or clean room.
 }
 
-// Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning.
+// Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated against SSRF, and dynamic registration endpoints MUST authenticate callers — see docs/trusted-match/specification#provider-registration-security.
 type ProviderRegistration struct {
 	ProviderID    string         `json:"provider_id"`              // Stable identifier for this provider registration. Used in logs, metrics, and cache keys. Publishers assign this — it is not the provider's agent_url.
-	Endpoint      string         `json:"endpoint"`                 // Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. Must be HTTPS in production.
+	Endpoint      string         `json:"endpoint"`                 // Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. MUST be HTTPS in production, validated against the canonical reserved IPv4 and IPv6 ranges, with the TCP connection pinned to the validated IP (DNS re-resolution alone is insufficient against rebinding). See docs/trusted-match/specification#provider-registration-security and docs/building/implementation/security#webhook-url-validation-ssrf.
 	ContextMatch  bool           `json:"context_match,omitempty"`  // Provider handles Context Match requests (POST /context).
 	IdentityMatch bool           `json:"identity_match,omitempty"` // Provider handles Identity Match requests (POST /identity).
 	Countries     []string       `json:"countries,omitempty"`      // ISO 3166-1 alpha-2 country codes this provider serves. The router filters Identity Match providers by the request's country field. MUST be present and non-empty when identity_match is true.
-	UIDTypes      []UIDType      `json:"uid_types,omitempty"`      // Identity types this provider can resolve. The router filters Identity Match providers whose uid_types includes the request's uid_type. MUST be present and non-empty when identity_match is true.
+	UIDTypes      []UIDType      `json:"uid_types,omitempty"`      // Identity types this provider can resolve. The router selects Identity Match providers whose uid_types overlaps with any uid_type in the request's identities array. MUST be present and non-empty when identity_match is true.
 	Properties    []string       `json:"properties,omitempty"`     // Property RIDs (UUID v7) this provider serves. When present, the router only sends requests from these properties to this provider. When absent, the provider serves all properties.
 	TimeoutMs     int            `json:"timeout_ms,omitempty"`     // Per-provider timeout in milliseconds. The router skips this provider if it does not respond within this budget. Must be less than or equal to the router's overall latency_budget_ms. The router may further reduce this based on adaptive timeout allocation.
 	Priority      int            `json:"priority,omitempty"`       // Provider ordering for merge conflict resolution. Lower values have higher priority. When two providers return offers for the same package_id (a configuration error), the router keeps the offer from the higher-priority provider. Also used for adaptive timeout allocation — higher-priority providers receive a larger share of the latency budget.

@@ -200,7 +200,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 				_ = p
 				idReq := &tmproto.IdentityMatchRequest{
 					RequestID:  fmt.Sprintf("id-%d-%d", u, p),
-					UserToken:  userTokens[u],
+					Identities: []tmproto.IdentityToken{{UserToken: userTokens[u]}},
 					PackageIDs: allPkgIDs,
 				}
 

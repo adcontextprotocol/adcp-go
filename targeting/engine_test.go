@@ -369,7 +369,7 @@ func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-campaign",
-		UserToken:  "user-abc",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
 	require.NoError(t, err)
@@ -391,7 +391,7 @@ func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-pkg-cap",
-		UserToken:  "user-abc",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
 	require.NoError(t, err)
@@ -414,7 +414,7 @@ func TestIdentity_MultipleFrequencyRules(t *testing.T) {
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-multi",
-		UserToken:  "user-abc",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-multi-rule"},
 	})
 	require.NoError(t, err)
@@ -434,7 +434,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	}
 
 	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-before", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
+		RequestID: "id-before", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should be capped (3/3)")
 
@@ -444,7 +444,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	store.Now = func() time.Time { return future }
 
 	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-after", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
+		RequestID: "id-after", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
 }
@@ -458,7 +458,7 @@ func TestIdentity_IntentScore(t *testing.T) {
 	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-intent", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
+		RequestID: "id-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, resp.Eligibility[0].IntentScore)
@@ -469,7 +469,7 @@ func TestIdentity_AudienceNotInSegment(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	// No user profile set -> user has no segments -> should fail audience gate.
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-audience", UserToken: "user-abc", PackageIDs: []string{"pkg-display-001"},
+		RequestID: "id-audience", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should not be eligible (not in segment)")
 }
@@ -477,7 +477,7 @@ func TestIdentity_AudienceNotInSegment(t *testing.T) {
 func TestIdentity_NoCapPackage(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-nocap", UserToken: "user-abc", PackageIDs: []string{"pkg-no-cap"},
+		RequestID: "id-nocap", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-no-cap"},
 	})
 	assert.True(t, resp.Eligibility[0].Eligible, "pkg-no-cap should always be eligible")
 }
@@ -485,7 +485,7 @@ func TestIdentity_NoCapPackage(t *testing.T) {
 func TestIdentity_UnknownPackage(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-unknown", UserToken: "user-abc", PackageIDs: []string{"pkg-unknown"},
+		RequestID: "id-unknown", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-unknown"},
 	})
 	// Unknown package with no identity config -> eligible (no restrictions).
 	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
@@ -494,7 +494,7 @@ func TestIdentity_UnknownPackage(t *testing.T) {
 func TestIdentity_RequestIDPreserved(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "keep-this", UserToken: "user-abc", PackageIDs: []string{"pkg-no-cap"},
+		RequestID: "keep-this", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-no-cap"},
 	})
 	assert.Equal(t, "keep-this", resp.RequestID)
 }
@@ -517,7 +517,7 @@ func TestIdentityNonResolved_PackageFrequencyCap(t *testing.T) {
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-pkg-cap", UserToken: "user-abc",
+		RequestID: "nr-pkg-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001"},
 	})
 	require.NoError(t, err)
@@ -545,7 +545,7 @@ func TestIdentityNonResolved_CampaignFrequencyCap(t *testing.T) {
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-camp-cap", UserToken: "user-abc",
+		RequestID: "nr-camp-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
 	require.NoError(t, err)
@@ -570,7 +570,7 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 	}
 
 	resp, _ := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-before", UserToken: "user-abc",
+		RequestID: "nr-before", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should be capped (3/3)")
@@ -581,7 +581,7 @@ func TestIdentityNonResolved_SlidingWindowExpiry(t *testing.T) {
 	store.Now = func() time.Time { return future }
 
 	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-after", UserToken: "user-abc",
+		RequestID: "nr-after", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
@@ -598,7 +598,7 @@ func TestIdentityNonResolved_IntentScore(t *testing.T) {
 	})
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-intent", UserToken: "user-abc",
+		RequestID: "nr-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001"},
 	})
 	require.NoError(t, err)
@@ -621,7 +621,7 @@ func TestIdentityNonResolved_PackageCappedButCampaignNot(t *testing.T) {
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "nr-mixed", UserToken: "user-abc",
+		RequestID: "nr-mixed", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
 	require.NoError(t, err)

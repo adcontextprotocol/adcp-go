@@ -6,7 +6,7 @@
     },
     "UIDType": {
       "prefix": "UIDType",
-      "names": ["RampID", "ID5", "UID2", "EUID", "PairID", "MAID", "HashedEmail", "PublisherFirstParty", "Other"]
+      "names": ["RampID", "RampIDDerived", "ID5", "UID2", "EUID", "PairID", "MAID", "HashedEmail", "PublisherFirstParty", "Other"]
     },
     "MetroAreaSystem": {
       "prefix": "MetroSystem",
@@ -40,16 +40,17 @@
   "fields": {
     "ContextMatchRequest.artifact": {"type": "json.RawMessage", "pointer": true},
     "ContextMatchRequest.context_signals": {"type": "json.RawMessage", "pointer": true},
+    "IdentityMatchRequest.identities": {"type": "[]IdentityToken"},
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
     "ErrorResponse.code": {"type": "ErrorCode"}
   },
   "refs": {
-    "/schemas/core/property-id.json": "string",
-    "/schemas/core/format-id.json": "json.RawMessage",
-    "/schemas/core/catalog.json": "json.RawMessage",
-    "/schemas/core/brand-ref.json": "json.RawMessage",
-    "/schemas/core/creative-manifest.json": "json.RawMessage",
-    "/schemas/content-standards/artifact.json": "json.RawMessage"
+    "/schemas/latest/core/property-id.json": "string",
+    "/schemas/latest/core/format-id.json": "json.RawMessage",
+    "/schemas/latest/core/catalog.json": "json.RawMessage",
+    "/schemas/latest/core/brand-ref.json": "json.RawMessage",
+    "/schemas/latest/core/creative-manifest.json": "json.RawMessage",
+    "/schemas/latest/content-standards/artifact.json": "json.RawMessage"
   }
 }

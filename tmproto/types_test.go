@@ -51,8 +51,7 @@ func TestContextMatchRequest_NoIdentityFields(t *testing.T) {
 func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 	req := &IdentityMatchRequest{
 		RequestID:  "id-test-001",
-		UserToken:  "tok_uid2_abc123",
-		UIDType:    UIDTypeUID2,
+		Identities: []IdentityToken{{UserToken: "tok_uid2_abc123", UIDType: UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1", "pkg-2", "pkg-3"},
 	}
 
@@ -60,7 +59,7 @@ func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 	require.NoError(t, err, "marshal")
 
 	s := string(data)
-	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids", "identities"} {
+	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids"} {
 		assert.NotContains(t, s, forbidden, "identity match request contains context field %q", forbidden)
 	}
 }
@@ -88,8 +87,7 @@ func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
 func TestIdentityMatchRequest_Country(t *testing.T) {
 	req := &IdentityMatchRequest{
 		RequestID:  "id-country-001",
-		UserToken:  "tok_uid2_abc",
-		UIDType:    UIDTypeUID2,
+		Identities: []IdentityToken{{UserToken: "tok_uid2_abc", UIDType: UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 		Country:    "US",
 	}
@@ -108,7 +106,7 @@ func TestIdentityMatchRequest_Country(t *testing.T) {
 func TestIdentityMatchRequest_CountryOmittedWhenEmpty(t *testing.T) {
 	req := &IdentityMatchRequest{
 		RequestID:  "id-omit-001",
-		UserToken:  "tok_abc",
+		Identities: []IdentityToken{{UserToken: "tok_abc", UIDType: UIDTypeUID2}},
 		PackageIDs: []string{"pkg-1"},
 	}
 

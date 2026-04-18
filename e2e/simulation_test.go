@@ -208,6 +208,11 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	userToken := ""
+	if len(req.Identities) > 0 {
+		userToken = req.Identities[0].UserToken
+	}
+
 	var eligible []string
 	for _, pkgID := range req.PackageIDs {
 		isEligible := true
@@ -215,7 +220,7 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 		// Check frequency cap
 		if cap, ok := a.freqCaps[pkgID]; ok {
 			count := 0
-			if userCounts, ok := a.freqCounts[req.UserToken]; ok {
+			if userCounts, ok := a.freqCounts[userToken]; ok {
 				count = userCounts[pkgID]
 			}
 			if count >= cap {
@@ -229,7 +234,7 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 			if len(reqSegments) > 0 {
 				inAudience := false
 				for _, seg := range reqSegments {
-					if a.audiences[seg] != nil && a.audiences[seg][req.UserToken] {
+					if a.audiences[seg] != nil && a.audiences[seg][userToken] {
 						inAudience = true
 						break
 					}
@@ -394,9 +399,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 		// Identity match for Alice
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-			RequestID: "id-sim-coffee-001",
-			UserToken: "tok-user-alice",
-			UIDType:   tmproto.UIDTypeUID2,
+			RequestID:  "id-sim-coffee-001",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-user-alice", UIDType: tmproto.UIDTypeUID2}},
 			PackageIDs: []string{
 				"pkg-coffee-sponsored", "pkg-snacks-display", "pkg-alcohol-display",
 				"pkg-pharma-native", "pkg-cleaning-carousel",
@@ -432,8 +436,8 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 	// --- Scenario 2: Same page, different user (Bob, not in health segment) ---
 	t.Run("same_page_different_user", func(t *testing.T) {
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-			RequestID: "id-sim-coffee-002",
-			UserToken: "tok-user-bob",
+			RequestID:  "id-sim-coffee-002",
+			Identities: []tmproto.IdentityToken{{UserToken: "tok-user-bob"}},
 			PackageIDs: []string{
 				"pkg-coffee-sponsored", "pkg-snacks-display", "pkg-alcohol-display",
 				"pkg-pharma-native", "pkg-cleaning-carousel",
@@ -483,7 +487,7 @@ func TestSimulation_MultiAgentRetailMedia(t *testing.T) {
 
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 			RequestID:  "id-sim-freq-001",
-			UserToken:  token,
+			Identities: []tmproto.IdentityToken{{UserToken: token}},
 			PackageIDs: []string{"pkg-coffee-sponsored", "pkg-snacks-display"},
 		})
 
@@ -606,7 +610,7 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 			defer wg.Done()
 			idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 				RequestID:  fmt.Sprintf("id-life-%d", i),
-				UserToken:  token,
+				Identities: []tmproto.IdentityToken{{UserToken: token}},
 				PackageIDs: allPackages,
 			})
 		}()

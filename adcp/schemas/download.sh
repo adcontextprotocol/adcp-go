@@ -7,7 +7,16 @@
 #   ./download.sh latest       # download the dev snapshot
 #
 # The bundle is fetched from https://adcontextprotocol.org/protocol/{version}.tgz
-# with a SHA-256 sidecar for integrity. No GitHub API token required.
+# with a SHA-256 sidecar for integrity and (for released versions) a Sigstore
+# signature that proves the bundle came from the upstream release workflow.
+#
+# Trust model:
+#   - Released versions (e.g. 3.1.0): signature verification is required.
+#     cosign must be on PATH; fails closed if sidecars or cosign are missing.
+#   - latest (dev snapshot): unsigned by design. Verified by SHA-256 only.
+#
+# Set ADCP_STRICT_VERIFY=1 to require signatures for latest too (useful if
+# upstream opts in to signing latest.tgz).
 #
 # After downloading, regenerate Go types:
 #   python3 generate.py > ../types_gen.go
@@ -18,14 +27,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VERSION_FILE="$SCRIPT_DIR/VERSION"
 BASE="https://adcontextprotocol.org/protocol"
 
-# Sigstore identity the upstream release workflow signs under.
-# See adcontextprotocol/adcp#2273.
-COSIGN_IDENTITY='^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$'
-COSIGN_ISSUER='https://token.actions.githubusercontent.com'
-
-# Set ADCP_STRICT_VERIFY=1 to fail when signature sidecars are missing or when
-# cosign is unavailable. Default behavior: verify when possible, fall back to
-# checksum-only trust otherwise (expected for latest.tgz and older releases).
 STRICT="${ADCP_STRICT_VERIFY:-0}"
 
 # Files in $SCRIPT_DIR that sit alongside the schema tree and must survive
@@ -53,6 +54,25 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 CURL_OPTS=(--fail --silent --show-error --location --retry 3 --retry-all-errors --max-time 60)
+
+# Fetch manifest so we can pin to the upstream-declared Sigstore identity
+# rather than hardcoding it. The manifest also advertises whether a version
+# is signed via per-version entries.
+MANIFEST=$(curl "${CURL_OPTS[@]}" "$BASE/")
+read -r COSIGN_IDENTITY COSIGN_ISSUER < <(python3 -c '
+import json, sys
+m = json.load(sys.stdin)
+sv = m.get("signature_verification") or {}
+ident = sv.get("certificate_identity_regexp", "")
+issuer = sv.get("certificate_oidc_issuer", "")
+print(ident, issuer)
+' <<<"$MANIFEST")
+
+if [ -z "$COSIGN_IDENTITY" ] || [ -z "$COSIGN_ISSUER" ]; then
+  echo "manifest missing signature_verification metadata" >&2
+  exit 1
+fi
+
 curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz" "$BASE/$VERSION.tgz"
 curl "${CURL_OPTS[@]}" -o "$WORK/bundle.tgz.sha256" "$BASE/$VERSION.tgz.sha256"
 
@@ -67,34 +87,36 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
   exit 1
 fi
 
-# Optional Sigstore verification — proves the bundle was produced by the
-# upstream release workflow, not just served from the same origin.
-# latest.tgz and pre-signing releases do not ship sidecars; treat as
-# checksum-only unless ADCP_STRICT_VERIFY=1 is set.
+# Signature verification. Released versions must be signed; latest is unsigned
+# by design (rebuilt continuously — signatures would go stale immediately).
+SIG_REQUIRED=1
+if [ "$VERSION" = "latest" ] && [ "$STRICT" != "1" ]; then
+  SIG_REQUIRED=0
+fi
+
 SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
 CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
+
 if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
-  if command -v cosign >/dev/null 2>&1; then
-    cosign verify-blob \
-      --signature "$WORK/bundle.tgz.sig" \
-      --certificate "$WORK/bundle.tgz.crt" \
-      --certificate-identity-regexp "$COSIGN_IDENTITY" \
-      --certificate-oidc-issuer "$COSIGN_ISSUER" \
-      "$WORK/bundle.tgz"
-    echo "Sigstore verification passed."
-  elif [ "$STRICT" = "1" ]; then
-    echo "cosign not installed but signature sidecars are available (ADCP_STRICT_VERIFY=1)" >&2
+  if ! command -v cosign >/dev/null 2>&1; then
+    echo "cosign not installed but signature sidecars are available for $VERSION" >&2
+    echo "install cosign (https://docs.sigstore.dev/system_config/installation/) to verify" >&2
     exit 1
-  else
-    echo "cosign not installed — skipping signature verification (checksum-only)."
   fi
+  cosign verify-blob \
+    --signature "$WORK/bundle.tgz.sig" \
+    --certificate "$WORK/bundle.tgz.crt" \
+    --certificate-identity-regexp "$COSIGN_IDENTITY" \
+    --certificate-oidc-issuer "$COSIGN_ISSUER" \
+    "$WORK/bundle.tgz"
+  echo "Sigstore verification passed."
 else
   rm -f "$WORK/bundle.tgz.sig" "$WORK/bundle.tgz.crt"
-  if [ "$STRICT" = "1" ]; then
-    echo "no signature sidecars for $VERSION (ADCP_STRICT_VERIFY=1)" >&2
+  if [ "$SIG_REQUIRED" = "1" ]; then
+    echo "no signature sidecars for $VERSION — released bundles must be signed" >&2
     exit 1
   fi
-  echo "No signature sidecars for $VERSION — checksum-only trust."
+  echo "No signature sidecars for $VERSION — checksum-only trust (dev snapshot)."
 fi
 
 # Reject archive entries that would escape the extraction directory before

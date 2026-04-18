@@ -24,6 +24,9 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
       - name: Download upstream schemas
         working-directory: adcp/schemas
         run: ./download.sh

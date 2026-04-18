@@ -86,7 +86,11 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	userExposures := a.exposures[req.UserToken]
+	userToken := ""
+	if len(req.Identities) > 0 {
+		userToken = req.Identities[0].UserToken
+	}
+	userExposures := a.exposures[userToken]
 
 	var eligible []string
 	for _, pkgID := range req.PackageIDs {
@@ -317,9 +321,8 @@ func TestFullExchange_ContextAndIdentity(t *testing.T) {
 
 	// 2. Identity Match (ALL active packages, not just page-specific)
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-		RequestID: "id-e2e-001",
-		UserToken: "tok-user-abc",
-		UIDType:   tmproto.UIDTypeUID2,
+		RequestID:  "id-e2e-001",
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-user-abc", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs: []string{
 			"pkg-food-display", "pkg-tech-native", "pkg-auto-video",
 			"pkg-other-site-1", "pkg-other-site-2", "pkg-other-site-3",
@@ -376,7 +379,7 @@ func TestFrequencyCapping_AcrossImpressions(t *testing.T) {
 	// Now check eligibility
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-freq-001",
-		UserToken:  "tok-user-freq",
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-user-freq"}},
 		PackageIDs: []string{"pkg-food-display", "pkg-tech-native"},
 	})
 
@@ -500,7 +503,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	// 2. Identity match (should be eligible)
 	idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-loop-001",
-		UserToken:  "tok-loop-user",
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-loop-user"}},
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp tmproto.IdentityMatchResponse
@@ -517,7 +520,7 @@ func TestExposeEndpoint_FeedbackLoop(t *testing.T) {
 	// 4. Identity match again (should be capped)
 	idResp2 := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
 		RequestID:  "id-loop-002",
-		UserToken:  "tok-loop-user",
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-loop-user"}},
 		PackageIDs: []string{"pkg-food"},
 	})
 	var imResp2 tmproto.IdentityMatchResponse
@@ -583,7 +586,7 @@ func TestTimingReport(t *testing.T) {
 	}
 	idReq := tmproto.IdentityMatchRequest{
 		RequestID:  "id-timing",
-		UserToken:  "tok-timing",
+		Identities: []tmproto.IdentityToken{{UserToken: "tok-timing"}},
 		PackageIDs: []string{"pkg-food", "pkg-other-1", "pkg-other-2"},
 	}
 

@@ -34,15 +34,15 @@ const (
 	ActionSourceOther ActionSource = "other"
 )
 
-// AdcpDomain — AdCP protocol domains for task categorization — referenced by tasks-list-request
-type AdcpDomain = string
+// AdcpProtocol — AdCP protocols for task categorization — referenced by tasks-list-request, webho
+type AdcpProtocol = string
 const (
-	AdcpDomainMediaBuy AdcpDomain = "media-buy"
-	AdcpDomainSignals AdcpDomain = "signals"
-	AdcpDomainGovernance AdcpDomain = "governance"
-	AdcpDomainCreative AdcpDomain = "creative"
-	AdcpDomainBrand AdcpDomain = "brand"
-	AdcpDomainSponsoredIntelligence AdcpDomain = "sponsored-intelligence"
+	AdcpProtocolMediaBuy AdcpProtocol = "media-buy"
+	AdcpProtocolSignals AdcpProtocol = "signals"
+	AdcpProtocolGovernance AdcpProtocol = "governance"
+	AdcpProtocolCreative AdcpProtocol = "creative"
+	AdcpProtocolBrand AdcpProtocol = "brand"
+	AdcpProtocolSponsoredIntelligence AdcpProtocol = "sponsored-intelligence"
 )
 
 // AdjustmentKind — Categorizes how a price adjustment affects the transaction
@@ -244,14 +244,6 @@ const (
 	BrandAgentTypeSales BrandAgentType = "sales"
 	BrandAgentTypeBuying BrandAgentType = "buying"
 	BrandAgentTypeSignals BrandAgentType = "signals"
-)
-
-// BudgetAuthorityLevel — The level of autonomy an agent has over budget decisions within a campaign plan.
-type BudgetAuthorityLevel = string
-const (
-	BudgetAuthorityLevelAgentFull BudgetAuthorityLevel = "agent_full"
-	BudgetAuthorityLevelAgentLimited BudgetAuthorityLevel = "agent_limited"
-	BudgetAuthorityLevelHumanRequired BudgetAuthorityLevel = "human_required"
 )
 
 // CanceledBy — Identifies which party initiated a cancellation.
@@ -690,6 +682,8 @@ const (
 	ErrorCodeBUDGETEXHAUSTED ErrorCode = "BUDGET_EXHAUSTED"
 	ErrorCodeBUDGETEXCEEDED ErrorCode = "BUDGET_EXCEEDED"
 	ErrorCodeCONFLICT ErrorCode = "CONFLICT"
+	ErrorCodeIDEMPOTENCYCONFLICT ErrorCode = "IDEMPOTENCY_CONFLICT"
+	ErrorCodeIDEMPOTENCYEXPIRED ErrorCode = "IDEMPOTENCY_EXPIRED"
 	ErrorCodeCREATIVEDEADLINEEXCEEDED ErrorCode = "CREATIVE_DEADLINE_EXCEEDED"
 	ErrorCodeINVALIDSTATE ErrorCode = "INVALID_STATE"
 	ErrorCodeMEDIABUYNOTFOUND ErrorCode = "MEDIA_BUY_NOT_FOUND"
@@ -1183,6 +1177,8 @@ const (
 	RestrictedAttributeSexLifeSexualOrientation RestrictedAttribute = "sex_life_sexual_orientation"
 	RestrictedAttributeGeneticData RestrictedAttribute = "genetic_data"
 	RestrictedAttributeBiometricData RestrictedAttribute = "biometric_data"
+	RestrictedAttributeAge RestrictedAttribute = "age"
+	RestrictedAttributeFamilialStatus RestrictedAttribute = "familial_status"
 )
 
 // RightType — Categories of intellectual property rights that can be licensed through the bran
@@ -1299,14 +1295,15 @@ type Specialism = string
 const (
 	SpecialismAudienceSync Specialism = "audience-sync"
 	SpecialismBrandRights Specialism = "brand-rights"
+	SpecialismCollectionLists Specialism = "collection-lists"
 	SpecialismContentStandards Specialism = "content-standards"
 	SpecialismCreativeAdServer Specialism = "creative-ad-server"
 	SpecialismCreativeGenerative Specialism = "creative-generative"
 	SpecialismCreativeTemplate Specialism = "creative-template"
 	SpecialismGovernanceDeliveryMonitor Specialism = "governance-delivery-monitor"
 	SpecialismGovernanceSpendAuthority Specialism = "governance-spend-authority"
-	SpecialismInventoryLists Specialism = "inventory-lists"
 	SpecialismMeasurementVerification Specialism = "measurement-verification"
+	SpecialismPropertyLists Specialism = "property-lists"
 	SpecialismSalesBroadcastTv Specialism = "sales-broadcast-tv"
 	SpecialismSalesCatalogDriven Specialism = "sales-catalog-driven"
 	SpecialismSalesExchange Specialism = "sales-exchange"
@@ -1318,6 +1315,7 @@ const (
 	SpecialismSalesStreamingTv Specialism = "sales-streaming-tv"
 	SpecialismSignalMarketplace Specialism = "signal-marketplace"
 	SpecialismSignalOwned Specialism = "signal-owned"
+	SpecialismSignedRequests Specialism = "signed-requests"
 )
 
 // TalentRole — Role of a person associated with a collection or installment
@@ -1721,6 +1719,8 @@ type Account struct {
 type BrandRef struct {
 	Domain string `json:"domain"` // Domain where /.well-known/brand.json is hosted, or the brand's operating domain
 	BrandID any `json:"brand_id,omitempty"` // Brand identifier within the house portfolio. Optional for single-brand domains.
+	Industries []string `json:"industries,omitempty"` // Inline override for the brand's industries. Useful when the caller cannot modify
+	DataSubjectContestation any `json:"data_subject_contestation,omitempty"` // Inline override for the brand's contestation contact point. Useful when the oper
 }
 
 // PaginationResponse — Standard cursor-based pagination metadata for list responses
@@ -1808,7 +1808,7 @@ type GetAdcpCapabilitiesRequest struct {
 // GetAdcpCapabilitiesResponse — Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP
 type GetAdcpCapabilitiesResponse struct {
 	Adcp any `json:"adcp"` // Core AdCP protocol information
-	SupportedProtocols []string `json:"supported_protocols"` // AdCP domain protocols this agent supports. Each value both (a) declares which to
+	SupportedProtocols []string `json:"supported_protocols"` // AdCP protocols this agent supports. Each value both (a) declares which tools the
 	Account any `json:"account,omitempty"` // Account management capabilities. Describes how accounts are established, what bi
 	MediaBuy any `json:"media_buy,omitempty"` // Media-buy protocol capabilities. Expected when media_buy is in supported_protoco
 	Signals any `json:"signals,omitempty"` // Signals protocol capabilities. Only present if signals is in supported_protocols
@@ -1816,7 +1816,8 @@ type GetAdcpCapabilitiesResponse struct {
 	SponsoredIntelligence any `json:"sponsored_intelligence,omitempty"` // Sponsored Intelligence protocol capabilities. Only present if sponsored_intellig
 	Brand any `json:"brand,omitempty"` // Brand protocol capabilities. Only present if brand is in supported_protocols. Br
 	Creative any `json:"creative,omitempty"` // Creative protocol capabilities. Only present if creative is in supported_protoco
-	ComplianceTesting any `json:"compliance_testing,omitempty"` // Compliance testing capabilities. Only present if compliance_testing is in suppor
+	RequestSigning any `json:"request_signing,omitempty"` // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capabi
+	ComplianceTesting any `json:"compliance_testing,omitempty"` // Compliance testing capabilities. The presence of this block declares that the ag
 	Specialisms []string `json:"specialisms,omitempty"` // Optional — specialized compliance claims this agent supports. Omitting the field
 	ExtensionsSupported []string `json:"extensions_supported,omitempty"` // Extension namespaces this agent supports. Buyers can expect meaningful data in e
 	LastUpdated string `json:"last_updated,omitempty"` // ISO 8601 timestamp of when capabilities were last updated. Buyers can use this f
@@ -1828,6 +1829,7 @@ type GetAdcpCapabilitiesResponse struct {
 // SyncAccountsRequest — Sync advertiser accounts with a seller using upsert semantics. The agent declares which brands it re
 type SyncAccountsRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. Natural per-account upse
 	Accounts []AccountInput `json:"accounts"` // Advertiser accounts to sync
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, accounts previously synced by this agent but not included in this req
 	DryRun *bool `json:"dry_run,omitempty"` // When true, preview what would change without applying. Returns what would be cre
@@ -1839,6 +1841,7 @@ type SyncAccountsRequest struct {
 // SyncGovernanceRequest — Sync governance agent endpoints against specific accounts. The seller persists these governance agen
 type SyncGovernanceRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. `account` gives resource
 	Accounts []GovernanceAccountInput `json:"accounts"` // Per-account governance agent configuration. Each entry pairs an account referenc
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
@@ -1918,7 +1921,7 @@ type GetProductsResponse struct {
 // CreateMediaBuyRequest — Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages 
 type CreateMediaBuyRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. If a request with the same idempot
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. If a request with the same idempot
 	PlanID string `json:"plan_id,omitempty"` // Campaign governance plan identifier. Required when the account has governance_ag
 	Account AccountReference `json:"account"` // Account to bill for this media buy. Pass a natural key (brand, operator, optiona
 	ProposalID string `json:"proposal_id,omitempty"` // ID of a proposal from get_products to execute. When provided with total_budget, 
@@ -2057,6 +2060,7 @@ type ListCreativeFormatsResponse struct {
 // SyncCatalogsRequest — Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across 
 type SyncCatalogsRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. `catalog_id` gives resou
 	Account AccountReference `json:"account"` // Account that owns these catalogs.
 	Catalogs []CatalogInput `json:"catalogs,omitempty"` // Array of catalog feeds to sync (create or update). When omitted, the call is dis
 	CatalogIds []string `json:"catalog_ids,omitempty"` // Optional filter to limit sync scope to specific catalog IDs. When provided, only
@@ -2071,6 +2075,7 @@ type SyncCatalogsRequest struct {
 // SyncEventSourcesRequest — Request parameters for configuring event sources on an account with upsert semantics. Existing event
 type SyncEventSourcesRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. `event_source_id` gives 
 	Account AccountReference `json:"account"` // Account to configure event sources for.
 	EventSources []EventSourceInput `json:"event_sources,omitempty"` // Event sources to sync (create or update). When omitted, the call is discovery-on
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, event sources not included in this sync will be removed
@@ -2084,7 +2089,7 @@ type LogEventRequest struct {
 	EventSourceID string `json:"event_source_id"` // Event source configured on the account via sync_event_sources
 	TestEventCode string `json:"test_event_code,omitempty"` // Test event code for validation without affecting production data. Events with th
 	Events []map[string]any `json:"events"` // Events to log
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate event logging o
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate event logging o
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2093,7 +2098,7 @@ type LogEventRequest struct {
 type ProvidePerformanceFeedbackRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	MediaBuyID string `json:"media_buy_id"` // Seller's media buy identifier
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate feedback submis
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate feedback submis
 	MeasurementPeriod any `json:"measurement_period"` // Time period for performance measurement
 	PerformanceIndex float64 `json:"performance_index"` // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expec
 	PackageID string `json:"package_id,omitempty"` // Specific package within the media buy (if feedback is package-specific)
@@ -2142,7 +2147,7 @@ type BuildCreativeRequest struct {
 	PreviewQuality string `json:"preview_quality,omitempty"` // Render quality for inline preview when include_preview is true. 'draft' produces
 	PreviewOutputFormat string `json:"preview_output_format,omitempty"` // Output format for preview renders when include_preview is true. 'url' returns pr
 	MacroValues map[string]string `json:"macro_values,omitempty"` // Macro values to pre-substitute into the output manifest's assets. Keys are unive
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate creative genera
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate creative genera
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2154,7 +2159,7 @@ type SyncCreativesRequest struct {
 	Creatives []CreativeInput `json:"creatives"` // Array of creative assets to sync (create or update)
 	CreativeIds []string `json:"creative_ids,omitempty"` // Optional filter to limit sync scope to specific creative IDs. When provided, onl
 	Assignments []any `json:"assignments,omitempty"` // Optional bulk assignment of creatives to packages. Each entry maps one creative 
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated idempotency key for safe retries. If a sync fails without a res
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated idempotency key for safe retries. If a sync fails without a res
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, creatives not included in this sync will be archived. Use with cautio
 	DryRun *bool `json:"dry_run,omitempty"` // When true, preview changes without applying them. Returns what would be created/
 	ValidationMode string `json:"validation_mode,omitempty"` // Validation strictness. 'strict' fails entire sync on any validation error. 'leni
@@ -2231,7 +2236,7 @@ type ActivateSignalRequest struct {
 	Destinations []DestinationInput `json:"destinations"` // Target destination(s) for activation. If the authenticated caller matches one of
 	PricingOptionID string `json:"pricing_option_id,omitempty"` // The pricing option selected from the signal's pricing_options in the get_signals
 	Account *AccountReference `json:"account,omitempty"` // Account for this activation. Associates with a commercial relationship establish
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate activations on 
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate activations on 
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2288,12 +2293,13 @@ type ControllerError struct {
 // CreateCollectionListRequest — Request parameters for creating a new collection list
 type CreateCollectionListRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	Account *AccountReference `json:"account,omitempty"` // Account that will own the list. Pass a natural key (brand, operator, optional sa
 	Name string `json:"name"` // Human-readable name for the list
 	Description string `json:"description,omitempty"` // Description of the list's purpose
 	BaseCollections []BaseCollectionSource `json:"base_collections,omitempty"` // Array of collection sources to evaluate. Each entry is a discriminated union: di
 	Filters *CollectionListFilters `json:"filters,omitempty"` // Dynamic filters to apply when resolving the list
 	Brand *BrandReference `json:"brand,omitempty"` // Brand reference. When provided, the agent automatically applies appropriate rule
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for this request. Prevents duplicate collection list
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate collection list
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2302,6 +2308,7 @@ type CreateCollectionListRequest struct {
 type GetCollectionListRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	ListID string `json:"list_id"` // ID of the collection list to retrieve
+	Account *AccountReference `json:"account,omitempty"` // Account that owns the list. Required when the authenticated agent has access to 
 	Resolve *bool `json:"resolve,omitempty"` // Whether to apply filters and return resolved collections (default: true)
 	Pagination any `json:"pagination,omitempty"` // Pagination parameters. Uses higher limits than standard pagination because colle
 	Context any `json:"context,omitempty"`
@@ -2312,6 +2319,7 @@ type GetCollectionListRequest struct {
 type UpdateCollectionListRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	ListID string `json:"list_id"` // ID of the collection list to update
+	Account *AccountReference `json:"account,omitempty"` // Account that owns the list. Required when the authenticated agent has access to 
 	Name string `json:"name,omitempty"` // New name for the list
 	Description string `json:"description,omitempty"` // New description
 	BaseCollections []BaseCollectionSource `json:"base_collections,omitempty"` // Complete replacement for the base collections list (not a patch). Each entry is 
@@ -2320,22 +2328,23 @@ type UpdateCollectionListRequest struct {
 	WebhookURL string `json:"webhook_url,omitempty"` // Update the webhook URL for list change notifications (set to empty string to rem
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for at-most-once execution. If a request with the sa
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the sa
 }
 
 // DeleteCollectionListRequest — Request parameters for deleting a collection list
 type DeleteCollectionListRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	ListID string `json:"list_id"` // ID of the collection list to delete
+	Account *AccountReference `json:"account,omitempty"` // Account that owns the list. Required when the authenticated agent has access to 
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"` // Client-generated unique key for at-most-once execution. If a request with the sa
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the sa
 }
 
 // ListCollectionListsRequest — Request parameters for listing collection lists
 type ListCollectionListsRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
-	Principal string `json:"principal,omitempty"` // Filter to lists owned by this principal
+	Account *AccountReference `json:"account,omitempty"` // Filter to lists owned by this account. When omitted, returns lists across all ac
 	NameContains string `json:"name_contains,omitempty"` // Filter to lists whose name contains this string
 	Pagination any `json:"pagination,omitempty"`
 	Context any `json:"context,omitempty"`

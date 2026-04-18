@@ -68,7 +68,7 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 
 	// Record 3 exposures (package cap = 3/24h).
 	for i := range 3 {
-		_, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, err := engine.RecordExposure(ctx, &targeting.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-valkey-%d", i),
 		})
@@ -76,7 +76,7 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "valkey-pkg-cap", UserToken: "user-valkey",
+		RequestID: "valkey-pkg-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
 	require.NoError(t, err)
@@ -90,20 +90,20 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 
 	// 3 on pkg-alpha + 2 on pkg-beta = 5 total (campaign cap = 5/7d).
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-v-camp-a-%d", i),
 		})
 	}
 	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-beta",
 			ImpressionID: fmt.Sprintf("imp-v-camp-b-%d", i),
 		})
 	}
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "valkey-camp-cap", UserToken: "user-valkey",
+		RequestID: "valkey-camp-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha", "pkg-beta"},
 	})
 	require.NoError(t, err)
@@ -119,14 +119,14 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 
 	// 3 exposures hits package cap.
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
 			UserToken: "user-valkey", PackageID: "pkg-alpha",
 			ImpressionID: fmt.Sprintf("imp-v-window-%d", i),
 		})
 	}
 
 	resp, _ := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "v-before", UserToken: "user-valkey",
+		RequestID: "v-before", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should be capped")
@@ -137,7 +137,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 	engine.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
 
 	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "v-after", UserToken: "user-valkey",
+		RequestID: "v-after", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
 	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
@@ -148,12 +148,12 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	_, _ = engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
 
 	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
-		RequestID: "v-intent", UserToken: "user-valkey",
+		RequestID: "v-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
 	require.NoError(t, err)
@@ -166,7 +166,7 @@ func TestValkeyIntegration_ExposureResponse(t *testing.T) {
 	defer mr.Close()
 	ctx := context.Background()
 
-	resp, err := engine.RecordExposure(ctx, &tmproto.ExposeRequest{
+	resp, err := engine.RecordExposure(ctx, &targeting.ExposeRequest{
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
 	require.NoError(t, err)
