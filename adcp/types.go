@@ -148,21 +148,33 @@ type MatchingLatencyRange struct {
 }
 
 // ConversionTrackingCaps describes seller-level conversion event capabilities.
+// AttributionWindows (plural) lists window options a buyer can choose from —
+// distinct from the singular AttributionWindow in core/attribution-window.json
+// used on an optimization goal.
 type ConversionTrackingCaps struct {
-	MultiSourceEventDedup     *bool                `json:"multi_source_event_dedup,omitempty"`
-	SupportedEventTypes       []string             `json:"supported_event_types,omitempty"`
-	SupportedUIDTypes         []string             `json:"supported_uid_types,omitempty"`
-	SupportedHashedIdentifiers []string            `json:"supported_hashed_identifiers,omitempty"`
-	SupportedActionSources    []string             `json:"supported_action_sources,omitempty"`
-	AttributionWindows        []AttributionWindow  `json:"attribution_windows,omitempty"`
+	MultiSourceEventDedup      *bool                     `json:"multi_source_event_dedup,omitempty"`
+	SupportedEventTypes        []string                  `json:"supported_event_types,omitempty"`
+	SupportedUIDTypes          []string                  `json:"supported_uid_types,omitempty"`
+	SupportedHashedIdentifiers []string                  `json:"supported_hashed_identifiers,omitempty"`
+	SupportedActionSources     []string                  `json:"supported_action_sources,omitempty"`
+	AttributionWindows         []AttributionWindowOption `json:"attribution_windows,omitempty"`
 }
 
-// AttributionWindow describes a single attribution-window option. post_click
-// is required when present.
-type AttributionWindow struct {
+// AttributionWindowOption describes one attribution-window configuration a
+// buyer can pick. post_click is required when present.
+type AttributionWindowOption struct {
 	EventType string     `json:"event_type,omitempty"`
 	PostClick []Duration `json:"post_click"`
 	PostView  []Duration `json:"post_view,omitempty"`
+}
+
+// AttributionWindow is the singular attribution config applied to a specific
+// optimization goal or delivery response. Mirrors core/attribution-window.json
+// and is distinct from AttributionWindowOption (plural capability options).
+type AttributionWindow struct {
+	PostClick *Duration `json:"post_click,omitempty"`
+	PostView  *Duration `json:"post_view,omitempty"`
+	Model     string    `json:"model"`
 }
 
 // ContentStandardsCaps describes content-standards evaluation and delivery.

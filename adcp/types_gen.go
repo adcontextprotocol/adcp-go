@@ -2016,7 +2016,7 @@ type GetMediaBuyDeliveryResponse struct {
 	NextExpectedAt string `json:"next_expected_at,omitempty"` // ISO 8601 timestamp for next expected notification (only present in webhook deliv
 	ReportingPeriod any `json:"reporting_period"` // Date range for the report. All periods use UTC timezone.
 	Currency string `json:"currency"` // ISO 4217 currency code
-	AttributionWindow any `json:"attribution_window,omitempty"` // Attribution methodology and lookback windows used for conversion metrics in this
+	AttributionWindow *AttributionWindow `json:"attribution_window,omitempty"` // Attribution methodology and lookback windows used for conversion metrics in this
 	AggregatedTotals any `json:"aggregated_totals,omitempty"` // Combined metrics across all returned media buys. Only included in API responses 
 	MediaBuyDeliveries []any `json:"media_buy_deliveries"` // Array of delivery data for media buys. When used in webhook notifications, may c
 	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors and warnings (e.g., missing delivery data, reporting platfo

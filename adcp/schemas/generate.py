@@ -60,13 +60,15 @@ KNOWN_TYPES = {
     'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
+    # Core types now generated (see CORE_SCHEMAS)
+    'AttributionWindow',
     # 3.0 capability blocks (hand-written in types.go)
     'IdempotencyCaps', 'AccountCapabilities', 'MediaBuyCapabilities',
     'MediaBuyExecution', 'TrustedMatchCaps', 'CreativeSpecsCaps',
     'TargetingCaps', 'GeoMetrosCaps', 'GeoPostalAreasCaps',
     'GeoProximityCaps', 'AgeRestrictionCaps', 'KeywordMatchCaps',
     'AudienceTargetingCaps', 'MatchingLatencyRange', 'ConversionTrackingCaps',
-    'AttributionWindow', 'ContentStandardsCaps', 'PortfolioCaps',
+    'AttributionWindowOption', 'ContentStandardsCaps', 'PortfolioCaps',
     'SignalsCapabilities', 'GovernanceCapabilities', 'GovernanceFeature',
     'FeatureRange', 'SICapabilities', 'SIEndpoint', 'SITransport',
     'BrandCapabilities', 'CreativeCapabilities', 'RequestSigningCapabilities',
