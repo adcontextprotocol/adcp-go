@@ -177,7 +177,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	ctxReq := &tmproto.ContextMatchRequest{
 		RequestID:    "bench",
 		PropertyRID:  "1",
-		ArtifactRefs: []map[string]any{{"url": "article:food"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 		PackageIDs:   allPkgIDs,
 	}
 

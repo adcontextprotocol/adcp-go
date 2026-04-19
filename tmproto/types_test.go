@@ -30,6 +30,93 @@ func TestContextMatchRequest_RoundTrip(t *testing.T) {
 	assert.Len(t, got.PackageIDs, 2, "package_ids")
 }
 
+func TestContextMatchRequest_ContextSignals(t *testing.T) {
+	req := &ContextMatchRequest{
+		RequestID:    "ctx-signals-001",
+		PropertyRID:  "01890000-0000-7000-8000-000000000001",
+		PropertyType: PropertyTypeWebsite,
+		PlacementID:  "homepage-hero",
+		ContextSignals: &ContextSignals{
+			Topics:          []string{"632", "640"},
+			TaxonomySource:  "iab",
+			TaxonomyID:      7,
+			Sentiment:       "positive",
+			Keywords:        []string{"pasta", "home-cooking"},
+			Language:        "en",
+			ContentPolicies: []string{"csbs"},
+			Summary:         "User exploring Italian cookware options for home pasta making",
+			Embedding:       "AQIDBA==",
+			EmbeddingModel:  "nomic-embed-text-v1.5",
+			EmbeddingDims:   256,
+		},
+	}
+
+	data, err := json.Marshal(req)
+	require.NoError(t, err, "marshal")
+
+	var got ContextMatchRequest
+	err = json.Unmarshal(data, &got)
+	require.NoError(t, err, "unmarshal")
+
+	require.NotNil(t, got.ContextSignals, "context_signals should round-trip")
+	cs := got.ContextSignals
+	assert.Equal(t, []string{"632", "640"}, cs.Topics, "topics")
+	assert.Equal(t, "iab", cs.TaxonomySource, "taxonomy_source")
+	assert.Equal(t, 7, cs.TaxonomyID, "taxonomy_id")
+	assert.Equal(t, "positive", cs.Sentiment, "sentiment")
+	assert.Equal(t, []string{"pasta", "home-cooking"}, cs.Keywords, "keywords")
+	assert.Equal(t, "en", cs.Language, "language")
+	assert.Equal(t, []string{"csbs"}, cs.ContentPolicies, "content_policies")
+	assert.Equal(t, "User exploring Italian cookware options for home pasta making", cs.Summary, "summary")
+	assert.Equal(t, "AQIDBA==", cs.Embedding, "embedding")
+	assert.Equal(t, "nomic-embed-text-v1.5", cs.EmbeddingModel, "embedding_model")
+	assert.Equal(t, 256, cs.EmbeddingDims, "embedding_dims")
+}
+
+func TestContextMatchRequest_ContextSignalsOmittedWhenNil(t *testing.T) {
+	req := &ContextMatchRequest{
+		RequestID:    "ctx-signals-omit",
+		PropertyRID:  "01890000-0000-7000-8000-000000000002",
+		PropertyType: PropertyTypeWebsite,
+		PlacementID:  "sidebar",
+	}
+
+	data, err := json.Marshal(req)
+	require.NoError(t, err, "marshal")
+
+	assert.NotContains(t, string(data), `"context_signals"`, "context_signals should be omitted when nil")
+}
+
+func TestContextSignals_JSONFieldNames(t *testing.T) {
+	// Wire-format check: field names MUST match the JSON schema exactly.
+	// Keeps a renamed Go field from silently breaking interop.
+	cs := &ContextSignals{
+		Topics:          []string{"t"},
+		TaxonomySource:  "iab",
+		TaxonomyID:      7,
+		Sentiment:       "neutral",
+		Keywords:        []string{"k"},
+		Language:        "en",
+		ContentPolicies: []string{"p"},
+		Summary:         "s",
+		Embedding:       "e",
+		EmbeddingModel:  "m",
+		EmbeddingDims:   64,
+	}
+
+	data, err := json.Marshal(cs)
+	require.NoError(t, err, "marshal")
+
+	s := string(data)
+	for _, want := range []string{
+		`"topics"`, `"taxonomy_source"`, `"taxonomy_id"`, `"sentiment"`,
+		`"keywords"`, `"language"`, `"content_policies"`, `"summary"`,
+		`"embedding"`, `"embedding_model"`, `"embedding_dims"`,
+	} {
+		assert.Contains(t, s, want, "missing JSON field %s", want)
+	}
+}
+
 func TestContextMatchRequest_NoIdentityFields(t *testing.T) {
 	req := &ContextMatchRequest{
 		RequestID:    "ctx-test-002",

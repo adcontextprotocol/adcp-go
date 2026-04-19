@@ -215,7 +215,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
 			PropertyRID:  "1",
-			ArtifactRefs: []map[string]any{{"url": "article:test"}},
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:test"}},
 			PackageIDs:   []string{"pkg-1"},
 		}
 
@@ -254,7 +254,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 		req := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
 			PropertyRID:  "1",
-			ArtifactRefs: []map[string]any{{"url": "article:safe-content"}},
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe-content"}},
 			PackageIDs:   []string{"pkg-1"},
 		}
 
@@ -315,7 +315,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
 			PropertyRID:  "1",
-			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
@@ -441,7 +441,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
 			PropertyRID:  "1",
-			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
@@ -507,7 +507,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		ctxReq := &tmproto.ContextMatchRequest{
 			RequestID:     "bench",
 			PropertyRID:  "1",
-			ArtifactRefs: []map[string]any{{"url": "article:food"}},
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
 		}
 		idReq := &tmproto.IdentityMatchRequest{
