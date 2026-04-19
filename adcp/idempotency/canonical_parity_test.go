@@ -59,10 +59,28 @@ func TestCanonicalParityFixtures(t *testing.T) {
 		// Unicode
 		[]byte(`{"s":"unicode: café"}`),
 		[]byte(`{"s":"emoji: 🎉"}`),
-		// Key ordering by UTF-16 code units
+		// U+2028 / U+2029: ES6 JSON.stringify escapes these; RFC 8785 does
+		// not. Highest-value parity guard for the string-escape rules.
+		[]byte(`{"s":"line\u2028sep\u2029para"}`),
+		// Control characters force lower-case \uXXXX hex output.
+		[]byte(`{"s":"\u0000\u0001\u001f\u007f"}`),
+		// Key ordering by UTF-16 code units — BMP cases.
 		[]byte(`{"\u00e9":1,"\u0065":2}`),
-		// AdCP-shaped payload
-		[]byte(`{"account":"acct-1","brand":{"name":"Acme","id":"b-1"},"budget":1000,"packages":[{"id":"p1","size":"300x250"},{"id":"p2","size":"728x90"}]}`),
+		// UTF-16 ordering across BMP / supplementary-plane boundary. A
+		// supplementary-plane codepoint is encoded as a surrogate pair in
+		// UTF-16, so its leading code unit (\uD800-\uDBFF) sorts BELOW
+		// \uFFFF — this is where UTF-16 order diverges from Unicode
+		// codepoint order.
+		[]byte(`{"\uD83D\uDE00":1,"\uFFFF":2,"\u0041":3}`),
+		// 2^53 integer precision boundary. Both values canonicalize to the
+		// same bytes per RFC 8785 §3.2.2.3 (IEEE-754 double precision loss).
+		// Fixture locks in the documented behavior on CanonicalJSONSHA256.
+		[]byte(`{"a":9007199254740992,"b":9007199254740993}`),
+		// Denormal and boundary float values.
+		[]byte(`{"tiny":5e-324,"huge":1.7976931348623157e+308}`),
+		// AdCP-shaped payload with nested array-of-objects, nullable brand,
+		// empty array in optional slot, ISO-8601 timestamp.
+		[]byte(`{"account":"acct-1","brand":null,"budget":1000,"deadline":"2026-06-01T00:00:00Z","packages":[{"id":"p1","size":"300x250"},{"id":"p2","size":"728x90"}],"tags":[]}`),
 	}
 
 	for _, raw := range fixtures {
@@ -90,6 +108,11 @@ func FuzzCanonicalParityVsGowebpki(f *testing.F) {
 		[]byte(`[]`),
 		[]byte(`null`),
 		[]byte(`{"n":1.5e-7}`),
+		// Direct the fuzzer toward UTF-16 sort edge cases.
+		[]byte(`{"\uD834\uDD1E":1,"a":2}`),
+		[]byte(`{"\uFFFF":1,"\uD800\uDC00":2}`),
+		// ES6/RFC 8785 divergence site.
+		[]byte(`{"s":"\u2028\u2029"}`),
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -102,15 +125,14 @@ func FuzzCanonicalParityVsGowebpki(f *testing.F) {
 		if !utf8.Valid(raw) {
 			t.Skip()
 		}
-		// Skip inputs that aren't valid JSON at all — not our concern.
+		// Skip inputs that aren't valid JSON — not our concern.
 		var probe any
 		if err := json.Unmarshal(raw, &probe); err != nil {
 			t.Skip()
 		}
-		// Skip inputs containing NaN/Inf via Go-only extensions (shouldn't
-		// appear in valid JSON anyway, but json.Unmarshal accepts some edge
-		// cases the reference library rejects; a divergence on invalid JSON
-		// is uninteresting).
+		// Skip inputs the reference library rejects — a divergence on
+		// inputs one side considers invalid tells us nothing about spec
+		// compliance.
 		theirs, err := jcs.Transform(raw)
 		if err != nil {
 			t.Skip()

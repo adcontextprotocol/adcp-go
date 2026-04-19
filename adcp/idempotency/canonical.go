@@ -35,14 +35,14 @@ var DefaultExcludePaths = []string{
 // CanonicalJSONSHA256 is the default HashFn: RFC 8785 JCS canonicalization
 // followed by SHA-256. The top-level exclude list is applied before hashing.
 //
-// Known limitation — integer precision beyond 2^53: JCS §3.2.2.3 mandates
-// ECMAScript Number.prototype.toString form, which goes through IEEE-754
-// double-precision. Integers above 2^53 (9,007,199,254,740,992) lose
-// precision, so e.g. {"amount":9007199254740993} and {"amount":9007199254740992}
-// canonicalize to the same bytes and therefore the same hash. This matches
-// RFC 8785 and every other spec-compliant JCS implementation. If your AdCP
-// payloads can exceed this range (uncommon: currencies use cents, IDs are
-// strings), either scale values or represent them as strings before hashing.
+// Integer precision beyond 2^53: JCS §3.2.2.3 mandates ECMAScript
+// Number.prototype.toString form, which goes through IEEE-754 double
+// precision. Integers above 2^53 (9,007,199,254,740,992) lose precision,
+// so e.g. 9007199254740993 and 9007199254740992 canonicalize to the same
+// bytes and therefore the same hash. This matches gowebpki/jcs and the
+// RFC. OpenRTB and AdCP commonly encode IDs as strings for exactly this
+// reason — verify upstream serializers don't emit bare 64-bit integers
+// (nanosecond timestamps, SSP auction IDs) in hashed payloads.
 var CanonicalJSONSHA256 = NewCanonicalJSONSHA256(DefaultExcludePaths)
 
 // NewCanonicalJSONSHA256 returns a HashFn that strips the given dotted JSON

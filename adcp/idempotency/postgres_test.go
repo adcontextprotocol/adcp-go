@@ -2,7 +2,6 @@ package idempotency
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"regexp"
 	"testing"
@@ -24,11 +23,15 @@ func newPgMock(t *testing.T) (*PgBackend, sqlmock.Sqlmock, func()) {
 	}
 }
 
-// getRegexp matches the SELECT in PgBackend.Get.
-var getRegexp = regexp.MustCompile(`SELECT hash, response, created_at, expires_at\s+FROM adcp_idempotency\s+WHERE scope = \$1 AND key = \$2`)
-
-// putRegexp matches the INSERT in PgBackend.PutIfAbsent.
-var putRegexp = regexp.MustCompile(`INSERT INTO adcp_idempotency.*ON CONFLICT .* DO NOTHING\s+RETURNING hash`)
+// Query matchers use minimal anchors: a recognizable verb + table + the
+// placeholder pattern. Harmless formatting changes in postgres.go (column
+// reorder, whitespace, comments) shouldn't break these tests — the behavior
+// asserted is what arguments bind and what the result shape is, validated
+// via WithArgs and WillReturnRows.
+var (
+	getRegexp = regexp.MustCompile(`SELECT .* FROM adcp_idempotency`)
+	putRegexp = regexp.MustCompile(`INSERT INTO adcp_idempotency`)
+)
 
 func TestPgGetHit(t *testing.T) {
 	b, mock, done := newPgMock(t)
@@ -53,7 +56,7 @@ func TestPgGetMiss(t *testing.T) {
 
 	mock.ExpectQuery(getRegexp.String()).
 		WithArgs("s", "k").
-		WillReturnError(sql.ErrNoRows)
+		WillReturnRows(sqlmock.NewRows([]string{"hash", "response", "created_at", "expires_at"}))
 
 	e, err := b.Get(context.Background(), "s", "k")
 	require.NoError(t, err)
@@ -94,6 +97,13 @@ func TestPgPutIfAbsentFreshInsert(t *testing.T) {
 	assert.Nil(t, existing)
 }
 
+// emptyHashRows models the pgx/lib-pq behavior when ON CONFLICT DO NOTHING
+// RETURNING hits a conflict: the query succeeds but returns zero rows, and
+// QueryRow().Scan() then surfaces sql.ErrNoRows naturally. Tests that use
+// WillReturnError(sql.ErrNoRows) instead would model "query errored," which
+// is a different production code path.
+func emptyHashRows() *sqlmock.Rows { return sqlmock.NewRows([]string{"hash"}) }
+
 func TestPgPutIfAbsentConflictReReadReturnsExisting(t *testing.T) {
 	b, mock, done := newPgMock(t)
 	defer done()
@@ -108,7 +118,7 @@ func TestPgPutIfAbsentConflictReReadReturnsExisting(t *testing.T) {
 	// INSERT … RETURNING yields no row (conflict).
 	mock.ExpectQuery(putRegexp.String()).
 		WithArgs("s", "k", "our-hash", entry.Response, now, entry.ExpiresAt).
-		WillReturnError(sql.ErrNoRows)
+		WillReturnRows(emptyHashRows())
 	// Re-read returns the row that won the race.
 	mock.ExpectQuery(getRegexp.String()).
 		WithArgs("s", "k").
@@ -139,10 +149,10 @@ func TestPgPutIfAbsentConflictReReadEmpty(t *testing.T) {
 	}
 	mock.ExpectQuery(putRegexp.String()).
 		WithArgs("s", "k", "h", entry.Response, now, entry.ExpiresAt).
-		WillReturnError(sql.ErrNoRows)
+		WillReturnRows(emptyHashRows())
 	mock.ExpectQuery(getRegexp.String()).
 		WithArgs("s", "k").
-		WillReturnError(sql.ErrNoRows)
+		WillReturnRows(sqlmock.NewRows([]string{"hash", "response", "created_at", "expires_at"}))
 
 	existing, stored, err := b.PutIfAbsent(context.Background(), "s", "k", entry)
 	require.NoError(t, err)
