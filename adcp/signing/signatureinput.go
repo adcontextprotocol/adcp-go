@@ -36,6 +36,9 @@ func parseSignatureInput(header string) (*sigInput, error) {
 	if header == "" {
 		return nil, newError(CodeHeaderMalformed, "empty Signature-Input header")
 	}
+	if len(header) > maxSignatureInputLen {
+		return nil, newError(CodeHeaderMalformed, "Signature-Input header too long")
+	}
 
 	// Locate the first "=" that introduces a dict entry's value.
 	eq := strings.IndexByte(header, '=')
@@ -135,6 +138,9 @@ func parseComponentList(inside string) ([]string, error) {
 	var comps []string
 	i := 0
 	for i < len(inside) {
+		if len(comps) > maxCoveredComponents {
+			return nil, newError(CodeHeaderMalformed, "too many covered components")
+		}
 		// Skip whitespace.
 		for i < len(inside) && (inside[i] == ' ' || inside[i] == '\t') {
 			i++
@@ -334,6 +340,9 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 		if !v.isString {
 			return newError(CodeHeaderMalformed, "nonce must be string")
 		}
+		if len(v.str) > maxNonceLen {
+			return newError(CodeHeaderMalformed, "nonce too long")
+		}
 		si.nonce = v.str
 	case "keyid":
 		if err := check(&si.keyIDSet); err != nil {
@@ -341,6 +350,9 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 		}
 		if !v.isString {
 			return newError(CodeHeaderMalformed, "keyid must be string")
+		}
+		if len(v.str) > maxKeyIDLen {
+			return newError(CodeHeaderMalformed, "keyid too long")
 		}
 		si.keyID = v.str
 	case "alg":
@@ -392,6 +404,9 @@ func parseSignature(header, label string) (string, error) {
 	header = strings.TrimSpace(header)
 	if header == "" {
 		return "", newError(CodeHeaderMalformed, "empty Signature header")
+	}
+	if len(header) > maxSignatureLen {
+		return "", newError(CodeHeaderMalformed, "Signature header too long")
 	}
 
 	// Iterate over dict entries.

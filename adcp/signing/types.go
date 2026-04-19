@@ -78,6 +78,15 @@ const (
 	// this are rejected with request_signature_digest_mismatch to bound memory
 	// consumption. Override via VerifyOptions.MaxBodyBytes.
 	defaultMaxBodyBytes int64 = 32 << 20 // 32 MiB
+
+	// Parse-time caps on attacker-controlled header content. Go's http.Server
+	// MaxHeaderBytes (default 1 MiB) caps aggregate headers; these per-field
+	// caps fail fast on pathological inputs before tokenizer work.
+	maxSignatureInputLen = 8 << 10 // 8 KiB
+	maxSignatureLen      = 8 << 10 // 8 KiB
+	maxNonceLen          = 256
+	maxKeyIDLen          = 256
+	maxCoveredComponents = 32
 )
 
 // VerifiedSigner is returned by the verifier on success.

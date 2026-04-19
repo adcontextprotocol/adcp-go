@@ -85,6 +85,9 @@ func (k *JWK) PublicKey() (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("decode y: %w", err)
 		}
+		if len(x) != 32 || len(y) != 32 {
+			return nil, fmt.Errorf("P-256 coordinates must be 32 bytes each (got x=%d y=%d)", len(x), len(y))
+		}
 		return &ecdsa.PublicKey{
 			Curve: elliptic.P256(),
 			X:     new(big.Int).SetBytes(x),

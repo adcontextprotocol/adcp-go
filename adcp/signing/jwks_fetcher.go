@@ -257,6 +257,8 @@ func isDisallowedIP(ip net.IP) bool {
 	// Private RFC 1918 / ULA.
 	if ip4 := ip.To4(); ip4 != nil {
 		switch {
+		case ip4[0] == 0: // 0.0.0.0/8 — this-network; routes to loopback on Linux
+			return true
 		case ip4[0] == 10:
 			return true
 		case ip4[0] == 172 && ip4[1]&0xf0 == 16:
@@ -266,6 +268,8 @@ func isDisallowedIP(ip net.IP) bool {
 		case ip4[0] == 169 && ip4[1] == 254:
 			return true
 		case ip4[0] == 100 && ip4[1]&0xc0 == 64: // CGNAT 100.64.0.0/10
+			return true
+		case ip4[0] == 198 && ip4[1]&0xfe == 18: // 198.18.0.0/15 benchmark
 			return true
 		}
 	}
