@@ -3,7 +3,9 @@ module github.com/adcontextprotocol/adcp-go/adcp
 go 1.26.2
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/google/jsonschema-go v0.4.2
+	github.com/gowebpki/jcs v1.0.1
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/stretchr/testify v1.11.1
 )
