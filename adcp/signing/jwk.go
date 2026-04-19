@@ -11,8 +11,8 @@ import (
 )
 
 // JWK is the subset of RFC 7517 members the AdCP profile relies on, plus the
-// AdCP `adcp_use` discriminator. Unknown members are preserved via the Extra
-// map so serializers can round-trip.
+// AdCP `adcp_use` discriminator. Unknown members from JWKS documents are
+// discarded on decode (the profile's required set is fully typed here).
 type JWK struct {
 	Kid     string   `json:"kid"`
 	Kty     string   `json:"kty"`
@@ -25,12 +25,31 @@ type JWK struct {
 	Y       string   `json:"y,omitempty"`
 
 	// PrivateD is only populated for private-key JWKs used by the signer CLI
-	// and test vectors. Public JWKS never include it.
+	// and test vectors. Public JWKS never include it. Call JWK.Public before
+	// serializing for publication at jwks_uri to guarantee this member is
+	// zeroed regardless of how the JWK was loaded.
 	PrivateD string `json:"d,omitempty"`
 
 	// TestOnlyPrivateD is the `_private_d_for_test_only` member used by the
 	// spec conformance vector keys.json. Publicly-served JWKs never include it.
+	// JWK.Public zeroes this too.
 	TestOnlyPrivateD string `json:"_private_d_for_test_only,omitempty"`
+}
+
+// Public returns a copy of k with all private-key components zeroed. Use
+// this before serializing a JWK that originated from a private source (a
+// loaded PEM, a test vector with `_private_d_for_test_only`, or any other
+// path where PrivateD / TestOnlyPrivateD may be populated) for publication
+// at `jwks_uri`.
+//
+// Round-tripping a freshly-generated JWK from GenerateSigningKey is already
+// safe because PrivateD is never set on that path; Public is a
+// defense-in-depth affordance for the library-user who stores a JWK with
+// its private half attached and later marshals it for a JWKS document.
+func (k JWK) Public() JWK {
+	k.PrivateD = ""
+	k.TestOnlyPrivateD = ""
+	return k
 }
 
 // JWKS is a JWK set.
