@@ -27,7 +27,7 @@ type ActivateParams struct {
 	PropertyType tmproto.PropertyType
 	PlacementID  string
 	Geo          map[string]any
-	ArtifactRefs []map[string]any
+	ArtifactRefs []tmproto.ArtifactRef
 	PackageIDs   []string
 
 	// Identity match inputs.

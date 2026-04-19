@@ -37,7 +37,7 @@ func BenchmarkSignatureVerify(b *testing.B) {
 		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
 	sig := tmproto.SignRequest(req, priv)
@@ -74,7 +74,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-pipeline",
 		PropertyRID:  "prop-500",
-		ArtifactRefs: []map[string]any{{"url": "article:pasta-recipe"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta-recipe"}},
 		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	}
 
@@ -132,7 +132,7 @@ func BenchmarkSignatureSign(b *testing.B) {
 		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
 
@@ -152,7 +152,7 @@ func BenchmarkHMACSign(b *testing.B) {
 		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
 	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
@@ -176,7 +176,7 @@ func BenchmarkHMACVerify(b *testing.B) {
 		PropertyRID:  "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar",
-		ArtifactRefs: []map[string]any{{"url": "article:benchmark-test"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
 	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())

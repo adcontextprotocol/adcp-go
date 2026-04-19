@@ -924,13 +924,14 @@ func buildOffersFromDynamic(pkgID string, cfg *PackageContextConfig) []tmproto.O
 	}}
 }
 
-// extractArtifactRefURLs extracts URL strings from ArtifactRefs for URL/topic checks.
-// Each artifact ref is a map with a "url" key.
+// extractArtifactRefURLs returns the URL-typed ArtifactRefs for URL/topic checks.
+// Non-URL refs (eidr, gtin, isrc, etc.) are ignored — they aren't resolvable as
+// web URLs.
 func extractArtifactRefURLs(req *tmproto.ContextMatchRequest) []string {
 	var urls []string
 	for _, ref := range req.ArtifactRefs {
-		if u, ok := ref["url"].(string); ok {
-			urls = append(urls, u)
+		if ref.Type == tmproto.ArtifactRefTypeURL {
+			urls = append(urls, ref.Value)
 		}
 	}
 	return urls

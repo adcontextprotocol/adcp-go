@@ -177,7 +177,7 @@ func TestContext_TopicMatch(t *testing.T) {
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-topic",
 		PropertyRID:  "10",
-		ArtifactRefs: []map[string]any{{"url": "article:pasta"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
 		PackageIDs:   []string{"pkg-food"},
 	})
 	require.NoError(t, err)
@@ -199,7 +199,7 @@ func TestContext_TopicMiss(t *testing.T) {
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-topic-miss",
 		PropertyRID:  "10",
-		ArtifactRefs: []map[string]any{{"url": "article:cpu"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:cpu"}},
 		PackageIDs:   []string{"pkg-food"},
 	})
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestContext_URLBlocklist(t *testing.T) {
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-block",
 		PropertyRID:  "20",
-		ArtifactRefs: []map[string]any{{"url": "article:controversial"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:controversial"}},
 		PackageIDs:   []string{"pkg-family"},
 	})
 	require.NoError(t, err)
@@ -244,7 +244,7 @@ func TestContext_URLAllowlist(t *testing.T) {
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-allow-hit",
 		PropertyRID:  "20",
-		ArtifactRefs: []map[string]any{{"url": "article:safe-content"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe-content"}},
 		PackageIDs:   []string{"pkg-premium"},
 	})
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestContext_URLAllowlist(t *testing.T) {
 	resp, err = engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-allow-miss",
 		PropertyRID:  "20",
-		ArtifactRefs: []map[string]any{{"url": "article:other-content"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:other-content"}},
 		PackageIDs:   []string{"pkg-premium"},
 	})
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-multi",
 		PropertyRID:  "30",
-		ArtifactRefs: []map[string]any{{"url": "article:pasta"}},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
 		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	})
 	require.NoError(t, err)
