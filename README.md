@@ -105,11 +105,53 @@ adcp.AddTool(server, "tool_name", "Description",
 - [`adcp/inputs.go`](adcp/inputs.go) — Typed input structs for all tool handlers
 - [`adcp/types_gen.go`](adcp/types_gen.go) — 203 types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) v3.0.0-rc.3
 
+## Request signing (AdCP 3.0 optional, 4.0 required)
+
+`adcp/signing` implements the AdCP RFC 9421 request-signing profile — optional in 3.0, required for spend-committing operations in 4.0. The package is self-validating against the spec's [conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/): all 8 positive + 20 negative vectors pass, and signed Ed25519 signatures match the committed positive-vector bytes.
+
+**As an agent that signs requests:**
+
+```go
+import "github.com/adcontextprotocol/adcp-go/adcp/signing"
+
+pemBytes, _ := os.ReadFile("signing.pem")
+priv, _, _ := signing.LoadPrivateKey(pemBytes)
+signer, _ := signing.NewSigner(signing.SignerOptions{
+    KeyID:      "buyer-ed25519-2026",
+    PrivateKey: priv,
+})
+client := &http.Client{Transport: signer.RoundTripper(nil, true /* cover content-digest */)}
+resp, err := client.Post("https://seller.example.com/adcp/create_media_buy", "application/json", body)
+```
+
+**As a verifier (seller):**
+
+```go
+mw := signing.Middleware(signing.MiddlewareOptions{
+    Resolver:            signing.NewHTTPJWKSResolver(agents), // SSRF-safe fetcher
+    Replay:              signing.NewMemoryReplayStore(0),
+    Revocation:          signing.NewStaticRevocationList(nil),
+    OperationResolver:   signing.DefaultOperationResolver,    // /adcp/<op>
+    RequiredFor:         []string{"create_media_buy"},
+    ContentDigestPolicy: signing.DigestRequired,
+})
+http.ListenAndServe(":8080", mw(yourHandler))
+```
+
+**Generate a signing keypair:**
+
+```bash
+go run github.com/adcontextprotocol/adcp-go/adcp/cmd/adcp-signing-keygen -alg ed25519 -kid my-agent-2026 -out signing.pem
+```
+
+Emits a PEM-encoded private key plus the public JWK (with `adcp_use: "request-signing"`) ready to paste into your agent's JWKS document at `jwks_uri`.
+
 ## Packages
 
 | Package | Description |
 |---------|-------------|
 | [`adcp/`](adcp/) | MCP server helpers — `AddTool`, response builders, test controller, `Serve()` |
+| [`adcp/signing/`](adcp/signing/) | RFC 9421 request signing — signer, verifier, middleware, conformance tests |
 | [`skills/`](skills/) | SKILL.md files for coding agent generation |
 | [`tmproto/`](tmproto/) | TMP message types, provider interfaces, JSON codec |
 | [`targeting/`](targeting/) | Targeting engine — property bitmaps, freq caps, audiences, intent |
