@@ -60,7 +60,7 @@ KNOWN_TYPES = {
     'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
-    # Core types now generated (see CORE_SCHEMAS)
+    # Hand-written in types.go; listed here so $ref resolution uses the typed name.
     'AttributionWindow',
     # 3.0 capability blocks (hand-written in types.go)
     'IdempotencyCaps', 'AccountCapabilities', 'MediaBuyCapabilities',

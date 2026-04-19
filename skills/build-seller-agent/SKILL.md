@@ -372,6 +372,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
 | Mistake | Fix |
 |---------|-----|
+| Missing `IdempotencyReplayTTL` on `adcp.Config` | Required — set to `24*time.Hour`. Panics at startup if unset or outside 1h–7d. |
 | Missing `Description` on products | Required by schema validation |
 | Missing `publisher_properties`/`format_ids` on products | Required fields — use empty `[]string{}` if none |
 | `sync_governance` response key `results` | Must be `accounts` |
