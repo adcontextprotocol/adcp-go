@@ -73,7 +73,8 @@ func main() {
 		server := mcp.NewServer(&mcp.Implementation{Name: "reference-seller", Version: "1.0.0"}, nil)
 
 		adcp.Register(server, adcp.Config{
-			Sandbox: true,
+			Sandbox:              true,
+			IdempotencyReplayTTL: 24 * time.Hour,
 			ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
 				b.mu.RLock()
 				defer b.mu.RUnlock()

@@ -60,6 +60,19 @@ KNOWN_TYPES = {
     'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
+    # Hand-written in types.go; listed here so $ref resolution uses the typed name.
+    'AttributionWindow',
+    # 3.0 capability blocks (hand-written in types.go)
+    'IdempotencyCaps', 'AccountCapabilities', 'MediaBuyCapabilities',
+    'MediaBuyExecution', 'TrustedMatchCaps', 'CreativeSpecsCaps',
+    'TargetingCaps', 'GeoMetrosCaps', 'GeoPostalAreasCaps',
+    'GeoProximityCaps', 'AgeRestrictionCaps', 'KeywordMatchCaps',
+    'AudienceTargetingCaps', 'MatchingLatencyRange', 'ConversionTrackingCaps',
+    'AttributionWindowOption', 'ContentStandardsCaps', 'PortfolioCaps',
+    'SignalsCapabilities', 'GovernanceCapabilities', 'GovernanceFeature',
+    'FeatureRange', 'SICapabilities', 'SIEndpoint', 'SITransport',
+    'BrandCapabilities', 'CreativeCapabilities', 'RequestSigningCapabilities',
+    'ComplianceTestingCapabilities',
     # Governance plan types (from governance_types.go) — the plans array
     # in sync-plans-request.json is an inline nested object, not a $ref,
     # so the generator cannot produce these on its own.

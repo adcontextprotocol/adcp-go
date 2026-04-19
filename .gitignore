@@ -32,6 +32,7 @@ cmd/router/router
 internal/generate/generate
 reference/context-agent/context-agent
 reference/identity-agent/identity-agent
+reference/seller-agent/seller-agent
 
 # Editor/IDE
 .idea/
