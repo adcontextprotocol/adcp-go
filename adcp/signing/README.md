@@ -4,7 +4,7 @@ RFC 9421 request-signing for the Ad Context Protocol.
 
 Optional in AdCP 3.0 and capability-advertised via `request_signing` on `get_adcp_capabilities`. Required for spend-committing operations in AdCP 4.0.
 
-Spec: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer).
+Spec: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer). Rolling out from unsigned to signed, or rotating keys: see [MIGRATION.md](./MIGRATION.md).
 
 ## Conformance
 
@@ -61,6 +61,41 @@ http.ListenAndServe(":8080", mw(yourHandler))
 ```
 
 For MCP / JSON-RPC integrations that need a protocol-specific error envelope, supply an `OnReject` callback to translate the typed `*signing.Error` into your wire format instead of the default 401 text/plain response.
+
+### Verifying from a handler
+
+`VerifyRequest` is a tri-state wrapper around the lower-level `VerifyRequestSignature` and is the right call when your handler verifies directly (outside the middleware):
+
+```go
+switch res := signing.VerifyRequest(r, opts); res.Status {
+case signing.StatusVerified:
+    handleAuthenticated(res.Signer)
+case signing.StatusUnsigned:
+    handleBearerOnly(r)
+case signing.StatusRejected:
+    w.Header().Set("WWW-Authenticate", `Signature error="`+string(res.Error.Code)+`"`)
+    http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+```
+
+Use `VerifyRequestSignature` directly only where the `(signer, err)` shape is convenient. Its `(nil, nil)` return means "unsigned, not required" — `if _, err := VerifyRequestSignature(...); err == nil { trust(...) }` silently trusts unsigned requests. That misread is the bug `VerifyRequest` exists to make impossible.
+
+When the middleware is permissive (no `RequiredFor` entry for an op) but a specific handler wants to gate its route on a signature — e.g., the requirement depends on a decoded body field — call `signing.RequireSigned(r.Context())` inside the handler:
+
+```go
+func handleCreate(w http.ResponseWriter, r *http.Request) {
+    var body CreatePlanRequest
+    _ = json.NewDecoder(r.Body).Decode(&body)
+    if body.CommitsSpend {
+        if err := signing.RequireSigned(r.Context()); err != nil {
+            w.Header().Set("WWW-Authenticate", `Signature error="`+string(err.Code)+`"`)
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+    }
+    // ...
+}
+```
 
 ### Caveats
 
