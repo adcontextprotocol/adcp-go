@@ -1574,6 +1574,50 @@ const (
 
 // --- Core types ---
 
+// PolicyEntry — A policy — either published to the shared registry (with full regulatory metadata) or authored inlin
+type PolicyEntry struct {
+	PolicyID string `json:"policy_id"` // Unique identifier for this policy. Registry-published ids are canonical (e.g., "
+	Source string `json:"source,omitempty"` // Origin of this policy. 'registry' = published to the shared AdCP policy registry
+	Version string `json:"version,omitempty"` // Semver version string (e.g., "1.0.0"). Incremented when policy content changes. 
+	Name string `json:"name,omitempty"` // Human-readable name (e.g., "UK HFSS Restrictions"). Optional for inline bespoke 
+	Description string `json:"description,omitempty"` // Brief summary of what this policy covers.
+	Category string `json:"category,omitempty"` // The nature of the obligation: regulation (legal requirement) or standard (best p
+	Enforcement string `json:"enforcement"` // How governance agents treat violations. Regulations are typically "must"; standa
+	RequiresHumanReview *bool `json:"requires_human_review,omitempty"` // When true, plans subject to this policy MUST set plan.human_review_required = tr
+	Jurisdictions []string `json:"jurisdictions,omitempty"` // ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means th
+	RegionAliases map[string][]string `json:"region_aliases,omitempty"` // Named groups of jurisdictions for convenience (e.g., {"EU": ["AT","BE","BG",...]
+	PolicyCategories []string `json:"policy_categories,omitempty"` // Regulatory categories this policy belongs to (e.g., ["children_directed", "age_r
+	Channels []string `json:"channels,omitempty"` // Advertising channels this policy applies to. If omitted or null, the policy appl
+	GovernanceDomains []string `json:"governance_domains,omitempty"` // Governance sub-domains this policy applies to. Determines which types of governa
+	EffectiveDate string `json:"effective_date,omitempty"` // ISO 8601 date when the regulation or standard takes effect. Before this date, go
+	SunsetDate string `json:"sunset_date,omitempty"` // ISO 8601 date when the regulation or standard is no longer enforced. After this 
+	SourceURL string `json:"source_url,omitempty"` // Link to the source regulation, standard, or legislation.
+	SourceName string `json:"source_name,omitempty"` // Name of the issuing body (e.g., "UK Food Standards Agency", "US Federal Trade Co
+	Policy string `json:"policy"` // Natural language policy text describing what is required, prohibited, or recomme
+	Guidance string `json:"guidance,omitempty"` // Implementation notes for governance agent developers. Not used in evaluation pro
+	Exemplars any `json:"exemplars,omitempty"` // Calibration examples for governance agents, following the Content Standards patt
+	Ext any `json:"ext,omitempty"`
+}
+
+// PolicyCategoryDefinition — Definition of a policy category in the registry. Policy categories group related regulatory regimes 
+type PolicyCategoryDefinition struct {
+	CategoryID string `json:"category_id"` // Unique identifier for this category. Used in plan.policy_categories, signal-defi
+	Name string `json:"name"` // Human-readable name (e.g., 'Children-Directed Content').
+	Description string `json:"description"` // What this category covers. Defines the boundary — what campaigns or data fall un
+	RegulatoryFrameworks []any `json:"regulatory_frameworks,omitempty"` // Key regulations and standards grouped under this category. Governance agents use
+	RestrictedAttributes []string `json:"restricted_attributes,omitempty"` // Restricted attribute categories that regulations in this category prohibit for t
+	RequiresHumanReview *bool `json:"requires_human_review,omitempty"` // When true, any plan declaring this category MUST set plan.human_review_required 
+	Industries []string `json:"industries,omitempty"` // Industries where this category commonly applies (e.g., 'pharmaceutical' for age_
+	Guidance string `json:"guidance,omitempty"` // Implementation notes for governance agents. Edge cases, disambiguation, and comm
+	RelatedCategories []string `json:"related_categories,omitempty"` // Categories that frequently co-occur (e.g., 'children_directed' often appears wit
+}
+
+// AudienceConstraints — Buyer-defined audience targeting constraints for a campaign plan. Specifies who the campaign should 
+type AudienceConstraints struct {
+	Include []any `json:"include,omitempty"` // Desired audience criteria. The seller's targeting should align with these. Each 
+	Exclude []any `json:"exclude,omitempty"` // Excluded audience criteria. The seller's targeting must not overlap with these. 
+}
+
 // MediaBuy — Represents a purchased advertising campaign
 type MediaBuy struct {
 	MediaBuyID string `json:"media_buy_id"` // Seller's unique identifier for the media buy
@@ -1715,14 +1759,6 @@ type Account struct {
 	Ext any `json:"ext,omitempty"`
 }
 
-// BrandRef — Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is
-type BrandRef struct {
-	Domain string `json:"domain"` // Domain where /.well-known/brand.json is hosted, or the brand's operating domain
-	BrandID any `json:"brand_id,omitempty"` // Brand identifier within the house portfolio. Optional for single-brand domains.
-	Industries []string `json:"industries,omitempty"` // Inline override for the brand's industries. Useful when the caller cannot modify
-	DataSubjectContestation any `json:"data_subject_contestation,omitempty"` // Inline override for the brand's contestation contact point. Useful when the oper
-}
-
 // PaginationResponse — Standard cursor-based pagination metadata for list responses
 type PaginationResponse struct {
 	HasMore bool `json:"has_more"` // Whether more results are available beyond this page
@@ -1820,6 +1856,7 @@ type GetAdcpCapabilitiesResponse struct {
 	ComplianceTesting any `json:"compliance_testing,omitempty"` // Compliance testing capabilities. The presence of this block declares that the ag
 	Specialisms []string `json:"specialisms,omitempty"` // Optional — specialized compliance claims this agent supports. Omitting the field
 	ExtensionsSupported []string `json:"extensions_supported,omitempty"` // Extension namespaces this agent supports. Buyers can expect meaningful data in e
+	ExperimentalFeatures []string `json:"experimental_features,omitempty"` // Experimental AdCP surfaces this agent implements. A surface is experimental when
 	LastUpdated string `json:"last_updated,omitempty"` // ISO 8601 timestamp of when capabilities were last updated. Buyers can use this f
 	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors and warnings
 	Context any `json:"context,omitempty"`
@@ -2286,6 +2323,103 @@ type ControllerError struct {
 	Error string `json:"error"` // Structured error code
 	ErrorDetail string `json:"error_detail,omitempty"` // Human-readable explanation of the failure
 	CurrentState any `json:"current_state,omitempty"` // Current state of the entity, or null if not found
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// SyncPlansRequest — Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign
+type SyncPlansRequest struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. `plan_id` gives resource
+	Plans []Plan `json:"plans"` // One or more campaign plans to sync.
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// SyncPlansResponse — Response from syncing campaign plans. Returns status and active validation categories for each plan.
+type SyncPlansResponse struct {
+	Plans []any `json:"plans"` // Status for each synced plan.
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// CheckGovernanceRequest — Universal governance check for campaign actions. The governance agent infers the check type from the
+type CheckGovernanceRequest struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	PlanID string `json:"plan_id"` // Campaign governance plan identifier.
+	Caller string `json:"caller"` // URL of the agent making the request.
+	PurchaseType string `json:"purchase_type,omitempty"` // The type of financial commitment being checked. Determines which budget allocati
+	Tool string `json:"tool,omitempty"` // The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activa
+	Payload map[string]any `json:"payload,omitempty"` // The full tool arguments as they would be sent to the seller. Present on intent c
+	GovernanceContext string `json:"governance_context,omitempty"` // Governance context token from a prior check_governance response. Pass this on su
+	Phase string `json:"phase,omitempty"` // The phase of the governed action's lifecycle. 'purchase': initial commitment (cr
+	PlannedDelivery any `json:"planned_delivery,omitempty"` // What the seller will actually deliver. Present on execution checks.
+	DeliveryMetrics any `json:"delivery_metrics,omitempty"` // Actual delivery performance data. MUST be present for 'delivery' phase. The gove
+	ModificationSummary string `json:"modification_summary,omitempty"` // Human-readable summary of what changed. SHOULD be present for 'modification' pha
+	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Invoice recipient from the purchase request. MUST be present when the tool paylo
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// CheckGovernanceResponse — Governance agent's response to a check request. Returns whether the action is approved under the gov
+type CheckGovernanceResponse struct {
+	CheckID string `json:"check_id"` // Unique identifier for this governance check record. Use in report_plan_outcome t
+	Status string `json:"status"` // Governance decision. 'approved': proceed as planned. 'denied': do not proceed. '
+	PlanID string `json:"plan_id"` // Echoed from request.
+	Explanation string `json:"explanation"` // Human-readable explanation of the governance decision.
+	Findings []any `json:"findings,omitempty"` // Specific issues found during the governance check. Present when status is 'denie
+	Conditions []any `json:"conditions,omitempty"` // Present when status is 'conditions'. Specific adjustments the caller must make. 
+	ExpiresAt string `json:"expires_at,omitempty"` // When this approval expires. Present when status is 'approved' or 'conditions'. T
+	NextCheck string `json:"next_check,omitempty"` // When the seller should next call check_governance with delivery metrics. Present
+	CategoriesEvaluated []string `json:"categories_evaluated,omitempty"` // Governance categories evaluated during this check.
+	PoliciesEvaluated []string `json:"policies_evaluated,omitempty"` // Registry policy IDs evaluated during this check.
+	GovernanceContext string `json:"governance_context,omitempty"` // Governance context token for this governed action. The buyer MUST attach this to
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// ReportPlanOutcomeRequest — Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agen
+type ReportPlanOutcomeRequest struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	PlanID string `json:"plan_id"` // The plan this outcome is for.
+	CheckID string `json:"check_id,omitempty"` // The check_id from check_governance. Links the outcome to the governance check th
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate outcome reports
+	PurchaseType string `json:"purchase_type,omitempty"` // The type of financial commitment this outcome is for. Determines which budget al
+	Outcome string `json:"outcome"` // Outcome type.
+	SellerResponse any `json:"seller_response,omitempty"` // The seller's full response. Required when outcome is 'completed'.
+	Delivery any `json:"delivery,omitempty"` // Delivery metrics. Required when outcome is 'delivery'.
+	Error any `json:"error,omitempty"` // Error details. Required when outcome is 'failed'.
+	GovernanceContext string `json:"governance_context"` // Opaque governance context from the check_governance response that authorized thi
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// ReportPlanOutcomeResponse — Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that
+type ReportPlanOutcomeResponse struct {
+	OutcomeID string `json:"outcome_id"` // Unique identifier for this outcome record.
+	Status string `json:"status"` // 'accepted' means state updated with no issues. 'findings' means issues were dete
+	CommittedBudget float64 `json:"committed_budget,omitempty"` // Budget committed from this outcome. Present for 'completed' and 'failed' outcome
+	Findings []any `json:"findings,omitempty"` // Issues detected. Present only when status is 'findings'.
+	PlanSummary any `json:"plan_summary,omitempty"` // Updated plan budget state. Present for 'completed' and 'failed' outcomes.
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// GetPlanAuditLogsRequest — Retrieve governance state and audit trail for one or more plans.
+type GetPlanAuditLogsRequest struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	PlanIds []string `json:"plan_ids,omitempty"` // Plan IDs to retrieve. For a single plan, pass a one-element array.
+	PortfolioPlanIds []string `json:"portfolio_plan_ids,omitempty"` // Portfolio plan IDs. The governance agent expands each to its member_plan_ids and
+	GovernanceContexts []string `json:"governance_contexts,omitempty"` // Filter audit entries by governance context. Returns only checks and outcomes tha
+	PurchaseTypes []string `json:"purchase_types,omitempty"` // Filter audit entries by purchase type. Returns only checks and outcomes matching
+	IncludeEntries *bool `json:"include_entries,omitempty"` // Include the full audit trail. Default: false.
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// GetPlanAuditLogsResponse — Governance state and audit trail for one or more plans.
+type GetPlanAuditLogsResponse struct {
+	Plans []any `json:"plans"` // Audit data for each requested plan.
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
