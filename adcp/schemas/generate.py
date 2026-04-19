@@ -60,6 +60,17 @@ KNOWN_TYPES = {
     'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
+    # 3.0 capability blocks (hand-written in types.go)
+    'IdempotencyCaps', 'AccountCapabilities', 'MediaBuyCapabilities',
+    'MediaBuyExecution', 'TrustedMatchCaps', 'CreativeSpecsCaps',
+    'TargetingCaps', 'GeoMetrosCaps', 'GeoPostalAreasCaps',
+    'GeoProximityCaps', 'AgeRestrictionCaps', 'KeywordMatchCaps',
+    'AudienceTargetingCaps', 'MatchingLatencyRange', 'ConversionTrackingCaps',
+    'AttributionWindow', 'ContentStandardsCaps', 'PortfolioCaps',
+    'SignalsCapabilities', 'GovernanceCapabilities', 'GovernanceFeature',
+    'FeatureRange', 'SICapabilities', 'SIEndpoint', 'SITransport',
+    'BrandCapabilities', 'CreativeCapabilities', 'RequestSigningCapabilities',
+    'ComplianceTestingCapabilities',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
