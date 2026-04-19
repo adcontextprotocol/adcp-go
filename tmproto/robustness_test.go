@@ -45,12 +45,12 @@ func TestAsset_DiscriminatorWireValues(t *testing.T) {
 // --- #1 + #2: AssetAccess redaction and variant isolation ---
 
 func TestAssetAccess_Redacts_String(t *testing.T) {
-	a := NewBearerTokenAccess("ya29.super-secret-token")
-	assert.NotContains(t, fmt.Sprintf("%s", a), "super-secret")
+	a := NewBearerTokenAccess("ya29.super-secret-token") // #nosec G101 — fake token exercising redaction
+	assert.NotContains(t, a.String(), "super-secret")
 	assert.NotContains(t, fmt.Sprintf("%v", a), "super-secret")
 	assert.NotContains(t, fmt.Sprintf("%+v", a), "super-secret")
 	assert.NotContains(t, fmt.Sprintf("%#v", a), "super-secret")
-	assert.Contains(t, fmt.Sprintf("%s", a), "AssetAccess{Method:bearer_token")
+	assert.Contains(t, a.String(), "AssetAccess{Method:bearer_token")
 }
 
 func TestAssetAccess_Redacts_GCPServiceAccount(t *testing.T) {
@@ -70,7 +70,7 @@ func TestAssetAccess_Redacts_InsideLogging(t *testing.T) {
 	// with an ImageAsset carrying an AssetAccess. Must not leak the token.
 	img := &ImageAsset{
 		URL:    "https://example.com/i.jpg",
-		Access: &AssetAccess{Method: AssetAccessMethodBearerToken, Token: "ya29.leak-check"},
+		Access: &AssetAccess{Method: AssetAccessMethodBearerToken, Token: "ya29.leak-check"}, // #nosec G101 — fake token exercising redaction inside parent struct
 	}
 	s := fmt.Sprintf("%+v", img)
 	assert.NotContains(t, s, "leak-check")
@@ -89,7 +89,7 @@ func TestAssetAccess_WireFormat_SignedURL_DropsStrayToken(t *testing.T) {
 	// leak into a response that shouldn't have any.
 	a := AssetAccess{
 		Method: AssetAccessMethodSignedURL,
-		Token:  "stray-token-do-not-emit",
+		Token:  "stray-token-do-not-emit", // #nosec G101 — fake token; test asserts it does NOT reach the wire
 	}
 	data, err := json.Marshal(a)
 	require.NoError(t, err)
