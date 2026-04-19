@@ -10,8 +10,16 @@ type ADCPVersion struct {
 	MajorVersions []int `json:"major_versions"`
 }
 
+// BrandReference identifies a brand by domain, optionally scoped to a specific
+// brand within a house portfolio. Industries and DataSubjectContestation are
+// inline overrides for callers that cannot modify the brand's canonical
+// brand.json — used by governance to resolve Annex III vertical detection and
+// GDPR Art 22(3) contestation contacts when brand.json is out of reach.
 type BrandReference struct {
-	Domain string `json:"domain"`
+	Domain                  string                   `json:"domain"`
+	BrandID                 string                   `json:"brand_id,omitempty"`
+	Industries              []string                 `json:"industries,omitempty"`
+	DataSubjectContestation *DataSubjectContestation `json:"data_subject_contestation,omitempty"`
 }
 
 type AccountReference struct {
@@ -73,8 +81,8 @@ type Product struct {
 	FormatIDs           []FormatRef     `json:"format_ids"`
 
 	// Business terms
-	CancellationPolicy *CancellationPolicy  `json:"cancellation_policy,omitempty"`
-	MeasurementTerms   *MeasurementTerms    `json:"measurement_terms,omitempty"`
+	CancellationPolicy   *CancellationPolicy   `json:"cancellation_policy,omitempty"`
+	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 }
 
@@ -125,7 +133,7 @@ type Package struct {
 
 	// Business terms (negotiated on the package)
 	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
-	PerformanceStandards []PerformanceStandard  `json:"performance_standards,omitempty"`
+	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 
 	// Broadcast / scheduling
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
@@ -315,9 +323,9 @@ type CollectionList struct {
 	Name               string                 `json:"name"`
 	Description        string                 `json:"description,omitempty"`
 	Principal          string                 `json:"principal,omitempty"`
-	BaseCollections    []BaseCollectionSource  `json:"base_collections,omitempty"`
-	Filters            *CollectionListFilters  `json:"filters,omitempty"`
-	Brand              *BrandReference         `json:"brand,omitempty"`
+	BaseCollections    []BaseCollectionSource `json:"base_collections,omitempty"`
+	Filters            *CollectionListFilters `json:"filters,omitempty"`
+	Brand              *BrandReference        `json:"brand,omitempty"`
 	WebhookURL         string                 `json:"webhook_url,omitempty"`
 	CacheDurationHours int                    `json:"cache_duration_hours,omitempty"`
 	CreatedAt          string                 `json:"created_at,omitempty"`
