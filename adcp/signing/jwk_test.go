@@ -3,7 +3,9 @@ package signing
 import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,4 +51,35 @@ func TestParseSpecKeysJSON(t *testing.T) {
 	gov := jwks.Find("test-gov-2026")
 	require.NotNil(t, gov)
 	assert.Equal(t, "governance-signing", gov.AdcpUse)
+}
+
+func TestJWKPublicStripsPrivateComponents(t *testing.T) {
+	data, err := os.ReadFile("testdata/request-signing/keys.json")
+	require.NoError(t, err)
+	jwks, err := ParseJWKS(data)
+	require.NoError(t, err)
+
+	ed := jwks.Find("test-ed25519-2026")
+	require.NotNil(t, ed)
+	require.NotEmpty(t, ed.TestOnlyPrivateD, "precondition: spec vector carries private component")
+
+	pub := ed.Public()
+	assert.Empty(t, pub.PrivateD)
+	assert.Empty(t, pub.TestOnlyPrivateD)
+	assert.Equal(t, ed.Kid, pub.Kid)
+	assert.Equal(t, ed.X, pub.X)
+
+	marshaled, err := json.Marshal(pub)
+	require.NoError(t, err)
+	assert.NotContains(t, string(marshaled), `"d"`)
+	assert.NotContains(t, string(marshaled), "_private_d_for_test_only")
+
+	// Public must not mutate the receiver.
+	assert.NotEmpty(t, ed.TestOnlyPrivateD, "Public must return a copy, not mutate")
+
+	// Also covers the PrivateD (standard "d") path.
+	k := JWK{Kid: "x", Kty: "OKP", Crv: "Ed25519", PrivateD: "AAAA"}
+	out, err := json.Marshal(k.Public())
+	require.NoError(t, err)
+	assert.False(t, strings.Contains(string(out), `"d":`), "standard d member must be stripped")
 }

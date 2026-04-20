@@ -97,7 +97,17 @@ func main() {
         server := mcp.NewServer(&mcp.Implementation{Name: "my-seller", Version: "1.0.0"}, nil)
 
         adcp.Register(server, adcp.Config{
-            Sandbox: true,
+            Sandbox:              true,
+            IdempotencyReplayTTL: 24 * time.Hour, // required — how long you retain idempotency_key responses
+
+            // Optional — declare typed 3.0 capability blocks. Omit to ship a minimal response.
+            Capabilities: &adcp.CapabilitiesData{
+                Account: &adcp.AccountCapabilities{SupportedBilling: []string{"agent"}},
+                MediaBuy: &adcp.MediaBuyCapabilities{
+                    SupportedPricingModels: []string{"cpm"},
+                    Portfolio:              &adcp.PortfolioCaps{PublisherDomains: []string{"example.com"}},
+                },
+            },
 
             ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
                 b.mu.RLock()
@@ -362,6 +372,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
 | Mistake | Fix |
 |---------|-----|
+| Missing `IdempotencyReplayTTL` on `adcp.Config` | Required — set to `24*time.Hour`. Panics at startup if unset or outside 1h–7d. |
 | Missing `Description` on products | Required by schema validation |
 | Missing `publisher_properties`/`format_ids` on products | Required fields — use empty `[]string{}` if none |
 | `sync_governance` response key `results` | Must be `accounts` |
@@ -382,6 +393,8 @@ import (
 | Function | Usage |
 |----------|-------|
 | `adcp.Register(server, adcp.Config{...})` | Wire handlers — only set the tools you support. Auto-detects capabilities. |
+| `adcp.Config.IdempotencyReplayTTL` | **Required.** How long you retain idempotency_key responses. Must be 1h–7d; 24h is standard. |
+| `adcp.Config.Capabilities` | Optional typed CapabilitiesData — declare account / media_buy / audience_targeting blocks. Filled in automatically if nil. |
 | `adcp.Config.ResolveAccount` | Automatic account resolution. Returns ACCOUNT_NOT_FOUND if nil. |
 | `adcp.NewError(code, opts)` | Typed error from handlers (BUDGET_TOO_LOW, TERMS_REJECTED, etc.) |
 | `adcp.Serve(createAgent)` | HTTP server on `:3001/mcp` |

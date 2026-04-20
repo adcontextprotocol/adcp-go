@@ -2,12 +2,18 @@ package adcp
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // Register wires AdCP tool handlers onto an MCP server. Only tools with
-// registered handlers are exposed. Capabilities are auto-detected.
+// registered handlers are exposed. supported_protocols is auto-detected.
+//
+// IdempotencyReplayTTL is required (see Config docs). Register panics at
+// startup if it is unset or out of range — AdCP 3.0 requires sellers to
+// declare adcp.idempotency.replay_ttl_seconds in capabilities.
 //
 // Account resolution: if ResolveAccount is set, handlers that accept an
 // AccountReference receive the resolved account. If the account is not found,
@@ -19,6 +25,7 @@ import (
 // Usage:
 //
 //	adcp.Register(server, adcp.Config{
+//	    IdempotencyReplayTTL: 24 * time.Hour,
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
 //	        return db.FindAccount(ref.Brand.Domain, ref.Operator)
 //	    },
@@ -30,16 +37,13 @@ import (
 //	    },
 //	})
 func Register(server *mcp.Server, cfg Config) {
-	protocols := detectProtocols(cfg)
+	caps := buildCapabilities(cfg)
 	sandbox := cfg.Sandbox
 
 	// Capabilities (always registered)
 	AddTool(server, "get_adcp_capabilities", "Returns agent capabilities",
 		func(ctx context.Context, req *mcp.CallToolRequest, input EmptyInput) (*mcp.CallToolResult, any, error) {
-			return CapabilitiesResponse(&CapabilitiesData{
-				ADCP:               &ADCPVersion{MajorVersions: []int{3}},
-				SupportedProtocols: protocols,
-			})
+			return CapabilitiesResponse(caps)
 		})
 
 	// --- Media buy tools ---
@@ -254,6 +258,19 @@ type Config struct {
 	// Sandbox marks all responses as sandbox/test data.
 	Sandbox bool
 
+	// IdempotencyReplayTTL is how long this agent retains a canonical response
+	// for an idempotency_key. Required by AdCP 3.0 — sellers MUST declare their
+	// replay window. Must be in [1h, 7d]; 24h is recommended. Register panics
+	// if this is zero or outside the valid range.
+	IdempotencyReplayTTL time.Duration
+
+	// Capabilities, if set, declares the full typed capabilities response.
+	// supported_protocols and adcp.idempotency are filled in automatically if
+	// left empty. Use this to declare account / media_buy / signals / etc.
+	// blocks. If nil, a minimal response with just adcp + supported_protocols
+	// is built from the registered handlers.
+	Capabilities *CapabilitiesData
+
 	// ResolveAccount converts an AccountReference (brand + operator) to your
 	// internal account object. Called automatically before handlers that receive
 	// an account field. Return nil for unknown accounts (SDK sends ACCOUNT_NOT_FOUND).
@@ -339,6 +356,11 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 	return acct, nil
 }
 
+// detectProtocols returns supported_protocols values inferred from the
+// handlers the caller wired up. Only protocols in the 3.0 schema enum
+// (media_buy, signals, governance, sponsored_intelligence, creative, brand)
+// may be emitted. Collection tools are part of a 3.x extension, not a
+// supported_protocols value, so collection handlers do not affect this list.
 func detectProtocols(cfg Config) []string {
 	var protocols []string
 	if cfg.GetProducts != nil || cfg.CreateMediaBuy != nil {
@@ -347,8 +369,48 @@ func detectProtocols(cfg Config) []string {
 	if cfg.GetSignals != nil || cfg.ActivateSignal != nil {
 		protocols = append(protocols, "signals")
 	}
-	if cfg.CreateCollectionList != nil || cfg.GetCollectionList != nil {
-		protocols = append(protocols, "collection")
-	}
 	return protocols
+}
+
+// idempotencyReplayTTLMin and Max mirror the 3.0 schema bounds on
+// adcp.idempotency.replay_ttl_seconds.
+const (
+	idempotencyReplayTTLMin = 1 * time.Hour
+	idempotencyReplayTTLMax = 7 * 24 * time.Hour
+)
+
+// buildCapabilities constructs the CapabilitiesData returned from
+// get_adcp_capabilities. It panics if IdempotencyReplayTTL is missing or
+// out of range, if the caller and Config disagree on the replay window, or if
+// no supported_protocols can be determined — all are startup-time config bugs
+// that fail the 3.0 capabilities schema.
+func buildCapabilities(cfg Config) *CapabilitiesData {
+	ttl := cfg.IdempotencyReplayTTL
+	if ttl < idempotencyReplayTTLMin || ttl > idempotencyReplayTTLMax {
+		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL must be 1h–7d (got %s) — set it to 24*time.Hour; AdCP 3.0 requires sellers to declare adcp.idempotency.replay_ttl_seconds", ttl))
+	}
+	ttlSeconds := int(ttl.Seconds())
+
+	var caps CapabilitiesData
+	if cfg.Capabilities != nil {
+		caps = *cfg.Capabilities
+	}
+	if caps.ADCP == nil {
+		caps.ADCP = &ADCPVersion{MajorVersions: []int{3}}
+	}
+	if len(caps.ADCP.MajorVersions) == 0 {
+		caps.ADCP.MajorVersions = []int{3}
+	}
+	if existing := caps.ADCP.Idempotency.ReplayTTLSeconds; existing != 0 && existing != ttlSeconds {
+		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL (%ds) conflicts with Capabilities.ADCP.Idempotency.ReplayTTLSeconds (%ds) — set one or the other, not both", ttlSeconds, existing))
+	}
+	caps.ADCP.Idempotency = IdempotencyCaps{ReplayTTLSeconds: ttlSeconds}
+
+	if len(caps.SupportedProtocols) == 0 {
+		caps.SupportedProtocols = detectProtocols(cfg)
+	}
+	if len(caps.SupportedProtocols) == 0 {
+		panic("adcp.Register: no supported_protocols — wire at least one handler (e.g. GetProducts) or set Capabilities.SupportedProtocols; AdCP 3.0 requires minItems: 1")
+	}
+	return &caps
 }

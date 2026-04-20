@@ -60,6 +60,26 @@ KNOWN_TYPES = {
     'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
+    # Hand-written in types.go; listed here so $ref resolution uses the typed name.
+    'AttributionWindow',
+    # 3.0 capability blocks (hand-written in types.go)
+    'IdempotencyCaps', 'AccountCapabilities', 'MediaBuyCapabilities',
+    'MediaBuyExecution', 'TrustedMatchCaps', 'CreativeSpecsCaps',
+    'TargetingCaps', 'GeoMetrosCaps', 'GeoPostalAreasCaps',
+    'GeoProximityCaps', 'AgeRestrictionCaps', 'KeywordMatchCaps',
+    'AudienceTargetingCaps', 'MatchingLatencyRange', 'ConversionTrackingCaps',
+    'AttributionWindowOption', 'ContentStandardsCaps', 'PortfolioCaps',
+    'SignalsCapabilities', 'GovernanceCapabilities', 'GovernanceFeature',
+    'FeatureRange', 'SICapabilities', 'SIEndpoint', 'SITransport',
+    'BrandCapabilities', 'CreativeCapabilities', 'RequestSigningCapabilities',
+    'ComplianceTestingCapabilities',
+    # Governance plan types (from governance_types.go) — the plans array
+    # in sync-plans-request.json is an inline nested object, not a $ref,
+    # so the generator cannot produce these on its own.
+    'Plan', 'PlanBudget', 'PlanBudgetAllocation', 'PlanFlight',
+    'PlanChannels', 'PlanChannelMixTarget', 'PlanDelegation',
+    'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
+    'HumanOverride', 'DataSubjectContestation',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -112,6 +132,15 @@ TOOL_SCHEMAS = [
     # Compliance
     "compliance/comply-test-controller-request.json",
     "compliance/comply-test-controller-response.json",
+    # Governance
+    "governance/sync-plans-request.json",
+    "governance/sync-plans-response.json",
+    "governance/check-governance-request.json",
+    "governance/check-governance-response.json",
+    "governance/report-plan-outcome-request.json",
+    "governance/report-plan-outcome-response.json",
+    "governance/get-plan-audit-logs-request.json",
+    "governance/get-plan-audit-logs-response.json",
     # Collection
     "collection/create-collection-list-request.json",
     "collection/create-collection-list-response.json",
@@ -139,6 +168,9 @@ WEBHOOK_SCHEMAS = [
 
 # Core types that tools reference via $ref
 CORE_SCHEMAS = [
+    "governance/policy-entry.json",
+    "governance/policy-category-definition.json",
+    "governance/audience-constraints.json",
     "core/product.json",
     "core/package.json",
     "core/media-buy.json",
@@ -156,7 +188,6 @@ CORE_SCHEMAS = [
     "core/delivery-metrics.json",
     "core/account.json",
     "core/account-ref.json",
-    "core/brand-ref.json",
     "core/targeting.json",
     "core/context.json",
     "core/ext.json",
@@ -207,6 +238,7 @@ INLINE_TYPE_HINTS = {
     ('LogEventRequest', 'events'): 'map[string]any',
     ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
+    ('SyncPlansRequest', 'plans'): 'Plan',
 }
 
 # Enum schemas

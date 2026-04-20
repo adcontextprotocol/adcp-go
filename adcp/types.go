@@ -1,17 +1,288 @@
 // Package adcp provides helpers for building AdCP MCP servers in Go.
 package adcp
 
+// CapabilitiesData is the typed get_adcp_capabilities response. Per the 3.0
+// schema, adcp (with idempotency) and supported_protocols are required; all
+// other blocks are optional and set only when the relevant protocol is
+// supported.
 type CapabilitiesData struct {
-	ADCP               *ADCPVersion `json:"adcp,omitempty"`
-	SupportedProtocols []string     `json:"supported_protocols"`
+	ADCP                  *ADCPVersion                   `json:"adcp"`
+	SupportedProtocols    []string                       `json:"supported_protocols"`
+	Account               *AccountCapabilities           `json:"account,omitempty"`
+	MediaBuy              *MediaBuyCapabilities          `json:"media_buy,omitempty"`
+	Signals               *SignalsCapabilities           `json:"signals,omitempty"`
+	Governance            *GovernanceCapabilities        `json:"governance,omitempty"`
+	SponsoredIntelligence *SICapabilities                `json:"sponsored_intelligence,omitempty"`
+	Brand                 *BrandCapabilities             `json:"brand,omitempty"`
+	Creative              *CreativeCapabilities          `json:"creative,omitempty"`
+	RequestSigning        *RequestSigningCapabilities    `json:"request_signing,omitempty"`
+	ComplianceTesting     *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
+	Specialisms           []string                       `json:"specialisms,omitempty"`
+	ExtensionsSupported   []string                       `json:"extensions_supported,omitempty"`
+	LastUpdated           string                         `json:"last_updated,omitempty"`
+	Errors                []AdcpError                    `json:"errors,omitempty"`
+	Context               any                            `json:"context,omitempty"`
+	Ext                   any                            `json:"ext,omitempty"`
 }
 
 type ADCPVersion struct {
-	MajorVersions []int `json:"major_versions"`
+	MajorVersions []int           `json:"major_versions"`
+	Idempotency   IdempotencyCaps `json:"idempotency"`
 }
 
+// IdempotencyCaps declares the seller's replay window for idempotency_key.
+// Minimum 3600 (1h); recommended 86400 (24h); maximum 604800 (7d).
+type IdempotencyCaps struct {
+	ReplayTTLSeconds int `json:"replay_ttl_seconds"`
+}
+
+// AccountCapabilities describes how accounts are established and billed.
+// supported_billing is required when present.
+type AccountCapabilities struct {
+	RequireOperatorAuth   *bool    `json:"require_operator_auth,omitempty"`
+	AuthorizationEndpoint string   `json:"authorization_endpoint,omitempty"`
+	SupportedBilling      []string `json:"supported_billing"`
+	RequiredForProducts   *bool    `json:"required_for_products,omitempty"`
+	AccountFinancials     *bool    `json:"account_financials,omitempty"`
+	Sandbox               *bool    `json:"sandbox,omitempty"`
+}
+
+// MediaBuyCapabilities is the media_buy protocol capability block.
+type MediaBuyCapabilities struct {
+	SupportedPricingModels   []string                `json:"supported_pricing_models,omitempty"`
+	ReportingDeliveryMethods []string                `json:"reporting_delivery_methods,omitempty"`
+	OfflineDeliveryProtocols []string                `json:"offline_delivery_protocols,omitempty"`
+	Features                 map[string]any          `json:"features,omitempty"`
+	Execution                *MediaBuyExecution      `json:"execution,omitempty"`
+	AudienceTargeting        *AudienceTargetingCaps  `json:"audience_targeting,omitempty"`
+	ConversionTracking       *ConversionTrackingCaps `json:"conversion_tracking,omitempty"`
+	ContentStandards         *ContentStandardsCaps   `json:"content_standards,omitempty"`
+	Portfolio                *PortfolioCaps          `json:"portfolio,omitempty"`
+}
+
+// MediaBuyExecution describes technical execution capabilities for media buying.
+type MediaBuyExecution struct {
+	TrustedMatch  *TrustedMatchCaps  `json:"trusted_match,omitempty"`
+	CreativeSpecs *CreativeSpecsCaps `json:"creative_specs,omitempty"`
+	Targeting     *TargetingCaps     `json:"targeting,omitempty"`
+}
+
+type TrustedMatchCaps struct {
+	Surfaces []string `json:"surfaces,omitempty"`
+}
+
+type CreativeSpecsCaps struct {
+	VASTVersions  []string `json:"vast_versions,omitempty"`
+	MRAIDVersions []string `json:"mraid_versions,omitempty"`
+	VPAID         *bool    `json:"vpaid,omitempty"`
+	SIMID         *bool    `json:"simid,omitempty"`
+}
+
+// TargetingCaps declares which targeting dimensions the seller honors. Presence
+// of a boolean/object indicates support; buyers can then send matching fields
+// in targeting_overlay.
+type TargetingCaps struct {
+	GeoCountries     *bool               `json:"geo_countries,omitempty"`
+	GeoRegions       *bool               `json:"geo_regions,omitempty"`
+	GeoMetros        *GeoMetrosCaps      `json:"geo_metros,omitempty"`
+	GeoPostalAreas   *GeoPostalAreasCaps `json:"geo_postal_areas,omitempty"`
+	GeoProximity     *GeoProximityCaps   `json:"geo_proximity,omitempty"`
+	AgeRestriction   *AgeRestrictionCaps `json:"age_restriction,omitempty"`
+	Language         *bool               `json:"language,omitempty"`
+	KeywordTargets   *KeywordMatchCaps   `json:"keyword_targets,omitempty"`
+	NegativeKeywords *KeywordMatchCaps   `json:"negative_keywords,omitempty"`
+}
+
+type GeoMetrosCaps struct {
+	NielsenDMA    *bool `json:"nielsen_dma,omitempty"`
+	UKITL1        *bool `json:"uk_itl1,omitempty"`
+	UKITL2        *bool `json:"uk_itl2,omitempty"`
+	EurostatNUTS2 *bool `json:"eurostat_nuts2,omitempty"`
+}
+
+type GeoPostalAreasCaps struct {
+	USZip          *bool `json:"us_zip,omitempty"`
+	USZipPlusFour  *bool `json:"us_zip_plus_four,omitempty"`
+	GBOutward      *bool `json:"gb_outward,omitempty"`
+	GBFull         *bool `json:"gb_full,omitempty"`
+	CAFSA          *bool `json:"ca_fsa,omitempty"`
+	CAFull         *bool `json:"ca_full,omitempty"`
+	DEPLZ          *bool `json:"de_plz,omitempty"`
+	FRCodePostal   *bool `json:"fr_code_postal,omitempty"`
+	AUPostcode     *bool `json:"au_postcode,omitempty"`
+	CHPLZ          *bool `json:"ch_plz,omitempty"`
+	ATPLZ          *bool `json:"at_plz,omitempty"`
+}
+
+type GeoProximityCaps struct {
+	Radius         *bool    `json:"radius,omitempty"`
+	TravelTime     *bool    `json:"travel_time,omitempty"`
+	Geometry       *bool    `json:"geometry,omitempty"`
+	TransportModes []string `json:"transport_modes,omitempty"`
+}
+
+type AgeRestrictionCaps struct {
+	Supported           *bool    `json:"supported,omitempty"`
+	VerificationMethods []string `json:"verification_methods,omitempty"`
+}
+
+// KeywordMatchCaps declares which match types a seller honors for keyword or
+// negative-keyword targeting. supported_match_types is required when present.
+type KeywordMatchCaps struct {
+	SupportedMatchTypes []string `json:"supported_match_types"`
+}
+
+// AudienceTargetingCaps describes audience matching capabilities.
+// supported_identifier_types and minimum_audience_size are required when present.
+type AudienceTargetingCaps struct {
+	SupportedIdentifierTypes  []string              `json:"supported_identifier_types"`
+	SupportsPlatformCustomerID *bool                `json:"supports_platform_customer_id,omitempty"`
+	SupportedUIDTypes         []string              `json:"supported_uid_types,omitempty"`
+	MinimumAudienceSize       int                   `json:"minimum_audience_size"`
+	MatchingLatencyHours      *MatchingLatencyRange `json:"matching_latency_hours,omitempty"`
+}
+
+type MatchingLatencyRange struct {
+	Min *int `json:"min,omitempty"`
+	Max *int `json:"max,omitempty"`
+}
+
+// ConversionTrackingCaps describes seller-level conversion event capabilities.
+// AttributionWindows (plural) lists window options a buyer can choose from —
+// distinct from the singular AttributionWindow in core/attribution-window.json
+// used on an optimization goal.
+type ConversionTrackingCaps struct {
+	MultiSourceEventDedup      *bool                     `json:"multi_source_event_dedup,omitempty"`
+	SupportedEventTypes        []string                  `json:"supported_event_types,omitempty"`
+	SupportedUIDTypes          []string                  `json:"supported_uid_types,omitempty"`
+	SupportedHashedIdentifiers []string                  `json:"supported_hashed_identifiers,omitempty"`
+	SupportedActionSources     []string                  `json:"supported_action_sources,omitempty"`
+	AttributionWindows         []AttributionWindowOption `json:"attribution_windows,omitempty"`
+}
+
+// AttributionWindowOption describes one attribution-window configuration a
+// buyer can pick. post_click is required when present.
+type AttributionWindowOption struct {
+	EventType string     `json:"event_type,omitempty"`
+	PostClick []Duration `json:"post_click"`
+	PostView  []Duration `json:"post_view,omitempty"`
+}
+
+// AttributionWindow is the singular attribution config applied to a specific
+// optimization goal or delivery response. Mirrors core/attribution-window.json
+// and is distinct from AttributionWindowOption (plural capability options).
+type AttributionWindow struct {
+	PostClick *Duration `json:"post_click,omitempty"`
+	PostView  *Duration `json:"post_view,omitempty"`
+	Model     string    `json:"model"`
+}
+
+// ContentStandardsCaps describes content-standards evaluation and delivery.
+type ContentStandardsCaps struct {
+	SupportsLocalEvaluation *bool    `json:"supports_local_evaluation,omitempty"`
+	SupportedChannels       []string `json:"supported_channels,omitempty"`
+	SupportsWebhookDelivery *bool    `json:"supports_webhook_delivery,omitempty"`
+}
+
+// PortfolioCaps describes the seller's inventory portfolio.
+// publisher_domains is required when present.
+type PortfolioCaps struct {
+	PublisherDomains    []string `json:"publisher_domains"`
+	PrimaryChannels     []string `json:"primary_channels,omitempty"`
+	PrimaryCountries    []string `json:"primary_countries,omitempty"`
+	Description         string   `json:"description,omitempty"`
+	AdvertisingPolicies string   `json:"advertising_policies,omitempty"`
+}
+
+// SignalsCapabilities is the signals protocol capability block.
+type SignalsCapabilities struct {
+	DataProviderDomains []string        `json:"data_provider_domains,omitempty"`
+	Features            map[string]bool `json:"features,omitempty"`
+}
+
+// GovernanceCapabilities is the governance protocol capability block.
+type GovernanceCapabilities struct {
+	PropertyFeatures []GovernanceFeature `json:"property_features,omitempty"`
+	CreativeFeatures []GovernanceFeature `json:"creative_features,omitempty"`
+}
+
+// GovernanceFeature describes a score/rating/certification the agent provides.
+type GovernanceFeature struct {
+	FeatureID      string           `json:"feature_id"`
+	Type           string           `json:"type"`
+	Range          *FeatureRange    `json:"range,omitempty"`
+	Categories     []string         `json:"categories,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	MethodologyURL string           `json:"methodology_url,omitempty"`
+}
+
+type FeatureRange struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
+}
+
+// SICapabilities is the sponsored_intelligence protocol capability block.
+// Callers declaring this block MUST populate Endpoint.Transports and
+// Capabilities — the schema requires both, and a nil/empty value will fail
+// upstream validation.
+type SICapabilities struct {
+	Endpoint     SIEndpoint     `json:"endpoint"`
+	Capabilities map[string]any `json:"capabilities"`
+	BrandURL     string         `json:"brand_url,omitempty"`
+}
+
+type SIEndpoint struct {
+	Transports []SITransport `json:"transports"`
+	Preferred  string        `json:"preferred,omitempty"`
+}
+
+type SITransport struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+// BrandCapabilities is the brand protocol capability block.
+type BrandCapabilities struct {
+	Rights              *bool    `json:"rights,omitempty"`
+	RightTypes          []string `json:"right_types,omitempty"`
+	AvailableUses       []string `json:"available_uses,omitempty"`
+	GenerationProviders []string `json:"generation_providers,omitempty"`
+	Description         string   `json:"description,omitempty"`
+}
+
+// CreativeCapabilities is the creative protocol capability block.
+type CreativeCapabilities struct {
+	SupportsCompliance     *bool `json:"supports_compliance,omitempty"`
+	HasCreativeLibrary     *bool `json:"has_creative_library,omitempty"`
+	SupportsGeneration     *bool `json:"supports_generation,omitempty"`
+	SupportsTransformation *bool `json:"supports_transformation,omitempty"`
+}
+
+// RequestSigningCapabilities declares RFC 9421 signing policy.
+type RequestSigningCapabilities struct {
+	Supported            bool     `json:"supported"`
+	CoversContentDigest  string   `json:"covers_content_digest,omitempty"`
+	RequiredFor          []string `json:"required_for,omitempty"`
+	WarnFor              []string `json:"warn_for,omitempty"`
+	SupportedFor         []string `json:"supported_for,omitempty"`
+}
+
+// ComplianceTestingCapabilities declares supported comply_test_controller
+// scenarios. scenarios is required when the block is present.
+type ComplianceTestingCapabilities struct {
+	Scenarios []string `json:"scenarios"`
+}
+
+// BrandReference identifies a brand by domain, optionally scoped to a specific
+// brand within a house portfolio. Industries and DataSubjectContestation are
+// inline overrides for callers that cannot modify the brand's canonical
+// brand.json — used by governance to resolve Annex III vertical detection and
+// GDPR Art 22(3) contestation contacts when brand.json is out of reach.
 type BrandReference struct {
-	Domain string `json:"domain"`
+	Domain                  string                   `json:"domain"`
+	BrandID                 string                   `json:"brand_id,omitempty"`
+	Industries              []string                 `json:"industries,omitempty"`
+	DataSubjectContestation *DataSubjectContestation `json:"data_subject_contestation,omitempty"`
 }
 
 type AccountReference struct {
@@ -73,8 +344,8 @@ type Product struct {
 	FormatIDs           []FormatRef     `json:"format_ids"`
 
 	// Business terms
-	CancellationPolicy *CancellationPolicy  `json:"cancellation_policy,omitempty"`
-	MeasurementTerms   *MeasurementTerms    `json:"measurement_terms,omitempty"`
+	CancellationPolicy   *CancellationPolicy   `json:"cancellation_policy,omitempty"`
+	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 }
 
@@ -125,7 +396,7 @@ type Package struct {
 
 	// Business terms (negotiated on the package)
 	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
-	PerformanceStandards []PerformanceStandard  `json:"performance_standards,omitempty"`
+	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 
 	// Broadcast / scheduling
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
@@ -315,9 +586,9 @@ type CollectionList struct {
 	Name               string                 `json:"name"`
 	Description        string                 `json:"description,omitempty"`
 	Principal          string                 `json:"principal,omitempty"`
-	BaseCollections    []BaseCollectionSource  `json:"base_collections,omitempty"`
-	Filters            *CollectionListFilters  `json:"filters,omitempty"`
-	Brand              *BrandReference         `json:"brand,omitempty"`
+	BaseCollections    []BaseCollectionSource `json:"base_collections,omitempty"`
+	Filters            *CollectionListFilters `json:"filters,omitempty"`
+	Brand              *BrandReference        `json:"brand,omitempty"`
 	WebhookURL         string                 `json:"webhook_url,omitempty"`
 	CacheDurationHours int                    `json:"cache_duration_hours,omitempty"`
 	CreatedAt          string                 `json:"created_at,omitempty"`
