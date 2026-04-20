@@ -528,15 +528,11 @@ type SignalID struct {
 	ID                 string `json:"id"`
 }
 
-type SignalPricing struct {
-	PricingOptionID string  `json:"pricing_option_id"`
-	Model           string  `json:"model"`
-	CPM             float64 `json:"cpm,omitempty"`
-	Percent         float64 `json:"percent,omitempty"`
-	Amount          float64 `json:"amount,omitempty"`
-	Period          string  `json:"period,omitempty"`
-	Currency        string  `json:"currency"`
-}
+// SignalPricing is an alias for VendorPricingOption. Upstream's
+// signal-pricing-option.json is a deprecated $ref to vendor-pricing-option.json;
+// the two were always the same shape on the wire. Kept here so existing callers
+// that reference SignalPricing continue to compile.
+type SignalPricing = VendorPricingOption
 
 type Deployment struct {
 	Type          string         `json:"type"`
@@ -755,13 +751,28 @@ type PerformanceStandard struct {
 	Vendor    *BrandReference `json:"vendor"`
 }
 
-// VendorPricingOption extends signal pricing with a pricing_option_id for vendor billing.
+// VendorPricingOption wires the vendor-pricing-option.json schema — a
+// pricing_option_id wrapper around the signal-pricing.json oneOf. Discriminated
+// by Model: cpm, percent_of_media, flat_fee, per_unit, custom. Custom pricing
+// requires Description + Metadata; buyers should route it through operator
+// review rather than auto-selecting. PricingOptionID is the wrapper field,
+// not part of the oneOf.
+//
+// Go cannot express JSON Schema oneOf at the type level, so required-field
+// enforcement per variant is deferred to the schema validator; omitempty on
+// numeric fields means legitimate zero values (e.g. CPM: 0) do not round-trip.
 type VendorPricingOption struct {
-	PricingOptionID string  `json:"pricing_option_id"`
-	Model           string  `json:"model"`
-	CPM             float64 `json:"cpm,omitempty"`
-	Percent         float64 `json:"percent,omitempty"`
-	Amount          float64 `json:"amount,omitempty"`
-	Period          string  `json:"period,omitempty"`
-	Currency        string  `json:"currency"`
+	PricingOptionID string         `json:"pricing_option_id"`
+	Model           string         `json:"model"`
+	CPM             float64        `json:"cpm,omitempty"`
+	Percent         float64        `json:"percent,omitempty"`
+	MaxCPM          float64        `json:"max_cpm,omitempty"`
+	Amount          float64        `json:"amount,omitempty"`
+	Period          string         `json:"period,omitempty"`
+	Unit            string         `json:"unit,omitempty"`
+	UnitPrice       float64        `json:"unit_price,omitempty"`
+	Description     string         `json:"description,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
+	Currency        string         `json:"currency,omitempty"`
+	Ext             any            `json:"ext,omitempty"`
 }
