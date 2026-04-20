@@ -1,6 +1,9 @@
 package signing
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // ErrorCode is a stable identifier from the AdCP transport error taxonomy.
 // Verifiers emit these in `WWW-Authenticate: Signature error="<code>"` on 401.
@@ -118,6 +121,26 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Wrapped }
+
+// WireCode returns the error code formatted for the given signing profile.
+// For ProfileRequestSigning the result equals string(e.Code). For
+// ProfileWebhookSigning, the "request_signature_" prefix is swapped for
+// "webhook_signature_" so the wire taxonomy matches adcontextprotocol/adcp#2423.
+// A zero-value Profile is treated as ProfileRequestSigning.
+//
+// Middleware callers emit WireCode in WWW-Authenticate; the Go-level Code
+// constants stay stable so callers can still switch on them with errors.As.
+func (e *Error) WireCode(profile Profile) string {
+	code := string(e.Code)
+	if profile.ErrorPrefix == "" || profile.ErrorPrefix == ProfileRequestSigning.ErrorPrefix {
+		return code
+	}
+	const legacy = "request_signature_"
+	if strings.HasPrefix(code, legacy) {
+		return profile.ErrorPrefix + code[len(legacy):]
+	}
+	return code
+}
 
 // newError constructs a typed error without wrapping.
 func newError(code ErrorCode, detail string) *Error {

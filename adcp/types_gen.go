@@ -689,6 +689,8 @@ const (
 	ErrorCodeMEDIABUYNOTFOUND ErrorCode = "MEDIA_BUY_NOT_FOUND"
 	ErrorCodeNOTCANCELLABLE ErrorCode = "NOT_CANCELLABLE"
 	ErrorCodePACKAGENOTFOUND ErrorCode = "PACKAGE_NOT_FOUND"
+	ErrorCodeCREATIVENOTFOUND ErrorCode = "CREATIVE_NOT_FOUND"
+	ErrorCodeSIGNALNOTFOUND ErrorCode = "SIGNAL_NOT_FOUND"
 	ErrorCodeSESSIONNOTFOUND ErrorCode = "SESSION_NOT_FOUND"
 	ErrorCodeSESSIONTERMINATED ErrorCode = "SESSION_TERMINATED"
 	ErrorCodeVALIDATIONERROR ErrorCode = "VALIDATION_ERROR"
@@ -1205,6 +1207,7 @@ const (
 	RightUseBackgroundMusic RightUse = "background_music"
 	RightUseEditorial RightUse = "editorial"
 	RightUseCommercial RightUse = "commercial"
+	RightUseAiGeneratedImage RightUse = "ai_generated_image"
 )
 
 // SiSessionStatus — State of a Sponsored Intelligence session between a host and a brand agent
@@ -2006,6 +2009,16 @@ type CreateMediaBuyError struct {
 	Ext any `json:"ext,omitempty"`
 }
 
+// CreateMediaBuySubmitted — Async task envelope returned when the media buy cannot be confirmed before the response is emitted —
+type CreateMediaBuySubmitted struct {
+	Status string `json:"status"` // Task-level status literal. Discriminates this async envelope from the synchronou
+	TaskID string `json:"task_id"` // Task handle the buyer uses with tasks/get, and that the seller references on pus
+	Message string `json:"message,omitempty"` // Optional human-readable explanation of why the task is submitted — e.g., 'Awaiti
+	Errors []AdcpError `json:"errors,omitempty"` // Optional advisory errors accompanying the submitted envelope. Use only for non-b
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
 // GetMediaBuysRequest — Request parameters for retrieving media buy status, creative approval state, and optional delivery s
 type GetMediaBuysRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
@@ -2484,4 +2497,79 @@ type ListCollectionListsRequest struct {
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
+
+// --- Webhook payload types ---
+
+// MCPWebhookPayload — Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to the 
+type MCPWebhookPayload struct {
+	IdempotencyKey string `json:"idempotency_key"` // Sender-generated key stable across retries of the same webhook event. Publishers
+	OperationID string `json:"operation_id,omitempty"` // Client-generated identifier that was embedded in the webhook URL by the buyer. P
+	TaskID string `json:"task_id"` // Unique identifier for this task. Use this to correlate webhook notifications wit
+	TaskType string `json:"task_type"` // Type of AdCP operation that triggered this webhook. Enables webhook handlers to 
+	Protocol string `json:"protocol,omitempty"` // AdCP protocol this task belongs to. Helps classify the operation type at a high 
+	Status string `json:"status"` // Current task status. Webhooks are triggered for status changes after initial sub
+	Timestamp string `json:"timestamp"` // ISO 8601 timestamp when this webhook was generated.
+	Message string `json:"message,omitempty"` // Human-readable summary of the current task state. Provides context about what ha
+	ContextID string `json:"context_id,omitempty"` // Session/conversation identifier. Use this to continue the conversation if input-
+	Result any `json:"result,omitempty"` // Task-specific payload matching the status. For completed/failed, contains the fu
+}
+
+// CollectionListChangedWebhook — Webhook notification sent when a collection list's resolved collections change. Contains a summary o
+type CollectionListChangedWebhook struct {
+	IdempotencyKey string `json:"idempotency_key"` // Sender-generated key stable across retries of the same webhook event. Governance
+	Event string `json:"event"` // The event type
+	ListID string `json:"list_id"` // ID of the collection list that changed
+	ListName string `json:"list_name,omitempty"` // Name of the collection list
+	ChangeSummary any `json:"change_summary,omitempty"` // Summary of changes to the resolved list
+	ResolvedAt string `json:"resolved_at"` // When the list was re-resolved
+	CacheValidUntil string `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
+	Signature string `json:"signature"` // HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes} using 
+	Ext any `json:"ext,omitempty"`
+}
+
+// PropertyListChangedWebhook — Webhook notification sent when a property list's resolved properties change. Contains a summary only
+type PropertyListChangedWebhook struct {
+	IdempotencyKey string `json:"idempotency_key"` // Sender-generated key stable across retries of the same webhook event. Governance
+	Event string `json:"event"` // The event type
+	ListID string `json:"list_id"` // ID of the property list that changed
+	ListName string `json:"list_name,omitempty"` // Name of the property list
+	ChangeSummary any `json:"change_summary,omitempty"` // Summary of changes to the resolved list
+	ResolvedAt string `json:"resolved_at"` // When the list was re-resolved
+	CacheValidUntil string `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
+	Signature string `json:"signature"` // Cryptographic signature of the webhook payload, signed with the agent's private 
+	Ext any `json:"ext,omitempty"`
+}
+
+// ArtifactWebhookPayload — Payload sent by sales agents to orchestrators when pushing content artifacts for governance validati
+type ArtifactWebhookPayload struct {
+	IdempotencyKey string `json:"idempotency_key"` // Sender-generated key stable across retries of the same webhook event. Sales agen
+	MediaBuyID string `json:"media_buy_id"` // Media buy identifier these artifacts belong to
+	BatchID string `json:"batch_id"` // Unique identifier for this batch of artifacts. Use for deduplication and acknowl
+	Timestamp string `json:"timestamp"` // When this batch was generated (ISO 8601)
+	Artifacts []any `json:"artifacts"` // Content artifacts from delivered impressions
+	Pagination any `json:"pagination,omitempty"` // Pagination info when batching large artifact sets
+	Ext any `json:"ext,omitempty"`
+}
+
+// RevocationNotification — Payload sent by a rights holder to a buyer's revocation_webhook when rights are revoked. The buyer m
+type RevocationNotification struct {
+	IdempotencyKey string `json:"idempotency_key"` // Sender-generated key stable across retries of the same revocation notification. 
+	RightsID string `json:"rights_id"` // The revoked rights grant identifier
+	BrandID string `json:"brand_id"` // Brand identifier of the rights subject
+	Reason string `json:"reason"` // Human-readable reason for revocation
+	EffectiveAt string `json:"effective_at"` // When the revocation takes effect. Immediate revocations use current time. Grace 
+	RevokedUses []string `json:"revoked_uses,omitempty"` // If present, only these uses are revoked (partial revocation). If absent, all use
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// --- Webhook Payload interface satisfaction ---
+// IdempotencyKeyPtr returns a writable pointer to the payload's idempotency_key field
+// so webhook.Marshal can fill a UUIDv4 key when the caller leaves it empty.
+// Spec: adcontextprotocol/adcp#2417.
+func (p *MCPWebhookPayload) IdempotencyKeyPtr() *string { return &p.IdempotencyKey }
+func (p *CollectionListChangedWebhook) IdempotencyKeyPtr() *string { return &p.IdempotencyKey }
+func (p *PropertyListChangedWebhook) IdempotencyKeyPtr() *string { return &p.IdempotencyKey }
+func (p *ArtifactWebhookPayload) IdempotencyKeyPtr() *string { return &p.IdempotencyKey }
+func (p *RevocationNotification) IdempotencyKeyPtr() *string { return &p.IdempotencyKey }
 

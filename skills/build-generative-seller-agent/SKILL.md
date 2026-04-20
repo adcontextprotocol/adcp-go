@@ -18,7 +18,7 @@ Ask the user — don't guess.
 1. **What kind of platform?** AI ad network, generative DSP, retail media with creative generation.
 2. **Products and pricing.** Each product needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties (empty array OK), format_ids. Use lowercase pricing models.
 3. **Generative formats.** What does the platform generate? Each generative format needs a `brief` asset slot. Standard formats need traditional asset slots (image, video).
-4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "submitted"`).
+4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "submitted"`). Async transitions SHOULD emit signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/`. Buyer polling is the legacy fallback only.
 
 ## Tool Registration
 

@@ -43,13 +43,65 @@ const (
 	DigestEither DigestPolicy = "either"
 )
 
-// Profile constants — immutable in adcp/request-signing/v1.
+// Profile selects which AdCP 9421 signing profile a Signer emits or a verifier
+// accepts. Two profiles share the same substrate (algorithms, components,
+// replay protection) and differ only in the signed `tag` param and the
+// required JWK `adcp_use` discriminator:
 //
-// profileTag is part of the signed params. A future v2 profile will bump the
-// tag; v1 and v2 verifiers will reject each other's signatures.
-const (
-	profileTag = "adcp/request-signing/v1"
+//   - Request signing (adcontextprotocol/adcp#2323): agent-to-agent tool calls.
+//   - Webhook signing (adcontextprotocol/adcp#2423): publisher-to-subscriber
+//     webhooks. Baseline-required in AdCP 3.0; replaces HMAC-SHA256 (legacy
+//     fallback through 3.x, removed in 4.0).
+//
+// The tag and adcp_use strings are signed params — a future v2 of either
+// profile will bump them; v1 and v2 verifiers will reject each other's
+// signatures. Callers normally pass one of ProfileRequestSigning or
+// ProfileWebhookSigning; custom Profile values are for tests and future
+// extensions only.
+type Profile struct {
+	// Tag is the RFC 9421 `tag` sig-param value. Verifiers enforce byte-for-byte
+	// equality. Using distinct tags across profiles guarantees a signature for
+	// one profile cannot be replayed as the other.
+	Tag string
 
+	// AdcpUse is the value required in the JWK's `adcp_use` member. Prevents
+	// cross-profile key reuse: a key published for webhook-signing MUST NOT
+	// verify a request-signing signature.
+	AdcpUse string
+
+	// ErrorPrefix replaces "request_signature_" in wire error codes emitted
+	// via WWW-Authenticate and Error.WireCode. For webhook-signing, the spec
+	// mandates "webhook_signature_" so receivers can route the two error
+	// taxonomies to different observability pipelines.
+	ErrorPrefix string
+}
+
+var (
+	// ProfileRequestSigning is the adcp/request-signing/v1 profile — the
+	// default for signing and verification. Defined in
+	// adcontextprotocol/adcp#2323.
+	ProfileRequestSigning = Profile{
+		Tag:         "adcp/request-signing/v1",
+		AdcpUse:     "request-signing",
+		ErrorPrefix: "request_signature_",
+	}
+
+	// ProfileWebhookSigning is the adcp/webhook-signing/v1 profile — baseline
+	// for outbound webhooks in AdCP 3.0. Defined in
+	// adcontextprotocol/adcp#2423.
+	//
+	// The spec requires content-digest coverage on every webhook signature;
+	// callers using this profile SHOULD set ContentDigestPolicy=DigestRequired
+	// on the verifier and CoverContentDigest=true on the signer. The webhook
+	// package wires these defaults automatically.
+	ProfileWebhookSigning = Profile{
+		Tag:         "adcp/webhook-signing/v1",
+		AdcpUse:     "webhook-signing",
+		ErrorPrefix: "webhook_signature_",
+	}
+)
+
+const (
 	componentMethod       = "@method"
 	componentTargetURI    = "@target-uri"
 	componentAuthority    = "@authority"

@@ -23,7 +23,7 @@ Ask the user — don't guess.
 1. **What kind of seller?** Premium publisher (guaranteed, fixed pricing) / SSP (non-guaranteed, auction) / Retail media (both)
 2. **Guaranteed or non-guaranteed?** `delivery_type: "guaranteed"` vs `"non_guaranteed"`. Many sellers support both.
 3. **Products and pricing.** Each product needs: product_id, name, description, channel, delivery_type, pricing_options, publisher_properties (empty array OK), format_ids.
-4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "pending_approval"`, buyer polls `get_media_buys`).
+4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "pending_approval"`). Async can surface via buyer polling `get_media_buys` OR via signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern. Webhooks are baseline in AdCP 3.0; polling is the legacy fallback.
 5. **Creative management.** Standard (`list_creative_formats` + `sync_creatives`) or none.
 
 ## Complete Skeleton

@@ -16,7 +16,7 @@ A retail media agent sells advertising on a retailer's properties. It extends th
 1. **Products.** Each needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties, format_ids. Use lowercase pricing models.
 2. **Catalogs.** What product feeds? How connected to ad rendering?
 3. **Events.** What conversion events? Purchase, add_to_cart, page_view?
-4. **Approval workflow.** Instant or async.
+4. **Approval workflow.** Instant or async. Async SHOULD emit signed webhooks when the buyer supplies `push_notification_config` — see `skills/build-webhook-publisher/` for the emission pattern.
 
 ## Tool Registration
 

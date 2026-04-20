@@ -19,7 +19,7 @@ A creative agent manages the creative lifecycle: accepts assets, stores them in 
 
 1. **What formats?** Display (300x250, 728x90), video (30s), native (image + text). Each needs dimensions and accepted asset types.
 2. **What operations?** Sync (always), list, preview, build.
-3. **Review pipeline?** Instant approve or pending review.
+3. **Review pipeline?** Instant approve or pending review. When review is async, emit signed webhooks on approval/rejection transitions — see `skills/build-webhook-publisher/`. Artifact batch delivery also uses webhooks (`adcp.ArtifactWebhookPayload`).
 
 ## Tool Registration
 

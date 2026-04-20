@@ -154,6 +154,18 @@ TOOL_SCHEMAS = [
     "collection/list-collection-lists-response.json",
 ]
 
+# Webhook payload schemas. PR adcontextprotocol/adcp#2417 made `idempotency_key`
+# a required field on every webhook payload so receivers have a single canonical
+# dedup field. Generating these types makes that field a typed `string` at the
+# source level, not `any`.
+WEBHOOK_SCHEMAS = [
+    "core/mcp-webhook-payload.json",
+    "collection/collection-list-changed-webhook.json",
+    "property/property-list-changed-webhook.json",
+    "content-standards/artifact-webhook-payload.json",
+    "brand/revocation-notification.json",
+]
+
 # Core types that tools reference via $ref
 CORE_SCHEMAS = [
     "governance/policy-entry.json",
@@ -258,7 +270,7 @@ def pascal_case(s):
     """Convert kebab-case or snake_case to PascalCase."""
     parts = re.split(r'[-_]', s)
     result = []
-    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa'}
+    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'mcp'}
     for p in parts:
         if p.lower() in acronyms:
             result.append(p.upper())
@@ -481,6 +493,44 @@ def generate():
 
         if schema.get('type') == 'object' and 'properties' in schema:
             print(schema_to_struct(name, schema))
+
+    # Generate webhook payload types and their IdempotencyKeyPtr methods.
+    # The method satisfies adcp/webhook.Payload so webhook.Marshal / Deliver
+    # can fill a UUIDv4 key when the caller leaves IdempotencyKey empty.
+    # Generating the method alongside the struct prevents drift — adding a
+    # new webhook schema to WEBHOOK_SCHEMAS automatically extends the set of
+    # types that implement Payload.
+    print('// --- Webhook payload types ---')
+    print()
+    webhook_type_names = []
+    for path in WEBHOOK_SCHEMAS:
+        if not os.path.exists(path):
+            print(f'// Skipped {path} (not found)', file=sys.stderr)
+            continue
+        schema = load_schema(path)
+        name = pascal_case(Path(path).stem)
+        if name in generated:
+            continue
+        generated.add(name)
+        if schema.get('type') == 'object' and 'properties' in schema:
+            # Webhook payloads must carry a required idempotency_key field
+            # (adcontextprotocol/adcp#2417). Refuse to emit a method that
+            # references a field the schema did not declare.
+            if 'idempotency_key' not in schema.get('properties', {}):
+                print(f'// {name}: WARNING: schema has no idempotency_key — IdempotencyKeyPtr method NOT generated', file=sys.stderr)
+                print(schema_to_struct(name, schema))
+                continue
+            print(schema_to_struct(name, schema))
+            webhook_type_names.append(name)
+
+    if webhook_type_names:
+        print('// --- Webhook Payload interface satisfaction ---')
+        print('// IdempotencyKeyPtr returns a writable pointer to the payload\'s idempotency_key field')
+        print('// so webhook.Marshal can fill a UUIDv4 key when the caller leaves it empty.')
+        print('// Spec: adcontextprotocol/adcp#2417.')
+        for name in webhook_type_names:
+            print(f'func (p *{name}) IdempotencyKeyPtr() *string {{ return &p.IdempotencyKey }}')
+        print()
 
 if __name__ == '__main__':
     generate()

@@ -21,13 +21,29 @@ type GenerateKeyResult struct {
 }
 
 // GenerateSigningKey generates a new keypair for the given algorithm and
-// returns the PEM-encoded PKCS#8 private key plus a JWK containing the
-// public half with AdCP-required members set.
-//
-// The returned JWK has `use: "sig"`, `key_ops: ["verify"]`, and
-// `adcp_use: "request-signing"`. The caller supplies kid; if empty, a
-// pseudo-random kid is generated.
+// returns the PEM-encoded PKCS#8 private key plus a JWK containing the public
+// half with AdCP-required members set. The JWK is scoped for
+// ProfileRequestSigning (adcp_use: "request-signing"); use
+// GenerateKeyForProfile when publishing keys for webhook-signing or any
+// future profile.
 func GenerateSigningKey(alg Algorithm, kid string) (*GenerateKeyResult, error) {
+	return GenerateKeyForProfile(alg, kid, ProfileRequestSigning)
+}
+
+// GenerateKeyForProfile generates a keypair and returns a JWK whose adcp_use
+// matches the given profile. This is the path to take when publishing a
+// webhook-signing key in adagents.json:
+//
+//	res, _ := signing.GenerateKeyForProfile(signing.AlgEd25519, "pub-webhook-2026", signing.ProfileWebhookSigning)
+//
+// Publishers that sign both tool calls and webhooks SHOULD publish two
+// separate keys (one per profile) rather than reusing one key — a key
+// scoped for request-signing cannot verify a webhook signature and vice
+// versa, per adcontextprotocol/adcp#2423 step 8.
+func GenerateKeyForProfile(alg Algorithm, kid string, profile Profile) (*GenerateKeyResult, error) {
+	if profile.AdcpUse == "" {
+		profile = ProfileRequestSigning
+	}
 	if kid == "" {
 		nonce, err := generateNonce(rand.Reader)
 		if err != nil {
@@ -54,7 +70,7 @@ func GenerateSigningKey(alg Algorithm, kid string) (*GenerateKeyResult, error) {
 				Alg:     "EdDSA",
 				Use:     "sig",
 				KeyOps:  []string{"verify"},
-				AdcpUse: "request-signing",
+				AdcpUse: profile.AdcpUse,
 				X:       b64UrlEncodeRaw(pub),
 			},
 		}, nil
@@ -76,7 +92,7 @@ func GenerateSigningKey(alg Algorithm, kid string) (*GenerateKeyResult, error) {
 				Alg:     "ES256",
 				Use:     "sig",
 				KeyOps:  []string{"verify"},
-				AdcpUse: "request-signing",
+				AdcpUse: profile.AdcpUse,
 				X:       b64UrlEncodeRaw(leftPad(priv.PublicKey.X.Bytes(), 32)),
 				Y:       b64UrlEncodeRaw(leftPad(priv.PublicKey.Y.Bytes(), 32)),
 			},
