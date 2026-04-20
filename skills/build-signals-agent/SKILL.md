@@ -24,6 +24,7 @@ Ask the user — don't guess.
 2. **What segments?** 3-5 with variety. Each needs: name, description, coverage_percentage (5-30%), value_type (binary/categorical/numeric).
 3. **Pricing.** At least one per signal: `cpm`, `percent_of_media`, or `flat_fee`.
 4. **Activation destinations.** Platform (`type: "platform"`, returns `segment_id`) or agent (`type: "agent"`, returns `key_value`).
+5. **Property list change notifications?** Signals agents that publish resolved property lists SHOULD emit `adcp.PropertyListChangedWebhook` when the list changes — see `skills/build-webhook-publisher/` for the signed-delivery pattern.
 
 ## Tool Registration
 

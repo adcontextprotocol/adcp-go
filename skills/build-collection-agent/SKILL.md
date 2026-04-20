@@ -24,7 +24,7 @@ Ask the user -- don't guess.
 1. **What content?** TV shows, podcasts, publications, events? This determines the `kind` values (`series`, `publication`, `event_series`, `rotation`).
 2. **Selection patterns?** Cross-publisher by distribution IDs (IMDB, Gracenote) / publisher-specific collection IDs / publisher-specific genres? Most agents support at least distribution IDs.
 3. **What filters?** Content ratings, genres, production quality? Which genre taxonomy (`iab_content_3.0`, `gracenote`, `custom`)?
-4. **Webhook notifications?** Should consumers be notified when resolved lists change?
+4. **Webhook notifications?** Should consumers be notified when resolved lists change? If yes, emit `adcp.CollectionListChangedWebhook` via `skills/build-webhook-publisher/` — required `idempotency_key` + RFC 9421 webhook-signing are baseline in AdCP 3.0.
 5. **Auth model?** Auth tokens are returned at creation time. Should lists be public or require tokens?
 
 ## Tool Registration
