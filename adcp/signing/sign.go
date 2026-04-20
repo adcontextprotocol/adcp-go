@@ -27,6 +27,11 @@ type SignerOptions struct {
 	// *ecdsa.PrivateKey on P-256. Use LoadPrivateKey to parse PEM files.
 	PrivateKey any
 
+	// Profile selects the signing profile — tag and required JWK adcp_use.
+	// Zero value is ProfileRequestSigning. Outbound webhooks MUST use
+	// ProfileWebhookSigning (adcontextprotocol/adcp#2423).
+	Profile Profile
+
 	// Clock is the signer's time source. Defaults to time.Now.
 	Clock func() time.Time
 
@@ -64,6 +69,9 @@ func NewSigner(opts SignerOptions) (*Signer, error) {
 	}
 	if opts.NonceReader == nil {
 		opts.NonceReader = rand.Reader
+	}
+	if opts.Profile.Tag == "" {
+		opts.Profile = ProfileRequestSigning
 	}
 	var alg Algorithm
 	switch opts.PrivateKey.(type) {
@@ -173,7 +181,7 @@ func (s *Signer) SignRequest(r *http.Request, opts SignOptions) error {
 		}
 	}
 
-	sigParamsValue := formatSigParams(covered, created, expires, nonce, s.opts.KeyID, s.alg)
+	sigParamsValue := formatSigParams(covered, created, expires, nonce, s.opts.KeyID, s.alg, s.opts.Profile.Tag)
 
 	base, err := buildSignatureBase(covered, values, sigParamsValue)
 	if err != nil {
@@ -228,7 +236,7 @@ func encodeP1363(r, s *big.Int, fieldSize int) []byte {
 }
 
 // formatSigParams serializes the RFC 9421 @signature-params value.
-func formatSigParams(covered []string, created, expires int64, nonce, keyid string, alg Algorithm) string {
+func formatSigParams(covered []string, created, expires int64, nonce, keyid string, alg Algorithm, tag string) string {
 	var b strings.Builder
 	b.WriteByte('(')
 	for i, c := range covered {
@@ -251,7 +259,7 @@ func formatSigParams(covered []string, created, expires int64, nonce, keyid stri
 	b.WriteString("\";alg=\"")
 	b.WriteString(string(alg))
 	b.WriteString("\";tag=\"")
-	b.WriteString(profileTag)
+	b.WriteString(tag)
 	b.WriteByte('"')
 	return b.String()
 }

@@ -24,6 +24,13 @@ type VerifyOptions struct {
 	// with request_signature_required.
 	RequiredFor []string
 
+	// Profile selects which signing profile this verifier accepts. Zero value
+	// is ProfileRequestSigning. Webhook receivers MUST set
+	// ProfileWebhookSigning — a request-signing signature presented to a
+	// webhook endpoint (or vice versa) is rejected with
+	// webhook_signature_tag_invalid.
+	Profile Profile
+
 	// ContentDigestPolicy controls whether content-digest coverage is
 	// required, forbidden, or optional (DigestEither, the default).
 	ContentDigestPolicy DigestPolicy
@@ -67,6 +74,10 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	}
 	if opts.Replay == nil {
 		return nil, newError(CodeReplayed, "replay store not configured")
+	}
+	profile := opts.Profile
+	if profile.Tag == "" {
+		profile = ProfileRequestSigning
 	}
 	now := time.Now
 	if opts.Clock != nil {
@@ -117,8 +128,8 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	}
 
 	// Step 3: tag.
-	if parsed.tag != profileTag {
-		return nil, newError(CodeTagInvalid, "tag not adcp/request-signing/v1")
+	if parsed.tag != profile.Tag {
+		return nil, newError(CodeTagInvalid, "tag not "+profile.Tag)
 	}
 
 	// Step 4: alg allowlist.
@@ -195,8 +206,8 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	}
 
 	// Step 8: key purpose + alg cross-check.
-	if jwk.Use != "sig" || !slices.Contains(jwk.KeyOps, "verify") || jwk.AdcpUse != "request-signing" {
-		return nil, newError(CodeKeyPurposeInvalid, "key not scoped for request-signing")
+	if jwk.Use != "sig" || !slices.Contains(jwk.KeyOps, "verify") || jwk.AdcpUse != profile.AdcpUse {
+		return nil, newError(CodeKeyPurposeInvalid, "key not scoped for "+profile.AdcpUse)
 	}
 	jwkAlgV, err := jwk.SigParamAlg()
 	if err != nil || jwkAlgV != alg {

@@ -46,6 +46,12 @@ func DefaultOperationResolver(r *http.Request) string {
 
 // MiddlewareOptions configures the HTTP middleware.
 type MiddlewareOptions struct {
+	// Profile selects the signing profile accepted by this middleware. Zero
+	// value is ProfileRequestSigning. Webhook receivers MUST set
+	// ProfileWebhookSigning so a request-signing signature presented to a
+	// webhook endpoint is rejected with webhook_signature_tag_invalid.
+	Profile Profile
+
 	// Resolver resolves keyid to a JWK and the signing agent's URL.
 	// Typical implementations: StaticJWKSResolver for tests / specialized
 	// deployments; HTTPJWKSResolver for production with brand.json-derived
@@ -126,6 +132,10 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	profile := opts.Profile
+	if profile.Tag == "" {
+		profile = ProfileRequestSigning
+	}
 	if len(opts.RequiredFor) > 0 && opts.Revocation == nil {
 		logger.Warn("signing.Middleware: RequiredFor is non-empty but Revocation is nil — verifier will not enforce key revocation")
 	}
@@ -146,6 +156,7 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 			signer, err := VerifyRequestSignature(r, VerifyOptions{
 				OperationName:       opName,
 				RequiredFor:         opts.RequiredFor,
+				Profile:             profile,
 				ContentDigestPolicy: opts.ContentDigestPolicy,
 				Scheme:              scheme,
 				Resolver:            opts.Resolver,
@@ -164,17 +175,18 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 				if parsed, perr := parseSignatureInput(r.Header.Get(signatureInputHeader)); perr == nil {
 					keyid = parsed.keyID
 				}
-				logger.Warn("request signature rejected",
-					"code", string(e.Code),
+				logger.Warn("signature rejected",
+					"code", e.WireCode(profile),
 					"detail", e.Detail,
 					"op", opName,
 					"keyid", keyid,
+					"profile", profile.Tag,
 				)
 				if opts.OnReject != nil {
 					opts.OnReject(w, r, e)
 					return
 				}
-				w.Header().Set("WWW-Authenticate", `Signature error="`+string(e.Code)+`"`)
+				w.Header().Set("WWW-Authenticate", `Signature error="`+e.WireCode(profile)+`"`)
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
