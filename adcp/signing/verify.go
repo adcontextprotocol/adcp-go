@@ -96,12 +96,24 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	sigHeader := r.Header.Get(signatureHeader)
 
 	// Reject multi-valued Content-Type and Content-Digest headers — the profile
-	// covers a single canonical value; two Field instances are an interop hazard.
+	// covers a single canonical value; two Field instances or comma-smuggled
+	// values inside one Field instance create parser-differential attack surface.
+	// Content-Type per RFC 9110 §8.3 has no list form. Content-Digest per RFC
+	// 9530 §2 is a Dictionary-Structured-Field where duplicates of the same
+	// algorithm are ambiguous.
 	if vals := r.Header.Values(contentTypeHeader); len(vals) > 1 {
 		return nil, newError(CodeHeaderMalformed, "multiple Content-Type values")
 	}
+	if ct := r.Header.Get(contentTypeHeader); containsTopLevelComma(ct) {
+		return nil, newError(CodeHeaderMalformed, "Content-Type must be single-valued")
+	}
 	if vals := r.Header.Values(contentDigestHeader); len(vals) > 1 {
 		return nil, newError(CodeHeaderMalformed, "multiple Content-Digest values")
+	}
+	if cd := r.Header.Get(contentDigestHeader); cd != "" {
+		if err := rejectDigestDuplicates(cd); err != nil {
+			return nil, err
+		}
 	}
 
 	// Pre-check 0: required_for + header-pair enforcement.
@@ -364,6 +376,25 @@ func readAndReplaceBody(r *http.Request, limit int64) ([]byte, error) {
 }
 
 // verifySignature returns true if sig is a valid signature over base for the
+// containsTopLevelComma reports whether s has a comma outside of a
+// double-quoted string. Used to reject comma-smuggled single-value headers
+// (e.g. `application/json, text/plain` in one Content-Type field).
+func containsTopLevelComma(s string) bool {
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inQuote && c == '\\' && i+1 < len(s):
+			i++
+		case c == '"':
+			inQuote = !inQuote
+		case !inQuote && c == ',':
+			return true
+		}
+	}
+	return false
+}
+
 // given public key and AdCP algorithm.
 func verifySignature(alg Algorithm, pub any, base, sig []byte) bool {
 	switch alg {

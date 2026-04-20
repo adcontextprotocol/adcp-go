@@ -22,7 +22,7 @@ Ask the user — don't guess.
 
 1. **Marketplace or owned?** Marketplace = third-party data (`signal_type: "marketplace"`, `signal_id.source: "catalog"`, `signal_id.data_provider_domain`). Owned = first-party data (`signal_type: "owned"`, `signal_id.source: "agent"`, `signal_id.agent_url`).
 2. **What segments?** 3-5 with variety. Each needs: name, description, coverage_percentage (5-30%), value_type (binary/categorical/numeric).
-3. **Pricing.** At least one per signal: `cpm`, `percent_of_media`, or `flat_fee`.
+3. **Pricing.** At least one per signal. Five variants: `cpm`, `percent_of_media` (with optional `max_cpm` ceiling), `flat_fee`, `per_unit` (needs `Unit` + `UnitPrice`), `custom` (escape hatch — needs `Description` + `Metadata` with a `summary_for_operator` key; buyers route custom pricing through operator review rather than auto-selecting, so use it only for models the four enumerated forms can't express).
 4. **Activation destinations.** Platform (`type: "platform"`, returns `segment_id`) or agent (`type: "agent"`, returns `key_value`).
 5. **Property list change notifications?** Signals agents that publish resolved property lists SHOULD emit `adcp.PropertyListChangedWebhook` when the list changes — see `skills/build-webhook-publisher/` for the signed-delivery pattern.
 
