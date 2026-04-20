@@ -265,12 +265,15 @@ func indexParamSeparator(s string) int {
 type paramValue struct {
 	isString bool
 	isInt    bool
+	isToken  bool
 	str      string
 	intv     int64
 }
 
 // readParamValue reads one param value from the start of s and returns the
-// parsed value plus the number of bytes consumed.
+// parsed value plus the number of bytes consumed. Per RFC 8941, strings and
+// tokens are distinct types; callers that require string-typed params must
+// reject isToken values.
 func readParamValue(s string) (paramValue, int, error) {
 	if len(s) == 0 {
 		return paramValue{}, 0, newError(CodeHeaderMalformed, "empty param value")
@@ -303,8 +306,8 @@ func readParamValue(s string) (paramValue, int, error) {
 	if n, err := strconv.ParseInt(tok, 10, 64); err == nil {
 		return paramValue{isInt: true, intv: n}, end, nil
 	}
-	// Bare token.
-	return paramValue{isString: true, str: tok}, end, nil
+	// Bare token — distinct from a string per RFC 8941 §3.3.
+	return paramValue{isToken: true, str: tok}, end, nil
 }
 
 func (si *sigInput) setParam(name string, v paramValue) error {
@@ -338,7 +341,7 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 			return err
 		}
 		if !v.isString {
-			return newError(CodeHeaderMalformed, "nonce must be string")
+			return newError(CodeHeaderMalformed, "nonce must be a quoted string")
 		}
 		if len(v.str) > maxNonceLen {
 			return newError(CodeHeaderMalformed, "nonce too long")
@@ -349,7 +352,7 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 			return err
 		}
 		if !v.isString {
-			return newError(CodeHeaderMalformed, "keyid must be string")
+			return newError(CodeHeaderMalformed, "keyid must be a quoted string")
 		}
 		if len(v.str) > maxKeyIDLen {
 			return newError(CodeHeaderMalformed, "keyid too long")
@@ -360,7 +363,7 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 			return err
 		}
 		if !v.isString {
-			return newError(CodeHeaderMalformed, "alg must be string")
+			return newError(CodeHeaderMalformed, "alg must be a quoted string")
 		}
 		si.alg = v.str
 	case "tag":
@@ -368,7 +371,7 @@ func (si *sigInput) setParam(name string, v paramValue) error {
 			return err
 		}
 		if !v.isString {
-			return newError(CodeHeaderMalformed, "tag must be string")
+			return newError(CodeHeaderMalformed, "tag must be a quoted string")
 		}
 		si.tag = v.str
 	default:

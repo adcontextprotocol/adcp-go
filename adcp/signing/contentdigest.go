@@ -59,6 +59,45 @@ func extractSHA256FromDigestHeader(header string) ([]byte, bool, error) {
 	return nil, false, nil
 }
 
+// rejectDigestDuplicates walks the Content-Digest dict and returns an error
+// if any algorithm key appears more than once. RFC 9530 §2 defines the header
+// as a Dictionary-Structured-Field; duplicate keys are ambiguous for
+// signature coverage (signer and verifier could disagree on which value
+// enters the base, a parser-differential attack).
+func rejectDigestDuplicates(header string) error {
+	seen := map[string]struct{}{}
+	rest := strings.TrimSpace(header)
+	for len(rest) > 0 {
+		for len(rest) > 0 && (rest[0] == ' ' || rest[0] == '\t' || rest[0] == ',') {
+			rest = rest[1:]
+		}
+		if len(rest) == 0 {
+			break
+		}
+		eq := strings.IndexByte(rest, '=')
+		if eq <= 0 {
+			return newError(CodeHeaderMalformed, "Content-Digest missing =")
+		}
+		alg := strings.ToLower(strings.TrimSpace(rest[:eq]))
+		if _, dup := seen[alg]; dup {
+			return newError(CodeHeaderMalformed, "Content-Digest has duplicate algorithm")
+		}
+		seen[alg] = struct{}{}
+		rest = rest[eq+1:]
+		rest = strings.TrimLeft(rest, " \t")
+		if len(rest) == 0 || rest[0] != ':' {
+			return newError(CodeHeaderMalformed, "Content-Digest value missing :")
+		}
+		end := strings.IndexByte(rest[1:], ':')
+		if end < 0 {
+			return newError(CodeHeaderMalformed, "Content-Digest value unterminated")
+		}
+		rest = rest[2+end:]
+		rest = skipDigestParams(rest)
+	}
+	return nil
+}
+
 // skipDigestParams skips any ";name=value" suffixes up to the next top-level
 // "," or end of string.
 func skipDigestParams(s string) string {
