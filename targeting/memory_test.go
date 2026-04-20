@@ -112,11 +112,12 @@ func TestScale_IdentityNoTargeting(t *testing.T) {
 			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
 			PackageIDs: pkgIDs,
 		}
+		resolved := &ResolvedPackages{}
 
 		const iterations = 2_000
 		start := time.Now()
 		for range iterations {
-			_, _ = engine.EvaluateIdentity(context.Background(), req)
+			_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, req)
 		}
 		elapsed := time.Since(start)
 		perPkg := elapsed / time.Duration(iterations*numPkgs)
