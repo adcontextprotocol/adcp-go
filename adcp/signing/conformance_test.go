@@ -16,7 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Vector is the JSON shape of each AdCP request-signing conformance vector.
+// Vector is the JSON shape of each AdCP conformance vector, used for both
+// the request-signing and webhook-signing suites.
 type Vector struct {
 	Name          string          `json:"name"`
 	SpecReference string          `json:"spec_reference"`
@@ -29,6 +30,38 @@ type Vector struct {
 	ExpectedBase  string          `json:"expected_signature_base"`
 	Expected      VectorOutcome   `json:"expected_outcome"`
 	Comment       json.RawMessage `json:"$comment"`
+}
+
+// UnmarshalJSON accepts both shapes that the two upstream vector suites use
+// for jwks_override: the JWKS shape `{"keys":[...]}` (request-signing) and
+// the map-of-kid-to-jwk shape `{"<kid>":{...}}` (webhook-signing).
+func (v *Vector) UnmarshalJSON(data []byte) error {
+	type alias Vector
+	aux := &struct {
+		JWKSOverride json.RawMessage `json:"jwks_override"`
+		*alias
+	}{alias: (*alias)(v)}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if len(aux.JWKSOverride) == 0 || string(aux.JWKSOverride) == "null" {
+		return nil
+	}
+	var asJWKS JWKS
+	if err := json.Unmarshal(aux.JWKSOverride, &asJWKS); err == nil && len(asJWKS.Keys) > 0 {
+		v.JWKSOverride = &asJWKS
+		return nil
+	}
+	var asMap map[string]JWK
+	if err := json.Unmarshal(aux.JWKSOverride, &asMap); err != nil {
+		return err
+	}
+	jwks := &JWKS{}
+	for _, k := range asMap {
+		jwks.Keys = append(jwks.Keys, k)
+	}
+	v.JWKSOverride = jwks
+	return nil
 }
 
 type VectorRequest struct {
@@ -45,9 +78,14 @@ type VectorCap struct {
 }
 
 type VectorState struct {
+	// Request-signing shape:
 	ReplayCacheEntries       []replayEntry          `json:"replay_cache_entries"`
 	ReplayCacheCapHit        *capHit                `json:"replay_cache_per_keyid_cap_hit"`
 	RevocationList           *revocationListSnapshot `json:"revocation_list"`
+	// Webhook-signing shape (adcontextprotocol/adcp#2445 uses a flatter vocabulary):
+	RevokedKids               []string `json:"revoked_kids"`
+	PerKeyIDCapFilledFor      string   `json:"per_keyid_cap_filled_for"`
+	RevocationListStaleSeconds int64   `json:"revocation_list_stale_seconds"`
 }
 
 type replayEntry struct {
