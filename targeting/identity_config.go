@@ -8,11 +8,14 @@ import (
 )
 
 // PackageIdentityConfig is the identity-side configuration for a package,
-// stored in the Store as JSON at key "config:pkg:{packageID}".
+// stored in the Store as JSON at key "config:pkg:{packageID}". It links a
+// package to buyer-side identifiers used for cross-publisher frequency caps.
 type PackageIdentityConfig struct {
-	CampaignID     string             `json:"campaign_id,omitempty"`
+	AdvertiserID   string              `json:"advertiser_id,omitempty"`
+	CampaignID     string              `json:"campaign_id,omitempty"`
+	CreativeID     string              `json:"creative_id,omitempty"`
 	FrequencyRules []FrequencyRuleJSON `json:"frequency_rules,omitempty"`
-	TargetSegments []string           `json:"target_segments,omitempty"`
+	TargetSegments []string            `json:"target_segments,omitempty"`
 }
 
 // CampaignFreqConfig is the frequency cap configuration for a campaign,

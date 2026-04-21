@@ -320,5 +320,3 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 
 	assert.Equal(t, PropertyTypeAIAssistant, got.PropertyType, "property_type")
 }
-
-// ExposeRequest tests moved to targeting package where the type now lives.

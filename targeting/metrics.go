@@ -20,7 +20,6 @@ const (
 type Metrics interface {
 	ContextEvaluated(packageID, stage string, passed bool)
 	IdentityEvaluated(packageID, stage string, passed bool)
-	ExposureRecorded(packageID string)
 	StoreError(operation string, err error)
 	Latency(stage string, d time.Duration)
 }
@@ -29,6 +28,5 @@ type noopMetrics struct{}
 
 func (noopMetrics) ContextEvaluated(string, string, bool) {}
 func (noopMetrics) IdentityEvaluated(string, string, bool) {}
-func (noopMetrics) ExposureRecorded(string) {}
-func (noopMetrics) StoreError(string, error) {}
-func (noopMetrics) Latency(string, time.Duration) {}
+func (noopMetrics) StoreError(string, error)              {}
+func (noopMetrics) Latency(string, time.Duration)         {}

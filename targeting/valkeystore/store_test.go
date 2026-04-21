@@ -2,7 +2,6 @@ package valkeystore
 
 import (
 	"context"
-	"math"
 	"testing"
 	"time"
 
@@ -70,22 +69,3 @@ func TestStringOperations(t *testing.T) {
 	assert.False(t, ok, "expected expired key to be gone")
 }
 
-func TestSortedSetOperations(t *testing.T) {
-	s, mr := setup(t)
-	defer mr.Close()
-	ctx := context.Background()
-
-	require.NoError(t, s.ZAdd(ctx, "events", 100, "a"))
-	require.NoError(t, s.ZAdd(ctx, "events", 200, "b"))
-	require.NoError(t, s.ZAdd(ctx, "events", 300, "c"))
-
-	count, err := s.ZCount(ctx, "events", 150, math.MaxFloat64)
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), count)
-
-	require.NoError(t, s.ZExpire(ctx, "events", 5*time.Second))
-	mr.FastForward(6 * time.Second)
-	count, err = s.ZCount(ctx, "events", 0, math.MaxFloat64)
-	require.NoError(t, err)
-	assert.Equal(t, int64(0), count, "expected 0 after expiry")
-}

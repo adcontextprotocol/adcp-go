@@ -11,7 +11,6 @@ package targeting
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -405,28 +404,35 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 			if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
 				rules := toFrequencyRules(campCfg.FrequencyRules)
 				campHash := hashString(idCfg.CampaignID)
-				if CheckFrequencyRulesMultiLog(firstLogs, campHash, true, rules, nowUnix) {
+				if CheckFrequencyRulesMultiLog(firstLogs, FilterCampaign, campHash, rules, nowUnix) {
 					eligible = false
 					e.metrics.IdentityEvaluated(pkgID, StageCampaignFreq, false)
 				}
 			}
 		}
 
-		// Package frequency cap (binary lazy dedup across all UID logs).
-		pkgHash := hashString(pkgID)
-		if eligible && idCfg != nil && len(idCfg.FrequencyRules) > 0 {
+		// Creative-level frequency cap (binary lazy dedup across all UID logs).
+		// PackageIdentityConfig.FrequencyRules are applied against the package's
+		// creative. Without a CreativeID on the config, the package cap is skipped.
+		var creativeHash uint64
+		if idCfg != nil && idCfg.CreativeID != "" {
+			creativeHash = hashString(idCfg.CreativeID)
+		}
+		if eligible && idCfg != nil && idCfg.CreativeID != "" && len(idCfg.FrequencyRules) > 0 {
 			rules := toFrequencyRules(idCfg.FrequencyRules)
-			if CheckFrequencyRulesMultiLog(firstLogs, pkgHash, false, rules, nowUnix) {
+			if CheckFrequencyRulesMultiLog(firstLogs, FilterCreative, creativeHash, rules, nowUnix) {
 				eligible = false
 				e.metrics.IdentityEvaluated(pkgID, StagePackageFreq, false)
 			}
 		}
 
-		// Intent score (binary, scan across all UID logs).
+		// Intent score (binary, scan across all UID logs) keyed by creative.
 		var intent float64
-		latestTS := LatestExposureMultiLog(firstLogs, pkgHash)
-		if latestTS > 0 {
-			intent = ComputeIntentScore(latestTS, now)
+		if idCfg != nil && idCfg.CreativeID != "" {
+			latestTS := LatestExposureMultiLog(firstLogs, FilterCreative, creativeHash)
+			if latestTS > 0 {
+				intent = ComputeIntentScore(latestTS, now)
+			}
 		}
 
 		pe := tmproto.PackageEligibility{PackageID: pkgID, Eligible: eligible}
@@ -453,165 +459,6 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 		return err
 	}
 	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
-}
-
-// RecordExposure records an impression to the exposure log for all UIDs.
-// Each UID's exposure log is read, the new entry is appended,
-// old entries are pruned, and the log is written back.
-//
-// NOTE: The read-modify-write is not atomic. Concurrent RecordExposure calls
-// for the same user may lose an exposure. This is acceptable for frequency
-// capping (slightly under-counting is benign). For strict counting, use
-// Valkey Lua scripting for atomic append.
-// TODO: Add Store.Append method for atomic binary append.
-func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*ExposeResponse, error) {
-	if err := ValidateExposeRequest(req); err != nil {
-		return nil, fmt.Errorf("invalid expose request: %w", err)
-	}
-	now := e.now()
-	identities := resolveExposeIdentities(req)
-
-	// Resolve source ID: use request field, fall back to engine's provider ID.
-	sourceID := req.SourceID
-	if sourceID == "" {
-		sourceID = e.providerID
-	}
-
-	// Resolve campaign ID.
-	campaignID := req.CampaignID
-	if campaignID == "" {
-		idCfg, _ := loadPackageIdentityConfig(ctx, e.store, req.PackageID)
-		if idCfg != nil {
-			campaignID = idCfg.CampaignID
-		}
-	}
-
-	// Generate impression ID if not provided.
-	impressionID := req.ImpressionID
-	if impressionID == "" {
-		impressionID = fmt.Sprintf("%d:%s", now.UnixNano(), req.PackageID)
-	}
-
-	entry := ExposureEntry{
-		ImpressionID: impressionID,
-		PackageID:    req.PackageID,
-		CampaignID:   campaignID,
-		SourceID:     sourceID,
-		Timestamp:    now.Unix(),
-	}
-
-	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
-	nowMs := float64(now.UnixMilli())
-	pruneBeforeMs := float64(now.Add(-30 * 24 * time.Hour).UnixMilli())
-
-	// Pre-compute token hashes (SHA-256, avoid re-hashing per loop).
-	hashes := make([]string, len(identities))
-	for i, uid := range identities {
-		hashes[i] = HashToken(uid.UserToken)
-	}
-
-	// Write to each UID's exposure log. Capture the first UID's log for the response.
-	var firstLog BinaryExposureLog
-	for i, hash := range hashes {
-		key := "user:exposures:" + hash
-
-		val, _, err := e.store.Get(ctx, key)
-		if err != nil {
-			e.metrics.StoreError("read_exposure_log", err)
-			continue
-		}
-
-		// Prune expired entries and append new one, upgrading v1→v2 if needed.
-		existing := BinaryExposureLog(val)
-		if len(val) > 0 {
-			if err := ValidateBinaryLog(existing); err != nil {
-				e.metrics.StoreError("corrupt_exposure_log", err)
-				existing = nil
-			}
-		}
-		newEntry := EncodeBinaryExposureLog(ExposureLog{entry})
-
-		pruned := newBinaryLog(existing.Len() + 1)
-		es := int(existing.EntrySize())
-		for j := range existing.Len() {
-			if existing.Timestamp(j) >= cutoff {
-				off := existing.entryOffset(j)
-				if es == binaryEntrySize {
-					pruned = append(pruned, existing[off:off+binaryEntrySize]...)
-				} else {
-					// Upgrade v1 entry: copy 32 bytes + 8 zero bytes for source hash.
-					pruned = append(pruned, existing[off:off+binaryEntrySize1]...)
-					pruned = append(pruned, 0, 0, 0, 0, 0, 0, 0, 0)
-				}
-			}
-		}
-		// Append the new v2 entry's payload (skip its header).
-		pruned = append(pruned, newEntry[binaryHeaderSize:]...)
-		pruned = TruncateBinaryLog(pruned, maxExposureEntries)
-
-		if err := e.store.Set(ctx, key, string(pruned), 30*24*time.Hour); err != nil {
-			e.metrics.StoreError("write_exposure_log", err)
-		}
-		if i == 0 {
-			firstLog = BinaryExposureLog(pruned)
-		}
-
-		// Package frequency sorted set.
-		member := sourceID + ":" + impressionID
-		pkgFreqKey := fmt.Sprintf("freq:pkg:%s:%s", req.PackageID, hash)
-		if err := e.store.ZAdd(ctx, pkgFreqKey, nowMs, member); err != nil {
-			e.metrics.StoreError("zadd_pkg_freq", err)
-		} else {
-			if err := e.store.ZRemRangeByScore(ctx, pkgFreqKey, 0, pruneBeforeMs); err != nil {
-				e.metrics.StoreError("zremrangebyscore_pkg_freq", err)
-			}
-			_ = e.store.ZExpire(ctx, pkgFreqKey, 30*24*time.Hour)
-		}
-
-		// Campaign frequency sorted set.
-		if campaignID != "" {
-			campFreqKey := fmt.Sprintf("freq:campaign:%s:%s", campaignID, hash)
-			if err := e.store.ZAdd(ctx, campFreqKey, nowMs, member); err != nil {
-				e.metrics.StoreError("zadd_campaign_freq", err)
-			} else {
-				if err := e.store.ZRemRangeByScore(ctx, campFreqKey, 0, pruneBeforeMs); err != nil {
-					e.metrics.StoreError("zremrangebyscore_campaign_freq", err)
-				}
-				_ = e.store.ZExpire(ctx, campFreqKey, 30*24*time.Hour)
-			}
-		}
-	}
-
-	e.metrics.ExposureRecorded(req.PackageID)
-
-	// Compute campaign count from the first UID's log (already in memory, no re-read).
-	resp := &ExposeResponse{PackageID: req.PackageID}
-	if campaignID != "" && firstLog.Len() > 0 {
-		campHash := hashString(campaignID)
-
-		campCfg, _ := loadCampaignFreqConfig(ctx, e.store, campaignID)
-		if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
-			rules := toFrequencyRules(campCfg.FrequencyRules)
-			shortestRule := rules[0]
-			for _, r := range rules[1:] {
-				if r.Window < shortestRule.Window {
-					shortestRule = r
-				}
-			}
-			windowStart := now.Add(-shortestRule.Window).Unix()
-			count := 0
-			for i := range firstLog.Len() {
-				if firstLog.CampaignHash(i) == campHash && firstLog.Timestamp(i) >= windowStart {
-					count++
-				}
-			}
-			resp.CampaignCount = count
-			remaining := max(shortestRule.MaxCount-count, 0)
-			resp.CampaignRemaining = remaining
-		}
-	}
-
-	return resp, nil
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.
