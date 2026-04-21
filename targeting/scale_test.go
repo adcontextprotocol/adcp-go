@@ -120,6 +120,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		store.Now = func() time.Time { return now }
 
 		idCfg := PackageIdentityConfig{
+			CreativeID:     "creative-1",
 			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100_000, WindowSeconds: 86400}},
 		}
 		store.SetPackageIdentityConfig("pkg-1", idCfg)
@@ -129,8 +130,7 @@ func TestScale_FrequencyCapExposures(t *testing.T) {
 		for i := range numExposures {
 			entries = append(entries, ExposureEntry{
 				ImpressionID: fmt.Sprintf("imp-%d", i),
-				PackageID:    "pkg-1",
-				SourceID:     "bench",
+				CreativeID:   "creative-1",
 				Timestamp:    now.Add(-time.Duration(i) * time.Minute).Unix(),
 			})
 		}

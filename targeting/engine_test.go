@@ -2,8 +2,6 @@ package targeting
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -37,16 +35,22 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 
 	// Seed identity config in Store (data-driven).
 	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
+		AdvertiserID:   "adv-acme",
 		CampaignID:     "campaign-acme",
+		CreativeID:     "creative-display-001",
 		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"cooking", "home"},
 	})
 	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{
+		AdvertiserID:   "adv-acme",
 		CampaignID:     "campaign-acme",
+		CreativeID:     "creative-display-002",
 		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}},
 	})
 	store.SetPackageIdentityConfig("pkg-multi-rule", PackageIdentityConfig{
-		CampaignID: "campaign-acme",
+		AdvertiserID: "adv-acme",
+		CampaignID:   "campaign-acme",
+		CreativeID:   "creative-multi-rule",
 		FrequencyRules: []FrequencyRuleJSON{
 			{MaxCount: 2, WindowSeconds: 43200},
 			{MaxCount: 5, WindowSeconds: 604800},
@@ -64,9 +68,9 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 			"home":    {"pkg-display-001"},
 		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking", "home"}},
-			"pkg-display-002": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}}},
-			"pkg-multi-rule":  {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 2, WindowSeconds: 43200}, {MaxCount: 5, WindowSeconds: 604800}}},
+			"pkg-display-001": {AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-002": {AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-002", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}}},
+			"pkg-multi-rule":  {AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-multi-rule", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 2, WindowSeconds: 43200}, {MaxCount: 5, WindowSeconds: 604800}}},
 			"pkg-no-cap":      {},
 		},
 		CampaignConfigs: map[string]*CampaignFreqConfig{
@@ -340,32 +344,22 @@ func TestContext_UnknownPackageSkipped(t *testing.T) {
 
 // --- Identity Tests (using resolved path with exposure logs) ---
 
-func TestIdentity_ExposureIncrements(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
-		UserToken: "user-abc",
-		PackageID: "pkg-display-001",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, resp.CampaignCount)
-	assert.Equal(t, 4, resp.CampaignRemaining)
-}
-
 func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
 
-	// 5 exposures across two packages in campaign-acme (cap is 5/7d).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-001-%d", i)})
+	// 5 exposures across two creatives in campaign-acme (cap is 5/7d).
+	entries := []ExposureEntry{
+		{ImpressionID: "imp-001-0", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-001-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-001-2", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-002-0", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-002", Timestamp: now.Unix()},
+		{ImpressionID: "imp-002-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-002", Timestamp: now.Unix()},
 	}
-	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002", ImpressionID: fmt.Sprintf("imp-002-%d", i)})
-	}
+	store.SetUserExposures("user-abc", entries)
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-campaign",
@@ -378,19 +372,23 @@ func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 	}
 }
 
-func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
+func TestIdentity_CreativeCappedButCampaignNot(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
 
-	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-cap-%d", i)})
+	// 3 exposures on creative-display-001 (creative cap=3, campaign cap=5).
+	entries := []ExposureEntry{
+		{ImpressionID: "imp-cap-0", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-cap-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-cap-2", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
 	}
+	store.SetUserExposures("user-abc", entries)
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-pkg-cap",
+		RequestID:  "id-creative-cap",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
 	})
@@ -400,17 +398,21 @@ func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
 	for _, e := range resp.Eligibility {
 		byPkg[e.PackageID] = e
 	}
-	assert.False(t, byPkg["pkg-display-001"].Eligible, "pkg-display-001 should be package-capped (3/3)")
+	assert.False(t, byPkg["pkg-display-001"].Eligible, "pkg-display-001 should be creative-capped (3/3)")
 	assert.True(t, byPkg["pkg-display-002"].Eligible, "pkg-display-002 should still be eligible")
 }
 
 func TestIdentity_MultipleFrequencyRules(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
+	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// pkg-multi-rule: 2 per 12h AND 5 per 7d.
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-1"})
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-2"})
+	// pkg-multi-rule creative: 2 per 12h AND 5 per 7d.
+	entries := []ExposureEntry{
+		{ImpressionID: "imp-multi-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-multi-rule", Timestamp: now.Unix()},
+		{ImpressionID: "imp-multi-2", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-multi-rule", Timestamp: now.Unix()},
+	}
+	store.SetUserExposures("user-abc", entries)
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-multi",
@@ -429,9 +431,12 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
 
 	// 3 exposures (hits cap).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-window-%d", i)})
+	entries := []ExposureEntry{
+		{ImpressionID: "imp-window-0", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-window-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+		{ImpressionID: "imp-window-2", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
 	}
+	store.SetUserExposures("user-abc", entries)
 
 	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-before", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
@@ -452,10 +457,12 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 func TestIdentity_IntentScore(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
-
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
+	store.SetUserExposures("user-abc", []ExposureEntry{
+		{ImpressionID: "imp-intent-1", AdvertiserID: "adv-acme", CampaignID: "campaign-acme", CreativeID: "creative-display-001", Timestamp: now.Unix()},
+	})
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "id-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
@@ -499,70 +506,3 @@ func TestIdentity_RequestIDPreserved(t *testing.T) {
 	assert.Equal(t, "keep-this", resp.RequestID)
 }
 
-// --- Source Provenance Tests ---
-
-func TestIdentity_SourceIDFallsBackToProviderID(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	// No source_id -> engine uses providerID ("test-provider").
-	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
-		UserToken:    "user-src",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-src-1",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "pkg-display-001", resp.PackageID)
-
-	// Read back the binary log and verify source hash = hash("test-provider").
-	hash := HashToken("user-src")
-	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
-	blog := BinaryExposureLog(val)
-	require.Equal(t, 1, blog.Len())
-	assert.Equal(t, hashString("test-provider"), blog.SourceHash(0), "expected source hash of 'test-provider' when source_id not provided")
-}
-
-func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	_, err := engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-cnn-v2",
-		UserToken:    "user-source-stamp",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-src-2",
-	})
-	require.NoError(t, err)
-
-	hash := HashToken("user-source-stamp")
-	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
-	blog := BinaryExposureLog(val)
-	require.Equal(t, 1, blog.Len())
-	assert.Equal(t, hashString("agent-cnn-v2"), blog.SourceHash(0), "expected source hash of 'agent-cnn-v2'")
-}
-
-func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	// Two different sources submit the same impression_id.
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-a",
-		UserToken:    "user-ns",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-dup",
-	})
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-b",
-		UserToken:    "user-ns",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-dup",
-	})
-
-	// ZCount should show 2 distinct members (agent-a:imp-dup and agent-b:imp-dup).
-	hash := HashToken("user-ns")
-	key := "freq:pkg:pkg-display-001:" + hash
-	count, err := engine.store.ZCount(ctx, key, 0, math.MaxFloat64)
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), count, "expected 2 sorted set members (namespaced by source)")
-}

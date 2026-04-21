@@ -9,14 +9,12 @@ import (
 	"time"
 )
 
-// MockStore is an in-memory Store for testing. It supports sets, strings,
-// and sorted sets with TTL expiry. All operations are goroutine-safe.
+// MockStore is an in-memory Store for testing. It supports sets and strings
+// with TTL expiry. All operations are goroutine-safe.
 type MockStore struct {
 	mu      sync.RWMutex
 	sets    map[string]map[string]struct{}
 	strings map[string]stringEntry
-	zsets   map[string][]zsetMember
-	expiry  map[string]time.Time // key -> expiry time
 
 	// Now returns the current time. Defaults to time.Now.
 	// Override in tests to control time.
@@ -28,18 +26,11 @@ type stringEntry struct {
 	expiry time.Time // zero means no expiry
 }
 
-type zsetMember struct {
-	score  float64
-	member string
-}
-
 // NewMockStore creates an empty MockStore.
 func NewMockStore() *MockStore {
 	return &MockStore{
 		sets:    make(map[string]map[string]struct{}),
 		strings: make(map[string]stringEntry),
-		zsets:   make(map[string][]zsetMember),
-		expiry:  make(map[string]time.Time),
 		Now:     time.Now,
 	}
 }
@@ -133,9 +124,6 @@ func (m *MockStore) SetPackageContextConfig(pkgID string, cfg PackageContextConf
 func (m *MockStore) SetIsMember(_ context.Context, key, member string) (bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.isExpired(key) {
-		return false, nil
-	}
 	s, ok := m.sets[key]
 	if !ok {
 		return false, nil
@@ -153,7 +141,7 @@ func (m *MockStore) SetIntersect(_ context.Context, keys ...string) ([]string, e
 
 	// Start with the first set.
 	first, ok := m.sets[keys[0]]
-	if !ok || m.isExpired(keys[0]) {
+	if !ok {
 		return nil, nil
 	}
 
@@ -164,7 +152,7 @@ func (m *MockStore) SetIntersect(_ context.Context, keys ...string) ([]string, e
 
 	for _, key := range keys[1:] {
 		s, ok := m.sets[key]
-		if !ok || m.isExpired(key) {
+		if !ok {
 			return nil, nil
 		}
 		for k := range result {
@@ -218,80 +206,15 @@ func (m *MockStore) Exists(_ context.Context, key string) (bool, error) {
 		}
 		return true, nil
 	}
-	if _, ok := m.sets[key]; ok && !m.isExpired(key) {
-		return true, nil
-	}
-	if _, ok := m.zsets[key]; ok && !m.isExpired(key) {
+	if _, ok := m.sets[key]; ok {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (m *MockStore) ZAdd(_ context.Context, key string, score float64, member string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// Match Redis semantics: update score if member already exists.
-	members := m.zsets[key]
-	for i, z := range members {
-		if z.member == member {
-			members[i].score = score
-			return nil
-		}
-	}
-	m.zsets[key] = append(members, zsetMember{score: score, member: member})
-	return nil
-}
-
-func (m *MockStore) ZCount(_ context.Context, key string, min, max float64) (int64, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if m.isExpired(key) {
-		return 0, nil
-	}
-	members, ok := m.zsets[key]
-	if !ok {
-		return 0, nil
-	}
-	var count int64
-	for _, m := range members {
-		if m.score >= min && m.score <= max {
-			count++
-		}
-	}
-	return count, nil
-}
-
-func (m *MockStore) ZExpire(_ context.Context, key string, ttl time.Duration) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if ttl > 0 {
-		m.expiry[key] = m.Now().Add(ttl)
-	} else {
-		delete(m.expiry, key)
-	}
-	return nil
-}
-
-func (m *MockStore) ZRemRangeByScore(_ context.Context, key string, min, max float64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	members := m.zsets[key]
-	kept := members[:0]
-	for _, z := range members {
-		if z.score < min || z.score > max {
-			kept = append(kept, z)
-		}
-	}
-	m.zsets[key] = kept
-	return nil
-}
-
 func (m *MockStore) SetMembers(_ context.Context, key string) ([]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m.isExpired(key) {
-		return nil, nil
-	}
 	s, ok := m.sets[key]
 	if !ok {
 		return nil, nil
@@ -319,13 +242,4 @@ func (m *MockStore) MGet(_ context.Context, keys ...string) ([]string, error) {
 		results[i] = entry.value
 	}
 	return results, nil
-}
-
-// isExpired checks key-level expiry. Must be called with lock held.
-func (m *MockStore) isExpired(key string) bool {
-	exp, ok := m.expiry[key]
-	if !ok {
-		return false
-	}
-	return m.Now().After(exp)
 }

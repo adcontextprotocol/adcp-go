@@ -33,12 +33,16 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	}
 
 	pkgAlpha := targeting.PackageIdentityConfig{
+		AdvertiserID:   "adv-x",
 		CampaignID:     "campaign-x",
+		CreativeID:     "creative-alpha",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"sports"},
 	}
 	pkgBeta := targeting.PackageIdentityConfig{
+		AdvertiserID:   "adv-x",
 		CampaignID:     "campaign-x",
+		CreativeID:     "creative-beta",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 	}
 	campaignX := targeting.CampaignFreqConfig{
@@ -77,46 +81,69 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	return engine, store, mr, resolved
 }
 
-func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
-	engine, _, mr, resolved := setupIntegration(t)
+// seedExposures writes the given exposure entries into the user's binary log.
+func seedExposures(t *testing.T, store *Store, userToken string, entries []targeting.ExposureEntry) {
+	t.Helper()
+	hash := targeting.HashToken(userToken)
+	bin := targeting.EncodeBinaryExposureLog(entries)
+	require.NoError(t, store.Set(context.Background(), "user:exposures:"+hash, string(bin), 0))
+}
+
+func creativeEntry(pkgID, impressionID string, ts time.Time) targeting.ExposureEntry {
+	cfg := map[string]struct {
+		advertiser string
+		campaign   string
+		creative   string
+	}{
+		"pkg-alpha": {"adv-x", "campaign-x", "creative-alpha"},
+		"pkg-beta":  {"adv-x", "campaign-x", "creative-beta"},
+	}
+	c := cfg[pkgID]
+	return targeting.ExposureEntry{
+		ImpressionID: impressionID,
+		AdvertiserID: c.advertiser,
+		CampaignID:   c.campaign,
+		CreativeID:   c.creative,
+		Timestamp:    ts.Unix(),
+	}
+}
+
+func TestValkeyIntegration_CreativeFrequencyCap(t *testing.T) {
+	engine, store, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
+	now := time.Now()
 
-	// Record 3 exposures (package cap = 3/24h).
+	// 3 exposures hit the pkg-alpha creative cap (3/24h).
+	var entries []targeting.ExposureEntry
 	for i := range 3 {
-		_, err := engine.RecordExposure(ctx, &targeting.ExposeRequest{
-			UserToken: "user-valkey", PackageID: "pkg-alpha",
-			ImpressionID: fmt.Sprintf("imp-valkey-%d", i),
-		})
-		require.NoError(t, err)
+		entries = append(entries, creativeEntry("pkg-alpha", fmt.Sprintf("imp-valkey-%d", i), now))
 	}
+	seedExposures(t, store, "user-valkey", entries)
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "valkey-pkg-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
 	require.NoError(t, err)
-	assert.False(t, resp.Eligibility[0].Eligible, "pkg-alpha should be package-capped (3/3)")
+	assert.False(t, resp.Eligibility[0].Eligible, "pkg-alpha should be creative-capped (3/3)")
 }
 
 func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
-	engine, _, mr, resolved := setupIntegration(t)
+	engine, store, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
+	now := time.Now()
 
 	// 3 on pkg-alpha + 2 on pkg-beta = 5 total (campaign cap = 5/7d).
+	var entries []targeting.ExposureEntry
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
-			UserToken: "user-valkey", PackageID: "pkg-alpha",
-			ImpressionID: fmt.Sprintf("imp-v-camp-a-%d", i),
-		})
+		entries = append(entries, creativeEntry("pkg-alpha", fmt.Sprintf("imp-v-camp-a-%d", i), now))
 	}
 	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
-			UserToken: "user-valkey", PackageID: "pkg-beta",
-			ImpressionID: fmt.Sprintf("imp-v-camp-b-%d", i),
-		})
+		entries = append(entries, creativeEntry("pkg-beta", fmt.Sprintf("imp-v-camp-b-%d", i), now))
 	}
+	seedExposures(t, store, "user-valkey", entries)
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "valkey-camp-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
@@ -129,17 +156,17 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 }
 
 func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
-	engine, _, mr, resolved := setupIntegration(t)
+	engine, store, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
+	now := time.Now()
 
-	// 3 exposures hits package cap.
+	// 3 exposures hits creative cap.
+	var entries []targeting.ExposureEntry
 	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
-			UserToken: "user-valkey", PackageID: "pkg-alpha",
-			ImpressionID: fmt.Sprintf("imp-v-window-%d", i),
-		})
+		entries = append(entries, creativeEntry("pkg-alpha", fmt.Sprintf("imp-v-window-%d", i), now))
 	}
+	seedExposures(t, store, "user-valkey", entries)
 
 	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "v-before", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
@@ -147,10 +174,8 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should be capped")
 
-	// Fast-forward miniredis past the 24h window.
-	mr.FastForward(25 * time.Hour)
-	// Also advance engine time so the cutoff is correct.
-	engine.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
+	// Advance engine time past the 24h window.
+	engine.Now = func() time.Time { return now.Add(25 * time.Hour) }
 
 	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "v-after", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
@@ -160,12 +185,13 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 }
 
 func TestValkeyIntegration_IntentScore(t *testing.T) {
-	engine, _, mr, resolved := setupIntegration(t)
+	engine, store, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
+	now := time.Now()
 
-	_, _ = engine.RecordExposure(ctx, &targeting.ExposeRequest{
-		UserToken: "user-valkey", PackageID: "pkg-alpha",
+	seedExposures(t, store, "user-valkey", []targeting.ExposureEntry{
+		creativeEntry("pkg-alpha", "imp-v-intent", now),
 	})
 
 	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
@@ -175,18 +201,4 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp.Eligibility[0].IntentScore, "expected intent score to be set")
 	assert.GreaterOrEqual(t, *resp.Eligibility[0].IntentScore, 0.99, "expected high intent score after recent exposure")
-}
-
-func TestValkeyIntegration_ExposureResponse(t *testing.T) {
-	engine, _, mr, _ := setupIntegration(t)
-	defer mr.Close()
-	ctx := context.Background()
-
-	resp, err := engine.RecordExposure(ctx, &targeting.ExposeRequest{
-		UserToken: "user-valkey", PackageID: "pkg-alpha",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "pkg-alpha", resp.PackageID)
-	assert.Equal(t, 1, resp.CampaignCount)
-	assert.Equal(t, 4, resp.CampaignRemaining)
 }

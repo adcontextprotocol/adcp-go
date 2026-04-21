@@ -19,7 +19,6 @@ func TestMetricsInterface(t *testing.T) {
 	m.ContextEvaluated("pkg-1", "property_bitmap", false)
 	m.ContextEvaluated("pkg-2", "topic_match", true)
 	m.IdentityEvaluated("pkg-2", "campaign_freq", false)
-	m.ExposureRecorded("pkg-1")
 	m.StoreError("suppression", errors.New("timeout"))
 	m.Latency("property_bitmap", 50*time.Microsecond)
 	m.Latency("property_bitmap", 100*time.Microsecond)
@@ -36,7 +35,6 @@ func TestMetricsInterface(t *testing.T) {
 		"targeting_context_evaluated_total{stage=\"property_bitmap\",passed=\"false\"} 1",
 		"# TYPE targeting_identity_evaluated_total counter",
 		"targeting_identity_evaluated_total{stage=\"campaign_freq\",passed=\"false\"} 1",
-		"targeting_exposure_recorded_total 1",
 		"targeting_store_errors_total{operation=\"suppression\"} 1",
 		"# TYPE targeting_stage_duration_seconds histogram",
 		"targeting_stage_duration_seconds_bucket{stage=\"property_bitmap\",le=\"+Inf\"} 2",

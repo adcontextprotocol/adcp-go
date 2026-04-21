@@ -14,18 +14,18 @@ func TestParseExposureLog_Empty(t *testing.T) {
 }
 
 func TestParseExposureLog_Valid(t *testing.T) {
-	data := `[{"id":"imp-1","pkg":"pkg-food","cmp":"acme","ts":1718438400},{"id":"imp-2","pkg":"pkg-tech","ts":1718352000}]`
+	data := `[{"id":"imp-1","crv":"creative-food","cmp":"acme","ts":1718438400},{"id":"imp-2","crv":"creative-tech","ts":1718352000}]`
 	log := ParseExposureLog(data)
 	require.Len(t, log, 2)
 	assert.Equal(t, "imp-1", log[0].ImpressionID)
-	assert.Equal(t, "pkg-food", log[0].PackageID)
+	assert.Equal(t, "creative-food", log[0].CreativeID)
 	assert.Empty(t, log[1].CampaignID)
 }
 
 func TestSerializeExposureLog_RoundTrip(t *testing.T) {
 	original := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", Timestamp: 1000},
-		{ImpressionID: "imp-2", PackageID: "pkg-tech", Timestamp: 2000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", CampaignID: "acme", Timestamp: 1000},
+		{ImpressionID: "imp-2", CreativeID: "creative-tech", Timestamp: 2000},
 	}
 	data := SerializeExposureLog(original)
 	parsed := ParseExposureLog(data)
@@ -36,12 +36,12 @@ func TestSerializeExposureLog_RoundTrip(t *testing.T) {
 
 func TestMergeExposureLogs_Dedup(t *testing.T) {
 	log1 := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000},
-		{ImpressionID: "imp-2", PackageID: "pkg-tech", Timestamp: 2000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", Timestamp: 1000},
+		{ImpressionID: "imp-2", CreativeID: "creative-tech", Timestamp: 2000},
 	}
 	log2 := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000}, // dup
-		{ImpressionID: "imp-3", PackageID: "pkg-food", Timestamp: 3000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", Timestamp: 1000}, // dup
+		{ImpressionID: "imp-3", CreativeID: "creative-food", Timestamp: 3000},
 	}
 
 	merged := MergeExposureLogs(log1, log2)
@@ -71,25 +71,25 @@ func TestPruneExpired(t *testing.T) {
 
 func TestCheckFrequencyRules_NotCapped(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-food", Timestamp: 1000},
-		{ImpressionID: "2", PackageID: "pkg-food", Timestamp: 2000},
+		{ImpressionID: "1", CreativeID: "creative-food", Timestamp: 1000},
+		{ImpressionID: "2", CreativeID: "creative-food", Timestamp: 2000},
 	}
 	rules := []FrequencyRule{{MaxCount: 5, Window: 24 * time.Hour}}
 	now := time.Unix(3000, 0)
 
-	assert.False(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should not be capped (2/5)")
+	assert.False(t, CheckFrequencyRules(log, FilterCreative, "creative-food", rules, now), "should not be capped (2/5)")
 }
 
 func TestCheckFrequencyRules_Capped(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-food", Timestamp: 1000},
-		{ImpressionID: "2", PackageID: "pkg-food", Timestamp: 2000},
-		{ImpressionID: "3", PackageID: "pkg-food", Timestamp: 3000},
+		{ImpressionID: "1", CreativeID: "creative-food", Timestamp: 1000},
+		{ImpressionID: "2", CreativeID: "creative-food", Timestamp: 2000},
+		{ImpressionID: "3", CreativeID: "creative-food", Timestamp: 3000},
 	}
 	rules := []FrequencyRule{{MaxCount: 3, Window: 24 * time.Hour}}
 	now := time.Unix(4000, 0)
 
-	assert.True(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should be capped (3/3)")
+	assert.True(t, CheckFrequencyRules(log, FilterCreative, "creative-food", rules, now), "should be capped (3/3)")
 }
 
 func TestCheckFrequencyRules_MultiRule(t *testing.T) {
@@ -97,52 +97,52 @@ func TestCheckFrequencyRules_MultiRule(t *testing.T) {
 	// User has 2 exposures in last hour — should be capped by first rule.
 	now := time.Unix(10000, 0)
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-food", Timestamp: 9500},
-		{ImpressionID: "2", PackageID: "pkg-food", Timestamp: 9800},
+		{ImpressionID: "1", CreativeID: "creative-food", Timestamp: 9500},
+		{ImpressionID: "2", CreativeID: "creative-food", Timestamp: 9800},
 	}
 	rules := []FrequencyRule{
 		{MaxCount: 2, Window: time.Hour},
 		{MaxCount: 5, Window: 24 * time.Hour},
 	}
 
-	assert.True(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should be capped by 1h rule (2/2)")
+	assert.True(t, CheckFrequencyRules(log, FilterCreative, "creative-food", rules, now), "should be capped by 1h rule (2/2)")
 }
 
 func TestCheckFrequencyRules_CampaignLevel(t *testing.T) {
-	// 5 per campaign across multiple packages.
+	// 5 per campaign across multiple creatives.
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-a", CampaignID: "acme", Timestamp: 1000},
-		{ImpressionID: "2", PackageID: "pkg-b", CampaignID: "acme", Timestamp: 2000},
-		{ImpressionID: "3", PackageID: "pkg-a", CampaignID: "acme", Timestamp: 3000},
-		{ImpressionID: "4", PackageID: "pkg-c", CampaignID: "acme", Timestamp: 4000},
-		{ImpressionID: "5", PackageID: "pkg-a", CampaignID: "acme", Timestamp: 5000},
+		{ImpressionID: "1", CreativeID: "creative-a", CampaignID: "acme", Timestamp: 1000},
+		{ImpressionID: "2", CreativeID: "creative-b", CampaignID: "acme", Timestamp: 2000},
+		{ImpressionID: "3", CreativeID: "creative-a", CampaignID: "acme", Timestamp: 3000},
+		{ImpressionID: "4", CreativeID: "creative-c", CampaignID: "acme", Timestamp: 4000},
+		{ImpressionID: "5", CreativeID: "creative-a", CampaignID: "acme", Timestamp: 5000},
 	}
 	rules := []FrequencyRule{{MaxCount: 5, Window: 7 * 24 * time.Hour}}
 	now := time.Unix(6000, 0)
 
-	assert.True(t, CheckFrequencyRules(log, "cmp", "acme", rules, now), "should be campaign-capped (5/5)")
+	assert.True(t, CheckFrequencyRules(log, FilterCampaign, "acme", rules, now), "should be campaign-capped (5/5)")
 }
 
 func TestCheckFrequencyRules_WindowExpiry(t *testing.T) {
 	// Old exposures outside the window should not count.
 	now := time.Unix(100000, 0)
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-food", Timestamp: 1000},  // very old
-		{ImpressionID: "2", PackageID: "pkg-food", Timestamp: 99000}, // recent
+		{ImpressionID: "1", CreativeID: "creative-food", Timestamp: 1000},  // very old
+		{ImpressionID: "2", CreativeID: "creative-food", Timestamp: 99000}, // recent
 	}
 	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}} // 86400s window
 
-	assert.False(t, CheckFrequencyRules(log, "pkg", "pkg-food", rules, now), "should not be capped (only 1 in window)")
+	assert.False(t, CheckFrequencyRules(log, FilterCreative, "creative-food", rules, now), "should not be capped (only 1 in window)")
 }
 
 func TestLatestExposureTime(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "1", PackageID: "pkg-food", Timestamp: 1000},
-		{ImpressionID: "2", PackageID: "pkg-tech", Timestamp: 2000},
-		{ImpressionID: "3", PackageID: "pkg-food", Timestamp: 3000},
+		{ImpressionID: "1", CreativeID: "creative-food", Timestamp: 1000},
+		{ImpressionID: "2", CreativeID: "creative-tech", Timestamp: 2000},
+		{ImpressionID: "3", CreativeID: "creative-food", Timestamp: 3000},
 	}
-	assert.Equal(t, int64(3000), LatestExposureTime(log, "pkg-food"))
-	assert.Equal(t, int64(0), LatestExposureTime(log, "pkg-missing"))
+	assert.Equal(t, int64(3000), LatestExposureTime(log, "creative-food"))
+	assert.Equal(t, int64(0), LatestExposureTime(log, "creative-missing"))
 }
 
 func TestComputeIntentScore(t *testing.T) {

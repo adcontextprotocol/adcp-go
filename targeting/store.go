@@ -23,18 +23,6 @@ type Store interface {
 	// Exists checks if a key exists.
 	Exists(ctx context.Context, key string) (bool, error)
 
-	// ZAdd adds a member with the given score to a sorted set.
-	ZAdd(ctx context.Context, key string, score float64, member string) error
-
-	// ZCount returns the number of members with scores in [min, max].
-	ZCount(ctx context.Context, key string, min, max float64) (int64, error)
-
-	// ZExpire sets a TTL on a sorted set key. Zero TTL means no expiry.
-	ZExpire(ctx context.Context, key string, ttl time.Duration) error
-
-	// ZRemRangeByScore removes members with scores in [min, max] from a sorted set.
-	ZRemRangeByScore(ctx context.Context, key string, min, max float64) error
-
 	// SetMembers returns all members of the set at key. Returns nil if the key does not exist.
 	SetMembers(ctx context.Context, key string) ([]string, error)
 

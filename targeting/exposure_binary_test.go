@@ -1,7 +1,6 @@
 package targeting
 
 import (
-	"encoding/binary"
 	"fmt"
 	"testing"
 	"time"
@@ -12,32 +11,32 @@ import (
 
 func TestBinary_EncodeAndQuery(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", Timestamp: 1000},
-		{ImpressionID: "imp-2", PackageID: "pkg-tech", CampaignID: "acme", Timestamp: 2000},
-		{ImpressionID: "imp-3", PackageID: "pkg-food", CampaignID: "acme", Timestamp: 3000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", CampaignID: "acme", Timestamp: 1000},
+		{ImpressionID: "imp-2", CreativeID: "creative-tech", CampaignID: "acme", Timestamp: 2000},
+		{ImpressionID: "imp-3", CreativeID: "creative-food", CampaignID: "acme", Timestamp: 3000},
 	}
 
 	bin := EncodeBinaryExposureLog(log)
 	require.Equal(t, 3, bin.Len())
 	assert.Equal(t, int64(1000), bin.Timestamp(0))
 
-	foodHash := hashString("pkg-food")
-	latest := LatestExposureBinary(bin, foodHash)
+	foodHash := hashString("creative-food")
+	latest := LatestExposureBinary(bin, FilterCreative, foodHash)
 	assert.Equal(t, int64(3000), latest)
 
 	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}}
-	capped := CheckFrequencyRulesBinary(bin, foodHash, false, rules, 4000)
-	assert.True(t, capped, "expected capped (2 food exposures, cap 2)")
+	capped := CheckFrequencyRulesBinary(bin, FilterCreative, foodHash, rules, 4000)
+	assert.True(t, capped, "expected capped (2 food-creative exposures, cap 2)")
 }
 
 func TestBinary_MergeDedup(t *testing.T) {
 	log1 := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000},
-		{ImpressionID: "imp-2", PackageID: "pkg-tech", Timestamp: 2000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", Timestamp: 1000},
+		{ImpressionID: "imp-2", CreativeID: "creative-tech", Timestamp: 2000},
 	}
 	log2 := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000}, // dup
-		{ImpressionID: "imp-3", PackageID: "pkg-food", Timestamp: 3000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", Timestamp: 1000}, // dup
+		{ImpressionID: "imp-3", CreativeID: "creative-food", Timestamp: 3000},
 	}
 
 	bin1 := EncodeBinaryExposureLog(log1)
@@ -49,14 +48,13 @@ func TestBinary_MergeDedup(t *testing.T) {
 
 func TestBinary_VersionHeader(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", Timestamp: 1000},
+		{ImpressionID: "imp-1", CreativeID: "creative-food", CampaignID: "acme", Timestamp: 1000},
 	}
 	bin := EncodeBinaryExposureLog(log)
 
-	assert.Equal(t, uint16(2), bin.Version())
-	assert.Equal(t, uint16(40), bin.EntrySize())
-	// 4-byte header + 1*40 = 44 bytes total.
-	assert.Len(t, []byte(bin), 44)
+	assert.Equal(t, uint16(binaryVersion3), bin.Version())
+	assert.Equal(t, uint16(binaryEntrySize), bin.EntrySize())
+	assert.Len(t, []byte(bin), binaryHeaderSize+binaryEntrySize)
 	assert.NoError(t, ValidateBinaryLog(bin))
 }
 
@@ -67,17 +65,12 @@ func TestBinary_ValidateRejectsInvalid(t *testing.T) {
 		err  error
 	}{
 		{"too short", BinaryExposureLog{0x01}, ErrBinaryTooShort},
-		{"unknown version", BinaryExposureLog{0x03, 0x00, 0x28, 0x00}, ErrBinaryUnknownVersion},
-		{"zero entry size", BinaryExposureLog{0x02, 0x00, 0x00, 0x00}, ErrBinaryCorrupt},
-		{"wrong entry size v2", BinaryExposureLog{0x02, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
-		{"wrong entry size v1", BinaryExposureLog{0x01, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
-		{"unaligned payload v2", append(
-			BinaryExposureLog{0x02, 0x00, 0x28, 0x00}, // valid v2 header
-			make([]byte, 15)...,                         // 15 bytes, not multiple of 40
-		), ErrBinaryCorrupt},
-		{"unaligned payload v1", append(
-			BinaryExposureLog{0x01, 0x00, 0x20, 0x00}, // valid v1 header
-			make([]byte, 15)...,                         // 15 bytes, not multiple of 32
+		{"unknown version", BinaryExposureLog{0x02, 0x00, 0x28, 0x00}, ErrBinaryUnknownVersion},
+		{"zero entry size", BinaryExposureLog{0x03, 0x00, 0x00, 0x00}, ErrBinaryCorrupt},
+		{"wrong entry size", BinaryExposureLog{0x03, 0x00, 0x10, 0x00}, ErrBinaryCorrupt},
+		{"unaligned payload", append(
+			BinaryExposureLog{0x03, 0x00, 0x28, 0x00}, // valid v3 header
+			make([]byte, 15)...,                        // 15 bytes, not multiple of 40
 		), ErrBinaryCorrupt},
 	}
 	for _, tt := range tests {
@@ -96,14 +89,14 @@ func TestBinary_EmptyLog(t *testing.T) {
 
 func TestBinary_MergedLogIsVersioned(t *testing.T) {
 	log1 := EncodeBinaryExposureLog(ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-a", Timestamp: 1000},
+		{ImpressionID: "imp-1", CreativeID: "creative-a", Timestamp: 1000},
 	})
 	log2 := EncodeBinaryExposureLog(ExposureLog{
-		{ImpressionID: "imp-2", PackageID: "pkg-b", Timestamp: 2000},
+		{ImpressionID: "imp-2", CreativeID: "creative-b", Timestamp: 2000},
 	})
 	merged := MergeBinaryLogs(log1, log2)
 	assert.NoError(t, ValidateBinaryLog(merged))
-	assert.Equal(t, uint16(2), merged.Version())
+	assert.Equal(t, uint16(binaryVersion3), merged.Version())
 	assert.Equal(t, 2, merged.Len())
 }
 
@@ -112,7 +105,7 @@ func TestBinary_Truncate(t *testing.T) {
 	for i := range 100 {
 		entries = append(entries, ExposureEntry{
 			ImpressionID: fmt.Sprintf("imp-%d", i),
-			PackageID:    "pkg-a",
+			CreativeID:   "creative-a",
 			Timestamp:    int64(i),
 		})
 	}
@@ -136,158 +129,16 @@ func TestBinary_MergeEmptyReturnsValidLog(t *testing.T) {
 	assert.Equal(t, 0, merged.Len())
 }
 
-func TestBinary_SourceHash(t *testing.T) {
+func TestBinary_DimensionHashes(t *testing.T) {
 	log := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", CampaignID: "acme", SourceID: "agent-cnn", Timestamp: 1000},
-		{ImpressionID: "imp-2", PackageID: "pkg-tech", CampaignID: "acme", SourceID: "agent-nyt", Timestamp: 2000},
+		{ImpressionID: "imp-1", AdvertiserID: "adv-acme", CampaignID: "camp-1", CreativeID: "creative-food", Timestamp: 1000},
 	}
 	bin := EncodeBinaryExposureLog(log)
 
-	cnnHash := hashString("agent-cnn")
-	nytHash := hashString("agent-nyt")
-
-	assert.Equal(t, cnnHash, bin.SourceHash(0))
-	assert.Equal(t, nytHash, bin.SourceHash(1))
-}
-
-func TestBinary_SourceHashOfEmptyString(t *testing.T) {
-	log := ExposureLog{
-		{ImpressionID: "imp-1", PackageID: "pkg-food", Timestamp: 1000},
-	}
-	bin := EncodeBinaryExposureLog(log)
-	emptyHash := hashString("")
-	assert.Equal(t, emptyHash, bin.SourceHash(0))
-}
-
-func TestBinary_V1ReadCompatibility(t *testing.T) {
-	// Construct a v1 binary log manually (32-byte entries).
-	v1 := make([]byte, binaryHeaderSize+2*binaryEntrySize1)
-	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
-	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
-
-	// Entry 0: ts=1000, imp=hash("imp-1"), pkg=hash("pkg-a"), camp=hash("c1")
-	off := binaryHeaderSize
-	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-
-	// Entry 1: ts=2000
-	off = binaryHeaderSize + binaryEntrySize1
-	binary.LittleEndian.PutUint64(v1[off:], 2000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-2"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-b"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-
-	blog := BinaryExposureLog(v1)
-
-	// Validation passes.
-	require.NoError(t, ValidateBinaryLog(blog))
-	require.Equal(t, 2, blog.Len())
-	assert.Equal(t, int64(1000), blog.Timestamp(0))
-	// V1 source hash returns 0.
-	assert.Equal(t, uint64(0), blog.SourceHash(0))
-
-	// Frequency check works on v1 logs.
-	rules := []FrequencyRule{{MaxCount: 1, Window: 24 * time.Hour}}
-	capped := CheckFrequencyRulesBinary(blog, hashString("pkg-a"), false, rules, 3000)
-	assert.True(t, capped, "expected capped for pkg-a (1 exposure, cap 1)")
-}
-
-func TestBinary_V1UpgradeOnMerge(t *testing.T) {
-	// Build a v1 log.
-	v1 := make([]byte, binaryHeaderSize+1*binaryEntrySize1)
-	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
-	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
-	off := binaryHeaderSize
-	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-
-	// Build a v2 log.
-	v2 := EncodeBinaryExposureLog(ExposureLog{
-		{ImpressionID: "imp-v2", PackageID: "pkg-a", CampaignID: "c1", SourceID: "agent-x", Timestamp: 2000},
-	})
-
-	// Merge upgrades v1 entries to v2 format.
-	merged := MergeBinaryLogs(BinaryExposureLog(v1), v2)
-	assert.Equal(t, uint16(2), merged.Version())
-	require.Equal(t, 2, merged.Len())
-	require.NoError(t, ValidateBinaryLog(merged))
-
-	// V1 entry gets source hash 0, v2 entry keeps its source hash.
-	assert.Equal(t, uint64(0), merged.SourceHash(0))
-	assert.Equal(t, hashString("agent-x"), merged.SourceHash(1))
-}
-
-func TestBinary_V1TruncateUpgrades(t *testing.T) {
-	// Build a v1 log with 20 entries, truncate to 5 — should upgrade to v2.
-	v1 := make([]byte, binaryHeaderSize+20*binaryEntrySize1)
-	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
-	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
-	for i := range 20 {
-		off := binaryHeaderSize + i*binaryEntrySize1
-		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
-		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
-		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-	}
-
-	truncated := TruncateBinaryLog(BinaryExposureLog(v1), 5)
-	require.NoError(t, ValidateBinaryLog(truncated))
-	assert.Equal(t, uint16(2), truncated.Version())
-	require.Equal(t, 5, truncated.Len())
-	// Should keep last 5 entries (timestamps 1015-1019).
-	assert.Equal(t, int64(1015), truncated.Timestamp(0))
-	// Upgraded entries should have source hash 0.
-	assert.Equal(t, uint64(0), truncated.SourceHash(0))
-}
-
-func TestBinary_V1UnderLimitUpgrades(t *testing.T) {
-	// Build a v1 log with 2 entries, under limit — should upgrade to v2 without truncation.
-	v1 := make([]byte, binaryHeaderSize+2*binaryEntrySize1)
-	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
-	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
-	for i := range 2 {
-		off := binaryHeaderSize + i*binaryEntrySize1
-		binary.LittleEndian.PutUint64(v1[off:], uint64(1000+i))
-		binary.LittleEndian.PutUint64(v1[off+8:], hashString(fmt.Sprintf("imp-%d", i)))
-		binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-		binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-	}
-
-	upgraded := TruncateBinaryLog(BinaryExposureLog(v1), 100)
-	assert.Equal(t, uint16(2), upgraded.Version())
-	assert.Equal(t, 2, upgraded.Len())
-}
-
-func TestBinary_MultiLogWorksWithMixedVersions(t *testing.T) {
-	// V1 log with 1 entry for pkg-a.
-	v1 := make([]byte, binaryHeaderSize+1*binaryEntrySize1)
-	binary.LittleEndian.PutUint16(v1[0:], binaryVersion1)
-	binary.LittleEndian.PutUint16(v1[2:], binaryEntrySize1)
-	off := binaryHeaderSize
-	binary.LittleEndian.PutUint64(v1[off:], 1000)
-	binary.LittleEndian.PutUint64(v1[off+8:], hashString("imp-v1"))
-	binary.LittleEndian.PutUint64(v1[off+16:], hashString("pkg-a"))
-	binary.LittleEndian.PutUint64(v1[off+24:], hashString("c1"))
-
-	// V2 log with 1 entry for pkg-a (different impression).
-	v2 := EncodeBinaryExposureLog(ExposureLog{
-		{ImpressionID: "imp-v2", PackageID: "pkg-a", CampaignID: "c1", SourceID: "agent-x", Timestamp: 2000},
-	})
-
-	logs := []BinaryExposureLog{BinaryExposureLog(v1), v2}
-	rules := []FrequencyRule{{MaxCount: 2, Window: 24 * time.Hour}}
-
-	// 2 entries for pkg-a, cap=2 → capped.
-	capped := CheckFrequencyRulesMultiLog(logs, hashString("pkg-a"), false, rules, 3000)
-	assert.True(t, capped, "expected capped with mixed v1+v2 logs")
-
-	// latest across mixed versions.
-	latest := LatestExposureMultiLog(logs, hashString("pkg-a"))
-	assert.Equal(t, int64(2000), latest)
+	assert.Equal(t, hashString("adv-acme"), bin.AdvertiserHash(0))
+	assert.Equal(t, hashString("camp-1"), bin.CampaignHash(0))
+	assert.Equal(t, hashString("creative-food"), bin.CreativeHash(0))
+	assert.Equal(t, hashString("imp-1"), bin.ImpressionHash(0))
 }
 
 func TestScale_JSONvsBinary(t *testing.T) {
@@ -297,7 +148,7 @@ func TestScale_JSONvsBinary(t *testing.T) {
 	for i := range 1500 {
 		entries = append(entries, ExposureEntry{
 			ImpressionID: fmt.Sprintf("imp-%d", i),
-			PackageID:    fmt.Sprintf("pkg-%d", i%10),
+			CreativeID:   fmt.Sprintf("creative-%d", i%10),
 			CampaignID:   fmt.Sprintf("campaign-%d", i%4),
 			Timestamp:    now.Add(-time.Duration(i) * time.Minute).Unix(),
 		})
@@ -315,30 +166,26 @@ func TestScale_JSONvsBinary(t *testing.T) {
 	t.Logf("")
 
 	const iterations = 1000
-	pkgHash := hashString("pkg-0")
+	creativeHash := hashString("creative-0")
 	campHash := hashString("campaign-0")
 	rules := []FrequencyRule{{MaxCount: 50, Window: 24 * time.Hour}}
 	nowUnix := now.Unix()
 
-	// JSON parse benchmark.
 	start := time.Now()
 	for range iterations {
 		log := ParseExposureLog(jsonData)
-		CheckFrequencyRules(log, "pkg", "pkg-0", rules, now)
-		LatestExposureTime(log, "pkg-0")
+		CheckFrequencyRules(log, FilterCreative, "creative-0", rules, now)
+		LatestExposureTime(log, "creative-0")
 	}
 	jsonTime := time.Since(start)
 
-	// Binary benchmark (no parse, direct query).
 	start = time.Now()
 	for range iterations {
-		// Binary is already in memory — no parse step.
-		CheckFrequencyRulesBinary(binData, pkgHash, false, rules, nowUnix)
-		LatestExposureBinary(binData, pkgHash)
+		CheckFrequencyRulesBinary(binData, FilterCreative, creativeHash, rules, nowUnix)
+		LatestExposureBinary(binData, FilterCreative, creativeHash)
 	}
 	binaryTime := time.Since(start)
 
-	// JSON parse + merge (2 UIDs).
 	jsonData2 := SerializeExposureLog(entries[:750])
 	jsonData3 := SerializeExposureLog(entries[750:])
 	start = time.Now()
@@ -346,32 +193,29 @@ func TestScale_JSONvsBinary(t *testing.T) {
 		log1 := ParseExposureLog(jsonData2)
 		log2 := ParseExposureLog(jsonData3)
 		merged := MergeExposureLogs(log1, log2)
-		CheckFrequencyRules(merged, "pkg", "pkg-0", rules, now)
+		CheckFrequencyRules(merged, FilterCreative, "creative-0", rules, now)
 	}
 	jsonMergeTime := time.Since(start)
 
-	// Binary merge (2 UIDs).
 	binData2 := EncodeBinaryExposureLog(entries[:750])
 	binData3 := EncodeBinaryExposureLog(entries[750:])
 	start = time.Now()
 	for range iterations {
 		merged := MergeBinaryLogs(binData2, binData3)
-		CheckFrequencyRulesBinary(merged, pkgHash, false, rules, nowUnix)
+		CheckFrequencyRulesBinary(merged, FilterCreative, creativeHash, rules, nowUnix)
 	}
 	binaryMergeTime := time.Since(start)
 
-	// Binary lazy dedup (no upfront merge, dedup during scan).
 	start = time.Now()
 	for range iterations {
-		CheckFrequencyRulesMultiLog([]BinaryExposureLog{binData2, binData3}, pkgHash, false, rules, nowUnix)
-		LatestExposureMultiLog([]BinaryExposureLog{binData2, binData3}, pkgHash)
+		CheckFrequencyRulesMultiLog([]BinaryExposureLog{binData2, binData3}, FilterCreative, creativeHash, rules, nowUnix)
+		LatestExposureMultiLog([]BinaryExposureLog{binData2, binData3}, FilterCreative, creativeHash)
 	}
 	binaryLazyTime := time.Since(start)
 
-	// Campaign check.
 	start = time.Now()
 	for range iterations {
-		CheckFrequencyRulesBinary(binData, campHash, true, rules, nowUnix)
+		CheckFrequencyRulesBinary(binData, FilterCampaign, campHash, rules, nowUnix)
 	}
 	binaryCampTime := time.Since(start)
 

@@ -2,7 +2,6 @@ package targeting
 
 import (
 	"encoding/json"
-	"errors"
 	"sort"
 	"time"
 
@@ -15,41 +14,12 @@ type UserIdentity struct {
 	UIDType   string `json:"uid_type"`
 }
 
-// ExposeRequest records an ad impression against a user.
-type ExposeRequest struct {
-	PackageID    string         `json:"package_id"`
-	UserToken    string         `json:"user_token,omitempty"`
-	UIDType      string         `json:"uid_type,omitempty"`
-	Identities   []UserIdentity `json:"identities,omitempty"`
-	ImpressionID string         `json:"impression_id,omitempty"`
-	CampaignID   string         `json:"campaign_id,omitempty"`
-	SourceID     string         `json:"source_id,omitempty"`
-}
-
-// ExposeResponse is returned after recording an exposure.
-type ExposeResponse struct {
-	PackageID         string `json:"package_id"`
-	CampaignCount     int    `json:"campaign_count,omitempty"`
-	CampaignRemaining int    `json:"campaign_remaining,omitempty"`
-}
-
-// ValidateExposeRequest checks that required fields are present.
-func ValidateExposeRequest(req *ExposeRequest) error {
-	if req.PackageID == "" {
-		return errors.New("package_id is required")
-	}
-	if req.UserToken == "" && len(req.Identities) == 0 {
-		return errors.New("user_token or identities is required")
-	}
-	return nil
-}
-
 // ExposureEntry represents a single ad impression recorded against a user.
 type ExposureEntry struct {
 	ImpressionID string `json:"id"`
-	PackageID    string `json:"pkg"`
+	AdvertiserID string `json:"adv,omitempty"`
 	CampaignID   string `json:"cmp,omitempty"`
-	SourceID     string `json:"src,omitempty"`
+	CreativeID   string `json:"crv,omitempty"`
 	Timestamp    int64  `json:"ts"`
 }
 
@@ -140,11 +110,31 @@ func PruneExpired(log ExposureLog, cutoff int64) ExposureLog {
 	return pruned
 }
 
+// ExposureFilterKind identifies which buyer-side dimension to filter by
+// when checking frequency rules or locating exposures.
+type ExposureFilterKind int
+
+const (
+	FilterAdvertiser ExposureFilterKind = iota
+	FilterCampaign
+	FilterCreative
+)
+
+func (k ExposureFilterKind) entryValue(e ExposureEntry) string {
+	switch k {
+	case FilterAdvertiser:
+		return e.AdvertiserID
+	case FilterCampaign:
+		return e.CampaignID
+	case FilterCreative:
+		return e.CreativeID
+	}
+	return ""
+}
+
 // CheckFrequencyRules checks if any frequency rule is exceeded for the given
-// filter (package or campaign). Returns true if capped.
-//
-// filterField is "pkg" or "cmp". filterValue is the package or campaign ID.
-func CheckFrequencyRules(log ExposureLog, filterField, filterValue string, rules []FrequencyRule, now time.Time) bool {
+// filter (advertiser, campaign, or creative). Returns true if capped.
+func CheckFrequencyRules(log ExposureLog, kind ExposureFilterKind, filterValue string, rules []FrequencyRule, now time.Time) bool {
 	for _, rule := range rules {
 		cutoff := now.Add(-rule.Window).Unix()
 		count := 0
@@ -152,14 +142,7 @@ func CheckFrequencyRules(log ExposureLog, filterField, filterValue string, rules
 			if e.Timestamp < cutoff {
 				continue
 			}
-			match := false
-			switch filterField {
-			case "pkg":
-				match = e.PackageID == filterValue
-			case "cmp":
-				match = e.CampaignID == filterValue
-			}
-			if match {
+			if kind.entryValue(e) == filterValue {
 				count++
 			}
 		}
@@ -170,12 +153,12 @@ func CheckFrequencyRules(log ExposureLog, filterField, filterValue string, rules
 	return false
 }
 
-// LatestExposureTime returns the most recent exposure timestamp for a package.
+// LatestExposureTime returns the most recent exposure timestamp for a creative.
 // Returns 0 if no exposure found.
-func LatestExposureTime(log ExposureLog, packageID string) int64 {
+func LatestExposureTime(log ExposureLog, creativeID string) int64 {
 	var latest int64
 	for _, e := range log {
-		if e.PackageID == packageID && e.Timestamp > latest {
+		if e.CreativeID == creativeID && e.Timestamp > latest {
 			latest = e.Timestamp
 		}
 	}
@@ -206,15 +189,4 @@ func resolveIdentities(req *tmproto.IdentityMatchRequest) []UserIdentity {
 		out[i] = UserIdentity{UserToken: id.UserToken, UIDType: string(id.UIDType)}
 	}
 	return out
-}
-
-// resolveExposeIdentities extracts UserIdentity entries from an expose request.
-func resolveExposeIdentities(req *ExposeRequest) []UserIdentity {
-	if len(req.Identities) > 0 {
-		return req.Identities
-	}
-	if req.UserToken != "" {
-		return []UserIdentity{{UserToken: req.UserToken, UIDType: req.UIDType}}
-	}
-	return nil
 }

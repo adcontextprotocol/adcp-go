@@ -168,16 +168,22 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 		cfg   targeting.PackageIdentityConfig
 	}{
 		{"pkg-display-0041", targeting.PackageIdentityConfig{
+			AdvertiserID:   "adv-acme",
 			CampaignID:     "campaign-acme-q1",
+			CreativeID:     "creative-acme-display-0041",
 			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
 		}},
 		{"pkg-display-0042", targeting.PackageIdentityConfig{
+			AdvertiserID:   "adv-acme",
 			CampaignID:     "campaign-acme-q1",
+			CreativeID:     "creative-acme-display-0042",
 			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 43200}},
 		}},
 		{"pkg-native-0078", targeting.PackageIdentityConfig{
-			CampaignID: "campaign-nova-spring",
+			AdvertiserID: "adv-nova",
+			CampaignID:   "campaign-nova-spring",
+			CreativeID:   "creative-nova-native-0078",
 			FrequencyRules: []targeting.FrequencyRuleJSON{
 				{MaxCount: 2, WindowSeconds: 43200},
 				{MaxCount: 5, WindowSeconds: 604800},
