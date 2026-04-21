@@ -692,6 +692,8 @@ const (
 	ErrorCodeCREATIVENOTFOUND ErrorCode = "CREATIVE_NOT_FOUND"
 	ErrorCodeSIGNALNOTFOUND ErrorCode = "SIGNAL_NOT_FOUND"
 	ErrorCodeSESSIONNOTFOUND ErrorCode = "SESSION_NOT_FOUND"
+	ErrorCodePLANNOTFOUND ErrorCode = "PLAN_NOT_FOUND"
+	ErrorCodeREFERENCENOTFOUND ErrorCode = "REFERENCE_NOT_FOUND"
 	ErrorCodeSESSIONTERMINATED ErrorCode = "SESSION_TERMINATED"
 	ErrorCodeVALIDATIONERROR ErrorCode = "VALIDATION_ERROR"
 	ErrorCodePRODUCTEXPIRED ErrorCode = "PRODUCT_EXPIRED"
@@ -700,6 +702,9 @@ const (
 	ErrorCodeTERMSREJECTED ErrorCode = "TERMS_REJECTED"
 	ErrorCodeREQUOTEREQUIRED ErrorCode = "REQUOTE_REQUIRED"
 	ErrorCodeVERSIONUNSUPPORTED ErrorCode = "VERSION_UNSUPPORTED"
+	ErrorCodeCAMPAIGNSUSPENDED ErrorCode = "CAMPAIGN_SUSPENDED"
+	ErrorCodeGOVERNANCEUNAVAILABLE ErrorCode = "GOVERNANCE_UNAVAILABLE"
+	ErrorCodePERMISSIONDENIED ErrorCode = "PERMISSION_DENIED"
 )
 
 // EscalationSeverity — The severity level of a governance escalation.
@@ -1304,6 +1309,7 @@ const (
 	SpecialismCreativeAdServer Specialism = "creative-ad-server"
 	SpecialismCreativeGenerative Specialism = "creative-generative"
 	SpecialismCreativeTemplate Specialism = "creative-template"
+	SpecialismGovernanceAwareSeller Specialism = "governance-aware-seller"
 	SpecialismGovernanceDeliveryMonitor Specialism = "governance-delivery-monitor"
 	SpecialismGovernanceSpendAuthority Specialism = "governance-spend-authority"
 	SpecialismMeasurementVerification Specialism = "measurement-verification"
@@ -1857,6 +1863,8 @@ type GetAdcpCapabilitiesResponse struct {
 	Brand any `json:"brand,omitempty"` // Brand protocol capabilities. Only present if brand is in supported_protocols. Br
 	Creative any `json:"creative,omitempty"` // Creative protocol capabilities. Only present if creative is in supported_protoco
 	RequestSigning any `json:"request_signing,omitempty"` // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capabi
+	WebhookSigning any `json:"webhook_signing,omitempty"` // RFC 9421 webhook-signature support for outbound webhook callbacks (top-level pee
+	Identity any `json:"identity,omitempty"` // Operator identity posture — key-scoping and compromise-response controls the age
 	ComplianceTesting any `json:"compliance_testing,omitempty"` // Compliance testing capabilities. The presence of this block declares that the ag
 	Specialisms []string `json:"specialisms,omitempty"` // Optional — specialized compliance claims this agent supports. Omitting the field
 	ExtensionsSupported []string `json:"extensions_supported,omitempty"` // Extension namespaces this agent supports. Buyers can expect meaningful data in e
@@ -2294,7 +2302,7 @@ type ActivateSignalRequest struct {
 
 // ComplyTestControllerRequest — Request payload for the comply_test_controller tool. Triggers seller-side state transitions for comp
 type ComplyTestControllerRequest struct {
-	Scenario string `json:"scenario"` // Test scenario to execute. 'list_scenarios' discovers supported scenarios. Others
+	Scenario string `json:"scenario"` // Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force
 	Params any `json:"params,omitempty"` // Scenario-specific parameters. Required for all scenarios except list_scenarios.
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
@@ -2306,7 +2314,7 @@ type ComplyTestControllerResponse = any
 // ListScenariosSuccess — Lists which scenarios this seller's test controller supports
 type ListScenariosSuccess struct {
 	Success bool `json:"success"`
-	Scenarios []string `json:"scenarios"` // Scenarios this seller has implemented
+	Scenarios []string `json:"scenarios"` // Scenarios this seller has implemented. Runners and sellers MUST accept unknown s
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }

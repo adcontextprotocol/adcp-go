@@ -16,6 +16,8 @@ type CapabilitiesData struct {
 	Brand                 *BrandCapabilities             `json:"brand,omitempty"`
 	Creative              *CreativeCapabilities          `json:"creative,omitempty"`
 	RequestSigning        *RequestSigningCapabilities    `json:"request_signing,omitempty"`
+	WebhookSigning        *WebhookSigningCapabilities    `json:"webhook_signing,omitempty"`
+	Identity              *IdentityCapabilities          `json:"identity,omitempty"`
 	ComplianceTesting     *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
 	Specialisms           []string                       `json:"specialisms,omitempty"`
 	ExtensionsSupported   []string                       `json:"extensions_supported,omitempty"`
@@ -265,6 +267,43 @@ type RequestSigningCapabilities struct {
 	RequiredFor          []string `json:"required_for,omitempty"`
 	WarnFor              []string `json:"warn_for,omitempty"`
 	SupportedFor         []string `json:"supported_for,omitempty"`
+}
+
+// WebhookSigningCapabilities declares RFC 9421 webhook-signature policy —
+// what this agent emits on outbound webhook deliveries. Top-level peer of
+// RequestSigning. Profile is a closed enum ("adcp/webhook-signing/v1"); the
+// value MUST match the tag= on the on-wire Signature-Input header.
+type WebhookSigningCapabilities struct {
+	Supported          bool     `json:"supported"`
+	Profile            string   `json:"profile,omitempty"`
+	Algorithms         []string `json:"algorithms,omitempty"`
+	LegacyHMACFallback bool     `json:"legacy_hmac_fallback,omitempty"`
+}
+
+// IdentityCapabilities declares operator identity posture — key-scoping and
+// compromise-response controls. All fields advisory in 3.x; receivers use
+// them to reason about blast radius and revocation latency at onboarding.
+type IdentityCapabilities struct {
+	PerPrincipalKeyIsolation bool                              `json:"per_principal_key_isolation,omitempty"`
+	KeyOrigins               *IdentityKeyOrigins               `json:"key_origins,omitempty"`
+	CompromiseNotification   *IdentityCompromiseNotification   `json:"compromise_notification,omitempty"`
+}
+
+// IdentityKeyOrigins maps signing-key purpose → publishing origin so
+// counterparties can verify origin separation at onboarding.
+type IdentityKeyOrigins struct {
+	GovernanceSigning string `json:"governance_signing,omitempty"`
+	RequestSigning    string `json:"request_signing,omitempty"`
+	WebhookSigning    string `json:"webhook_signing,omitempty"`
+	TMPSigning        string `json:"tmp_signing,omitempty"`
+}
+
+// IdentityCompromiseNotification declares whether this agent emits and/or
+// subscribes to the identity.compromise_notification webhook event on key
+// revocation due to known or suspected compromise.
+type IdentityCompromiseNotification struct {
+	Emits   bool `json:"emits,omitempty"`
+	Accepts bool `json:"accepts,omitempty"`
 }
 
 // ComplianceTestingCapabilities declares supported comply_test_controller
