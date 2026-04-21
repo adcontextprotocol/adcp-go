@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/json"
 	"io"
 	"math/big"
 	"net/http"
@@ -116,10 +117,27 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		}
 	}
 
-	// Pre-check 0: required_for + header-pair enforcement.
+	// Pre-check 0: required_for + anti-downgrade + header-pair enforcement.
+	//
+	// Anti-downgrade rule: a request whose body carries
+	// push_notification_config.authentication MUST be RFC 9421 signed even if
+	// the operation is not in required_for — otherwise a MITM could inject a
+	// malicious authentication block steering future webhooks to their
+	// endpoint with legacy shared-secret auth.
 	if sigInputHeader == "" && sigHeader == "" {
 		if _, req := requiredFor[opts.OperationName]; req {
 			return nil, newError(CodeRequired, "operation requires signature")
+		}
+		limit := opts.MaxBodyBytes
+		if limit <= 0 {
+			limit = defaultMaxBodyBytes
+		}
+		body, err := readAndReplaceBody(r, limit)
+		if err != nil {
+			return nil, err
+		}
+		if bodyCarriesPushNotificationAuth(body) {
+			return nil, newError(CodeRequired, "push_notification_config.authentication requires signed request")
 		}
 		return nil, nil // unsigned, not required; caller proceeds with bearer auth
 	}
@@ -376,6 +394,48 @@ func readAndReplaceBody(r *http.Request, limit int64) ([]byte, error) {
 }
 
 // verifySignature returns true if sig is a valid signature over base for the
+// bodyCarriesPushNotificationAuth reports whether body parses as JSON
+// containing any push_notification_config.authentication object — the
+// anti-downgrade trigger per AdCP webhook-security §Downgrade-and-injection-
+// resistance. Walks all nested objects/arrays so nested carriers (packages[].
+// push_notification_config, proposal-scoped configs, etc.) are caught.
+// Returns false on non-JSON or unparseable bodies (signed-path still runs).
+func bodyCarriesPushNotificationAuth(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	var v any
+	if err := json.Unmarshal(body, &v); err != nil {
+		return false
+	}
+	return hasPushNotificationAuth(v)
+}
+
+func hasPushNotificationAuth(v any) bool {
+	switch t := v.(type) {
+	case map[string]any:
+		if pnc, ok := t["push_notification_config"]; ok {
+			if m, ok := pnc.(map[string]any); ok {
+				if _, hasAuth := m["authentication"]; hasAuth {
+					return true
+				}
+			}
+		}
+		for _, child := range t {
+			if hasPushNotificationAuth(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range t {
+			if hasPushNotificationAuth(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // containsTopLevelComma reports whether s has a comma outside of a
 // double-quoted string. Used to reject comma-smuggled single-value headers
 // (e.g. `application/json, text/plain` in one Content-Type field).
