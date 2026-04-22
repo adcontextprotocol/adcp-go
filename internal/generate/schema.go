@@ -643,11 +643,29 @@ func resolveType(s *jsonschema.Schema, ctx *loadContext) string {
 	}
 }
 
+// schemaVersionSegmentRe matches /schemas/<version>/ where version is either
+// "latest" or a semver like "3.0.0" / "3.0.0-rc.1". Used to normalize $ref
+// paths so a version-agnostic overlay entry works across pinned and snapshot
+// bundles.
+var schemaVersionSegmentRe = regexp.MustCompile(`^/schemas/(?:latest|\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?)/`)
+
+// canonicalizeRef normalizes a schema $ref path to the /schemas/latest/ form
+// so overlay lookups work regardless of which version the bundled schemas
+// advertise in their $id.
+func canonicalizeRef(ref string) string {
+	return schemaVersionSegmentRe.ReplaceAllString(ref, "/schemas/latest/")
+}
+
 // refToGoType resolves a $ref path to a Go type name.
 func refToGoType(ref string, ctx *loadContext) string {
-	// Check overlay refs first.
+	// Check overlay refs first. Overlay keys are version-agnostic (canonicalized
+	// to /schemas/latest/...) so a pinned-version bundle ($id=/schemas/3.0.0/...)
+	// resolves the same entry as a latest-snapshot bundle.
 	if ctx.overlay != nil {
 		if goType, ok := ctx.overlay.Refs[ref]; ok {
+			return goType
+		}
+		if goType, ok := ctx.overlay.Refs[canonicalizeRef(ref)]; ok {
 			return goType
 		}
 	}
