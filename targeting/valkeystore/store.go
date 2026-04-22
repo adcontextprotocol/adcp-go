@@ -100,3 +100,22 @@ func (s *Store) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	}
 	return results, nil
 }
+
+func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error {
+	if len(kvs) == 0 {
+		return nil
+	}
+	if ttl == 0 {
+		args := make([]any, 0, len(kvs)*2)
+		for k, v := range kvs {
+			args = append(args, k, v)
+		}
+		return s.rdb.MSet(ctx, args...).Err()
+	}
+	pipe := s.rdb.Pipeline()
+	for k, v := range kvs {
+		pipe.Set(ctx, k, v, ttl)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}

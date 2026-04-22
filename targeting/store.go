@@ -40,4 +40,7 @@ type Store interface {
 
 	// MGet returns the values for the given keys. Missing keys return "" at their index.
 	MGet(ctx context.Context, keys ...string) ([]string, error)
+
+	// MSet stores multiple key-value pairs with an optional TTL. Zero TTL means no expiry.
+	MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error
 }
