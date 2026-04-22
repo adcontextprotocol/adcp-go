@@ -225,12 +225,13 @@ CORE_SCHEMAS = [
 # resolving $ref targets and when emitting core/tool schema structs, so a
 # schema named brand-ref.json emits as `type BrandReference struct` and every
 # reference to it uses that same alias.
+# pascal_case('format-id') produces 'FormatID' today (acronym-aware). Only the
+# current casing needs mapping here; if pascal_case output changes, update both.
 REF_ALIASES = {
     'BrandRef': 'BrandReference',
     'AccountRef': 'AccountReference',
     'PackageRequest': 'PackageInput',
     'FormatID': 'FormatRef',
-    'FormatId': 'FormatRef',
     'MediaBuy': 'MediaBuyData',
     'Format': 'CreativeFormat',
     'SignalDefinition': 'Signal',
@@ -312,6 +313,15 @@ def is_enum_ref(ref):
 
 
 _WILL_GENERATE_CACHE = None
+
+def _reset_will_generate_cache():
+    """Clear the cache so the next `_will_generate_set()` call rebuilds from
+    current CORE_SCHEMAS/TOOL_SCHEMAS/WEBHOOK_SCHEMAS + current cwd. Called at
+    the top of `generate()` to guarantee correctness when the module is used
+    across multiple runs (e.g. imported by lint.py then invoked standalone)."""
+    global _WILL_GENERATE_CACHE
+    _WILL_GENERATE_CACHE = None
+
 
 def _will_generate_set():
     """Names (after REF_ALIASES) that this generator run will emit as structs.
@@ -472,6 +482,7 @@ def generate_enums():
 
 def generate():
     """Main generation function."""
+    _reset_will_generate_cache()
     # Read pinned version
     version = "unknown"
     try:

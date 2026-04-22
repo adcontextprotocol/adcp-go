@@ -114,52 +114,62 @@ EXEMPT = {
 
 # Map hand-written Go type name → schema path (relative to schemas/).
 # For types whose Go name doesn't match schema filename-derived PascalCase,
-# this table declares the pairing explicitly.
+# this table declares the pairing explicitly. Types with no standalone schema
+# file (nested shapes, dead code) belong in EXEMPT, not here — None entries
+# were removed because they never reach path resolution.
 EXPLICIT_SCHEMA = {
     'Product': 'core/product.json',
     'Package': 'core/package.json',
     'MediaBuyData': 'core/media-buy.json',
     'Targeting': 'core/targeting.json',
-    'GeoTarget': None,  # no schema correspondent — drift handled by deletion
-    'CreativeSpec': None,  # no schema correspondent
     'FormatRef': 'core/format-id.json',
-    'CreativeFormatID': 'core/format-id.json',
     'PricingOption': 'core/pricing-option.json',
     'Signal': 'core/signal-definition.json',
     'SignalPricing': 'core/signal-pricing.json',
     'Deployment': 'core/deployment.json',
     'CreativeFormat': 'core/format.json',
-    'Render': None,  # render is a nested shape inside format.json
-    'AssetSlot': None,  # assets[] is a complex oneOf inside format.json
     'VendorPricingOption': 'core/vendor-pricing-option.json',
     'MeasurementTerms': 'core/measurement-terms.json',
-    'BillingMeasurement': None,  # nested in measurement-terms
-    'MakegoodPolicy': None,  # nested in measurement-terms
     'MeasurementWindow': 'core/measurement-window.json',
     'PerformanceStandard': 'core/performance-standard.json',
     'Duration': 'core/duration.json',
     'CancellationPolicy': 'core/cancellation-policy.json',
-    'CancellationFee': None,  # nested in cancellation-policy
     'CollectionListRef': 'core/collection-list-ref.json',
     'CreativeConsumption': 'core/creative-consumption.json',
     'IndustryIdentifier': 'core/industry-identifier.json',
     'ContentRating': 'core/content-rating.json',
 }
 
+# STRUCT_RE assumes gofmt layout (closing `}` at column 0) and top-level
+# struct declarations only. Anonymous struct fields that close at column 0
+# would truncate the match — not currently produced by gofmt, so this holds
+# for the adcp package.
 STRUCT_RE = re.compile(
     r'^type\s+(\w+)\s+struct\s*\{(.*?)^\}',
     re.MULTILINE | re.DOTALL,
 )
-FIELD_TAG_RE = re.compile(r'`json:"([^",]+)(?:,[^"]*)?"`')
+# Captures (go_name, go_type, json_name, omitempty_modifier). The omitempty
+# group is truthy when the tag ends in `,omitempty` (or any variant such as
+# `,string,omitempty`) — driven by lookahead to avoid over-matching.
 FIELD_LINE_RE = re.compile(
-    r'^\s*(\w+)\s+([^\s`]+(?:\s+[^\s`]+)*?)\s+`json:"([^",]+)(?:,[^"]*)?"`',
+    r'^\s*(\w+)\s+([^\s`]+(?:\s+[^\s`]+)*?)\s+'
+    r'`json:"([^",]+)((?:,[^"]*)?)"`',
     re.MULTILINE,
 )
 
 
+def _has_omitempty(tag_modifier):
+    """True if a captured tag modifier ('' or ',omitempty' or ',string,omitempty')
+    contains the omitempty option."""
+    return ',omitempty' in (tag_modifier or '')
+
+
 def parse_go_structs():
-    """Return {type_name: [(go_field_name, go_type, json_tag), ...]} for every
-    hand-written struct in adcp/."""
+    """Return {type_name: [(go_field_name, go_type, json_tag, omitempty), ...]}
+    for every top-level hand-written struct in adcp/. Embedded fields (no tag)
+    are skipped — they'd need tag-chasing into the embedded type, and nothing
+    in adcp/ currently uses embedding. If that changes, add embedded-field
+    handling here."""
     structs = {}
     for path in GO_SOURCE_FILES:
         if not path.exists():
@@ -170,7 +180,12 @@ def parse_go_structs():
             body = m.group(2)
             fields = []
             for fm in FIELD_LINE_RE.finditer(body):
-                fields.append((fm.group(1), fm.group(2).strip(), fm.group(3)))
+                fields.append((
+                    fm.group(1),
+                    fm.group(2).strip(),
+                    fm.group(3),
+                    _has_omitempty(fm.group(4)),
+                ))
             structs[name] = fields
     return structs
 
@@ -182,13 +197,18 @@ def load_schema(path):
 
 def _resolve_ref(ref):
     """Load a schema referenced by $ref. Only supports local refs of the form
-    /schemas/{version}/{path}.json — the only form actually used in-bundle."""
+    /schemas/{version}/{path}.json — the only form actually used in-bundle.
+    Contained entirely within SCRIPT_DIR to defeat any `../` escape a crafted
+    ref could attempt."""
     if not isinstance(ref, str):
         return None
     m = re.match(r'^/schemas/[^/]+/(.+\.json)$', ref)
     if not m:
         return None
-    path = SCRIPT_DIR / m.group(1)
+    path = (SCRIPT_DIR / m.group(1)).resolve()
+    root = SCRIPT_DIR.resolve()
+    if root != path and root not in path.parents:
+        return None
     if not path.exists():
         return None
     try:
@@ -197,10 +217,13 @@ def _resolve_ref(ref):
         return None
 
 
-def schema_property_set(schema):
+def schema_property_set(schema, _visited=None):
     """Return the set of property names the schema declares. For oneOf/anyOf/
     allOf schemas, returns the UNION of variant properties — matches how Go
-    code flattens unions into a single struct whose fields cover every variant."""
+    code flattens unions into a single struct whose fields cover every variant.
+    `_visited` tracks $refs already expanded to prevent cycles."""
+    if _visited is None:
+        _visited = set()
     props = set()
     if 'properties' in schema:
         props.update(schema['properties'].keys())
@@ -210,10 +233,12 @@ def schema_property_set(schema):
                 continue
             if 'properties' in branch:
                 props.update(branch['properties'].keys())
-            if '$ref' in branch:
-                ref_schema = _resolve_ref(branch['$ref'])
+            ref = branch.get('$ref')
+            if ref and ref not in _visited:
+                _visited.add(ref)
+                ref_schema = _resolve_ref(ref)
                 if ref_schema:
-                    props.update(schema_property_set(ref_schema))
+                    props.update(schema_property_set(ref_schema, _visited))
     return props
 
 
@@ -246,10 +271,7 @@ def schema_required_set(schema):
 def resolve_schema_path(type_name):
     """Return absolute path to the JSON schema for `type_name`, or None."""
     if type_name in EXPLICIT_SCHEMA:
-        rel = EXPLICIT_SCHEMA[type_name]
-        if rel is None:
-            return None
-        return SCRIPT_DIR / rel
+        return SCRIPT_DIR / EXPLICIT_SCHEMA[type_name]
     # Otherwise, search the generate.py registries for a schema whose
     # filename-derived PascalCase matches.
     candidates = gen.CORE_SCHEMAS + gen.TOOL_SCHEMAS + gen.WEBHOOK_SCHEMAS
@@ -272,35 +294,14 @@ def diff_type(type_name, go_fields, schema_path):
     schema_required = schema_required_set(schema)
     if not schema_props:
         return None
-    go_tags = {tag for _, _, tag in go_fields}
-    # Required-field tags that have omitempty in Go — report as a separate
-    # class because a required field with omitempty will be silently dropped
-    # on the wire when the zero value is present.
-    required_with_omitempty = []
-    for path in GO_SOURCE_FILES:
-        if not path.exists():
-            continue
-        src = path.read_text()
-        m = STRUCT_RE.search(src)
-        # Re-scan this struct's raw body so we can read the full tag including
-        # omitempty, which FIELD_LINE_RE strips.
-    # Light-touch check: search raw struct body in the file(s) that own this type.
-    for path in GO_SOURCE_FILES:
-        if not path.exists():
-            continue
-        src = path.read_text()
-        m = re.search(
-            rf'^type\s+{re.escape(type_name)}\s+struct\s*\{{(.*?)^\}}',
-            src, re.MULTILINE | re.DOTALL,
-        )
-        if not m:
-            continue
-        body = m.group(1)
-        for line in body.splitlines():
-            tm = re.search(r'`json:"([^",]+)(,omitempty)?"`', line)
-            if tm and tm.group(2) and tm.group(1) in schema_required:
-                required_with_omitempty.append(tm.group(1))
-        break
+    go_tags = {tag for _, _, tag, _ in go_fields}
+    # A required field marked `omitempty` in Go is silently dropped from the
+    # wire when the zero value is present — a distinct failure mode from
+    # missing/extra fields, worth flagging separately so the fix is obvious.
+    required_with_omitempty = sorted({
+        tag for _, _, tag, omitempty in go_fields
+        if omitempty and tag in schema_required
+    })
     missing = sorted(schema_props - go_tags)
     extra = sorted(go_tags - schema_props)
     if not missing and not extra and not required_with_omitempty:
@@ -312,6 +313,41 @@ def diff_type(type_name, go_fields, schema_path):
         'extra_in_go': extra,
         'required_with_omitempty': sorted(set(required_with_omitempty)),
     }
+
+
+DRIFT_REMEDIATION = """
+How to fix drift:
+  - `missing in Go`: a field exists in the schema but not in the hand-written
+    struct. Either add the field to types.go, or — if the whole struct is now
+    schema-shaped — delete the hand-written version and remove the type name
+    from KNOWN_TYPES in generate.py so the generator owns it.
+  - `extra in Go`: a field exists in Go but not in the schema. Remove it from
+    types.go, OR if the schema uses oneOf and the field belongs to a variant,
+    add the type to EXEMPT in lint.py (oneOf-flattener case).
+  - `required+omitempty`: the schema marks this field required but Go has
+    `omitempty` in its tag. Drop `,omitempty` — Go will silently drop required
+    fields from the wire when the zero value is present.
+See adcp/schemas/generate.py's KNOWN_TYPES comment for criteria on hand-written
+vs generator-owned types."""
+
+
+def _assert_exempt_subset_known(go_structs):
+    """Guard against config drift between lint.py's EXEMPT and generate.py's
+    KNOWN_TYPES. Every EXEMPT entry that actually exists in Go source must also
+    be in KNOWN_TYPES; otherwise the generator will emit a duplicate or the
+    linter will silently skip a type that drifted. Emits warnings on stderr;
+    does not fail the run."""
+    missing = sorted(
+        t for t in EXEMPT
+        if t in go_structs and t not in gen.KNOWN_TYPES
+    )
+    if missing:
+        print(
+            'warning: lint.py EXEMPT contains types not in generate.py '
+            f'KNOWN_TYPES: {", ".join(missing)}. Add them to KNOWN_TYPES so '
+            'the generator does not try to emit duplicates.',
+            file=sys.stderr,
+        )
 
 
 def main():
@@ -328,7 +364,7 @@ def main():
     # Confirm schemas are present; otherwise instruct the caller.
     if not (SCRIPT_DIR / 'core' / 'product.json').exists():
         msg = ('schemas not downloaded — run ./download.sh first '
-               f'(in {SCRIPT_DIR})')
+               f'(in {SCRIPT_DIR}) [skipping lint]')
         if args.allow_missing_schemas:
             print(msg, file=sys.stderr)
             return 0
@@ -336,6 +372,7 @@ def main():
         return 2
 
     go_structs = parse_go_structs()
+    _assert_exempt_subset_known(go_structs)
     reports = []
     no_schema = []
 
@@ -373,12 +410,13 @@ def main():
                     print(f'    extra in Go:         {", ".join(r["extra_in_go"])}')
                 if r.get('required_with_omitempty'):
                     print(f'    required+omitempty:  {", ".join(r["required_with_omitempty"])}')
+            print(DRIFT_REMEDIATION)
         else:
             print('No schema drift.')
         if no_schema:
             print()
             print('Types in KNOWN_TYPES with no schema correspondent '
-                  '(candidates for deletion):')
+                  '(candidates for deletion or EXEMPT):')
             for t in no_schema:
                 print(f'  - {t}')
 

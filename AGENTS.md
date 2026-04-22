@@ -42,9 +42,18 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `adcp/serve.go` | One-liner HTTP server for AdCP MCP agents. |
 | `adcp/responses.go` | Response builders — `CapabilitiesResponse`, `ProductsResponse`, etc. |
 | `adcp/errors.go` | Structured AdCP error builder. |
-| `adcp/types.go` | AdCP domain types — products, media buys, signals, creatives, collections, business terms. |
+| `adcp/types.go` | Hand-written AdCP types — oneOf flatteners, inline response items, nested shapes. Generated types live in `adcp/types_gen.go`. |
+| `adcp/types_gen.go` | Auto-generated from JSON schemas in `adcp/schemas/` — do not edit. Regenerate via `cd adcp/schemas && python3 generate.py > ../types_gen.go`. |
+| `adcp/schemas/generate.py` | JSON-schema-to-Go-struct generator. `KNOWN_TYPES` set (top of file) lists types it skips so they can be hand-written. |
+| `adcp/schemas/lint.py` | Drift linter — diffs every `KNOWN_TYPES` entry against its schema. CI fails on drift. |
 | `adcp/testcontroller.go` | `RegisterTestController` — comply_test_controller for storyboard testing. |
 | `skills/` | SKILL.md files for coding agents to generate AdCP agents (seller, signals, creative, generative-seller, retail-media, collection). |
+
+### Adding a new AdCP type
+
+1. If the schema exists upstream and the generator produces an acceptable shape: do nothing. Leave `KNOWN_TYPES` alone, let `types_gen.go` own it.
+2. If you need a hand-written struct (methods, oneOf flattening, inline response item): add the struct to `adcp/types.go`, add its name to `KNOWN_TYPES` in `adcp/schemas/generate.py`, and regenerate. If the schema is a oneOf that you're flattening into one struct, also add the name to `EXEMPT` in `adcp/schemas/lint.py` so drift-check skips it. The `KNOWN_TYPES` comment block documents the criteria in more detail.
+3. Run `cd adcp/schemas && python3 lint.py` locally — it prints missing/extra fields and remediation guidance. CI runs it with `--strict`.
 
 ## Testing
 

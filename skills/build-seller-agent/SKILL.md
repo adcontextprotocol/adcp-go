@@ -22,7 +22,7 @@ Ask the user — don't guess.
 
 1. **What kind of seller?** Premium publisher (guaranteed, fixed pricing) / SSP (non-guaranteed, auction) / Retail media (both)
 2. **Guaranteed or non-guaranteed?** `delivery_type: "guaranteed"` vs `"non_guaranteed"`. Many sellers support both.
-3. **Products and pricing.** Each product needs: product_id, name, description, channel, delivery_type, pricing_options, publisher_properties (empty array OK), format_ids.
+3. **Products and pricing.** Each product needs: product_id, name, description, channels (array of channel enums), delivery_type, pricing_options, format_ids. publisher_properties is optional; if present, it's a list of `PublisherPropertySelector` entries each pointing at a publisher_domain.
 4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "pending_approval"`). Async can surface via buyer polling `get_media_buys` OR via signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern. Webhooks are baseline in AdCP 3.0; polling is the legacy fallback.
 5. **Creative management.** Standard (`list_creative_formats` + `sync_creatives`) or none.
 
@@ -328,7 +328,7 @@ Error codes with auto-recovery: `RATE_LIMITED` (retry), `BUDGET_TOO_LOW` / `INVA
 
 ## Product Definitions
 
-Each product needs: `ProductID`, `Name`, `Description`, `Channel`, `DeliveryType`, `PricingOptions`, `PublisherProperties`, `FormatIDs`.
+Each product needs: `ProductID`, `Name`, `Description`, `Channels`, `DeliveryType`, `PricingOptions`, `FormatIDs`. `PublisherProperties` is optional — a slice of `adcp.PublisherPropertySelector` pointing at publisher domains.
 
 Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
@@ -375,7 +375,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 |---------|-----|
 | Missing `IdempotencyReplayTTL` on `adcp.Config` | Required — set to `24*time.Hour`. Panics at startup if unset or outside 1h–7d. |
 | Missing `Description` on products | Required by schema validation |
-| Missing `publisher_properties`/`format_ids` on products | Required fields — use empty `[]string{}` if none |
+| Missing `format_ids` on products | Required field — use an empty `[]adcp.FormatRef{}` if none. `publisher_properties` is optional; omit it rather than sending an empty array. |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `sync_creatives` status `"accepted"` | Use `"approved"` — valid: processing, pending_review, approved, rejected, archived |
 | Empty slices serialize as `null` | Use `make([]T, 0)` not `var x []T` |

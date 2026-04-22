@@ -332,7 +332,10 @@ type AccountReference struct {
 }
 
 // PublisherPropertySelector is the flattened union of the three variants in
-// publisher-property-selector.json. selection_type is the discriminator.
+// publisher-property-selector.json. SelectionType is the discriminator:
+//   "all":     set PublisherDomain only.
+//   "by_id":   set PublisherDomain + PropertyIDs.
+//   "by_tag":  set PublisherDomain + PropertyTags.
 type PublisherPropertySelector struct {
 	PublisherDomain string   `json:"publisher_domain"`
 	SelectionType   string   `json:"selection_type"`
@@ -381,9 +384,21 @@ type ProductsData struct {
 // PricingOption is the flattened union of all variants in pricing-option.json.
 // The schema is a oneOf of 9 pricing models (cpm, vcpm, cpc, cpcv, cpv, cpp,
 // cpa, flat_rate, time); the Go representation carries every variant's fields
-// so a single struct type can be constructed for any model. The pricing_model
-// field is the discriminator; callers should only set the fields that apply
-// to their chosen model.
+// so a single struct type can be constructed for any model. PricingModel is
+// the discriminator; callers MUST only set fields that apply to their model.
+//
+// Fields by variant:
+//   cpm / vcpm / cpc / cpcv / cpv / cpp:
+//     FixedPrice (fixed) OR FloorPrice + PriceGuidance (auction); MaxBid for
+//     auction models to interpret bid_price as a ceiling.
+//   cpa:
+//     FixedPrice, EventSourceID, EventType (required); CustomEventName when
+//     EventType="custom"; EligibleAdjustments for adjustment filtering.
+//   flat_rate:
+//     FixedPrice (required).
+//   time:
+//     FixedPrice (required), Parameters for duration/unit specifics.
+//   All variants: PricingOptionID, Currency, MinSpendPerPackage, PriceBreakdown.
 type PricingOption struct {
 	PricingOptionID     string  `json:"pricing_option_id"`
 	PricingModel        string  `json:"pricing_model"`
@@ -501,9 +516,13 @@ type SignalID struct {
 // that reference SignalPricing continue to compile.
 type SignalPricing = VendorPricingOption
 
-// Deployment is the flattened union of deployment.json's oneOf variants
-// ('platform' and 'agent'). pricing_option_id is the discriminator stored in
-// `type`; callers only set fields relevant to their variant.
+// Deployment is the flattened union of deployment.json's oneOf variants.
+// Type is the discriminator:
+//   "platform": set Platform (required), AgentURL, Account, ActivationKey.
+//   "agent":    set AgentURL (required), ActivationKey.
+// All variants: IsLive, DeployedAt, EstimatedActivationDurationMinutes.
+// Do not mix variant-specific fields — schema validators accept it because
+// additionalProperties=true, but the result is semantically wrong.
 type Deployment struct {
 	Type                               string         `json:"type"`
 	Platform                           string         `json:"platform,omitempty"`
