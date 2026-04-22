@@ -36,6 +36,10 @@ jobs:
           (cd adcp/schemas && python3 generate.py > ../types_gen.go)
           git diff --exit-code adcp/types_gen.go
 
+      - name: Check hand-written types match schema
+        working-directory: adcp/schemas
+        run: python3 lint.py --strict
+
       - name: Check generated code is up to date
         run: |
           go generate ./tmproto/...

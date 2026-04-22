@@ -18,18 +18,28 @@ from collections import OrderedDict
 
 # Types that exist in hand-written files or will be generated.
 # $ref targets not in this set get replaced with `any`.
+#
+# To remove a type from this list: the hand-written definition in types.go
+# (or inputs.go, etc.) must be deleted first, then the generator will emit
+# the type from its JSON schema. Types remain here when:
+#   - schema is oneOf with union fields (generator produces `type X = any`)
+#   - type is an inline response-item with no standalone schema file
+#   - generator cannot produce the shape we want (nested inline arrays)
+#   - type has attached methods or helpers
 KNOWN_TYPES = {
-    # From types.go (hand-written)
+    # Inline response items / nested shapes — no standalone schema file
     'CapabilitiesData', 'ADCPVersion', 'BrandReference', 'AccountReference',
     'AccountResult', 'AccountSetup', 'GovernanceResult', 'GovernanceAccount',
-    'GovernanceAgent', 'ProductsData', 'Product', 'FormatRef', 'PricingOption',
-    'Targeting', 'GeoTarget', 'CreativeSpec', 'MediaBuyData', 'Package',
+    'GovernanceAgent', 'ProductsData',
     'MediaBuyListItem', 'DeliveryData', 'ReportingPeriod', 'MediaBuyDelivery',
-    'DeliveryTotals', 'PackageDelivery', 'CreativeFormatID', 'CreativeFormat',
+    'PackageDelivery',
     'Render', 'AssetSlot', 'CreativeResult', 'CreativeListItem', 'PreviewResult',
-    'Preview', 'PreviewRender', 'BuildCreativeResult', 'Signal', 'SignalID',
-    'SignalPricing', 'Deployment', 'ActivationKey', 'CatalogResult',
+    'Preview', 'PreviewRender', 'BuildCreativeResult', 'SignalID',
+    'SignalPricing', 'ActivationKey', 'CatalogResult',
     'EventSourceResult', 'LogEventResult',
+    # oneOf schemas — generator produces `type X = any`; hand-writing flattens
+    # the union into a single struct with all variant fields.
+    'PricingOption', 'Deployment', 'PublisherPropertySelector',
     # From inputs.go (hand-written types that need custom Go code)
     'EmptyInput', 'PackageInput',
     'AccountInput', 'GovernanceAccountInput',
@@ -72,7 +82,8 @@ KNOWN_TYPES = {
     'SignalsCapabilities', 'GovernanceCapabilities', 'GovernanceFeature',
     'FeatureRange', 'SICapabilities', 'SIEndpoint', 'SITransport',
     'BrandCapabilities', 'CreativeCapabilities', 'RequestSigningCapabilities',
-    'ComplianceTestingCapabilities',
+    'WebhookSigningCapabilities', 'IdentityCapabilities', 'IdentityKeyOrigins',
+    'IdentityCompromiseNotification', 'ComplianceTestingCapabilities',
     # Governance plan types (from governance_types.go) — the plans array
     # in sync-plans-request.json is an inline nested object, not a $ref,
     # so the generator cannot produce these on its own.
@@ -210,15 +221,21 @@ CORE_SCHEMAS = [
     "core/duration.json",
 ]
 
-# Map $ref schema names to Go type names when the schema filename doesn't match
-# the Go type name (e.g., brand-ref.json -> BrandReference, not BrandRef).
+# Map schema-derived Go names to the preferred Go name. Applied both when
+# resolving $ref targets and when emitting core/tool schema structs, so a
+# schema named brand-ref.json emits as `type BrandReference struct` and every
+# reference to it uses that same alias.
 REF_ALIASES = {
     'BrandRef': 'BrandReference',
     'AccountRef': 'AccountReference',
     'PackageRequest': 'PackageInput',
     'FormatID': 'FormatRef',
+    'FormatId': 'FormatRef',
+    'MediaBuy': 'MediaBuyData',
+    'Format': 'CreativeFormat',
     'SignalDefinition': 'Signal',
     'SignalPricingOption': 'SignalPricing',
+    'DeliveryMetrics': 'DeliveryTotals',
     'StartTiming': 'string',  # start_time is a string or "asap"
     'AccountInput': 'AccountInput',
     'GovernanceAccountInput': 'GovernanceAccountInput',
@@ -226,8 +243,10 @@ REF_ALIASES = {
     'DestinationInput': 'DestinationInput',
 }
 
-# Inline array item type hints: when a request schema has an array property whose
-# items are inline objects (no $ref), map (struct_name, field) -> Go item type.
+# Inline array item type hints: when a schema has an array property whose items
+# are inline objects or oneOfs (no $ref to a named schema file), map
+# (struct_name, field) -> Go item type. Keeps generated structs referencing
+# hand-written or otherwise-known types instead of falling back to `any`.
 INLINE_TYPE_HINTS = {
     ('SyncAccountsRequest', 'accounts'): 'AccountInput',
     ('SyncGovernanceRequest', 'accounts'): 'GovernanceAccountInput',
@@ -239,6 +258,10 @@ INLINE_TYPE_HINTS = {
     ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
     ('SyncPlansRequest', 'plans'): 'Plan',
+    # format.json: renders[] and assets[] are oneOf items. Map to hand-written
+    # Render/AssetSlot so reference-agent code can keep using typed literals.
+    ('CreativeFormat', 'renders'): 'Render',
+    ('CreativeFormat', 'assets'): 'AssetSlot',
 }
 
 # Enum schemas
@@ -267,13 +290,18 @@ def ref_to_go_name(ref):
     return pascal_case(name)
 
 def pascal_case(s):
-    """Convert kebab-case or snake_case to PascalCase."""
+    """Convert kebab-case or snake_case to PascalCase. Fully capitalizes
+    known acronyms (e.g. 'id' -> 'ID') and their trivial plurals (e.g.
+    'ids' -> 'IDs'), which matters for Go idioms like FormatIDs, PropertyIDs."""
     parts = re.split(r'[-_]', s)
     result = []
     acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'mcp'}
     for p in parts:
-        if p.lower() in acronyms:
+        lp = p.lower()
+        if lp in acronyms:
             result.append(p.upper())
+        elif len(lp) > 1 and lp.endswith('s') and lp[:-1] in acronyms:
+            result.append(p[:-1].upper() + 's')
         else:
             result.append(p[0].upper() + p[1:] if p else '')
     return ''.join(result)
@@ -281,6 +309,33 @@ def pascal_case(s):
 def is_enum_ref(ref):
     """Check if a $ref points to an enum schema."""
     return '/enums/' in ref
+
+
+_WILL_GENERATE_CACHE = None
+
+def _will_generate_set():
+    """Names (after REF_ALIASES) that this generator run will emit as structs.
+    Used so `resolve_go_type` can typed-reference a schema-derived type even
+    though it hasn't been emitted yet at the moment of the first reference.
+    Excludes schemas that will not produce a struct (no `properties`, oneOf-
+    only, etc.) because a ref to such a name resolves to `any`."""
+    global _WILL_GENERATE_CACHE
+    if _WILL_GENERATE_CACHE is not None:
+        return _WILL_GENERATE_CACHE
+    names = set()
+    for rel in CORE_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
+        if not os.path.exists(rel):
+            continue
+        try:
+            schema = load_schema(rel)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if schema.get('type') == 'object' and 'properties' in schema:
+            stem = Path(rel).stem
+            name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
+            names.add(name)
+    _WILL_GENERATE_CACHE = names
+    return names
 
 def resolve_go_type(prop, required=False):
     """Resolve a JSON schema property to a Go type string."""
@@ -294,8 +349,9 @@ def resolve_go_type(prop, required=False):
             return 'AdcpError'
         # Apply aliases for schema names that don't match Go type names
         name = REF_ALIASES.get(name, name)
-        # If the referenced type won't exist in the generated output, use any
-        if name in KNOWN_TYPES:
+        # Resolve if the type is hand-written (KNOWN_TYPES) or will be
+        # emitted from one of the registered schema lists in this run.
+        if name in KNOWN_TYPES or name in _will_generate_set():
             return name
         return 'any'  # Unknown $ref target — avoid undefined type errors
 
@@ -454,7 +510,8 @@ def generate():
             print(f'// Skipped {path} (not found)', file=sys.stderr)
             continue
         schema = load_schema(path)
-        name = pascal_case(Path(path).stem)
+        name = REF_ALIASES.get(pascal_case(Path(path).stem),
+                               pascal_case(Path(path).stem))
         if name in generated:
             continue
         generated.add(name)

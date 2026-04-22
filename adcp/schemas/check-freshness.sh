@@ -70,6 +70,12 @@ echo "Latest:  ${LATEST:-<no released versions>}"
 
 if [ -z "$LATEST" ] || [ "$PINNED" = "$LATEST" ]; then
   echo "Up to date."
+  if python3 "$SCRIPT_DIR/lint.py" --allow-missing-schemas; then
+    :
+  else
+    echo "Schema drift detected. Fix hand-written types or update KNOWN_TYPES in generate.py." >&2
+    exit 1
+  fi
   exit 0
 fi
 echo "Stale. Run: cd adcp/schemas && ./download.sh $LATEST && python3 generate.py > ../types_gen.go"

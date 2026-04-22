@@ -50,14 +50,14 @@ type GovernanceAccountInput struct {
 // CreativeInput is a single creative in a sync_creatives request.
 type CreativeInput struct {
 	CreativeID string            `json:"creative_id"`
-	FormatID   *CreativeFormatID `json:"format_id,omitempty"`
+	FormatID   *FormatRef `json:"format_id,omitempty"`
 	Name       string            `json:"name,omitempty"`
 	Assets     map[string]any    `json:"assets,omitempty"`
 }
 
 // CreativeFilters contains filters for list_creatives.
 type CreativeFilters struct {
-	FormatIDs []CreativeFormatID `json:"format_ids,omitempty"`
+	FormatIDs []FormatRef `json:"format_ids,omitempty"`
 }
 
 // CatalogInput is a single catalog in a sync_catalogs request.

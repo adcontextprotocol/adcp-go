@@ -95,11 +95,10 @@ var products = []adcp.Product{
     {
         ProductID: "ai-display", Name: "AI-Generated Display",
         Description: "AI-generated display ads from creative briefs",
-        Channel: "display", DeliveryType: "non_guaranteed",
+        Channels: []string{"display"}, DeliveryType: "non_guaranteed",
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "ai-display-floor", PricingModel: "cpm", FloorPrice: 8.00, Currency: "USD"},
         },
-        PublisherProperties: []string{},
         FormatIDs: []adcp.FormatRef{
             {AgentURL: agentURL, ID: "display_300x250_generative"},
             {AgentURL: agentURL, ID: "display_300x250"},
@@ -148,7 +147,7 @@ adcp.AddTool(server, "get_media_buys", "List media buys",
 ```go
 var creativeFormats = []adcp.CreativeFormat{
     {   // Generative — brief asset
-        FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "display_300x250_generative"},
+        FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "display_300x250_generative"},
         Name: "Generated Display 300x250",
         Renders: []adcp.Render{{Width: 300, Height: 250}},
         Assets: []adcp.AssetSlot{
@@ -156,7 +155,7 @@ var creativeFormats = []adcp.CreativeFormat{
         },
     },
     {   // Standard — image asset
-        FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "display_300x250"},
+        FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "display_300x250"},
         Name: "Display 300x250",
         Renders: []adcp.Render{{Width: 300, Height: 250}},
         Assets: []adcp.AssetSlot{

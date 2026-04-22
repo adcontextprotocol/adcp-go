@@ -64,18 +64,17 @@ var products = []adcp.Product{
     {
         ProductID: "premium-display", Name: "Premium Display",
         Description: "High-impact display placements.",
-        Channel: "display", DeliveryType: "guaranteed",
+        Channels: []string{"display"}, DeliveryType: "guaranteed",
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"},
         },
-        PublisherProperties: []string{},
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}},
     },
 }
 
 var formats = []adcp.CreativeFormat{
     {
-        FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "banner-300x250"},
+        FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "banner-300x250"},
         Name:     "Medium Rectangle",
         Renders:  []adcp.Render{{Width: 300, Height: 250}},
         Assets: []adcp.AssetSlot{
@@ -166,7 +165,9 @@ func main() {
                         MeasurementTerms: p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
                     })
                 }
-                buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", Currency: "USD", Packages: pkgs}
+                var totalBudget float64
+                for _, p := range req.Packages { totalBudget += p.Budget }
+                buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", TotalBudget: totalBudget, Packages: pkgs}
                 b.mediaBuys[id] = buy
                 for _, pkg := range pkgs { b.delivery[pkg.PackageID] = &struct{ Impressions, Clicks int; Spend float64 }{} }
                 return buy, nil
@@ -176,8 +177,8 @@ func main() {
                 b.mu.RLock()
                 defer b.mu.RUnlock()
                 buys := make([]adcp.MediaBuyData, 0)
-                if len(req.MediaBuyIds) > 0 {
-                    for _, id := range req.MediaBuyIds {
+                if len(req.MediaBuyIDs) > 0 {
+                    for _, id := range req.MediaBuyIDs {
                         if buy, ok := b.mediaBuys[id]; ok { buys = append(buys, *buy) }
                     }
                 } else {
@@ -209,7 +210,7 @@ func main() {
                 defer b.mu.RUnlock()
                 // In production: pull from your reporting system
                 now := time.Now().UTC()
-                ids := req.MediaBuyIds
+                ids := req.MediaBuyIDs
                 if len(ids) == 0 { for id := range b.mediaBuys { ids = append(ids, id) } }
                 deliveries := make([]adcp.MediaBuyDelivery, 0)
                 for _, mbID := range ids {
@@ -336,11 +337,11 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 ```go
 {
     ProductID: "primetime-30s", Name: "Primetime :30 — M-F 8-11pm",
-    Description: "Primetime 30-second broadcast spots.", DeliveryType: "guaranteed",
+    Description: "Primetime 30-second broadcast spots.",
+    Channels: []string{"broadcast"}, DeliveryType: "guaranteed",
     PricingOptions: []adcp.PricingOption{
         {PricingOptionID: "unit-30s", PricingModel: "unit", FixedPrice: 5000, Currency: "USD"},
     },
-    PublisherProperties: []string{},
     FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "broadcast-30s"}},
     CancellationPolicy: &adcp.CancellationPolicy{
         NoticePeriod:    adcp.Duration{Interval: 14, Unit: "days"},
