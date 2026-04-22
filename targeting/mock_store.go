@@ -321,6 +321,19 @@ func (m *MockStore) MGet(_ context.Context, keys ...string) ([]string, error) {
 	return results, nil
 }
 
+func (m *MockStore) MSet(_ context.Context, kvs map[string]string, ttl time.Duration) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for k, v := range kvs {
+		entry := stringEntry{value: v}
+		if ttl > 0 {
+			entry.expiry = m.Now().Add(ttl)
+		}
+		m.strings[k] = entry
+	}
+	return nil
+}
+
 // isExpired checks key-level expiry. Must be called with lock held.
 func (m *MockStore) isExpired(key string) bool {
 	exp, ok := m.expiry[key]

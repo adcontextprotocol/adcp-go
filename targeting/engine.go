@@ -455,6 +455,22 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
 }
 
+// SetUserProfiles writes segment memberships for multiple users in a single batch.
+// The profiles map is keyed by user token.
+func (e *Engine) SetUserProfiles(ctx context.Context, profiles map[string]map[string]float64) error {
+	kvs := make(map[string]string, len(profiles))
+	for userToken, segments := range profiles {
+		hash := HashToken(userToken)
+		profile := UserProfile{Segments: segments}
+		data, err := json.Marshal(profile)
+		if err != nil {
+			return err
+		}
+		kvs["user:profile:"+hash] = string(data)
+	}
+	return e.store.MSet(ctx, kvs, 0)
+}
+
 // RecordExposure records an impression to the exposure log for all UIDs.
 // Each UID's exposure log is read, the new entry is appended,
 // old entries are pruned, and the log is written back.
