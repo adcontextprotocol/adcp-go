@@ -16,7 +16,7 @@ import (
 )
 
 // setupIntegration creates an Engine backed by a real Redis (miniredis) Store.
-func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Miniredis) {
+func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Miniredis, *targeting.ResolvedPackages) {
 	t.Helper()
 	mr, err := miniredis.Run()
 	require.NoError(t, err)
@@ -32,22 +32,27 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 		require.NoError(t, store.Set(ctx, key, string(data), 0))
 	}
 
-	seedJSON("config:pkg:pkg-alpha", targeting.PackageIdentityConfig{
+	pkgAlpha := targeting.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"sports"},
-	})
-	seedJSON("config:pkg:pkg-beta", targeting.PackageIdentityConfig{
+	}
+	pkgBeta := targeting.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
-	})
-	seedJSON("config:campaign:campaign-x", targeting.CampaignFreqConfig{
+	}
+	campaignX := targeting.CampaignFreqConfig{
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
-	})
+	}
+	seedJSON("config:pkg:pkg-alpha", pkgAlpha)
+	seedJSON("config:pkg:pkg-beta", pkgBeta)
+	seedJSON("config:campaign:campaign-x", campaignX)
 
-	// Add user to audience segment.
+	// Seed user profile with sports segment.
 	tokenHash := targeting.HashToken("user-valkey")
-	mr.SAdd("audience:sports", tokenHash)
+	profileJSON, err := json.Marshal(targeting.UserProfile{Segments: map[string]float64{"sports": 1.0}})
+	require.NoError(t, err)
+	require.NoError(t, store.Set(ctx, "user:profile:"+tokenHash, string(profileJSON), 0))
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "test-valkey",
@@ -58,11 +63,22 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 		},
 	})
 
-	return engine, store, mr
+	resolved := &targeting.ResolvedPackages{
+		SegmentIndex: map[string][]string{"sports": {"pkg-alpha"}},
+		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
+			"pkg-alpha": &pkgAlpha,
+			"pkg-beta":  &pkgBeta,
+		},
+		CampaignConfigs: map[string]*targeting.CampaignFreqConfig{
+			"campaign-x": &campaignX,
+		},
+	}
+
+	return engine, store, mr, resolved
 }
 
 func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, _, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
@@ -75,7 +91,7 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "valkey-pkg-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
@@ -84,7 +100,7 @@ func TestValkeyIntegration_PackageFrequencyCap(t *testing.T) {
 }
 
 func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, _, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
@@ -102,7 +118,7 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 		})
 	}
 
-	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "valkey-camp-cap", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha", "pkg-beta"},
 	})
@@ -113,7 +129,7 @@ func TestValkeyIntegration_CampaignFrequencyCap(t *testing.T) {
 }
 
 func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, _, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
@@ -125,7 +141,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 		})
 	}
 
-	resp, _ := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "v-before", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
@@ -133,10 +149,10 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 
 	// Fast-forward miniredis past the 24h window.
 	mr.FastForward(25 * time.Hour)
-	// Also advance engine time so ZCount cutoff is correct.
+	// Also advance engine time so the cutoff is correct.
 	engine.Now = func() time.Time { return time.Now().Add(25 * time.Hour) }
 
-	resp, _ = engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "v-after", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
@@ -144,7 +160,7 @@ func TestValkeyIntegration_SlidingWindowExpiry(t *testing.T) {
 }
 
 func TestValkeyIntegration_IntentScore(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, _, mr, resolved := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 
@@ -152,7 +168,7 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 		UserToken: "user-valkey", PackageID: "pkg-alpha",
 	})
 
-	resp, err := engine.EvaluateIdentity(ctx, &tmproto.IdentityMatchRequest{
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID: "v-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-valkey"}},
 		PackageIDs: []string{"pkg-alpha"},
 	})
@@ -162,7 +178,7 @@ func TestValkeyIntegration_IntentScore(t *testing.T) {
 }
 
 func TestValkeyIntegration_ExposureResponse(t *testing.T) {
-	engine, _, mr := setupIntegration(t)
+	engine, _, mr, _ := setupIntegration(t)
 	defer mr.Close()
 	ctx := context.Background()
 

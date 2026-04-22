@@ -12,8 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
-	"strconv"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -214,136 +212,6 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 type IdentityResult struct {
 	RequestID   string
 	Eligibility []tmproto.PackageEligibility
-}
-
-// EvaluateIdentity evaluates user eligibility against requested packages.
-//
-// Pipeline per package:
-//  1. Campaign frequency cap
-//  2. Package frequency cap
-//  3. Audience segment match
-//  4. Intent score
-//
-// Frequency caps, audience lookups, and intent scores key on Identities[0]
-// only. Multi-identity resolution (selecting which identity graph the buyer
-// resolves against) is a router concern that runs upstream of this pipeline.
-// Callers that need cross-identity aggregation must pre-resolve to a
-// canonical token before calling EvaluateIdentity.
-func (e *Engine) EvaluateIdentity(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
-	evalStart := time.Now()
-	// Frequency caps and audience lookups are keyed on a single token hash;
-	// the schema allows multiple identities but the eligibility pipeline
-	// operates on the first as a primary key. Multi-identity resolution is
-	// a router concern (provider selection).
-	var primaryToken string
-	if len(req.Identities) > 0 {
-		primaryToken = req.Identities[0].UserToken
-	}
-	tokenHash := HashToken(primaryToken)
-	now := e.now()
-
-	// Batch-load all identity configs (1 MGet) and campaign configs (1 MGet).
-	idConfigs, err := batchLoadPackageIdentityConfigs(ctx, e.store, req.PackageIDs)
-	if err != nil {
-		e.metrics.StoreError("load_identity_configs", err)
-		idConfigs = make(map[string]*PackageIdentityConfig)
-	}
-
-	// Collect unique campaign IDs for batch campaign config load.
-	campaignIDSet := make(map[string]struct{})
-	for _, cfg := range idConfigs {
-		if cfg != nil && cfg.CampaignID != "" {
-			campaignIDSet[cfg.CampaignID] = struct{}{}
-		}
-	}
-	campaignIDs := make([]string, 0, len(campaignIDSet))
-	for id := range campaignIDSet {
-		campaignIDs = append(campaignIDs, id)
-	}
-	campConfigs, err := batchLoadCampaignFreqConfigs(ctx, e.store, campaignIDs)
-	if err != nil {
-		e.metrics.StoreError("load_campaign_configs", err)
-		campConfigs = make(map[string]*CampaignFreqConfig)
-	}
-
-	var eligibility []tmproto.PackageEligibility
-	for _, pkgID := range req.PackageIDs {
-		// In dynamic mode, any package with identity config is "known."
-		// In static mode, the package must be in e.packages.
-		if !e.dynamicPackages {
-			if _, known := e.packages[pkgID]; !known {
-				eligibility = append(eligibility, tmproto.PackageEligibility{
-					PackageID: pkgID,
-					Eligible:  false,
-				})
-				continue
-			}
-		}
-
-		eligible := true
-		idCfg := idConfigs[pkgID]
-
-		// Campaign frequency cap (graceful: skip on Store error).
-		if eligible && idCfg != nil && idCfg.CampaignID != "" {
-			campCfg := campConfigs[idCfg.CampaignID]
-			if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
-				key := fmt.Sprintf("freq:campaign:%s:%s", idCfg.CampaignID, tokenHash)
-				rules := toFrequencyRules(campCfg.FrequencyRules)
-				capped, err := e.checkFrequencyRules(ctx, key, rules, now)
-				if err != nil {
-					e.metrics.StoreError(StageCampaignFreq, err)
-				} else if capped {
-					eligible = false
-					e.metrics.IdentityEvaluated(pkgID, StageCampaignFreq, false)
-				}
-			}
-		}
-
-		// Package frequency cap (graceful: skip on Store error).
-		if eligible && idCfg != nil && len(idCfg.FrequencyRules) > 0 {
-			key := fmt.Sprintf("freq:pkg:%s:%s", pkgID, tokenHash)
-			rules := toFrequencyRules(idCfg.FrequencyRules)
-			capped, err := e.checkFrequencyRules(ctx, key, rules, now)
-			if err != nil {
-				e.metrics.StoreError(StagePackageFreq, err)
-			} else if capped {
-				eligible = false
-				e.metrics.IdentityEvaluated(pkgID, StagePackageFreq, false)
-			}
-		}
-
-		// Audience segments (graceful: skip on Store error).
-		if eligible && idCfg != nil && len(idCfg.TargetSegments) > 0 {
-			matched, err := e.checkAudienceMatch(ctx, tokenHash, idCfg.TargetSegments)
-			if err != nil {
-				e.metrics.StoreError(StageAudience, err)
-			} else if !matched {
-				eligible = false
-				e.metrics.IdentityEvaluated(pkgID, StageAudience, false)
-			}
-		}
-
-		// Intent score (graceful: skip on Store error, return 0).
-		var intent float64
-		if score, err := e.computeIntentScore(ctx, tokenHash, pkgID, now); err != nil {
-			e.metrics.StoreError("intent", err)
-		} else {
-			intent = score
-		}
-
-		pe := tmproto.PackageEligibility{PackageID: pkgID, Eligible: eligible}
-		if intent > 0 {
-			pe.IntentScore = &intent
-		}
-		eligibility = append(eligibility, pe)
-	}
-
-	e.metrics.Latency("identity_eval", time.Since(evalStart))
-
-	return &IdentityResult{
-		RequestID:   req.RequestID,
-		Eligibility: eligibility,
-	}, nil
 }
 
 // EvaluateContextResolved evaluates context using pre-built indexes.
@@ -635,7 +503,6 @@ func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*Expos
 	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
 	nowMs := float64(now.UnixMilli())
 	pruneBeforeMs := float64(now.Add(-30 * 24 * time.Hour).UnixMilli())
-	nowStr := fmt.Sprintf("%d", now.Unix())
 
 	// Pre-compute token hashes (SHA-256, avoid re-hashing per loop).
 	hashes := make([]string, len(identities))
@@ -712,12 +579,6 @@ func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*Expos
 				}
 				_ = e.store.ZExpire(ctx, campFreqKey, 30*24*time.Hour)
 			}
-		}
-
-		// Intent timestamp.
-		intentKey := fmt.Sprintf("intent:%s:%s", req.PackageID, hash)
-		if err := e.store.Set(ctx, intentKey, nowStr, 7*24*time.Hour); err != nil {
-			e.metrics.StoreError("set_intent", err)
 		}
 	}
 
@@ -804,57 +665,6 @@ func (e *Engine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID 
 		}
 	}
 	return false, nil
-}
-
-// checkFrequencyRules checks all rules against a sorted set.
-// Returns true (capped) if ANY rule is exceeded.
-func (e *Engine) checkFrequencyRules(ctx context.Context, key string, rules []FrequencyRule, now time.Time) (bool, error) {
-	for _, rule := range rules {
-		cutoff := float64(now.Add(-rule.Window).UnixMilli())
-		count, err := e.store.ZCount(ctx, key, cutoff, math.MaxFloat64)
-		if err != nil {
-			return false, err
-		}
-		if int(count) >= rule.MaxCount {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// checkAudienceMatch checks if a user is in any of the target segments.
-func (e *Engine) checkAudienceMatch(ctx context.Context, tokenHash string, segments []string) (bool, error) {
-	for _, seg := range segments {
-		key := fmt.Sprintf("audience:%s", seg)
-		member, err := e.store.SetIsMember(ctx, key, tokenHash)
-		if err != nil {
-			return false, err
-		}
-		if member {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// computeIntentScore calculates a recency-based intent score.
-// Decays linearly from 1.0 to 0.0 over 7 days.
-func (e *Engine) computeIntentScore(ctx context.Context, tokenHash, packageID string, now time.Time) (float64, error) {
-	key := fmt.Sprintf("intent:%s:%s", packageID, tokenHash)
-	val, ok, err := e.store.Get(ctx, key)
-	if err != nil {
-		return 0, err
-	}
-	if !ok {
-		return 0, nil
-	}
-	ts, err := strconv.ParseInt(val, 10, 64)
-	if err != nil {
-		return 0, nil //nolint:nilerr // unparseable timestamp = no intent score
-	}
-	hoursSince := now.Sub(time.Unix(ts, 0)).Hours()
-	score := 1.0 - (hoursSince / 168.0)
-	return math.Max(0, score), nil
 }
 
 func (e *Engine) now() time.Time {

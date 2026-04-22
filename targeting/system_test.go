@@ -102,14 +102,14 @@ func TestSystem_EndToEnd(t *testing.T) {
 		})
 	}
 
-	// Audience segments: populate with user hashes.
+	// User profiles: each user is in 2 segments.
 	userTokens := make([]string, numUsers)
 	for u := range numUsers {
 		userTokens[u] = fmt.Sprintf("tok-user-%d", u)
-		hash := HashToken(userTokens[u])
-		// Each user is in 2-3 segments.
-		store.SetAdd("audience:"+segments[u%numSegments], hash)
-		store.SetAdd("audience:"+segments[(u+3)%numSegments], hash)
+		store.SetUserProfile(userTokens[u], map[string]float64{
+			segments[u%numSegments]:     1.0,
+			segments[(u+3)%numSegments]: 1.0,
+		})
 	}
 
 	// Add artifact topics.
@@ -239,26 +239,23 @@ func TestSystem_EndToEnd(t *testing.T) {
 		}
 	}
 
+	// Identity uses the resolved path for all modes (only evaluator available).
+	idEval := func(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
+		return resolvedEngine.EvaluateIdentityResolved(ctx, resolved, req)
+	}
+
 	// Static mode.
-	staticResult := runBench("Static",
-		staticEngine.EvaluateContext,
-		staticEngine.EvaluateIdentity,
-	)
+	staticResult := runBench("Static", staticEngine.EvaluateContext, idEval)
 
 	// Dynamic mode.
-	dynamicResult := runBench("Dynamic",
-		dynamicEngine.EvaluateContext,
-		dynamicEngine.EvaluateIdentity,
-	)
+	dynamicResult := runBench("Dynamic", dynamicEngine.EvaluateContext, idEval)
 
 	// Resolved mode.
 	resolvedResult := runBench("Resolved",
 		func(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 			return resolvedEngine.EvaluateContextResolved(ctx, resolved, req)
 		},
-		func(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
-			return resolvedEngine.EvaluateIdentityResolved(ctx, resolved, req)
-		},
+		idEval,
 	)
 
 	t.Logf("=== Latency Breakdown (%d users × %d pages = %d requests, %d packages each) ===",

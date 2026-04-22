@@ -40,12 +40,6 @@ func setupStack(t *testing.T) *testStack {
 	// Seed URL blocklist.
 	store.SetAdd("url:blocklist:pkg-family", targeting.HashURL("article:adult-content"))
 
-	// Seed audience segments.
-	aliceHash := targeting.HashToken("tok-alice")
-	bobHash := targeting.HashToken("tok-bob")
-	store.SetAdd("audience:cooking_fans", aliceHash)
-	store.SetAdd("audience:sports_fans", bobHash)
-
 	// Context engine.
 	contextEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "integration-context",
@@ -105,10 +99,10 @@ func setupStack(t *testing.T) *testStack {
 	}
 
 	// Start context agent server.
-	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil))
+	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil, nil))
 	t.Cleanup(ctxSrv.Close)
 
-	// Start identity agent server (with resolved path for binary exposure logs).
+	// Start identity agent server.
 	idSrv := httptest.NewServer(agentHandler(nil, identityEngine, idResolved))
 	t.Cleanup(idSrv.Close)
 
@@ -143,8 +137,8 @@ func setupStack(t *testing.T) *testStack {
 }
 
 // agentHandler creates an HTTP handler that serves both context and identity endpoints.
-// If resolved is non-nil, uses the resolved path for identity evaluation.
-func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved ...*targeting.ResolvedPackages) http.Handler {
+// Identity evaluation uses the resolved-packages path.
+func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved *targeting.ResolvedPackages) http.Handler {
 	mux := http.NewServeMux()
 
 	if ctxEngine != nil {
@@ -185,13 +179,7 @@ func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved ...*targeting.
 				writeAgentError(w, "", "invalid JSON")
 				return
 			}
-			var result *targeting.IdentityResult
-			var evalErr error
-			if len(resolved) > 0 && resolved[0] != nil {
-				result, evalErr = idEngine.EvaluateIdentityResolved(r.Context(), resolved[0], &req)
-			} else {
-				result, evalErr = idEngine.EvaluateIdentity(r.Context(), &req)
-			}
+			result, evalErr := idEngine.EvaluateIdentityResolved(r.Context(), resolved, &req)
 			if evalErr != nil {
 				writeAgentError(w, req.RequestID, evalErr.Error())
 				return
@@ -412,8 +400,8 @@ func TestIntegration_Mediation(t *testing.T) {
 	store.SetAdd("topics:package:pkg-wine", "food.cooking", "food.beverage")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	// Audience: alice is a cooking fan.
-	store.SetAdd("audience:cooking_fans", targeting.HashToken("tok-alice"))
+	// Alice is a cooking fan.
+	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 1.0})
 
 	creativeManifest, _ := json.Marshal(map[string]any{
 		"format_id": "sponsored_card",
@@ -463,9 +451,12 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	// Seed identity config for mediation packages.
-	store.SetPackageIdentityConfig("pkg-olive-oil", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
-	store.SetPackageIdentityConfig("pkg-cookware", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
-	store.SetPackageIdentityConfig("pkg-wine", targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}})
+	oliveIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
+	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
+	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
+	store.SetPackageIdentityConfig("pkg-olive-oil", oliveIdCfg)
+	store.SetPackageIdentityConfig("pkg-cookware", cookwareIdCfg)
+	store.SetPackageIdentityConfig("pkg-wine", wineIdCfg)
 
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "mediation-identity",
@@ -477,15 +468,27 @@ func TestIntegration_Mediation(t *testing.T) {
 		},
 	})
 
-	// Seed intent scores directly in store to simulate prior exposure history.
-	oliveHash := targeting.HashToken("tok-alice")
-	_ = store.Set(context.Background(), "intent:pkg-olive-oil:"+oliveHash, fmt.Sprintf("%d", time.Now().Add(-6*time.Hour).Unix()), 7*24*time.Hour)
-	_ = store.Set(context.Background(), "intent:pkg-wine:"+oliveHash, fmt.Sprintf("%d", time.Now().Add(-4*24*time.Hour).Unix()), 7*24*time.Hour)
+	// Seed exposure history to drive intent scoring: olive-oil recent, wine older.
+	store.SetUserExposures("tok-alice", []targeting.ExposureEntry{
+		{ImpressionID: "imp-olive-1", PackageID: "pkg-olive-oil", SourceID: "mediation-identity", Timestamp: time.Now().Add(-6 * time.Hour).Unix()},
+		{ImpressionID: "imp-wine-1", PackageID: "pkg-wine", SourceID: "mediation-identity", Timestamp: time.Now().Add(-4 * 24 * time.Hour).Unix()},
+	})
+
+	idResolved := &targeting.ResolvedPackages{
+		SegmentIndex: map[string][]string{
+			"cooking_fans": {"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
+		},
+		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
+			"pkg-olive-oil": &oliveIdCfg,
+			"pkg-cookware":  &cookwareIdCfg,
+			"pkg-wine":      &wineIdCfg,
+		},
+	}
 
 	// Wire up the stack.
-	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil))
+	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil, nil))
 	t.Cleanup(ctxSrv.Close)
-	idSrv := httptest.NewServer(agentHandler(nil, identityEngine))
+	idSrv := httptest.NewServer(agentHandler(nil, identityEngine, idResolved))
 	t.Cleanup(idSrv.Close)
 
 	reg := router.NewRegistry("", "")
@@ -632,9 +635,15 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		},
 	})
 
-	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil))
+	idResolved := &targeting.ResolvedPackages{
+		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
+			"pkg-premium-food": {},
+		},
+	}
+
+	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil, nil))
 	t.Cleanup(ctxSrv.Close)
-	idSrv := httptest.NewServer(agentHandler(nil, identityEngine))
+	idSrv := httptest.NewServer(agentHandler(nil, identityEngine, idResolved))
 	t.Cleanup(idSrv.Close)
 
 	reg := router.NewRegistry("", "")

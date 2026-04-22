@@ -33,7 +33,7 @@ func main() {
 
 	metrics := prommetrics.New()
 	store := initStore(storeAddr)
-	seedConfigs(store)
+	resolved := seedConfigs(store)
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "reference-identity-agent",
@@ -67,9 +67,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
-		result, err := engine.EvaluateIdentity(r.Context(), &req)
+		result, err := engine.EvaluateIdentityResolved(r.Context(), resolved, &req)
 		if err != nil {
-			slog.Error("EvaluateIdentity failed", "request_id", req.RequestID, "error", err)
+			slog.Error("EvaluateIdentityResolved failed", "request_id", req.RequestID, "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
 			return
@@ -158,8 +158,9 @@ func initStore(redisAddr string) targeting.Store {
 	return valkeystore.New(rdb)
 }
 
-// seedConfigs pushes reference identity and campaign configs into the Store.
-func seedConfigs(store targeting.Store) {
+// seedConfigs pushes reference identity and campaign configs into the Store
+// and returns the resolved package indexes for identity evaluation.
+func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 	ctx := context.Background()
 
 	configs := []struct {
@@ -184,10 +185,17 @@ func seedConfigs(store targeting.Store) {
 			TargetSegments: []string{"organic_food"},
 		}},
 	}
+	idConfigs := make(map[string]*targeting.PackageIdentityConfig, len(configs))
+	segmentIndex := make(map[string][]string)
 	for _, c := range configs {
 		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
 			slog.Error("seed package config failed", "package_id", c.pkgID, "error", err)
 			os.Exit(1)
+		}
+		cfg := c.cfg
+		idConfigs[c.pkgID] = &cfg
+		for _, seg := range cfg.TargetSegments {
+			segmentIndex[seg] = append(segmentIndex[seg], c.pkgID)
 		}
 	}
 
@@ -202,10 +210,19 @@ func seedConfigs(store targeting.Store) {
 			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 15, WindowSeconds: 2592000}},
 		}},
 	}
+	campConfigs := make(map[string]*targeting.CampaignFreqConfig, len(campaigns))
 	for _, c := range campaigns {
 		if err := targeting.SeedCampaignFreqConfig(ctx, store, c.campaignID, c.cfg); err != nil {
 			slog.Error("seed campaign config failed", "campaign_id", c.campaignID, "error", err)
 			os.Exit(1)
 		}
+		cfg := c.cfg
+		campConfigs[c.campaignID] = &cfg
+	}
+
+	return &targeting.ResolvedPackages{
+		SegmentIndex:    segmentIndex,
+		IdentityConfigs: idConfigs,
+		CampaignConfigs: campConfigs,
 	}
 }

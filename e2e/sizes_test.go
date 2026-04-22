@@ -162,7 +162,7 @@ func TestMeasure_TargetingScale(t *testing.T) {
 	store := targeting.NewMockStore()
 
 	for _, n := range []int{100, 1000, 10_000, 100_000} {
-		key := fmt.Sprintf("audience:seg-%d", n)
+		key := fmt.Sprintf("set:seg-%d", n)
 		for i := range n {
 			store.SetAdd(key, fmt.Sprintf("token-hash-%d", i))
 		}
