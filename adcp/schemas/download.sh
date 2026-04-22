@@ -47,6 +47,7 @@ PROTECTED=(
   download.sh
   check-freshness.sh
   generate.py
+  lint.py
 )
 
 VERSION="${1:-$(cat "$VERSION_FILE" | tr -d '[:space:]')}"
