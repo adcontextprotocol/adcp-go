@@ -10,6 +10,9 @@ import (
 	capnp "capnproto.org/go/capnp/v3"
 )
 
+// Competitive benchmarks comparing TMP JSON against Cap'n Proto. Run manually (not in CI).
+//   go test -bench=. -benchmem ./bench/...
+
 // --- Cap'n Proto helpers ---
 // Uses the raw Cap'n Proto API to build messages without codegen.
 
