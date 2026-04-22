@@ -22,7 +22,7 @@ Ask the user — don't guess.
 
 1. **What kind of seller?** Premium publisher (guaranteed, fixed pricing) / SSP (non-guaranteed, auction) / Retail media (both)
 2. **Guaranteed or non-guaranteed?** `delivery_type: "guaranteed"` vs `"non_guaranteed"`. Many sellers support both.
-3. **Products and pricing.** Each product needs: product_id, name, description, channel, delivery_type, pricing_options, publisher_properties (empty array OK), format_ids.
+3. **Products and pricing.** Each product needs: product_id, name, description, channels (array of channel enums), delivery_type, pricing_options, format_ids. publisher_properties is optional; if present, it's a list of `PublisherPropertySelector` entries each pointing at a publisher_domain.
 4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "pending_approval"`). Async can surface via buyer polling `get_media_buys` OR via signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern. Webhooks are baseline in AdCP 3.0; polling is the legacy fallback.
 5. **Creative management.** Standard (`list_creative_formats` + `sync_creatives`) or none.
 
@@ -64,18 +64,17 @@ var products = []adcp.Product{
     {
         ProductID: "premium-display", Name: "Premium Display",
         Description: "High-impact display placements.",
-        Channel: "display", DeliveryType: "guaranteed",
+        Channels: []string{"display"}, DeliveryType: "guaranteed",
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"},
         },
-        PublisherProperties: []string{},
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}},
     },
 }
 
 var formats = []adcp.CreativeFormat{
     {
-        FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "banner-300x250"},
+        FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "banner-300x250"},
         Name:     "Medium Rectangle",
         Renders:  []adcp.Render{{Width: 300, Height: 250}},
         Assets: []adcp.AssetSlot{
@@ -166,7 +165,9 @@ func main() {
                         MeasurementTerms: p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
                     })
                 }
-                buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", Currency: "USD", Packages: pkgs}
+                var totalBudget float64
+                for _, p := range req.Packages { totalBudget += p.Budget }
+                buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", TotalBudget: totalBudget, Packages: pkgs}
                 b.mediaBuys[id] = buy
                 for _, pkg := range pkgs { b.delivery[pkg.PackageID] = &struct{ Impressions, Clicks int; Spend float64 }{} }
                 return buy, nil
@@ -176,8 +177,8 @@ func main() {
                 b.mu.RLock()
                 defer b.mu.RUnlock()
                 buys := make([]adcp.MediaBuyData, 0)
-                if len(req.MediaBuyIds) > 0 {
-                    for _, id := range req.MediaBuyIds {
+                if len(req.MediaBuyIDs) > 0 {
+                    for _, id := range req.MediaBuyIDs {
                         if buy, ok := b.mediaBuys[id]; ok { buys = append(buys, *buy) }
                     }
                 } else {
@@ -209,7 +210,7 @@ func main() {
                 defer b.mu.RUnlock()
                 // In production: pull from your reporting system
                 now := time.Now().UTC()
-                ids := req.MediaBuyIds
+                ids := req.MediaBuyIDs
                 if len(ids) == 0 { for id := range b.mediaBuys { ids = append(ids, id) } }
                 deliveries := make([]adcp.MediaBuyDelivery, 0)
                 for _, mbID := range ids {
@@ -327,7 +328,7 @@ Error codes with auto-recovery: `RATE_LIMITED` (retry), `BUDGET_TOO_LOW` / `INVA
 
 ## Product Definitions
 
-Each product needs: `ProductID`, `Name`, `Description`, `Channel`, `DeliveryType`, `PricingOptions`, `PublisherProperties`, `FormatIDs`.
+Each product needs: `ProductID`, `Name`, `Description`, `Channels`, `DeliveryType`, `PricingOptions`, `FormatIDs`. `PublisherProperties` is optional — a slice of `adcp.PublisherPropertySelector` pointing at publisher domains.
 
 Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
@@ -336,11 +337,11 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 ```go
 {
     ProductID: "primetime-30s", Name: "Primetime :30 — M-F 8-11pm",
-    Description: "Primetime 30-second broadcast spots.", DeliveryType: "guaranteed",
+    Description: "Primetime 30-second broadcast spots.",
+    Channels: []string{"broadcast"}, DeliveryType: "guaranteed",
     PricingOptions: []adcp.PricingOption{
         {PricingOptionID: "unit-30s", PricingModel: "unit", FixedPrice: 5000, Currency: "USD"},
     },
-    PublisherProperties: []string{},
     FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "broadcast-30s"}},
     CancellationPolicy: &adcp.CancellationPolicy{
         NoticePeriod:    adcp.Duration{Interval: 14, Unit: "days"},
@@ -374,7 +375,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 |---------|-----|
 | Missing `IdempotencyReplayTTL` on `adcp.Config` | Required — set to `24*time.Hour`. Panics at startup if unset or outside 1h–7d. |
 | Missing `Description` on products | Required by schema validation |
-| Missing `publisher_properties`/`format_ids` on products | Required fields — use empty `[]string{}` if none |
+| Missing `format_ids` on products | Required field — use an empty `[]adcp.FormatRef{}` if none. `publisher_properties` is optional; omit it rather than sending an empty array. |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `sync_creatives` status `"accepted"` | Use `"approved"` — valid: processing, pending_review, approved, rejected, archived |
 | Empty slices serialize as `null` | Use `make([]T, 0)` not `var x []T` |

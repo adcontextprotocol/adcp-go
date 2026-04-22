@@ -22,30 +22,28 @@ const agentURL = "http://localhost:3001/mcp"
 var products = []adcp.Product{
 	{
 		ProductID: "premium-display", Name: "Premium Display",
-		Description: "High-impact display placements across our premium publisher network.",
-		Channel: "display", DeliveryType: "guaranteed",
-		PricingOptions:      []adcp.PricingOption{{PricingOptionID: "pd-cpm-15", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"}},
-		PublisherProperties: []string{},
-		FormatIDs:           []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}, {AgentURL: agentURL, ID: "banner-728x90"}},
+		Description:  "High-impact display placements across our premium publisher network.",
+		Channels:     []string{"display"}, DeliveryType: "guaranteed",
+		PricingOptions: []adcp.PricingOption{{PricingOptionID: "pd-cpm-15", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"}},
+		FormatIDs:      []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}, {AgentURL: agentURL, ID: "banner-728x90"}},
 	},
 	{
 		ProductID: "video-preroll", Name: "Video Pre-Roll",
 		Description: "15 and 30 second pre-roll video ads.",
-		Channel: "video", DeliveryType: "non_guaranteed",
+		Channels:    []string{"video"}, DeliveryType: "non_guaranteed",
 		PricingOptions: []adcp.PricingOption{
 			{PricingOptionID: "vp-cpm-25", PricingModel: "cpm", FixedPrice: 25.00, Currency: "USD"},
 			{PricingOptionID: "vp-cpcv-05", PricingModel: "cpcv", FixedPrice: 0.05, Currency: "USD"},
 		},
-		PublisherProperties: []string{},
-		FormatIDs:           []adcp.FormatRef{{AgentURL: agentURL, ID: "video-15s"}, {AgentURL: agentURL, ID: "video-30s"}},
+		FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "video-15s"}, {AgentURL: agentURL, ID: "video-30s"}},
 	},
 }
 
 var formats = []adcp.CreativeFormat{
-	{FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "banner-300x250"}, Name: "Medium Rectangle", Renders: []adcp.Render{{Width: 300, Height: 250}}, Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "image", AssetType: "image", Required: true, AcceptedMediaTypes: []string{"image/png", "image/jpeg"}}}},
-	{FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "banner-728x90"}, Name: "Leaderboard", Renders: []adcp.Render{{Width: 728, Height: 90}}, Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "image", AssetType: "image", Required: true, AcceptedMediaTypes: []string{"image/png", "image/jpeg"}}}},
-	{FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "video-15s"}, Name: "Video :15", Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "video_file", AssetType: "video", Required: true, AcceptedMediaTypes: []string{"video/mp4"}}}},
-	{FormatID: adcp.CreativeFormatID{AgentURL: agentURL, ID: "video-30s"}, Name: "Video :30", Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "video_file", AssetType: "video", Required: true, AcceptedMediaTypes: []string{"video/mp4"}}}},
+	{FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "banner-300x250"}, Name: "Medium Rectangle", Renders: []adcp.Render{{Width: 300, Height: 250}}, Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "image", AssetType: "image", Required: true, AcceptedMediaTypes: []string{"image/png", "image/jpeg"}}}},
+	{FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "banner-728x90"}, Name: "Leaderboard", Renders: []adcp.Render{{Width: 728, Height: 90}}, Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "image", AssetType: "image", Required: true, AcceptedMediaTypes: []string{"image/png", "image/jpeg"}}}},
+	{FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "video-15s"}, Name: "Video :15", Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "video_file", AssetType: "video", Required: true, AcceptedMediaTypes: []string{"video/mp4"}}}},
+	{FormatID: adcp.FormatRef{AgentURL: agentURL, ID: "video-30s"}, Name: "Video :30", Assets: []adcp.AssetSlot{{ItemType: "individual", AssetID: "video_file", AssetType: "video", Required: true, AcceptedMediaTypes: []string{"video/mp4"}}}},
 }
 
 // --- Your backend state (replace with your real DB / ad server client) ---
@@ -139,7 +137,11 @@ func main() {
 						MeasurementTerms: p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
 					})
 				}
-				buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", Currency: "USD", Packages: pkgs}
+				var totalBudget float64
+				for _, p := range input.Packages {
+					totalBudget += p.Budget
+				}
+				buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", TotalBudget: totalBudget, Packages: pkgs}
 				b.mediaBuys[id] = buy
 				for _, pkg := range pkgs {
 					b.delivery[pkg.PackageID] = &deliveryState{}
@@ -150,8 +152,8 @@ func main() {
 				b.mu.RLock()
 				defer b.mu.RUnlock()
 				buys := make([]adcp.MediaBuyData, 0)
-				if len(input.MediaBuyIds) > 0 {
-					for _, id := range input.MediaBuyIds {
+				if len(input.MediaBuyIDs) > 0 {
+					for _, id := range input.MediaBuyIDs {
 						if buy, ok := b.mediaBuys[id]; ok {
 							buys = append(buys, *buy)
 						}
@@ -186,7 +188,7 @@ func main() {
 				defer b.mu.RUnlock()
 				// In production: pull from your reporting system
 				now := time.Now().UTC()
-				ids := input.MediaBuyIds
+				ids := input.MediaBuyIDs
 				if len(ids) == 0 {
 					for id := range b.mediaBuys {
 						ids = append(ids, id)
@@ -206,12 +208,12 @@ func main() {
 						if ds == nil {
 							ds = &deliveryState{}
 						}
-						pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Totals: adcp.DeliveryTotals{Impressions: ds.Impressions, Clicks: ds.Clicks, Spend: ds.Spend}})
+						pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Totals: adcp.DeliveryTotals{Impressions: float64(ds.Impressions), Clicks: float64(ds.Clicks), Spend: ds.Spend}})
 						totImps += ds.Impressions
 						totClicks += ds.Clicks
 						totSpend += ds.Spend
 					}
-					deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.DeliveryTotals{Impressions: totImps, Clicks: totClicks, Spend: totSpend}, ByPackage: pkgDel})
+					deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.DeliveryTotals{Impressions: float64(totImps), Clicks: float64(totClicks), Spend: totSpend}, ByPackage: pkgDel})
 				}
 				return &adcp.DeliveryData{ReportingPeriod: adcp.ReportingPeriod{Start: now.Add(-24 * time.Hour).Format(time.RFC3339), End: now.Format(time.RFC3339)}, MediaBuyDeliveries: deliveries}, nil
 			},

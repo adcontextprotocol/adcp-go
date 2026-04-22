@@ -79,11 +79,10 @@ var products = []adcp.Product{
     {
         ProductID: "sponsored-product", Name: "Sponsored Product",
         Description: "Promoted product listings in search results",
-        Channel: "retail_media", DeliveryType: "non_guaranteed",
+        Channels: []string{"retail_media"}, DeliveryType: "non_guaranteed",
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: 0.50, Currency: "USD"},
         },
-        PublisherProperties: []string{},
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "product-card"}},
     },
 }
