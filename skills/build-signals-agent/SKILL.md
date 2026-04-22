@@ -93,14 +93,14 @@ Response JSON:
 
 ### 3. `activate_signal`
 
-Input: `signal_agent_segment_id`, `pricing_option_id`, `destinations[]` with `type`, `platform`/`agent_url`, `account`.
+Input: `signal_id`, `pricing_option_id`, `destinations[]` with `type`, `platform`/`agent_url`, `account`.
 
 Return deployments matching the destination type. Store activations so future `get_signals` returns non-empty deployments.
 
 ```go
 adcp.AddTool(server, "activate_signal", "Activate a signal to a destination",
     func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ActivateSignalInput) (*mcp.CallToolResult, any, error) {
-        // Find signal by input.SignalAgentSegmentID
+        // Find signal by input.SignalID
         // For each destination, create a deployment:
         //   platform → ActivationKey{Type: "segment_id", SegmentID: "..."}
         //   agent    → ActivationKey{Type: "key_value", Key: "...", Value: "..."}
@@ -144,18 +144,11 @@ Response JSON for agent activation:
 ```go
 var signals = []adcp.Signal{
     {
-        SignalAgentSegmentID: "seg-auto-intenders",
-        Name: "Auto Intenders",
+        ID:          "auto-intenders",
+        Name:        "Auto Intenders",
         Description: "Users actively researching vehicle purchases",
-        SignalType: "owned",
-        DataProvider: "DataCo Audiences",
-        CoveragePercentage: 18.5,
-        Deployments: []adcp.Deployment{}, // empty until activated
-        PricingOptions: []adcp.SignalPricing{
-            {PricingOptionID: "po-auto-cpm", Model: "cpm", CPM: 2.50, Currency: "USD"},
-        },
-        SignalID: adcp.SignalID{Source: "agent", AgentURL: agentURL, ID: "auto-intenders"},
-        ValueType: "binary",
+        ValueType:   "boolean",
+        Tags:        []string{"automotive", "intent"},
     },
     // ... more signals
 }

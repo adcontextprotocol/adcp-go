@@ -21,6 +21,16 @@ HASH_FILE="$SCRIPT_DIR/.bundle-sha256"
 PINNED=$(cat "$VERSION_FILE" | tr -d '[:space:]')
 BASE="https://adcontextprotocol.org/protocol"
 
+# Run the drift linter regardless of freshness outcome so a stale bundle +
+# drift surface together in one run, rather than forcing two fix loops.
+run_lint() {
+  if ! python3 "$SCRIPT_DIR/lint.py" --allow-missing-schemas; then
+    echo "Schema drift detected. See adcp/schemas/lint.py output above for remediation." >&2
+    return 1
+  fi
+  return 0
+}
+
 if ! [[ "$PINNED" =~ ^(latest|[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?)$ ]]; then
   echo "invalid VERSION: '$PINNED'" >&2
   exit 2
@@ -40,11 +50,16 @@ if [ "$PINNED" = "latest" ]; then
   fi
   echo "Pinned:  latest @ ${PINNED_HASH:-unknown}"
   echo "Latest:  latest @ $UPSTREAM"
+  stale=0
   if [ "$PINNED_HASH" = "$UPSTREAM" ]; then
     echo "Up to date."
-    exit 0
+  else
+    echo "Stale. Run: cd adcp/schemas && ./download.sh && python3 generate.py > ../types_gen.go"
+    stale=1
   fi
-  echo "Stale. Run: cd adcp/schemas && ./download.sh && python3 generate.py > ../types_gen.go"
+  lint_rc=0
+  run_lint || lint_rc=$?
+  [ "$stale" -eq 0 ] && [ "$lint_rc" -eq 0 ] && exit 0
   exit 1
 fi
 
@@ -68,9 +83,14 @@ print(released[-1] if released else "")
 echo "Pinned:  $PINNED"
 echo "Latest:  ${LATEST:-<no released versions>}"
 
+stale=0
 if [ -z "$LATEST" ] || [ "$PINNED" = "$LATEST" ]; then
   echo "Up to date."
-  exit 0
+else
+  echo "Stale. Run: cd adcp/schemas && ./download.sh $LATEST && python3 generate.py > ../types_gen.go"
+  stale=1
 fi
-echo "Stale. Run: cd adcp/schemas && ./download.sh $LATEST && python3 generate.py > ../types_gen.go"
+lint_rc=0
+run_lint || lint_rc=$?
+[ "$stale" -eq 0 ] && [ "$lint_rc" -eq 0 ] && exit 0
 exit 1

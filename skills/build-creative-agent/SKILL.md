@@ -72,7 +72,7 @@ adcp.AddTool(server, "sync_creatives", "Accept and store creatives",
                 createdDate = existing.CreatedDate
             }
 
-            formatID := adcp.CreativeFormatID{}
+            formatID := adcp.FormatRef{}
             if c.FormatID != nil {
                 formatID = *c.FormatID
             }
@@ -234,7 +234,7 @@ const agentURL = "http://localhost:3001/mcp"
 type storedCreative struct {
     CreativeID  string
     Name        string
-    FormatID    adcp.CreativeFormatID
+    FormatID    adcp.FormatRef
     Status      string
     Assets      map[string]any
     CreatedDate string

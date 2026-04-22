@@ -331,6 +331,18 @@ type AccountReference struct {
 	Sandbox   bool            `json:"sandbox,omitempty"`
 }
 
+// PublisherPropertySelector is the flattened union of the three variants in
+// publisher-property-selector.json. SelectionType is the discriminator:
+//   "all":     set PublisherDomain only.
+//   "by_id":   set PublisherDomain + PropertyIDs.
+//   "by_tag":  set PublisherDomain + PropertyTags.
+type PublisherPropertySelector struct {
+	PublisherDomain string   `json:"publisher_domain"`
+	SelectionType   string   `json:"selection_type"`
+	PropertyIDs     []string `json:"property_ids,omitempty"`
+	PropertyTags    []string `json:"property_tags,omitempty"`
+}
+
 type AccountResult struct {
 	AccountID    string          `json:"account_id"`
 	Brand        *BrandReference `json:"brand,omitempty"`
@@ -369,78 +381,39 @@ type ProductsData struct {
 	Sandbox  bool      `json:"sandbox,omitempty"`
 }
 
-type Product struct {
-	ProductID           string          `json:"product_id"`
-	Name                string          `json:"name"`
-	Description         string          `json:"description,omitempty"`
-	Channel             string          `json:"channel,omitempty"`
-	DeliveryType        string          `json:"delivery_type"`
-	PricingOptions      []PricingOption `json:"pricing_options"`
-	Exclusivity         string          `json:"exclusivity,omitempty"`
-	Targeting           *Targeting      `json:"targeting,omitempty"`
-	CreativeSpecs       []CreativeSpec  `json:"creative_specs,omitempty"`
-	PublisherProperties []string        `json:"publisher_properties"`
-	FormatIDs           []FormatRef     `json:"format_ids"`
-
-	// Business terms
-	CancellationPolicy   *CancellationPolicy   `json:"cancellation_policy,omitempty"`
-	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
-	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
-}
-
-// FormatRef is a reference to a creative format.
-type FormatRef struct {
-	AgentURL string `json:"agent_url"`
-	ID       string `json:"id"`
-}
-
+// PricingOption is the flattened union of all variants in pricing-option.json.
+// The schema is a oneOf of 9 pricing models (cpm, vcpm, cpc, cpcv, cpv, cpp,
+// cpa, flat_rate, time); the Go representation carries every variant's fields
+// so a single struct type can be constructed for any model. PricingModel is
+// the discriminator; callers MUST only set fields that apply to their model.
+//
+// Fields by variant:
+//   cpm / vcpm / cpc / cpcv / cpv / cpp:
+//     FixedPrice (fixed) OR FloorPrice + PriceGuidance (auction); MaxBid for
+//     auction models to interpret bid_price as a ceiling.
+//   cpa:
+//     FixedPrice, EventSourceID, EventType (required); CustomEventName when
+//     EventType="custom"; EligibleAdjustments for adjustment filtering.
+//   flat_rate:
+//     FixedPrice (required).
+//   time:
+//     FixedPrice (required), Parameters for duration/unit specifics.
+//   All variants: PricingOptionID, Currency, MinSpendPerPackage, PriceBreakdown.
 type PricingOption struct {
-	PricingOptionID string  `json:"pricing_option_id"`
-	PricingModel    string  `json:"pricing_model"`
-	FixedPrice      float64 `json:"fixed_price,omitempty"`
-	FloorPrice      float64 `json:"floor_price,omitempty"`
-	Currency        string  `json:"currency"`
-	MinSpendPerPkg  float64 `json:"min_spend_per_package,omitempty"`
-}
-
-type Targeting struct {
-	Geo      []GeoTarget `json:"geo,omitempty"`
-	Channels []string    `json:"channels,omitempty"`
-}
-
-type GeoTarget struct {
-	Country string `json:"country,omitempty"`
-	Region  string `json:"region,omitempty"`
-}
-
-type CreativeSpec struct {
-	FormatID string `json:"format_id,omitempty"`
-	Width    int    `json:"width,omitempty"`
-	Height   int    `json:"height,omitempty"`
-}
-
-type MediaBuyData struct {
-	MediaBuyID string    `json:"media_buy_id"`
-	Status     string    `json:"status,omitempty"`
-	Currency   string    `json:"currency,omitempty"`
-	Packages   []Package `json:"packages"`
-}
-
-type Package struct {
-	PackageID       string  `json:"package_id"`
-	ProductID       string  `json:"product_id"`
-	PricingOptionID string  `json:"pricing_option_id"`
-	Budget          float64 `json:"budget"`
-	Status          string  `json:"status,omitempty"`
-
-	// Business terms (negotiated on the package)
-	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
-	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
-
-	// Broadcast / scheduling
-	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
-	StartTime            string `json:"start_time,omitempty"`
-	EndTime              string `json:"end_time,omitempty"`
+	PricingOptionID     string  `json:"pricing_option_id"`
+	PricingModel        string  `json:"pricing_model"`
+	Currency            string  `json:"currency"`
+	FixedPrice          float64 `json:"fixed_price,omitempty"`
+	FloorPrice          float64 `json:"floor_price,omitempty"`
+	MinSpendPerPackage  float64 `json:"min_spend_per_package,omitempty"`
+	MaxBid              *bool   `json:"max_bid,omitempty"`
+	PriceGuidance       any     `json:"price_guidance,omitempty"`
+	PriceBreakdown      any     `json:"price_breakdown,omitempty"`
+	EventSourceID       string  `json:"event_source_id,omitempty"`
+	EventType           string  `json:"event_type,omitempty"`
+	CustomEventName     string  `json:"custom_event_name,omitempty"`
+	EligibleAdjustments []string `json:"eligible_adjustments,omitempty"`
+	Parameters          any     `json:"parameters,omitempty"`
 }
 
 type MediaBuyListItem struct {
@@ -467,31 +440,14 @@ type MediaBuyDelivery struct {
 	ByPackage  []PackageDelivery `json:"by_package"`
 }
 
-type DeliveryTotals struct {
-	Impressions int     `json:"impressions"`
-	Clicks      int     `json:"clicks,omitempty"`
-	Spend       float64 `json:"spend"`
-	Conversions int     `json:"conversions,omitempty"`
-}
-
 type PackageDelivery struct {
 	PackageID string         `json:"package_id"`
 	Totals    DeliveryTotals `json:"totals"`
 }
 
-type CreativeFormatID struct {
-	AgentURL string `json:"agent_url"`
-	ID       string `json:"id"`
-}
-
-type CreativeFormat struct {
-	FormatID    CreativeFormatID `json:"format_id"`
-	Name        string           `json:"name"`
-	Description string           `json:"description,omitempty"`
-	Renders     []Render         `json:"renders,omitempty"`
-	Assets      []AssetSlot      `json:"assets,omitempty"`
-}
-
+// Render is a rendering variant inside a CreativeFormat. Wired into generated
+// CreativeFormat via schemas/generate.py's INLINE_TYPE_HINTS so the format.json
+// renders[] oneOf items become []Render instead of []any.
 type Render struct {
 	Width  int `json:"width"`
 	Height int `json:"height"`
@@ -515,10 +471,10 @@ type CreativeResult struct {
 }
 
 type CreativeListItem struct {
-	CreativeID string           `json:"creative_id"`
-	Name       string           `json:"name"`
-	FormatID   CreativeFormatID `json:"format_id"`
-	Status     string           `json:"status"`
+	CreativeID string    `json:"creative_id"`
+	Name       string    `json:"name"`
+	FormatID   FormatRef `json:"format_id"`
+	Status     string    `json:"status"`
 }
 
 type PreviewResult struct {
@@ -547,19 +503,6 @@ type BuildCreativeResult struct {
 	Sandbox          bool           `json:"sandbox,omitempty"`
 }
 
-type Signal struct {
-	SignalAgentSegmentID string          `json:"signal_agent_segment_id"`
-	Name                 string          `json:"name"`
-	Description          string          `json:"description"`
-	SignalType           string          `json:"signal_type"`
-	DataProvider         string          `json:"data_provider"`
-	CoveragePercentage   float64         `json:"coverage_percentage"`
-	Deployments          []Deployment    `json:"deployments"`
-	PricingOptions       []SignalPricing `json:"pricing_options"`
-	SignalID             SignalID        `json:"signal_id"`
-	ValueType            string          `json:"value_type,omitempty"`
-}
-
 type SignalID struct {
 	Source             string `json:"source"`
 	DataProviderDomain string `json:"data_provider_domain,omitempty"`
@@ -573,13 +516,22 @@ type SignalID struct {
 // that reference SignalPricing continue to compile.
 type SignalPricing = VendorPricingOption
 
+// Deployment is the flattened union of deployment.json's oneOf variants.
+// Type is the discriminator:
+//   "platform": set Platform (required), AgentURL, Account, ActivationKey.
+//   "agent":    set AgentURL (required), ActivationKey.
+// All variants: IsLive, DeployedAt, EstimatedActivationDurationMinutes.
+// Do not mix variant-specific fields — schema validators accept it because
+// additionalProperties=true, but the result is semantically wrong.
 type Deployment struct {
-	Type          string         `json:"type"`
-	Platform      string         `json:"platform,omitempty"`
-	AgentURL      string         `json:"agent_url,omitempty"`
-	Account       string         `json:"account,omitempty"`
-	IsLive        bool           `json:"is_live"`
-	ActivationKey *ActivationKey `json:"activation_key,omitempty"`
+	Type                               string         `json:"type"`
+	Platform                           string         `json:"platform,omitempty"`
+	AgentURL                           string         `json:"agent_url,omitempty"`
+	Account                            string         `json:"account,omitempty"`
+	IsLive                             bool           `json:"is_live"`
+	ActivationKey                      *ActivationKey `json:"activation_key,omitempty"`
+	DeployedAt                         string         `json:"deployed_at,omitempty"`
+	EstimatedActivationDurationMinutes int            `json:"estimated_activation_duration_minutes,omitempty"`
 }
 
 type ActivationKey struct {
