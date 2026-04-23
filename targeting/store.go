@@ -7,16 +7,16 @@ import (
 
 // Store key prefixes.
 const (
-	keyPrefixUserProfile    = "user:profile:"
-	keyPrefixUserExposures  = "user:exposures:"
-	keyPrefixTopicsArtifact = "topics:artifact:"
-	keyPrefixTopicsPackage  = "topics:package:"
-	keyPrefixURLBlocklist   = "url:blocklist:"
-	keyPrefixURLAllowlist   = "url:allowlist:"
-	keyPrefixMediaBuySeller = "mediabuy:seller:"
-	keyPrefixMediaBuy       = "mediabuy:"
-	keyPrefixConfigPkg      = "config:pkg:"
-	keyPrefixConfigCampaign = "config:campaign:"
+	keyPrefixPackageAudience = "audience:"
+	keyPrefixUserExposures   = "user:exposures:"
+	keyPrefixTopicsArtifact  = "topics:artifact:"
+	keyPrefixTopicsPackage   = "topics:package:"
+	keyPrefixURLBlocklist    = "url:blocklist:"
+	keyPrefixURLAllowlist    = "url:allowlist:"
+	keyPrefixMediaBuySeller  = "mediabuy:seller:"
+	keyPrefixMediaBuy        = "mediabuy:"
+	keyPrefixConfigPkg       = "config:pkg:"
+	keyPrefixConfigCampaign  = "config:campaign:"
 )
 
 // Store is a storage backend for the targeting engine.
@@ -63,4 +63,24 @@ type Store interface {
 
 	// MDel removes multiple keys. It is a no-op for keys that do not exist.
 	MDel(ctx context.Context, keys ...string) error
+
+	// HSet sets a single field in a hash.
+	HSet(ctx context.Context, key, field, value string) error
+
+	// HMSet sets multiple fields in a hash.
+	HMSet(ctx context.Context, key string, fields map[string]string) error
+
+	// HGet returns the value of a hash field. The bool is false if the field does not exist.
+	HGet(ctx context.Context, key, field string) (string, bool, error)
+
+	// HMGet returns the values of multiple hash fields. Missing fields return "" at their index.
+	HMGet(ctx context.Context, key string, fields ...string) ([]string, error)
+
+	// HMGetBatch returns the values of the given fields for each key.
+	// The result has one entry per key; each entry has one value per field ("" if missing).
+	// In Valkey this is a single pipelined round-trip.
+	HMGetBatch(ctx context.Context, keys []string, fields []string) ([][]string, error)
+
+	// HDel removes fields from a hash. It is a no-op for fields that do not exist.
+	HDel(ctx context.Context, key string, fields ...string) error
 }

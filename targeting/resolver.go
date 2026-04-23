@@ -146,7 +146,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 	topicIdx := make(map[string][]string)
 	urlBlockIdx := make(map[string][]string)
 	urlAllowlists := make(map[string]map[string]struct{})
-	segmentIdx := make(map[string][]string)
 
 	for _, pkgID := range pkgIDs {
 		// Property index from context config.
@@ -182,12 +181,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 			}
 		}
 
-		// Segment index from identity config.
-		if ic := idConfigs[pkgID]; ic != nil {
-			for _, seg := range ic.TargetSegments {
-				segmentIdx[seg] = append(segmentIdx[seg], pkgID)
-			}
-		}
 	}
 
 	return &ResolvedPackages{
@@ -196,7 +189,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		TopicIndex:        topicIdx,
 		URLBlocklistIndex: urlBlockIdx,
 		URLAllowlists:     urlAllowlists,
-		SegmentIndex:      segmentIdx,
 		ContextConfigs:    ctxConfigs,
 		IdentityConfigs:   idConfigs,
 		CampaignConfigs:   campConfigs,

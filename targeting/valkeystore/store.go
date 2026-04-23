@@ -112,6 +112,79 @@ func (s *Store) MDel(ctx context.Context, keys ...string) error {
 	return s.rdb.Del(ctx, keys...).Err()
 }
 
+func (s *Store) HSet(ctx context.Context, key, field, value string) error {
+	return s.rdb.HSet(ctx, key, field, value).Err()
+}
+
+func (s *Store) HMSet(ctx context.Context, key string, fields map[string]string) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	args := make([]any, 0, len(fields)*2)
+	for f, v := range fields {
+		args = append(args, f, v)
+	}
+	return s.rdb.HSet(ctx, key, args...).Err()
+}
+
+func (s *Store) HGet(ctx context.Context, key, field string) (string, bool, error) {
+	val, err := s.rdb.HGet(ctx, key, field).Result()
+	if err == redis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return val, true, nil
+}
+
+func (s *Store) HMGet(ctx context.Context, key string, fields ...string) ([]string, error) {
+	vals, err := s.rdb.HMGet(ctx, key, fields...).Result()
+	if err != nil {
+		return nil, err
+	}
+	results := make([]string, len(vals))
+	for i, v := range vals {
+		if s, ok := v.(string); ok {
+			results[i] = s
+		}
+	}
+	return results, nil
+}
+
+func (s *Store) HMGetBatch(ctx context.Context, keys []string, fields []string) ([][]string, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	pipe := s.rdb.Pipeline()
+	cmds := make([]*redis.SliceCmd, len(keys))
+	for i, key := range keys {
+		cmds[i] = pipe.HMGet(ctx, key, fields...)
+	}
+	if _, err := pipe.Exec(ctx); err != nil && err != redis.Nil {
+		return nil, err
+	}
+	results := make([][]string, len(keys))
+	for i, cmd := range cmds {
+		vals, err := cmd.Result()
+		if err != nil && err != redis.Nil {
+			return nil, err
+		}
+		row := make([]string, len(vals))
+		for j, v := range vals {
+			if s, ok := v.(string); ok {
+				row[j] = s
+			}
+		}
+		results[i] = row
+	}
+	return results, nil
+}
+
+func (s *Store) HDel(ctx context.Context, key string, fields ...string) error {
+	return s.rdb.HDel(ctx, key, fields...).Err()
+}
+
 func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error {
 	if len(kvs) == 0 {
 		return nil

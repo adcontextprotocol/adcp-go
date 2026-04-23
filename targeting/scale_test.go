@@ -30,7 +30,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:   "bench",
 			PropertyRID: fmt.Sprintf("%d", n/2),
 			PackageIDs:  []string{"pkg-1"},
 		}
@@ -188,7 +188,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:test"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -227,7 +227,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 
 		// Check a URL that is NOT blocked (worst case: full lookup, no short-circuit).
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe-content"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -288,7 +288,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -380,9 +380,10 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 				PropertyRIDs: []string{"1"},
 			})
 			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-				TargetSegments: []string{"cooking_fans"},
+				Audience:       true,
 				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
+			store.SetPackageUser(pkgID, "tok-bench", 1.0)
 		}
 		store.SetMediaBuy(MediaBuy{
 			MediaBuyID: "mb-1", SellerID: "seller-1",
@@ -391,7 +392,6 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			Packages: mbPkgs,
 		})
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
-		store.SetUserProfile("tok-bench", map[string]float64{"cooking_fans": 1.0})
 
 		// Build resolved once.
 		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
@@ -407,7 +407,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -471,7 +471,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		resolved := &ResolvedPackages{IdentityConfigs: idConfigs}
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,

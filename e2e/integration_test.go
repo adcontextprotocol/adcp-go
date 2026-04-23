@@ -58,7 +58,7 @@ func setupStack(t *testing.T) *testStack {
 	store.SetPackageIdentityConfig("pkg-food", targeting.PackageIdentityConfig{
 		CampaignID:     "campaign-acme",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
-		TargetSegments: []string{"cooking_fans"},
+		Audience:       true,
 	})
 	// pkg-tech: no identity config = always eligible
 	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{
@@ -68,9 +68,8 @@ func setupStack(t *testing.T) *testStack {
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
 	})
 
-	// User profiles for identity evaluation.
-	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 0.8})
-	store.SetUserProfile("tok-bob", map[string]float64{"sports_fans": 0.5})
+	// Audience membership for pkg-food.
+	store.SetPackageUser("pkg-food", "tok-alice", 0.8)
 
 	// Identity engine (shares the same store).
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
@@ -85,11 +84,8 @@ func setupStack(t *testing.T) *testStack {
 
 	// Build resolved packages for the identity eval path.
 	idResolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking_fans": {"pkg-food"},
-		},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food":   {CampaignID: "campaign-acme", FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking_fans"}},
+			"pkg-food":   {CampaignID: "campaign-acme", FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, Audience: true},
 			"pkg-tech":   {},
 			"pkg-family": {FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
 		},
@@ -400,8 +396,10 @@ func TestIntegration_Mediation(t *testing.T) {
 	store.SetAdd("topics:package:pkg-wine", "food.cooking", "food.beverage")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	// Alice is a cooking fan.
-	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 1.0})
+	// Seed audience membership for Alice across cooking packages.
+	store.SetPackageUser("pkg-olive-oil", "tok-alice", 1.0)
+	store.SetPackageUser("pkg-cookware", "tok-alice", 1.0)
+	store.SetPackageUser("pkg-wine", "tok-alice", 1.0)
 
 	creativeManifest, _ := json.Marshal(map[string]any{
 		"format_id": "sponsored_card",
@@ -451,9 +449,9 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	// Seed identity config for mediation packages.
-	oliveIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
-	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
-	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
+	oliveIdCfg := targeting.PackageIdentityConfig{Audience: true}
+	cookwareIdCfg := targeting.PackageIdentityConfig{Audience: true}
+	wineIdCfg := targeting.PackageIdentityConfig{Audience: true}
 	store.SetPackageIdentityConfig("pkg-olive-oil", oliveIdCfg)
 	store.SetPackageIdentityConfig("pkg-cookware", cookwareIdCfg)
 	store.SetPackageIdentityConfig("pkg-wine", wineIdCfg)
@@ -475,9 +473,6 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	idResolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking_fans": {"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
-		},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
 			"pkg-olive-oil": &oliveIdCfg,
 			"pkg-cookware":  &cookwareIdCfg,

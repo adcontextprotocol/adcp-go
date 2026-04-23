@@ -35,7 +35,7 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	pkgAlpha := targeting.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
 		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
-		TargetSegments: []string{"sports"},
+		Audience:       true,
 	}
 	pkgBeta := targeting.PackageIdentityConfig{
 		CampaignID:     "campaign-x",
@@ -48,12 +48,6 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	seedJSON("config:pkg:pkg-beta", pkgBeta)
 	seedJSON("config:campaign:campaign-x", campaignX)
 
-	// Seed user profile with sports segment.
-	tokenHash := targeting.HashToken("user-valkey")
-	profileJSON, err := json.Marshal(targeting.UserProfile{Segments: map[string]float64{"sports": 1.0}})
-	require.NoError(t, err)
-	require.NoError(t, store.Set(ctx, "user:profile:"+tokenHash, string(profileJSON), 0))
-
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "test-valkey",
 		Store:      store,
@@ -63,8 +57,10 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 		},
 	})
 
+	// Seed user into pkg-alpha's audience.
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-alpha", map[string]float64{"user-valkey": 1.0}))
+
 	resolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{"sports": {"pkg-alpha"}},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
 			"pkg-alpha": &pkgAlpha,
 			"pkg-beta":  &pkgBeta,

@@ -34,8 +34,6 @@ func TestSystem_HeavyUser(t *testing.T) {
 		}
 	}
 	store.SetUserExposures("user-heavy", entries)
-	store.SetUserProfile("user-heavy", map[string]float64{"premium_audience": 0.9})
-
 	t.Logf("Loaded %d exposures for heavy user", len(entries))
 
 	// Build identity configs.
@@ -46,16 +44,16 @@ func TestSystem_HeavyUser(t *testing.T) {
 		campID := fmt.Sprintf("campaign-%d", i/3)
 		idConfigs[pkgID] = &PackageIdentityConfig{
 			CampaignID:     campID,
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},  // 5/day
-			TargetSegments: []string{"premium_audience"},
+			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}}, // 5/day
+			Audience:       true,
 		}
+		store.SetPackageUser(pkgID, "user-heavy", 0.9)
 		campConfigs[campID] = &CampaignFreqConfig{
 			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}}, // 20/week
 		}
 	}
 
 	resolved := &ResolvedPackages{
-		SegmentIndex:    map[string][]string{"premium_audience": {"pkg-0", "pkg-1", "pkg-2", "pkg-3", "pkg-4", "pkg-5", "pkg-6", "pkg-7", "pkg-8", "pkg-9"}},
 		IdentityConfigs: idConfigs,
 		CampaignConfigs: campConfigs,
 	}
@@ -116,10 +114,10 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	uid2 := "tok-uid2-xyz"
 	email := "tok-email-hash-123"
 
-	// Different segments per UID.
-	store.SetUserProfile(cookie, map[string]float64{"cooking_fans": 0.8})
-	store.SetUserProfile(uid2, map[string]float64{"sports_fans": 0.5})
-	store.SetUserProfile(email, map[string]float64{"cooking_fans": 0.6, "tech_enthusiasts": 0.9})
+	// Audience membership per package.
+	store.SetPackageUsers("pkg-food", map[string]float64{cookie: 0.8, email: 0.6})
+	store.SetPackageUsers("pkg-sports", map[string]float64{uid2: 0.5})
+	store.SetPackageUsers("pkg-tech", map[string]float64{email: 0.9})
 
 	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
 	engine.Now = func() time.Time { return now }
@@ -165,15 +163,10 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	}
 
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking_fans":     {"pkg-food"},
-			"sports_fans":      {"pkg-sports"},
-			"tech_enthusiasts": {"pkg-tech"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-food":   {CampaignID: "campaign-food", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}, TargetSegments: []string{"cooking_fans"}},
-			"pkg-sports": {TargetSegments: []string{"sports_fans"}},
-			"pkg-tech":   {TargetSegments: []string{"tech_enthusiasts"}},
+			"pkg-food":   {CampaignID: "campaign-food", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}, Audience: true},
+			"pkg-sports": {Audience: true},
+			"pkg-tech":   {Audience: true},
 		},
 		CampaignConfigs: map[string]*CampaignFreqConfig{
 			"campaign-food": {FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100, WindowSeconds: 30 * 86400}}},
@@ -236,8 +229,8 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	// Total unique impressions across cookie+email should be less than sum of both.
 	cookieHash := HashToken(cookie)
 	emailHash := HashToken(email)
-	cookieVal, _, _ := store.Get(context.Background(), "user:exposures:"+cookieHash)
-	emailVal, _, _ := store.Get(context.Background(), "user:exposures:"+emailHash)
+	cookieVal, _, _ := store.Get(context.Background(), keyPrefixUserExposures+cookieHash)
+	emailVal, _, _ := store.Get(context.Background(), keyPrefixUserExposures+emailHash)
 	cookieBin := BinaryExposureLog(cookieVal)
 	emailBin := BinaryExposureLog(emailVal)
 	mergedBin := MergeBinaryLogs(cookieBin, emailBin)
@@ -258,14 +251,13 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
 	engine.Now = func() time.Time { return currentTime }
 
-	store.SetUserProfile("user-rolling", map[string]float64{"all": 0})
+	store.SetPackageUser("pkg-test", "user-rolling", 0)
 
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{"all": {"pkg-test"}},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
 			"pkg-test": {
 				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}}, // 5/day
-				TargetSegments: []string{"all"},
+				Audience:       true,
 			},
 		},
 		CampaignConfigs: map[string]*CampaignFreqConfig{},
@@ -301,7 +293,7 @@ func TestSystem_RollingWindowExpiry(t *testing.T) {
 
 	// Check the exposure log: should be pruned to ~30 days.
 	hash := HashToken("user-rolling")
-	val, _, _ := store.Get(context.Background(), "user:exposures:"+hash)
+	val, _, _ := store.Get(context.Background(), keyPrefixUserExposures+hash)
 	binLog := BinaryExposureLog(val)
 	require.NoError(t, ValidateBinaryLog(binLog))
 

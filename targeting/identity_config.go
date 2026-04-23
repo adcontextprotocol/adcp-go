@@ -12,7 +12,10 @@ import (
 type PackageIdentityConfig struct {
 	CampaignID     string              `json:"campaign_id,omitempty"`
 	FrequencyRules []FrequencyRuleJSON `json:"frequency_rules,omitempty"`
-	TargetSegments []string            `json:"target_segments,omitempty"`
+	// Audience signals that this package has user-level audience targeting.
+	// Membership is stored in the Store as HSET at key "audience:{hash(packageID)}",
+	// with hash(userToken) as the field and the intent score as the value.
+	Audience bool `json:"audience,omitempty"`
 }
 
 // CampaignFreqConfig is the frequency cap configuration for a campaign,

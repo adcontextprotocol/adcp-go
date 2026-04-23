@@ -1,7 +1,7 @@
 // Package targeting provides a data-driven targeting engine for TMP agents.
 //
 // Capabilities activate based on what data is present. Push property bitmaps
-// and property targeting works. Push audience segments and audience targeting
+// and property targeting works. Push audience membership and audience targeting
 // works. No data for a dimension means that dimension is a no-op.
 //
 // The engine evaluates both context match and identity match requests,
@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -343,28 +344,23 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	nowUnix := now.Unix()
 	identities := resolveIdentities(req)
 
-	// 1. Build MGet keys: profile + exposures for each UID.
-	keys := make([]string, 0, len(identities)*2)
-	for _, uid := range identities {
-		hash := HashToken(uid.UserToken)
-		keys = append(keys, keyPrefixUserProfile+hash)
-		keys = append(keys, keyPrefixUserExposures+hash)
+	// 1. Build MGet keys: exposures for each UID.
+	expKeys := make([]string, len(identities))
+	for i, uid := range identities {
+		expKeys[i] = keyPrefixUserExposures + HashToken(uid.UserToken)
 	}
 
-	// 2. Single MGet — 1 round-trip.
-	values, err := e.store.MGet(ctx, keys...)
+	// 2. Single MGet for exposures — 1 round-trip.
+	expValues, err := e.store.MGet(ctx, expKeys...)
 	if err != nil {
 		e.metrics.StoreError("load_user_data", err)
-		values = make([]string, len(keys))
+		expValues = make([]string, len(expKeys))
 	}
 
-	// 3. Parse profiles (JSON, small) and exposure logs (binary, zero-copy).
-	profiles := make([]*UserProfile, 0, len(identities))
+	// 3. Parse exposure logs (binary, zero-copy).
 	firstLogs := make([]BinaryExposureLog, 0, len(identities))
 	for i := range identities {
-		profileData := values[i*2]
-		exposureData := values[i*2+1]
-		profiles = append(profiles, ParseUserProfile(profileData))
+		exposureData := expValues[i]
 		binLog := BinaryExposureLog(exposureData)
 		if len(exposureData) > 0 {
 			if err := ValidateBinaryLog(binLog); err != nil {
@@ -374,16 +370,44 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		}
 		firstLogs = append(firstLogs, binLog)
 	}
-	mergedProfile := MergeUserProfiles(profiles...)
 
-	// 4. Extract segment names from merged profile.
-	var userSegments []string
-	for seg := range mergedProfile.Segments {
-		userSegments = append(userSegments, seg)
+	// 4. Pre-hash user tokens for per-package audience lookups.
+	userHashes := make([]string, len(identities))
+	for i, uid := range identities {
+		userHashes[i] = HashToken(uid.UserToken)
 	}
 
-	// 5. SegmentIndex: which packages is this user eligible for?
-	segmentEligible := resolved.SegmentCandidates(userSegments)
+	// 5. Batch-load audience membership for all audience-gated packages — 1 round-trip.
+	// audienceHit[pkgID] = true if at least one identity is in the package's audience.
+	audienceHit := make(map[string]bool)
+	var audiencePkgIDs []string
+	var audienceKeys []string
+	for _, pkgID := range req.PackageIDs {
+		idCfg := resolved.IdentityConfigs[pkgID]
+		if idCfg != nil && idCfg.Audience {
+			audiencePkgIDs = append(audiencePkgIDs, pkgID)
+			audienceKeys = append(audienceKeys, keyPrefixPackageAudience+HashToken(pkgID))
+		}
+	}
+	if len(audienceKeys) > 0 {
+		batchVals, err := e.store.HMGetBatch(ctx, audienceKeys, userHashes)
+		if err != nil {
+			e.metrics.StoreError(StageAudience, err)
+			// On error treat all audience packages as ineligible.
+			for _, pkgID := range audiencePkgIDs {
+				audienceHit[pkgID] = false
+			}
+		} else {
+			for i, pkgID := range audiencePkgIDs {
+				for _, v := range batchVals[i] {
+					if v != "" {
+						audienceHit[pkgID] = true
+						break
+					}
+				}
+			}
+		}
+	}
 
 	// 6. Evaluate each requested package using binary lazy dedup.
 	var eligibility []tmproto.PackageEligibility
@@ -391,9 +415,9 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		idCfg := resolved.IdentityConfigs[pkgID]
 		eligible := true
 
-		// Segment gating.
-		if idCfg != nil && len(idCfg.TargetSegments) > 0 {
-			if _, ok := segmentEligible[pkgID]; !ok {
+		// Audience gating: result from the batch lookup above.
+		if idCfg != nil && idCfg.Audience {
+			if !audienceHit[pkgID] {
 				eligible = false
 				e.metrics.IdentityEvaluated(pkgID, StageAudience, false)
 			}
@@ -444,45 +468,59 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}, nil
 }
 
-// SetUserProfile writes a user's segment memberships to the profile key.
-func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments map[string]float64) error {
-	hash := HashToken(userToken)
-	profile := UserProfile{Segments: segments}
-	data, err := json.Marshal(profile)
-	if err != nil {
-		return err
-	}
-	return e.store.Set(ctx, keyPrefixUserProfile+hash, string(data), 0)
+// SetPackageUser adds a user to a package's audience with the given intent score.
+func (e *Engine) SetPackageUser(ctx context.Context, packageID, userToken string, intent float64) error {
+	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+	return e.store.HSet(ctx, pkgKey, HashToken(userToken), strconv.FormatFloat(intent, 'f', -1, 64))
 }
 
-// SetUserProfiles writes segment memberships for multiple users in a single batch.
-// The profiles map is keyed by user token.
-func (e *Engine) SetUserProfiles(ctx context.Context, profiles map[string]map[string]float64) error {
-	kvs := make(map[string]string, len(profiles))
-	for userToken, segments := range profiles {
-		hash := HashToken(userToken)
-		profile := UserProfile{Segments: segments}
-		data, err := json.Marshal(profile)
-		if err != nil {
+// AddPackageUsers adds multiple users to a package's audience in a single batch.
+// The users map is keyed by user token.
+func (e *Engine) AddPackageUsers(ctx context.Context, packageID string, users map[string]float64) error {
+	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+	fields := make(map[string]string, len(users))
+	for userToken, intent := range users {
+		fields[HashToken(userToken)] = strconv.FormatFloat(intent, 'f', -1, 64)
+	}
+	return e.store.HMSet(ctx, pkgKey, fields)
+}
+
+// RemovePackageUsers removes specific users from a package's audience.
+func (e *Engine) RemovePackageUsers(ctx context.Context, packageID string, userTokens []string) error {
+	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+	fields := make([]string, len(userTokens))
+	for i, token := range userTokens {
+		fields[i] = HashToken(token)
+	}
+	return e.store.HDel(ctx, pkgKey, fields...)
+}
+
+// DeletePackageUsers removes a package's entire audience.
+func (e *Engine) DeletePackageUsers(ctx context.Context, packageID string) error {
+	return e.store.Del(ctx, keyPrefixPackageAudience+HashToken(packageID))
+}
+
+// MSetPackageUsers adds users to multiple packages in one call.
+// The packages map is keyed by package ID; each value maps user token to intent score.
+func (e *Engine) MSetPackageUsers(ctx context.Context, packages map[string]map[string]float64) error {
+	for packageID, users := range packages {
+		pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+		fields := make(map[string]string, len(users))
+		for userToken, intent := range users {
+			fields[HashToken(userToken)] = strconv.FormatFloat(intent, 'f', -1, 64)
+		}
+		if err := e.store.HMSet(ctx, pkgKey, fields); err != nil {
 			return err
 		}
-		kvs[keyPrefixUserProfile+hash] = string(data)
 	}
-	return e.store.MSet(ctx, kvs, 0)
+	return nil
 }
 
-// DeleteUserProfile removes a user's segment profile.
-func (e *Engine) DeleteUserProfile(ctx context.Context, userToken string) error {
-	hash := HashToken(userToken)
-	return e.store.Del(ctx, keyPrefixUserProfile+hash)
-}
-
-// DeleteUserProfiles removes segment profiles for multiple users in a single batch.
-// The userTokens slice contains user tokens.
-func (e *Engine) DeleteUserProfiles(ctx context.Context, userTokens []string) error {
-	keys := make([]string, len(userTokens))
-	for i, userToken := range userTokens {
-		keys[i] = keyPrefixUserProfile + HashToken(userToken)
+// MDeletePackageUsers removes the entire audience for multiple packages in one call.
+func (e *Engine) MDeletePackageUsers(ctx context.Context, packageIDs []string) error {
+	keys := make([]string, len(packageIDs))
+	for i, packageID := range packageIDs {
+		keys[i] = keyPrefixPackageAudience + HashToken(packageID)
 	}
 	return e.store.MDel(ctx, keys...)
 }

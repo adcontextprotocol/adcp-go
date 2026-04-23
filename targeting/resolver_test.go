@@ -180,11 +180,11 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	// Identity configs.
 	store.SetPackageIdentityConfig("pkg-food", PackageIdentityConfig{
 		CampaignID:     "campaign-1",
-		TargetSegments: []string{"cooking_fans"},
+		Audience:       true,
 		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 	})
 	store.SetPackageIdentityConfig("pkg-tech", PackageIdentityConfig{
-		TargetSegments: []string{"tech_enthusiasts", "cooking_fans"},
+		Audience: true,
 	})
 	store.SetCampaignFreqConfig("campaign-1", CampaignFreqConfig{
 		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
@@ -213,10 +213,6 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	require.Len(t, resolved.URLBlocklistIndex[badHash], 1)
 	assert.Equal(t, "pkg-food", resolved.URLBlocklistIndex[badHash][0])
 
-	// SegmentIndex.
-	assert.Len(t, resolved.SegmentIndex["cooking_fans"], 2)
-	assert.Len(t, resolved.SegmentIndex["tech_enthusiasts"], 1)
-
 	// Configs loaded.
 	assert.NotNil(t, resolved.ContextConfigs["pkg-food"], "expected context config for pkg-food")
 	assert.NotNil(t, resolved.IdentityConfigs["pkg-food"], "expected identity config for pkg-food")
@@ -229,8 +225,6 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	candidates := resolved.TopicCandidates([]string{"food.cooking", "tech.gadgets"})
 	assert.Len(t, candidates, 2)
 
-	segCandidates := resolved.SegmentCandidates([]string{"cooking_fans"})
-	assert.Len(t, segCandidates, 2)
 }
 
 func TestResolver_MultipleMediaBuys_MixedResults(t *testing.T) {

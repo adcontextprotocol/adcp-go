@@ -170,7 +170,7 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 		{"pkg-display-0041", targeting.PackageIdentityConfig{
 			CampaignID:     "campaign-acme-q1",
 			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
-			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
+			Audience:       true,
 		}},
 		{"pkg-display-0042", targeting.PackageIdentityConfig{
 			CampaignID:     "campaign-acme-q1",
@@ -182,11 +182,10 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 				{MaxCount: 2, WindowSeconds: 43200},
 				{MaxCount: 5, WindowSeconds: 604800},
 			},
-			TargetSegments: []string{"organic_food"},
+			Audience: true,
 		}},
 	}
 	idConfigs := make(map[string]*targeting.PackageIdentityConfig, len(configs))
-	segmentIndex := make(map[string][]string)
 	for _, c := range configs {
 		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
 			slog.Error("seed package config failed", "package_id", c.pkgID, "error", err)
@@ -194,9 +193,6 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 		}
 		cfg := c.cfg
 		idConfigs[c.pkgID] = &cfg
-		for _, seg := range cfg.TargetSegments {
-			segmentIndex[seg] = append(segmentIndex[seg], c.pkgID)
-		}
 	}
 
 	campaigns := []struct {
@@ -221,7 +217,6 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 	}
 
 	return &targeting.ResolvedPackages{
-		SegmentIndex:    segmentIndex,
 		IdentityConfigs: idConfigs,
 		CampaignConfigs: campConfigs,
 	}

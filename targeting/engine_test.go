@@ -39,7 +39,7 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
 		CampaignID:     "campaign-acme",
 		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
-		TargetSegments: []string{"cooking", "home"},
+		Audience:       true,
 	})
 	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{
 		CampaignID:     "campaign-acme",
@@ -59,12 +59,8 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 
 	// Build resolved packages for the resolved eval path.
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking": {"pkg-display-001"},
-			"home":    {"pkg-display-001"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-001": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, Audience: true},
 			"pkg-display-002": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}}},
 			"pkg-multi-rule":  {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 2, WindowSeconds: 43200}, {MaxCount: 5, WindowSeconds: 604800}}},
 			"pkg-no-cap":      {},
@@ -357,7 +353,7 @@ func TestIdentity_CampaignFrequencyCap(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
+	store.SetPackageUser("pkg-display-001", "user-abc", 0)
 
 	// 5 exposures across two packages in campaign-acme (cap is 5/7d).
 	for i := range 3 {
@@ -382,7 +378,7 @@ func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
+	store.SetPackageUser("pkg-display-001", "user-abc", 0)
 
 	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
 	for i := range 3 {
@@ -426,7 +422,7 @@ func TestIdentity_SlidingWindowExpiry(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
+	store.SetPackageUser("pkg-display-001", "user-abc", 0)
 
 	// 3 exposures (hits cap).
 	for i := range 3 {
@@ -453,7 +449,7 @@ func TestIdentity_IntentScore(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
+	store.SetPackageUser("pkg-display-001", "user-abc", 0)
 
 	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
 

@@ -17,16 +17,16 @@ func TestSystem_EndToEnd(t *testing.T) {
 	// --- Setup: realistic seller with many media buys ---
 
 	const (
-		numMediaBuys     = 50
-		packagesPerBuy   = 10
-		totalPackages    = numMediaBuys * packagesPerBuy // 500
-		numSegments      = 20
-		membersPerSeg    = 10_000
-		topicsPerPkg     = 5
-		blocklistPerPkg  = 100
-		numCampaigns     = 10
-		numUsers         = 100
-		pagesPerUser     = 5
+		numMediaBuys    = 50
+		packagesPerBuy  = 10
+		totalPackages   = numMediaBuys * packagesPerBuy // 500
+		numSegments     = 20
+		membersPerSeg   = 10_000
+		topicsPerPkg    = 5
+		blocklistPerPkg = 100
+		numCampaigns    = 10
+		numUsers        = 100
+		pagesPerUser    = 5
 	)
 
 	store := NewMockStore()
@@ -87,11 +87,10 @@ func TestSystem_EndToEnd(t *testing.T) {
 		}
 
 		// Identity config.
-		targetSegs := []string{segments[i%numSegments], segments[(i+1)%numSegments]}
 		store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
 			CampaignID:     campID,
 			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
-			TargetSegments: targetSegs,
+			Audience:       true,
 		})
 	}
 
@@ -102,14 +101,19 @@ func TestSystem_EndToEnd(t *testing.T) {
 		})
 	}
 
-	// User profiles: each user is in 2 segments.
+	// Audience membership: each user matches packages that share any of their two segments.
 	userTokens := make([]string, numUsers)
 	for u := range numUsers {
 		userTokens[u] = fmt.Sprintf("tok-user-%d", u)
-		store.SetUserProfile(userTokens[u], map[string]float64{
-			segments[u%numSegments]:     1.0,
-			segments[(u+3)%numSegments]: 1.0,
-		})
+		uSeg1 := u % numSegments
+		uSeg2 := (u + 3) % numSegments
+		for i, pkgID := range allPkgIDs {
+			pkgSeg1 := i % numSegments
+			pkgSeg2 := (i + 1) % numSegments
+			if uSeg1 == pkgSeg1 || uSeg1 == pkgSeg2 || uSeg2 == pkgSeg1 || uSeg2 == pkgSeg2 {
+				store.SetPackageUser(pkgID, userTokens[u], 1.0)
+			}
+		}
 	}
 
 	// Add artifact topics.
@@ -137,7 +141,15 @@ func TestSystem_EndToEnd(t *testing.T) {
 	t.Logf("  PropertyIndex entries: %d", len(resolved.PropertyIndex))
 	t.Logf("  TopicIndex entries: %d", len(resolved.TopicIndex))
 	t.Logf("  URLBlocklistIndex entries: %d", len(resolved.URLBlocklistIndex))
-	t.Logf("  SegmentIndex entries: %d", len(resolved.SegmentIndex))
+	t.Logf("  IdentityConfigs with audience: %d", func() int {
+		n := 0
+		for _, c := range resolved.IdentityConfigs {
+			if c != nil && c.Audience {
+				n++
+			}
+		}
+		return n
+	}())
 	t.Logf("  ContextConfigs: %d", len(resolved.ContextConfigs))
 	t.Logf("  IdentityConfigs: %d", len(resolved.IdentityConfigs))
 	t.Logf("  CampaignConfigs: %d", len(resolved.CampaignConfigs))
@@ -182,13 +194,13 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	type result struct {
-		name            string
-		totalTime       time.Duration
-		contextTime     time.Duration
-		identityTime    time.Duration
-		contextOffers   int
+		name             string
+		totalTime        time.Duration
+		contextTime      time.Duration
+		identityTime     time.Duration
+		contextOffers    int
 		identityEligible int
-		requests        int
+		requests         int
 	}
 
 	runBench := func(name string, evalCtx func(context.Context, *tmproto.ContextMatchRequest) (*ContextResult, error), evalId func(context.Context, *tmproto.IdentityMatchRequest) (*IdentityResult, error)) result {

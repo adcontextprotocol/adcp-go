@@ -4,18 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
 
 // MockStore is an in-memory Store for testing. It supports sets, strings,
-// and sorted sets with TTL expiry. All operations are goroutine-safe.
+// sorted sets, and hashes with TTL expiry. All operations are goroutine-safe.
 type MockStore struct {
 	mu      sync.RWMutex
 	sets    map[string]map[string]struct{}
 	strings map[string]stringEntry
 	zsets   map[string][]zsetMember
-	expiry  map[string]time.Time // key -> expiry time
+	hsets   map[string]map[string]string // key → field → value
+	expiry  map[string]time.Time         // key -> expiry time
 
 	// Now returns the current time. Defaults to time.Now.
 	// Override in tests to control time.
@@ -38,6 +40,7 @@ func NewMockStore() *MockStore {
 		sets:    make(map[string]map[string]struct{}),
 		strings: make(map[string]stringEntry),
 		zsets:   make(map[string][]zsetMember),
+		hsets:   make(map[string]map[string]string),
 		expiry:  make(map[string]time.Time),
 		Now:     time.Now,
 	}
@@ -90,14 +93,29 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 	m.strings[keyPrefixMediaBuy+mb.MediaBuyID] = stringEntry{value: string(data)}
 }
 
-// SetUserProfile stores a user's segment memberships. Test helper.
-func (m *MockStore) SetUserProfile(token string, segments map[string]float64) {
-	hash := HashToken(token)
-	profile := UserProfile{Segments: segments}
-	data, _ := json.Marshal(profile)
+// SetPackageUser adds a user to a package's audience. Test helper.
+func (m *MockStore) SetPackageUser(pkgID, token string, intent float64) {
+	pkgKey := keyPrefixPackageAudience + HashToken(pkgID)
+	userHash := HashToken(token)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings[keyPrefixUserProfile+hash] = stringEntry{value: string(data)}
+	if m.hsets[pkgKey] == nil {
+		m.hsets[pkgKey] = make(map[string]string)
+	}
+	m.hsets[pkgKey][userHash] = strconv.FormatFloat(intent, 'f', -1, 64)
+}
+
+// SetPackageUsers adds multiple users to a package's audience. Test helper.
+func (m *MockStore) SetPackageUsers(pkgID string, users map[string]float64) {
+	pkgKey := keyPrefixPackageAudience + HashToken(pkgID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hsets[pkgKey] == nil {
+		m.hsets[pkgKey] = make(map[string]string)
+	}
+	for token, intent := range users {
+		m.hsets[pkgKey][HashToken(token)] = strconv.FormatFloat(intent, 'f', -1, 64)
+	}
 }
 
 // SetUserExposures stores a user's exposure log in binary format. Test helper.
@@ -336,7 +354,7 @@ func (m *MockStore) MSet(_ context.Context, kvs map[string]string, ttl time.Dura
 func (m *MockStore) Del(_ context.Context, key string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.strings, key)
+	m.deleteKey(key)
 	return nil
 }
 
@@ -344,7 +362,85 @@ func (m *MockStore) MDel(_ context.Context, keys ...string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, key := range keys {
-		delete(m.strings, key)
+		m.deleteKey(key)
+	}
+	return nil
+}
+
+// deleteKey removes a key from all data structures. Must be called with lock held.
+func (m *MockStore) deleteKey(key string) {
+	delete(m.strings, key)
+	delete(m.sets, key)
+	delete(m.zsets, key)
+	delete(m.hsets, key)
+	delete(m.expiry, key)
+}
+
+func (m *MockStore) HSet(_ context.Context, key, field, value string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hsets[key] == nil {
+		m.hsets[key] = make(map[string]string)
+	}
+	m.hsets[key][field] = value
+	return nil
+}
+
+func (m *MockStore) HMSet(_ context.Context, key string, fields map[string]string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hsets[key] == nil {
+		m.hsets[key] = make(map[string]string)
+	}
+	for f, v := range fields {
+		m.hsets[key][f] = v
+	}
+	return nil
+}
+
+func (m *MockStore) HGet(_ context.Context, key, field string) (string, bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	h, ok := m.hsets[key]
+	if !ok {
+		return "", false, nil
+	}
+	v, ok := h[field]
+	return v, ok, nil
+}
+
+func (m *MockStore) HMGet(_ context.Context, key string, fields ...string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	h := m.hsets[key]
+	results := make([]string, len(fields))
+	for i, f := range fields {
+		results[i] = h[f]
+	}
+	return results, nil
+}
+
+func (m *MockStore) HMGetBatch(_ context.Context, keys []string, fields []string) ([][]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	results := make([][]string, len(keys))
+	for i, key := range keys {
+		h := m.hsets[key]
+		vals := make([]string, len(fields))
+		for j, f := range fields {
+			vals[j] = h[f]
+		}
+		results[i] = vals
+	}
+	return results, nil
+}
+
+func (m *MockStore) HDel(_ context.Context, key string, fields ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	h := m.hsets[key]
+	for _, f := range fields {
+		delete(h, f)
 	}
 	return nil
 }

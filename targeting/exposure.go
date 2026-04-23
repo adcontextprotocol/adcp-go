@@ -56,11 +56,6 @@ type ExposureEntry struct {
 // ExposureLog is a user's exposure history, sorted by timestamp descending.
 type ExposureLog []ExposureEntry
 
-// UserProfile holds a user's segment memberships with optional intent scores.
-type UserProfile struct {
-	Segments map[string]float64 `json:"segments"` // segment name → intent score (0 = member, no score)
-}
-
 // ParseExposureLog parses a JSON-serialized exposure log.
 func ParseExposureLog(data string) ExposureLog {
 	if data == "" {
@@ -82,18 +77,6 @@ func SerializeExposureLog(log ExposureLog) string {
 	return string(data)
 }
 
-// ParseUserProfile parses a JSON-serialized user profile.
-func ParseUserProfile(data string) *UserProfile {
-	if data == "" {
-		return nil
-	}
-	var p UserProfile
-	if err := json.Unmarshal([]byte(data), &p); err != nil {
-		return nil
-	}
-	return &p
-}
-
 // MergeExposureLogs unions multiple exposure logs, deduplicating by ImpressionID.
 func MergeExposureLogs(logs ...ExposureLog) ExposureLog {
 	seen := make(map[string]struct{})
@@ -109,23 +92,6 @@ func MergeExposureLogs(logs ...ExposureLog) ExposureLog {
 	sort.Slice(merged, func(i, j int) bool {
 		return merged[i].Timestamp > merged[j].Timestamp // newest first
 	})
-	return merged
-}
-
-// MergeUserProfiles unions segment memberships across multiple profiles.
-// For duplicate segments, takes the higher intent score.
-func MergeUserProfiles(profiles ...*UserProfile) *UserProfile {
-	merged := &UserProfile{Segments: make(map[string]float64)}
-	for _, p := range profiles {
-		if p == nil {
-			continue
-		}
-		for seg, score := range p.Segments {
-			if existing, ok := merged.Segments[seg]; !ok || score > existing {
-				merged.Segments[seg] = score
-			}
-		}
-	}
 	return merged
 }
 
