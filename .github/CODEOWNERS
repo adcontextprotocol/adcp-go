@@ -1,0 +1,27 @@
+# CODEOWNERS — required reviewers on PRs touching these paths.
+# Claude-authored PRs touching these paths won't merge until an owner
+# approves. This is the enforcement layer behind the TEE hardening
+# rules in AGENTS.md — the triage prompt forbids edits here, but
+# CODEOWNERS is what actually stops them from merging.
+
+# Agent infrastructure.
+/.agents/                   @bokelley
+/.github/                   @bokelley
+/.github/workflows/         @bokelley
+
+# TEE-bound code and the invariants it depends on. Any change here
+# must go through human review regardless of author.
+/identity/                  @bokelley
+/router/pinhole.go          @bokelley
+/router/pinhole_*.go        @bokelley
+/router/metrics.go          @bokelley
+/router/metrics_*.go        @bokelley
+/internal/sanitize/         @bokelley
+
+# Root-module dep surface — zero external deps is a hard invariant.
+/go.mod                     @bokelley
+/go.sum                     @bokelley
+
+# Release tooling.
+/release-please-config.json           @bokelley
+/.release-please-manifest.json        @bokelley
