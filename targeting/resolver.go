@@ -38,7 +38,7 @@ type MediaBuyPackage struct {
 // Total: 2 Store round-trips (1 SetMembers + 1 MGet) regardless of media buy count.
 func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, country string, now time.Time) ([]tmproto.AvailablePackage, error) {
 	// 1. Get all media buy IDs for this seller.
-	mbIDs, err := store.SetMembers(ctx, "mediabuy:seller:"+sellerID)
+	mbIDs, err := store.SetMembers(ctx, keyPrefixMediaBuySeller+sellerID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve media buys for seller %s: %w", sellerID, err)
 	}
@@ -49,7 +49,7 @@ func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, cou
 	// 2. Batch-load all media buy JSON.
 	keys := make([]string, len(mbIDs))
 	for i, id := range mbIDs {
-		keys[i] = "mediabuy:" + id
+		keys[i] = keyPrefixMediaBuy + id
 	}
 	values, err := store.MGet(ctx, keys...)
 	if err != nil {
@@ -157,14 +157,14 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		}
 
 		// Topic index: load topic set from Store.
-		topics, _ := store.SetMembers(ctx, "topics:package:"+pkgID)
+		topics, _ := store.SetMembers(ctx, keyPrefixTopicsPackage+pkgID)
 		for _, topic := range topics {
 			topicIdx[topic] = append(topicIdx[topic], pkgID)
 		}
 
 		// URL blocklist index: load blocklist from Store.
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLBlocklist {
-			blocked, _ := store.SetMembers(ctx, "url:blocklist:"+pkgID)
+			blocked, _ := store.SetMembers(ctx, keyPrefixURLBlocklist+pkgID)
 			for _, hash := range blocked {
 				urlBlockIdx[hash] = append(urlBlockIdx[hash], pkgID)
 			}
@@ -172,7 +172,7 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 
 		// URL allowlist: load allowlist from Store.
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLAllowlist {
-			allowed, _ := store.SetMembers(ctx, "url:allowlist:"+pkgID)
+			allowed, _ := store.SetMembers(ctx, keyPrefixURLAllowlist+pkgID)
 			if len(allowed) > 0 {
 				set := make(map[string]struct{}, len(allowed))
 				for _, hash := range allowed {

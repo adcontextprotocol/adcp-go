@@ -5,6 +5,20 @@ import (
 	"time"
 )
 
+// Store key prefixes.
+const (
+	keyPrefixUserProfile    = "user:profile:"
+	keyPrefixUserExposures  = "user:exposures:"
+	keyPrefixTopicsArtifact = "topics:artifact:"
+	keyPrefixTopicsPackage  = "topics:package:"
+	keyPrefixURLBlocklist   = "url:blocklist:"
+	keyPrefixURLAllowlist   = "url:allowlist:"
+	keyPrefixMediaBuySeller = "mediabuy:seller:"
+	keyPrefixMediaBuy       = "mediabuy:"
+	keyPrefixConfigPkg      = "config:pkg:"
+	keyPrefixConfigCampaign = "config:campaign:"
+)
+
 // Store is a storage backend for the targeting engine.
 // Implementations wrap Valkey/Redis or an in-memory mock.
 type Store interface {
