@@ -562,3 +562,137 @@ func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count, "expected 2 sorted set members (namespaced by source)")
 }
+
+// --- Audience write API tests ---
+
+func TestAudience_SetAndHit(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	require.NoError(t, engine.SetPackageUser(ctx, "pkg-display-001", "user-abc", 0.9))
+
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "aud-hit",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Eligibility, 1)
+	assert.True(t, resp.Eligibility[0].Eligible, "user in audience should be eligible")
+}
+
+func TestAudience_Miss(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	// user-abc is NOT added to pkg-display-001's audience.
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "aud-miss",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Eligibility, 1)
+	assert.False(t, resp.Eligibility[0].Eligible, "user not in audience should be ineligible")
+}
+
+func TestAudience_MultiIdentity_AnyHits(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	// Only user-b is in the audience; request carries both user-a and user-b.
+	require.NoError(t, engine.SetPackageUser(ctx, "pkg-display-001", "user-b", 1.0))
+
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID: "aud-multi",
+		Identities: []tmproto.IdentityToken{
+			{UserToken: "user-a"},
+			{UserToken: "user-b"},
+		},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Eligibility, 1)
+	assert.True(t, resp.Eligibility[0].Eligible, "package should be eligible when any identity is in audience")
+}
+
+func TestAudience_RemovePackageUsers(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]float64{
+		"user-x": 1.0,
+		"user-y": 1.0,
+	}))
+	require.NoError(t, engine.RemovePackageUsers(ctx, "pkg-display-001", []string{"user-x"}))
+
+	// user-x removed — should miss.
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "remove-x",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-x"}},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Eligibility[0].Eligible, "removed user should be ineligible")
+
+	// user-y still present — should hit.
+	resp, err = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "remove-y-still-in",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-y"}},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Eligibility[0].Eligible, "non-removed user should still be eligible")
+}
+
+func TestAudience_DeletePackageUsers(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]float64{
+		"user-p": 1.0,
+		"user-q": 1.0,
+	}))
+	require.NoError(t, engine.DeletePackageUsers(ctx, "pkg-display-001"))
+
+	for _, token := range []string{"user-p", "user-q"} {
+		resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+			RequestID:  fmt.Sprintf("delete-%s", token),
+			Identities: []tmproto.IdentityToken{{UserToken: token}},
+			PackageIDs: []string{"pkg-display-001"},
+		})
+		require.NoError(t, err)
+		assert.False(t, resp.Eligibility[0].Eligible, "%s should be ineligible after audience deleted", token)
+	}
+}
+
+func TestAudience_MSetAndMDelete(t *testing.T) {
+	engine, _, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	require.NoError(t, engine.MSetPackageUsers(ctx, map[string]map[string]float64{
+		"pkg-display-001": {"user-m1": 1.0, "user-m2": 0.5},
+		"pkg-display-002": {"user-m1": 0.8},
+	}))
+
+	// Both packages should hit for user-m1.
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "mset-hit",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-m1"}},
+		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
+	})
+	require.NoError(t, err)
+	// pkg-display-002 has no Audience flag in resolved — only pkg-display-001 is gated.
+	assert.True(t, resp.Eligibility[0].Eligible, "pkg-display-001 should be eligible for user-m1")
+
+	// MDelete pkg-display-001's audience.
+	require.NoError(t, engine.MDeletePackageUsers(ctx, []string{"pkg-display-001"}))
+
+	resp, err = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "mdelete-miss",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-m1"}},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.Eligibility[0].Eligible, "pkg-display-001 should be ineligible after MDelete")
+}

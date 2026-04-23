@@ -167,7 +167,7 @@ func (s *Store) HMGetBatch(ctx context.Context, keys []string, fields []string) 
 	results := make([][]string, len(keys))
 	for i, cmd := range cmds {
 		vals, err := cmd.Result()
-		if err != nil && err != redis.Nil {
+		if err != nil {
 			return nil, err
 		}
 		row := make([]string, len(vals))

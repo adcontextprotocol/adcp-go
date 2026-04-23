@@ -77,7 +77,7 @@ type Store interface {
 	HMGet(ctx context.Context, key string, fields ...string) ([]string, error)
 
 	// HMGetBatch returns the values of the given fields for each key.
-	// The result has one entry per key; each entry has one value per field ("" if missing).
+	// The result slice is always len(keys) long; each entry is len(fields) long ("" for missing fields).
 	// In Valkey this is a single pipelined round-trip.
 	HMGetBatch(ctx context.Context, keys []string, fields []string) ([][]string, error)
 

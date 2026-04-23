@@ -439,6 +439,9 @@ func (m *MockStore) HDel(_ context.Context, key string, fields ...string) error 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	h := m.hsets[key]
+	if h == nil {
+		return nil
+	}
 	for _, f := range fields {
 		delete(h, f)
 	}

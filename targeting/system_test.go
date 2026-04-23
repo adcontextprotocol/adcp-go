@@ -21,7 +21,6 @@ func TestSystem_EndToEnd(t *testing.T) {
 		packagesPerBuy  = 10
 		totalPackages   = numMediaBuys * packagesPerBuy // 500
 		numSegments     = 20
-		membersPerSeg   = 10_000
 		topicsPerPkg    = 5
 		blocklistPerPkg = 100
 		numCampaigns    = 10
@@ -34,7 +33,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	store.Now = func() time.Time { return now }
 
 	t.Logf("")
-	t.Logf("=== System Test: %d packages, %d segments × %d members, %d campaigns ===", totalPackages, numSegments, membersPerSeg, numCampaigns)
+	t.Logf("=== System Test: %d packages, %d users, %d campaigns ===", totalPackages, numUsers, numCampaigns)
 	t.Logf("")
 
 	// Create media buys.
@@ -300,7 +299,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	t.Logf("  Resolved indexes: ~%.1f MB (cached, shared across requests)", resolvedMemMB)
 	t.Logf("  Static engine:    ~%.1f MB (%.0f bytes/package)", float64(len(allPkgIDs))*184/1024/1024, float64(184))
 	t.Logf("  Store data:       out-of-process (Valkey)")
-	t.Logf("    - %d audience segments × %d members each", numSegments, membersPerSeg)
+	t.Logf("    - %d audience packages × %d users (segment-overlap membership)", numUsers, numSegments)
 	t.Logf("    - %d URL blocklist entries total", totalPackages*blocklistPerPkg)
 	t.Logf("    - %d topic set entries total", totalPackages*topicsPerPkg)
 	t.Logf("")

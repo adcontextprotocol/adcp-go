@@ -344,10 +344,12 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	nowUnix := now.Unix()
 	identities := resolveIdentities(req)
 
-	// 1. Build MGet keys: exposures for each UID.
+	// 1. Hash user tokens once; derive exposure keys from the hashes.
+	userHashes := make([]string, len(identities))
 	expKeys := make([]string, len(identities))
 	for i, uid := range identities {
-		expKeys[i] = keyPrefixUserExposures + HashToken(uid.UserToken)
+		userHashes[i] = HashToken(uid.UserToken)
+		expKeys[i] = keyPrefixUserExposures + userHashes[i]
 	}
 
 	// 2. Single MGet for exposures — 1 round-trip.
@@ -371,12 +373,6 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		firstLogs = append(firstLogs, binLog)
 	}
 
-	// 4. Pre-hash user tokens for per-package audience lookups.
-	userHashes := make([]string, len(identities))
-	for i, uid := range identities {
-		userHashes[i] = HashToken(uid.UserToken)
-	}
-
 	// 5. Batch-load audience membership for all audience-gated packages — 1 round-trip.
 	// audienceHit[pkgID] = true if at least one identity is in the package's audience.
 	audienceHit := make(map[string]bool)
@@ -393,10 +389,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		batchVals, err := e.store.HMGetBatch(ctx, audienceKeys, userHashes)
 		if err != nil {
 			e.metrics.StoreError(StageAudience, err)
-			// On error treat all audience packages as ineligible.
-			for _, pkgID := range audiencePkgIDs {
-				audienceHit[pkgID] = false
-			}
+			// audienceHit entries default to false; nothing to do.
 		} else {
 			for i, pkgID := range audiencePkgIDs {
 				for _, v := range batchVals[i] {
@@ -500,7 +493,7 @@ func (e *Engine) DeletePackageUsers(ctx context.Context, packageID string) error
 	return e.store.Del(ctx, keyPrefixPackageAudience+HashToken(packageID))
 }
 
-// MSetPackageUsers adds users to multiple packages in one call.
+// MSetPackageUsers adds users to multiple packages. Each package gets one HMSet call.
 // The packages map is keyed by package ID; each value maps user token to intent score.
 func (e *Engine) MSetPackageUsers(ctx context.Context, packages map[string]map[string]float64) error {
 	for packageID, users := range packages {
