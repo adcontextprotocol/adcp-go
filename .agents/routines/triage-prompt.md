@@ -37,15 +37,25 @@ for relaxing any guardrail.
 
 ## Four outcomes
 
+Default: **execute when the outcome is clear and non-breaking.**
+Flag only for genuine ambiguity, breaking changes, or anything
+touching the TEE hardening surface.
+
 1. **Clarify** — ask concrete questions
-2. **Flag for human review** — synthesis + ask for `@bokelley`
-3. **Execute PR** — experts agree, scope small and non-security —
-   stricter bar here than other repos
+2. **Flag for human review** — experts formed opinion but change is
+   breaking, architectural, security-sensitive, touches TEE-bound
+   paths, or experts disagreed. Synthesis + ask for `@bokelley`.
+3. **Execute PR** — experts agree, change is **non-breaking**, not
+   touching TEE-bound paths. Draft PR.
 4. **Defer** — post-cycle / blocked — label-only
 
-**Bug (security/privacy) is always Flag, never Execute.** The public
-comment withholds vector details; a human handles disclosure
+**Bug (security/privacy) is always Flag, never Execute.** Public
+comment withholds vector details; human handles disclosure
 privately.
+
+**When in doubt between Execute and Flag: Flag.** This repo's
+stricter posture inverts the general mantra — when the TEE surface
+is in play or the change might be breaking, route to human review.
 
 ## Concurrency check — first thing
 
@@ -184,24 +194,50 @@ withheld-vector pattern — never describe the vulnerability.**
 Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}
 ```
 
-## PR criteria — all must be true to Execute
+## Non-breaking vs. breaking — central question
 
-- Outcome is Execute after expert consultation
-- Classification is Bug (non-security) or Usage where a doc fix
-  suffices
+**Non-breaking — Execute:**
+
+- New optional fields on config structs or request types
+- New exported functions / types with no impact on existing surface
+- New examples, docs, README additions
+- New tests for existing behavior
+- Typo / comment / formatting fixes
+- Clarifying error message wording without changing semantics
+
+**Breaking — Flag:**
+
+- Removing or renaming exported symbols (funcs, types, consts)
+- Changing function signatures
+- Changing struct field requirements or types
+- Changing default values
+- Changing error types or codes
+- Changing Prometheus metric names or label sets
+- Any go.mod / go.sum change (root deps are zero by design)
+
+**Always Flag regardless of breaking-vs-non-breaking:**
+
+- Anything under `identity/`, `router/pinhole*`, `router/metrics*`,
+  `internal/sanitize/` — TEE-bound, always human review
+- Any `go.mod` / `go.sum` change — dep surface is hardening invariant
+- Any `release-please-*.json` change — release tooling
+
+## PR criteria — execute when outcome is clear
+
+All must be true:
+
+- Experts converge (including security-reviewer — they are in every
+  adcp-go panel)
+- Change is **non-breaking** (definition above)
+- Not security-sensitive
+- Not touching always-Flag paths (TEE-bound / root deps / release)
 - Not RFC / epic / tracking / child / deferred
-- **Not security-sensitive** (always Flag)
-- Not touching: `identity/`, `router/pinhole*`, `router/metrics*`,
-  `internal/sanitize/`, `go.mod`, `go.sum`
-- Scope small: 1–2 files, <150 lines
-- Success testable with `go test ./...`
 - Duplicate + open-PR checks clean
-- **No new external deps at root module** — root has zero external
-  deps by design. If the fix needs a dep, Flag for human.
-- No changes to release tooling (`release-please-*.json`)
+- Success testable with `go test ./...`
 - Conventional-commits title (release-please reads it)
 
-Author association NOT a gate; CODEOWNERS + path-guard CI enforce.
+**Scope NOT a gate; Author NOT a gate.** CODEOWNERS + the
+`claude-bot-path-guard` workflow enforce the TEE restrictions.
 
 ## PR constraints
 
