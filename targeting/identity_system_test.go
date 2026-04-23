@@ -115,9 +115,9 @@ func TestSystem_IdentityGraph(t *testing.T) {
 	email := "tok-email-hash-123"
 
 	// Audience membership per package.
-	store.SetPackageUsers("pkg-food", map[string]float64{cookie: 0.8, email: 0.6})
-	store.SetPackageUsers("pkg-sports", map[string]float64{uid2: 0.5})
-	store.SetPackageUsers("pkg-tech", map[string]float64{email: 0.9})
+	store.SetPackageUsers("pkg-food", map[string]Intent{cookie: 0.8, email: 0.6})
+	store.SetPackageUsers("pkg-sports", map[string]Intent{uid2: 0.5})
+	store.SetPackageUsers("pkg-tech", map[string]Intent{email: 0.9})
 
 	engine := NewEngine(EngineConfig{ProviderID: "test", Store: store})
 	engine.Now = func() time.Time { return now }

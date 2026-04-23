@@ -620,7 +620,7 @@ func TestAudience_RemovePackageUsers(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]float64{
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]Intent{
 		"user-x": 1.0,
 		"user-y": 1.0,
 	}))
@@ -649,7 +649,7 @@ func TestAudience_DeletePackageUsers(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]float64{
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-display-001", map[string]Intent{
 		"user-p": 1.0,
 		"user-q": 1.0,
 	}))
@@ -670,7 +670,7 @@ func TestAudience_MSetAndMDelete(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	require.NoError(t, engine.MSetPackageUsers(ctx, map[string]map[string]float64{
+	require.NoError(t, engine.MSetPackageUsers(ctx, map[string]map[string]Intent{
 		"pkg-display-001": {"user-m1": 1.0, "user-m2": 0.5},
 		"pkg-display-002": {"user-m1": 0.8},
 	}))

@@ -12,7 +12,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -382,7 +381,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		idCfg := resolved.IdentityConfigs[pkgID]
 		if idCfg != nil && idCfg.Audience {
 			audiencePkgIDs = append(audiencePkgIDs, pkgID)
-			audienceKeys = append(audienceKeys, keyPrefixPackageAudience+HashToken(pkgID))
+			audienceKeys = append(audienceKeys, keyPrefixPackageAudience+HashPackageID(pkgID))
 		}
 	}
 	if len(audienceKeys) > 0 {
@@ -462,25 +461,25 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 }
 
 // SetPackageUser adds a user to a package's audience with the given intent score.
-func (e *Engine) SetPackageUser(ctx context.Context, packageID, userToken string, intent float64) error {
-	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
-	return e.store.HSet(ctx, pkgKey, HashToken(userToken), strconv.FormatFloat(intent, 'f', -1, 64))
+func (e *Engine) SetPackageUser(ctx context.Context, packageID, userToken string, intent Intent) error {
+	pkgKey := keyPrefixPackageAudience + HashPackageID(packageID)
+	return e.store.HSet(ctx, pkgKey, HashToken(userToken), intent.String())
 }
 
 // AddPackageUsers adds multiple users to a package's audience in a single batch.
 // The users map is keyed by user token.
-func (e *Engine) AddPackageUsers(ctx context.Context, packageID string, users map[string]float64) error {
-	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+func (e *Engine) AddPackageUsers(ctx context.Context, packageID string, users map[string]Intent) error {
+	pkgKey := keyPrefixPackageAudience + HashPackageID(packageID)
 	fields := make(map[string]string, len(users))
 	for userToken, intent := range users {
-		fields[HashToken(userToken)] = strconv.FormatFloat(intent, 'f', -1, 64)
+		fields[HashToken(userToken)] = intent.String()
 	}
 	return e.store.HMSet(ctx, pkgKey, fields)
 }
 
 // RemovePackageUsers removes specific users from a package's audience.
 func (e *Engine) RemovePackageUsers(ctx context.Context, packageID string, userTokens []string) error {
-	pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+	pkgKey := keyPrefixPackageAudience + HashPackageID(packageID)
 	fields := make([]string, len(userTokens))
 	for i, token := range userTokens {
 		fields[i] = HashToken(token)
@@ -490,17 +489,17 @@ func (e *Engine) RemovePackageUsers(ctx context.Context, packageID string, userT
 
 // DeletePackageUsers removes a package's entire audience.
 func (e *Engine) DeletePackageUsers(ctx context.Context, packageID string) error {
-	return e.store.Del(ctx, keyPrefixPackageAudience+HashToken(packageID))
+	return e.store.Del(ctx, keyPrefixPackageAudience+HashPackageID(packageID))
 }
 
 // MSetPackageUsers adds users to multiple packages. Each package gets one HMSet call.
 // The packages map is keyed by package ID; each value maps user token to intent score.
-func (e *Engine) MSetPackageUsers(ctx context.Context, packages map[string]map[string]float64) error {
+func (e *Engine) MSetPackageUsers(ctx context.Context, packages map[string]map[string]Intent) error {
 	for packageID, users := range packages {
-		pkgKey := keyPrefixPackageAudience + HashToken(packageID)
+		pkgKey := keyPrefixPackageAudience + HashPackageID(packageID)
 		fields := make(map[string]string, len(users))
 		for userToken, intent := range users {
-			fields[HashToken(userToken)] = strconv.FormatFloat(intent, 'f', -1, 64)
+			fields[HashToken(userToken)] = intent.String()
 		}
 		if err := e.store.HMSet(ctx, pkgKey, fields); err != nil {
 			return err
@@ -513,7 +512,7 @@ func (e *Engine) MSetPackageUsers(ctx context.Context, packages map[string]map[s
 func (e *Engine) MDeletePackageUsers(ctx context.Context, packageIDs []string) error {
 	keys := make([]string, len(packageIDs))
 	for i, packageID := range packageIDs {
-		keys[i] = keyPrefixPackageAudience + HashToken(packageID)
+		keys[i] = keyPrefixPackageAudience + HashPackageID(packageID)
 	}
 	return e.store.MDel(ctx, keys...)
 }

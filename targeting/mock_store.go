@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -94,27 +93,27 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 }
 
 // SetPackageUser adds a user to a package's audience. Test helper.
-func (m *MockStore) SetPackageUser(pkgID, token string, intent float64) {
-	pkgKey := keyPrefixPackageAudience + HashToken(pkgID)
+func (m *MockStore) SetPackageUser(pkgID, token string, intent Intent) {
+	pkgKey := keyPrefixPackageAudience + HashPackageID(pkgID)
 	userHash := HashToken(token)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.hsets[pkgKey] == nil {
 		m.hsets[pkgKey] = make(map[string]string)
 	}
-	m.hsets[pkgKey][userHash] = strconv.FormatFloat(intent, 'f', -1, 64)
+	m.hsets[pkgKey][userHash] = intent.String()
 }
 
 // SetPackageUsers adds multiple users to a package's audience. Test helper.
-func (m *MockStore) SetPackageUsers(pkgID string, users map[string]float64) {
-	pkgKey := keyPrefixPackageAudience + HashToken(pkgID)
+func (m *MockStore) SetPackageUsers(pkgID string, users map[string]Intent) {
+	pkgKey := keyPrefixPackageAudience + HashPackageID(pkgID)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.hsets[pkgKey] == nil {
 		m.hsets[pkgKey] = make(map[string]string)
 	}
 	for token, intent := range users {
-		m.hsets[pkgKey][HashToken(token)] = strconv.FormatFloat(intent, 'f', -1, 64)
+		m.hsets[pkgKey][HashToken(token)] = intent.String()
 	}
 }
 

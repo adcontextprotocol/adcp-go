@@ -58,7 +58,7 @@ func setupIntegration(t *testing.T) (*targeting.Engine, *Store, *miniredis.Minir
 	})
 
 	// Seed user into pkg-alpha's audience.
-	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-alpha", map[string]float64{"user-valkey": 1.0}))
+	require.NoError(t, engine.AddPackageUsers(ctx, "pkg-alpha", map[string]targeting.Intent{"user-valkey": 1.0}))
 
 	resolved := &targeting.ResolvedPackages{
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
