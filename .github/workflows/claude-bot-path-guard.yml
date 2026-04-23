@@ -1,0 +1,55 @@
+name: Claude Bot Path Guard
+
+# Defense in depth for TEE-bound code. The triage-prompt forbids
+# auto-PRs that touch these paths; this check fails any PR authored
+# by the Claude GitHub App that does. CODEOWNERS requires a human
+# approval even for non-bot PRs, but this guard fails *fast* and
+# loudly so the bot's routine notices and retries a different tack.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  guard:
+    name: Block bot PRs touching TEE paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    # Only fire on bot-authored PRs. Human contributors should hit
+    # CODEOWNERS review, not this guard.
+    if: >-
+      github.event.pull_request.user.type == 'Bot' ||
+      endsWith(github.event.pull_request.user.login, '[bot]') ||
+      github.event.pull_request.user.login == 'claude[bot]'
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fail if bot PR touches TEE-bound or workflow paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "$BASE..$HEAD")
+          if [ -z "$changed" ]; then
+            echo "No file changes detected."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$changed" | sed 's/^/  /'
+
+          if echo "$changed" | grep -qE '^(identity/|router/pinhole|router/metrics|internal/sanitize/|\.github/workflows/|\.agents/|go\.mod$|go\.sum$|release-please-config\.json$|\.release-please-manifest\.json$)'; then
+            echo ""
+            echo "::error::Bot-authored PR attempts to modify protected paths (TEE/workflows/agents/deps/release)."
+            echo "::error::These paths require human-authored changes with CODEOWNERS review. The triage routine should not have opened this PR."
+            exit 1
+          fi
+
+          echo "All changed paths are outside the bot guard."
