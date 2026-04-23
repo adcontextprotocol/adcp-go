@@ -38,3 +38,8 @@ reference/seller-agent/seller-agent
 .idea/
 # .vscode/
 .claude/
+
+# Committed experts (Claude subagents available to cloud routines)
+!.claude/
+!.claude/agents/
+.claude/settings*.json
