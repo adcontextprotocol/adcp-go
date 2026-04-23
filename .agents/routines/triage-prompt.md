@@ -66,6 +66,41 @@ bucket(s); omit the `Suggested milestone` line entirely. Apply
 code, classify `needs-info` and ask one specific repro question.
 Never guess — especially in this repo.
 
+## Silent triage: label-only, no comment
+
+Apply `claude-triaged` + matching bucket labels silently (no comment)
+when ALL of these are true:
+
+- Classification is **Feature request**, or pre-classified as
+  RFC / Epic / Tracking / Child-of-open-parent
+- Author association is `OWNER | MEMBER | COLLABORATOR`
+- Body is well-structured (Summary / Description / Steps-to-Reproduce,
+  or >200 chars prose)
+- Issue already carries at least one on-target label
+
+**Never silent-triage these classifications** (always comment, even
+when everything else would qualify):
+
+- **Bug (security/privacy)** — the withheld-vector comment *is* the
+  signal ("details handled outside this thread"). Silent on a
+  security issue leaves the OP and readers with no indication the
+  report was seen.
+- **Performance** — judgment-heavy; usually worth noting what you
+  looked at.
+
+**Still comment when:**
+
+- Author is `NONE` or `FIRST_TIME_CONTRIBUTOR`
+- Classification is **Bug (non-security)**, **Usage/support**,
+  **Dependency/compat**, or **needs-info**
+- You have a duplicate, related open PR, or cross-repo redirect
+- You're about to open a PR
+- `Status: not-actionable` and the reason is non-obvious
+
+The test: would a maintainer skimming the thread *learn something*
+from your comment? If no (and it's not security-sensitive), stay
+silent.
+
 ## Pre-PR checks (even for non-security bug)
 
 - **Duplicate check:** `gh search issues --repo adcontextprotocol/adcp-go --json number,title,state "<key terms>"`. Link + comment-only if a close match exists.
