@@ -57,6 +57,23 @@ gh api repos/adcontextprotocol/adcp-go/issues/<N>/comments \
 
 If > 0, skip.
 
+## Already-engaged check — before any expert work
+
+Silent-defer (apply `claude-triaged`, no comment) if any of these:
+
+1. **Assigned to a repo member** — any assignee is
+   `OWNER | MEMBER | COLLABORATOR`.
+2. **Open PR references it** —
+   `gh pr list --repo adcontextprotocol/adcp-go --search "in:body #<N>" --state open`
+   returns anything.
+3. **Recent repo-member comment** — any comment from
+   `OWNER | MEMBER | COLLABORATOR` (non-bot) in the last 7 days.
+   Exception: the comment explicitly asks for triage help.
+
+Given this repo's TEE posture, err on the side of silent-defer when
+any doubt. Don't post a competing analysis on work a human is
+already engaged on.
+
 ## Decision order
 
 ### Step 1 — Pre-classification
@@ -87,7 +104,17 @@ Classifications:
   `go.mod`.
 - **needs-info** (tiebreaker)
 
-Scope buckets:
+Scope buckets — **label application is strictly gated**:
+
+1. Run `gh label list --repo adcontextprotocol/adcp-go --limit 200 --json name,description` **first**.
+2. Apply only labels whose exact `name` is in that list and is a
+   clear, direct match.
+3. **Never create new labels.** Never POST to `/labels`. If a bucket
+   has no matching label, put the bucket name in the comment body
+   and flag the gap in the run summary.
+4. Default to not applying when uncertain.
+
+Common buckets (verify every time):
 
 - **router** — `router/` reference router
 - **targeting** — `targeting/` evaluation core
