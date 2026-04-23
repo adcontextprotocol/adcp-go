@@ -101,6 +101,17 @@ func (s *Store) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	return results, nil
 }
 
+func (s *Store) Del(ctx context.Context, key string) error {
+	return s.rdb.Del(ctx, key).Err()
+}
+
+func (s *Store) MDel(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	return s.rdb.Del(ctx, keys...).Err()
+}
+
 func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error {
 	if len(kvs) == 0 {
 		return nil

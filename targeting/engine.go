@@ -471,6 +471,22 @@ func (e *Engine) SetUserProfiles(ctx context.Context, profiles map[string]map[st
 	return e.store.MSet(ctx, kvs, 0)
 }
 
+// DeleteUserProfile removes a user's segment profile.
+func (e *Engine) DeleteUserProfile(ctx context.Context, userToken string) error {
+	hash := HashToken(userToken)
+	return e.store.Del(ctx, "user:profile:"+hash)
+}
+
+// DeleteUserProfiles removes segment profiles for multiple users in a single batch.
+// The userTokens slice contains user tokens.
+func (e *Engine) DeleteUserProfiles(ctx context.Context, userTokens []string) error {
+	keys := make([]string, len(userTokens))
+	for i, userToken := range userTokens {
+		keys[i] = "user:profile:" + HashToken(userToken)
+	}
+	return e.store.MDel(ctx, keys...)
+}
+
 // RecordExposure records an impression to the exposure log for all UIDs.
 // Each UID's exposure log is read, the new entry is appended,
 // old entries are pruned, and the log is written back.

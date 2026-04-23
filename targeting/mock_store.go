@@ -334,6 +334,22 @@ func (m *MockStore) MSet(_ context.Context, kvs map[string]string, ttl time.Dura
 	return nil
 }
 
+func (m *MockStore) Del(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.strings, key)
+	return nil
+}
+
+func (m *MockStore) MDel(_ context.Context, keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, key := range keys {
+		delete(m.strings, key)
+	}
+	return nil
+}
+
 // isExpired checks key-level expiry. Must be called with lock held.
 func (m *MockStore) isExpired(key string) bool {
 	exp, ok := m.expiry[key]
