@@ -67,7 +67,19 @@ gh api repos/adcontextprotocol/adcp-go/issues/<N>/comments \
 
 If > 0, skip.
 
+## Manual nudge — overrides the already-engaged check
+
+If the event context contains a `MANUAL NUDGE:` line, a repo member
+explicitly requested triage via `/claude-triage`. **Skip the
+already-engaged check** and proceed with full triage.
+
+Modifiers: `/claude-triage execute` / `clarify` / `defer` bias the
+outcome. **Security/TEE-adjacent paths still always Flag regardless
+of modifier** — the nudge doesn't unlock TEE-bound code for auto-PR.
+
 ## Already-engaged check — before any expert work
+
+(Skip if the event is a MANUAL NUDGE — see above.)
 
 Silent-defer (apply `claude-triaged`, no comment) if any of these:
 
