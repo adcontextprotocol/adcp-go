@@ -70,10 +70,10 @@ If > 0, skip.
 ## Manual nudge — overrides the already-engaged check
 
 If the event context contains a `MANUAL NUDGE:` line, a repo member
-explicitly requested triage via `@claude-triage`. **Skip the
+explicitly requested triage via `/triage`. **Skip the
 already-engaged check** and proceed with full triage.
 
-Modifiers: `@claude-triage execute` / `clarify` / `defer` bias the
+Modifiers: `/triage execute` / `clarify` / `defer` bias the
 outcome. **Security/TEE-adjacent paths still always Flag regardless
 of modifier** — the nudge doesn't unlock TEE-bound code for auto-PR.
 
