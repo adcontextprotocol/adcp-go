@@ -47,7 +47,20 @@ touching the TEE hardening surface.
    paths, or experts disagreed. Synthesis + ask for `@bokelley`.
 3. **Execute PR** — experts agree, change is **non-breaking**, not
    touching TEE-bound paths. Draft PR.
-4. **Defer** — post-cycle / blocked — label-only
+4. **Defer** — three flavors:
+   - **Out of cycle (no blocker).** Silent for MEMBER+; ack for
+     NONE / FIRST_TIME_CONTRIBUTOR.
+   - **Blocked on open PR/issue.** Always post `Blocked-on: #N —
+     resurfaces on merge`, any author tier — the comment is the
+     audit trail and the resurfacing trigger.
+   - **Fold candidate.** Same as Blocked-on, plus also comment on
+     the parent PR suggesting scope be folded before merge (only
+     when parent is same-author / active contributor, still
+     iterating, and overlaps file scope). Skip if parent is
+     approved/awaiting-merge. **Note** the repo's stricter
+     posture: if the parent PR touches TEE surface or
+     identity/pinhole/metrics paths, default to plain Blocked-on
+     and let a human decide on folding.
 
 **Bug (security/privacy) is always Flag, never Execute.** Public
 comment withholds vector details; human handles disclosure
@@ -100,8 +113,17 @@ already engaged on.
 
 ### Step 1 — Pre-classification
 
-Skip auto-PR for: RFC/proposal, epic, tracking/meta,
-child-of-open-parent. Proceed to relevance check.
+Skip auto-PR for:
+
+- RFC / proposal, epic, tracking/meta
+- **child-of-open-parent** — any of: `Fixes #N`/`Closes #N` to an
+  open issue/PR; body text references an open PR as prereq ("after
+  #N", "follow-up to #N", "depends on #N", "extends #N");
+  acceptance criteria reference files that exist in an open PR's
+  diff but not on `main` (`gh pr view <N> --json files` to confirm).
+
+Proceed to relevance check, then to the **Defer** outcome
+(typically *Fold candidate* or *Blocked-on*) rather than Execute.
 
 ### Step 2 — Relevance check: in-cycle?
 
@@ -270,6 +292,22 @@ related fixes, or "items 1-5 after PR #N" — decide:
 
 A single cohesive PR is easier to review than three PRs with
 dependencies. The bot reduces maintainer clicks, not multiplies them.
+
+### Linkage rule for partial-rollout PRs
+
+When the issue proposes multiple items and you're shipping a subset,
+the PR body uses `Refs #N`, **not** `Closes #N`. `Closes` is reserved
+for PRs that fulfill the entire issue scope (even if delivered
+incrementally — only the *last* PR in the sequence carries `Closes`).
+
+Applies to multi-item issues (numbered lists, taxonomies with multiple
+`kind`s, follow-up bundles), issues with explicit "ship X first, then
+Y" guidance, or any case where PR scope is narrower than issue scope.
+
+In addition to using `Refs`, post a status comment on the parent issue
+listing what shipped and what remains, so a future triage sweep can
+find queued work. `Closes` here would be a quiet bug — the issue
+auto-closes on merge and remaining items lose their tracking surface.
 
 ## Pre-PR build + test gate — mandatory before expert review
 
