@@ -11,7 +11,9 @@ me to do this?" — decide.
 
 ## Prerequisites
 
-- Label `claude-triaged` must exist. Stop and report if missing.
+- Labels `claude-triaging` and `claude-triaged` must exist (apply per
+  the **Lifecycle labels** section below). Stop and report if either
+  is missing.
 
 ## Read first, every run
 
@@ -30,10 +32,22 @@ for relaxing any guardrail.
 
 ## Run type
 
-- **Event-driven:** user message has issue context — act on that
-  one.
-- **Scheduled:** walk open issues without `claude-triaged`, skip
-  bots / stale >90d, cap at 10.
+The `Event:` line at the top of the user message tells you which
+trigger fired:
+
+- **`auto.opened` / `auto.reopened`:** issue was just filed (or
+  re-filed). Act on that one issue with full triage.
+- **`comment.created`:** a non-bot, non-`/triage`, non-self comment
+  landed on an open issue (workflow filters PR comments, /triage
+  slash-commands, and routine self-loops). Both
+  `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` (the new comment) and
+  `<<<UNTRUSTED_ISSUE_BODY>>>` (original issue) are in the payload.
+  See **Comment engagement** below.
+- **`manual.triage`:** a member commented `/triage [modifier]`.
+  Payload has `MANUAL NUDGE:` line; honor the modifier.
+- **Scheduled:** no issue context. Walk open issues without
+  `claude-triaged`, skip bots and stale >90d, cap at 10 per run.
+
 
 ## Four outcomes
 
@@ -108,6 +122,35 @@ Silent-defer (apply `claude-triaged`, no comment) if any of these:
 Given this repo's TEE posture, err on the side of silent-defer when
 any doubt. Don't post a competing analysis on work a human is
 already engaged on.
+
+## Lifecycle labels — apply `claude-triaging` before any work
+
+Once concurrency + already-engaged checks pass and you're going to
+do real work, **immediately** apply `claude-triaging`:
+
+```
+gh issue edit <N> --repo adcontextprotocol/adcp-go --add-label claude-triaging
+```
+
+This is the "I'm on this" signal. At end of run (any outcome), swap
+to `claude-triaged`:
+
+```
+gh issue edit <N> --repo adcontextprotocol/adcp-go \
+  --remove-label claude-triaging \
+  --add-label claude-triaged
+```
+
+Skip cases (apply `claude-triaged` directly, no `claude-triaging`):
+
+- **Concurrency-skip** — another session is running. Don't apply
+  either; let the other session finish.
+- **Already-engaged silent-defer** — apply `claude-triaged`
+  directly; you're not doing real work.
+- **Comment-driven non-substantive run** — silent skip; no labels.
+
+If the run errors before end, `claude-triaging` is left orphaned. A
+scheduled sweep clears stuck `claude-triaging` >30 min old.
 
 ## Decision order
 
@@ -387,9 +430,35 @@ have read the diff before a human reviewer does.
 
 ## Comment engagement
 
-Same as other repos — skip +1/emoji, never self-reply, re-evaluate
-on substantive new info. For security-sensitive threads, escalate
-silently to the human — don't continue public discussion.
+Fires on `comment.created` runs (plain non-`/triage` comments on
+issues; the workflow filters bots, self-loops, /triage, and PR
+conversations). Payload has `<<<UNTRUSTED_NEW_COMMENT_BODY>>>` plus
+the original `<<<UNTRUSTED_ISSUE_BODY>>>`.
+
+1. Read the full thread on GitHub before deciding (`gh api
+   repos/<owner>/<repo>/issues/<N>/comments`).
+2. Decide if the comment is **substantive**: new info,
+   counter-argument, direct question, refined proposal, or
+   cross-reference that changes the picture. Non-substantive
+   ("+1", emoji, "thanks!", "lgtm", bare pings) → silent skip,
+   no labels.
+3. If substantive and **challenges a prior triage**: re-run the
+   relevant experts; reply with the new conclusion (even if "no
+   change, here's why").
+4. If substantive and **unlocks a stuck Clarify**: move forward
+   per outcome rules.
+5. If substantive but the issue is in a final state (PR drafted,
+   deferred with linkage, flagged): post a brief acknowledgment
+   that routes the new info to the open PR or refreshes the defer
+   reasoning.
+6. Never reply to your own previous comments (workflow filters
+   most cases via the `Triaged by Claude Code` footer). Never
+   reply to bots.
+
+**PR conversations are out of scope.** The workflow filters
+`issue_comment` events where `issue.pull_request != null`. PR
+review feedback is the **auto-fix** feature's job, not triage.
+
 
 ## Failure handling
 
