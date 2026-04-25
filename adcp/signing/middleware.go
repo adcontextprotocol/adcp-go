@@ -58,10 +58,13 @@ type MiddlewareOptions struct {
 	// agent mappings.
 	Resolver JWKSResolver
 
-	// Replay deduplicates (keyid, nonce) pairs. NewMemoryReplayStore(0) is
-	// appropriate for single-instance verifiers; distributed deployments
-	// SHOULD supply a shared backing store (Redis, etc.) implementing
-	// ReplayStore with atomic cap+insert semantics at step 13.
+	// Replay deduplicates (keyid, nonce) pairs. Defaults to a fresh
+	// NewMemoryReplayStore(0) when nil — appropriate for single-instance
+	// verifiers; distributed deployments SHOULD supply a shared backing
+	// store (Redis, etc.) implementing ReplayStore with atomic cap+insert
+	// semantics at step 13. Defaulting to nil silently disabled the replay
+	// check, the exact security regression AdCP verifier checklist step 13
+	// exists to prevent.
 	Replay ReplayStore
 
 	// Revocation reports per-keyid revocation state and whether the verifier's
@@ -136,6 +139,15 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 	if profile.Tag == "" {
 		profile = ProfileRequestSigning
 	}
+	// Construct the default replay store once at wire-up so every request
+	// served by this middleware shares the same dedup state — lazy
+	// per-request construction would defeat replay detection entirely.
+	// Pass an explicit shared store (Redis, etc.) for multi-replica
+	// deployments where replay state must be coordinated across processes.
+	replay := opts.Replay
+	if replay == nil {
+		replay = NewMemoryReplayStore(0)
+	}
 	if len(opts.RequiredFor) > 0 && opts.Revocation == nil {
 		logger.Warn("signing.Middleware: RequiredFor is non-empty but Revocation is nil — verifier will not enforce key revocation")
 	}
@@ -161,7 +173,7 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 				Scheme:              scheme,
 				Resolver:            opts.Resolver,
 				Revocation:          opts.Revocation,
-				Replay:              opts.Replay,
+				Replay:              replay,
 				MaxBodyBytes:        opts.MaxBodyBytes,
 			})
 			if err != nil {

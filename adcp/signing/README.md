@@ -34,9 +34,17 @@ _ = signer.SignRequest(req, signing.SignOptions{CoverContentDigest: true})
 
 // Option B: signing round-tripper — every outbound request is signed automatically.
 client := &http.Client{Transport: signer.RoundTripper(nil, true)}
+
+// Option C: bundled preset — Signer + RoundTripper + redirect-safe *http.Client in one call.
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:              "my-agent-ed25519-2026",
+    PrivateKey:         priv,
+    CoverContentDigest: true,        // seller advertised covers_content_digest=required
+    Timeout:            30 * time.Second,
+})
 ```
 
-Important: signed requests MUST NOT follow HTTP redirects — `@target-uri` coverage would bind the signature to the original URL, not the redirected one. Set `http.Client.CheckRedirect` to `func(...) error { return http.ErrUseLastResponse }` when using a signing client.
+Important: signed requests MUST NOT follow HTTP redirects — `@target-uri` coverage would bind the signature to the original URL, not the redirected one. `NewSignedHTTPClient` disables redirect-following for you; if you build the client by hand (Options A/B above), set `http.Client.CheckRedirect` to `func(...) error { return http.ErrUseLastResponse }` yourself.
 
 The signer:
 
@@ -51,7 +59,9 @@ The signer:
 ```go
 mw := signing.Middleware(signing.MiddlewareOptions{
     Resolver:            jwksResolver,
-    Replay:              signing.NewMemoryReplayStore(0),
+    // Replay defaults to a fresh NewMemoryReplayStore(0) when nil — fine
+    // for single-instance verifiers. Wire an explicit shared store
+    // (Redis, etc.) for multi-replica deployments.
     Revocation:          signing.NewStaticRevocationList(nil), // pass nil only in dev
     OperationResolver:   signing.DefaultOperationResolver,     // /adcp/<op>
     RequiredFor:         []string{"create_media_buy"},
