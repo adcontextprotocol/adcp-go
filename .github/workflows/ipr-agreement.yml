@@ -1,0 +1,23 @@
+name: IPR Agreement
+
+# Delegates to the reusable workflow in adcontextprotocol/adcp. Signatures
+# land in the central ledger at adcontextprotocol/adcp:signatures/ipr-signatures.json.
+# See https://github.com/adcontextprotocol/adcp/blob/main/governance/ipr-bot-setup.md
+# for the GitHub App configuration and how to rotate / revoke credentials.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  statuses: write
+
+jobs:
+  check:
+    uses: adcontextprotocol/adcp/.github/workflows/ipr-check-callable.yml@main
+    secrets:
+      IPR_APP_ID: ${{ secrets.IPR_APP_ID }}
+      IPR_APP_PRIVATE_KEY: ${{ secrets.IPR_APP_PRIVATE_KEY }}
