@@ -56,7 +56,7 @@ KNOWN_TYPES = {
     # From testcontroller.go
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
-    'TestControllerError',
+    'TestControllerError', 'ForcedDirectiveSuccess',
     # Collection domain (from types.go)
     'CollectionList', 'CollectionListFilters', 'BaseCollectionSource',
     'DistributionID', 'ContentRating', 'ResolvedCollection',

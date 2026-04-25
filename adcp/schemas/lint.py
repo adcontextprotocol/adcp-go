@@ -56,7 +56,7 @@ EXEMPT = {
     # testcontroller (no schema)
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
-    'TestControllerError',
+    'TestControllerError', 'ForcedDirectiveSuccess',
     # inputs (agent-specific helpers, schemas are inline in request schemas)
     'EmptyInput', 'PackageInput', 'AccountInput', 'GovernanceAccountInput',
     'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
