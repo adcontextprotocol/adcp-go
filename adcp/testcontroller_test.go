@@ -260,6 +260,12 @@ func TestForceTaskCompletion_InvalidTransition(t *testing.T) {
 	assert.Equal(t, "completed", resp.CurrentState)
 }
 
+func TestRegisterTestController_SandboxGuard(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "0.0.0"}, nil)
+	store := &TestControllerStore{Sandbox: false}
+	assert.Panics(t, func() { RegisterTestController(server, store) }, "expected panic when Sandbox=false")
+}
+
 func TestListScenarios_IncludesNewScenarios(t *testing.T) {
 	store := &TestControllerStore{
 		ForceCreateMediaBuyArm: func(arm, taskID, message string) (*ForcedDirectiveSuccess, error) { return nil, nil },

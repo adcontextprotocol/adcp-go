@@ -268,10 +268,10 @@ func handleForceCreateMediaBuyArm(store *TestControllerStore, params map[string]
 		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm requires params.task_id when arm=submitted", "")
 	}
 	if len(taskID) > 128 {
-		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.task_id must be ≤128 chars", "")
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.task_id must be ≤128 bytes", "")
 	}
 	if len(message) > 2000 {
-		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.message must be ≤2000 chars", "")
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.message must be ≤2000 bytes", "")
 	}
 	result, err := store.ForceCreateMediaBuyArm(arm, taskID, message)
 	if err != nil {
@@ -292,7 +292,7 @@ func handleForceTaskCompletion(store *TestControllerStore, params map[string]any
 		return controllerErr("INVALID_PARAMS", "force_task_completion requires params.task_id", "")
 	}
 	if len(taskID) > 128 {
-		return controllerErr("INVALID_PARAMS", "force_task_completion params.task_id must be ≤128 chars", "")
+		return controllerErr("INVALID_PARAMS", "force_task_completion params.task_id must be ≤128 bytes", "")
 	}
 	resultObj, ok := params["result"].(map[string]any)
 	if !ok || len(resultObj) == 0 {
