@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/adcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,13 +104,28 @@ func TestNewSignedHTTPClientRejectsRedirects(t *testing.T) {
 
 func TestNewSignedHTTPClientRequiresKeyMaterial(t *testing.T) {
 	_, err := NewSignedHTTPClient(SignedHTTPClientOptions{})
-	require.Error(t, err)
+	require.Error(t, err, "empty options must error")
+	assert.Contains(t, err.Error(), "KeyID is required")
 
 	_, err = NewSignedHTTPClient(SignedHTTPClientOptions{KeyID: "kid"})
-	require.Error(t, err)
+	require.Error(t, err, "missing PrivateKey must error")
+	assert.Contains(t, err.Error(), "PrivateKey is required")
 
-	_, err = NewSignedHTTPClient(SignedHTTPClientOptions{PrivateKey: ed25519.PrivateKey([]byte("not-a-key"))})
+	// PrivateKey present but no KeyID → KeyID-required path (early-return).
+	_, err = NewSignedHTTPClient(SignedHTTPClientOptions{PrivateKey: ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize))})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "KeyID is required")
+
+	// Both fields present but key material an unsupported type → NewSigner
+	// rejects. Original test asserted on a byte-slice cast to
+	// ed25519.PrivateKey; that doesn't fail at construction (NewSigner
+	// only switches on the static type, not byte length). Use a type
+	// the signer can't recognize at all to exercise the validation path.
+	_, err = NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:      "kid",
+		PrivateKey: []byte("not-an-ed25519-key"),
+	})
+	require.Error(t, err, "unsupported key type must error from NewSigner")
 }
 
 func TestNewSignedHTTPClientRespectsCustomInnerTransport(t *testing.T) {
@@ -145,6 +162,233 @@ type roundTripperFunc func(r *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+// Capability-aware signing tests — exercise the per-request CapabilityProvider
+// path that mirrors Python's capability_provider and TS's getCapability.
+
+func TestCapabilityProviderSignsRequiredFor(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		return &adcp.RequestSigningCapabilities{
+			Supported:           true,
+			RequiredFor:         []string{"create_media_buy"},
+			CoversContentDigest: "either",
+		}
+	}
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/create_media_buy", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := <-captured
+	assert.NotEmpty(t, got.Header.Get("Signature"), "required_for op must be signed")
+}
+
+func TestCapabilityProviderSkipsUnlistedOperation(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		return &adcp.RequestSigningCapabilities{
+			Supported:   true,
+			RequiredFor: []string{"create_media_buy"},
+		}
+	}
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/get_products", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := <-captured
+	assert.Empty(t, got.Header.Get("Signature"), "op not in any list must NOT be signed")
+}
+
+func TestCapabilityProviderReturningNilSkipsSigning(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	var providerCalls atomic.Int32
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		providerCalls.Add(1)
+		return nil
+	}
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/create_media_buy", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	assert.Equal(t, int32(1), providerCalls.Load())
+	got := <-captured
+	assert.Empty(t, got.Header.Get("Signature"), "nil capability ⇒ skip signing")
+}
+
+func TestCapabilityProviderHonorsCoversContentDigestRequired(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		return &adcp.RequestSigningCapabilities{
+			Supported:           true,
+			RequiredFor:         []string{"create_media_buy"},
+			CoversContentDigest: "required",
+		}
+	}
+
+	// Fallback CoverContentDigest=false; capability="required" overrides.
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CoverContentDigest: false,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/create_media_buy", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := <-captured
+	sigInput := got.Header.Get("Signature-Input")
+	require.NotEmpty(t, sigInput)
+	// The covered components are listed in parens before the params block.
+	assert.Contains(t, sigInput, "content-digest", "covers='required' ⇒ digest must be covered")
+}
+
+func TestCapabilityProviderHonorsCoversContentDigestForbidden(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		return &adcp.RequestSigningCapabilities{
+			Supported:           true,
+			RequiredFor:         []string{"create_media_buy"},
+			CoversContentDigest: "forbidden",
+		}
+	}
+
+	// Fallback CoverContentDigest=true; capability="forbidden" overrides.
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CoverContentDigest: true,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/create_media_buy", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := <-captured
+	sigInput := got.Header.Get("Signature-Input")
+	require.NotEmpty(t, sigInput)
+	assert.NotContains(t, sigInput, "content-digest", "covers='forbidden' ⇒ digest must NOT be covered")
+}
+
+func TestCapabilityProviderSkipsWhenSupportedFalse(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	// Even with required_for populated, supported=false means treat as
+	// unsupported (matches verifier-side and Python operation_needs_signing).
+	provider := func(*http.Request) *adcp.RequestSigningCapabilities {
+		return &adcp.RequestSigningCapabilities{
+			Supported:   false,
+			RequiredFor: []string{"create_media_buy"},
+		}
+	}
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:              "kid",
+		PrivateKey:         priv,
+		Inner:              inner,
+		CapabilityProvider: provider,
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/adcp/create_media_buy", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	got := <-captured
+	assert.Empty(t, got.Header.Get("Signature"), "supported=false ⇒ skip signing")
 }
 
 func TestMiddlewareDefaultsReplayStoreToInMemory(t *testing.T) {

@@ -1,10 +1,20 @@
 package signing
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"net/http"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/adcp"
 )
+
+// CapabilityProvider returns the seller's request_signing capability for the
+// outbound request. Returning nil signals "seller doesn't sign / unknown" and
+// the preset skips signing for that request — same fall-through semantics as
+// the Python `capability_provider` and the TS `getCapability`.
+type CapabilityProvider func(*http.Request) *adcp.RequestSigningCapabilities
 
 // SignedHTTPClientOptions configures NewSignedHTTPClient.
 type SignedHTTPClientOptions struct {
@@ -18,15 +28,39 @@ type SignedHTTPClientOptions struct {
 	Clock       func() time.Time
 	NonceReader interface{ Read([]byte) (int, error) }
 
-	// CoverContentDigest controls whether the signature base covers
-	// content-digest. Set true when the seller's request_signing capability
-	// has covers_content_digest="required" (or "either" and you prefer the
+	// CoverContentDigest is the always-sign default for content-digest
+	// coverage. Used when CapabilityProvider is nil OR the provider returns
+	// nil. Set true when targeting a seller that advertises
+	// covers_content_digest="required" (or "either" and you prefer the
 	// stricter body-bound option).
 	CoverContentDigest bool
 
+	// CapabilityProvider, when non-nil, is consulted per-request. Returning
+	// a RequestSigningCapabilities lets the preset:
+	//   - decide whether to sign (read required_for / warn_for /
+	//     supported_for; signs if the operation is in any of those lists,
+	//     skips otherwise);
+	//   - resolve covers_content_digest per-call ("required" → cover,
+	//     "forbidden" → don't, "either"/absent → fall back to
+	//     CoverContentDigest).
+	// Operation name comes from OperationResolver if set, else from the
+	// last segment of the request path (`/adcp/<op>` convention).
+	// When nil, every request is signed unconditionally with
+	// CoverContentDigest as the digest decision — matches the original
+	// preset behavior.
+	CapabilityProvider CapabilityProvider
+
+	// OperationResolver derives the AdCP operation name from the outbound
+	// request — typically the AdCP method being called. Defaults to
+	// PathSuffixOperationResolver, which reads the last path segment of
+	// `/adcp/<op>`. Only consulted when CapabilityProvider is also set.
+	OperationResolver func(*http.Request) string
+
 	// Inner is the transport the signing layer wraps. Defaults to
-	// http.DefaultTransport. Pass a custom transport (mTLS, retries,
-	// telemetry) to compose with signing.
+	// http.DefaultTransport. http.DefaultTransport honors HTTP_PROXY env
+	// vars and shares its connection pool process-wide; pass a custom
+	// transport when you need isolation (per-tenant proxies, custom mTLS,
+	// retry middleware, telemetry).
 	Inner http.RoundTripper
 
 	// Timeout is set on the returned *http.Client. Zero means no timeout
@@ -35,30 +69,42 @@ type SignedHTTPClientOptions struct {
 	Timeout time.Duration
 }
 
-// NewSignedHTTPClient returns an *http.Client preconfigured to sign every
-// outbound request with the supplied key. The client has redirect-following
-// disabled — @target-uri is part of the signature base, so a 3xx redirect
-// would silently re-target the binding and break verification.
+// PathSuffixOperationResolver derives the AdCP operation name from the last
+// segment of the request path (`/adcp/<op>` convention) — the same shape as
+// signing.DefaultOperationResolver on the verifier side.
+func PathSuffixOperationResolver(r *http.Request) string {
+	return DefaultOperationResolver(r)
+}
+
+// NewSignedHTTPClient returns an *http.Client preconfigured to sign outbound
+// requests. The client has redirect-following disabled — @target-uri is part
+// of the signature base, so a 3xx redirect would silently re-target the
+// binding and break verification.
 //
-// Use this preset for adapters that talk to a single seller (or want every
-// outbound request signed regardless of target). For capability-gated
-// signing (sign only operations the seller listed in required_for /
-// warn_for / supported_for), wrap with a per-call decision or keep separate
-// clients for the signed and unsigned paths.
+// Two modes:
 //
-//	client, err := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
-//	    KeyID:              "my-agent-2026",
-//	    PrivateKey:         priv,
-//	    CoverContentDigest: true,                   // seller advertised covers_content_digest=required
-//	    Timeout:            30 * time.Second,
-//	})
-//	if err != nil {
-//	    return err
-//	}
-//	resp, err := client.Post("https://seller.example.com/adcp/create_media_buy", "application/json", body)
+//   - Always-sign (CapabilityProvider == nil): every outbound request is
+//     signed with CoverContentDigest as the digest decision. Use this when
+//     the buyer talks to a single seller whose policy you already know.
+//
+//   - Capability-aware (CapabilityProvider != nil): per-request, the preset
+//     consults the seller's RequestSigningCapabilities and signs only when
+//     the operation appears in required_for / warn_for / supported_for.
+//     covers_content_digest is honored from the capability ("required" →
+//     cover, "forbidden" → don't, "either"/absent → fall back to
+//     CoverContentDigest). This matches the Python `capability_provider`
+//     and the TS `getCapability` shapes.
+//
+//     client, err := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+//     KeyID:              "my-agent-2026",
+//     PrivateKey:         priv,
+//     CoverContentDigest: true,                   // fallback when capability is absent
+//     CapabilityProvider: func(*http.Request) *adcp.RequestSigningCapabilities { return cachedCaps },
+//     Timeout:            30 * time.Second,
+//     })
 //
 // For lower-level integration (you already have an http.Client and just want
-// the signing transport), see (*Signer).RoundTripper.
+// the always-sign signing transport), see (*Signer).RoundTripper.
 func NewSignedHTTPClient(opts SignedHTTPClientOptions) (*http.Client, error) {
 	if opts.KeyID == "" {
 		return nil, errors.New("signing.NewSignedHTTPClient: KeyID is required")
@@ -85,7 +131,23 @@ func NewSignedHTTPClient(opts SignedHTTPClientOptions) (*http.Client, error) {
 	if inner == nil {
 		inner = http.DefaultTransport
 	}
-	transport := signer.RoundTripper(inner, opts.CoverContentDigest)
+
+	var transport http.RoundTripper
+	if opts.CapabilityProvider == nil {
+		transport = signer.RoundTripper(inner, opts.CoverContentDigest)
+	} else {
+		opResolver := opts.OperationResolver
+		if opResolver == nil {
+			opResolver = PathSuffixOperationResolver
+		}
+		transport = &capabilityAwareSigningTransport{
+			signer:               signer,
+			inner:                inner,
+			capabilityProvider:   opts.CapabilityProvider,
+			operationResolver:    opResolver,
+			fallbackCoverContent: opts.CoverContentDigest,
+		}
+	}
 
 	return &http.Client{
 		Transport: transport,
@@ -98,4 +160,80 @@ func NewSignedHTTPClient(opts SignedHTTPClientOptions) (*http.Client, error) {
 		},
 		Timeout: opts.Timeout,
 	}, nil
+}
+
+// capabilityAwareSigningTransport reads the seller's request_signing
+// capability per request and signs only when the operation appears in
+// required_for / warn_for / supported_for. covers_content_digest is honored
+// from the capability ("required" → cover, "forbidden" → don't,
+// "either"/absent → fall back to fallbackCoverContent).
+type capabilityAwareSigningTransport struct {
+	signer               *Signer
+	inner                http.RoundTripper
+	capabilityProvider   CapabilityProvider
+	operationResolver    func(*http.Request) string
+	fallbackCoverContent bool
+}
+
+func (t *capabilityAwareSigningTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	// Buffer the body once — both the always-sign and skip paths need to
+	// preserve the inner request's body bytes for replay/idempotency.
+	cloned := r.Clone(r.Context())
+	if r.Body != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, err
+		}
+		_ = r.Body.Close()
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		cloned.Body = io.NopCloser(bytes.NewReader(body))
+	}
+
+	capability := t.capabilityProvider(cloned)
+	op := t.operationResolver(cloned)
+	if !shouldSignByCapability(capability, op) {
+		return t.inner.RoundTrip(cloned)
+	}
+
+	cover := t.fallbackCoverContent
+	if capability != nil {
+		switch capability.CoversContentDigest {
+		case "required":
+			cover = true
+		case "forbidden":
+			cover = false
+		}
+	}
+
+	if err := t.signer.SignRequest(cloned, SignOptions{CoverContentDigest: cover}); err != nil {
+		return nil, err
+	}
+	return t.inner.RoundTrip(cloned)
+}
+
+// shouldSignByCapability classifies an outbound operation against the
+// seller's advertised policy. Mirrors the Python `operation_needs_signing`
+// helper but without the warn-vs-supported distinction (Go currently treats
+// any presence in any list as "sign"). Returns false when capability is nil,
+// supported=false, or the operation is in none of the three lists.
+func shouldSignByCapability(capability *adcp.RequestSigningCapabilities, operation string) bool {
+	if capability == nil || !capability.Supported || operation == "" {
+		return false
+	}
+	for _, op := range capability.RequiredFor {
+		if op == operation {
+			return true
+		}
+	}
+	for _, op := range capability.WarnFor {
+		if op == operation {
+			return true
+		}
+	}
+	for _, op := range capability.SupportedFor {
+		if op == operation {
+			return true
+		}
+	}
+	return false
 }
