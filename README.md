@@ -180,6 +180,10 @@ TMP is **1.8x faster** than OpenRTB with **37% smaller** payloads.
 | [`docs/network-surface.md`](docs/network-surface.md) | Port map, data flow, TEE pinhole spec |
 | [`docs/embedding.md`](docs/embedding.md) | Embedding the router in host systems (e.g., Prebid Server) |
 
+## Contributing
+
+Contributions welcome! All contributors must agree to the [AgenticAdvertising.Org IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md) — the bot prompts new contributors on their first PR and a single signature covers all AAO repositories.
+
 ## License
 
 Apache 2.0
