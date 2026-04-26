@@ -1,5 +1,7 @@
 #!/bin/bash
 # Downloads AdCP JSON schemas from the published protocol bundle at the pinned version.
+# Also syncs protocol-managed agent skills (LLM wire contracts) listed in
+# `manifest.contents.skills` into the repo's top-level `skills/` tree.
 #
 # Usage:
 #   ./download.sh              # download at pinned VERSION
@@ -198,7 +200,9 @@ PY
       # Exclude the per-skill schemas/ subdir at the skill root. These are
       # byte-identical copies of the top-level schemas already in the SDK's
       # schema cache; including them would duplicate ~1.4MB per protocol.
-      rsync -a --delete --exclude='/schemas/' "$SRC_SKILL/" "$DST_SKILL/"
+      # Anchored to skill root: drop a top-level `schemas` entry whether dir,
+      # file, or anything else. Nested foo/schemas/ trees are preserved.
+      rsync -a --delete --exclude='/schemas' "$SRC_SKILL/" "$DST_SKILL/"
       echo "Synced protocol skill: $SKILL_NAME"
     done < "$SKILL_LIST"
   fi
