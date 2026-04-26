@@ -25,3 +25,8 @@
 # Release tooling.
 /release-please-config.json           @bokelley
 /.release-please-manifest.json        @bokelley
+
+# Agent skills — wire contracts consumed verbatim by LLM agents. Sigstore
+# verifies the bundle's origin; CODEOWNERS gates the file content.
+/skills/                    @bokelley
+/adcp/schemas/download.sh   @bokelley
