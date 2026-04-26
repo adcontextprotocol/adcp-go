@@ -1,5 +1,7 @@
 #!/bin/bash
 # Downloads AdCP JSON schemas from the published protocol bundle at the pinned version.
+# Also syncs protocol-managed agent skills (LLM wire contracts) listed in
+# `manifest.contents.skills` into the repo's top-level `skills/` tree.
 #
 # Usage:
 #   ./download.sh              # download at pinned VERSION
@@ -152,6 +154,59 @@ rsync -a --delete "${EXCLUDE_ARGS[@]}" "$SRC/" "$SCRIPT_DIR/"
 # Record the bundle's SHA-256 so check-freshness.sh can detect drift against
 # the upstream artifact (meaningful for the "latest" dev snapshot).
 echo "$EXPECTED" > "$SCRIPT_DIR/.bundle-sha256"
+
+# Manifest-driven sync of protocol-managed agent skills.
+#
+# Bundles starting with adcp#3097 enumerate canonical skills under
+# `manifest.contents.skills`. Each named directory holds a `SKILL.md` (the
+# wire contract for buyers/agents) and may bundle a `schemas/` subdir that
+# duplicates the top-level schemas — verified identical at sync-time, so we
+# filter it out (the SDK already has those in its schema cache).
+#
+# Older bundles without a skills entry no-op gracefully.
+MANIFEST="$WORK/adcp-$VERSION/manifest.json"
+SKILLS_REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)/skills"
+if [ -f "$MANIFEST" ]; then
+  # Validate skill names against ^[a-zA-Z0-9_-]+$ before any filesystem use —
+  # this is a separate check from tar's path-traversal guard above and must
+  # fail closed. Names are interpolated into mkdir/rsync paths below. Write
+  # to a tempfile and check the python exit code explicitly, since command
+  # substitution swallows non-zero exits under `set -e`.
+  SKILL_LIST="$WORK/skill-names.txt"
+  python3 - "$MANIFEST" >"$SKILL_LIST" <<'PY'
+import json, re, sys
+manifest = json.load(open(sys.argv[1]))
+names = manifest.get("contents", {}).get("skills")
+if not isinstance(names, list):
+    sys.exit(0)
+pattern = re.compile(r"^[a-zA-Z0-9_-]+$")
+for n in names:
+    if not isinstance(n, str) or not pattern.match(n):
+        sys.stderr.write(f"invalid skill name in manifest: {n!r}\n")
+        sys.exit(1)
+print("\n".join(names))
+PY
+  if [ -s "$SKILL_LIST" ]; then
+    mkdir -p "$SKILLS_REPO_DIR"
+    while IFS= read -r SKILL_NAME; do
+      [ -z "$SKILL_NAME" ] && continue
+      SRC_SKILL="$WORK/adcp-$VERSION/skills/$SKILL_NAME"
+      DST_SKILL="$SKILLS_REPO_DIR/$SKILL_NAME"
+      if [ ! -d "$SRC_SKILL" ]; then
+        echo "manifest names skill '$SKILL_NAME' but bundle has no $SRC_SKILL" >&2
+        exit 1
+      fi
+      mkdir -p "$DST_SKILL"
+      # Exclude the per-skill schemas/ subdir at the skill root. These are
+      # byte-identical copies of the top-level schemas already in the SDK's
+      # schema cache; including them would duplicate ~1.4MB per protocol.
+      # Anchored to skill root: drop a top-level `schemas` entry whether dir,
+      # file, or anything else. Nested foo/schemas/ trees are preserved.
+      rsync -a --delete --exclude='/schemas' "$SRC_SKILL/" "$DST_SKILL/"
+      echo "Synced protocol skill: $SKILL_NAME"
+    done < "$SKILL_LIST"
+  fi
+fi
 
 # Update VERSION file if a specific version was passed
 if [ -n "${1:-}" ]; then
