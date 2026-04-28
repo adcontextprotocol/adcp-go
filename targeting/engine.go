@@ -385,6 +385,16 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	// 5. SegmentIndex: which packages is this user eligible for?
 	segmentEligible := resolved.SegmentCandidates(userSegments)
 
+	// 5a. Optional preaggregation: when many candidate packages share one
+	// user's logs, build a per-key bucket index once instead of re-scanning
+	// the logs per package. For small-package requests the build overhead
+	// doesn't amortize; ShouldPreaggregate gates the choice. See
+	// exposure_aggregate.go for the empirical crossover measurement.
+	var agg *PreaggregatedExposures
+	if ShouldPreaggregate(len(req.PackageIDs)) {
+		agg = BuildPreaggregatedExposures(firstLogs)
+	}
+
 	// 6. Evaluate each requested package using binary lazy dedup.
 	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
@@ -399,32 +409,52 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 			}
 		}
 
-		// Campaign frequency cap (binary lazy dedup across all UID logs).
+		// Campaign frequency cap. Use the preaggregated index when present;
+		// fall back to per-package log scan for small request sizes where
+		// the aggregation overhead doesn't amortize.
 		if eligible && idCfg != nil && idCfg.CampaignID != "" {
 			campCfg := resolved.CampaignConfigs[idCfg.CampaignID]
 			if campCfg != nil && len(campCfg.FrequencyRules) > 0 {
 				rules := toFrequencyRules(campCfg.FrequencyRules)
 				campHash := hashString(idCfg.CampaignID)
-				if CheckFrequencyRulesMultiLog(firstLogs, campHash, true, rules, nowUnix) {
+				var capped bool
+				if agg != nil {
+					capped = CheckFrequencyRulesAggregated(agg, campHash, true, rules, nowUnix)
+				} else {
+					capped = CheckFrequencyRulesMultiLog(firstLogs, campHash, true, rules, nowUnix)
+				}
+				if capped {
 					eligible = false
 					e.metrics.IdentityEvaluated(pkgID, StageCampaignFreq, false)
 				}
 			}
 		}
 
-		// Package frequency cap (binary lazy dedup across all UID logs).
+		// Package frequency cap.
 		pkgHash := hashString(pkgID)
 		if eligible && idCfg != nil && len(idCfg.FrequencyRules) > 0 {
 			rules := toFrequencyRules(idCfg.FrequencyRules)
-			if CheckFrequencyRulesMultiLog(firstLogs, pkgHash, false, rules, nowUnix) {
+			var capped bool
+			if agg != nil {
+				capped = CheckFrequencyRulesAggregated(agg, pkgHash, false, rules, nowUnix)
+			} else {
+				capped = CheckFrequencyRulesMultiLog(firstLogs, pkgHash, false, rules, nowUnix)
+			}
+			if capped {
 				eligible = false
 				e.metrics.IdentityEvaluated(pkgID, StagePackageFreq, false)
 			}
 		}
 
-		// Intent score (binary, scan across all UID logs).
+		// Intent score. Use the precomputed per-package latest from the
+		// aggregated index when present; otherwise scan all UID logs.
 		var intent float64
-		latestTS := LatestExposureMultiLog(firstLogs, pkgHash)
+		var latestTS int64
+		if agg != nil {
+			latestTS = LatestExposureAggregated(agg, pkgHash)
+		} else {
+			latestTS = LatestExposureMultiLog(firstLogs, pkgHash)
+		}
 		if latestTS > 0 {
 			intent = ComputeIntentScore(latestTS, now)
 		}
