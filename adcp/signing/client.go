@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp"
@@ -220,20 +221,11 @@ func shouldSignByCapability(capability *adcp.RequestSigningCapabilities, operati
 	if capability == nil || !capability.Supported || operation == "" {
 		return false
 	}
-	for _, op := range capability.RequiredFor {
-		if op == operation {
-			return true
-		}
+	if slices.Contains(capability.RequiredFor, operation) {
+		return true
 	}
-	for _, op := range capability.WarnFor {
-		if op == operation {
-			return true
-		}
+	if slices.Contains(capability.WarnFor, operation) {
+		return true
 	}
-	for _, op := range capability.SupportedFor {
-		if op == operation {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(capability.SupportedFor, operation)
 }

@@ -39,7 +39,7 @@ func TestWrapConcurrentSameKeySamePayload(t *testing.T) {
 	results := make([]*Result, N)
 	errs := make([]error, N)
 	start := make(chan struct{})
-	for i := 0; i < N; i++ {
+	for i := range N {
 		go func(i int) {
 			defer wg.Done()
 			<-start

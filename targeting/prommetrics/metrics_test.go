@@ -88,16 +88,16 @@ func TestGaugeSet_Overwrite(t *testing.T) {
 func TestConcurrentAccess(t *testing.T) {
 	m := New()
 	done := make(chan struct{})
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
-			for j := 0; j < 1000; j++ {
+			for range 1000 {
 				m.ContextEvaluated("pkg", "bitmap", true)
 				m.Latency("bitmap", time.Microsecond)
 			}
 			done <- struct{}{}
 		}()
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

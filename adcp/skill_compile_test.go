@@ -246,10 +246,10 @@ func parseAdcpGoMod(t *testing.T, path string) (goVersion, mcpVersion string) {
 	require.NoError(t, err, "read go.mod")
 	goVersion = "1.26.2" // fallback
 	mcpVersion = "v1.5.0"
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "go ") {
-			goVersion = strings.TrimPrefix(line, "go ")
+		if after, ok := strings.CutPrefix(line, "go "); ok {
+			goVersion = after
 		}
 		if strings.Contains(line, "github.com/modelcontextprotocol/go-sdk") {
 			parts := strings.Fields(line)

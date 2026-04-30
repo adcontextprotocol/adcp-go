@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -72,20 +73,20 @@ type VectorRequest struct {
 }
 
 type VectorCap struct {
-	Supported          bool     `json:"supported"`
-	CoversContentDigest string  `json:"covers_content_digest"`
-	RequiredFor        []string `json:"required_for"`
+	Supported           bool     `json:"supported"`
+	CoversContentDigest string   `json:"covers_content_digest"`
+	RequiredFor         []string `json:"required_for"`
 }
 
 type VectorState struct {
 	// Request-signing shape:
-	ReplayCacheEntries       []replayEntry          `json:"replay_cache_entries"`
-	ReplayCacheCapHit        *capHit                `json:"replay_cache_per_keyid_cap_hit"`
-	RevocationList           *revocationListSnapshot `json:"revocation_list"`
+	ReplayCacheEntries []replayEntry           `json:"replay_cache_entries"`
+	ReplayCacheCapHit  *capHit                 `json:"replay_cache_per_keyid_cap_hit"`
+	RevocationList     *revocationListSnapshot `json:"revocation_list"`
 	// Webhook-signing shape (adcontextprotocol/adcp#2445 uses a flatter vocabulary):
-	RevokedKids               []string `json:"revoked_kids"`
-	PerKeyIDCapFilledFor      string   `json:"per_keyid_cap_filled_for"`
-	RevocationListStaleSeconds int64   `json:"revocation_list_stale_seconds"`
+	RevokedKids                []string `json:"revoked_kids"`
+	PerKeyIDCapFilledFor       string   `json:"per_keyid_cap_filled_for"`
+	RevocationListStaleSeconds int64    `json:"revocation_list_stale_seconds"`
 }
 
 type replayEntry struct {
@@ -99,11 +100,11 @@ type capHit struct {
 }
 
 type revocationListSnapshot struct {
-	Issuer       string   `json:"issuer"`
-	Updated      string   `json:"updated"`
-	NextUpdate   string   `json:"next_update"`
-	RevokedKids  []string `json:"revoked_kids"`
-	RevokedJtis  []string `json:"revoked_jtis"`
+	Issuer      string   `json:"issuer"`
+	Updated     string   `json:"updated"`
+	NextUpdate  string   `json:"next_update"`
+	RevokedKids []string `json:"revoked_kids"`
+	RevokedJtis []string `json:"revoked_jtis"`
 }
 
 type VectorOutcome struct {
@@ -117,10 +118,10 @@ type VectorOutcome struct {
 // segment (e.g. /adcp/create_media_buy → create_media_buy).
 func operationFromURL(rawURL string) string {
 	// Use the last non-empty path segment.
-	idx := strings.Index(rawURL, "://")
+	_, after, ok := strings.Cut(rawURL, "://")
 	p := rawURL
-	if idx >= 0 {
-		p = rawURL[idx+3:]
+	if ok {
+		p = after
 	}
 	if slash := strings.IndexByte(p, '/'); slash >= 0 {
 		p = p[slash:]
@@ -267,12 +268,7 @@ func TestExpectedSignatureBaseBytes(t *testing.T) {
 }
 
 func slicesContains(ss []string, s string) bool {
-	for _, v := range ss {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ss, s)
 }
 
 // TestPositiveVectors runs each positive vector through the full verifier.
