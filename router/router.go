@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"sort"
+	"maps"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -369,9 +370,7 @@ func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchRe
 
 	for _, resp := range responses {
 		merged.Offers = append(merged.Offers, resp.Offers...)
-		for k, v := range resp.Signals {
-			mergedSignals[k] = v
-		}
+		maps.Copy(mergedSignals, resp.Signals)
 	}
 
 	if len(mergedSignals) > 0 {

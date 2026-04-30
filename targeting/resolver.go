@@ -125,23 +125,7 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		idConfigs = make(map[string]*PackageIdentityConfig)
 	}
 
-	// Step 4: Collect unique campaign IDs, batch-load (1 MGet).
-	campIDSet := make(map[string]struct{})
-	for _, cfg := range idConfigs {
-		if cfg != nil && cfg.CampaignID != "" {
-			campIDSet[cfg.CampaignID] = struct{}{}
-		}
-	}
-	campIDs := make([]string, 0, len(campIDSet))
-	for id := range campIDSet {
-		campIDs = append(campIDs, id)
-	}
-	campConfigs, err := batchLoadCampaignFreqConfigs(ctx, store, campIDs)
-	if err != nil {
-		campConfigs = make(map[string]*CampaignFreqConfig)
-	}
-
-	// Step 5: Build indexes.
+	// Step 4: Build indexes.
 	propertyIdx := make(map[string][]string)
 	topicIdx := make(map[string][]string)
 	urlBlockIdx := make(map[string][]string)
@@ -199,7 +183,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		SegmentIndex:      segmentIdx,
 		ContextConfigs:    ctxConfigs,
 		IdentityConfigs:   idConfigs,
-		CampaignConfigs:   campConfigs,
 	}, nil
 }
 

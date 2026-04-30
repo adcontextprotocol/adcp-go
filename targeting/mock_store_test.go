@@ -83,7 +83,6 @@ func TestMockStore_StringOperations(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "value", val)
 
-		// Advance past TTL.
 		s.Now = func() time.Time { return now.Add(11 * time.Second) }
 
 		_, ok, err = s.Get(ctx, "temp")
@@ -101,48 +100,5 @@ func TestMockStore_StringOperations(t *testing.T) {
 		ok, err = s.Exists(ctx, "nope")
 		require.NoError(t, err)
 		assert.False(t, ok, "expected key not to exist")
-	})
-}
-
-func TestMockStore_SortedSetOperations(t *testing.T) {
-	ctx := context.Background()
-	s := NewMockStore()
-
-	t.Run("ZAddAndCount", func(t *testing.T) {
-		require.NoError(t, s.ZAdd(ctx, "events", 100, "a"))
-		require.NoError(t, s.ZAdd(ctx, "events", 200, "b"))
-		require.NoError(t, s.ZAdd(ctx, "events", 300, "c"))
-
-		count, err := s.ZCount(ctx, "events", 150, 350)
-		require.NoError(t, err)
-		assert.Equal(t, int64(2), count)
-
-		count, err = s.ZCount(ctx, "events", 0, 500)
-		require.NoError(t, err)
-		assert.Equal(t, int64(3), count)
-	})
-
-	t.Run("ZCount_MissingKey", func(t *testing.T) {
-		count, err := s.ZCount(ctx, "nonexistent", 0, 100)
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), count)
-	})
-
-	t.Run("ZExpire", func(t *testing.T) {
-		now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-		s.Now = func() time.Time { return now }
-
-		require.NoError(t, s.ZAdd(ctx, "expiring", 1, "x"))
-		require.NoError(t, s.ZExpire(ctx, "expiring", 5*time.Second))
-
-		count, err := s.ZCount(ctx, "expiring", 0, 10)
-		require.NoError(t, err)
-		assert.Equal(t, int64(1), count)
-
-		s.Now = func() time.Time { return now.Add(6 * time.Second) }
-
-		count, err = s.ZCount(ctx, "expiring", 0, 10)
-		require.NoError(t, err)
-		assert.Equal(t, int64(0), count)
 	})
 }

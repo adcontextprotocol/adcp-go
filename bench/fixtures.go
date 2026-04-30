@@ -1,7 +1,5 @@
 package bench
 
-func ptr(f float64) *float64 { return &f }
-
 // RealisticOpenRTBRequest returns a fully populated BidRequest (~5KB JSON).
 // Represents a real web display impression with full device, user, geo, and EID data.
 func RealisticOpenRTBRequest() *BidRequest {
@@ -193,16 +191,16 @@ func RealisticTMPIdentityResponse() *TMPIdentityResponse {
 	return &TMPIdentityResponse{
 		RequestID: "id-3k9p-oakwood-d4f1",
 		Eligibility: []TMPEligibility{
-			{PackageID: "pkg-display-0041", Eligible: true, IntentScore: ptr(0.82)},
+			{PackageID: "pkg-display-0041", Eligible: true},
 			{PackageID: "pkg-display-0042", Eligible: true},
 			{PackageID: "pkg-display-0043", Eligible: false},
-			{PackageID: "pkg-native-0078", Eligible: true, IntentScore: ptr(0.65)},
+			{PackageID: "pkg-native-0078", Eligible: true},
 			{PackageID: "pkg-native-0079", Eligible: true},
 			{PackageID: "pkg-display-0103", Eligible: false},
-			{PackageID: "pkg-display-0104", Eligible: true, IntentScore: ptr(0.41)},
+			{PackageID: "pkg-display-0104", Eligible: true},
 			{PackageID: "pkg-video-0201", Eligible: false},
 			{PackageID: "pkg-video-0202", Eligible: true},
-			{PackageID: "pkg-native-0301", Eligible: true, IntentScore: ptr(0.73)},
+			{PackageID: "pkg-native-0301", Eligible: true},
 		},
 	}
 }

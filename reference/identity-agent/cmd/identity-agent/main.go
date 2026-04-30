@@ -8,31 +8,35 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
+	"github.com/adcontextprotocol/adcp-go/targeting/glidestore"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
-	"github.com/adcontextprotocol/adcp-go/targeting/valkeystore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
-	"github.com/redis/go-redis/v9"
+
+	glide "github.com/valkey-io/valkey-glide/go/v2"
+	"github.com/valkey-io/valkey-glide/go/v2/config"
 )
 
 var version = "dev"
 
 func main() {
 	addr := flag.String("addr", "", "Listen address")
-	redisAddr := flag.String("redis-addr", "", "Redis/Valkey address (e.g. localhost:6379). Falls back to in-memory store if empty or unreachable.")
+	valkeyAddr := flag.String("valkey-addr", "", "Valkey address (host:port). Falls back to in-memory store if empty or unreachable.")
 	flag.Parse()
 
-	// Resolve config: flags > env vars > defaults.
 	listenAddr := resolveAddr(*addr)
-	storeAddr := resolveRedisAddr(*redisAddr)
+	storeAddr := resolveValkeyAddr(*valkeyAddr)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
 	metrics := prommetrics.New()
-	store := initStore(storeAddr)
+	store, fcapStore := initStore(storeAddr)
 	resolved := seedConfigs(store)
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
@@ -45,6 +49,10 @@ func main() {
 			{PackageID: "pkg-native-0078"},
 		},
 	})
+
+	// Frequency-cap service is initialized for callers that wire it up;
+	// the reference HTTP surface here only demonstrates segment-based eligibility.
+	_ = fcap.New(fcapStore)
 
 	mux := http.NewServeMux()
 
@@ -122,44 +130,68 @@ func resolveAddr(flagVal string) string {
 	return ":8082"
 }
 
-func resolveRedisAddr(flagVal string) string {
+func resolveValkeyAddr(flagVal string) string {
 	if flagVal != "" {
 		return flagVal
 	}
-	return os.Getenv("TMP_IDENTITY_REDIS_ADDR")
+	return os.Getenv("TMP_IDENTITY_VALKEY_ADDR")
 }
 
-// initStore creates a ValkeyStore if redis-addr is provided and reachable,
-// otherwise falls back to an in-memory MockStore.
-func initStore(redisAddr string) targeting.Store {
-	if redisAddr == "" {
-		slog.Info("No redis address configured, using in-memory store")
-		return targeting.NewMockStore()
+// initStore connects to Valkey when an address is configured, otherwise falls
+// back to the in-memory MockStore. Returns both the targeting.Store and a
+// fcap.Store backed by the same connection.
+func initStore(valkeyAddr string) (targeting.Store, fcap.Store) {
+	if valkeyAddr == "" {
+		slog.Info("No Valkey address configured, using in-memory store")
+		mock := targeting.NewMockStore()
+		return mock, fcap.NewMockStore()
 	}
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         redisAddr,
-		DialTimeout:  2 * time.Second,
-		ReadTimeout:  1 * time.Second,
-		WriteTimeout: 1 * time.Second,
-		PoolSize:     20,
-		MinIdleConns: 5,
-		MaxRetries:   2,
-	})
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	host, port, ok := splitHostPort(valkeyAddr)
+	if !ok {
+		slog.Warn("Invalid Valkey address, falling back to in-memory store", "addr", valkeyAddr)
+		mock := targeting.NewMockStore()
+		return mock, fcap.NewMockStore()
+	}
+
+	cfg := config.NewClientConfiguration().WithAddress(&config.NodeAddress{Host: host, Port: port})
+	client, err := glide.NewClient(cfg)
+	if err != nil {
+		slog.Warn("Cannot connect to Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
+		mock := targeting.NewMockStore()
+		return mock, fcap.NewMockStore()
+	}
+
+	// Verify reachability with a short PING.
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-
-	if err := rdb.Ping(ctx).Err(); err != nil {
-		slog.Warn("Cannot reach Redis, falling back to in-memory store", "addr", redisAddr, "error", err)
-		return targeting.NewMockStore()
+	if _, err := client.Ping(pingCtx); err != nil {
+		slog.Warn("Cannot reach Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
+		client.Close()
+		mock := targeting.NewMockStore()
+		return mock, fcap.NewMockStore()
 	}
 
-	slog.Info("Connected to Redis/Valkey", "addr", redisAddr)
-	return valkeystore.New(rdb)
+	slog.Info("Connected to Valkey", "addr", valkeyAddr)
+	store := glidestore.New(client)
+	return store, store
 }
 
-// seedConfigs pushes reference identity and campaign configs into the Store
-// and returns the resolved package indexes for identity evaluation.
+func splitHostPort(addr string) (string, int, bool) {
+	idx := strings.LastIndex(addr, ":")
+	if idx <= 0 || idx == len(addr)-1 {
+		return "", 0, false
+	}
+	port, err := strconv.Atoi(addr[idx+1:])
+	if err != nil {
+		return "", 0, false
+	}
+	return addr[:idx], port, true
+}
+
+// seedConfigs pushes reference identity configs into the Store and returns
+// the resolved package indexes for identity evaluation. Frequency-cap state
+// is no longer seeded — that lives in fcap.Service and is set per-impression.
 func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 	ctx := context.Background()
 
@@ -168,20 +200,10 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 		cfg   targeting.PackageIdentityConfig
 	}{
 		{"pkg-display-0041", targeting.PackageIdentityConfig{
-			CampaignID:     "campaign-acme-q1",
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
 		}},
-		{"pkg-display-0042", targeting.PackageIdentityConfig{
-			CampaignID:     "campaign-acme-q1",
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 43200}},
-		}},
+		{"pkg-display-0042", targeting.PackageIdentityConfig{}},
 		{"pkg-native-0078", targeting.PackageIdentityConfig{
-			CampaignID: "campaign-nova-spring",
-			FrequencyRules: []targeting.FrequencyRuleJSON{
-				{MaxCount: 2, WindowSeconds: 43200},
-				{MaxCount: 5, WindowSeconds: 604800},
-			},
 			TargetSegments: []string{"organic_food"},
 		}},
 	}
@@ -199,30 +221,8 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 		}
 	}
 
-	campaigns := []struct {
-		campaignID string
-		cfg        targeting.CampaignFreqConfig
-	}{
-		{"campaign-acme-q1", targeting.CampaignFreqConfig{
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
-		}},
-		{"campaign-nova-spring", targeting.CampaignFreqConfig{
-			FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 15, WindowSeconds: 2592000}},
-		}},
-	}
-	campConfigs := make(map[string]*targeting.CampaignFreqConfig, len(campaigns))
-	for _, c := range campaigns {
-		if err := targeting.SeedCampaignFreqConfig(ctx, store, c.campaignID, c.cfg); err != nil {
-			slog.Error("seed campaign config failed", "campaign_id", c.campaignID, "error", err)
-			os.Exit(1)
-		}
-		cfg := c.cfg
-		campConfigs[c.campaignID] = &cfg
-	}
-
 	return &targeting.ResolvedPackages{
 		SegmentIndex:    segmentIndex,
 		IdentityConfigs: idConfigs,
-		CampaignConfigs: campConfigs,
 	}
 }

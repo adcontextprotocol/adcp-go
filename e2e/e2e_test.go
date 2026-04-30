@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -197,9 +198,7 @@ func (rt *mockRouter) handleContext(w http.ResponseWriter, r *http.Request) {
 			json.NewDecoder(resp.Body).Decode(&cmResp)
 			mu.Lock()
 			allOffers = append(allOffers, cmResp.Offers...)
-			for k, v := range cmResp.Signals {
-				mergedSignals[k] = v
-			}
+			maps.Copy(mergedSignals, cmResp.Signals)
 			mu.Unlock()
 		}(agent.URL)
 	}

@@ -30,7 +30,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:   "bench",
 			PropertyRID: fmt.Sprintf("%d", n/2),
 			PackageIDs:  []string{"pkg-1"},
 		}
@@ -46,124 +46,6 @@ func TestScale_PropertyBitmap(t *testing.T) {
 	t.Log("")
 }
 
-// TestScale_Campaigns measures identity eval with increasing campaign count.
-// Only the relevant campaign is loaded per package — not all campaigns.
-func TestScale_Campaigns(t *testing.T) {
-	t.Log("")
-	t.Log("=== Campaigns: per-request cache, only relevant campaigns loaded ===")
-	t.Log("")
-
-	for _, numCampaigns := range []int{1, 10, 100, 1_000, 10_000} {
-		store := NewMockStore()
-
-		// Create N campaigns in the Store.
-		for i := range numCampaigns {
-			store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), CampaignFreqConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
-			})
-		}
-
-		// Create 5 packages, all in the LAST campaign (worst case: must skip past others).
-		lastCampaignID := fmt.Sprintf("campaign-%d", numCampaigns-1)
-		var pkgs []PackageConfig
-		idConfigs := make(map[string]*PackageIdentityConfig, 5)
-		for i := range 5 {
-			pkgID := fmt.Sprintf("pkg-%d", i)
-			pkgs = append(pkgs, PackageConfig{PackageID: pkgID})
-			idCfg := PackageIdentityConfig{
-				CampaignID:     lastCampaignID,
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
-			}
-			store.SetPackageIdentityConfig(pkgID, idCfg)
-			idConfigs[pkgID] = &idCfg
-		}
-
-		engine := NewEngine(EngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Packages:   pkgs,
-		})
-
-		resolved := &ResolvedPackages{
-			IdentityConfigs: idConfigs,
-			CampaignConfigs: map[string]*CampaignFreqConfig{
-				lastCampaignID: {FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}}},
-			},
-		}
-
-		req := &tmproto.IdentityMatchRequest{
-			RequestID:  "bench",
-			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
-			PackageIDs: []string{"pkg-0", "pkg-1", "pkg-2", "pkg-3", "pkg-4"},
-		}
-
-		const iterations = 1_000
-		start := time.Now()
-		for range iterations {
-			_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, req)
-		}
-		elapsed := time.Since(start)
-		t.Logf("  %6d campaigns in Store: %v/eval (5 packages, 1 campaign loaded)", numCampaigns, elapsed/iterations)
-	}
-	t.Log("")
-}
-
-// TestScale_FrequencyCapExposures measures freq cap checking as exposure history grows.
-func TestScale_FrequencyCapExposures(t *testing.T) {
-	t.Log("")
-	t.Log("=== Frequency Cap: scan over binary exposure log ===")
-	t.Log("")
-
-	for _, numExposures := range []int{0, 10, 100, 1_000, 10_000} {
-		store := NewMockStore()
-		now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
-		store.Now = func() time.Time { return now }
-
-		idCfg := PackageIdentityConfig{
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 100_000, WindowSeconds: 86400}},
-		}
-		store.SetPackageIdentityConfig("pkg-1", idCfg)
-
-		// Pre-populate exposure history.
-		entries := make([]ExposureEntry, 0, numExposures)
-		for i := range numExposures {
-			entries = append(entries, ExposureEntry{
-				ImpressionID: fmt.Sprintf("imp-%d", i),
-				PackageID:    "pkg-1",
-				SourceID:     "bench",
-				Timestamp:    now.Add(-time.Duration(i) * time.Minute).Unix(),
-			})
-		}
-		store.SetUserExposures("tok-bench", entries)
-
-		engine := NewEngine(EngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Packages:   []PackageConfig{{PackageID: "pkg-1"}},
-		})
-		engine.Now = func() time.Time { return now }
-
-		resolved := &ResolvedPackages{
-			IdentityConfigs: map[string]*PackageIdentityConfig{"pkg-1": &idCfg},
-		}
-
-		req := &tmproto.IdentityMatchRequest{
-			RequestID:  "bench",
-			Identities: []tmproto.IdentityToken{{UserToken: "tok-bench"}},
-			PackageIDs: []string{"pkg-1"},
-		}
-
-		const iterations = 500
-		start := time.Now()
-		for range iterations {
-			_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, req)
-		}
-		elapsed := time.Since(start)
-		t.Logf("  %6d prior exposures: %v/eval", numExposures, elapsed/iterations)
-	}
-	t.Log("")
-}
-
 // TestScale_TopicSetSize measures topic matching as topic sets grow.
 func TestScale_TopicSetSize(t *testing.T) {
 	t.Log("")
@@ -173,11 +55,9 @@ func TestScale_TopicSetSize(t *testing.T) {
 	for _, n := range []int{10, 100, 1_000, 10_000} {
 		store := NewMockStore()
 
-		// Package has N topics.
 		for i := range n {
 			store.SetAdd("topics:package:pkg-1", fmt.Sprintf("topic-%d", i))
 		}
-		// Artifact matches 1 topic (the last one).
 		store.SetAdd("topics:artifact:article:test", fmt.Sprintf("topic-%d", n-1))
 
 		engine := NewEngine(EngineConfig{
@@ -188,7 +68,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		})
 
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:test"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -225,9 +105,8 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 			Packages:   []PackageConfig{{PackageID: "pkg-1", URLBlocklist: true}},
 		})
 
-		// Check a URL that is NOT blocked (worst case: full lookup, no short-circuit).
 		req := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe-content"}},
 			PackageIDs:   []string{"pkg-1"},
@@ -253,7 +132,6 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 	for _, numPkgs := range []int{1, 10, 50, 100, 500} {
 		store := NewMockStore()
 
-		// Setup for BOTH modes.
 		var staticPkgs []PackageConfig
 		var pkgIDs []string
 		for i := range numPkgs {
@@ -261,9 +139,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			staticPkgs = append(staticPkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
-			})
+			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{})
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
 				TopicTargets: true,
@@ -271,7 +147,6 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		}
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
 
-		// Static engine.
 		staticEngine := NewEngine(EngineConfig{
 			ProviderID: "bench",
 			Store:      store,
@@ -279,7 +154,6 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			Packages:   staticPkgs,
 		})
 
-		// Dynamic engine.
 		dynamicEngine := NewEngine(EngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
@@ -288,7 +162,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -296,14 +170,12 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 
 		const iterations = 1_000
 
-		// Static mode.
 		start := time.Now()
 		for range iterations {
 			_, _ = staticEngine.EvaluateContext(context.Background(), ctxReq)
 		}
 		staticTime := time.Since(start)
 
-		// Dynamic mode.
 		start = time.Now()
 		for range iterations {
 			_, _ = dynamicEngine.EvaluateContext(context.Background(), ctxReq)
@@ -365,7 +237,6 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		store := NewMockStore()
 		now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
-		// Set up a seller with media buys.
 		var mbPkgs []MediaBuyPackage
 		var pkgIDs []string
 		for i := range numPkgs {
@@ -381,7 +252,6 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			})
 			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
 				TargetSegments: []string{"cooking_fans"},
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
 			})
 		}
 		store.SetMediaBuy(MediaBuy{
@@ -393,7 +263,6 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
 		store.SetUserProfile("tok-bench", map[string]float64{"cooking_fans": 1.0})
 
-		// Build resolved once.
 		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
 		if err != nil {
 			t.Fatal(err)
@@ -407,7 +276,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,
@@ -415,14 +284,12 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 
 		const iterations = 500
 
-		// Dynamic mode (MGet per request).
 		start := time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContext(context.Background(), ctxReq)
 		}
 		dynamicTime := time.Since(start)
 
-		// Resolved mode (cached indexes).
 		start = time.Now()
 		for range iterations {
 			_, _ = engine.EvaluateContextResolved(context.Background(), resolved, ctxReq)
@@ -453,9 +320,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
-			idCfg := PackageIdentityConfig{
-				FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 86400}},
-			}
+			idCfg := PackageIdentityConfig{}
 			store.SetPackageIdentityConfig(pkgID, idCfg)
 			idConfigs[pkgID] = &idCfg
 		}
@@ -471,7 +336,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		resolved := &ResolvedPackages{IdentityConfigs: idConfigs}
 
 		ctxReq := &tmproto.ContextMatchRequest{
-			RequestID:     "bench",
+			RequestID:    "bench",
 			PropertyRID:  "1",
 			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:food"}},
 			PackageIDs:   pkgIDs,

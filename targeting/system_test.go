@@ -14,19 +14,16 @@ import (
 // a complete breakdown of latency, memory, Store calls, and throughput
 // across all three evaluation modes.
 func TestSystem_EndToEnd(t *testing.T) {
-	// --- Setup: realistic seller with many media buys ---
-
 	const (
-		numMediaBuys     = 50
-		packagesPerBuy   = 10
-		totalPackages    = numMediaBuys * packagesPerBuy // 500
-		numSegments      = 20
-		membersPerSeg    = 10_000
-		topicsPerPkg     = 5
-		blocklistPerPkg  = 100
-		numCampaigns     = 10
-		numUsers         = 100
-		pagesPerUser     = 5
+		numMediaBuys    = 50
+		packagesPerBuy  = 10
+		totalPackages   = numMediaBuys * packagesPerBuy // 500
+		numSegments     = 20
+		membersPerSeg   = 10_000
+		topicsPerPkg    = 5
+		blocklistPerPkg = 100
+		numUsers        = 100
+		pagesPerUser    = 5
 	)
 
 	store := NewMockStore()
@@ -34,10 +31,9 @@ func TestSystem_EndToEnd(t *testing.T) {
 	store.Now = func() time.Time { return now }
 
 	t.Logf("")
-	t.Logf("=== System Test: %d packages, %d segments × %d members, %d campaigns ===", totalPackages, numSegments, membersPerSeg, numCampaigns)
+	t.Logf("=== System Test: %d packages, %d segments × %d members ===", totalPackages, numSegments, membersPerSeg)
 	t.Logf("")
 
-	// Create media buys.
 	var allPkgIDs []string
 	for mb := range numMediaBuys {
 		var mbPkgs []MediaBuyPackage
@@ -57,16 +53,12 @@ func TestSystem_EndToEnd(t *testing.T) {
 		})
 	}
 
-	// Create package configs.
 	segments := make([]string, numSegments)
 	for i := range numSegments {
 		segments[i] = fmt.Sprintf("seg-%d", i)
 	}
 
 	for i, pkgID := range allPkgIDs {
-		campID := fmt.Sprintf("campaign-%d", i%numCampaigns)
-
-		// Context config.
 		store.SetPackageContextConfig(pkgID, PackageContextConfig{
 			PackageID:    pkgID,
 			TopicTargets: true,
@@ -76,33 +68,20 @@ func TestSystem_EndToEnd(t *testing.T) {
 			Price:        tmproto.OfferPrice{Amount: float64(5 + i%20), Currency: "USD", Model: string(tmproto.PriceModelCPM)},
 		})
 
-		// Topics: each package has a few topics, with some overlap.
 		for tp := range topicsPerPkg {
 			store.SetAdd("topics:package:"+pkgID, fmt.Sprintf("topic-%d", (i*3+tp)%50))
 		}
 
-		// URL blocklist.
 		for bl := range blocklistPerPkg {
 			store.SetAdd("url:blocklist:"+pkgID, HashURL(fmt.Sprintf("blocked-%d-%d", i, bl)))
 		}
 
-		// Identity config.
 		targetSegs := []string{segments[i%numSegments], segments[(i+1)%numSegments]}
 		store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-			CampaignID:     campID,
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 			TargetSegments: targetSegs,
 		})
 	}
 
-	// Campaign configs.
-	for i := range numCampaigns {
-		store.SetCampaignFreqConfig(fmt.Sprintf("campaign-%d", i), CampaignFreqConfig{
-			FrequencyRules: []FrequencyRuleJSON{{MaxCount: 20, WindowSeconds: 604800}},
-		})
-	}
-
-	// User profiles: each user is in 2 segments.
 	userTokens := make([]string, numUsers)
 	for u := range numUsers {
 		userTokens[u] = fmt.Sprintf("tok-user-%d", u)
@@ -112,15 +91,12 @@ func TestSystem_EndToEnd(t *testing.T) {
 		})
 	}
 
-	// Add artifact topics.
 	store.SetAdd("topics:artifact:article:food", "topic-0", "topic-1", "topic-2")
 
-	// --- Measure memory ---
 	var m1, m2 runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&m1)
 
-	// Build resolved (the expensive part — done once, cached).
 	resolveStart := time.Now()
 	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
 	resolveTime := time.Since(resolveStart)
@@ -140,10 +116,8 @@ func TestSystem_EndToEnd(t *testing.T) {
 	t.Logf("  SegmentIndex entries: %d", len(resolved.SegmentIndex))
 	t.Logf("  ContextConfigs: %d", len(resolved.ContextConfigs))
 	t.Logf("  IdentityConfigs: %d", len(resolved.IdentityConfigs))
-	t.Logf("  CampaignConfigs: %d", len(resolved.CampaignConfigs))
 	t.Logf("")
 
-	// --- Build engines ---
 	staticPkgs := make([]PackageConfig, len(allPkgIDs))
 	for i, id := range allPkgIDs {
 		staticPkgs[i] = PackageConfig{PackageID: id, TopicTargets: true, URLBlocklist: true}
@@ -172,8 +146,6 @@ func TestSystem_EndToEnd(t *testing.T) {
 	})
 	resolvedEngine.Now = func() time.Time { return now }
 
-	// --- Benchmark: simulate user sessions ---
-
 	ctxReq := &tmproto.ContextMatchRequest{
 		RequestID:    "bench",
 		PropertyRID:  "1",
@@ -182,13 +154,13 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	type result struct {
-		name            string
-		totalTime       time.Duration
-		contextTime     time.Duration
-		identityTime    time.Duration
-		contextOffers   int
+		name             string
+		totalTime        time.Duration
+		contextTime      time.Duration
+		identityTime     time.Duration
+		contextOffers    int
 		identityEligible int
-		requests        int
+		requests         int
 	}
 
 	runBench := func(name string, evalCtx func(context.Context, *tmproto.ContextMatchRequest) (*ContextResult, error), evalId func(context.Context, *tmproto.IdentityMatchRequest) (*IdentityResult, error)) result {
@@ -239,18 +211,12 @@ func TestSystem_EndToEnd(t *testing.T) {
 		}
 	}
 
-	// Identity uses the resolved path for all modes (only evaluator available).
 	idEval := func(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 		return resolvedEngine.EvaluateIdentityResolved(ctx, resolved, req)
 	}
 
-	// Static mode.
 	staticResult := runBench("Static", staticEngine.EvaluateContext, idEval)
-
-	// Dynamic mode.
 	dynamicResult := runBench("Dynamic", dynamicEngine.EvaluateContext, idEval)
-
-	// Resolved mode.
 	resolvedResult := runBench("Resolved",
 		func(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 			return resolvedEngine.EvaluateContextResolved(ctx, resolved, req)
@@ -282,29 +248,6 @@ func TestSystem_EndToEnd(t *testing.T) {
 	t.Logf("  Resolved vs Dynamic: %.1fx faster", speedupVsDynamic)
 	t.Logf("")
 
-	// --- Memory summary ---
-	t.Logf("=== Memory ===")
-	t.Logf("")
-	t.Logf("  Resolved indexes: ~%.1f MB (cached, shared across requests)", resolvedMemMB)
-	t.Logf("  Static engine:    ~%.1f MB (%.0f bytes/package)", float64(len(allPkgIDs))*184/1024/1024, float64(184))
-	t.Logf("  Store data:       out-of-process (Valkey)")
-	t.Logf("    - %d audience segments × %d members each", numSegments, membersPerSeg)
-	t.Logf("    - %d URL blocklist entries total", totalPackages*blocklistPerPkg)
-	t.Logf("    - %d topic set entries total", totalPackages*topicsPerPkg)
-	t.Logf("")
-
-	// --- Verify correctness ---
-	t.Logf("=== Correctness ===")
-	t.Logf("")
-	t.Logf("  Context offers (static):   %d across %d requests", staticResult.contextOffers, staticResult.requests)
-	t.Logf("  Context offers (dynamic):  %d across %d requests", dynamicResult.contextOffers, dynamicResult.requests)
-	t.Logf("  Context offers (resolved): %d across %d requests", resolvedResult.contextOffers, resolvedResult.requests)
-	t.Logf("  Identity eligible (static):   %d", staticResult.identityEligible)
-	t.Logf("  Identity eligible (resolved): %d", resolvedResult.identityEligible)
-	t.Logf("")
-
-	// Static and dynamic context should produce the same number of offers
-	// (they evaluate the same packages with the same targeting).
 	if staticResult.contextOffers != dynamicResult.contextOffers {
 		t.Errorf("static (%d) and dynamic (%d) context offers differ",
 			staticResult.contextOffers, dynamicResult.contextOffers)

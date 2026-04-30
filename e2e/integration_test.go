@@ -31,16 +31,13 @@ func setupStack(t *testing.T) *testStack {
 
 	store := targeting.NewMockStore()
 
-	// Seed topic data.
 	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.recipes")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 	store.SetAdd("topics:package:pkg-tech", "technology.gadgets", "technology.reviews")
 	store.SetAdd("topics:artifact:article:cpu-review", "technology.reviews", "technology.hardware")
 
-	// Seed URL blocklist.
 	store.SetAdd("url:blocklist:pkg-family", targeting.HashURL("article:adult-content"))
 
-	// Context engine.
 	contextEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "integration-context",
 		Store:      store,
@@ -54,25 +51,14 @@ func setupStack(t *testing.T) *testStack {
 		},
 	})
 
-	// Seed identity config in Store (data-driven, not static config).
 	store.SetPackageIdentityConfig("pkg-food", targeting.PackageIdentityConfig{
-		CampaignID:     "campaign-acme",
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"cooking_fans"},
 	})
-	// pkg-tech: no identity config = always eligible
-	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
-	})
-	store.SetCampaignFreqConfig("campaign-acme", targeting.CampaignFreqConfig{
-		FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
-	})
+	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{})
 
-	// User profiles for identity evaluation.
 	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 0.8})
 	store.SetUserProfile("tok-bob", map[string]float64{"sports_fans": 0.5})
 
-	// Identity engine (shares the same store).
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "integration-identity",
 		Store:      store,
@@ -83,30 +69,23 @@ func setupStack(t *testing.T) *testStack {
 		},
 	})
 
-	// Build resolved packages for the identity eval path.
 	idResolved := &targeting.ResolvedPackages{
 		SegmentIndex: map[string][]string{
 			"cooking_fans": {"pkg-food"},
 		},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food":   {CampaignID: "campaign-acme", FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking_fans"}},
+			"pkg-food":   {TargetSegments: []string{"cooking_fans"}},
 			"pkg-tech":   {},
-			"pkg-family": {FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
-		},
-		CampaignConfigs: map[string]*targeting.CampaignFreqConfig{
-			"campaign-acme": {FrequencyRules: []targeting.FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
+			"pkg-family": {},
 		},
 	}
 
-	// Start context agent server.
 	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil, nil))
 	t.Cleanup(ctxSrv.Close)
 
-	// Start identity agent server.
 	idSrv := httptest.NewServer(agentHandler(nil, identityEngine, idResolved))
 	t.Cleanup(idSrv.Close)
 
-	// Start real router with property registry populated.
 	reg := router.NewRegistry("", "")
 	reg.LoadFromData([]router.RegistryProperty{
 		{PropertyID: "pub-oakwood", PropertyRID: "1", PropertyType: "website", Domain: "oakwood.example.com"},
@@ -125,7 +104,6 @@ func setupStack(t *testing.T) *testStack {
 	routerSrv := httptest.NewServer(mux)
 	t.Cleanup(routerSrv.Close)
 
-	// Create tmpclient pointing at router.
 	client := tmpclient.NewClient(routerSrv.URL, tmpclient.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
 
 	return &testStack{
@@ -137,7 +115,6 @@ func setupStack(t *testing.T) *testStack {
 }
 
 // agentHandler creates an HTTP handler that serves both context and identity endpoints.
-// Identity evaluation uses the resolved-packages path.
 func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved *targeting.ResolvedPackages) http.Handler {
 	mux := http.NewServeMux()
 
@@ -184,7 +161,6 @@ func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved *targeting.Res
 				writeAgentError(w, req.RequestID, evalErr.Error())
 				return
 			}
-			// Convert internal IdentityResult to wire format.
 			var eligible []string
 			for _, e := range result.Eligibility {
 				if e.Eligible {
@@ -229,9 +205,6 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 	})
 	require.NoError(t, err, "Activate failed")
 
-	// pkg-food should activate: topic match (pasta → food.cooking) + alice is in cooking_fans.
-	// pkg-tech should NOT: topic mismatch (pasta article, tech topics).
-	// pkg-family should activate: no blocklist hit on pasta article, no audience gate.
 	activated := map[string]bool{}
 	for _, a := range result.Activations {
 		activated[a.PackageID] = true
@@ -242,7 +215,6 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 	assert.False(t, activated["pkg-tech"], "pkg-tech should NOT be activated (topic mismatch)")
 	assert.True(t, activated["pkg-family"], "pkg-family should be activated (no blocklist hit, no audience gate)")
 
-	// Verify signals contain food segments.
 	require.NotNil(t, result.Signals, "expected signals")
 	segs, _ := result.Signals["segments"].([]any)
 	segSet := map[string]bool{}
@@ -253,53 +225,13 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 	}
 	assert.True(t, segSet["food"] && segSet["cooking"], "expected food+cooking segments, got %v", result.Signals["segments"])
 
-	// Verify raw responses are present.
 	assert.NotNil(t, result.Context, "expected raw context response")
 	assert.NotNil(t, result.Identity, "expected raw identity response")
-}
-
-func TestIntegration_FrequencyCapping(t *testing.T) {
-	s := setupStack(t)
-	ctx := context.Background()
-
-	params := &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
-	}
-
-	// 3 exposures (hits 3/24h cap on pkg-food).
-	// Record exposures directly via the engine (TMPX replaces router-based expose).
-	for i := range 3 {
-		result, err := s.client.Activate(ctx, params)
-		require.NoError(t, err, "activate %d", i)
-		require.NotEmpty(t, result.Activations, "activate %d: expected activation before cap", i)
-		_, err = s.identityEngine.RecordExposure(ctx, &targeting.ExposeRequest{
-			UserToken:    "tok-alice",
-			PackageID:    "pkg-food",
-			ImpressionID: fmt.Sprintf("imp-fcap-%d", i),
-		})
-		require.NoError(t, err, "expose %d", i)
-	}
-
-	// 4th activation — should be capped.
-	result, err := s.client.Activate(ctx, params)
-	require.NoError(t, err, "activate after cap")
-
-	for _, a := range result.Activations {
-		assert.NotEqual(t, "pkg-food", a.PackageID, "pkg-food should be capped after 3 exposures")
-	}
-	t.Logf("freq cap working: %d activations after 3 exposures", len(result.Activations))
 }
 
 func TestIntegration_AudienceGating(t *testing.T) {
 	s := setupStack(t)
 
-	// Bob is in sports_fans but NOT cooking_fans.
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
@@ -335,47 +267,9 @@ func TestIntegration_URLBlocklist(t *testing.T) {
 	}
 }
 
-func TestIntegration_ExposeUpdatesState(t *testing.T) {
-	s := setupStack(t)
-	ctx := context.Background()
-
-	params := &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
-	}
-
-	// First activate — should be eligible.
-	result1, err := s.client.Activate(ctx, params)
-	require.NoError(t, err)
-	require.NotEmpty(t, result1.Activations, "expected activation")
-
-	// Record exposure directly via the engine (TMPX replaces router-based expose).
-	expResp, err := s.identityEngine.RecordExposure(ctx, &targeting.ExposeRequest{
-		UserToken:    "tok-alice",
-		PackageID:    "pkg-food",
-		ImpressionID: "imp-state-1",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, expResp.CampaignCount, "expected campaign count 1")
-
-	// Second activate — should still be eligible (1 exposure, cap is 3).
-	result2, err := s.client.Activate(ctx, params)
-	require.NoError(t, err)
-	require.NotEmpty(t, result2.Activations, "expected activation after 1 exposure (cap is 3)")
-	t.Logf("still activated after 1 exposure: %s", result2.Activations[0].PackageID)
-}
-
 func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 	s := setupStack(t)
 
-	// PropertyRID 999 is not in the global bitmap {1,2,3,4,5}.
-	// The router won't set PropertyRID (it uses registry lookup by PropertyID),
-	// so the context engine will see PropertyRID=0 which is not in the bitmap.
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
 		PropertyID:   "pub-unknown",
 		PropertyType: tmproto.PropertyTypeWebsite,
@@ -387,20 +281,17 @@ func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 	})
 	require.NoError(t, err, "Activate failed")
 
-	// Context engine should return zero offers (PropertyRID=0 not in bitmap).
 	assert.Empty(t, result.Activations, "expected 0 activations for unknown property")
 }
 
 func TestIntegration_Mediation(t *testing.T) {
 	store := targeting.NewMockStore()
 
-	// Topics for matching.
 	store.SetAdd("topics:package:pkg-olive-oil", "food.cooking", "food.ingredients")
 	store.SetAdd("topics:package:pkg-cookware", "food.cooking", "food.kitchen")
 	store.SetAdd("topics:package:pkg-wine", "food.cooking", "food.beverage")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	// Alice is a cooking fan.
 	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 1.0})
 
 	creativeManifest, _ := json.Marshal(map[string]any{
@@ -450,7 +341,6 @@ func TestIntegration_Mediation(t *testing.T) {
 		},
 	})
 
-	// Seed identity config for mediation packages.
 	oliveIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
 	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
 	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
@@ -468,12 +358,6 @@ func TestIntegration_Mediation(t *testing.T) {
 		},
 	})
 
-	// Seed exposure history to drive intent scoring: olive-oil recent, wine older.
-	store.SetUserExposures("tok-alice", []targeting.ExposureEntry{
-		{ImpressionID: "imp-olive-1", PackageID: "pkg-olive-oil", SourceID: "mediation-identity", Timestamp: time.Now().Add(-6 * time.Hour).Unix()},
-		{ImpressionID: "imp-wine-1", PackageID: "pkg-wine", SourceID: "mediation-identity", Timestamp: time.Now().Add(-4 * 24 * time.Hour).Unix()},
-	})
-
 	idResolved := &targeting.ResolvedPackages{
 		SegmentIndex: map[string][]string{
 			"cooking_fans": {"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
@@ -485,7 +369,6 @@ func TestIntegration_Mediation(t *testing.T) {
 		},
 	}
 
-	// Wire up the stack.
 	ctxSrv := httptest.NewServer(agentHandler(contextEngine, nil, nil))
 	t.Cleanup(ctxSrv.Close)
 	idSrv := httptest.NewServer(agentHandler(nil, identityEngine, idResolved))
@@ -510,7 +393,6 @@ func TestIntegration_Mediation(t *testing.T) {
 
 	client := tmpclient.NewClient(routerSrv.URL, tmpclient.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
 
-	// Activate: 3 competing packages for the same placement.
 	result, err := client.Activate(context.Background(), &tmpclient.ActivateParams{
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
@@ -522,7 +404,6 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 	require.NoError(t, err, "Activate failed")
 
-	// All 3 should activate (all topic match + alice in cooking_fans).
 	require.Len(t, result.Activations, 3, "expected 3 activations")
 
 	t.Log("")
@@ -550,16 +431,6 @@ func TestIntegration_Mediation(t *testing.T) {
 	}
 	t.Log("")
 
-	// Verify offers carry full data.
-	olive := result.Activations[0] // sorted by intent, olive has highest
-	assert.Equal(t, "Meridian Foods", parseBrand(olive.Offer.Brand), "expected brand on olive oil offer")
-	assert.Equal(t, 12.50, olive.Offer.Price.Amount, "expected price on olive oil offer")
-	assert.NotEmpty(t, olive.Offer.Summary, "expected summary on olive oil offer")
-	require.NotNil(t, olive.Offer.CreativeManifest, "expected creative manifest on olive oil offer")
-	assert.NotEmpty(t, *olive.Offer.CreativeManifest, "expected creative manifest on olive oil offer")
-	assert.NotEmpty(t, olive.Offer.Macros["click_url"], "expected click_url macro on olive oil offer")
-
-	// Publisher mediation: pick by price.
 	t.Log("=== Publisher Mediation Decision ===")
 	t.Log("")
 	var bestPkg string
@@ -578,7 +449,6 @@ func TestIntegration_Mediation(t *testing.T) {
 
 	assert.NotEmpty(t, bestPkg, "expected a mediation winner")
 
-	// Verify signals.
 	require.NotNil(t, result.Signals, "expected signals")
 	t.Logf("  Signals: %v", result.Signals)
 }
@@ -586,11 +456,8 @@ func TestIntegration_Mediation(t *testing.T) {
 func TestIntegration_MultiDealMediation(t *testing.T) {
 	store := targeting.NewMockStore()
 
-	// Topic data.
 	store.SetAdd("topics:package:pkg-premium-food", "food.cooking", "food.recipes")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
-
-	// All users eligible (no audience gate).
 
 	marshalBrand := func(name, domain string) json.RawMessage {
 		b, _ := json.Marshal(map[string]string{"name": name, "advertiser_domain": domain})
@@ -631,7 +498,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		ProviderID: "multideal-identity",
 		Store:      store,
 		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-premium-food"}, // no caps, no audience gate
+			{PackageID: "pkg-premium-food"},
 		},
 	})
 
@@ -676,7 +543,6 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 	})
 	require.NoError(t, err, "Activate failed")
 
-	// 3 deals should produce 3 activations, all for the same package.
 	require.Len(t, result.Activations, 3, "expected 3 activations (3 deals for 1 package)")
 
 	t.Log("")
@@ -712,7 +578,6 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 	assert.Equal(t, "Vino Select", bestBrand, "expected Vino Select as highest bidder")
 	assert.Equal(t, 18.75, bestPrice, "expected $18.75")
 
-	// Verify all 3 offers have distinct brands.
 	brands := map[string]bool{}
 	for _, a := range result.Activations {
 		brands[parseBrandName(a.Offer.Brand)] = true

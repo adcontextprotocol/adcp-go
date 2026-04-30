@@ -179,15 +179,10 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 
 	// Identity configs.
 	store.SetPackageIdentityConfig("pkg-food", PackageIdentityConfig{
-		CampaignID:     "campaign-1",
 		TargetSegments: []string{"cooking_fans"},
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 86400}},
 	})
 	store.SetPackageIdentityConfig("pkg-tech", PackageIdentityConfig{
 		TargetSegments: []string{"tech_enthusiasts", "cooking_fans"},
-	})
-	store.SetCampaignFreqConfig("campaign-1", CampaignFreqConfig{
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 10, WindowSeconds: 604800}},
 	})
 
 	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
@@ -220,7 +215,6 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	// Configs loaded.
 	assert.NotNil(t, resolved.ContextConfigs["pkg-food"], "expected context config for pkg-food")
 	assert.NotNil(t, resolved.IdentityConfigs["pkg-food"], "expected identity config for pkg-food")
-	assert.NotNil(t, resolved.CampaignConfigs["campaign-1"], "expected campaign config for campaign-1")
 
 	// Test helper methods.
 	assert.True(t, resolved.IsURLBlocked("pkg-food", badHash))

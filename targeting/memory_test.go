@@ -45,19 +45,16 @@ func TestMemory_EnginePackageScale(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m2)
 
-		// TotalAlloc is monotonically increasing — diff shows bytes allocated.
 		allocated := float64(m2.TotalAlloc-m1.TotalAlloc) / 1024 / 1024
 		t.Logf("  %6d packages: ~%.2f MB allocated", numPkgs, allocated)
 	}
 	t.Log("")
-	t.Log("  In production, identity config (freq rules, segments, campaigns)")
-	t.Log("  lives in Valkey, NOT in the packages map. The Engine only holds")
-	t.Log("  PackageID + context targeting flags per package.")
+	t.Log("  In production, identity config (segments) lives in Valkey, NOT in")
+	t.Log("  the packages map. The Engine only holds PackageID + context targeting flags per package.")
 	t.Log("")
 }
 
-// TestMemory_StoreScale measures what Valkey would need to hold.
-// In production this is Valkey memory, not Go process memory.
+// TestMemory_StoreScale describes what lives in Valkey vs Go memory.
 func TestMemory_StoreScale(t *testing.T) {
 	t.Log("")
 	t.Log("=== What lives WHERE ===")
@@ -68,26 +65,23 @@ func TestMemory_StoreScale(t *testing.T) {
 	t.Log("    - ~184 bytes/package base + string/slice heap allocations")
 	t.Log("")
 	t.Log("  IN VALKEY (out-of-process):")
-	t.Log("    - Identity config per package (freq rules, campaign ID, segments)")
-	t.Log("    - Campaign freq rules")
+	t.Log("    - Identity config per package (target segments)")
 	t.Log("    - Audience segment membership (hash sets)")
-	t.Log("    - Frequency cap exposure history (sorted sets)")
 	t.Log("    - URL blocklists/allowlists (hash sets)")
 	t.Log("    - Topic sets (hash sets)")
+	t.Log("    - Frequency cap state (fcap.Service hash fields with TTL)")
 	t.Log("")
-	t.Log("  Adding 100K campaigns to Valkey = zero Go memory impact.")
 	t.Log("  Adding 1M audience members to Valkey = zero Go memory impact.")
 	t.Log("  The Engine only reads what it needs per-request via Store.Get.")
 	t.Log("")
 }
 
 // TestScale_IdentityNoTargeting measures identity eval when packages have NO
-// targeting config in the Store (the "10K campaigns, no targeting" case).
+// targeting config in the Store (the "many packages, no targeting" case).
 func TestScale_IdentityNoTargeting(t *testing.T) {
 	t.Log("")
 	t.Log("=== Identity Eval: packages with no identity config ===")
 	t.Log("  When a package has no config in Store, it's always eligible.")
-	t.Log("  The cost is one Store.Get miss per package per request.")
 	t.Log("")
 
 	for _, numPkgs := range []int{1, 5, 10, 25, 50, 100} {
@@ -98,7 +92,6 @@ func TestScale_IdentityNoTargeting(t *testing.T) {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID})
 			pkgIDs = append(pkgIDs, pkgID)
-			// NO identity config pushed to Store — these are "no targeting" packages.
 		}
 
 		engine := NewEngine(EngineConfig{
