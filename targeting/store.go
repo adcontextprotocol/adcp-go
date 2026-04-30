@@ -6,7 +6,7 @@ import (
 )
 
 // Store is a storage backend for the targeting engine.
-// Implementations wrap Valkey/Redis or an in-memory mock.
+// Implementations wrap Valkey or an in-memory mock.
 type Store interface {
 	// SetIsMember checks if member is in the set at key.
 	SetIsMember(ctx context.Context, key, member string) (bool, error)
@@ -30,5 +30,7 @@ type Store interface {
 	MGet(ctx context.Context, keys ...string) ([]string, error)
 
 	// MSet stores multiple key-value pairs with an optional TTL. Zero TTL means no expiry.
+	// With a non-zero TTL, atomicity is implementation-defined; callers must not
+	// assume that all keys land together.
 	MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error
 }

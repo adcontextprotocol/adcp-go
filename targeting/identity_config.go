@@ -12,24 +12,6 @@ type PackageIdentityConfig struct {
 	TargetSegments []string `json:"target_segments,omitempty"`
 }
 
-// loadPackageIdentityConfig reads identity config for a package from the Store.
-// Returns nil if no config is found (package has no identity dimensions).
-func loadPackageIdentityConfig(ctx context.Context, store Store, pkgID string) (*PackageIdentityConfig, error) {
-	key := fmt.Sprintf("config:pkg:%s", pkgID)
-	val, ok, err := store.Get(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, nil
-	}
-	var cfg PackageIdentityConfig
-	if err := json.Unmarshal([]byte(val), &cfg); err != nil {
-		return nil, fmt.Errorf("parse identity config for %s: %w", pkgID, err)
-	}
-	return &cfg, nil
-}
-
 // batchLoadPackageContextConfigs loads context configs for multiple packages in one MGet.
 func batchLoadPackageContextConfigs(ctx context.Context, store Store, pkgIDs []string) (map[string]*PackageContextConfig, error) {
 	if len(pkgIDs) == 0 {

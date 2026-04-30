@@ -12,7 +12,7 @@ type UserIdentity struct {
 	UIDType   string `json:"uid_type"`
 }
 
-// UserProfile holds a user's segment memberships with optional intent scores.
+// UserProfile holds a user's segment memberships, with an optional per-segment score.
 type UserProfile struct {
 	Segments map[string]float64 `json:"segments"` // segment name → score (0 = member, no score)
 }

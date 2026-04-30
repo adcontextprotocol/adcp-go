@@ -10,7 +10,7 @@ import (
 // identities and formats field strings before calling into Store.
 type Store interface {
 	// SetFields creates or updates fields under key with a shared expiration
-	// timestamp. Backed by HSETEX in Valkey 8+.
+	// timestamp. Backed by HSETEX (Valkey 9+).
 	SetFields(ctx context.Context, key string, fields map[string]string, expireAt time.Time) error
 
 	// SetFieldsBatch performs SetFields for multiple (key, fields, expireAt)

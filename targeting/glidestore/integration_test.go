@@ -164,9 +164,9 @@ func TestIntegration_FcapStore_BatchWriteAndRead(t *testing.T) {
 	require.NoError(t, svc.RecordCapBatch(ctx, batches))
 
 	lookups := []fcap.CapLookup{
-		{UserIdentity: "user-0", Field: fcap.Field{SellerAgentURL: "https://s1", PackageID: "pkg-a"}}, // capped
-		{UserIdentity: "user-3", Field: fcap.Field{SellerAgentURL: "https://s1", PackageID: "pkg-b"}}, // capped
-		{UserIdentity: "user-4", Field: fcap.Field{SellerAgentURL: "https://s2", PackageID: "pkg-a"}}, // not capped
+		{UserIdentity: "user-0", Field: fcap.Field{SellerAgentURL: "https://s1", PackageID: "pkg-a"}},  // capped
+		{UserIdentity: "user-3", Field: fcap.Field{SellerAgentURL: "https://s1", PackageID: "pkg-b"}},  // capped
+		{UserIdentity: "user-4", Field: fcap.Field{SellerAgentURL: "https://s2", PackageID: "pkg-a"}},  // not capped
 		{UserIdentity: "user-99", Field: fcap.Field{SellerAgentURL: "https://s1", PackageID: "pkg-a"}}, // not capped
 	}
 	results, err := svc.IsCappedBatch(ctx, lookups)

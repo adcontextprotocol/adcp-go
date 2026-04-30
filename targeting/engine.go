@@ -28,10 +28,6 @@ type Engine struct {
 	dynamicPackages bool
 
 	metrics Metrics
-
-	// Now returns the current time. Defaults to time.Now.
-	// Override in tests to control time.
-	Now func() time.Time
 }
 
 // EngineConfig holds all configuration for creating an Engine.
@@ -61,7 +57,6 @@ func NewEngine(cfg EngineConfig) *Engine {
 		packages:        pkgMap,
 		dynamicPackages: cfg.DynamicPackages,
 		metrics:         metrics,
-		Now:             time.Now,
 	}
 }
 
@@ -314,6 +309,10 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 }
 
 // EvaluateIdentityResolved evaluates identity eligibility using segment gating only.
+// Packages that have no IdentityConfig in resolved, or whose config has no
+// TargetSegments, are reported eligible: segment matching is opt-in, not a
+// default deny.
+//
 // Frequency capping is handled by the separate fcap.Service; the caller composes
 // engine output with fcap lookups when fcap gating is required.
 func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
@@ -444,13 +443,6 @@ func (e *Engine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID 
 		}
 	}
 	return false, nil
-}
-
-func (e *Engine) now() time.Time {
-	if e.Now != nil {
-		return e.Now()
-	}
-	return time.Now()
 }
 
 // buildOffers returns one or more Offers for an activated package.

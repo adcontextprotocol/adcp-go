@@ -59,7 +59,6 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 			{PackageID: "pkg-no-segments"},
 		},
 	})
-	engine.Now = func() time.Time { return now }
 	store.Now = func() time.Time { return now }
 	return engine, store, resolved
 }
@@ -362,4 +361,38 @@ func TestIdentity_RequestIDPreserved(t *testing.T) {
 		PackageIDs: []string{"pkg-no-segments"},
 	})
 	assert.Equal(t, "keep-this", resp.RequestID)
+}
+
+// TestIdentity_MultiIdentitySegmentUnion exercises the segment fan-out across
+// multiple identities for the same user: profiles are merged, and a package
+// targeting any one of the merged segments matches.
+func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
+	ctx := context.Background()
+
+	// One identity carries "cooking", another carries "home".
+	store.SetUserProfile("uid-cooking", map[string]float64{"cooking": 1.0})
+	store.SetUserProfile("uid-home", map[string]float64{"home": 1.0})
+
+	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
+	resolved := &ResolvedPackages{
+		SegmentIndex: map[string][]string{
+			"cooking": {"pkg-display-001"},
+			"home":    {"pkg-display-001"},
+		},
+		IdentityConfigs: map[string]*PackageIdentityConfig{
+			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+		},
+	}
+
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID: "multi-id",
+		Identities: []tmproto.IdentityToken{
+			{UserToken: "uid-cooking"},
+			{UserToken: "uid-home"},
+		},
+		PackageIDs: []string{"pkg-display-001"},
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.Eligibility[0].Eligible, "merged profile (cooking + home) should match pkg-display-001")
 }

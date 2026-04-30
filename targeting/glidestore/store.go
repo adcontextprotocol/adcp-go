@@ -8,12 +8,10 @@ package glidestore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	glide "github.com/valkey-io/valkey-glide/go/v2"
-	"github.com/valkey-io/valkey-glide/go/v2/models"
 	"github.com/valkey-io/valkey-glide/go/v2/options"
 	"github.com/valkey-io/valkey-glide/go/v2/pipeline"
 
@@ -109,6 +107,9 @@ func (s *Store) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(results) != len(keys) {
+		return nil, fmt.Errorf("glidestore: MGET returned %d results for %d keys", len(results), len(keys))
+	}
 	out := make([]string, len(results))
 	for i, r := range results {
 		if r.IsNil() {
@@ -191,29 +192,14 @@ func (s *Store) FieldExistsBatch(ctx context.Context, lookups []fcap.FieldLookup
 	}
 	out := make([]bool, len(results))
 	for i, r := range results {
-		b, err := coerceBool(r)
-		if err != nil {
-			return nil, fmt.Errorf("glidestore: HEXISTS result %d: %w", i, err)
+		// Validated against valkey-glide/go/v2 v2.3.1: HEXISTS in a batch
+		// arrives as a plain bool. Surface the actual type if that ever
+		// changes so the failure mode is loud rather than silently false.
+		b, ok := r.(bool)
+		if !ok {
+			return nil, fmt.Errorf("glidestore: HEXISTS result %d: expected bool, got %T", i, r)
 		}
 		out[i] = b
 	}
 	return out, nil
-}
-
-// coerceBool reads a HEXISTS result from a batch.
-// glide returns batch results as []any; HEXISTS values arrive as either bool
-// or, in some builds, as a wrapped Result[bool]. Handle both shapes.
-func coerceBool(v any) (bool, error) {
-	switch x := v.(type) {
-	case bool:
-		return x, nil
-	case models.Result[bool]:
-		if x.IsNil() {
-			return false, nil
-		}
-		return x.Value(), nil
-	case nil:
-		return false, nil
-	}
-	return false, errors.New("unexpected result type")
 }

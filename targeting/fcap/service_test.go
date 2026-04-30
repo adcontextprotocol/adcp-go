@@ -141,15 +141,43 @@ func TestService_IsCappedBatch_Empty(t *testing.T) {
 }
 
 func TestIdentityKey_Stable(t *testing.T) {
-	// Same input → same key (matches HashToken behavior in targeting pkg).
 	k1 := identityKey("user-abc")
 	k2 := identityKey("user-abc")
 	assert.Equal(t, k1, k2)
-	assert.True(t, len(k1) > len("fcap:"), "expected hashed key")
-	assert.Contains(t, k1, "fcap:")
+	assert.True(t, len(k1) > len(keyPrefix), "expected hashed key")
+	assert.True(t, hasPrefix(k1, keyPrefix))
 }
 
-func TestFieldString_LiteralColon(t *testing.T) {
+// TestFieldString_FormatPinned locks down the exact on-disk field-name format.
+// Changing the delimiter or order would silently invalidate every existing
+// field across all running deployments — this test makes that change loud.
+func TestFieldString_FormatPinned(t *testing.T) {
 	f := Field{SellerAgentURL: "https://seller.example.com:8080/agent", PackageID: "pkg-1"}
 	assert.Equal(t, "https://seller.example.com:8080/agent:pkg-1", fieldString(f))
+	assert.Equal(t, ":", fieldDelimiter)
+}
+
+func TestMockStore_FieldExpiresAtTTL(t *testing.T) {
+	store := NewMockStore()
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	store.Now = func() time.Time { return now }
+
+	svc := New(store)
+	ctx := context.Background()
+
+	field := Field{SellerAgentURL: "url", PackageID: "pkg-1"}
+	require.NoError(t, svc.RecordCap(ctx, "user-ttl", []Field{field}, now.Add(time.Hour)))
+
+	capped, err := svc.IsCapped(ctx, "user-ttl", field)
+	require.NoError(t, err)
+	assert.True(t, capped, "before expireAt, field should be present")
+
+	store.Now = func() time.Time { return now.Add(2 * time.Hour) }
+	capped, err = svc.IsCapped(ctx, "user-ttl", field)
+	require.NoError(t, err)
+	assert.False(t, capped, "after expireAt, mock should treat field as absent")
+}
+
+func hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }

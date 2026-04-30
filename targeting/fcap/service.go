@@ -7,24 +7,20 @@ import (
 	"time"
 )
 
-// keyPrefix is the constant prefix for all fcap hash keys.
-const keyPrefix = "fcap:"
+const (
+	// keyPrefix is the constant prefix for all fcap hash keys.
+	keyPrefix = "fcap:"
 
-// fieldValue is the constant value stored for every set field. HSETEX requires
-// a value; the field name carries the meaning.
-const fieldValue = "1"
+	// fieldDelimiter joins SellerAgentURL and PackageID into the HSET field name.
+	// The store never parses field names; reads and writes are symmetric, so a
+	// literal colon is unambiguous in practice. Keep this stable: changing it
+	// invalidates every existing field name on disk.
+	fieldDelimiter = ":"
 
-// Service is the high-level frequency cap API. Callers pass raw user
-// identities (id5, MAID, etc.); the Service hashes them and formats field
-// names before delegating to Store.
-type Service struct {
-	store Store
-}
-
-// New constructs a Service backed by the provided Store.
-func New(store Store) *Service {
-	return &Service{store: store}
-}
+	// fieldValue is the constant value stored for every set field. HSETEX
+	// requires a value; the field name carries the meaning.
+	fieldValue = "1"
+)
 
 // CapBatch records caps for one user identity.
 type CapBatch struct {
@@ -37,6 +33,18 @@ type CapBatch struct {
 type CapLookup struct {
 	UserIdentity string
 	Field        Field
+}
+
+// Service is the high-level frequency cap API. Callers pass raw user
+// identities (id5, MAID, etc.); the Service hashes them and formats field
+// names before delegating to Store.
+type Service struct {
+	store Store
+}
+
+// New constructs a Service backed by the provided Store.
+func New(store Store) *Service {
+	return &Service{store: store}
 }
 
 // RecordCap marks every field as capped for userIdentity until expireAt.
@@ -103,15 +111,14 @@ func (s *Service) IsCappedBatch(ctx context.Context, lookups []CapLookup) ([]boo
 }
 
 // identityKey hashes userIdentity (SHA-256, first 16 bytes hex) and prefixes it.
-// Matches the existing user-token hashing in the targeting package.
+// 16 bytes is enough for collision resistance at our user-identity scale and
+// keeps the stored key compact.
 func identityKey(userIdentity string) string {
 	h := sha256.Sum256([]byte(userIdentity))
 	return keyPrefix + hex.EncodeToString(h[:16])
 }
 
-// fieldString joins seller_agent_url and package_id with a literal colon.
-// The store never parses field names, so colons inside the URL component
-// are unambiguous on read (write/read are symmetric).
+// fieldString joins SellerAgentURL and PackageID with fieldDelimiter.
 func fieldString(f Field) string {
-	return f.SellerAgentURL + ":" + f.PackageID
+	return f.SellerAgentURL + fieldDelimiter + f.PackageID
 }

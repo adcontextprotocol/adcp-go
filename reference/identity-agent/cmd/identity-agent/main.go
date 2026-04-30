@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
-	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/glidestore"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -36,8 +36,12 @@ func main() {
 	slog.SetDefault(logger)
 
 	metrics := prommetrics.New()
-	store, fcapStore := initStore(storeAddr)
-	resolved := seedConfigs(store)
+	store := initStore(storeAddr)
+	resolved, err := seedConfigs(store)
+	if err != nil {
+		slog.Error("seed configs failed", "error", err)
+		os.Exit(1)
+	}
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "reference-identity-agent",
@@ -49,10 +53,6 @@ func main() {
 			{PackageID: "pkg-native-0078"},
 		},
 	})
-
-	// Frequency-cap service is initialized for callers that wire it up;
-	// the reference HTTP surface here only demonstrates segment-based eligibility.
-	_ = fcap.New(fcapStore)
 
 	mux := http.NewServeMux()
 
@@ -138,28 +138,27 @@ func resolveValkeyAddr(flagVal string) string {
 }
 
 // initStore connects to Valkey when an address is configured, otherwise falls
-// back to the in-memory MockStore. Returns both the targeting.Store and a
-// fcap.Store backed by the same connection.
-func initStore(valkeyAddr string) (targeting.Store, fcap.Store) {
+// back to the in-memory MockStore. Production agents that share state between
+// the targeting engine and fcap.Service should pass the same backend (a
+// glidestore.Store satisfies both interfaces) — this reference doesn't
+// exercise that path.
+func initStore(valkeyAddr string) targeting.Store {
 	if valkeyAddr == "" {
 		slog.Info("No Valkey address configured, using in-memory store")
-		mock := targeting.NewMockStore()
-		return mock, fcap.NewMockStore()
+		return targeting.NewMockStore()
 	}
 
 	host, port, ok := splitHostPort(valkeyAddr)
 	if !ok {
 		slog.Warn("Invalid Valkey address, falling back to in-memory store", "addr", valkeyAddr)
-		mock := targeting.NewMockStore()
-		return mock, fcap.NewMockStore()
+		return targeting.NewMockStore()
 	}
 
 	cfg := config.NewClientConfiguration().WithAddress(&config.NodeAddress{Host: host, Port: port})
 	client, err := glide.NewClient(cfg)
 	if err != nil {
 		slog.Warn("Cannot connect to Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
-		mock := targeting.NewMockStore()
-		return mock, fcap.NewMockStore()
+		return targeting.NewMockStore()
 	}
 
 	// Verify reachability with a short PING.
@@ -168,13 +167,11 @@ func initStore(valkeyAddr string) (targeting.Store, fcap.Store) {
 	if _, err := client.Ping(pingCtx); err != nil {
 		slog.Warn("Cannot reach Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
 		client.Close()
-		mock := targeting.NewMockStore()
-		return mock, fcap.NewMockStore()
+		return targeting.NewMockStore()
 	}
 
 	slog.Info("Connected to Valkey", "addr", valkeyAddr)
-	store := glidestore.New(client)
-	return store, store
+	return glidestore.New(client)
 }
 
 func splitHostPort(addr string) (string, int, bool) {
@@ -192,7 +189,7 @@ func splitHostPort(addr string) (string, int, bool) {
 // seedConfigs pushes reference identity configs into the Store and returns
 // the resolved package indexes for identity evaluation. Frequency-cap state
 // is no longer seeded — that lives in fcap.Service and is set per-impression.
-func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
+func seedConfigs(store targeting.Store) (*targeting.ResolvedPackages, error) {
 	ctx := context.Background()
 
 	configs := []struct {
@@ -211,8 +208,7 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 	segmentIndex := make(map[string][]string)
 	for _, c := range configs {
 		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
-			slog.Error("seed package config failed", "package_id", c.pkgID, "error", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("seed package config %s: %w", c.pkgID, err)
 		}
 		cfg := c.cfg
 		idConfigs[c.pkgID] = &cfg
@@ -224,5 +220,5 @@ func seedConfigs(store targeting.Store) *targeting.ResolvedPackages {
 	return &targeting.ResolvedPackages{
 		SegmentIndex:    segmentIndex,
 		IdentityConfigs: idConfigs,
-	}
+	}, nil
 }

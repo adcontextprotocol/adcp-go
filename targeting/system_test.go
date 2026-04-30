@@ -129,7 +129,6 @@ func TestSystem_EndToEnd(t *testing.T) {
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages:   staticPkgs,
 	})
-	staticEngine.Now = func() time.Time { return now }
 
 	dynamicEngine := NewEngine(EngineConfig{
 		ProviderID:      "bench",
@@ -137,14 +136,12 @@ func TestSystem_EndToEnd(t *testing.T) {
 		Properties:      PropertyList{Global: NewMapBitmap("1")},
 		DynamicPackages: true,
 	})
-	dynamicEngine.Now = func() time.Time { return now }
 
 	resolvedEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 	})
-	resolvedEngine.Now = func() time.Time { return now }
 
 	ctxReq := &tmproto.ContextMatchRequest{
 		RequestID:    "bench",
