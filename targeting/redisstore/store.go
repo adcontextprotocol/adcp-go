@@ -109,11 +109,8 @@ func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Durati
 		return nil
 	}
 	if ttl <= 0 {
-		args := make([]any, 0, 2*len(kvs))
-		for k, v := range kvs {
-			args = append(args, k, v)
-		}
-		return s.client.MSet(ctx, args...).Err()
+		// go-redis MSet accepts a map directly; no manual flatten needed.
+		return s.client.MSet(ctx, kvs).Err()
 	}
 	// MSET in Valkey doesn't accept a TTL. With TTL, batch SET-with-expiry per
 	// key in a non-atomic pipeline; atomicity is documented as
@@ -195,9 +192,13 @@ func (s *Store) FieldExistsBatch(ctx context.Context, lookups []fcap.FieldLookup
 // flattenFields converts a map[string]string to the fieldsAndValues variadic
 // pair list that go-redis HSetEX expects.
 func flattenFields(fields map[string]string) []string {
-	out := make([]string, 0, 2*len(fields))
+	n := len(fields)
+	out := make([]string, n+n)
+	i := 0
 	for f, v := range fields {
-		out = append(out, f, v)
+		out[i] = f
+		out[i+1] = v
+		i += 2
 	}
 	return out
 }
