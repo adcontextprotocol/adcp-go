@@ -274,10 +274,95 @@ def safe_comment(text, max_len=80):
     return text.replace('\n', ' ').replace('\r', '')[:max_len] if text else ''
 
 def load_schema(path):
-    """Load a JSON schema file, preserving property order."""
+    """Load a JSON schema file, preserving property order, and inline any
+    root-level ``allOf $ref`` to envelope schemas (e.g. core/version-envelope.json
+    composed across all request/response schemas).
+
+    JSON Schema draft-07 allOf is used by the protocol to keep envelope-level
+    fields (adcp_version, adcp_major_version) defined in one place rather than
+    duplicated across every request/response schema. The Go generator emits
+    Go structs from ``properties``, so we merge the envelope's properties up
+    into the parent before the generator iterates. After this step, callers
+    can treat the schema as if everything were inlined.
+    """
     with open(path) as f:
-        # Use object_pairs_hook to preserve key order
-        return json.load(f, object_pairs_hook=OrderedDict)
+        schema = json.load(f, object_pairs_hook=OrderedDict)
+    return _inline_root_allof(schema)
+
+
+def _resolve_ref_to_local_path(ref):
+    """Convert a JSON Schema ``$ref`` ("/schemas/<version>/core/x.json" or
+    "/schemas/core/x.json") into a path relative to cwd (which the generator
+    already runs from — adcp/schemas/)."""
+    parts = ref.lstrip('/').split('/')
+    # Drop "schemas" and an optional version segment ("latest", "3.1.0-beta.0",
+    # "v3", etc.). What remains is the path under the schemas root.
+    if parts and parts[0] == 'schemas':
+        parts = parts[1:]
+    if parts and (parts[0] == 'latest' or re.match(r'^v?\d', parts[0])):
+        parts = parts[1:]
+    return '/'.join(parts) if parts else ref
+
+
+def _inline_root_allof(schema):
+    """Merge root-level ``allOf $ref`` envelopes into the parent's properties
+    + required. Conservative: only handles allOf members that are pure ``$ref``
+    to object schemas with ``properties``. Anything else is left intact for
+    the rest of the generator to handle."""
+    if not isinstance(schema, dict) or 'allOf' not in schema:
+        return schema
+
+    merged_props = OrderedDict()
+    merged_required = []
+    remaining_allof = []
+
+    for member in schema.get('allOf', []):
+        if isinstance(member, dict) and set(member.keys()) == {'$ref'}:
+            try:
+                ref_path = _resolve_ref_to_local_path(member['$ref'])
+                with open(ref_path) as rf:
+                    referenced = json.load(rf, object_pairs_hook=OrderedDict)
+            except (OSError, json.JSONDecodeError):
+                # Ref doesn't resolve. Leave the allOf member in place — the
+                # generator will fall through to its default $ref handling.
+                remaining_allof.append(member)
+                continue
+            referenced = _inline_root_allof(referenced)
+            for k, v in referenced.get('properties', {}).items():
+                if k not in schema.get('properties', {}) and k not in merged_props:
+                    merged_props[k] = v
+            for r in referenced.get('required', []) or []:
+                if r not in merged_required:
+                    merged_required.append(r)
+        else:
+            remaining_allof.append(member)
+
+    if merged_props:
+        # Splice envelope properties before the schema's own properties so
+        # struct field order reads naturally (adcp_version first, then the
+        # tool-specific fields). Preserves existing key order otherwise.
+        existing_props = schema.get('properties', OrderedDict())
+        new_props = OrderedDict()
+        for k, v in merged_props.items():
+            new_props[k] = v
+        for k, v in existing_props.items():
+            new_props[k] = v
+        schema['properties'] = new_props
+
+    if merged_required:
+        existing_required = list(schema.get('required', []) or [])
+        for r in merged_required:
+            if r not in existing_required:
+                existing_required.append(r)
+        if existing_required:
+            schema['required'] = existing_required
+
+    if remaining_allof:
+        schema['allOf'] = remaining_allof
+    else:
+        schema.pop('allOf', None)
+
+    return schema
 
 def ref_to_go_name(ref):
     """Convert a $ref path to a Go type name.
