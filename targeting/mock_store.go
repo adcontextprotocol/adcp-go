@@ -3,7 +3,6 @@ package targeting
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -63,7 +62,7 @@ func (m *MockStore) SetPackageIdentityConfig(pkgID string, cfg PackageIdentityCo
 	data, _ := json.Marshal(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings[fmt.Sprintf("config:pkg:%s", pkgID)] = stringEntry{value: string(data)}
+	m.strings[keyPrefixConfigPkg+pkgID] = stringEntry{value: string(data)}
 }
 
 // SetCampaignFreqConfig stores frequency config for a campaign. Test helper.
@@ -71,7 +70,7 @@ func (m *MockStore) SetCampaignFreqConfig(campaignID string, cfg CampaignFreqCon
 	data, _ := json.Marshal(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings[fmt.Sprintf("config:campaign:%s", campaignID)] = stringEntry{value: string(data)}
+	m.strings[keyPrefixConfigCampaign+campaignID] = stringEntry{value: string(data)}
 }
 
 // SetMediaBuy stores a media buy and adds it to the seller's set. Test helper.
@@ -80,7 +79,7 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	// Add to seller set.
-	sellerKey := "mediabuy:seller:" + mb.SellerID
+	sellerKey := keyPrefixMediaBuySeller + mb.SellerID
 	s, ok := m.sets[sellerKey]
 	if !ok {
 		s = make(map[string]struct{})
@@ -88,7 +87,7 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 	}
 	s[mb.MediaBuyID] = struct{}{}
 	// Store media buy JSON.
-	m.strings["mediabuy:"+mb.MediaBuyID] = stringEntry{value: string(data)}
+	m.strings[keyPrefixMediaBuy+mb.MediaBuyID] = stringEntry{value: string(data)}
 }
 
 // SetUserProfile stores a user's segment memberships. Test helper.
@@ -98,7 +97,7 @@ func (m *MockStore) SetUserProfile(token string, segments map[string]float64) {
 	data, _ := json.Marshal(profile)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings["user:profile:"+hash] = stringEntry{value: string(data)}
+	m.strings[keyPrefixUserProfile+hash] = stringEntry{value: string(data)}
 }
 
 // SetUserExposures stores a user's exposure log in binary format. Test helper.
@@ -107,13 +106,13 @@ func (m *MockStore) SetUserExposures(token string, entries []ExposureEntry) {
 	bin := EncodeBinaryExposureLog(entries)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings["user:exposures:"+hash] = stringEntry{value: string(bin)}
+	m.strings[keyPrefixUserExposures+hash] = stringEntry{value: string(bin)}
 }
 
 // AddExposure appends an exposure entry to a user's log. Test helper.
 func (m *MockStore) AddExposure(token string, entry ExposureEntry) {
 	hash := HashToken(token)
-	key := "user:exposures:" + hash
+	key := keyPrefixUserExposures + hash
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	existing := BinaryExposureLog(m.strings[key].value)
@@ -127,7 +126,7 @@ func (m *MockStore) SetPackageContextConfig(pkgID string, cfg PackageContextConf
 	data, _ := json.Marshal(cfg)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.strings[fmt.Sprintf("config:pkg:%s:context", pkgID)] = stringEntry{value: string(data)}
+	m.strings[keyPrefixConfigPkg+pkgID+":context"] = stringEntry{value: string(data)}
 }
 
 func (m *MockStore) SetIsMember(_ context.Context, key, member string) (bool, error) {
@@ -330,6 +329,22 @@ func (m *MockStore) MSet(_ context.Context, kvs map[string]string, ttl time.Dura
 			entry.expiry = m.Now().Add(ttl)
 		}
 		m.strings[k] = entry
+	}
+	return nil
+}
+
+func (m *MockStore) Del(_ context.Context, key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.strings, key)
+	return nil
+}
+
+func (m *MockStore) MDel(_ context.Context, keys ...string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, key := range keys {
+		delete(m.strings, key)
 	}
 	return nil
 }

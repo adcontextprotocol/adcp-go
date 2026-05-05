@@ -243,7 +243,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 	// 5. Resolve artifact topics from Store (per-request, can't cache).
 	var artifactTopics []string
 	for _, artifact := range artifactRefs {
-		topics, err := e.store.SetMembers(ctx, "topics:artifact:"+artifact)
+		topics, err := e.store.SetMembers(ctx, keyPrefixTopicsArtifact+artifact)
 		if err != nil {
 			e.metrics.StoreError(StageTopicMatch, err)
 		} else {
@@ -347,8 +347,8 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	keys := make([]string, 0, len(identities)*2)
 	for _, uid := range identities {
 		hash := HashToken(uid.UserToken)
-		keys = append(keys, "user:profile:"+hash)
-		keys = append(keys, "user:exposures:"+hash)
+		keys = append(keys, keyPrefixUserProfile+hash)
+		keys = append(keys, keyPrefixUserExposures+hash)
 	}
 
 	// 2. Single MGet — 1 round-trip.
@@ -452,7 +452,7 @@ func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments 
 	if err != nil {
 		return err
 	}
-	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
+	return e.store.Set(ctx, keyPrefixUserProfile+hash, string(data), 0)
 }
 
 // SetUserProfiles writes segment memberships for multiple users in a single batch.
@@ -466,9 +466,25 @@ func (e *Engine) SetUserProfiles(ctx context.Context, profiles map[string]map[st
 		if err != nil {
 			return err
 		}
-		kvs["user:profile:"+hash] = string(data)
+		kvs[keyPrefixUserProfile+hash] = string(data)
 	}
 	return e.store.MSet(ctx, kvs, 0)
+}
+
+// DeleteUserProfile removes a user's segment profile.
+func (e *Engine) DeleteUserProfile(ctx context.Context, userToken string) error {
+	hash := HashToken(userToken)
+	return e.store.Del(ctx, keyPrefixUserProfile+hash)
+}
+
+// DeleteUserProfiles removes segment profiles for multiple users in a single batch.
+// The userTokens slice contains user tokens.
+func (e *Engine) DeleteUserProfiles(ctx context.Context, userTokens []string) error {
+	keys := make([]string, len(userTokens))
+	for i, userToken := range userTokens {
+		keys[i] = keyPrefixUserProfile + HashToken(userToken)
+	}
+	return e.store.MDel(ctx, keys...)
 }
 
 // RecordExposure records an impression to the exposure log for all UIDs.
@@ -529,7 +545,7 @@ func (e *Engine) RecordExposure(ctx context.Context, req *ExposeRequest) (*Expos
 	// Write to each UID's exposure log. Capture the first UID's log for the response.
 	var firstLog BinaryExposureLog
 	for i, hash := range hashes {
-		key := "user:exposures:" + hash
+		key := keyPrefixUserExposures + hash
 
 		val, _, err := e.store.Get(ctx, key)
 		if err != nil {
@@ -636,7 +652,7 @@ func (e *Engine) checkURLFilter(ctx context.Context, artifacts []string, pkgID s
 		urlHash := HashURL(artifact)
 
 		if cfg.URLBlocklist {
-			blocked, err := e.store.SetIsMember(ctx, "url:blocklist:"+pkgID, urlHash)
+			blocked, err := e.store.SetIsMember(ctx, keyPrefixURLBlocklist+pkgID, urlHash)
 			if err != nil {
 				return false, err
 			}
@@ -646,7 +662,7 @@ func (e *Engine) checkURLFilter(ctx context.Context, artifacts []string, pkgID s
 		}
 
 		if cfg.URLAllowlist {
-			allowKey := "url:allowlist:" + pkgID
+			allowKey := keyPrefixURLAllowlist + pkgID
 			exists, err := e.store.Exists(ctx, allowKey)
 			if err != nil {
 				return false, err
@@ -672,7 +688,7 @@ func (e *Engine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID 
 		return true, nil
 	}
 	for _, artifact := range artifacts {
-		intersection, err := e.store.SetIntersect(ctx, "topics:package:"+pkgID, "topics:artifact:"+artifact)
+		intersection, err := e.store.SetIntersect(ctx, keyPrefixTopicsPackage+pkgID, keyPrefixTopicsArtifact+artifact)
 		if err != nil {
 			return false, err
 		}

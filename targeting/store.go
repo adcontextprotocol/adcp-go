@@ -5,6 +5,20 @@ import (
 	"time"
 )
 
+// Store key prefixes.
+const (
+	keyPrefixUserProfile    = "user:profile:"
+	keyPrefixUserExposures  = "user:exposures:"
+	keyPrefixTopicsArtifact = "topics:artifact:"
+	keyPrefixTopicsPackage  = "topics:package:"
+	keyPrefixURLBlocklist   = "url:blocklist:"
+	keyPrefixURLAllowlist   = "url:allowlist:"
+	keyPrefixMediaBuySeller = "mediabuy:seller:"
+	keyPrefixMediaBuy       = "mediabuy:"
+	keyPrefixConfigPkg      = "config:pkg:"
+	keyPrefixConfigCampaign = "config:campaign:"
+)
+
 // Store is a storage backend for the targeting engine.
 // Implementations wrap Valkey/Redis or an in-memory mock.
 type Store interface {
@@ -43,4 +57,10 @@ type Store interface {
 
 	// MSet stores multiple key-value pairs with an optional TTL. Zero TTL means no expiry.
 	MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error
+
+	// Del removes a key. It is a no-op if the key does not exist.
+	Del(ctx context.Context, key string) error
+
+	// MDel removes multiple keys. It is a no-op for keys that do not exist.
+	MDel(ctx context.Context, keys ...string) error
 }

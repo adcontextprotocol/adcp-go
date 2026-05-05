@@ -10,9 +10,9 @@ import (
 // PackageIdentityConfig is the identity-side configuration for a package,
 // stored in the Store as JSON at key "config:pkg:{packageID}".
 type PackageIdentityConfig struct {
-	CampaignID     string             `json:"campaign_id,omitempty"`
+	CampaignID     string              `json:"campaign_id,omitempty"`
 	FrequencyRules []FrequencyRuleJSON `json:"frequency_rules,omitempty"`
-	TargetSegments []string           `json:"target_segments,omitempty"`
+	TargetSegments []string            `json:"target_segments,omitempty"`
 }
 
 // CampaignFreqConfig is the frequency cap configuration for a campaign,
@@ -42,7 +42,7 @@ func toFrequencyRules(rules []FrequencyRuleJSON) []FrequencyRule {
 // loadPackageIdentityConfig reads identity config for a package from the Store.
 // Returns nil if no config is found (package has no identity dimensions).
 func loadPackageIdentityConfig(ctx context.Context, store Store, pkgID string) (*PackageIdentityConfig, error) {
-	key := fmt.Sprintf("config:pkg:%s", pkgID)
+	key := keyPrefixConfigPkg + pkgID
 	val, ok, err := store.Get(ctx, key)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func batchLoadPackageContextConfigs(ctx context.Context, store Store, pkgIDs []s
 	}
 	keys := make([]string, len(pkgIDs))
 	for i, id := range pkgIDs {
-		keys[i] = fmt.Sprintf("config:pkg:%s:context", id)
+		keys[i] = keyPrefixConfigPkg + id + ":context"
 	}
 	values, err := store.MGet(ctx, keys...)
 	if err != nil {
@@ -91,7 +91,7 @@ func batchLoadPackageIdentityConfigs(ctx context.Context, store Store, pkgIDs []
 	}
 	keys := make([]string, len(pkgIDs))
 	for i, id := range pkgIDs {
-		keys[i] = fmt.Sprintf("config:pkg:%s", id)
+		keys[i] = keyPrefixConfigPkg + id
 	}
 	values, err := store.MGet(ctx, keys...)
 	if err != nil {
@@ -118,7 +118,7 @@ func batchLoadCampaignFreqConfigs(ctx context.Context, store Store, campaignIDs 
 	}
 	keys := make([]string, len(campaignIDs))
 	for i, id := range campaignIDs {
-		keys[i] = fmt.Sprintf("config:campaign:%s", id)
+		keys[i] = keyPrefixConfigCampaign + id
 	}
 	values, err := store.MGet(ctx, keys...)
 	if err != nil {
@@ -144,7 +144,7 @@ func SeedPackageIdentityConfig(ctx context.Context, store Store, pkgID string, c
 	if err != nil {
 		return err
 	}
-	return store.Set(ctx, fmt.Sprintf("config:pkg:%s", pkgID), string(data), 0)
+	return store.Set(ctx, keyPrefixConfigPkg+pkgID, string(data), 0)
 }
 
 // SeedCampaignFreqConfig writes frequency config for a campaign to any Store.
@@ -153,13 +153,13 @@ func SeedCampaignFreqConfig(ctx context.Context, store Store, campaignID string,
 	if err != nil {
 		return err
 	}
-	return store.Set(ctx, fmt.Sprintf("config:campaign:%s", campaignID), string(data), 0)
+	return store.Set(ctx, keyPrefixConfigCampaign+campaignID, string(data), 0)
 }
 
 // loadCampaignFreqConfig reads frequency cap config for a campaign from the Store.
 // Returns nil if no config is found.
 func loadCampaignFreqConfig(ctx context.Context, store Store, campaignID string) (*CampaignFreqConfig, error) {
-	key := fmt.Sprintf("config:campaign:%s", campaignID)
+	key := keyPrefixConfigCampaign + campaignID
 	val, ok, err := store.Get(ctx, key)
 	if err != nil {
 		return nil, err
