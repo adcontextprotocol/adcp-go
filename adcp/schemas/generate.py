@@ -57,6 +57,7 @@ KNOWN_TYPES = {
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
     'TestControllerError',
+    'ForcedDirectiveSuccess',  # pending upstream schema in adcp#3104 — revisit on bundle bump past 3.0.0
     # Collection domain (from types.go)
     'CollectionList', 'CollectionListFilters', 'BaseCollectionSource',
     'DistributionID', 'ContentRating', 'ResolvedCollection',

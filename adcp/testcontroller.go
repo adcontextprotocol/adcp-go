@@ -11,13 +11,31 @@ import (
 // TestControllerStore is the seller-side interface for comply_test_controller.
 // Implement the methods for each scenario you support.
 // Unimplemented (nil) methods mean that scenario is excluded from list_scenarios.
+//
+// Sandbox must be true. RegisterTestController panics at startup if false.
+// This tool MUST NOT be registered in production.
 type TestControllerStore struct {
+	// Sandbox must be set to true. RegisterTestController panics if false — this
+	// tool MUST NOT be registered in production. Gate registration on a sandbox
+	// flag in your agent config.
+	Sandbox             bool
 	ForceAccountStatus  func(accountID, status string) (*StateTransition, error)
 	ForceMediaBuyStatus func(mediaBuyID, status string, rejectionReason string) (*StateTransition, error)
 	ForceCreativeStatus func(creativeID, status string, rejectionReason string) (*StateTransition, error)
 	ForceSessionStatus  func(sessionID, status string, terminationReason string) (*StateTransition, error)
 	SimulateDelivery    func(mediaBuyID string, params SimulateDeliveryParams) (*SimulationResult, error)
 	SimulateBudgetSpend func(params SimulateBudgetParams) (*SimulationResult, error)
+	// ForceCreateMediaBuyArm registers a single-shot directive (per adcp#3104) that
+	// drives the next create_media_buy call into the specified arm.
+	// Implementations MUST scope the directive to the authenticated principal and
+	// clear it after consumption. MUST NOT log the raw params at any log level.
+	ForceCreateMediaBuyArm func(arm, taskID, message string) (*ForcedDirectiveSuccess, error)
+	// ForceTaskCompletion resolves a submitted task to completed (per adcp#3138).
+	// Implementations MUST scope task_id to the authenticated principal (cross-account
+	// replays return NOT_FOUND), handle identical-params idempotency, and return
+	// INVALID_TRANSITION for diverging-params replays against a terminal task.
+	// MUST NOT log the raw result payload at any log level.
+	ForceTaskCompletion func(taskID string, result json.RawMessage) (*StateTransitionSuccess, error)
 }
 
 // StateTransition is returned by force_* scenarios.
@@ -25,6 +43,14 @@ type StateTransition struct {
 	Success       bool   `json:"success"`
 	PreviousState string `json:"previous_state"`
 	CurrentState  string `json:"current_state"`
+}
+
+// ForcedDirectiveSuccess is returned by force_create_media_buy_arm (adcp#3104).
+type ForcedDirectiveSuccess struct {
+	Success bool   `json:"success"`
+	Arm     string `json:"arm"`
+	TaskID  string `json:"task_id,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // SimulateDeliveryParams contains delivery simulation parameters.
@@ -86,7 +112,11 @@ type listScenariosResponse struct {
 // RegisterTestController adds the comply_test_controller tool to an MCP server.
 // This tool allows arbitrary state mutations for compliance testing and MUST NOT
 // be registered in production. Gate registration on a sandbox flag in your agent.
+// Panics if store.Sandbox is false.
 func RegisterTestController(server *mcp.Server, store *TestControllerStore) {
+	if !store.Sandbox {
+		panic("adcp: RegisterTestController requires TestControllerStore.Sandbox = true — this tool MUST NOT be registered in production")
+	}
 	AddTool(server, "comply_test_controller",
 		"Triggers seller-side state transitions for compliance testing. Sandbox only.",
 		func(ctx context.Context, req *mcp.CallToolRequest, input controllerInput) (*mcp.CallToolResult, any, error) {
@@ -118,6 +148,10 @@ func handleTestController(store *TestControllerStore, input controllerInput) (*m
 		return handleSimulateDelivery(store, input.Params)
 	case "simulate_budget_spend":
 		return handleSimulateBudget(store, input.Params)
+	case "force_create_media_buy_arm":
+		return handleForceCreateMediaBuyArm(store, input.Params)
+	case "force_task_completion":
+		return handleForceTaskCompletion(store, input.Params)
 	default:
 		return controllerErr("UNKNOWN_SCENARIO", "Unrecognized scenario name", "")
 	}
@@ -217,6 +251,67 @@ func handleSimulateBudget(store *TestControllerStore, params map[string]any) (*m
 	return wrapSimResult(result, err)
 }
 
+func handleForceCreateMediaBuyArm(store *TestControllerStore, params map[string]any) (*mcp.CallToolResult, any, error) {
+	if store.ForceCreateMediaBuyArm == nil {
+		return controllerErr("UNKNOWN_SCENARIO", "Scenario not supported: force_create_media_buy_arm", "")
+	}
+	arm, _ := params["arm"].(string)
+	if arm == "" {
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm requires params.arm", "")
+	}
+	if arm != TaskStatusSubmitted && arm != TaskStatusInputRequired {
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.arm must be 'submitted' or 'input-required'", "")
+	}
+	taskID, _ := params["task_id"].(string)
+	message, _ := params["message"].(string)
+	if arm == TaskStatusSubmitted && taskID == "" {
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm requires params.task_id when arm=submitted", "")
+	}
+	if len(taskID) > 128 {
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.task_id must be ≤128 bytes", "")
+	}
+	if len(message) > 2000 {
+		return controllerErr("INVALID_PARAMS", "force_create_media_buy_arm params.message must be ≤2000 bytes", "")
+	}
+	result, err := store.ForceCreateMediaBuyArm(arm, taskID, message)
+	if err != nil {
+		if tce, ok := err.(*TestControllerError); ok {
+			return controllerErr(tce.Code, tce.Message, tce.CurrentState)
+		}
+		return controllerErr("INTERNAL_ERROR", "An unexpected error occurred in the test controller store", "")
+	}
+	return controllerOK(result)
+}
+
+func handleForceTaskCompletion(store *TestControllerStore, params map[string]any) (*mcp.CallToolResult, any, error) {
+	if store.ForceTaskCompletion == nil {
+		return controllerErr("UNKNOWN_SCENARIO", "Scenario not supported: force_task_completion", "")
+	}
+	taskID, _ := params["task_id"].(string)
+	if taskID == "" {
+		return controllerErr("INVALID_PARAMS", "force_task_completion requires params.task_id", "")
+	}
+	if len(taskID) > 128 {
+		return controllerErr("INVALID_PARAMS", "force_task_completion params.task_id must be ≤128 bytes", "")
+	}
+	resultObj, ok := params["result"].(map[string]any)
+	if !ok || len(resultObj) == 0 {
+		return controllerErr("INVALID_PARAMS", "force_task_completion requires params.result to be a non-empty object", "")
+	}
+	raw, _ := json.Marshal(resultObj)
+	if len(raw) > 256*1024 {
+		return controllerErr("INVALID_PARAMS", "force_task_completion params.result encoded size exceeds 256 KB limit", "")
+	}
+	result, err := store.ForceTaskCompletion(taskID, json.RawMessage(raw))
+	if err != nil {
+		if tce, ok := err.(*TestControllerError); ok {
+			return controllerErr(tce.Code, tce.Message, tce.CurrentState)
+		}
+		return controllerErr("INTERNAL_ERROR", "An unexpected error occurred in the test controller store", "")
+	}
+	return controllerOK(result)
+}
+
 func listScenarios(store *TestControllerStore) []string {
 	var scenarios []string
 	if store.ForceAccountStatus != nil {
@@ -236,6 +331,12 @@ func listScenarios(store *TestControllerStore) []string {
 	}
 	if store.SimulateBudgetSpend != nil {
 		scenarios = append(scenarios, "simulate_budget_spend")
+	}
+	if store.ForceCreateMediaBuyArm != nil {
+		scenarios = append(scenarios, "force_create_media_buy_arm")
+	}
+	if store.ForceTaskCompletion != nil {
+		scenarios = append(scenarios, "force_task_completion")
 	}
 	return scenarios
 }

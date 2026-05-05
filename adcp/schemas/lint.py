@@ -57,6 +57,7 @@ EXEMPT = {
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
     'TestControllerError',
+    'ForcedDirectiveSuccess',  # pending upstream schema in adcp#3104 — revisit on bundle bump past 3.0.0
     # inputs (agent-specific helpers, schemas are inline in request schemas)
     'EmptyInput', 'PackageInput', 'AccountInput', 'GovernanceAccountInput',
     'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
