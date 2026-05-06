@@ -318,6 +318,10 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 // default deny. When the engine has no audience.Service configured, every
 // package with TargetSegments is rejected (no segment data is reachable).
 //
+// Audience lookups are scoped to the segments any requested package actually
+// targets, so users in unrelated audiences don't pay HGETALL for fields the
+// engine wouldn't read.
+//
 // Frequency capping is handled by the separate fcap.Service; the caller
 // composes engine output with fcap lookups when fcap gating is required.
 func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
@@ -325,19 +329,30 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	identities := resolveIdentities(req)
 
 	var segmentEligible map[string]struct{}
-	if e.audience != nil && len(identities) > 0 {
-		userTokens := make([]string, len(identities))
-		for i, uid := range identities {
-			userTokens[i] = uid.UserToken
+	targetSegments := collectTargetSegments(resolved, req.PackageIDs)
+	if e.audience != nil && len(identities) > 0 && len(targetSegments) > 0 {
+		lookups := make([]audience.MembershipLookup, 0, len(identities)*len(targetSegments))
+		for _, uid := range identities {
+			for _, seg := range targetSegments {
+				lookups = append(lookups, audience.MembershipLookup{
+					UserToken:  uid.UserToken,
+					AudienceID: seg,
+				})
+			}
 		}
-		memberships, err := e.audience.MembershipsBatch(ctx, userTokens)
+		results, err := e.audience.IsMemberBatch(ctx, lookups)
 		if err != nil {
 			e.metrics.StoreError("load_user_audiences", err)
-			memberships = make([]map[string]float64, len(userTokens))
+			results = make([]bool, len(lookups))
 		}
-		merged := mergeMemberships(memberships)
-		userSegments := make([]string, 0, len(merged))
-		for seg := range merged {
+		matched := make(map[string]struct{})
+		for i, l := range lookups {
+			if results[i] {
+				matched[l.AudienceID] = struct{}{}
+			}
+		}
+		userSegments := make([]string, 0, len(matched))
+		for seg := range matched {
 			userSegments = append(userSegments, seg)
 		}
 		segmentEligible = resolved.SegmentCandidates(userSegments)
@@ -366,20 +381,28 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}, nil
 }
 
-// mergeMemberships unions every audience across the per-identity membership
-// maps, taking the highest score per audience. The engine only consumes the
-// keys today (segment presence drives package eligibility), but preserving
-// scores keeps the structure available for score-aware downstream consumers.
-func mergeMemberships(memberships []map[string]float64) map[string]float64 {
-	merged := make(map[string]float64)
-	for _, m := range memberships {
-		for seg, score := range m {
-			if existing, ok := merged[seg]; !ok || score > existing {
-				merged[seg] = score
-			}
+// collectTargetSegments returns the unique union of TargetSegments declared
+// across every package in pkgIDs that has an identity config. Returns nil
+// when no requested package has segment targeting.
+func collectTargetSegments(resolved *ResolvedPackages, pkgIDs []string) []string {
+	seen := make(map[string]struct{})
+	for _, pkgID := range pkgIDs {
+		cfg := resolved.IdentityConfigs[pkgID]
+		if cfg == nil {
+			continue
+		}
+		for _, seg := range cfg.TargetSegments {
+			seen[seg] = struct{}{}
 		}
 	}
-	return merged
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for seg := range seen {
+		out = append(out, seg)
+	}
+	return out
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.
