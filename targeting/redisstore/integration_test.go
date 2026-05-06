@@ -16,6 +16,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -311,13 +312,18 @@ func TestIntegration_Engine_EvaluateIdentity_AgainstRealValkey(t *testing.T) {
 
 	require.NoError(t, store.Set(ctx, "config:pkg:pkg-food", `{"target_segments":["cooking_fans"]}`, 0))
 
+	audSvc := audience.New(store)
+	require.NoError(t, audSvc.Upsert(ctx, audience.AudienceUpsert{
+		AudienceID: "cooking_fans",
+		Add:        []audience.Member{{UserToken: "tok-alice", Score: 1.0}},
+	}))
+
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "integration-id",
 		Store:      store,
+		Audience:   audSvc,
 		Packages:   []targeting.PackageConfig{{PackageID: "pkg-food"}},
 	})
-
-	require.NoError(t, engine.SetUserProfile(ctx, "tok-alice", map[string]float64{"cooking_fans": 1.0}))
 
 	resolved := &targeting.ResolvedPackages{
 		SegmentIndex: map[string][]string{"cooking_fans": {"pkg-food"}},

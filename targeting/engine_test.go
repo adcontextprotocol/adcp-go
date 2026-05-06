@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,9 +29,10 @@ func setupContextEngine(t *testing.T) (*Engine, *MockStore) {
 	return engine, store
 }
 
-func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) {
+func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *audience.Service, *ResolvedPackages) {
 	t.Helper()
 	store := NewMockStore()
+	audSvc := audience.New(audience.NewMockStore())
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
@@ -53,6 +55,7 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 	engine := NewEngine(EngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
+		Audience:   audSvc,
 		Packages: []PackageConfig{
 			{PackageID: "pkg-display-001"},
 			{PackageID: "pkg-display-002"},
@@ -60,7 +63,7 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 		},
 	})
 	store.Now = func() time.Time { return now }
-	return engine, store, resolved
+	return engine, store, audSvc, resolved
 }
 
 // --- Context Tests ---
@@ -311,10 +314,14 @@ func TestContext_UnknownPackageSkipped(t *testing.T) {
 // --- Identity Tests (segment gating only; fcap is handled by fcap.Service) ---
 
 func TestIdentity_AudienceMatch(t *testing.T) {
-	engine, store, resolved := setupIdentityEngine(t)
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
+	engine, _, audSvc, resolved := setupIdentityEngine(t)
+	ctx := context.Background()
+	require.NoError(t, audSvc.Upsert(ctx, audience.AudienceUpsert{
+		AudienceID: "cooking",
+		Add:        []audience.Member{{UserToken: "user-abc"}},
+	}))
 
-	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-audience-hit",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
 		PackageIDs: []string{"pkg-display-001"},
@@ -324,7 +331,7 @@ func TestIdentity_AudienceMatch(t *testing.T) {
 }
 
 func TestIdentity_AudienceNotInSegment(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
+	engine, _, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-audience",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
@@ -334,7 +341,7 @@ func TestIdentity_AudienceNotInSegment(t *testing.T) {
 }
 
 func TestIdentity_NoSegmentTargeting(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
+	engine, _, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-no-seg",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
@@ -344,7 +351,7 @@ func TestIdentity_NoSegmentTargeting(t *testing.T) {
 }
 
 func TestIdentity_UnknownPackage(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
+	engine, _, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "id-unknown",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
@@ -354,7 +361,7 @@ func TestIdentity_UnknownPackage(t *testing.T) {
 }
 
 func TestIdentity_RequestIDPreserved(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
+	engine, _, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
 		RequestID:  "keep-this",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
@@ -364,15 +371,17 @@ func TestIdentity_RequestIDPreserved(t *testing.T) {
 }
 
 // TestIdentity_MultiIdentitySegmentUnion exercises the segment fan-out across
-// multiple identities for the same user: profiles are merged, and a package
-// targeting any one of the merged segments matches.
+// multiple identities for the same user: memberships are unioned, and a
+// package targeting any one of the merged segments matches.
 func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
-	engine, store, _ := setupIdentityEngine(t)
+	engine, _, audSvc, _ := setupIdentityEngine(t)
 	ctx := context.Background()
 
 	// One identity carries "cooking", another carries "home".
-	store.SetUserProfile("uid-cooking", map[string]float64{"cooking": 1.0})
-	store.SetUserProfile("uid-home", map[string]float64{"home": 1.0})
+	require.NoError(t, audSvc.UpsertBatch(ctx, []audience.AudienceUpsert{
+		{AudienceID: "cooking", Add: []audience.Member{{UserToken: "uid-cooking", Score: 1.0}}},
+		{AudienceID: "home", Add: []audience.Member{{UserToken: "uid-home", Score: 1.0}}},
+	}))
 
 	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
 	resolved := &ResolvedPackages{

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -21,6 +22,7 @@ import (
 type Engine struct {
 	providerID string
 	store      Store
+	audience   *audience.Service
 
 	properties PropertyList
 
@@ -34,6 +36,7 @@ type Engine struct {
 type EngineConfig struct {
 	ProviderID      string
 	Store           Store
+	Audience        *audience.Service // nil = identity evaluation is segment-blind
 	Properties      PropertyList
 	Packages        []PackageConfig
 	DynamicPackages bool    // When true, load package configs from Store at eval time.
@@ -53,6 +56,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 	return &Engine{
 		providerID:      cfg.ProviderID,
 		store:           cfg.Store,
+		audience:        cfg.Audience,
 		properties:      cfg.Properties,
 		packages:        pkgMap,
 		dynamicPackages: cfg.DynamicPackages,
@@ -311,37 +315,29 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 // EvaluateIdentityResolved evaluates identity eligibility using segment gating only.
 // Packages that have no IdentityConfig in resolved, or whose config has no
 // TargetSegments, are reported eligible: segment matching is opt-in, not a
-// default deny.
+// default deny. When the engine has no audience.Service configured, every
+// package with TargetSegments is rejected (no segment data is reachable).
 //
-// Frequency capping is handled by the separate fcap.Service; the caller composes
-// engine output with fcap lookups when fcap gating is required.
+// Frequency capping is handled by the separate fcap.Service; the caller
+// composes engine output with fcap lookups when fcap gating is required.
 func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 	evalStart := time.Now()
 	identities := resolveIdentities(req)
 
-	keys := make([]string, 0, len(identities))
-	for _, uid := range identities {
-		keys = append(keys, "user:profile:"+HashToken(uid.UserToken))
+	var segmentEligible map[string]struct{}
+	if e.audience != nil && len(identities) > 0 {
+		userTokens := make([]string, len(identities))
+		for i, uid := range identities {
+			userTokens[i] = uid.UserToken
+		}
+		memberships, err := e.audience.MembershipsBatch(ctx, userTokens)
+		if err != nil {
+			e.metrics.StoreError("load_user_audiences", err)
+			memberships = make([]map[string]float64, len(userTokens))
+		}
+		userSegments := mergeSegments(memberships)
+		segmentEligible = resolved.SegmentCandidates(userSegments)
 	}
-
-	values, err := e.store.MGet(ctx, keys...)
-	if err != nil {
-		e.metrics.StoreError("load_user_data", err)
-		values = make([]string, len(keys))
-	}
-
-	profiles := make([]*UserProfile, 0, len(identities))
-	for i := range identities {
-		profiles = append(profiles, ParseUserProfile(values[i]))
-	}
-	mergedProfile := MergeUserProfiles(profiles...)
-
-	var userSegments []string
-	for seg := range mergedProfile.Segments {
-		userSegments = append(userSegments, seg)
-	}
-
-	segmentEligible := resolved.SegmentCandidates(userSegments)
 
 	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
@@ -366,31 +362,23 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}, nil
 }
 
-// SetUserProfile writes a user's segment memberships to the profile key.
-func (e *Engine) SetUserProfile(ctx context.Context, userToken string, segments map[string]float64) error {
-	hash := HashToken(userToken)
-	profile := UserProfile{Segments: segments}
-	data, err := json.Marshal(profile)
-	if err != nil {
-		return err
-	}
-	return e.store.Set(ctx, "user:profile:"+hash, string(data), 0)
-}
-
-// SetUserProfiles writes segment memberships for multiple users in a single batch.
-// The profiles map is keyed by user token.
-func (e *Engine) SetUserProfiles(ctx context.Context, profiles map[string]map[string]float64) error {
-	kvs := make(map[string]string, len(profiles))
-	for userToken, segments := range profiles {
-		hash := HashToken(userToken)
-		profile := UserProfile{Segments: segments}
-		data, err := json.Marshal(profile)
-		if err != nil {
-			return err
+// mergeSegments unions every audience present across the per-identity
+// membership maps. Returns nil when no identity has any segment.
+func mergeSegments(memberships []map[string]float64) []string {
+	seen := make(map[string]struct{})
+	for _, m := range memberships {
+		for seg := range m {
+			seen[seg] = struct{}{}
 		}
-		kvs["user:profile:"+hash] = string(data)
 	}
-	return e.store.MSet(ctx, kvs, 0)
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for seg := range seen {
+		out = append(out, seg)
+	}
+	return out
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.

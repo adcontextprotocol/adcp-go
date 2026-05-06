@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -83,12 +84,20 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	userTokens := make([]string, numUsers)
+	audSvc := audience.New(audience.NewMockStore())
+	upsertsBySegment := make(map[string][]audience.Member)
 	for u := range numUsers {
 		userTokens[u] = fmt.Sprintf("tok-user-%d", u)
-		store.SetUserProfile(userTokens[u], map[string]float64{
-			segments[u%numSegments]:     1.0,
-			segments[(u+3)%numSegments]: 1.0,
-		})
+		for _, seg := range []string{segments[u%numSegments], segments[(u+3)%numSegments]} {
+			upsertsBySegment[seg] = append(upsertsBySegment[seg], audience.Member{UserToken: userTokens[u], Score: 1.0})
+		}
+	}
+	upserts := make([]audience.AudienceUpsert, 0, len(upsertsBySegment))
+	for seg, members := range upsertsBySegment {
+		upserts = append(upserts, audience.AudienceUpsert{AudienceID: seg, Add: members})
+	}
+	if err := audSvc.UpsertBatch(context.Background(), upserts); err != nil {
+		t.Fatal(err)
 	}
 
 	store.SetAdd("topics:artifact:article:food", "topic-0", "topic-1", "topic-2")
@@ -126,6 +135,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	staticEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
+		Audience:   audSvc,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages:   staticPkgs,
 	})
@@ -133,6 +143,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	dynamicEngine := NewEngine(EngineConfig{
 		ProviderID:      "bench",
 		Store:           store,
+		Audience:        audSvc,
 		Properties:      PropertyList{Global: NewMapBitmap("1")},
 		DynamicPackages: true,
 	})
@@ -140,6 +151,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	resolvedEngine := NewEngine(EngineConfig{
 		ProviderID: "bench",
 		Store:      store,
+		Audience:   audSvc,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 	})
 

@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/stretchr/testify/require"
 )
 
 // TestScale_PropertyBitmap measures property bitmap lookup at increasing scale.
@@ -261,7 +263,11 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			Packages: mbPkgs,
 		})
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
-		store.SetUserProfile("tok-bench", map[string]float64{"cooking_fans": 1.0})
+		audSvc := audience.New(audience.NewMockStore())
+		require.NoError(t, audSvc.Upsert(context.Background(), audience.AudienceUpsert{
+			AudienceID: "cooking_fans",
+			Add:        []audience.Member{{UserToken: "tok-bench", Score: 1.0}},
+		}))
 
 		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
 		if err != nil {
@@ -271,6 +277,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 		engine := NewEngine(EngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
+			Audience:        audSvc,
 			Properties:      PropertyList{Global: NewMapBitmap("1")},
 			DynamicPackages: true,
 		})
