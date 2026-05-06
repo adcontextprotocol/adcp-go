@@ -83,24 +83,20 @@ func TestProviderSet_ConcurrentReadWrite(t *testing.T) {
 
 	// Concurrent readers
 	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for range 100 {
 				_ = ps.Active()
 				_ = ps.All()
 			}
-		}()
+		})
 	}
 
 	// Concurrent writer
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for range 100 {
 			ps.Swap([]ProviderConfig{{ID: "a"}, {ID: "b"}})
 		}
-	}()
+	})
 
 	wg.Wait()
 }

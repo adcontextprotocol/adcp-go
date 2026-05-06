@@ -427,10 +427,8 @@ func hasPushNotificationAuth(v any) bool {
 			}
 		}
 	case []any:
-		for _, child := range t {
-			if hasPushNotificationAuth(child) {
-				return true
-			}
+		if slices.ContainsFunc(t, hasPushNotificationAuth) {
+			return true
 		}
 	}
 	return false
@@ -484,4 +482,3 @@ func verifySignature(alg Algorithm, pub any, base, sig []byte) bool {
 		return false
 	}
 }
-

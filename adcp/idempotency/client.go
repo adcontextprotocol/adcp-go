@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"regexp"
 	"time"
 )
@@ -147,9 +148,7 @@ func resolveKey(existing, override string) (string, error) {
 func asMap(v any) (map[string]any, error) {
 	if m, ok := v.(map[string]any); ok {
 		out := make(map[string]any, len(m))
-		for k, val := range m {
-			out[k] = val
-		}
+		maps.Copy(out, m)
 		return out, nil
 	}
 	b, err := json.Marshal(v)

@@ -24,7 +24,6 @@ type ResolvedPackages struct {
 	// Pre-loaded configs.
 	ContextConfigs  map[string]*PackageContextConfig  // pkgID → config
 	IdentityConfigs map[string]*PackageIdentityConfig // pkgID → config
-	CampaignConfigs map[string]*CampaignFreqConfig    // campaignID → config
 }
 
 // ContextCandidates returns package IDs that could match the given property.

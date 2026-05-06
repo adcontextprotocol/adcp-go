@@ -2,8 +2,6 @@ package targeting
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -35,42 +33,20 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 	store := NewMockStore()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	// Seed identity config in Store (data-driven).
 	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
-		CampaignID:     "campaign-acme",
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}},
 		TargetSegments: []string{"cooking", "home"},
 	})
-	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{
-		CampaignID:     "campaign-acme",
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}},
-	})
-	store.SetPackageIdentityConfig("pkg-multi-rule", PackageIdentityConfig{
-		CampaignID: "campaign-acme",
-		FrequencyRules: []FrequencyRuleJSON{
-			{MaxCount: 2, WindowSeconds: 43200},
-			{MaxCount: 5, WindowSeconds: 604800},
-		},
-	})
-	// pkg-no-cap: no identity config = always eligible
-	store.SetCampaignFreqConfig("campaign-acme", CampaignFreqConfig{
-		FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}},
-	})
+	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{})
 
-	// Build resolved packages for the resolved eval path.
 	resolved := &ResolvedPackages{
 		SegmentIndex: map[string][]string{
 			"cooking": {"pkg-display-001"},
 			"home":    {"pkg-display-001"},
 		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 3, WindowSeconds: 86400}}, TargetSegments: []string{"cooking", "home"}},
-			"pkg-display-002": {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 43200}}},
-			"pkg-multi-rule":  {CampaignID: "campaign-acme", FrequencyRules: []FrequencyRuleJSON{{MaxCount: 2, WindowSeconds: 43200}, {MaxCount: 5, WindowSeconds: 604800}}},
-			"pkg-no-cap":      {},
-		},
-		CampaignConfigs: map[string]*CampaignFreqConfig{
-			"campaign-acme": {FrequencyRules: []FrequencyRuleJSON{{MaxCount: 5, WindowSeconds: 604800}}},
+			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-002": {},
+			"pkg-no-segments": {},
 		},
 	}
 
@@ -80,11 +56,9 @@ func setupIdentityEngine(t *testing.T) (*Engine, *MockStore, *ResolvedPackages) 
 		Packages: []PackageConfig{
 			{PackageID: "pkg-display-001"},
 			{PackageID: "pkg-display-002"},
-			{PackageID: "pkg-multi-rule"},
-			{PackageID: "pkg-no-cap"},
+			{PackageID: "pkg-no-segments"},
 		},
 	})
-	engine.Now = func() time.Time { return now }
 	store.Now = func() time.Time { return now }
 	return engine, store, resolved
 }
@@ -143,7 +117,6 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Property 1 is in global but not in pkg-scoped.
 	resp, err := engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
 		RequestID:   "test-4a",
 		PropertyRID: "1",
@@ -152,7 +125,6 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, resp.Offers, "expected 0 offers (property not in package bitmap)")
 
-	// Property 3 is in both global and pkg-scoped.
 	resp, err = engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
 		RequestID:   "test-4b",
 		PropertyRID: "3",
@@ -240,7 +212,6 @@ func TestContext_URLAllowlist(t *testing.T) {
 		Packages:   []PackageConfig{{PackageID: "pkg-premium", URLAllowlist: true}},
 	})
 
-	// Allowed URL should produce an offer.
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-allow-hit",
 		PropertyRID:  "20",
@@ -250,7 +221,6 @@ func TestContext_URLAllowlist(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1, "expected 1 offer (URL in allowlist)")
 
-	// Non-allowed URL should be blocked.
 	resp, err = engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:    "test-allow-miss",
 		PropertyRID:  "20",
@@ -338,231 +308,91 @@ func TestContext_UnknownPackageSkipped(t *testing.T) {
 	assert.Empty(t, resp.Offers, "expected 0 offers for unknown package")
 }
 
-// --- Identity Tests (using resolved path with exposure logs) ---
+// --- Identity Tests (segment gating only; fcap is handled by fcap.Service) ---
 
-func TestIdentity_ExposureIncrements(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
-		UserToken: "user-abc",
-		PackageID: "pkg-display-001",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, resp.CampaignCount)
-	assert.Equal(t, 4, resp.CampaignRemaining)
-}
-
-func TestIdentity_CampaignFrequencyCap(t *testing.T) {
+func TestIdentity_AudienceMatch(t *testing.T) {
 	engine, store, resolved := setupIdentityEngine(t)
-	ctx := context.Background()
-
 	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
 
-	// 5 exposures across two packages in campaign-acme (cap is 5/7d).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-001-%d", i)})
-	}
-	for i := range 2 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-002", ImpressionID: fmt.Sprintf("imp-002-%d", i)})
-	}
-
-	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-campaign",
+	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "id-audience-hit",
 		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
+		PackageIDs: []string{"pkg-display-001"},
 	})
 	require.NoError(t, err)
-	for _, e := range resp.Eligibility {
-		assert.False(t, e.Eligible, "%s should be campaign-capped", e.PackageID)
-	}
-}
-
-func TestIdentity_PackageCappedButCampaignNot(t *testing.T) {
-	engine, store, resolved := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
-
-	// 3 exposures on pkg-display-001 (package cap=3, campaign cap=5).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-cap-%d", i)})
-	}
-
-	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-pkg-cap",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-display-001", "pkg-display-002"},
-	})
-	require.NoError(t, err)
-
-	byPkg := map[string]tmproto.PackageEligibility{}
-	for _, e := range resp.Eligibility {
-		byPkg[e.PackageID] = e
-	}
-	assert.False(t, byPkg["pkg-display-001"].Eligible, "pkg-display-001 should be package-capped (3/3)")
-	assert.True(t, byPkg["pkg-display-002"].Eligible, "pkg-display-002 should still be eligible")
-}
-
-func TestIdentity_MultipleFrequencyRules(t *testing.T) {
-	engine, _, resolved := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	// pkg-multi-rule: 2 per 12h AND 5 per 7d.
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-1"})
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-multi-rule", ImpressionID: "imp-multi-2"})
-
-	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-multi",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-multi-rule"},
-	})
-	require.NoError(t, err)
-	assert.False(t, resp.Eligibility[0].Eligible, "should be capped by 12h rule (2/2)")
-}
-
-func TestIdentity_SlidingWindowExpiry(t *testing.T) {
-	engine, store, resolved := setupIdentityEngine(t)
-	ctx := context.Background()
-	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
-
-	// 3 exposures (hits cap).
-	for i := range 3 {
-		_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001", ImpressionID: fmt.Sprintf("imp-window-%d", i)})
-	}
-
-	resp, _ := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-before", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
-	})
-	assert.False(t, resp.Eligibility[0].Eligible, "should be capped (3/3)")
-
-	// Advance past 24h window.
-	future := now.Add(25 * time.Hour)
-	engine.Now = func() time.Time { return future }
-	store.Now = func() time.Time { return future }
-
-	resp, _ = engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-after", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
-	})
-	assert.True(t, resp.Eligibility[0].Eligible, "should be eligible after window expires")
-}
-
-func TestIdentity_IntentScore(t *testing.T) {
-	engine, store, resolved := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	store.SetUserProfile("user-abc", map[string]float64{"cooking": 0})
-
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{UserToken: "user-abc", PackageID: "pkg-display-001"})
-
-	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-intent", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resp.Eligibility[0].IntentScore)
-	assert.GreaterOrEqual(t, *resp.Eligibility[0].IntentScore, 0.99, "expected high intent score after recent exposure")
+	assert.True(t, resp.Eligibility[0].Eligible)
 }
 
 func TestIdentity_AudienceNotInSegment(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
-	// No user profile set -> user has no segments -> should fail audience gate.
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-audience", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-display-001"},
+		RequestID:  "id-audience",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-display-001"},
 	})
 	assert.False(t, resp.Eligibility[0].Eligible, "should not be eligible (not in segment)")
 }
 
-func TestIdentity_NoCapPackage(t *testing.T) {
+func TestIdentity_NoSegmentTargeting(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-nocap", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-no-cap"},
+		RequestID:  "id-no-seg",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-no-segments"},
 	})
-	assert.True(t, resp.Eligibility[0].Eligible, "pkg-no-cap should always be eligible")
+	assert.True(t, resp.Eligibility[0].Eligible, "package with no segment targeting should always be eligible")
 }
 
 func TestIdentity_UnknownPackage(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "id-unknown", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-unknown"},
+		RequestID:  "id-unknown",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-unknown"},
 	})
-	// Unknown package with no identity config -> eligible (no restrictions).
 	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
 }
 
 func TestIdentity_RequestIDPreserved(t *testing.T) {
 	engine, _, resolved := setupIdentityEngine(t)
 	resp, _ := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "keep-this", Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}}, PackageIDs: []string{"pkg-no-cap"},
+		RequestID:  "keep-this",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-no-segments"},
 	})
 	assert.Equal(t, "keep-this", resp.RequestID)
 }
 
-// --- Source Provenance Tests ---
-
-func TestIdentity_SourceIDFallsBackToProviderID(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
+// TestIdentity_MultiIdentitySegmentUnion exercises the segment fan-out across
+// multiple identities for the same user: profiles are merged, and a package
+// targeting any one of the merged segments matches.
+func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
+	engine, store, _ := setupIdentityEngine(t)
 	ctx := context.Background()
 
-	// No source_id -> engine uses providerID ("test-provider").
-	resp, err := engine.RecordExposure(ctx, &ExposeRequest{
-		UserToken:    "user-src",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-src-1",
+	// One identity carries "cooking", another carries "home".
+	store.SetUserProfile("uid-cooking", map[string]float64{"cooking": 1.0})
+	store.SetUserProfile("uid-home", map[string]float64{"home": 1.0})
+
+	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
+	resolved := &ResolvedPackages{
+		SegmentIndex: map[string][]string{
+			"cooking": {"pkg-display-001"},
+			"home":    {"pkg-display-001"},
+		},
+		IdentityConfigs: map[string]*PackageIdentityConfig{
+			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+		},
+	}
+
+	resp, err := engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
+		RequestID: "multi-id",
+		Identities: []tmproto.IdentityToken{
+			{UserToken: "uid-cooking"},
+			{UserToken: "uid-home"},
+		},
+		PackageIDs: []string{"pkg-display-001"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "pkg-display-001", resp.PackageID)
-
-	// Read back the binary log and verify source hash = hash("test-provider").
-	hash := HashToken("user-src")
-	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
-	blog := BinaryExposureLog(val)
-	require.Equal(t, 1, blog.Len())
-	assert.Equal(t, hashString("test-provider"), blog.SourceHash(0), "expected source hash of 'test-provider' when source_id not provided")
-}
-
-func TestIdentity_SourceIDStampedOnBinaryLog(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	_, err := engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-cnn-v2",
-		UserToken:    "user-source-stamp",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-src-2",
-	})
-	require.NoError(t, err)
-
-	hash := HashToken("user-source-stamp")
-	val, _, _ := engine.store.Get(ctx, "user:exposures:"+hash)
-	blog := BinaryExposureLog(val)
-	require.Equal(t, 1, blog.Len())
-	assert.Equal(t, hashString("agent-cnn-v2"), blog.SourceHash(0), "expected source hash of 'agent-cnn-v2'")
-}
-
-func TestIdentity_SourceNamespacesSortedSetMembers(t *testing.T) {
-	engine, _, _ := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	// Two different sources submit the same impression_id.
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-a",
-		UserToken:    "user-ns",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-dup",
-	})
-	_, _ = engine.RecordExposure(ctx, &ExposeRequest{
-		SourceID:     "agent-b",
-		UserToken:    "user-ns",
-		PackageID:    "pkg-display-001",
-		ImpressionID: "imp-dup",
-	})
-
-	// ZCount should show 2 distinct members (agent-a:imp-dup and agent-b:imp-dup).
-	hash := HashToken("user-ns")
-	key := "freq:pkg:pkg-display-001:" + hash
-	count, err := engine.store.ZCount(ctx, key, 0, math.MaxFloat64)
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), count, "expected 2 sorted set members (namespaced by source)")
+	assert.True(t, resp.Eligibility[0].Eligible, "merged profile (cooking + home) should match pkg-display-001")
 }

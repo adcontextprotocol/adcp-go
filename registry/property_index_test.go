@@ -121,15 +121,13 @@ func TestPropertyIndex_Concurrent(t *testing.T) {
 
 	// Concurrent readers
 	for range 100 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			idx.LookupByID("prop")
 			idx.LookupByRID(50)
 			idx.LookupByDomain("example.com")
 			idx.PropertyRID("prop")
 			idx.Count()
-		}()
+		})
 	}
 
 	wg.Wait()

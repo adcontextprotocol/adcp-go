@@ -54,7 +54,6 @@ type TMPIdentityResponse struct {
 }
 
 type TMPEligibility struct {
-	PackageID   string   `json:"package_id"`
-	Eligible    bool     `json:"eligible"`
-	IntentScore *float64 `json:"intent_score,omitempty"`
+	PackageID string `json:"package_id"`
+	Eligible  bool   `json:"eligible"`
 }
