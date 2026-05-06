@@ -52,6 +52,7 @@
     "/schemas/latest/core/catalog.json": "json.RawMessage",
     "/schemas/latest/core/brand-ref.json": "json.RawMessage",
     "/schemas/latest/core/creative-manifest.json": "json.RawMessage",
+    "/schemas/latest/core/seller-agent-ref.json": "json.RawMessage",
     "/schemas/latest/content-standards/artifact.json": "json.RawMessage"
   }
 }
