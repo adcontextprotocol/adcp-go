@@ -8,15 +8,13 @@ import (
 // MockStore is an in-memory Store for unit tests.
 type MockStore struct {
 	mu     sync.RWMutex
-	hashes map[string]map[string]string  // key -> field -> value
-	sets   map[string]map[string]struct{} // key -> set of members
+	hashes map[string]map[string]string // key -> field -> value
 }
 
 // NewMockStore creates an empty MockStore.
 func NewMockStore() *MockStore {
 	return &MockStore{
 		hashes: make(map[string]map[string]string),
-		sets:   make(map[string]map[string]struct{}),
 	}
 }
 
@@ -27,12 +25,6 @@ func (m *MockStore) HSetBatch(_ context.Context, items []HSetItem) error {
 		m.hsetLocked(it.Key, it.Field, it.Value)
 	}
 	return nil
-}
-
-func (m *MockStore) HExists(_ context.Context, key, field string) (bool, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.hexistsLocked(key, field), nil
 }
 
 func (m *MockStore) HExistsBatch(_ context.Context, lookups []HLookup) ([]bool, error) {
@@ -71,16 +63,6 @@ func (m *MockStore) HGetAllBatch(ctx context.Context, keys []string) ([]map[stri
 	return out, nil
 }
 
-func (m *MockStore) HDel(_ context.Context, key string, fields []string) error {
-	if len(fields) == 0 {
-		return nil
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.hdelLocked(key, fields)
-	return nil
-}
-
 func (m *MockStore) HDelBatch(_ context.Context, items []HDelItem) error {
 	if len(items) == 0 {
 		return nil
@@ -93,64 +75,6 @@ func (m *MockStore) HDelBatch(_ context.Context, items []HDelItem) error {
 		}
 		m.hdelLocked(it.Key, it.Fields)
 	}
-	return nil
-}
-
-func (m *MockStore) SAdd(_ context.Context, key string, members []string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sets[key]
-	if !ok {
-		s = make(map[string]struct{})
-		m.sets[key] = s
-	}
-	for _, mem := range members {
-		s[mem] = struct{}{}
-	}
-	return nil
-}
-
-func (m *MockStore) SRem(_ context.Context, key string, members []string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	s, ok := m.sets[key]
-	if !ok {
-		return nil
-	}
-	for _, mem := range members {
-		delete(s, mem)
-	}
-	if len(s) == 0 {
-		delete(m.sets, key)
-	}
-	return nil
-}
-
-func (m *MockStore) SMembers(_ context.Context, key string) ([]string, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	s, ok := m.sets[key]
-	if !ok {
-		return nil, nil
-	}
-	out := make([]string, 0, len(s))
-	for mem := range s {
-		out = append(out, mem)
-	}
-	return out, nil
-}
-
-func (m *MockStore) Del(_ context.Context, key string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	delete(m.hashes, key)
-	delete(m.sets, key)
 	return nil
 }
 

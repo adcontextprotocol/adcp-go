@@ -3,16 +3,13 @@ package audience
 import "context"
 
 // Store is the low-level backend for audience membership state. Implementations
-// operate on raw hash and set keys; the Service layer hashes user identities
-// and formats keys before calling Store.
+// operate on raw hash keys; the Service layer hashes user identities and
+// formats keys before calling Store.
 type Store interface {
 	// HSetBatch performs HSET for multiple (key, field, value) triples in a
 	// single pipelined round-trip. Items targeting the same key are grouped
 	// into one HSET command per implementation.
 	HSetBatch(ctx context.Context, items []HSetItem) error
-
-	// HExists reports whether field exists under key (HEXISTS).
-	HExists(ctx context.Context, key, field string) (bool, error)
 
 	// HExistsBatch checks one field per key for multiple (key, field) pairs.
 	// Result order matches the input order.
@@ -26,28 +23,9 @@ type Store interface {
 	// the input slice order. Missing keys produce empty maps at their index.
 	HGetAllBatch(ctx context.Context, keys []string) ([]map[string]string, error)
 
-	// HDel removes the named fields from the hash at key (HDEL). Returns nil
-	// when fields is empty.
-	HDel(ctx context.Context, key string, fields []string) error
-
 	// HDelBatch performs HDEL for multiple (key, fields) pairs in a single
 	// pipelined round-trip.
 	HDelBatch(ctx context.Context, items []HDelItem) error
-
-	// SAdd adds members to the set at key (SADD). Returns nil when members
-	// is empty.
-	SAdd(ctx context.Context, key string, members []string) error
-
-	// SRem removes members from the set at key (SREM). Returns nil when
-	// members is empty.
-	SRem(ctx context.Context, key string, members []string) error
-
-	// SMembers returns all members of the set at key (SMEMBERS). Returns nil
-	// when key does not exist.
-	SMembers(ctx context.Context, key string) ([]string, error)
-
-	// Del removes the key entirely (DEL).
-	Del(ctx context.Context, key string) error
 }
 
 // HSetItem is one entry in a multi-key HSET batch.

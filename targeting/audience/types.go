@@ -1,17 +1,19 @@
 // Package audience provides storage and lookup for audience membership.
 //
 // State is stored as Valkey hashes keyed by hashed user identity, with one
-// field per audience the user belongs to. A parallel set keyed by audience
-// ID lists the member hashes so DeleteAudience can cleanly enumerate and
-// remove member references.
+// field per audience the user belongs to.
 //
 // Schema:
 //
 //	audience:user:{sha256(user_token)[:16]}     HSET   field=audienceID, value=score (string-encoded float)
-//	audience:list:{audienceID}                  SET    members=user-identity hashes
 //
 // Score 0 indicates membership without an associated score; non-zero scores
 // are stored verbatim as decimal strings and parsed back on read.
+//
+// The Service owns no audience-side reverse index. Callers that need to
+// enumerate members of an audience (e.g., to scrub stored memberships when
+// an audience is retired) MUST track that mapping themselves and issue
+// remove-side Upserts to clear the relevant fields.
 package audience
 
 // Member represents one user's membership in an audience.

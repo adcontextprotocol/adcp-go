@@ -35,11 +35,6 @@ func (s *Store) HSetBatch(ctx context.Context, items []audience.HSetItem) error 
 	return err
 }
 
-// HExists reports whether field exists under key.
-func (s *Store) HExists(ctx context.Context, key, field string) (bool, error) {
-	return s.client.HExists(ctx, key, field)
-}
-
 // HExistsBatch checks one (key, field) pair per lookup, returning results in
 // the same order. Pipelined.
 func (s *Store) HExistsBatch(ctx context.Context, lookups []audience.HLookup) ([]bool, error) {
@@ -114,15 +109,6 @@ func (s *Store) HGetAllBatch(ctx context.Context, keys []string) ([]map[string]s
 	return out, nil
 }
 
-// HDel removes the named fields from key.
-func (s *Store) HDel(ctx context.Context, key string, fields []string) error {
-	if len(fields) == 0 {
-		return nil
-	}
-	_, err := s.client.HDel(ctx, key, fields)
-	return err
-}
-
 // HDelBatch performs HDEL for multiple (key, fields) pairs in one pipelined
 // round-trip.
 func (s *Store) HDelBatch(ctx context.Context, items []audience.HDelItem) error {
@@ -142,45 +128,5 @@ func (s *Store) HDelBatch(ctx context.Context, items []audience.HDelItem) error 
 		return nil
 	}
 	_, err := s.client.Exec(ctx, *batch, true)
-	return err
-}
-
-// SAdd adds members to the set at key.
-func (s *Store) SAdd(ctx context.Context, key string, members []string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	_, err := s.client.SAdd(ctx, key, members)
-	return err
-}
-
-// SRem removes members from the set at key.
-func (s *Store) SRem(ctx context.Context, key string, members []string) error {
-	if len(members) == 0 {
-		return nil
-	}
-	_, err := s.client.SRem(ctx, key, members)
-	return err
-}
-
-// SMembers returns every member of the set at key. Returns nil for missing keys.
-func (s *Store) SMembers(ctx context.Context, key string) ([]string, error) {
-	set, err := s.client.SMembers(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if len(set) == 0 {
-		return nil, nil
-	}
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	return out, nil
-}
-
-// Del removes the key entirely.
-func (s *Store) Del(ctx context.Context, key string) error {
-	_, err := s.client.Del(ctx, []string{key})
 	return err
 }

@@ -128,50 +128,6 @@ func TestService_UpsertBatch_MultipleAudiences(t *testing.T) {
 	assert.False(t, has)
 }
 
-func TestService_DeleteAudience(t *testing.T) {
-	svc := New(NewMockStore())
-	ctx := context.Background()
-
-	require.NoError(t, svc.UpsertBatch(ctx, []AudienceUpsert{
-		{AudienceID: "del-me", Add: []Member{{UserToken: "u1"}, {UserToken: "u2"}}},
-		{AudienceID: "keep-me", Add: []Member{{UserToken: "u1"}}},
-	}))
-
-	require.NoError(t, svc.DeleteAudience(ctx, "del-me"))
-
-	assert.False(t, isMember(t, svc, "u1", "del-me"))
-	assert.False(t, isMember(t, svc, "u2", "del-me"))
-	assert.True(t, isMember(t, svc, "u1", "keep-me"), "unrelated audience must survive delete")
-}
-
-func TestService_DeleteAudience_ThenReUpsert(t *testing.T) {
-	svc := New(NewMockStore())
-	ctx := context.Background()
-
-	require.NoError(t, svc.Upsert(ctx, AudienceUpsert{
-		AudienceID: "transient",
-		Add:        []Member{{UserToken: "u1"}},
-	}))
-	require.NoError(t, svc.DeleteAudience(ctx, "transient"))
-	require.NoError(t, svc.Upsert(ctx, AudienceUpsert{
-		AudienceID: "transient",
-		Add:        []Member{{UserToken: "u2", Score: 0.3}},
-	}))
-
-	assert.False(t, isMember(t, svc, "u1", "transient"), "old member must not resurface")
-	assert.True(t, isMember(t, svc, "u2", "transient"))
-
-	m, err := svc.Memberships(ctx, "u2")
-	require.NoError(t, err)
-	assert.Equal(t, 0.3, m["transient"])
-}
-
-func TestService_DeleteAudience_Missing(t *testing.T) {
-	svc := New(NewMockStore())
-	ctx := context.Background()
-	require.NoError(t, svc.DeleteAudience(ctx, "never-existed"))
-}
-
 func TestService_IsMemberBatch(t *testing.T) {
 	svc := New(NewMockStore())
 	ctx := context.Background()
@@ -245,5 +201,4 @@ func TestService_Upsert_AddThenReAddOverwritesScore(t *testing.T) {
 
 func TestKeyPrefix_Pinned(t *testing.T) {
 	assert.Equal(t, "audience:user:", userKeyPrefix)
-	assert.Equal(t, "audience:list:", audienceKeyPrefix)
 }

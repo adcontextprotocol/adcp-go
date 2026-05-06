@@ -4,7 +4,6 @@ package glidestore
 
 import (
 	"context"
-	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,29 +66,25 @@ func TestIntegration_AudienceStore_Memberships(t *testing.T) {
 	assert.Empty(t, results[2])
 }
 
-func TestIntegration_AudienceStore_RemoveAndDelete(t *testing.T) {
+func TestIntegration_AudienceStore_Remove(t *testing.T) {
 	_, store := startValkey9(t)
 	svc := audience.New(store)
 	ctx := context.Background()
 
 	require.NoError(t, svc.UpsertBatch(ctx, []audience.AudienceUpsert{
-		{AudienceID: "del-me", Add: []audience.Member{{UserToken: "u1"}, {UserToken: "u2"}, {UserToken: "u3"}}},
+		{AudienceID: "promo", Add: []audience.Member{{UserToken: "u1"}, {UserToken: "u2"}, {UserToken: "u3"}}},
 		{AudienceID: "keep-me", Add: []audience.Member{{UserToken: "u1"}}},
 	}))
 
 	require.NoError(t, svc.Upsert(ctx, audience.AudienceUpsert{
-		AudienceID: "del-me",
+		AudienceID: "promo",
 		Remove:     []string{"u3"},
 	}))
 
-	assert.False(t, audienceMember(t, svc, "u3", "del-me"), "u3 removed individually")
-
-	require.NoError(t, svc.DeleteAudience(ctx, "del-me"))
-
-	for _, u := range []string{"u1", "u2", "u3"} {
-		assert.False(t, audienceMember(t, svc, u, "del-me"), "%s should be cleared by DeleteAudience", u)
-	}
-	assert.True(t, audienceMember(t, svc, "u1", "keep-me"), "unrelated audience must survive delete")
+	assert.False(t, audienceMember(t, svc, "u3", "promo"), "u3 removed individually")
+	assert.True(t, audienceMember(t, svc, "u1", "promo"), "u1 still a member")
+	assert.True(t, audienceMember(t, svc, "u2", "promo"), "u2 still a member")
+	assert.True(t, audienceMember(t, svc, "u1", "keep-me"), "unrelated audience unaffected")
 }
 
 func TestIntegration_AudienceStore_IsMemberBatch(t *testing.T) {
@@ -122,21 +117,11 @@ func TestIntegration_AudienceStore_RawHashShape(t *testing.T) {
 		Add:        []audience.Member{{UserToken: "u-shape", Score: 0.75}},
 	}))
 
-	// Validate the on-disk schema directly: user-keyed hash + audience-keyed set.
+	// Validate the on-disk schema directly: user-keyed hash holds the score.
 	hash := identityhash.Hash("u-shape")
 	userKey := "audience:user:" + hash
-	listKey := "audience:list:premium"
 
 	fields, err := client.HGetAll(ctx, userKey)
 	require.NoError(t, err)
 	assert.Equal(t, "0.75", fields["premium"])
-
-	members, err := client.SMembers(ctx, listKey)
-	require.NoError(t, err)
-	got := make([]string, 0, len(members))
-	for m := range members {
-		got = append(got, m)
-	}
-	sort.Strings(got)
-	assert.Equal(t, []string{hash}, got)
 }
