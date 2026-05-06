@@ -20,13 +20,6 @@ func NewMockStore() *MockStore {
 	}
 }
 
-func (m *MockStore) HSet(_ context.Context, key, field, value string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.hsetLocked(key, field, value)
-	return nil
-}
-
 func (m *MockStore) HSetBatch(_ context.Context, items []HSetItem) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -84,15 +77,21 @@ func (m *MockStore) HDel(_ context.Context, key string, fields []string) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	h, ok := m.hashes[key]
-	if !ok {
+	m.hdelLocked(key, fields)
+	return nil
+}
+
+func (m *MockStore) HDelBatch(_ context.Context, items []HDelItem) error {
+	if len(items) == 0 {
 		return nil
 	}
-	for _, f := range fields {
-		delete(h, f)
-	}
-	if len(h) == 0 {
-		delete(m.hashes, key)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, it := range items {
+		if len(it.Fields) == 0 {
+			continue
+		}
+		m.hdelLocked(it.Key, it.Fields)
 	}
 	return nil
 }
@@ -163,6 +162,21 @@ func (m *MockStore) hsetLocked(key, field, value string) {
 		m.hashes[key] = h
 	}
 	h[field] = value
+}
+
+// hdelLocked removes fields from the hash at key, deleting the key when the
+// hash becomes empty (matching Valkey HDEL semantics). Caller holds the lock.
+func (m *MockStore) hdelLocked(key string, fields []string) {
+	h, ok := m.hashes[key]
+	if !ok {
+		return
+	}
+	for _, f := range fields {
+		delete(h, f)
+	}
+	if len(h) == 0 {
+		delete(m.hashes, key)
+	}
 }
 
 // hexistsLocked reports whether field exists under key; caller holds lock.

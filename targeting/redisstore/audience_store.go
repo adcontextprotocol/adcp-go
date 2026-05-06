@@ -11,11 +11,6 @@ import (
 
 var _ audience.Store = (*Store)(nil)
 
-// HSet sets a single hash field.
-func (s *Store) HSet(ctx context.Context, key, field, value string) error {
-	return s.client.HSet(ctx, key, field, value).Err()
-}
-
 // HSetBatch performs HSET for multiple (key, field, value) triples in one
 // pipelined round-trip. Items targeting the same key are grouped into a
 // single HSET command.
@@ -70,16 +65,10 @@ func (s *Store) HExistsBatch(ctx context.Context, lookups []audience.HLookup) ([
 	return out, nil
 }
 
-// HGetAll returns every (field, value) under key. Empty map for missing keys.
+// HGetAll returns every (field, value) under key. Empty map for missing keys —
+// go-redis returns an empty map rather than nil for unknown keys.
 func (s *Store) HGetAll(ctx context.Context, key string) (map[string]string, error) {
-	res, err := s.client.HGetAll(ctx, key).Result()
-	if err != nil {
-		return nil, err
-	}
-	if res == nil {
-		return map[string]string{}, nil
-	}
-	return res, nil
+	return s.client.HGetAll(ctx, key).Result()
 }
 
 // HGetAllBatch returns HGETALL results for each key in input order. Missing
@@ -102,9 +91,6 @@ func (s *Store) HGetAllBatch(ctx context.Context, keys []string) ([]map[string]s
 		if err != nil {
 			return nil, fmt.Errorf("redisstore: HGETALL result %d: %w", i, err)
 		}
-		if m == nil {
-			m = map[string]string{}
-		}
 		out[i] = m
 	}
 	return out, nil
@@ -116,6 +102,28 @@ func (s *Store) HDel(ctx context.Context, key string, fields []string) error {
 		return nil
 	}
 	return s.client.HDel(ctx, key, fields...).Err()
+}
+
+// HDelBatch performs HDEL for multiple (key, fields) pairs in one pipelined
+// round-trip.
+func (s *Store) HDelBatch(ctx context.Context, items []audience.HDelItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	pipe := s.client.Pipeline()
+	queued := 0
+	for _, it := range items {
+		if len(it.Fields) == 0 {
+			continue
+		}
+		pipe.HDel(ctx, it.Key, it.Fields...)
+		queued++
+	}
+	if queued == 0 {
+		return nil
+	}
+	_, err := pipe.Exec(ctx)
+	return err
 }
 
 // SAdd adds members to the set at key.

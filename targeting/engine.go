@@ -335,7 +335,11 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 			e.metrics.StoreError("load_user_audiences", err)
 			memberships = make([]map[string]float64, len(userTokens))
 		}
-		userSegments := mergeSegments(memberships)
+		merged := mergeMemberships(memberships)
+		userSegments := make([]string, 0, len(merged))
+		for seg := range merged {
+			userSegments = append(userSegments, seg)
+		}
 		segmentEligible = resolved.SegmentCandidates(userSegments)
 	}
 
@@ -362,23 +366,20 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}, nil
 }
 
-// mergeSegments unions every audience present across the per-identity
-// membership maps. Returns nil when no identity has any segment.
-func mergeSegments(memberships []map[string]float64) []string {
-	seen := make(map[string]struct{})
+// mergeMemberships unions every audience across the per-identity membership
+// maps, taking the highest score per audience. The engine only consumes the
+// keys today (segment presence drives package eligibility), but preserving
+// scores keeps the structure available for score-aware downstream consumers.
+func mergeMemberships(memberships []map[string]float64) map[string]float64 {
+	merged := make(map[string]float64)
 	for _, m := range memberships {
-		for seg := range m {
-			seen[seg] = struct{}{}
+		for seg, score := range m {
+			if existing, ok := merged[seg]; !ok || score > existing {
+				merged[seg] = score
+			}
 		}
 	}
-	if len(seen) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(seen))
-	for seg := range seen {
-		out = append(out, seg)
-	}
-	return out
+	return merged
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.

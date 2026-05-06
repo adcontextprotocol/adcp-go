@@ -6,11 +6,9 @@ import "context"
 // operate on raw hash and set keys; the Service layer hashes user identities
 // and formats keys before calling Store.
 type Store interface {
-	// HSet sets or updates a single hash field (HSET).
-	HSet(ctx context.Context, key, field, value string) error
-
 	// HSetBatch performs HSET for multiple (key, field, value) triples in a
-	// single pipelined round-trip.
+	// single pipelined round-trip. Items targeting the same key are grouped
+	// into one HSET command per implementation.
 	HSetBatch(ctx context.Context, items []HSetItem) error
 
 	// HExists reports whether field exists under key (HEXISTS).
@@ -31,6 +29,10 @@ type Store interface {
 	// HDel removes the named fields from the hash at key (HDEL). Returns nil
 	// when fields is empty.
 	HDel(ctx context.Context, key string, fields []string) error
+
+	// HDelBatch performs HDEL for multiple (key, fields) pairs in a single
+	// pipelined round-trip.
+	HDelBatch(ctx context.Context, items []HDelItem) error
 
 	// SAdd adds members to the set at key (SADD). Returns nil when members
 	// is empty.
@@ -59,4 +61,10 @@ type HSetItem struct {
 type HLookup struct {
 	Key   string
 	Field string
+}
+
+// HDelItem is one (key, fields) pair for batch HDEL.
+type HDelItem struct {
+	Key    string
+	Fields []string
 }

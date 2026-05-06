@@ -4,8 +4,6 @@ package redisstore
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"sort"
 	"testing"
 
@@ -13,22 +11,25 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
 )
 
-// sha256First16Hex matches audience.hashIdentity. Duplicated here because the
-// service-side helper is unexported; pinning the format in tests catches a
-// silent change to the on-disk schema.
-func sha256First16Hex(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:16])
+// audienceMember is a single-pair helper around IsMemberBatch.
+func audienceMember(t *testing.T, svc *audience.Service, userToken, audienceID string) bool {
+	t.Helper()
+	r, err := svc.IsMemberBatch(context.Background(), []audience.MembershipLookup{
+		{UserToken: userToken, AudienceID: audienceID},
+	})
+	require.NoError(t, err)
+	require.Len(t, r, 1)
+	return r[0]
 }
 
 func TestIntegration_AudienceStore_UpsertAndIsMember(t *testing.T) {
 	_, store := startValkey9(t)
 	svc := audience.New(store)
-	ctx := context.Background()
 
-	require.NoError(t, svc.Upsert(ctx, audience.AudienceUpsert{
+	require.NoError(t, svc.Upsert(context.Background(), audience.AudienceUpsert{
 		AudienceID: "cooking_fans",
 		Add: []audience.Member{
 			{UserToken: "id5-alice", Score: 0.9},
@@ -36,13 +37,8 @@ func TestIntegration_AudienceStore_UpsertAndIsMember(t *testing.T) {
 		},
 	}))
 
-	in, err := svc.IsMember(ctx, "id5-alice", "cooking_fans")
-	require.NoError(t, err)
-	assert.True(t, in)
-
-	in, err = svc.IsMember(ctx, "id5-charlie", "cooking_fans")
-	require.NoError(t, err)
-	assert.False(t, in)
+	assert.True(t, audienceMember(t, svc, "id5-alice", "cooking_fans"))
+	assert.False(t, audienceMember(t, svc, "id5-charlie", "cooking_fans"))
 }
 
 func TestIntegration_AudienceStore_Memberships(t *testing.T) {
@@ -86,17 +82,14 @@ func TestIntegration_AudienceStore_RemoveAndDelete(t *testing.T) {
 		Remove:     []string{"u3"},
 	}))
 
-	in, _ := svc.IsMember(ctx, "u3", "del-me")
-	assert.False(t, in, "u3 removed individually")
+	assert.False(t, audienceMember(t, svc, "u3", "del-me"), "u3 removed individually")
 
 	require.NoError(t, svc.DeleteAudience(ctx, "del-me"))
 
 	for _, u := range []string{"u1", "u2", "u3"} {
-		in, _ := svc.IsMember(ctx, u, "del-me")
-		assert.False(t, in, "%s should be cleared by DeleteAudience", u)
+		assert.False(t, audienceMember(t, svc, u, "del-me"), "%s should be cleared by DeleteAudience", u)
 	}
-	in, _ = svc.IsMember(ctx, "u1", "keep-me")
-	assert.True(t, in, "unrelated audience must survive delete")
+	assert.True(t, audienceMember(t, svc, "u1", "keep-me"), "unrelated audience must survive delete")
 }
 
 func TestIntegration_AudienceStore_IsMemberBatch(t *testing.T) {
@@ -129,7 +122,7 @@ func TestIntegration_AudienceStore_RawHashShape(t *testing.T) {
 		Add:        []audience.Member{{UserToken: "u-shape", Score: 0.75}},
 	}))
 
-	hash := sha256First16Hex("u-shape")
+	hash := identityhash.Hash("u-shape")
 	userKey := "audience:user:" + hash
 	listKey := "audience:list:premium"
 

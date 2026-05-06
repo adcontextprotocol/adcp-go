@@ -2,9 +2,9 @@ package fcap
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
 )
 
 const (
@@ -110,12 +110,9 @@ func (s *Service) IsCappedBatch(ctx context.Context, lookups []CapLookup) ([]boo
 	return s.store.FieldExistsBatch(ctx, storeLookups)
 }
 
-// identityKey hashes userIdentity (SHA-256, first 16 bytes hex) and prefixes it.
-// 16 bytes is enough for collision resistance at our user-identity scale and
-// keeps the stored key compact.
+// identityKey hashes userIdentity and prefixes it with keyPrefix.
 func identityKey(userIdentity string) string {
-	h := sha256.Sum256([]byte(userIdentity))
-	return keyPrefix + hex.EncodeToString(h[:16])
+	return keyPrefix + identityhash.Hash(userIdentity)
 }
 
 // fieldString joins SellerAgentURL and PackageID with fieldDelimiter.

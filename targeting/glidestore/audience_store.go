@@ -11,12 +11,6 @@ import (
 
 var _ audience.Store = (*Store)(nil)
 
-// HSet sets a single hash field.
-func (s *Store) HSet(ctx context.Context, key, field, value string) error {
-	_, err := s.client.HSet(ctx, key, map[string]string{field: value})
-	return err
-}
-
 // HSetBatch performs HSET for multiple (key, field, value) triples in one
 // pipelined round-trip. Items targeting the same key are grouped into a
 // single HSET command.
@@ -65,9 +59,9 @@ func (s *Store) HExistsBatch(ctx context.Context, lookups []audience.HLookup) ([
 	}
 	out := make([]bool, len(results))
 	for i, r := range results {
-		// Validated against valkey-glide/go/v2 v2.3.1: HEXISTS in a batch
-		// arrives as a plain bool. Surface the actual type if that ever
-		// changes so the failure mode is loud rather than silently false.
+		// HEXISTS arrives as plain bool from valkey-glide/go/v2 batch results.
+		// Surface unexpected types loudly so a wire-format change is caught
+		// rather than silently returning false.
 		b, ok := r.(bool)
 		if !ok {
 			return nil, fmt.Errorf("glidestore: HEXISTS result %d: expected bool, got %T", i, r)
@@ -126,6 +120,28 @@ func (s *Store) HDel(ctx context.Context, key string, fields []string) error {
 		return nil
 	}
 	_, err := s.client.HDel(ctx, key, fields)
+	return err
+}
+
+// HDelBatch performs HDEL for multiple (key, fields) pairs in one pipelined
+// round-trip.
+func (s *Store) HDelBatch(ctx context.Context, items []audience.HDelItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	batch := pipeline.NewStandaloneBatch(false)
+	queued := 0
+	for _, it := range items {
+		if len(it.Fields) == 0 {
+			continue
+		}
+		batch.HDel(it.Key, it.Fields)
+		queued++
+	}
+	if queued == 0 {
+		return nil
+	}
+	_, err := s.client.Exec(ctx, *batch, true)
 	return err
 }
 
