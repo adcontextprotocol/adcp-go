@@ -12,6 +12,7 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/router"
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmpclient"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
@@ -56,12 +57,16 @@ func setupStack(t *testing.T) *testStack {
 	})
 	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{})
 
-	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 0.8})
-	store.SetUserProfile("tok-bob", map[string]float64{"sports_fans": 0.5})
+	audSvc := audience.New(audience.NewMockStore())
+	require.NoError(t, audSvc.UpsertBatch(context.Background(), []audience.AudienceUpsert{
+		{AudienceID: "cooking_fans", Add: []audience.Member{{UserToken: "tok-alice", Score: 0.8}}},
+		{AudienceID: "sports_fans", Add: []audience.Member{{UserToken: "tok-bob", Score: 0.5}}},
+	}))
 
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "integration-identity",
 		Store:      store,
+		Audience:   audSvc,
 		Packages: []targeting.PackageConfig{
 			{PackageID: "pkg-food"},
 			{PackageID: "pkg-tech"},
@@ -292,7 +297,11 @@ func TestIntegration_Mediation(t *testing.T) {
 	store.SetAdd("topics:package:pkg-wine", "food.cooking", "food.beverage")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	store.SetUserProfile("tok-alice", map[string]float64{"cooking_fans": 1.0})
+	audSvc := audience.New(audience.NewMockStore())
+	require.NoError(t, audSvc.Upsert(context.Background(), audience.AudienceUpsert{
+		AudienceID: "cooking_fans",
+		Add:        []audience.Member{{UserToken: "tok-alice", Score: 1.0}},
+	}))
 
 	creativeManifest, _ := json.Marshal(map[string]any{
 		"format_id": "sponsored_card",
@@ -351,6 +360,7 @@ func TestIntegration_Mediation(t *testing.T) {
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "mediation-identity",
 		Store:      store,
+		Audience:   audSvc,
 		Packages: []targeting.PackageConfig{
 			{PackageID: "pkg-olive-oil"},
 			{PackageID: "pkg-cookware"},

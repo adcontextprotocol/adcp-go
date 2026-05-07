@@ -100,12 +100,13 @@ const (
 	UIDTypeOther               UIDType = "other"
 )
 
-// A package available for contextual matching. Synced to providers at media buy creation time — not sent per request. Providers cache this metadata and use it when evaluating context match requests for the placement.
+// A package available for contextual matching. Synced to providers at media buy creation time — not sent per request. Providers cache this metadata and use it when evaluating context match requests for the placement. The `seller_agent` field binds the package to the originating seller agent; providers MUST use this binding rather than re-deriving seller identity from media_buy_id.
 type AvailablePackage struct {
-	PackageID  string            `json:"package_id"`           // Unique identifier for the package
-	MediaBuyID string            `json:"media_buy_id"`         // Media buy that this package belongs to
-	FormatIDs  []json.RawMessage `json:"format_ids,omitempty"` // Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.
-	Catalogs   []json.RawMessage `json:"catalogs,omitempty"`   // The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.
+	PackageID   string            `json:"package_id"`           // Unique identifier for the package
+	MediaBuyID  string            `json:"media_buy_id"`         // Media buy that this package belongs to
+	SellerAgent json.RawMessage   `json:"seller_agent"`         // The seller agent that owns this package. `agent_url` MUST match one of `authorized_agents[].url` in the publisher's adagents.json authoritative for every property this package may serve. Providers SHOULD validate at sync time and reject mismatches with `seller_not_authorized`. Cached alongside the package and used for offer attribution, per-seller observability, and dispute resolution — not for request-time filtering.
+	FormatIDs   []json.RawMessage `json:"format_ids,omitempty"` // Creative format identifiers eligible for this package. Uses the standard AdCP format-id object with agent_url and id for unambiguous format resolution across namespaces.
+	Catalogs    []json.RawMessage `json:"catalogs,omitempty"`   // The buyer's catalogs attached to this package, with selectors (ids, gtins, tags, category, query) scoping which items are in play. References synced catalogs by catalog_id. The provider resolves items from its cached copy.
 }
 
 // Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.
@@ -138,7 +139,7 @@ type ContextMatchResponse struct {
 type ErrorResponse struct {
 	Type      string    `json:"type"`              // Message type discriminator for deserialization.
 	RequestID string    `json:"request_id"`        // Echoed request identifier from the original request
-	Code      ErrorCode `json:"code"`              // Machine-readable error code
+	Code      ErrorCode `json:"code"`              // Machine-readable error code. `seller_not_authorized` is returned by providers at sync time when an AvailablePackage declares a `seller_agent.agent_url` that is not present in the `authorized_agents` list of the publisher's adagents.json for a property the package claims to serve.
 	Message   string    `json:"message,omitempty"` // Human-readable error description for debugging
 }
 
@@ -173,6 +174,7 @@ type OfferPrice struct {
 // A buyer's response to a context match request. Generalizes package activation — a simple activation is an offer with just package_id. A rich response includes brand, price, summary, and optionally an inline creative manifest.
 type Offer struct {
 	PackageID        string            `json:"package_id"`                  // Package identifier from the media buy.
+	SellerAgent      json.RawMessage   `json:"seller_agent,omitempty"`      // Optional echo of the package's seller agent from sync-time metadata. Provided for publisher-side observability so log pipelines can attribute offers to sellers without round-tripping to the media-buy store. Non-authoritative: the binding on the cached AvailablePackage is source of truth. When omitted, the router MAY stamp this field from its cached package→seller map.
 	Brand            json.RawMessage   `json:"brand,omitempty"`             // Brand for this offer. Required when the product allows dynamic brands (brand selected at match time rather than fixed on the package). For single-brand packages, the brand is already known from the media buy.
 	Price            OfferPrice        `json:"price,omitempty"`             // Price for this offer. Only present when the product supports variable pricing. For fixed-price packages, price is already set on the media buy.
 	Summary          string            `json:"summary,omitempty"`           // Buyer-generated description of the offer, for the publisher to judge relevance. E.g., '50% off Goldenfield mayo — recipe integration'. The publisher (or their AI assistant) uses this to decide whether the offer fits the context.
@@ -183,7 +185,7 @@ type Offer struct {
 // Declares a TMP provider's endpoint, capabilities, and operational parameters. Used in router configuration (static YAML or dynamic API) and referenced by product-level provider entries. The publisher controls which providers participate in their ad decisioning. Endpoint URLs MUST be validated against SSRF, and dynamic registration endpoints MUST authenticate callers — see docs/trusted-match/specification#provider-registration-security.
 type ProviderRegistration struct {
 	ProviderID    string         `json:"provider_id"`              // Stable identifier for this provider registration. Used in logs, metrics, and cache keys. Publishers assign this — it is not the provider's agent_url.
-	Endpoint      string         `json:"endpoint"`                 // Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. MUST be HTTPS in production, validated against the canonical reserved IPv4 and IPv6 ranges, with the TCP connection pinned to the validated IP (DNS re-resolution alone is insufficient against rebinding). See docs/trusted-match/specification#provider-registration-security and docs/building/implementation/security#webhook-url-validation-ssrf.
+	Endpoint      string         `json:"endpoint"`                 // Base URL the router calls. The router appends /context for Context Match and /identity for Identity Match. MUST be HTTPS in production, validated against the canonical reserved IPv4 and IPv6 ranges, with the TCP connection pinned to the validated IP (DNS re-resolution alone is insufficient against rebinding). Publishers comparing two provider registrations for the same `endpoint` MUST canonicalize both per the AdCP URL canonicalization rules; two registrations differing only in case, default port, or path-slash collapsing are the same provider. See docs/trusted-match/specification#provider-registration-security, docs/building/implementation/security#webhook-url-validation-ssrf, and docs/reference/url-canonicalization.
 	ContextMatch  bool           `json:"context_match,omitempty"`  // Provider handles Context Match requests (POST /context).
 	IdentityMatch bool           `json:"identity_match,omitempty"` // Provider handles Identity Match requests (POST /identity).
 	Countries     []string       `json:"countries,omitempty"`      // ISO 3166-1 alpha-2 country codes this provider serves. The router filters Identity Match providers by the request's country field. MUST be present and non-empty when identity_match is true.

@@ -72,16 +72,6 @@ func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 	m.strings["mediabuy:"+mb.MediaBuyID] = stringEntry{value: string(data)}
 }
 
-// SetUserProfile stores a user's segment memberships. Test helper.
-func (m *MockStore) SetUserProfile(token string, segments map[string]float64) {
-	hash := HashToken(token)
-	profile := UserProfile{Segments: segments}
-	data, _ := json.Marshal(profile)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.strings["user:profile:"+hash] = stringEntry{value: string(data)}
-}
-
 // SetPackageContextConfig stores context config for a package. Test helper.
 func (m *MockStore) SetPackageContextConfig(pkgID string, cfg PackageContextConfig) {
 	data, _ := json.Marshal(cfg)
