@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/sha512"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -30,6 +35,9 @@ func main() {
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
 	requireSig := flag.Bool("require-signature", false, "Reject /tmp/identity requests that arrive without a TMP signature")
 	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
+	tmpxKid := flag.String("tmpx-kid", "", "Buyer-cluster TMPX recipient kid (≤8 chars). Enables TMPX token generation when set together with --tmpx-pubkey-path.")
+	tmpxPubKey := flag.String("tmpx-pubkey-path", "", "Path to the TMPX recipient X25519 public key (32 bytes, hex- or base64url-encoded).")
+	tmpxCountry := flag.String("tmpx-country", "", "ISO 3166-1 alpha-2 country code stamped into the TMPX header. Required when TMPX is enabled.")
 	flag.Parse()
 
 	listenAddr := resolveAddr(*addr)
@@ -72,6 +80,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	tmpxCfg, err := loadTmpxConfig(
+		resolveString(*tmpxKid, "TMP_IDENTITY_TMPX_KID"),
+		resolveString(*tmpxPubKey, "TMP_IDENTITY_TMPX_PUBKEY_PATH"),
+		resolveString(*tmpxCountry, "TMP_IDENTITY_TMPX_COUNTRY"),
+	)
+	if err != nil {
+		slog.Error("tmpx config load failed", "error", err)
+		os.Exit(1)
+	}
+	if tmpxCfg != nil {
+		slog.Info("TMPX generation enabled", "kid", tmpxCfg.Kid, "country", tmpxCfg.Country)
+	}
+
 	mux := http.NewServeMux()
 
 	identityHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +131,13 @@ func main() {
 			RequestID:          result.RequestID,
 			EligiblePackageIDs: eligible,
 			TTLSec:             60,
+		}
+		if tmpxCfg != nil && len(eligible) > 0 {
+			if token, terr := buildTmpxToken(tmpxCfg, req.Identities); terr != nil {
+				slog.Warn("tmpx generation failed, response will omit tmpx", "request_id", req.RequestID, "error", terr)
+			} else {
+				resp.Tmpx = token
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -260,6 +288,117 @@ func resolveString(flagVal, envName string) string {
 		return flagVal
 	}
 	return os.Getenv(envName)
+}
+
+// tmpxConfig holds the resolved TMPX recipient settings used to seal tokens
+// alongside identity-match responses.
+type tmpxConfig struct {
+	Kid       string
+	Country   string
+	PublicKey *ecdh.PublicKey
+}
+
+// loadTmpxConfig validates flag inputs and parses the recipient X25519 public
+// key from disk. Returns (nil, nil) when TMPX is not configured.
+func loadTmpxConfig(kid, pubKeyPath, country string) (*tmpxConfig, error) {
+	configured := kid != "" || pubKeyPath != "" || country != ""
+	if !configured {
+		return nil, nil
+	}
+	if kid == "" || pubKeyPath == "" || country == "" {
+		return nil, errors.New("TMPX requires all three of --tmpx-kid, --tmpx-pubkey-path, --tmpx-country")
+	}
+	raw, err := os.ReadFile(pubKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("read TMPX public key: %w", err)
+	}
+	pkBytes, err := decodeX25519PublicKey(string(raw))
+	if err != nil {
+		return nil, fmt.Errorf("parse TMPX public key at %s: %w", pubKeyPath, err)
+	}
+	pk, err := tmproto.LoadX25519PublicKey(pkBytes)
+	if err != nil {
+		return nil, err
+	}
+	return &tmpxConfig{Kid: kid, Country: country, PublicKey: pk}, nil
+}
+
+// decodeX25519PublicKey accepts hex or base64url (no-pad / padded) encoding
+// of a 32-byte X25519 public key, with surrounding whitespace tolerated.
+func decodeX25519PublicKey(s string) ([]byte, error) {
+	s = strings.TrimSpace(s)
+	if b, err := hex.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if b, err := base64.URLEncoding.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) == 32 {
+		return b, nil
+	}
+	return nil, fmt.Errorf("expected 32-byte X25519 public key in hex or base64url")
+}
+
+// uidToTmpxTypeID maps spec UID types to TMPX type-ID registry entries.
+var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
+	tmproto.UIDTypeUID2:                tmproto.TmpxTypeUID2,
+	tmproto.UIDTypeEUID:                tmproto.TmpxTypeEUID,
+	tmproto.UIDTypeID5:                 tmproto.TmpxTypeID5,
+	tmproto.UIDTypeRampID:              tmproto.TmpxTypeRampID,
+	tmproto.UIDTypeRampIDDerived:       tmproto.TmpxTypeRampIDDerived,
+	tmproto.UIDTypeMAID:                tmproto.TmpxTypeMAID,
+	tmproto.UIDTypePairID:              tmproto.TmpxTypePairID,
+	tmproto.UIDTypeHashedEmail:         tmproto.TmpxTypeHashedEmail,
+	tmproto.UIDTypePublisherFirstParty: tmproto.TmpxTypePublisherFirstParty,
+}
+
+// buildTmpxToken seals an HPKE TMPX token containing the resolved identities.
+// Identities whose UIDType has no TMPX type-ID mapping are dropped silently
+// per the spec's forward-compatibility rule (unknown types skipped).
+//
+// The string→binary conversion in stubBinaryToken is a reference stub —
+// real buyer deployments decode UID2/RampID/etc. according to the source
+// graph's encoding. Tokens produced here are not interoperable with a real
+// buyer master.
+func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error) {
+	entries := make([]tmproto.TmpxEntry, 0, len(ids))
+	for _, id := range ids {
+		typeID, ok := uidToTmpxTypeID[id.UIDType]
+		if !ok {
+			continue
+		}
+		bin, err := stubBinaryToken(typeID, id.UserToken)
+		if err != nil {
+			return "", err
+		}
+		entries = append(entries, tmproto.TmpxEntry{TypeID: typeID, Token: bin})
+	}
+	if len(entries) == 0 {
+		return "", nil
+	}
+	plaintext, err := tmproto.EncodeTmpxPlaintext(cfg.Country, entries, time.Now())
+	if err != nil {
+		return "", err
+	}
+	return tmproto.SealTmpx(tmproto.TmpxRecipient{Kid: cfg.Kid, PublicKey: cfg.PublicKey}, nil, plaintext)
+}
+
+// stubBinaryToken converts a string user_token to the binary representation
+// TMPX expects for the given type ID. Reference impl only: hashes the source
+// string with SHA-512 and truncates to the spec-required byte length. Real
+// buyer deployments decode tokens per source-graph encoding.
+func stubBinaryToken(typeID tmproto.TmpxTypeID, token string) ([]byte, error) {
+	size, ok := tmproto.TmpxTokenSize(typeID)
+	if !ok {
+		return nil, fmt.Errorf("unknown TMPX type id %d", typeID)
+	}
+	h := sha512.Sum512([]byte(token))
+	out := make([]byte, size)
+	copy(out, h[:size])
+	return out, nil
 }
 
 // buildKeyStore constructs a tmproto.KeyStore from the configured registry

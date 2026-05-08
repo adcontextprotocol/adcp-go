@@ -95,6 +95,33 @@ Exposure tracking uses encrypted TMPX tokens instead of a dedicated endpoint:
 3. Publisher substitutes provider-specific TMPX values into creative tracking URLs (e.g., `{TMPX_S3}`)
 4. Buyer's impression pixel receives the token, decrypts it, and updates per-user frequency state
 
+**Cipher suite (fixed by spec):** HPKE `mode_base` with KEM=DHKEM(X25519, HKDF-SHA256), KDF=HKDF-SHA256, AEAD=ChaCha20-Poly1305. Implemented in `tmproto/tmpx.go` against stdlib (`crypto/ecdh`, `crypto/hkdf`, `crypto/sha256`) plus `golang.org/x/crypto/chacha20poly1305`; validated against the RFC 9180 §A.3 vector.
+
+**Wire format:** `<kid>.<base64url_no_pad(enc || ciphertext_with_tag)>`. `kid` is opaque, ≤8 chars, MUST NOT encode geographic or deployment information.
+
+**Plaintext layout (16-byte header + entries):**
+
+| Field | Size | Notes |
+|---|---|---|
+| Version | 1 | `0x01` |
+| Timestamp | 4 | Unix seconds, big-endian uint32 |
+| Country | 2 | ISO 3166-1 alpha-2, ASCII; data-residency hint, buyer-internal |
+| Nonce | 8 | Random; deduplication at the master |
+| Count | 1 | Number of identity entries |
+| Entries | variable | `type_id (1 byte) + token (size from registry)` |
+
+**Reference identity-agent configuration:**
+
+| Flag / env var | Purpose |
+|---|---|
+| `--tmpx-kid` / `TMP_IDENTITY_TMPX_KID` | Buyer-cluster recipient kid (≤8 chars) |
+| `--tmpx-pubkey-path` / `TMP_IDENTITY_TMPX_PUBKEY_PATH` | Path to a 32-byte X25519 public key (hex or base64) |
+| `--tmpx-country` / `TMP_IDENTITY_TMPX_COUNTRY` | Country stamped into the TMPX header |
+
+When all three are set, the agent generates a TMPX token alongside every identity-match response that has at least one eligible package. Identity tokens whose `uid_type` has no entry in the TMPX type-ID registry are skipped per the spec's forward-compatibility rule.
+
+**Reference-impl limitation:** the `string → binary token` conversion in the reference identity-agent is a SHA-512 truncation stub (`stubBinaryToken` in `cmd/identity-agent/main.go`). Real buyer deployments decode tokens per the source graph's encoding (UID2 base64, RampID Xi/XY format, MAID UUID parse, etc.). The reference output is **not** interoperable with a real buyer master.
+
 ## Pinhole Specification
 
 The identity agent is the privacy boundary. When running in a TEE:
@@ -189,6 +216,9 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_IDENTITY_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
 | `TMP_IDENTITY_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
 | `TMP_IDENTITY_REQUIRE_SIGNATURE` | Identity Agent | Reject unsigned requests | `false` |
+| `TMP_IDENTITY_TMPX_KID` | Identity Agent | Buyer-cluster TMPX recipient kid (≤8 chars) | (none) |
+| `TMP_IDENTITY_TMPX_PUBKEY_PATH` | Identity Agent | Path to 32-byte X25519 public key (hex/base64) | (none) |
+| `TMP_IDENTITY_TMPX_COUNTRY` | Identity Agent | Country stamped into TMPX plaintext header | (none) |
 
 All services also accept `--addr` and other flags. Flags take precedence over environment variables.
 

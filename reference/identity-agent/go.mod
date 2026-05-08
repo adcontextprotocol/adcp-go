@@ -8,7 +8,11 @@ require (
 	github.com/valkey-io/valkey-glide/go/v2 v2.3.1
 )
 
-require google.golang.org/protobuf v1.34.2 // indirect
+require (
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
+	google.golang.org/protobuf v1.34.2 // indirect
+)
 
 replace (
 	github.com/adcontextprotocol/adcp-go => ../../
