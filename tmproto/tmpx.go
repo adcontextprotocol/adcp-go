@@ -164,7 +164,11 @@ func SealTmpx(recipient TmpxRecipient, info, plaintext []byte) (string, error) {
 		return "", errors.New("tmproto: tmpx recipient public key must be X25519")
 	}
 
-	enc, ct, err := hpkeSealBase(recipient.PublicKey, info, nil, plaintext, rand.Reader)
+	skE, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return "", fmt.Errorf("tmproto: tmpx ephemeral key: %w", err)
+	}
+	enc, ct, err := hpkeSealBase(recipient.PublicKey, skE, info, nil, plaintext)
 	if err != nil {
 		return "", err
 	}
@@ -178,11 +182,10 @@ func SealTmpx(recipient TmpxRecipient, info, plaintext []byte) (string, error) {
 // (DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20-Poly1305). Returns the
 // 32-byte encapsulated KEM key (the ephemeral X25519 public key) and the
 // ciphertext (plaintext_len + 16-byte AEAD tag).
-func hpkeSealBase(pkR *ecdh.PublicKey, info, aad, plaintext []byte, rng io.Reader) (enc, ct []byte, err error) {
-	skE, err := ecdh.X25519().GenerateKey(rng)
-	if err != nil {
-		return nil, nil, err
-	}
+//
+// The ephemeral private key is supplied by the caller so test vectors can
+// pin it. Production callers generate skE from rand.Reader before calling.
+func hpkeSealBase(pkR *ecdh.PublicKey, skE *ecdh.PrivateKey, info, aad, plaintext []byte) (enc, ct []byte, err error) {
 	pkE := skE.PublicKey()
 
 	dh, err := skE.ECDH(pkR)

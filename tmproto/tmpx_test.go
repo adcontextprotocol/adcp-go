@@ -98,7 +98,7 @@ func TestHPKERFC9180A3Vector(t *testing.T) {
 		t.Fatalf("parse skE: %v", err)
 	}
 
-	enc, ct, err := hpkeSealBase(pkR, info, aad, pt, &fixedKeyReader{priv: skEm})
+	enc, ct, err := hpkeSealBase(pkR, skE, info, aad, pt)
 	if err != nil {
 		t.Fatalf("hpkeSealBase: %v", err)
 	}
@@ -162,7 +162,11 @@ func TestHPKESealOpenRoundtrip(t *testing.T) {
 		_, _ = rand.Read(pt)
 		info := []byte("test-info")
 		aad := []byte("test-aad")
-		enc, ct, err := hpkeSealBase(pkR, info, aad, pt, rand.Reader)
+		skE, err := ecdh.X25519().GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatalf("ephemeral key[%d]: %v", i, err)
+		}
+		enc, ct, err := hpkeSealBase(pkR, skE, info, aad, pt)
 		if err != nil {
 			t.Fatalf("Seal[%d]: %v", i, err)
 		}
@@ -309,20 +313,6 @@ func TestTmpxTokenSizeRegistry(t *testing.T) {
 	if _, ok := TmpxTokenSize(TmpxTypeID(200)); ok {
 		t.Errorf("unknown type id must report false")
 	}
-}
-
-// fixedKeyReader makes ecdh.X25519().GenerateKey return a specific scalar by
-// returning that scalar from Read. ecdh's X25519 GenerateKey reads exactly
-// 32 bytes when generating a private key.
-type fixedKeyReader struct {
-	priv []byte
-	off  int
-}
-
-func (r *fixedKeyReader) Read(p []byte) (int, error) {
-	n := copy(p, r.priv[r.off:])
-	r.off += n
-	return n, nil
 }
 
 func mustHex(t *testing.T, s string) []byte {
