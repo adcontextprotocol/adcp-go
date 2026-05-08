@@ -212,7 +212,7 @@ func setFlags() map[string]bool {
 func buildKeyStore(runCtx context.Context, registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
 	if registryURL == "" {
 		if requireSignature {
-			return nil, errors.New("--registry-url (or TMP_CONTEXT_REGISTRY_URL) is required for signature verification (default). Pass --allow-unsigned to opt out.")
+			return nil, errors.New("--registry-url (or TMP_CONTEXT_REGISTRY_URL) is required for signature verification (default); pass --allow-unsigned to opt out")
 		}
 		return nil, nil
 	}
