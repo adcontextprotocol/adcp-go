@@ -308,7 +308,7 @@ func loadTmpxConfig(kid, pubKeyPath, country string) (*tmpxConfig, error) {
 	if kid == "" || pubKeyPath == "" || country == "" {
 		return nil, errors.New("TMPX requires all three of --tmpx-kid, --tmpx-pubkey-path, --tmpx-country")
 	}
-	raw, err := os.ReadFile(pubKeyPath)
+	raw, err := os.ReadFile(pubKeyPath) //nolint:gosec // operator-supplied path is the contract
 	if err != nil {
 		return nil, fmt.Errorf("read TMPX public key: %w", err)
 	}

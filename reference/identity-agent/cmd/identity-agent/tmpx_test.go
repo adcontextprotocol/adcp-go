@@ -73,9 +73,9 @@ func TestBuildTmpxTokenRoundtrip(t *testing.T) {
 	cfg := &tmpxConfig{Kid: "k1", Country: "US", PublicKey: skR.PublicKey()}
 
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: "uid2-token-source-string"},
-		{UIDType: tmproto.UIDTypeMAID, UserToken: "maid-source-string"},
-		{UIDType: tmproto.UIDTypeOther, UserToken: "skipped-no-mapping"},
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "uid2-input"}, //nolint:gosec // test fixture, not a credential
+		{UIDType: tmproto.UIDTypeMAID, UserToken: "maid-input"}, //nolint:gosec // test fixture, not a credential
+		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
 	}
 	wire, err := buildTmpxToken(cfg, ids)
 	if err != nil {
