@@ -153,11 +153,12 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Re-serialize with enriched data for fan-out.
-	// TODO: the spec says routers MUST strip access fields from artifacts
-	// (bearer tokens, service accounts, credentials) before forwarding.
-	// Today we rely on publishers not to include them. Add a sanitizer
-	// that walks cmReq.Artifact and removes known credential-bearing keys.
+	// Strip per-asset Access credentials before fan-out — the spec says
+	// routers MUST drop bearer tokens, service accounts, and credentials
+	// because the request is replicated to every matching buyer agent.
+	cmReq.Artifact.StripAccess()
+
+	// Re-serialize with enriched and sanitized data for fan-out.
 	body, err = json.Marshal(&cmReq)
 	if err != nil {
 		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInternalError, "failed to serialize request")
@@ -215,7 +216,12 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	// Strip country before forwarding — it's a routing directive, not an
 	// identity signal — and not part of the signing input either.
 	imReq.Country = ""
-	body, _ = json.Marshal(&imReq)
+	body, err = json.Marshal(&imReq)
+	if err != nil {
+		r.logger.Error("failed to serialize identity-match request", "request_id", imReq.RequestID, "error", err)
+		r.writeError(w, imReq.RequestID, tmproto.ErrorCodeInternalError, "internal error")
+		return
+	}
 
 	// Fan out — signer needs the parsed request (not just bytes) to build the
 	// JCS canonical form per provider.

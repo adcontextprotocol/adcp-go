@@ -284,7 +284,11 @@ func TestPublicJWKShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublicKey: %v", err)
 	}
-	want := signer.PrivateKey.Public().(ed25519.PublicKey)
+	jwk2 := signer.PublicJWK()
+	want, err := jwk2.PublicKey()
+	if err != nil {
+		t.Fatalf("PublicKey: %v", err)
+	}
 	if string(pub) != string(want) {
 		t.Fatal("derived public key does not roundtrip")
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -23,18 +24,23 @@ func main() {
 	addr := flag.String("addr", "", "Listen address")
 	registryFile := flag.String("registry", "", "Path to registry snapshot JSON file")
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
-	requireSig := flag.Bool("require-signature", false, "Reject /tmp/context requests that arrive without a TMP signature")
-	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --require-signature is set.")
+	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/context requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
+	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required for signature verification (default).")
 	flag.Parse()
+
+	flagSet := setFlags()
 
 	// Resolve config: flags > env vars > defaults.
 	listenAddr := resolveAddr(*addr)
-	regFile := resolveRegistry(*registryFile)
-	regURL := resolveString(*registryURL, "TMP_CONTEXT_REGISTRY_URL")
-	ownURL := resolveString(*ownEndpointURL, "TMP_CONTEXT_ENDPOINT_URL")
-	if envFlag := os.Getenv("TMP_CONTEXT_REQUIRE_SIGNATURE"); envFlag == "1" || envFlag == "true" {
-		*requireSig = true
+	regFile := resolveRegistry(*registryFile, flagSet["registry"])
+	regURL := resolveString(*registryURL, flagSet["registry-url"], "TMP_CONTEXT_REGISTRY_URL")
+	ownURL := resolveString(*ownEndpointURL, flagSet["own-endpoint-url"], "TMP_CONTEXT_ENDPOINT_URL")
+	if !flagSet["allow-unsigned"] {
+		if envValue, ok := os.LookupEnv("TMP_CONTEXT_ALLOW_UNSIGNED"); ok {
+			*allowUnsigned = envValue == "1" || envValue == "true"
+		}
 	}
+	requireSig := !*allowUnsigned
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -76,14 +82,19 @@ func main() {
 		},
 	})
 
-	keystore, ksErr := buildKeyStore(regURL, *requireSig)
+	keystoreCtx, keystoreCancel := context.WithCancel(context.Background())
+	defer keystoreCancel()
+	keystore, ksErr := buildKeyStore(keystoreCtx, regURL, requireSig)
 	if ksErr != nil {
 		slog.Error("keystore init failed", "error", ksErr)
 		os.Exit(1)
 	}
-	if *requireSig && ownURL == "" {
-		slog.Error("--own-endpoint-url is required when --require-signature is set")
+	if requireSig && ownURL == "" {
+		slog.Error("--own-endpoint-url is required when signature verification is enabled (default)")
 		os.Exit(1)
+	}
+	if !requireSig {
+		slog.Warn("/tmp/context accepts unsigned requests — TMP signing should be required in production")
 	}
 
 	mux := http.NewServeMux()
@@ -134,7 +145,7 @@ func main() {
 		mux.Handle("POST /tmp/context", tmproto.VerifyContextMatchHandler(contextHandler, tmproto.VerifyOptions{
 			KeyStore:         keystore,
 			OwnEndpointURL:   ownURL,
-			RequireSignature: *requireSig,
+			RequireSignature: requireSig,
 		}))
 	} else {
 		mux.Handle("POST /tmp/context", contextHandler)
@@ -172,24 +183,36 @@ func resolveAddr(flagVal string) string {
 	return ":8081"
 }
 
-func resolveRegistry(flagVal string) string {
-	if flagVal != "" {
+func resolveRegistry(flagVal string, flagSet bool) string {
+	if flagSet {
 		return flagVal
 	}
-	return os.Getenv("TMP_CONTEXT_REGISTRY")
+	if v := os.Getenv("TMP_CONTEXT_REGISTRY"); v != "" {
+		return v
+	}
+	return flagVal
 }
 
-func resolveString(flagVal, envName string) string {
-	if flagVal != "" {
+func resolveString(flagVal string, flagSet bool, envName string) string {
+	if flagSet {
 		return flagVal
 	}
-	return os.Getenv(envName)
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return flagVal
 }
 
-func buildKeyStore(registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
+func setFlags() map[string]bool {
+	out := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { out[f.Name] = true })
+	return out
+}
+
+func buildKeyStore(runCtx context.Context, registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
 	if registryURL == "" {
 		if requireSignature {
-			return nil, fmt.Errorf("--registry-url (or TMP_CONTEXT_REGISTRY_URL) is required when --require-signature is set")
+			return nil, errors.New("--registry-url (or TMP_CONTEXT_REGISTRY_URL) is required for signature verification (default). Pass --allow-unsigned to opt out.")
 		}
 		return nil, nil
 	}
@@ -197,13 +220,15 @@ func buildKeyStore(registryURL string, requireSignature bool) (tmproto.KeyStore,
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	fetchCtx, cancel := context.WithTimeout(runCtx, 10*time.Second)
 	defer cancel()
-	if err := ks.Start(ctx); err != nil {
+	if _, err := ks.Refresh(fetchCtx); err != nil {
 		return nil, fmt.Errorf("initial registry fetch from %s: %w", registryURL, err)
 	}
 	go func() {
-		_ = ks.Start(context.Background())
+		if err := ks.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("registry keystore Run terminated", "url", registryURL, "error", err)
+		}
 	}()
 	return ks, nil
 }

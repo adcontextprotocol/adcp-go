@@ -151,7 +151,7 @@ var (
 // Signer signs context-match and identity-match requests.
 type Signer struct {
 	KeyID      string
-	PrivateKey ed25519.PrivateKey
+	privateKey ed25519.PrivateKey
 }
 
 // NewSigner constructs a Signer. Returns an error if the private key is not
@@ -163,12 +163,12 @@ func NewSigner(keyID string, priv ed25519.PrivateKey) (*Signer, error) {
 	if len(priv) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("tmproto: signer private key has %d bytes, expected %d", len(priv), ed25519.PrivateKeySize)
 	}
-	return &Signer{KeyID: keyID, PrivateKey: priv}, nil
+	return &Signer{KeyID: keyID, privateKey: priv}, nil
 }
 
 // PublicJWK returns the SigningKey JWK that verifiers need.
 func (s *Signer) PublicJWK() SigningKey {
-	pub := s.PrivateKey.Public().(ed25519.PublicKey)
+	pub := s.privateKey.Public().(ed25519.PublicKey)
 	return PublicSigningKey(s.KeyID, pub)
 }
 
@@ -177,7 +177,7 @@ func (s *Signer) PublicJWK() SigningKey {
 // the X-AdCP-Signature header.
 func (s *Signer) SignContextMatch(req *ContextMatchRequest, providerEndpointURL string, epoch int64) string {
 	input := BuildContextMatchSigningInput(req, NormalizeProviderEndpointURL(providerEndpointURL), epoch)
-	sig := ed25519.Sign(s.PrivateKey, input)
+	sig := ed25519.Sign(s.privateKey, input)
 	return base64.RawURLEncoding.EncodeToString(sig)
 }
 
@@ -189,7 +189,7 @@ func (s *Signer) SignIdentityMatch(req *IdentityMatchRequest, providerEndpointUR
 	if err != nil {
 		return "", err
 	}
-	sig := ed25519.Sign(s.PrivateKey, input)
+	sig := ed25519.Sign(s.privateKey, input)
 	return base64.RawURLEncoding.EncodeToString(sig), nil
 }
 

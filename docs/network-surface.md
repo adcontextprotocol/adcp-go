@@ -189,7 +189,13 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 
 **Per-provider binding:** every signature includes the registered `provider_endpoint_url`. A signature minted for provider A is rejected by provider B even with an identical body.
 
-**Key distribution:** the router's public key is published as a `signing_keys` JWK on the property records served by `GET /registry/snapshot`. Reference providers poll the snapshot URL on a 5-minute interval (`tmproto.RemoteKeyStore`) and look up by `kid`. Revocation: set `revoked_at` on the JWK; verifiers reject signatures whose epoch is at or after the revocation timestamp.
+**Key distribution:** the router's public key is published as a `signing_keys` JWK on the property records served by `GET /registry/snapshot`. Reference providers poll the snapshot URL on a 5-minute interval (`tmproto.RemoteKeyStore`) and look up by `kid`. The keystore polls over HTTPS by default, denies cross-origin redirects, and limits snapshot bodies to 1 MB; plain-HTTP is opt-in via `RemoteKeyStoreOptions.AllowInsecureScheme` for local dev only.
+
+**Revocation:** set `revoked_at` on the JWK. The verifier rejects any signature candidate whose daily epoch is at or after the revocation epoch — `e >= floor(revoked_at_unix / 86400)` — but the spec's two-epoch acceptance window means a signature minted on day N-1 with `revoked_at` on day N still verifies under the previous-epoch candidate up to ~24 hours after the revocation marker is published. Operators who need a hard cutoff should rotate the key (replacing the kid) rather than rely on revocation alone.
+
+**Cross-property kid collision:** the registry and `RemoteKeyStore` both keep the first-seen entry on duplicate kids and warn — last-writer-wins would let one property's record shadow another's signing key namespace.
+
+**Crypto agility:** the implementation pins one signature suite (Ed25519/EdDSA, JWK `kty=OKP, crv=Ed25519`) and one HPKE suite (X25519/HKDF-SHA256/ChaCha20-Poly1305) per the current spec. Adding a second suite requires extending the `signingAlgorithm`/`signingCurve` constants in `tmproto/signing.go`, the `hpke*` IDs in `tmproto/tmpx.go`, and dispatching by `kid` prefix or the JWK `alg`/`crv` fields. The structure assumes one suite at a time — there is no in-band negotiation.
 
 **Configuration:**
 

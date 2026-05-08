@@ -1,12 +1,16 @@
 package tmproto
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -16,8 +20,8 @@ import (
 // providers use this to discover the router's signing keys without coupling
 // to the router package's full Registry implementation.
 //
-// The snapshot is parsed into a kid-indexed map. Refresh runs on a fixed
-// interval; LookupKey serves from the most recent successful refresh.
+// The snapshot is parsed into a kid-indexed map. Run() schedules background
+// refreshes; LookupKey serves from the most recent successful refresh.
 type RemoteKeyStore struct {
 	url      string
 	client   *http.Client
@@ -31,11 +35,16 @@ type RemoteKeyStore struct {
 // RemoteKeyStoreOptions configures a RemoteKeyStore.
 type RemoteKeyStoreOptions struct {
 	// URL of the JSON snapshot endpoint that returns property records with
-	// signing_keys arrays.
+	// signing_keys arrays. Must use https:// unless AllowInsecureScheme is true.
 	URL string
 
-	// HTTPClient is the client used for snapshot fetches. Defaults to a
-	// 10-second-timeout client.
+	// AllowInsecureScheme permits http:// URLs. For local development only —
+	// a plain-HTTP keystore lets a network attacker swap signing keys.
+	AllowInsecureScheme bool
+
+	// HTTPClient is the client used for snapshot fetches. When nil, a 10-second
+	// client is constructed with redirects denied (HPKE / signing-key material
+	// must not follow registry redirects to arbitrary destinations).
 	HTTPClient *http.Client
 
 	// RefreshInterval between background refreshes. Defaults to 5 minutes
@@ -46,15 +55,37 @@ type RemoteKeyStoreOptions struct {
 	Logger *slog.Logger
 }
 
-// NewRemoteKeyStore builds a RemoteKeyStore. Call Start to begin background
-// refresh, or Refresh once for synchronous initial load.
+// MaxSnapshotBytes caps the registry snapshot the keystore will ingest. Sized
+// for property catalogs in the thousands of entries; the spec caps individual
+// property records at a few hundred bytes.
+const MaxSnapshotBytes = 1 * 1024 * 1024
+
+// NewRemoteKeyStore builds a RemoteKeyStore. Call Refresh for an initial
+// synchronous fetch and Run to begin background polling.
 func NewRemoteKeyStore(opts RemoteKeyStoreOptions) (*RemoteKeyStore, error) {
 	if opts.URL == "" {
-		return nil, fmt.Errorf("tmproto: RemoteKeyStore URL is required")
+		return nil, errors.New("tmproto: RemoteKeyStore URL is required")
+	}
+	parsed, err := url.Parse(opts.URL)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: RemoteKeyStore URL invalid: %w", err)
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "https":
+		// fine.
+	case "http":
+		if !opts.AllowInsecureScheme {
+			return nil, errors.New("tmproto: RemoteKeyStore URL must use https:// (set AllowInsecureScheme for local development)")
+		}
+	default:
+		return nil, fmt.Errorf("tmproto: RemoteKeyStore URL must use http(s) scheme, got %q", parsed.Scheme)
 	}
 	client := opts.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = &http.Client{
+			Timeout:       10 * time.Second,
+			CheckRedirect: denyCrossOriginRedirect,
+		}
 	}
 	interval := opts.RefreshInterval
 	if interval <= 0 {
@@ -73,6 +104,23 @@ func NewRemoteKeyStore(opts RemoteKeyStoreOptions) (*RemoteKeyStore, error) {
 	}, nil
 }
 
+// denyCrossOriginRedirect blocks redirects that change scheme or host. A
+// signing-key store has no business following 3xx to a different origin —
+// that's the SSRF / key-substitution path.
+func denyCrossOriginRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	prev := via[0]
+	if req.URL.Scheme != prev.URL.Scheme || req.URL.Host != prev.URL.Host {
+		return fmt.Errorf("tmproto: cross-origin redirect to %s://%s denied", req.URL.Scheme, req.URL.Host)
+	}
+	if len(via) >= 5 {
+		return errors.New("tmproto: too many redirects")
+	}
+	return nil
+}
+
 // LookupKey implements tmproto.KeyStore.
 func (s *RemoteKeyStore) LookupKey(kid string) (*SigningKey, bool) {
 	s.mu.RLock()
@@ -82,7 +130,10 @@ func (s *RemoteKeyStore) LookupKey(kid string) (*SigningKey, bool) {
 }
 
 // Refresh fetches the snapshot once and replaces the in-memory keystore.
-// Returns the number of keys observed.
+// Returns the number of keys observed. An empty snapshot is treated as a
+// transient registry condition — the previous keys are retained and a warning
+// is logged so the agent doesn't 401 every request during a publisher's
+// mid-deploy snapshot churn.
 func (s *RemoteKeyStore) Refresh(ctx context.Context) (int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
 	if err != nil {
@@ -96,13 +147,22 @@ func (s *RemoteKeyStore) Refresh(ctx context.Context) (int, error) {
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("snapshot returned %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxSnapshotBytes))
 	if err != nil {
 		return 0, fmt.Errorf("read snapshot: %w", err)
 	}
-	keys, err := parseRegistrySnapshot(body)
+	keys, err := parseRegistrySnapshot(body, s.logger)
 	if err != nil {
 		return 0, err
+	}
+	if len(keys) == 0 {
+		s.mu.RLock()
+		had := len(s.keys)
+		s.mu.RUnlock()
+		if had > 0 {
+			s.logger.Warn("registry keystore snapshot empty — retaining cached keys", "url", s.url, "cached_keys", had)
+			return had, nil
+		}
 	}
 	s.mu.Lock()
 	s.keys = keys
@@ -110,24 +170,19 @@ func (s *RemoteKeyStore) Refresh(ctx context.Context) (int, error) {
 	return len(keys), nil
 }
 
-// Start begins a background refresh loop, blocking on an initial synchronous
-// fetch so the keystore is non-empty before the caller serves traffic. Returns
-// an error if the initial fetch fails.
-func (s *RemoteKeyStore) Start(ctx context.Context) error {
+// Run blocks on an initial synchronous fetch so the keystore is non-empty
+// before the caller serves traffic, then schedules background refreshes
+// driven by the supplied context. Returns when ctx is canceled.
+func (s *RemoteKeyStore) Run(ctx context.Context) error {
 	if _, err := s.Refresh(ctx); err != nil {
 		return err
 	}
-	go s.refreshLoop(ctx)
-	return nil
-}
-
-func (s *RemoteKeyStore) refreshLoop(ctx context.Context) {
 	t := time.NewTicker(s.interval)
 	defer t.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		case <-t.C:
 			if n, err := s.Refresh(ctx); err != nil {
 				s.logger.Warn("registry keystore refresh failed", "url", s.url, "error", err)
@@ -148,19 +203,29 @@ type minimalSnapshot struct {
 	} `json:"properties"`
 }
 
-func parseRegistrySnapshot(b []byte) (map[string]*SigningKey, error) {
+func parseRegistrySnapshot(b []byte, logger *slog.Logger) (map[string]*SigningKey, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
 	var snap minimalSnapshot
-	if err := json.Unmarshal(b, &snap); err != nil {
+	if err := dec.Decode(&snap); err != nil {
 		return nil, fmt.Errorf("parse snapshot: %w", err)
 	}
 	out := make(map[string]*SigningKey)
+	owners := make(map[string]string)
 	for _, p := range snap.Properties {
 		for i := range p.SigningKeys {
 			k := p.SigningKeys[i]
 			if k.Kid == "" {
 				continue
 			}
+			if existing, conflict := owners[k.Kid]; conflict && existing != p.PropertyRID {
+				if logger != nil {
+					logger.Warn("registry signing-key kid collision — keeping first-seen entry",
+						"kid", k.Kid, "first_property_rid", existing, "duplicate_property_rid", p.PropertyRID)
+				}
+				continue
+			}
 			out[k.Kid] = &k
+			owners[k.Kid] = p.PropertyRID
 		}
 	}
 	return out, nil

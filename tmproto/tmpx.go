@@ -261,9 +261,16 @@ func labeledExtract(salt, label, ikm, suiteID []byte) ([]byte, error) {
 //
 //	labeled_info = I2OSP(L, 2) || "HPKE-v1" || suite_id || label || info
 //	return Expand(prk, labeled_info, L)
+//
+// L is encoded as a uint16; rfc9180 caps the per-call output at HKDF-SHA256's
+// 8160-byte limit anyway. This rejects lengths above the uint16 ceiling so a
+// future caller can't silently truncate.
 func labeledExpand(prk, label, info []byte, length int, suiteID []byte) ([]byte, error) {
+	if length < 0 || length > 0xffff {
+		return nil, fmt.Errorf("tmproto: hpke labeled_expand length %d outside uint16 range", length)
+	}
 	labeledInfo := make([]byte, 0, 2+7+len(suiteID)+len(label)+len(info))
-	labeledInfo = binary.BigEndian.AppendUint16(labeledInfo, uint16(length)) //nolint:gosec // length is small
+	labeledInfo = binary.BigEndian.AppendUint16(labeledInfo, uint16(length))
 	labeledInfo = append(labeledInfo, []byte("HPKE-v1")...)
 	labeledInfo = append(labeledInfo, suiteID...)
 	labeledInfo = append(labeledInfo, label...)

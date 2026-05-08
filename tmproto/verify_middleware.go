@@ -3,7 +3,6 @@ package tmproto
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -60,7 +59,7 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 		_ = r.Body.Close()
 
 		var parsed ContextMatchRequest
-		if err := json.Unmarshal(body, &parsed); err != nil {
+		if err := decodeStrict(body, &parsed); err != nil {
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "request body is not valid JSON")
 			return
 		}
@@ -81,7 +80,7 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 		if err := VerifyContextMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp context-match signature rejected",
 				"path", r.URL.Path, "request_id", parsed.RequestID, "kid", kid, "error", err)
-			writeVerifierError(w, statusForVerifyError(err), ErrorCodeInvalidRequest, "signature verification failed")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
 			return
 		}
 
@@ -102,7 +101,7 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 		_ = r.Body.Close()
 
 		var parsed IdentityMatchRequest
-		if err := json.Unmarshal(body, &parsed); err != nil {
+		if err := decodeStrict(body, &parsed); err != nil {
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "request body is not valid JSON")
 			return
 		}
@@ -123,7 +122,7 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 		if err := VerifyIdentityMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp identity-match signature rejected",
 				"path", r.URL.Path, "request_id", parsed.RequestID, "kid", kid, "error", err)
-			writeVerifierError(w, statusForVerifyError(err), ErrorCodeInvalidRequest, "signature verification failed")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
 			return
 		}
 
@@ -137,14 +136,15 @@ func replayBody(r *http.Request, body []byte) {
 	r.ContentLength = int64(len(body))
 }
 
-func statusForVerifyError(err error) int {
-	switch {
-	case errors.Is(err, ErrSignatureMissing), errors.Is(err, ErrSignatureMalformed):
-		return http.StatusUnauthorized
-	case errors.Is(err, ErrSignatureKeyUnknown), errors.Is(err, ErrSignatureKeyRevoked), errors.Is(err, ErrSignatureInvalid):
-		return http.StatusUnauthorized
-	}
-	return http.StatusUnauthorized
+// decodeStrict parses body into v while rejecting fields the receiver doesn't
+// know about. The verifier recomputes the signing input from the parsed
+// struct, so silently dropping unknown fields would let a future-protocol
+// extension produce a signature the verifier could never reproduce. Failing
+// loudly forces operators to update their build before accepting traffic.
+func decodeStrict(body []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	return dec.Decode(v)
 }
 
 func writeVerifierError(w http.ResponseWriter, status int, code ErrorCode, message string) {

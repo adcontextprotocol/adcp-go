@@ -123,12 +123,12 @@ func jcsEncodeNumber(buf *bytes.Buffer, f float64) error {
 		buf.WriteString(strconv.FormatInt(int64(f), 10))
 		return nil
 	}
-	// Fallback: Go's 'g' formatting is a close approximation of
-	// ECMAScript Number.toString. TMP signing inputs do not carry
-	// non-integer floats today; if that ever changes this branch
-	// must be tightened to full ECMA-262 7.1.12.1.
-	buf.WriteString(strconv.FormatFloat(f, 'g', -1, 64))
-	return nil
+	// Non-integer floats require ECMA-262 7.1.12.1 number-to-string
+	// canonicalization, which Go's strconv.FormatFloat does not exactly
+	// reproduce. TMP signing inputs do not carry non-integer floats today;
+	// surfacing an error keeps two implementations from diverging silently
+	// when one starts emitting them.
+	return fmt.Errorf("tmproto: jcs non-integer floats are unsupported (got %v); only integers are canonicalized today", f)
 }
 
 func jcsEncodeJSONNumber(buf *bytes.Buffer, n json.Number) error {

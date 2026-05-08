@@ -127,6 +127,22 @@ func TestJCSStringSlice(t *testing.T) {
 	}
 }
 
+func TestJCSRejectsNonIntegerFloats(t *testing.T) {
+	if _, err := jcsMarshal(1.5); err == nil {
+		t.Fatal("non-integer float must be rejected until ECMA-262 number canonicalization is implemented")
+	}
+}
+
+func TestJCSAcceptsIntegerFloats(t *testing.T) {
+	got, err := jcsMarshal(42.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "42" {
+		t.Errorf("got %q, want 42", got)
+	}
+}
+
 func TestJCSObjectKeySort(t *testing.T) {
 	// JCS sorts object keys; our identity-match canonical object includes
 	// "type", "request_id", "identities_hash", "consent", "package_ids",

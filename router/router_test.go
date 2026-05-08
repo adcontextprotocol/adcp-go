@@ -1,6 +1,7 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -186,6 +187,48 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 
 	require.Len(t, resp.Offers, 1)
 	assert.Equal(t, "pkg-1", resp.Offers[0].PackageID)
+}
+
+func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
+	var receivedBody []byte
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBody, _ = io.ReadAll(r.Body)
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-strip"})
+	}))
+	defer provider.Close()
+
+	router := testRouter([]ProviderConfig{
+		{ID: "p", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
+	})
+
+	cm := tmproto.ContextMatchRequest{
+		RequestID:    "ctx-strip",
+		PropertyID:   "pub-test",
+		PropertyType: "website",
+		PlacementID:  "main",
+		PackageIDs:   []string{"pkg-1"},
+		Artifact: &tmproto.Artifact{
+			Assets: tmproto.Assets{
+				func() *tmproto.ImageAsset {
+					access := tmproto.NewBearerTokenAccess("secret-bearer-token")
+					return &tmproto.ImageAsset{
+						URL:    "https://cdn.example.com/img.jpg",
+						Access: &access,
+					}
+				}(),
+			},
+		},
+	}
+	body, _ := json.Marshal(&cm)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", bytes.NewReader(body))
+	router.HandleContextMatch(w, req)
+
+	require.Equal(t, 200, w.Code, w.Body.String())
+	require.NotEmpty(t, receivedBody)
+	assert.NotContains(t, string(receivedBody), "secret-bearer-token", "router must strip Access fields before fan-out")
+	assert.NotContains(t, string(receivedBody), "bearer_token", "stripped Access should leave no trace in the forwarded body")
 }
 
 func TestRouterIdentityMatch_EndToEnd(t *testing.T) {

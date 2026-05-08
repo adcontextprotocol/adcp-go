@@ -33,20 +33,25 @@ func main() {
 	addr := flag.String("addr", "", "Listen address")
 	valkeyAddr := flag.String("valkey-addr", "", "Valkey address (host:port). Falls back to in-memory store if empty or unreachable.")
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
-	requireSig := flag.Bool("require-signature", false, "Reject /tmp/identity requests that arrive without a TMP signature")
+	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/identity requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
 	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
 	tmpxKid := flag.String("tmpx-kid", "", "Buyer-cluster TMPX recipient kid (≤8 chars). Enables TMPX token generation when set together with --tmpx-pubkey-path.")
 	tmpxPubKey := flag.String("tmpx-pubkey-path", "", "Path to the TMPX recipient X25519 public key (32 bytes, hex- or base64url-encoded).")
 	tmpxCountry := flag.String("tmpx-country", "", "ISO 3166-1 alpha-2 country code stamped into the TMPX header. Required when TMPX is enabled.")
 	flag.Parse()
 
+	flagSet := setFlags()
+
 	listenAddr := resolveAddr(*addr)
 	storeAddr := resolveValkeyAddr(*valkeyAddr)
-	regURL := resolveString(*registryURL, "TMP_IDENTITY_REGISTRY_URL")
-	ownURL := resolveString(*ownEndpointURL, "TMP_IDENTITY_ENDPOINT_URL")
-	if envFlag := os.Getenv("TMP_IDENTITY_REQUIRE_SIGNATURE"); envFlag == "1" || envFlag == "true" {
-		*requireSig = true
+	regURL := resolveString(*registryURL, flagSet["registry-url"], "TMP_IDENTITY_REGISTRY_URL")
+	ownURL := resolveString(*ownEndpointURL, flagSet["own-endpoint-url"], "TMP_IDENTITY_ENDPOINT_URL")
+	if !flagSet["allow-unsigned"] {
+		if envValue, ok := os.LookupEnv("TMP_IDENTITY_ALLOW_UNSIGNED"); ok {
+			*allowUnsigned = envValue == "1" || envValue == "true"
+		}
 	}
+	requireSig := !*allowUnsigned
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -70,27 +75,38 @@ func main() {
 		},
 	})
 
-	keystore, ksErr := buildKeyStore(regURL, *requireSig)
+	keystoreCtx, keystoreCancel := context.WithCancel(context.Background())
+	defer keystoreCancel()
+	keystore, ksErr := buildKeyStore(keystoreCtx, regURL, requireSig)
 	if ksErr != nil {
 		slog.Error("keystore init failed", "error", ksErr)
 		os.Exit(1)
 	}
-	if *requireSig && ownURL == "" {
-		slog.Error("--own-endpoint-url is required when --require-signature is set")
+	if requireSig && ownURL == "" {
+		slog.Error("--own-endpoint-url is required when signature verification is enabled (default)")
 		os.Exit(1)
+	}
+	if !requireSig {
+		slog.Warn("/tmp/identity accepts unsigned requests — TMP signing should be required in production")
 	}
 
 	tmpxCfg, err := loadTmpxConfig(
-		resolveString(*tmpxKid, "TMP_IDENTITY_TMPX_KID"),
-		resolveString(*tmpxPubKey, "TMP_IDENTITY_TMPX_PUBKEY_PATH"),
-		resolveString(*tmpxCountry, "TMP_IDENTITY_TMPX_COUNTRY"),
+		resolveString(*tmpxKid, flagSet["tmpx-kid"], "TMP_IDENTITY_TMPX_KID"),
+		resolveString(*tmpxPubKey, flagSet["tmpx-pubkey-path"], "TMP_IDENTITY_TMPX_PUBKEY_PATH"),
+		resolveString(*tmpxCountry, flagSet["tmpx-country"], "TMP_IDENTITY_TMPX_COUNTRY"),
 	)
 	if err != nil {
 		slog.Error("tmpx config load failed", "error", err)
 		os.Exit(1)
 	}
 	if tmpxCfg != nil {
-		slog.Info("TMPX generation enabled", "kid", tmpxCfg.Kid, "country", tmpxCfg.Country)
+		ack := os.Getenv("TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK")
+		if ack != "1" && ack != "true" {
+			slog.Error("TMPX is configured but the reference identity-agent uses a SHA-512 stub for string→binary token decoding that is NOT interoperable with any real buyer master. Set TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK=1 to acknowledge and start.")
+			os.Exit(1)
+		}
+		slog.Warn("TMPX generation enabled with reference SHA-512 stub — buyer masters will not be able to decode these tokens",
+			"kid", tmpxCfg.Kid, "country", tmpxCfg.Country)
 	}
 
 	mux := http.NewServeMux()
@@ -152,7 +168,7 @@ func main() {
 		mux.Handle("POST /tmp/identity", tmproto.VerifyIdentityMatchHandler(identityHandler, tmproto.VerifyOptions{
 			KeyStore:         keystore,
 			OwnEndpointURL:   ownURL,
-			RequireSignature: *requireSig,
+			RequireSignature: requireSig,
 		}))
 	} else {
 		mux.Handle("POST /tmp/identity", identityHandler)
@@ -283,11 +299,25 @@ func seedConfigs(store targeting.Store) (*targeting.ResolvedPackages, error) {
 	}, nil
 }
 
-func resolveString(flagVal, envName string) string {
-	if flagVal != "" {
+// resolveString picks the configured value for a string flag with the
+// precedence flag > env > default. flagSet says whether the flag was passed
+// on the command line; only when it wasn't may an env var override.
+func resolveString(flagVal string, flagSet bool, envName string) string {
+	if flagSet {
 		return flagVal
 	}
-	return os.Getenv(envName)
+	if v := os.Getenv(envName); v != "" {
+		return v
+	}
+	return flagVal
+}
+
+// setFlags returns the set of flag names that were explicitly passed on the
+// command line. Used to enforce flag > env > default precedence per AGENTS.md.
+func setFlags() map[string]bool {
+	out := make(map[string]bool)
+	flag.Visit(func(f *flag.Flag) { out[f.Name] = true })
+	return out
 }
 
 // tmpxConfig holds the resolved TMPX recipient settings used to seal tokens
@@ -404,10 +434,14 @@ func stubBinaryToken(typeID tmproto.TmpxTypeID, token string) ([]byte, error) {
 // buildKeyStore constructs a tmproto.KeyStore from the configured registry
 // URL. Returns (nil, nil) when no registry URL is set and signature
 // verification is not required — the agent then accepts unsigned requests.
-func buildKeyStore(registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
+//
+// runCtx governs the long-lived background refresh goroutine; cancel it
+// during shutdown to drain the goroutine. The synchronous initial fetch is
+// bounded to 10 seconds independently.
+func buildKeyStore(runCtx context.Context, registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
 	if registryURL == "" {
 		if requireSignature {
-			return nil, fmt.Errorf("--registry-url (or TMP_IDENTITY_REGISTRY_URL) is required when --require-signature is set")
+			return nil, errors.New("--registry-url (or TMP_IDENTITY_REGISTRY_URL) is required for signature verification (default). Pass --allow-unsigned to opt out.")
 		}
 		return nil, nil
 	}
@@ -415,15 +449,15 @@ func buildKeyStore(registryURL string, requireSignature bool) (tmproto.KeyStore,
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	fetchCtx, cancel := context.WithTimeout(runCtx, 10*time.Second)
 	defer cancel()
-	if err := ks.Start(ctx); err != nil {
+	if _, err := ks.Refresh(fetchCtx); err != nil {
 		return nil, fmt.Errorf("initial registry fetch from %s: %w", registryURL, err)
 	}
 	go func() {
-		// Background refresh runs for the lifetime of the process. Use a
-		// background context so refresh continues across request lifetimes.
-		_ = ks.Start(context.Background())
+		if err := ks.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("registry keystore Run terminated", "url", registryURL, "error", err)
+		}
 	}()
 	return ks, nil
 }

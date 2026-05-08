@@ -197,6 +197,7 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 	byRID := make(map[string]*RegistryProperty, len(snapshot.Properties))
 	byDomain := make(map[string]string, len(snapshot.Properties))
 	byKid := make(map[string]*tmproto.SigningKey)
+	kidOwner := make(map[string]string)
 
 	for i := range snapshot.Properties {
 		p := &snapshot.Properties[i]
@@ -207,9 +208,18 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 		}
 		for j := range p.SigningKeys {
 			k := &p.SigningKeys[j]
-			if k.Kid != "" {
-				byKid[k.Kid] = k
+			if k.Kid == "" {
+				continue
 			}
+			if existing, conflict := kidOwner[k.Kid]; conflict && existing != p.PropertyRID {
+				slog.Warn("registry signing-key kid collision — keeping first-seen entry",
+					"kid", k.Kid,
+					"first_property_rid", existing,
+					"duplicate_property_rid", p.PropertyRID)
+				continue
+			}
+			byKid[k.Kid] = k
+			kidOwner[k.Kid] = p.PropertyRID
 		}
 	}
 
@@ -246,9 +256,19 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 		}
 		for j := range p.SigningKeys {
 			k := &p.SigningKeys[j]
-			if k.Kid != "" {
-				r.byKid[k.Kid] = k
+			if k.Kid == "" {
+				continue
 			}
+			// kids belonging to this property were deleted above, so a
+			// remaining entry under the same kid is owned by a different
+			// property — keep the first-seen and refuse to shadow it.
+			if _, conflict := r.byKid[k.Kid]; conflict {
+				slog.Warn("registry signing-key kid collision on incremental update — keeping first-seen entry",
+					"kid", k.Kid,
+					"duplicate_property_rid", p.PropertyRID)
+				continue
+			}
+			r.byKid[k.Kid] = k
 		}
 
 	case "remove":
