@@ -32,11 +32,11 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// TMPX format constants per spec.
-const (
-	TmpxFormatVersion uint8 = 0x01
-	tmpxKidMaxLen           = 8
-)
+// TmpxFormatVersion is the TMPX binary plaintext format version per spec.
+const TmpxFormatVersion uint8 = 0x01
+
+// tmpxKidMaxLen is the maximum length of the TMPX recipient kid.
+const tmpxKidMaxLen = 8
 
 // HPKE algorithm IDs per RFC 9180.
 const (
@@ -130,7 +130,7 @@ func encodeTmpxPlaintextWith(country string, entries []TmpxEntry, ts time.Time, 
 	out = binary.BigEndian.AppendUint32(out, uint32(ts.Unix())) //nolint:gosec // pre-2106 timestamps fit
 	out = append(out, country[0], country[1])
 	out = append(out, nonce[:]...)
-	out = append(out, byte(len(entries)))
+	out = append(out, byte(len(entries))) //nolint:gosec // bounds-checked to ≤255 above
 	for _, e := range entries {
 		out = append(out, byte(e.TypeID))
 		out = append(out, e.Token...)

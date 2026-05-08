@@ -224,7 +224,7 @@ func TestSealTmpxRoundtrip(t *testing.T) {
 	if string(got[5:7]) != "US" {
 		t.Errorf("country: got %q, want US", got[5:7])
 	}
-	if got[15] != byte(len(entries)) {
+	if int(got[15]) != len(entries) {
 		t.Errorf("count: got %d, want %d", got[15], len(entries))
 	}
 }
