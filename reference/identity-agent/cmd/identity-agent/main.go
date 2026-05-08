@@ -27,10 +27,18 @@ var version = "dev"
 func main() {
 	addr := flag.String("addr", "", "Listen address")
 	valkeyAddr := flag.String("valkey-addr", "", "Valkey address (host:port). Falls back to in-memory store if empty or unreachable.")
+	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
+	requireSig := flag.Bool("require-signature", false, "Reject /tmp/identity requests that arrive without a TMP signature")
+	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
 	flag.Parse()
 
 	listenAddr := resolveAddr(*addr)
 	storeAddr := resolveValkeyAddr(*valkeyAddr)
+	regURL := resolveString(*registryURL, "TMP_IDENTITY_REGISTRY_URL")
+	ownURL := resolveString(*ownEndpointURL, "TMP_IDENTITY_ENDPOINT_URL")
+	if envFlag := os.Getenv("TMP_IDENTITY_REQUIRE_SIGNATURE"); envFlag == "1" || envFlag == "true" {
+		*requireSig = true
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -54,9 +62,19 @@ func main() {
 		},
 	})
 
+	keystore, ksErr := buildKeyStore(regURL, *requireSig)
+	if ksErr != nil {
+		slog.Error("keystore init failed", "error", ksErr)
+		os.Exit(1)
+	}
+	if *requireSig && ownURL == "" {
+		slog.Error("--own-endpoint-url is required when --require-signature is set")
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, r *http.Request) {
+	identityHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
@@ -97,6 +115,20 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 		slog.Debug("identity match", "request_id", req.RequestID, "packages", len(req.PackageIDs), "latency_ms", time.Since(start).Milliseconds())
 	})
+
+	// Wrap with TMP signature verification when configured. Without a
+	// keystore, signed requests still pass through unverified — operators
+	// who care about authenticated fan-outs MUST set --registry-url and
+	// --require-signature (or TMP_IDENTITY_REQUIRE_SIGNATURE=1).
+	if keystore != nil {
+		mux.Handle("POST /tmp/identity", tmproto.VerifyIdentityMatchHandler(identityHandler, tmproto.VerifyOptions{
+			KeyStore:         keystore,
+			OwnEndpointURL:   ownURL,
+			RequireSignature: *requireSig,
+		}))
+	} else {
+		mux.Handle("POST /tmp/identity", identityHandler)
+	}
 
 	mux.Handle("GET /metrics", metrics.Registry.Handler())
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -221,4 +253,38 @@ func seedConfigs(store targeting.Store) (*targeting.ResolvedPackages, error) {
 		SegmentIndex:    segmentIndex,
 		IdentityConfigs: idConfigs,
 	}, nil
+}
+
+func resolveString(flagVal, envName string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return os.Getenv(envName)
+}
+
+// buildKeyStore constructs a tmproto.KeyStore from the configured registry
+// URL. Returns (nil, nil) when no registry URL is set and signature
+// verification is not required — the agent then accepts unsigned requests.
+func buildKeyStore(registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
+	if registryURL == "" {
+		if requireSignature {
+			return nil, fmt.Errorf("--registry-url (or TMP_IDENTITY_REGISTRY_URL) is required when --require-signature is set")
+		}
+		return nil, nil
+	}
+	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{URL: registryURL})
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := ks.Start(ctx); err != nil {
+		return nil, fmt.Errorf("initial registry fetch from %s: %w", registryURL, err)
+	}
+	go func() {
+		// Background refresh runs for the lifetime of the process. Use a
+		// background context so refresh continues across request lifetimes.
+		_ = ks.Start(context.Background())
+	}()
+	return ks, nil
 }

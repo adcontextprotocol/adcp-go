@@ -67,9 +67,9 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 ### Context Match
 
 1. Publisher client sends `POST /tmp/context` to router with `property_id`, `placement_id`, `available_packages`, `artifacts`
-2. Router enriches request: resolves `property_rid` from registry, computes URL hash, signs with Ed25519
-3. Router fans out to matching context agents in parallel (30ms timeout per provider)
-4. Each context agent evaluates: property bitmap → suppression → signature → URL filter → topic match
+2. Router enriches request: resolves `property_rid` from registry, computes URL hash, signs per provider with Ed25519 (`X-AdCP-Signature` / `X-AdCP-Key-Id`)
+3. Router fans out to matching context agents in parallel (30ms timeout per provider). Signature is reused across requests for the same `(placement_id, provider, epoch)` from the in-process cache.
+4. Each context agent verifies the signature against the router's published key, then evaluates: property bitmap → suppression → URL filter → topic match
 5. Router merges offers and signals from all agents
 6. Response to publisher: offers + signals
 
@@ -78,12 +78,13 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 ### Identity Match
 
 1. Publisher client sends `POST /tmp/identity` to router with `user_token` (or `identities`), `package_ids`, `country`
-2. Router filters providers by `country` and `uid_type`, strips `country` before forwarding
-3. Router fans out to matching identity agents (30ms timeout)
-4. Each identity agent evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
-5. Router merges eligible package lists (union — packages are provider-specific)
-6. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
-7. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
+2. Router filters providers by `country` and `uid_type`, strips `country` before forwarding (the country is not part of the signing input)
+3. Router signs per provider with Ed25519 — each signature binds to the provider's registered endpoint URL (a signature minted for provider A is rejected by provider B)
+4. Router fans out to matching identity agents (30ms timeout)
+5. Each identity agent verifies the signature, then evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
+6. Router merges eligible package lists (union — packages are provider-specific)
+7. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
+8. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
 
 ### Exposure Tracking (TMPX)
 
@@ -141,13 +142,32 @@ The router tracks per-provider health:
 - Timeout and error both count as failures
 - Success resets consecutive failure counter
 
-## Ed25519 Signing
+## Request Authentication (Ed25519)
 
-- Router signs context match requests with Ed25519 private key
-- Signature cached per `(placement_id, package_set_hash, epoch)`
-- Epoch = 60 seconds; signatures valid for current + previous epoch
-- Agents verify signatures using property's public key from registry
-- Verification can be sampled (0-100% rate)
+The router signs every outbound `/tmp/context` and `/tmp/identity` request per the [TMP spec](https://adcontextprotocol.org/docs/trusted-match/specification#request-authentication). Providers verify the signature against the router's published public key (discovered via the registry) before evaluating the request.
+
+**Headers attached to every fan-out:**
+
+| Header | Value |
+|---|---|
+| `X-AdCP-Signature` | Ed25519 signature, base64url, no padding |
+| `X-AdCP-Key-Id` | Key identifier (`kid`) used to sign |
+
+**Signed inputs:**
+
+- **Context match** — newline-joined: `context_match_request | property_rid | placement_id | sorted-comma-joined package_ids | provider_endpoint_url | daily_epoch`. Cached on the router per `(placement_id, provider_endpoint_url, epoch)` — context-match signing inputs are static across requests within an epoch.
+- **Identity match** — `hex(SHA-256(JCS({type, request_id, identities_hash, consent, package_ids, provider_endpoint_url, daily_epoch})))`. Per-request, never cached. RFC 8785 JCS protects against delimiter-injection from arbitrary-byte fields like `consent.gpp`.
+
+**Replay window:** `daily_epoch = floor(unix_timestamp / 86400)`. Verifiers accept signatures bound to current or previous epoch (~48h). Stale epochs are rejected.
+
+**Per-provider binding:** every signature includes the registered `provider_endpoint_url`. A signature minted for provider A is rejected by provider B even with an identical body.
+
+**Key distribution:** the router's public key is published as a `signing_keys` JWK on the property records served by `GET /registry/snapshot`. Reference providers poll the snapshot URL on a 5-minute interval (`tmproto.RemoteKeyStore`) and look up by `kid`. Revocation: set `revoked_at` on the JWK; verifiers reject signatures whose epoch is at or after the revocation timestamp.
+
+**Configuration:**
+
+- Router: `TMP_ROUTER_SIGNING_KID`, `TMP_ROUTER_SIGNING_KEY_PATH` (PEM PKCS#8 Ed25519), `TMP_ROUTER_SIGNING_PROPERTY_RIDS` (comma-separated RIDs the router is authorized to sign for). Set `TMP_ROUTER_SIGNING_DISABLED=true` to opt out (dev only).
+- Reference agents: `--registry-url` (default off — accepts unsigned), `--require-signature`, `--own-endpoint-url`. Env equivalents: `TMP_{IDENTITY,CONTEXT}_REGISTRY_URL`, `TMP_{IDENTITY,CONTEXT}_REQUIRE_SIGNATURE`, `TMP_{IDENTITY,CONTEXT}_ENDPOINT_URL`.
 
 ## Environment Variables
 
@@ -155,10 +175,20 @@ The router tracks per-provider health:
 |----------|---------|---------|---------|
 | `TMP_ROUTER_ADDR` | Router | Listen address | `:8080` |
 | `TMP_ROUTER_CONFIG` | Router | Path to JSON config file | (none) |
+| `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
+| `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
+| `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |
+| `TMP_ROUTER_SIGNING_DISABLED` | Router | Disable request signing (dev only — fail-closed otherwise) | `false` |
 | `TMP_CONTEXT_ADDR` | Context Agent | Listen address | `:8081` |
-| `TMP_CONTEXT_REGISTRY` | Context Agent | Path to registry snapshot | (none) |
+| `TMP_CONTEXT_REGISTRY` | Context Agent | Path to local registry snapshot | (none) |
+| `TMP_CONTEXT_REGISTRY_URL` | Context Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_CONTEXT_ENDPOINT_URL` | Context Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent | Reject unsigned requests | `false` |
 | `TMP_IDENTITY_ADDR` | Identity Agent | Listen address | `:8082` |
 | `TMP_IDENTITY_REDIS_ADDR` | Identity Agent | Valkey/Redis address | (none, uses in-memory) |
+| `TMP_IDENTITY_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_IDENTITY_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_IDENTITY_REQUIRE_SIGNATURE` | Identity Agent | Reject unsigned requests | `false` |
 
 All services also accept `--addr` and other flags. Flags take precedence over environment variables.
 

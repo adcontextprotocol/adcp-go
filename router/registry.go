@@ -9,15 +9,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // RegistryProperty represents a property in the registry.
 type RegistryProperty struct {
-	PropertyID   string   `json:"property_id"`
-	PropertyRID  string   `json:"property_rid"`
-	PropertyType string   `json:"property_type"`
-	Domain       string   `json:"domain"`
-	Placements   []string `json:"placements,omitempty"`
+	PropertyID   string               `json:"property_id"`
+	PropertyRID  string               `json:"property_rid"`
+	PropertyType string               `json:"property_type"`
+	Domain       string               `json:"domain"`
+	Placements   []string             `json:"placements,omitempty"`
+	SigningKeys  []tmproto.SigningKey `json:"signing_keys,omitempty"`
 }
 
 // RegistrySnapshot is a full point-in-time view of the registry.
@@ -48,6 +51,9 @@ type Registry struct {
 	// domain → property_id (reverse domain lookup)
 	byDomain map[string]string
 
+	// kid → SigningKey (cross-property signing key index)
+	byKid map[string]*tmproto.SigningKey
+
 	// Current sequence number
 	sequence atomic.Uint64
 
@@ -63,12 +69,46 @@ func NewRegistry(snapshotURL, incrementalURL string) *Registry {
 		byID:           make(map[string]*RegistryProperty),
 		byRID:          make(map[string]*RegistryProperty),
 		byDomain:       make(map[string]string),
+		byKid:          make(map[string]*tmproto.SigningKey),
 		snapshotURL:    snapshotURL,
 		incrementalURL: incrementalURL,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// LookupKey resolves a kid to its SigningKey by scanning every property's
+// signing-key list. Implements tmproto.KeyStore so a Registry can drive a
+// verifier directly.
+func (r *Registry) LookupKey(kid string) (*tmproto.SigningKey, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	k, ok := r.byKid[kid]
+	return k, ok
+}
+
+// AttachSigningKey adds a signing key to the property record for propertyRID.
+// Idempotent on (kid, propertyRID): replaces any existing key with the same
+// kid on that property. The key also becomes resolvable via LookupKey.
+// Returns false if propertyRID is unknown.
+func (r *Registry) AttachSigningKey(propertyRID string, key tmproto.SigningKey) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prop, ok := r.byRID[propertyRID]
+	if !ok {
+		return false
+	}
+	for i := range prop.SigningKeys {
+		if prop.SigningKeys[i].Kid == key.Kid {
+			prop.SigningKeys[i] = key
+			r.byKid[key.Kid] = &prop.SigningKeys[i]
+			return true
+		}
+	}
+	prop.SigningKeys = append(prop.SigningKeys, key)
+	r.byKid[key.Kid] = &prop.SigningKeys[len(prop.SigningKeys)-1]
+	return true
 }
 
 // LookupByID returns a property by its string ID. O(1).
@@ -156,6 +196,7 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 	byID := make(map[string]*RegistryProperty, len(snapshot.Properties))
 	byRID := make(map[string]*RegistryProperty, len(snapshot.Properties))
 	byDomain := make(map[string]string, len(snapshot.Properties))
+	byKid := make(map[string]*tmproto.SigningKey)
 
 	for i := range snapshot.Properties {
 		p := &snapshot.Properties[i]
@@ -163,6 +204,12 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 		byRID[p.PropertyRID] = p
 		if p.Domain != "" {
 			byDomain[p.Domain] = p.PropertyID
+		}
+		for j := range p.SigningKeys {
+			k := &p.SigningKeys[j]
+			if k.Kid != "" {
+				byKid[k.Kid] = k
+			}
 		}
 	}
 
@@ -174,6 +221,7 @@ func (r *Registry) applySnapshot(snapshot *RegistrySnapshot) {
 	r.byID = byID
 	r.byRID = byRID
 	r.byDomain = byDomain
+	r.byKid = byKid
 	r.mu.Unlock()
 	r.sequence.Store(snapshot.Sequence)
 }
@@ -185,11 +233,22 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 
 	switch update.Action {
 	case "add", "update":
+		if existing, ok := r.byID[update.Property.PropertyID]; ok {
+			for j := range existing.SigningKeys {
+				delete(r.byKid, existing.SigningKeys[j].Kid)
+			}
+		}
 		p := &update.Property
 		r.byID[p.PropertyID] = p
 		r.byRID[p.PropertyRID] = p
 		if p.Domain != "" {
 			r.byDomain[p.Domain] = p.PropertyID
+		}
+		for j := range p.SigningKeys {
+			k := &p.SigningKeys[j]
+			if k.Kid != "" {
+				r.byKid[k.Kid] = k
+			}
 		}
 
 	case "remove":
@@ -200,6 +259,9 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 			}
 			if existing.Domain != "" {
 				delete(r.byDomain, existing.Domain)
+			}
+			for j := range existing.SigningKeys {
+				delete(r.byKid, existing.SigningKeys[j].Kid)
 			}
 		}
 	}
