@@ -1,8 +1,10 @@
 package urlutil_test
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/adcontextprotocol/adcp-go/urlutil"
 )
@@ -27,12 +29,8 @@ func TestRegistrable(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := urlutil.Registrable(tc.input)
-			if err != nil {
-				t.Fatalf("Registrable(%q) returned error: %v", tc.input, err)
-			}
-			if got != tc.want {
-				t.Errorf("Registrable(%q) = %q, want %q", tc.input, got, tc.want)
-			}
+			require.NoError(t, err, "Registrable(%q)", tc.input)
+			assert.Equal(t, tc.want, got, "Registrable(%q)", tc.input)
 		})
 	}
 }
@@ -51,12 +49,8 @@ func TestRegistrable_Invalid(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := urlutil.Registrable(tc.input)
-			if err == nil {
-				t.Fatalf("Registrable(%q) = %q, want error", tc.input, got)
-			}
-			if !errors.Is(err, urlutil.ErrInvalid) {
-				t.Errorf("Registrable(%q) error %v, want errors.Is(err, ErrInvalid)", tc.input, err)
-			}
+			assert.Empty(t, got, "Registrable(%q)", tc.input)
+			require.ErrorIs(t, err, urlutil.ErrInvalid, "Registrable(%q)", tc.input)
 		})
 	}
 }
