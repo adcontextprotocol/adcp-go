@@ -170,3 +170,66 @@ func TestContextSignatureCache_ReusesAcrossEpoch(t *testing.T) {
 	c := cache.signatureFor(signer, req, "https://x", 20001)
 	assert.NotEqual(t, a, c)
 }
+
+func TestContextSignatureCache_DistinctPackageIDsGetDistinctSignatures(t *testing.T) {
+	// Two requests on the same (placement, endpoint, epoch) but with
+	// different package_ids must NOT share a cached signature — Ed25519
+	// binds the signature to the exact signing input, and the cached
+	// signature would fail provider-side verification when re-applied
+	// to a body containing a different package set.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	signer, err := tmproto.NewSigner("kid", priv)
+	require.NoError(t, err)
+	ks := tmproto.NewStaticKeyStore([]tmproto.SigningKey{tmproto.PublicSigningKey(signer.KeyID, pub)})
+	cache := newContextSignatureCache(8)
+
+	endpoint := "https://provider.example.com"
+	epoch := int64(20000)
+	now := time.Unix(epoch*86400+1, 0)
+
+	reqA := &tmproto.ContextMatchRequest{
+		RequestID:   "r1",
+		PropertyRID: "rid",
+		PlacementID: "sb",
+		PackageIDs:  []string{"pkg-a", "pkg-b"},
+	}
+	reqB := &tmproto.ContextMatchRequest{
+		RequestID:   "r2",
+		PropertyRID: "rid",
+		PlacementID: "sb",
+		PackageIDs:  []string{"pkg-c"},
+	}
+
+	sigA := cache.signatureFor(signer, reqA, endpoint, epoch)
+	sigB := cache.signatureFor(signer, reqB, endpoint, epoch)
+	assert.NotEqual(t, sigA, sigB, "different package_ids must yield different cache entries")
+
+	require.NoError(t, tmproto.VerifyContextMatch(reqA, endpoint, sigA, signer.KeyID, ks, now), "sigA must verify against reqA's package_ids")
+	require.NoError(t, tmproto.VerifyContextMatch(reqB, endpoint, sigB, signer.KeyID, ks, now), "sigB must verify against reqB's package_ids")
+	assert.Error(t, tmproto.VerifyContextMatch(reqB, endpoint, sigA, signer.KeyID, ks, now), "sigA must not verify against reqB's package_ids (the cache-poisoning case the key change prevents)")
+}
+
+func TestContextSignatureCache_PackageIDOrderShareEntry(t *testing.T) {
+	// The signing input sorts package_ids before joining, so two requests
+	// with the same package set in different orders MUST share a cache
+	// entry — otherwise the cache misses on equivalent inputs.
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	_ = pub
+	require.NoError(t, err)
+	signer, err := tmproto.NewSigner("kid", priv)
+	require.NoError(t, err)
+	cache := newContextSignatureCache(8)
+
+	reqA := &tmproto.ContextMatchRequest{
+		PlacementID: "sb",
+		PackageIDs:  []string{"pkg-a", "pkg-b"},
+	}
+	reqB := &tmproto.ContextMatchRequest{
+		PlacementID: "sb",
+		PackageIDs:  []string{"pkg-b", "pkg-a"},
+	}
+	sigA := cache.signatureFor(signer, reqA, "https://x", 20000)
+	sigB := cache.signatureFor(signer, reqB, "https://x", 20000)
+	assert.Equal(t, sigA, sigB)
+}

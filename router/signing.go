@@ -1,16 +1,22 @@
 package router
 
 import (
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // contextSignatureCache memoizes context-match signatures by
-// (placement_id, provider_endpoint_url, epoch). Context-match signing inputs
-// are static per placement per provider per epoch (no request_id, no per-user
-// fields), so the same signature is reusable across every request to the same
-// (placement, provider) within a 24-hour window.
+// (placement_id, provider_endpoint_url, package_ids, epoch). The Ed25519
+// signature is bound to the exact signing input, so the cache key MUST cover
+// every field the signing input depends on. The spec mandates that
+// package_ids is constant per placement, which would make caching by
+// (placement_id, provider_endpoint_url, epoch) sufficient for spec-compliant
+// traffic — but the publisher controls package_ids, so including it in the
+// key turns a spec violation into a transparent cache miss instead of a
+// signature/body mismatch the provider has to reject.
 //
 // The cache is bounded — when it exceeds maxEntries, eviction drops the oldest
 // epoch's entries first, then resets. Reference deployments serve a small
@@ -24,7 +30,20 @@ type contextSignatureCache struct {
 type contextSignatureCacheKey struct {
 	placementID string
 	endpointURL string
+	packageIDs  string
 	epoch       int64
+}
+
+// packageIDsKey serializes the package_ids slice into the same form the
+// signing input uses: sorted, comma-joined. Two slices with the same elements
+// in any order share a cache entry; differing elements get separate entries.
+func packageIDsKey(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ",")
 }
 
 func newContextSignatureCache(maxEntries int) *contextSignatureCache {
@@ -48,6 +67,7 @@ func (c *contextSignatureCache) signatureFor(
 	key := contextSignatureCacheKey{
 		placementID: req.PlacementID,
 		endpointURL: endpointURL,
+		packageIDs:  packageIDsKey(req.PackageIDs),
 		epoch:       epoch,
 	}
 	c.mu.Lock()
