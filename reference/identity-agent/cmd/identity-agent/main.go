@@ -439,7 +439,7 @@ func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error
 	if !ok {
 		return "", errors.New("no TMPX encryption recipient currently published — buyer JWKS missing adcp_use=tmpx-encrypt key")
 	}
-	entries, err := selectTmpxEntries(cfg, len(recipient.Kid), ids)
+	entries, err := selectTmpxEntries(cfg, ids)
 	if err != nil {
 		return "", err
 	}
@@ -456,11 +456,13 @@ func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error
 // selectTmpxEntries returns the ordered TmpxEntries that buildTmpxToken will
 // seal: mappable UIDTypes filtered through the operator-configured priority
 // list, sorted by priority (highest first), then truncated to fit the
-// TmpxMaxWireBytes budget. kidLen is the length of the recipient kid that
-// will be prefixed to the sealed wire string. When cfg.Priority is empty and
-// the candidates don't all fit, returns an error — the spec forbids
-// arbitrary truncation.
-func selectTmpxEntries(cfg *tmpxConfig, kidLen int, ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
+// TmpxMaxWireBytes budget. The budget is computed against the spec-defined
+// TmpxMaxKidLen rather than the currently advertised kid — a JWKS rotation
+// can change the kid length between seals, and a prefix that just fits today
+// must still fit if the kid grows from 1 to 8 chars at the next refresh.
+// When cfg.Priority is empty and the candidates don't all fit, returns an
+// error — the spec forbids arbitrary truncation.
+func selectTmpxEntries(cfg *tmpxConfig, ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
 	type candidate struct {
 		priority int
 		entry    tmproto.TmpxEntry
@@ -494,7 +496,7 @@ func selectTmpxEntries(cfg *tmpxConfig, kidLen int, ids []tmproto.IdentityToken)
 	usedBytes := 0
 	for _, c := range candidates {
 		need := 1 + len(c.entry.Token)
-		nextWire := tmproto.TmpxWireSize(kidLen, usedBytes+need)
+		nextWire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes+need)
 		if nextWire > tmproto.TmpxMaxWireBytes {
 			if len(cfg.Priority) == 0 {
 				return nil, fmt.Errorf("tmpx wire size %d exceeds %d-byte budget and no --tmpx-priority configured: spec forbids arbitrary truncation",

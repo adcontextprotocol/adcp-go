@@ -35,8 +35,11 @@ import (
 // TmpxFormatVersion is the TMPX binary plaintext format version per spec.
 const TmpxFormatVersion uint8 = 0x01
 
-// tmpxKidMaxLen is the maximum length of the TMPX recipient kid.
-const tmpxKidMaxLen = 8
+// TmpxMaxKidLen is the spec-defined cap on the kid string prefixed to every
+// TMPX wire token. Senders that size payloads against the wire budget should
+// reserve this many bytes even when the currently advertised kid is shorter —
+// JWKS rotations can change the kid length between seals.
+const TmpxMaxKidLen = 8
 
 // TmpxHeaderBytes is the size of the binary plaintext header (version,
 // timestamp, country, nonce, count).
@@ -177,8 +180,8 @@ func isASCIIUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
 // info is bound into the HPKE key schedule and is left empty in the spec —
 // callers should pass nil unless the buyer profile defines a value.
 func SealTmpx(recipient TmpxRecipient, info, plaintext []byte) (string, error) {
-	if recipient.Kid == "" || len(recipient.Kid) > tmpxKidMaxLen {
-		return "", fmt.Errorf("tmproto: tmpx kid must be 1..%d chars", tmpxKidMaxLen)
+	if recipient.Kid == "" || len(recipient.Kid) > TmpxMaxKidLen {
+		return "", fmt.Errorf("tmproto: tmpx kid must be 1..%d chars", TmpxMaxKidLen)
 	}
 	if recipient.PublicKey == nil {
 		return "", errors.New("tmproto: tmpx recipient public key required")

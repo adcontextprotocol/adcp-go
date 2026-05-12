@@ -219,7 +219,7 @@ func TestSelectTmpxEntries_PrioritySortsHighestFirst(t *testing.T) {
 		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
-	got, err := selectTmpxEntries(cfg, 8, ids)
+	got, err := selectTmpxEntries(cfg, ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSelectTmpxEntries_DropsUidTypesNotInPriority(t *testing.T) {
 		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
-	got, err := selectTmpxEntries(cfg, 2, ids)
+	got, err := selectTmpxEntries(cfg, ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestSelectTmpxEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
-	got, err := selectTmpxEntries(cfg, 8, ids)
+	got, err := selectTmpxEntries(cfg, ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestSelectTmpxEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 	for _, e := range got {
 		usedBytes += 1 + len(e.Token)
 	}
-	wire := tmproto.TmpxWireSize(8, usedBytes)
+	wire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
 	if wire > tmproto.TmpxMaxWireBytes {
 		t.Errorf("selected entries produce wire %d > %d", wire, tmproto.TmpxMaxWireBytes)
 	}
@@ -298,7 +298,7 @@ func TestSelectTmpxEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: fixtureToken("hashed_email")},
 		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
 	}
-	_, err := selectTmpxEntries(cfg, 8, ids)
+	_, err := selectTmpxEntries(cfg, ids)
 	if err == nil {
 		t.Fatal("over-budget without --tmpx-priority must error")
 	}
@@ -313,7 +313,7 @@ func TestSelectTmpxEntries_NoPriorityPassesUnderBudget(t *testing.T) {
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 		{UIDType: tmproto.UIDTypeMAID, UserToken: fixtureToken("maid")},
 	}
-	got, err := selectTmpxEntries(cfg, 2, ids)
+	got, err := selectTmpxEntries(cfg, ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,6 +347,65 @@ func TestBuildTmpxToken_PriorityResultsInValidWire(t *testing.T) {
 	if len(wire) > tmproto.TmpxMaxWireBytes {
 		t.Fatalf("wire %d exceeds %d", len(wire), tmproto.TmpxMaxWireBytes)
 	}
+}
+
+func TestSelectTmpxEntries_BudgetStableAcrossKidRotation(t *testing.T) {
+	// The budget must be computed against TmpxMaxKidLen, not the current
+	// recipient kid. Otherwise a JWKS rotation from a 1-char to an 8-char
+	// kid could push a previously-fitting prefix over 255 bytes — the
+	// resulting wire would silently overflow at the next refresh.
+	cfg := &tmpxConfig{
+		Priority: []tmproto.UIDType{
+			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+		},
+	}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeEUID, UserToken: fixtureToken("euid")},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: fixtureToken("hashed_email")},
+		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
+	}
+	got, err := selectTmpxEntries(cfg, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The chosen prefix must produce a valid wire at the *maximum* possible
+	// kid length the buyer might rotate to.
+	usedBytes := 0
+	for _, e := range got {
+		usedBytes += 1 + len(e.Token)
+	}
+	wireAtMaxKid := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
+	if wireAtMaxKid > tmproto.TmpxMaxWireBytes {
+		t.Fatalf("selected prefix overflows when kid grows to TmpxMaxKidLen: %d > %d", wireAtMaxKid, tmproto.TmpxMaxWireBytes)
+	}
+
+	// Cross-check: the actual seal under a 1-char kid is well under budget.
+	resolver := &fakeRecipientResolver{
+		recipient: tmproto.TmpxRecipient{Kid: "x", PublicKey: mustEcdhPub(t)},
+		ok:        true,
+	}
+	cfg.Country = "US"
+	cfg.EncStore = resolver
+	wire, err := buildTmpxToken(cfg, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) > tmproto.TmpxMaxWireBytes {
+		t.Errorf("actual wire %d > %d under 1-char kid", len(wire), tmproto.TmpxMaxWireBytes)
+	}
+}
+
+func mustEcdhPub(t *testing.T) *ecdh.PublicKey {
+	t.Helper()
+	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sk.PublicKey()
 }
 
 // fixtureToken returns a deterministic string used as an opaque identity-graph
