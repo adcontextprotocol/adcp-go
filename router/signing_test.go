@@ -89,7 +89,7 @@ func TestRouter_SignsIdentityMatchPerProvider(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          "id-sign",
 				EligiblePackageIDs: []string{"pkg"},
-				TTLSec:             60,
+				ServeWindowSec:     60,
 			})
 		}))
 	}
@@ -105,6 +105,7 @@ func TestRouter_SignsIdentityMatchPerProvider(t *testing.T) {
 
 	body := `{
 		"request_id":"id-sign",
+		"seller_agent_url":"https://seller.example.com/agent",
 		"identities":[{"user_token":"tok","uid_type":"uid2"}],
 		"package_ids":["pkg"],
 		"country":"US"

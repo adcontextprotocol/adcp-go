@@ -55,7 +55,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 		resp := tmproto.IdentityMatchResponse{
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{"pkg-1"},
-			TTLSec:             300,
+			ServeWindowSec:     300,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -64,14 +64,15 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	resp, err := c.IdentityMatch(context.Background(), &tmproto.IdentityMatchRequest{
-		RequestID:  "id-1",
-		Identities: []tmproto.IdentityToken{{UserToken: "tok-abc", UIDType: tmproto.UIDTypeUID2}},
-		PackageIDs: []string{"pkg-1"},
+		RequestID:      "id-1",
+		SellerAgentURL: "https://seller.example.com/agent",
+		Identities:     []tmproto.IdentityToken{{UserToken: "tok-abc", UIDType: tmproto.UIDTypeUID2}},
+		PackageIDs:     []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.EligiblePackageIDs, 1)
 	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
-	assert.Equal(t, 300, resp.TTLSec)
+	assert.Equal(t, 300, resp.ServeWindowSec)
 }
 
 func TestContextMatch_ErrorResponse(t *testing.T) {
@@ -160,7 +161,7 @@ func TestActivate_HappyPath(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          "id-1",
 				EligiblePackageIDs: []string{"pkg-food"},
-				TTLSec:             60,
+				ServeWindowSec:     60,
 			})
 		}
 	}))
@@ -168,12 +169,13 @@ func TestActivate_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-food", "pkg-tech"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-food", "pkg-tech"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -208,12 +210,13 @@ func TestActivate_NoOverlap(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 	assert.Empty(t, result.Activations, "expected 0 activations (no overlap)")
@@ -234,12 +237,13 @@ func TestActivate_ContextFails(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	assert.Error(t, err, "expected error when context match fails")
 }
@@ -259,7 +263,7 @@ func TestActivate_MultiPackage(t *testing.T) {
 		case "/tmp/identity":
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				EligiblePackageIDs: []string{"pkg-a", "pkg-b", "pkg-c"},
-				TTLSec:             120,
+				ServeWindowSec:     120,
 			})
 		}
 	}))
@@ -267,12 +271,13 @@ func TestActivate_MultiPackage(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b", "pkg-c"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b", "pkg-c"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -302,12 +307,13 @@ func TestActivate_PackageIDsSentToBothEndpoints(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pkg-a", "pkg-b"}, receivedPkgIDs, "expected [pkg-a pkg-b]")
@@ -332,13 +338,14 @@ func TestActivate_Tmpx(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
-		Country:      "US",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
+		Country:        "US",
 	})
 	require.NoError(t, err)
 	require.Len(t, result.Activations, 1)
@@ -364,13 +371,14 @@ func TestActivate_CountryPassedThrough(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
-		Country:      "DE",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
+		Country:        "DE",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "DE", receivedCountry, "expected country DE sent to router")

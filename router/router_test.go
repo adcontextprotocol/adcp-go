@@ -56,9 +56,10 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 
 func TestValidateIdentityRequest_Valid(t *testing.T) {
 	req := &tmproto.IdentityMatchRequest{
-		RequestID:  "id-001",
-		Identities: []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
-		PackageIDs: []string{"pkg-1", "pkg-2"},
+		RequestID:      "id-001",
+		SellerAgentURL: "https://seller.example.com/agent",
+		Identities:     []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
+		PackageIDs:     []string{"pkg-1", "pkg-2"},
 	}
 	assert.NoError(t, ValidateIdentityRequest(req))
 }
@@ -124,12 +125,12 @@ func TestMergeIdentityResponses(t *testing.T) {
 	// Provider 1 says pkg-1 and pkg-3 are eligible.
 	r1 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-1", "pkg-3"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 	// Provider 2 says pkg-1 and pkg-2 are eligible.
 	r2 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-1", "pkg-2"},
-		TTLSec:             600,
+		ServeWindowSec:     600,
 	}
 
 	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, []*tmproto.IdentityMatchResponse{r1, r2})
@@ -147,8 +148,8 @@ func TestMergeIdentityResponses(t *testing.T) {
 	assert.True(t, eligible["pkg-3"], "pkg-3 should be eligible (listed by its provider)")
 	assert.Len(t, merged.EligiblePackageIDs, 3)
 
-	// TTL is the minimum across providers.
-	assert.Equal(t, 300, merged.TTLSec)
+	// ServeWindow is the minimum across providers.
+	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
@@ -236,7 +237,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 			RequestID:          "id-e2e",
 			EligiblePackageIDs: []string{"pkg-1"},
-			TTLSec:             300,
+			ServeWindowSec:     300,
 		})
 	}))
 	defer provider.Close()
@@ -247,6 +248,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-e2e",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1", "pkg-2", "pkg-3"]
 	}`
@@ -262,7 +264,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 
 	require.Len(t, resp.EligiblePackageIDs, 1)
 	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
-	assert.Equal(t, 300, resp.TTLSec)
+	assert.Equal(t, 300, resp.ServeWindowSec)
 }
 
 func TestIdentityFiltering_Country(t *testing.T) {
@@ -342,7 +344,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 			RequestID:          "id-strip",
 			EligiblePackageIDs: []string{"pkg-1"},
-			TTLSec:             60,
+			ServeWindowSec:     60,
 			Tmpx:               "k1.dGVzdC10b2tlbg",
 		})
 	}))
@@ -354,6 +356,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-strip",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1"],
 		"country": "US"
@@ -379,17 +382,17 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 	r1 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-1", "pkg-3"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 	r2 := &tmproto.IdentityMatchResponse{
 		EligiblePackageIDs: []string{"pkg-2"},
-		TTLSec:             600,
+		ServeWindowSec:     600,
 	}
 
 	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2})
 
 	require.Len(t, merged.EligiblePackageIDs, 3)
-	assert.Equal(t, 300, merged.TTLSec)
+	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
 func TestRouterTimeout_ProviderExcluded(t *testing.T) {

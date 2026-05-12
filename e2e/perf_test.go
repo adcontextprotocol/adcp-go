@@ -86,9 +86,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			// Identity match
 			idStart := time.Now()
 			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-				RequestID:  fmt.Sprintf("perf-id-%d", i),
-				Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
-				PackageIDs: allPkgIDs,
+				RequestID:      fmt.Sprintf("perf-id-%d", i),
+				SellerAgentURL: "https://seller.example.com/agent",
+				Identities:     []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
+				PackageIDs:     allPkgIDs,
 			})
 			totalId += time.Since(idStart)
 
@@ -143,9 +144,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-					RequestID:  fmt.Sprintf("par-id-%d", i),
-					Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
-					PackageIDs: allPkgIDs,
+					RequestID:      fmt.Sprintf("par-id-%d", i),
+					SellerAgentURL: "https://seller.example.com/agent",
+					Identities:     []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-user-%d", i%50)}},
+					PackageIDs:     allPkgIDs,
 				})
 			}()
 			wg.Wait()
@@ -206,9 +208,10 @@ func TestPerformance_EndToEnd(t *testing.T) {
 					go func() {
 						defer inner.Done()
 						idData = postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-							RequestID:  fmt.Sprintf("tp-id-%d-%d", workerID, i),
-							Identities: []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-%d-%d", workerID, i)}},
-							PackageIDs: allPkgIDs,
+							RequestID:      fmt.Sprintf("tp-id-%d-%d", workerID, i),
+							SellerAgentURL: "https://seller.example.com/agent",
+							Identities:     []tmproto.IdentityToken{{UserToken: fmt.Sprintf("tok-%d-%d", workerID, i)}},
+							PackageIDs:     allPkgIDs,
 						})
 					}()
 					inner.Wait()
@@ -260,9 +263,10 @@ func TestPerformance_FrequencyCapping(t *testing.T) {
 		for p := range pagesPerUser {
 			// Identity match
 			idData := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-				RequestID:  fmt.Sprintf("freq-%d-%d", u, p),
-				Identities: []tmproto.IdentityToken{{UserToken: token}},
-				PackageIDs: allPkgIDs,
+				RequestID:      fmt.Sprintf("freq-%d-%d", u, p),
+				SellerAgentURL: "https://seller.example.com/agent",
+				Identities:     []tmproto.IdentityToken{{UserToken: token}},
+				PackageIDs:     allPkgIDs,
 			})
 			totalRequests++
 

@@ -91,6 +91,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if err := validateSafeID("request_id", req.RequestID); err != nil {
 		return err
 	}
+	if req.SellerAgentURL == "" {
+		return errors.New("seller_agent_url is required")
+	}
 	if len(req.Identities) == 0 {
 		return errors.New("identities must not be empty")
 	}
@@ -113,9 +116,6 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		if len(req.Country) != 2 || req.Country[0] < 'A' || req.Country[0] > 'Z' || req.Country[1] < 'A' || req.Country[1] > 'Z' {
 			return errors.New("country must be a 2-letter ISO 3166-1 alpha-2 code")
 		}
-	}
-	if len(req.PackageIDs) == 0 {
-		return errors.New("package_ids must not be empty")
 	}
 	if len(req.PackageIDs) > MaxPackagesPerRequest {
 		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)

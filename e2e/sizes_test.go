@@ -27,6 +27,7 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 	idReq := tmproto.IdentityMatchRequest{
 		ProtocolVersion: "1.0",
 		RequestID:       "f9e8d7c6-b5a4-3210-fedc-ba0987654321",
+		SellerAgentURL:  "https://seller.example.com/agent",
 		Identities:      []tmproto.IdentityToken{{UserToken: "tok_uid2_example_not_a_real_token", UIDType: tmproto.UIDTypeUID2}},
 		PackageIDs:      []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-auto-video", "pkg-travel-sponsored", "pkg-pharma-awareness"},
 	}
@@ -49,7 +50,7 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 	idResp := tmproto.IdentityMatchResponse{
 		RequestID:          idReq.RequestID,
 		EligiblePackageIDs: []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-travel-sponsored"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 
 	// Expose request (local types — not part of tmproto wire format).

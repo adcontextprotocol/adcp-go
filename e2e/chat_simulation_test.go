@@ -158,7 +158,7 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
-		TTLSec:             60,
+		ServeWindowSec:     60,
 	})
 }
 
@@ -330,9 +330,10 @@ func TestSimulation_AIAssistantChat(t *testing.T) {
 
 		// 2. Identity Match (in parallel in production, sequential here for clarity)
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-			RequestID:  fmt.Sprintf("id-chat-%d", i),
-			Identities: []tmproto.IdentityToken{{UserToken: userToken, UIDType: tmproto.UIDTypePublisherFirstParty}},
-			PackageIDs: allPackages,
+			RequestID:      fmt.Sprintf("id-chat-%d", i),
+			SellerAgentURL: "https://seller.example.com/agent",
+			Identities:     []tmproto.IdentityToken{{UserToken: userToken, UIDType: tmproto.UIDTypePublisherFirstParty}},
+			PackageIDs:     allPackages,
 		})
 
 		var imResp tmproto.IdentityMatchResponse
@@ -467,9 +468,10 @@ func TestSimulation_ChatFrequencyCapping(t *testing.T) {
 		json.Unmarshal(ctxResp, &cmResp)
 
 		idResp := postJSON(t, router.URL+"/tmp/identity", tmproto.IdentityMatchRequest{
-			RequestID:  fmt.Sprintf("id-freq-%d", turn),
-			Identities: []tmproto.IdentityToken{{UserToken: token}},
-			PackageIDs: []string{"pkg-coffee"},
+			RequestID:      fmt.Sprintf("id-freq-%d", turn),
+			SellerAgentURL: "https://seller.example.com/agent",
+			Identities:     []tmproto.IdentityToken{{UserToken: token}},
+			PackageIDs:     []string{"pkg-coffee"},
 		})
 
 		var imResp tmproto.IdentityMatchResponse
