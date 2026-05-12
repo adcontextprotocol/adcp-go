@@ -38,6 +38,19 @@ const TmpxFormatVersion uint8 = 0x01
 // tmpxKidMaxLen is the maximum length of the TMPX recipient kid.
 const tmpxKidMaxLen = 8
 
+// TmpxHeaderBytes is the size of the binary plaintext header (version,
+// timestamp, country, nonce, count).
+const TmpxHeaderBytes = 16
+
+// TmpxHPKEOverheadBytes is the post-seal HPKE overhead added on top of the
+// plaintext: 32 bytes of encapsulated KEM key + 16 bytes of AEAD auth tag.
+const TmpxHPKEOverheadBytes = 48
+
+// TmpxMaxWireBytes is the maximum size of a TMPX wire string after base64url
+// encoding. 255 bytes is the GAM macro substitution limit — tokens above it
+// cannot be inlined into creative tracking URLs without truncation.
+const TmpxMaxWireBytes = 255
+
 // HPKE algorithm IDs per RFC 9180.
 const (
 	hpkeKEMX25519HKDFSHA256 uint16 = 0x0020
@@ -144,6 +157,16 @@ func entriesByteLen(entries []TmpxEntry) int {
 		n += 1 + len(e.Token)
 	}
 	return n
+}
+
+// TmpxWireSize returns the wire-string length a TMPX token will have after
+// HPKE sealing and base64url encoding, given a recipient kid of length kidLen
+// and entriesBytes worth of plaintext entry payload (sum of 1 + tokenSize over
+// the entries). Callers use this to keep emitted tokens under
+// TmpxMaxWireBytes before paying for the seal.
+func TmpxWireSize(kidLen, entriesBytes int) int {
+	rawLen := TmpxHeaderBytes + TmpxHPKEOverheadBytes + entriesBytes
+	return kidLen + 1 + base64.RawURLEncoding.EncodedLen(rawLen)
 }
 
 func isASCIIUpper(b byte) bool { return b >= 'A' && b <= 'Z' }

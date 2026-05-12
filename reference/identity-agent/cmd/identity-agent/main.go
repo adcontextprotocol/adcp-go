@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/ecdh"
 	"crypto/sha512"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,9 +33,10 @@ func main() {
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/identity requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
 	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
-	tmpxKid := flag.String("tmpx-kid", "", "Buyer-cluster TMPX recipient kid (≤8 chars). Enables TMPX token generation when set together with --tmpx-pubkey-path.")
-	tmpxPubKey := flag.String("tmpx-pubkey-path", "", "Path to the TMPX recipient X25519 public key (32 bytes, hex- or base64url-encoded).")
+	tmpxEncryptJWKSURL := flag.String("tmpx-encrypt-jwks-url", "", "URL of the buyer's JWKS endpoint that publishes the active TMPX recipient key (X25519, adcp_use=tmpx-encrypt). Enables TMPX token generation when set.")
+	tmpxEncryptJWKSTTL := flag.Duration("tmpx-encrypt-jwks-ttl", 5*time.Minute, "How often to re-poll the TMPX encryption JWKS for key rotation.")
 	tmpxCountry := flag.String("tmpx-country", "", "ISO 3166-1 alpha-2 country code stamped into the TMPX header. Required when TMPX is enabled.")
+	tmpxPriority := flag.String("tmpx-priority", "", "Comma-separated UID type ordering used to truncate identities when the TMPX wire size would exceed 255 bytes (e.g. 'uid2,rampid,id5'). Spec requires this list be configured before any truncation; without it, an over-budget identity set returns an error.")
 	flag.Parse()
 
 	flagSet := setFlags()
@@ -91,9 +90,11 @@ func main() {
 	}
 
 	tmpxCfg, err := loadTmpxConfig(
-		resolveString(*tmpxKid, flagSet["tmpx-kid"], "TMP_IDENTITY_TMPX_KID"),
-		resolveString(*tmpxPubKey, flagSet["tmpx-pubkey-path"], "TMP_IDENTITY_TMPX_PUBKEY_PATH"),
+		keystoreCtx,
+		resolveString(*tmpxEncryptJWKSURL, flagSet["tmpx-encrypt-jwks-url"], "TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL"),
+		*tmpxEncryptJWKSTTL,
 		resolveString(*tmpxCountry, flagSet["tmpx-country"], "TMP_IDENTITY_TMPX_COUNTRY"),
+		resolveString(*tmpxPriority, flagSet["tmpx-priority"], "TMP_IDENTITY_TMPX_PRIORITY"),
 	)
 	if err != nil {
 		slog.Error("tmpx config load failed", "error", err)
@@ -106,7 +107,7 @@ func main() {
 			os.Exit(1)
 		}
 		slog.Warn("TMPX generation enabled with reference SHA-512 stub — buyer masters will not be able to decode these tokens",
-			"kid", tmpxCfg.Kid, "country", tmpxCfg.Country)
+			"country", tmpxCfg.Country)
 	}
 
 	mux := http.NewServeMux()
@@ -323,53 +324,89 @@ func setFlags() map[string]bool {
 // tmpxConfig holds the resolved TMPX recipient settings used to seal tokens
 // alongside identity-match responses.
 type tmpxConfig struct {
-	Kid       string
-	Country   string
-	PublicKey *ecdh.PublicKey
+	Country  string
+	EncStore tmpxRecipientResolver
+
+	// Priority is the explicit per-spec priority ordering used when the
+	// resolved identities exceed the 255-byte wire budget. Entries earlier
+	// in the slice rank higher; entries whose UIDType is absent are
+	// dropped (the spec requires explicit configuration — arbitrary
+	// truncation is forbidden). When Priority is empty, no truncation is
+	// performed and an over-budget token is reported as an error.
+	Priority []tmproto.UIDType
+}
+
+// tmpxRecipientResolver returns the buyer-cluster TMPX recipient at the
+// moment of sealing. Backed by tmproto.JWKSStore in production; replaceable
+// with a fixed recipient in tests.
+type tmpxRecipientResolver interface {
+	CurrentEncryptionRecipient() (tmproto.TmpxRecipient, bool)
 }
 
 // loadTmpxConfig validates flag inputs and parses the recipient X25519 public
 // key from disk. Returns (nil, nil) when TMPX is not configured.
-func loadTmpxConfig(kid, pubKeyPath, country string) (*tmpxConfig, error) {
-	configured := kid != "" || pubKeyPath != "" || country != ""
+func loadTmpxConfig(runCtx context.Context, jwksURL string, jwksTTL time.Duration, country, priority string) (*tmpxConfig, error) {
+	configured := jwksURL != "" || country != "" || priority != ""
 	if !configured {
 		return nil, nil
 	}
-	if kid == "" || pubKeyPath == "" || country == "" {
-		return nil, errors.New("TMPX requires all three of --tmpx-kid, --tmpx-pubkey-path, --tmpx-country")
+	if jwksURL == "" || country == "" {
+		return nil, errors.New("TMPX requires --tmpx-encrypt-jwks-url and --tmpx-country")
 	}
-	raw, err := os.ReadFile(pubKeyPath) //nolint:gosec // operator-supplied path is the contract
-	if err != nil {
-		return nil, fmt.Errorf("read TMPX public key: %w", err)
-	}
-	pkBytes, err := decodeX25519PublicKey(string(raw))
-	if err != nil {
-		return nil, fmt.Errorf("parse TMPX public key at %s: %w", pubKeyPath, err)
-	}
-	pk, err := tmproto.LoadX25519PublicKey(pkBytes)
+	store, err := tmproto.NewJWKSStore(tmproto.JWKSStoreOptions{
+		URL:             jwksURL,
+		RefreshInterval: jwksTTL,
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &tmpxConfig{Kid: kid, Country: country, PublicKey: pk}, nil
+	fetchCtx, cancel := context.WithTimeout(runCtx, 10*time.Second)
+	defer cancel()
+	if err := store.Refresh(fetchCtx); err != nil {
+		return nil, fmt.Errorf("initial TMPX JWKS fetch from %s: %w", jwksURL, err)
+	}
+	if _, ok := store.CurrentEncryptionRecipient(); !ok {
+		return nil, fmt.Errorf("TMPX JWKS at %s does not publish an adcp_use=tmpx-encrypt key", jwksURL)
+	}
+	go func() {
+		if err := store.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Warn("TMPX JWKS Run terminated", "url", jwksURL, "error", err)
+		}
+	}()
+	order, err := parseTmpxPriority(priority)
+	if err != nil {
+		return nil, err
+	}
+	return &tmpxConfig{Country: country, EncStore: store, Priority: order}, nil
 }
 
-// decodeX25519PublicKey accepts hex or base64url (no-pad / padded) encoding
-// of a 32-byte X25519 public key, with surrounding whitespace tolerated.
-func decodeX25519PublicKey(s string) ([]byte, error) {
+// parseTmpxPriority parses a comma-separated list of UID type names into the
+// ordered slice used by buildTmpxToken. Whitespace around tokens is tolerated;
+// unknown UID types are rejected (a typo would silently drop identities).
+func parseTmpxPriority(s string) ([]tmproto.UIDType, error) {
 	s = strings.TrimSpace(s)
-	if b, err := hex.DecodeString(s); err == nil && len(b) == 32 {
-		return b, nil
+	if s == "" {
+		return nil, nil
 	}
-	if b, err := base64.RawURLEncoding.DecodeString(s); err == nil && len(b) == 32 {
-		return b, nil
+	parts := strings.Split(s, ",")
+	out := make([]tmproto.UIDType, 0, len(parts))
+	seen := make(map[tmproto.UIDType]bool, len(parts))
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		if name == "" {
+			continue
+		}
+		uid := tmproto.UIDType(name)
+		if _, ok := uidToTmpxTypeID[uid]; !ok {
+			return nil, fmt.Errorf("--tmpx-priority entry %q is not a TMPX-encodable uid_type", name)
+		}
+		if seen[uid] {
+			return nil, fmt.Errorf("--tmpx-priority entry %q appears more than once", name)
+		}
+		seen[uid] = true
+		out = append(out, uid)
 	}
-	if b, err := base64.URLEncoding.DecodeString(s); err == nil && len(b) == 32 {
-		return b, nil
-	}
-	if b, err := base64.StdEncoding.DecodeString(s); err == nil && len(b) == 32 {
-		return b, nil
-	}
-	return nil, fmt.Errorf("expected 32-byte X25519 public key in hex or base64url")
+	return out, nil
 }
 
 // uidToTmpxTypeID maps spec UID types to TMPX type-ID registry entries.
@@ -386,25 +423,25 @@ var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
 }
 
 // buildTmpxToken seals an HPKE TMPX token containing the resolved identities.
-// Identities whose UIDType has no TMPX type-ID mapping are dropped silently
-// per the spec's forward-compatibility rule (unknown types skipped).
+// Identities whose UIDType has no TMPX type-ID mapping are dropped per the
+// spec's forward-compatibility rule. When cfg.Priority is non-empty, entries
+// are sorted by priority and the highest-priority prefix that fits the
+// TmpxMaxWireBytes (255) budget is included; identities with a UIDType not in
+// the priority list are excluded entirely. When cfg.Priority is empty, the
+// spec forbids arbitrary truncation — an over-budget set returns an error.
 //
 // The string→binary conversion in stubBinaryToken is a reference stub —
 // real buyer deployments decode UID2/RampID/etc. according to the source
 // graph's encoding. Tokens produced here are not interoperable with a real
 // buyer master.
 func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error) {
-	entries := make([]tmproto.TmpxEntry, 0, len(ids))
-	for _, id := range ids {
-		typeID, ok := uidToTmpxTypeID[id.UIDType]
-		if !ok {
-			continue
-		}
-		bin, err := stubBinaryToken(typeID, id.UserToken)
-		if err != nil {
-			return "", err
-		}
-		entries = append(entries, tmproto.TmpxEntry{TypeID: typeID, Token: bin})
+	recipient, ok := cfg.EncStore.CurrentEncryptionRecipient()
+	if !ok {
+		return "", errors.New("no TMPX encryption recipient currently published — buyer JWKS missing adcp_use=tmpx-encrypt key")
+	}
+	entries, err := selectTmpxEntries(cfg, len(recipient.Kid), ids)
+	if err != nil {
+		return "", err
 	}
 	if len(entries) == 0 {
 		return "", nil
@@ -413,7 +450,75 @@ func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error
 	if err != nil {
 		return "", err
 	}
-	return tmproto.SealTmpx(tmproto.TmpxRecipient{Kid: cfg.Kid, PublicKey: cfg.PublicKey}, nil, plaintext)
+	return tmproto.SealTmpx(recipient, nil, plaintext)
+}
+
+// selectTmpxEntries returns the ordered TmpxEntries that buildTmpxToken will
+// seal: mappable UIDTypes filtered through the operator-configured priority
+// list, sorted by priority (highest first), then truncated to fit the
+// TmpxMaxWireBytes budget. kidLen is the length of the recipient kid that
+// will be prefixed to the sealed wire string. When cfg.Priority is empty and
+// the candidates don't all fit, returns an error — the spec forbids
+// arbitrary truncation.
+func selectTmpxEntries(cfg *tmpxConfig, kidLen int, ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
+	type candidate struct {
+		priority int
+		entry    tmproto.TmpxEntry
+	}
+	candidates := make([]candidate, 0, len(ids))
+	for _, id := range ids {
+		typeID, ok := uidToTmpxTypeID[id.UIDType]
+		if !ok {
+			continue
+		}
+		p := indexOfUIDType(cfg.Priority, id.UIDType)
+		if len(cfg.Priority) > 0 && p < 0 {
+			continue
+		}
+		bin, err := stubBinaryToken(typeID, id.UserToken)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate{priority: p, entry: tmproto.TmpxEntry{TypeID: typeID, Token: bin}})
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(cfg.Priority) > 0 {
+		sort.SliceStable(candidates, func(i, j int) bool {
+			return candidates[i].priority < candidates[j].priority
+		})
+	}
+
+	entries := make([]tmproto.TmpxEntry, 0, len(candidates))
+	usedBytes := 0
+	for _, c := range candidates {
+		need := 1 + len(c.entry.Token)
+		nextWire := tmproto.TmpxWireSize(kidLen, usedBytes+need)
+		if nextWire > tmproto.TmpxMaxWireBytes {
+			if len(cfg.Priority) == 0 {
+				return nil, fmt.Errorf("tmpx wire size %d exceeds %d-byte budget and no --tmpx-priority configured: spec forbids arbitrary truncation",
+					nextWire, tmproto.TmpxMaxWireBytes)
+			}
+			break
+		}
+		entries = append(entries, c.entry)
+		usedBytes += need
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("tmpx wire budget %d cannot fit even the highest-priority entry", tmproto.TmpxMaxWireBytes)
+	}
+	return entries, nil
+}
+
+// indexOfUIDType returns the position of uid in list, or -1 if absent.
+func indexOfUIDType(list []tmproto.UIDType, uid tmproto.UIDType) int {
+	for i, u := range list {
+		if u == uid {
+			return i
+		}
+	}
+	return -1
 }
 
 // stubBinaryToken converts a string user_token to the binary representation

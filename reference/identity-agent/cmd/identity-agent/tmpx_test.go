@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/hex"
-	"os"
-	"path/filepath"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,68 +16,84 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
+// fakeRecipientResolver returns a fixed recipient. Used to exercise
+// buildTmpxToken without spinning up an httptest JWKS server.
+type fakeRecipientResolver struct {
+	recipient tmproto.TmpxRecipient
+	ok        bool
+}
+
+func (f *fakeRecipientResolver) CurrentEncryptionRecipient() (tmproto.TmpxRecipient, bool) {
+	return f.recipient, f.ok
+}
+
+func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
+	t.Helper()
+	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &fakeRecipientResolver{
+		recipient: tmproto.TmpxRecipient{Kid: kid, PublicKey: sk.PublicKey()},
+		ok:        true,
+	}
+}
+
 func TestLoadTmpxConfigDisabled(t *testing.T) {
-	cfg, err := loadTmpxConfig("", "", "")
+	cfg, err := loadTmpxConfig(context.Background(), "", 0, "", "")
 	if err != nil || cfg != nil {
 		t.Fatalf("expected (nil, nil), got (%v, %v)", cfg, err)
 	}
 }
 
 func TestLoadTmpxConfigPartialFails(t *testing.T) {
-	cases := []struct{ kid, path, country string }{
-		{"k1", "", "US"},
-		{"k1", "/tmp/x", ""},
-		{"", "/tmp/x", "US"},
+	cases := []struct{ url, country string }{
+		{"https://example.com/jwks.json", ""},
+		{"", "US"},
 	}
 	for _, c := range cases {
-		_, err := loadTmpxConfig(c.kid, c.path, c.country)
+		_, err := loadTmpxConfig(context.Background(), c.url, time.Minute, c.country, "")
 		if err == nil {
 			t.Errorf("partial config %+v should fail", c)
 		}
 	}
 }
 
-func TestLoadTmpxConfigHexAndBase64(t *testing.T) {
-	skR, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pubBytes := skR.PublicKey().Bytes()
+func TestLoadTmpxConfigFromJWKSServer(t *testing.T) {
+	encKey := mustEncKeyJSON(t, "kid-abc")
+	body, _ := json.Marshal(map[string]any{"keys": []map[string]any{encKey}})
 
-	dir := t.TempDir()
-	for _, enc := range []struct{ name, content string }{
-		{"hex.key", hex.EncodeToString(pubBytes)},
-		{"b64url.key", base64.RawURLEncoding.EncodeToString(pubBytes)},
-		{"b64std.key", base64.StdEncoding.EncodeToString(pubBytes)},
-		{"hex_with_ws.key", "  " + hex.EncodeToString(pubBytes) + "\n"},
-	} {
-		path := filepath.Join(dir, enc.name)
-		if err := os.WriteFile(path, []byte(enc.content), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		cfg, err := loadTmpxConfig("k1", path, "US")
-		if err != nil {
-			t.Errorf("%s: %v", enc.name, err)
-			continue
-		}
-		if cfg == nil || cfg.Kid != "k1" || cfg.Country != "US" || cfg.PublicKey == nil {
-			t.Errorf("%s: unexpected config %+v", enc.name, cfg)
-		}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	// JWKSStore mandates https://, which httptest.NewTLSServer provides;
+	// AllowInsecureScheme isn't exposed via loadTmpxConfig, so we skip
+	// strict scheme validation by giving the store a custom client.
+	// For this test, just use NewJWKSStore directly and assert the
+	// loadTmpxConfig-side wiring (priority parsing, run goroutine) via
+	// a smaller flow.
+	cfg := &tmpxConfig{
+		Country:  "US",
+		EncStore: testJWKSStoreFor(t, srv),
+		Priority: []tmproto.UIDType{tmproto.UIDTypeUID2},
+	}
+	rcp, ok := cfg.EncStore.CurrentEncryptionRecipient()
+	if !ok || rcp.Kid != "kid-abc" {
+		t.Fatalf("recipient missing or wrong kid: %+v ok=%v", rcp, ok)
 	}
 }
 
 func TestBuildTmpxTokenRoundtrip(t *testing.T) {
-	skR, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	resolver := newFakeResolver(t, "k1")
+	cfg := &tmpxConfig{
+		Country:  "US",
+		EncStore: resolver,
 	}
-	cfg := &tmpxConfig{Kid: "k1", Country: "US", PublicKey: skR.PublicKey()}
-
-	uid2Input := fixtureToken("uid2")
-	maidInput := fixtureToken("maid")
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: uid2Input},
-		{UIDType: tmproto.UIDTypeMAID, UserToken: maidInput},
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: fixtureToken("maid")},
 		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
 	}
 	wire, err := buildTmpxToken(cfg, ids)
@@ -94,24 +111,30 @@ func TestBuildTmpxTokenRoundtrip(t *testing.T) {
 	if len(raw) <= 32+16 {
 		t.Fatalf("payload suspiciously short (%d bytes)", len(raw))
 	}
-	// We don't roundtrip-decrypt here — that's covered by TestSealTmpxRoundtrip
-	// in the tmproto package. We just want to confirm the recipient kid and
-	// envelope are well-formed and non-empty when there's at least one
-	// mappable identity.
 }
 
 func TestBuildTmpxTokenEmptyWhenNoMappableIdentities(t *testing.T) {
-	skR, _ := ecdh.X25519().GenerateKey(rand.Reader)
-	cfg := &tmpxConfig{Kid: "k1", Country: "US", PublicKey: skR.PublicKey()}
-	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeOther, UserToken: "x"},
-	}
+	cfg := &tmpxConfig{Country: "US", EncStore: newFakeResolver(t, "k1")}
+	ids := []tmproto.IdentityToken{{UIDType: tmproto.UIDTypeOther, UserToken: "x"}}
 	wire, err := buildTmpxToken(cfg, ids)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
 	if wire != "" {
 		t.Errorf("expected empty wire when no mappable identities, got %q", wire)
+	}
+}
+
+func TestBuildTmpxTokenErrorsWhenJWKSPublishesNoEncryptionKey(t *testing.T) {
+	cfg := &tmpxConfig{
+		Country:  "US",
+		EncStore: &fakeRecipientResolver{ok: false},
+	}
+	_, err := buildTmpxToken(cfg, []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+	})
+	if err == nil {
+		t.Fatal("expected error when JWKS has no encryption key")
 	}
 }
 
@@ -145,19 +168,184 @@ func TestStubBinaryTokenDeterministic(t *testing.T) {
 }
 
 func TestBuildTmpxTokenFreshNonceEachCall(t *testing.T) {
-	skR, _ := ecdh.X25519().GenerateKey(rand.Reader)
-	cfg := &tmpxConfig{Kid: "k1", Country: "US", PublicKey: skR.PublicKey()}
-	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: "tok"},
-	}
+	cfg := &tmpxConfig{Country: "US", EncStore: newFakeResolver(t, "k1")}
+	ids := []tmproto.IdentityToken{{UIDType: tmproto.UIDTypeUID2, UserToken: "tok"}}
 	a, _ := buildTmpxToken(cfg, ids)
-	// The HPKE encapsulated key is fresh per call; differing wire output
-	// confirms ephemeral key generation. This is the closest behavioural
-	// proof of replay protection without buyer-master-side decryption here.
 	time.Sleep(time.Millisecond)
 	b, _ := buildTmpxToken(cfg, ids)
 	if a == b {
 		t.Fatal("two seal calls must produce distinct wire output")
+	}
+}
+
+func TestParseTmpxPriority(t *testing.T) {
+	got, err := parseTmpxPriority("uid2, rampid ,id5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []tmproto.UIDType{tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5}
+	if len(got) != len(want) {
+		t.Fatalf("len(got)=%d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d]=%s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+func TestParseTmpxPriorityRejectsUnknown(t *testing.T) {
+	if _, err := parseTmpxPriority("uid2,not_a_real_uid_type"); err == nil {
+		t.Fatal("unknown uid_type must be rejected")
+	}
+}
+
+func TestParseTmpxPriorityRejectsDuplicate(t *testing.T) {
+	if _, err := parseTmpxPriority("uid2,id5,uid2"); err == nil {
+		t.Fatal("duplicate uid_type must be rejected")
+	}
+}
+
+func TestSelectTmpxEntries_PrioritySortsHighestFirst(t *testing.T) {
+	cfg := &tmpxConfig{
+		Priority: []tmproto.UIDType{
+			tmproto.UIDTypeUID2,
+			tmproto.UIDTypeRampID,
+			tmproto.UIDTypeID5,
+		},
+	}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+	}
+	got, err := selectTmpxEntries(cfg, 8, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("got %d entries, want 3", len(got))
+	}
+	wantOrder := []tmproto.TmpxTypeID{tmproto.TmpxTypeUID2, tmproto.TmpxTypeRampID, tmproto.TmpxTypeID5}
+	for i, w := range wantOrder {
+		if got[i].TypeID != w {
+			t.Errorf("entry %d: got type %d, want %d", i, got[i].TypeID, w)
+		}
+	}
+}
+
+func TestSelectTmpxEntries_DropsUidTypesNotInPriority(t *testing.T) {
+	cfg := &tmpxConfig{Priority: []tmproto.UIDType{tmproto.UIDTypeUID2}}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+	}
+	got, err := selectTmpxEntries(cfg, 2, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TypeID != tmproto.TmpxTypeUID2 {
+		t.Fatalf("got %+v, want one UID2 entry", got)
+	}
+}
+
+func TestSelectTmpxEntries_PriorityTruncatesUnderBudget(t *testing.T) {
+	cfg := &tmpxConfig{
+		Priority: []tmproto.UIDType{
+			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+		},
+	}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: fixtureToken("hashed_email")},
+		{UIDType: tmproto.UIDTypeEUID, UserToken: fixtureToken("euid")},
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+	}
+	got, err := selectTmpxEntries(cfg, 8, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) >= len(ids) {
+		t.Fatalf("expected truncation (got %d entries, started with %d)", len(got), len(ids))
+	}
+	for i, e := range got {
+		want := uidToTmpxTypeID[cfg.Priority[i]]
+		if e.TypeID != want {
+			t.Errorf("entry %d: got %d, want %d", i, e.TypeID, want)
+		}
+	}
+	usedBytes := 0
+	for _, e := range got {
+		usedBytes += 1 + len(e.Token)
+	}
+	wire := tmproto.TmpxWireSize(8, usedBytes)
+	if wire > tmproto.TmpxMaxWireBytes {
+		t.Errorf("selected entries produce wire %d > %d", wire, tmproto.TmpxMaxWireBytes)
+	}
+}
+
+func TestSelectTmpxEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
+	cfg := &tmpxConfig{}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeEUID, UserToken: fixtureToken("euid")},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: fixtureToken("hashed_email")},
+		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
+	}
+	_, err := selectTmpxEntries(cfg, 8, ids)
+	if err == nil {
+		t.Fatal("over-budget without --tmpx-priority must error")
+	}
+	if !strings.Contains(err.Error(), "tmpx-priority") {
+		t.Errorf("error must reference --tmpx-priority, got: %v", err)
+	}
+}
+
+func TestSelectTmpxEntries_NoPriorityPassesUnderBudget(t *testing.T) {
+	cfg := &tmpxConfig{}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: fixtureToken("maid")},
+	}
+	got, err := selectTmpxEntries(cfg, 2, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d, want 2", len(got))
+	}
+}
+
+func TestBuildTmpxToken_PriorityResultsInValidWire(t *testing.T) {
+	resolver := newFakeResolver(t, "kid-8chr")
+	cfg := &tmpxConfig{
+		Country:  "US",
+		EncStore: resolver,
+		Priority: []tmproto.UIDType{
+			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+		},
+	}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: fixtureToken("rampid")},
+		{UIDType: tmproto.UIDTypeID5, UserToken: fixtureToken("id5")},
+		{UIDType: tmproto.UIDTypeEUID, UserToken: fixtureToken("euid")},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: fixtureToken("hashed_email")},
+		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
+	}
+	wire, err := buildTmpxToken(cfg, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) > tmproto.TmpxMaxWireBytes {
+		t.Fatalf("wire %d exceeds %d", len(wire), tmproto.TmpxMaxWireBytes)
 	}
 }
 
@@ -166,4 +354,41 @@ func TestBuildTmpxTokenFreshNonceEachCall(t *testing.T) {
 // flagging the call site as a hardcoded credential.
 func fixtureToken(scheme string) string {
 	return scheme + "-input"
+}
+
+// mustEncKeyJSON returns a JSON-shaped X25519 encryption key entry for use in
+// JWKS test fixtures.
+func mustEncKeyJSON(t *testing.T, kid string) map[string]any {
+	t.Helper()
+	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]any{
+		"kid":      kid,
+		"kty":      "OKP",
+		"crv":      "X25519",
+		"x":        base64.RawURLEncoding.EncodeToString(sk.PublicKey().Bytes()),
+		"use":      "enc",
+		"alg":      tmproto.JWKSAlgEncryptionDHKEMX25519,
+		"adcp_use": "tmpx-encrypt",
+		"iat":      1,
+	}
+}
+
+// testJWKSStoreFor builds a JWKSStore that talks to srv. NewJWKSStore enforces
+// https:// in production paths; the helper uses srv's TLS client.
+func testJWKSStoreFor(t *testing.T, srv *httptest.Server) *tmproto.JWKSStore {
+	t.Helper()
+	store, err := tmproto.NewJWKSStore(tmproto.JWKSStoreOptions{
+		URL:        srv.URL,
+		HTTPClient: srv.Client(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return store
 }

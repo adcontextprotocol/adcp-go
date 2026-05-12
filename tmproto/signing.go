@@ -72,6 +72,8 @@ type SigningKey struct {
 	Crv       string     `json:"crv,omitempty"`
 	X         string     `json:"x,omitempty"`
 	Use       string     `json:"use,omitempty"`
+	AdcpUse   string     `json:"adcp_use,omitempty"` // "request-signing" or "tmpx-encrypt"
+	IssuedAt  int64      `json:"iat,omitempty"`      // Unix seconds; higher = newer when picking the current key
 	RevokedAt *time.Time `json:"revoked_at,omitempty"`
 }
 

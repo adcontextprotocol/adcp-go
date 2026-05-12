@@ -296,6 +296,29 @@ func TestSealTmpxKidValidation(t *testing.T) {
 	}
 }
 
+func TestTmpxWireSizeSpecExample(t *testing.T) {
+	// Spec §"TMPX Exposure Tokens" / "Size budget":
+	//   "Three 32-byte tokens = 99 bytes — fits comfortably." (entries bytes)
+	// HPKE overhead 48 + header 16 + entries 99 = 163 → base64url 218 chars.
+	// With an 8-char kid plus separator: 8 + 1 + 218 = 227 ≤ 255 ✓
+	entriesBytes := 3 * (1 + 32)
+	got := TmpxWireSize(8, entriesBytes)
+	if got != 227 {
+		t.Errorf("TmpxWireSize(8, %d) = %d, want 227", entriesBytes, got)
+	}
+	if got > TmpxMaxWireBytes {
+		t.Fatalf("spec example overflows budget: %d > %d", got, TmpxMaxWireBytes)
+	}
+}
+
+func TestTmpxWireSizeEmptyEntries(t *testing.T) {
+	// kidLen=1, no entries: 1 + 1 + base64(16+48) = 2 + 86 = 88
+	got := TmpxWireSize(1, 0)
+	if got != 88 {
+		t.Errorf("TmpxWireSize(1, 0) = %d, want 88", got)
+	}
+}
+
 func TestTmpxTokenSizeRegistry(t *testing.T) {
 	// Spec: types 1..4, 7, 8, 9 are 32 bytes; 5 is 48; 6 is 16.
 	cases := map[TmpxTypeID]int{
