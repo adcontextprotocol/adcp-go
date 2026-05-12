@@ -1,63 +1,437 @@
+// Package tmproto's signing.go implements the TMP request authentication
+// envelope from docs/trusted-match/specification.mdx §"Request Authentication":
+// Ed25519 signatures carried in X-AdCP-Signature / X-AdCP-Key-Id headers,
+// per-provider binding via provider_endpoint_url, daily-epoch replay window.
+//
+// Context match signs the newline-joined string:
+//
+//	type | property_rid | placement_id | sorted-comma-joined package_ids | provider_endpoint_url | daily_epoch
+//
+// Identity match signs hex(SHA-256(JCS(canonical_object))) where the canonical
+// object holds {type, request_id, identities_hash, consent, package_ids,
+// provider_endpoint_url, daily_epoch}. JCS protects identity inputs against
+// delimiter injection from arbitrary-byte fields like consent.gpp.
 package tmproto
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/pem"
+	"errors"
 	"fmt"
+	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
 
-// CurrentEpoch returns the daily epoch (days since Unix epoch).
-// Used for replay protection: signatures include the epoch, bounding
-// replay to ~48 hours (current + previous epoch accepted by verifiers).
+// HTTP headers carrying the TMP signature envelope.
+const (
+	HeaderTMPSignature = "X-AdCP-Signature"
+	HeaderTMPKeyID     = "X-AdCP-Key-Id"
+)
+
+const (
+	signedTypeContext  = "context_match_request"
+	signedTypeIdentity = "identity_match_request"
+	signingAlgorithm   = "EdDSA"
+	signingCurve       = "Ed25519"
+	signingKeyType     = "OKP"
+	secondsPerDay      = 86400
+)
+
+// CurrentEpoch returns floor(unix_timestamp / 86400).
+// Signatures bind to this value; verifiers accept current and previous epoch.
 func CurrentEpoch() int64 {
-	return time.Now().Unix() / 86400
+	return time.Now().Unix() / secondsPerDay
 }
 
-// CanonicalizeForSigning creates a deterministic byte representation of the
-// static parts of a ContextMatchRequest plus a daily epoch for replay protection.
-// Does NOT include request_id (changes per request, enabling signature caching).
-// Covers: property_id, property_rid, property_type, placement_id, sorted package_ids, epoch.
-func CanonicalizeForSigning(req *ContextMatchRequest, epoch int64) []byte {
-	// Length-prefix variable fields to prevent delimiter collision attacks.
-	ids := make([]string, len(req.PackageIDs))
-	for i, pkgID := range req.PackageIDs {
-		ids[i] = fmt.Sprintf("%d:%s", len(pkgID), pkgID)
+// EpochAt returns the daily epoch for a given timestamp.
+func EpochAt(t time.Time) int64 {
+	return t.Unix() / secondsPerDay
+}
+
+// NormalizeProviderEndpointURL returns the canonical form used in signing.
+// The spec mandates exact string match with the provider's registered endpoint
+// and forbids trailing slashes — we strip them so callers don't have to.
+func NormalizeProviderEndpointURL(s string) string {
+	return strings.TrimRight(s, "/")
+}
+
+// SigningKey is a publisher-attested signing key, shaped to match the
+// agent-signing-key.json schema. Verifiers maintain a keystore of these keyed
+// by Kid.
+type SigningKey struct {
+	Kid       string     `json:"kid"`
+	Kty       string     `json:"kty"`
+	Alg       string     `json:"alg,omitempty"`
+	Crv       string     `json:"crv,omitempty"`
+	X         string     `json:"x,omitempty"`
+	Use       string     `json:"use,omitempty"`
+	AdcpUse   string     `json:"adcp_use,omitempty"` // "request-signing" or "tmpx-encrypt"
+	IssuedAt  int64      `json:"iat,omitempty"`      // Unix seconds; higher = newer when picking the current key
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+}
+
+// PublicKey extracts the Ed25519 public key from the JWK fields.
+// Returns an error if the key is not Ed25519/OKP.
+func (k *SigningKey) PublicKey() (ed25519.PublicKey, error) {
+	if k.Kty != signingKeyType {
+		return nil, fmt.Errorf("tmproto: signing key %q has kty=%q, expected OKP", k.Kid, k.Kty)
 	}
-	sort.Strings(ids)
-
-	payload := fmt.Sprintf("%d:%s|%s|%s|%d:%s|%s|%d",
-		len(req.PropertyID), req.PropertyID,
-		req.PropertyRID,
-		req.PropertyType,
-		len(req.PlacementID), req.PlacementID,
-		strings.Join(ids, ","),
-		epoch,
-	)
-	return []byte(payload)
+	if k.Crv != signingCurve {
+		return nil, fmt.Errorf("tmproto: signing key %q has crv=%q, expected Ed25519", k.Kid, k.Crv)
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(k.X)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: signing key %q has invalid base64url x: %w", k.Kid, err)
+	}
+	if len(raw) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("tmproto: signing key %q has %d-byte x, expected %d", k.Kid, len(raw), ed25519.PublicKeySize)
+	}
+	return ed25519.PublicKey(raw), nil
 }
 
-// SignRequest signs a ContextMatchRequest with the given Ed25519 private key,
-// returning a base64url-encoded signature.
-func SignRequest(req *ContextMatchRequest, privateKey ed25519.PrivateKey) string {
-	payload := CanonicalizeForSigning(req, CurrentEpoch())
-	sig := ed25519.Sign(privateKey, payload)
+// PublicSigningKey builds a SigningKey JWK for an Ed25519 public key.
+// Used by router config wiring to publish keys to the registry.
+func PublicSigningKey(kid string, pub ed25519.PublicKey) SigningKey {
+	return SigningKey{
+		Kid: kid,
+		Kty: signingKeyType,
+		Alg: signingAlgorithm,
+		Crv: signingCurve,
+		Use: "sig",
+		X:   base64.RawURLEncoding.EncodeToString(pub),
+	}
+}
+
+// KeyStore resolves a kid to its SigningKey. Verifiers query this on every
+// request — implementations MUST be safe for concurrent reads.
+type KeyStore interface {
+	LookupKey(kid string) (*SigningKey, bool)
+}
+
+// StaticKeyStore is a concurrent-safe map-backed KeyStore for tests and for
+// wrapping a pre-built snapshot of the registry.
+type StaticKeyStore struct {
+	keys map[string]*SigningKey
+}
+
+// NewStaticKeyStore builds a keystore from a slice of keys. Keys with empty
+// Kid are dropped.
+func NewStaticKeyStore(keys []SigningKey) *StaticKeyStore {
+	idx := make(map[string]*SigningKey, len(keys))
+	for i := range keys {
+		k := keys[i]
+		if k.Kid == "" {
+			continue
+		}
+		idx[k.Kid] = &k
+	}
+	return &StaticKeyStore{keys: idx}
+}
+
+// LookupKey returns the key with the given kid.
+func (s *StaticKeyStore) LookupKey(kid string) (*SigningKey, bool) {
+	k, ok := s.keys[kid]
+	return k, ok
+}
+
+// Sentinel errors returned by Verify*. Use errors.Is to discriminate.
+var (
+	ErrSignatureMissing    = errors.New("tmproto: signature headers missing")
+	ErrSignatureMalformed  = errors.New("tmproto: signature header malformed")
+	ErrSignatureKeyUnknown = errors.New("tmproto: signing key not in keystore")
+	ErrSignatureKeyRevoked = errors.New("tmproto: signing key revoked")
+	ErrSignatureInvalid    = errors.New("tmproto: ed25519 verification failed")
+)
+
+// Signer signs context-match and identity-match requests.
+type Signer struct {
+	KeyID      string
+	privateKey ed25519.PrivateKey
+}
+
+// NewSigner constructs a Signer. Returns an error if the private key is not
+// Ed25519-shaped.
+func NewSigner(keyID string, priv ed25519.PrivateKey) (*Signer, error) {
+	if keyID == "" {
+		return nil, errors.New("tmproto: signer key ID must not be empty")
+	}
+	if len(priv) != ed25519.PrivateKeySize {
+		return nil, fmt.Errorf("tmproto: signer private key has %d bytes, expected %d", len(priv), ed25519.PrivateKeySize)
+	}
+	return &Signer{KeyID: keyID, privateKey: priv}, nil
+}
+
+// PublicJWK returns the SigningKey JWK that verifiers need.
+func (s *Signer) PublicJWK() SigningKey {
+	pub := s.privateKey.Public().(ed25519.PublicKey)
+	return PublicSigningKey(s.KeyID, pub)
+}
+
+// SignContextMatch signs a context-match request bound to the given provider
+// endpoint URL and epoch. Returns the base64url-no-pad signature for use in
+// the X-AdCP-Signature header.
+func (s *Signer) SignContextMatch(req *ContextMatchRequest, providerEndpointURL string, epoch int64) string {
+	input := BuildContextMatchSigningInput(req, NormalizeProviderEndpointURL(providerEndpointURL), epoch)
+	sig := ed25519.Sign(s.privateKey, input)
 	return base64.RawURLEncoding.EncodeToString(sig)
 }
 
-// VerifyRequestSignature verifies a base64url-encoded Ed25519 signature on a
-// ContextMatchRequest. Accepts current or previous epoch to handle day boundaries
-// (~48h replay window).
-func VerifyRequestSignature(req *ContextMatchRequest, b64Sig string, pubKey ed25519.PublicKey) bool {
-	sig, err := base64.RawURLEncoding.DecodeString(b64Sig)
+// SignIdentityMatch signs an identity-match request bound to the given provider
+// endpoint URL and epoch. The request's Country field is not part of the
+// signing input — callers should strip it before signing per the spec.
+func (s *Signer) SignIdentityMatch(req *IdentityMatchRequest, providerEndpointURL string, epoch int64) (string, error) {
+	input, err := BuildIdentityMatchSigningInput(req, NormalizeProviderEndpointURL(providerEndpointURL), epoch)
 	if err != nil {
+		return "", err
+	}
+	sig := ed25519.Sign(s.privateKey, input)
+	return base64.RawURLEncoding.EncodeToString(sig), nil
+}
+
+// BuildContextMatchSigningInput returns the bytes the signer feeds to Ed25519
+// for context match: newline-joined fields per the spec.
+func BuildContextMatchSigningInput(req *ContextMatchRequest, providerEndpointURL string, epoch int64) []byte {
+	var pkgIDs string
+	if len(req.PackageIDs) > 0 {
+		ids := append([]string(nil), req.PackageIDs...)
+		sort.Strings(ids)
+		pkgIDs = strings.Join(ids, ",")
+	}
+	parts := []string{
+		signedTypeContext,
+		req.PropertyRID,
+		req.PlacementID,
+		pkgIDs,
+		providerEndpointURL,
+		strconv.FormatInt(epoch, 10),
+	}
+	return []byte(strings.Join(parts, "\n"))
+}
+
+// BuildIdentityMatchSigningInput returns the bytes the signer feeds to Ed25519
+// for identity match: hex(SHA-256(JCS(canonical_object))).
+func BuildIdentityMatchSigningInput(req *IdentityMatchRequest, providerEndpointURL string, epoch int64) ([]byte, error) {
+	idsHash, err := canonicalIdentitiesHash(req.Identities)
+	if err != nil {
+		return nil, err
+	}
+
+	pkgIDs := append([]string(nil), req.PackageIDs...)
+	sort.Strings(pkgIDs)
+
+	var consent any // null when absent, verbatim object when present
+	if len(req.Consent) > 0 {
+		consent = mapAnyFromMap(req.Consent)
+	}
+
+	canonical := map[string]any{
+		"type":                  signedTypeIdentity,
+		"request_id":            req.RequestID,
+		"identities_hash":       idsHash,
+		"consent":               consent,
+		"package_ids":           stringsToAny(pkgIDs),
+		"provider_endpoint_url": providerEndpointURL,
+		"daily_epoch":           epoch,
+	}
+
+	jcs, err := jcsMarshal(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: identity-match JCS: %w", err)
+	}
+	sum := sha256.Sum256(jcs)
+	return []byte(hex.EncodeToString(sum[:])), nil
+}
+
+// canonicalIdentitiesHash returns hex(SHA-256(JCS(canonical_identities))).
+// Identities are deduplicated on (uid_type, user_token) using byte-exact match,
+// then sorted by uid_type, then by user_token, both in UTF-8 byte order.
+func canonicalIdentitiesHash(ids []IdentityToken) (string, error) {
+	type idKey struct {
+		uid   string
+		token string
+	}
+	seen := make(map[idKey]struct{}, len(ids))
+	deduped := make([]IdentityToken, 0, len(ids))
+	for _, id := range ids {
+		k := idKey{string(id.UIDType), id.UserToken}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		deduped = append(deduped, id)
+	}
+	sort.Slice(deduped, func(i, j int) bool {
+		if deduped[i].UIDType != deduped[j].UIDType {
+			return string(deduped[i].UIDType) < string(deduped[j].UIDType)
+		}
+		return deduped[i].UserToken < deduped[j].UserToken
+	})
+
+	arr := make([]any, len(deduped))
+	for i, id := range deduped {
+		arr[i] = map[string]any{
+			"uid_type":   string(id.UIDType),
+			"user_token": id.UserToken,
+		}
+	}
+	jcs, err := jcsMarshal(arr)
+	if err != nil {
+		return "", fmt.Errorf("tmproto: identities JCS: %w", err)
+	}
+	sum := sha256.Sum256(jcs)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// VerifyContextMatch verifies the signature on a context-match request using
+// the verifier's own registered endpoint URL. now should be the wall clock for
+// the request — current+previous epoch are accepted.
+func VerifyContextMatch(req *ContextMatchRequest, ownEndpointURL, sig, kid string, ks KeyStore, now time.Time) error {
+	pub, key, err := resolveSigningKey(kid, ks)
+	if err != nil {
+		return err
+	}
+	rawSig, err := decodeSignature(sig)
+	if err != nil {
+		return err
+	}
+	endpoint := NormalizeProviderEndpointURL(ownEndpointURL)
+	currentEpoch := EpochAt(now)
+	for _, epoch := range []int64{currentEpoch, currentEpoch - 1} {
+		if keyRevokedForEpoch(key, epoch) {
+			continue
+		}
+		input := BuildContextMatchSigningInput(req, endpoint, epoch)
+		if ed25519.Verify(pub, input, rawSig) {
+			return nil
+		}
+	}
+	if keyRevokedForEpoch(key, currentEpoch) && keyRevokedForEpoch(key, currentEpoch-1) {
+		return ErrSignatureKeyRevoked
+	}
+	return ErrSignatureInvalid
+}
+
+// VerifyIdentityMatch verifies the signature on an identity-match request.
+func VerifyIdentityMatch(req *IdentityMatchRequest, ownEndpointURL, sig, kid string, ks KeyStore, now time.Time) error {
+	pub, key, err := resolveSigningKey(kid, ks)
+	if err != nil {
+		return err
+	}
+	rawSig, err := decodeSignature(sig)
+	if err != nil {
+		return err
+	}
+	endpoint := NormalizeProviderEndpointURL(ownEndpointURL)
+	currentEpoch := EpochAt(now)
+	for _, epoch := range []int64{currentEpoch, currentEpoch - 1} {
+		if keyRevokedForEpoch(key, epoch) {
+			continue
+		}
+		input, err := BuildIdentityMatchSigningInput(req, endpoint, epoch)
+		if err != nil {
+			return err
+		}
+		if ed25519.Verify(pub, input, rawSig) {
+			return nil
+		}
+	}
+	if keyRevokedForEpoch(key, currentEpoch) && keyRevokedForEpoch(key, currentEpoch-1) {
+		return ErrSignatureKeyRevoked
+	}
+	return ErrSignatureInvalid
+}
+
+// ExtractSignatureHeaders pulls the X-AdCP-Signature and X-AdCP-Key-Id values
+// from a header map. Empty values map to ErrSignatureMissing.
+func ExtractSignatureHeaders(h http.Header) (sig, kid string, err error) {
+	sig = h.Get(HeaderTMPSignature)
+	kid = h.Get(HeaderTMPKeyID)
+	if sig == "" || kid == "" {
+		return "", "", ErrSignatureMissing
+	}
+	return sig, kid, nil
+}
+
+// LoadEd25519PrivateKeyPEM parses a PKCS#8-encoded Ed25519 private key from
+// PEM bytes. Used by cmd/router to load the signing key configured on disk.
+func LoadEd25519PrivateKeyPEM(pemBytes []byte) (ed25519.PrivateKey, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, errors.New("tmproto: no PEM block found")
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: parse PKCS#8 key: %w", err)
+	}
+	priv, ok := key.(ed25519.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("tmproto: PEM key is %T, expected ed25519.PrivateKey", key)
+	}
+	return priv, nil
+}
+
+func resolveSigningKey(kid string, ks KeyStore) (ed25519.PublicKey, *SigningKey, error) {
+	if ks == nil {
+		return nil, nil, ErrSignatureKeyUnknown
+	}
+	key, ok := ks.LookupKey(kid)
+	if !ok {
+		return nil, nil, ErrSignatureKeyUnknown
+	}
+	pub, err := key.PublicKey()
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrSignatureKeyUnknown, err)
+	}
+	return pub, key, nil
+}
+
+func decodeSignature(s string) ([]byte, error) {
+	if s == "" {
+		return nil, ErrSignatureMissing
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSignatureMalformed, err)
+	}
+	if len(raw) != ed25519.SignatureSize {
+		return nil, fmt.Errorf("%w: signature length %d", ErrSignatureMalformed, len(raw))
+	}
+	return raw, nil
+}
+
+// keyRevokedForEpoch reports whether the spec's revocation rule rejects a
+// signature whose signing epoch equals e: reject when revoked_at is present
+// and e >= floor(revoked_at_unix / 86400).
+func keyRevokedForEpoch(key *SigningKey, e int64) bool {
+	if key == nil || key.RevokedAt == nil {
 		return false
 	}
-	epoch := CurrentEpoch()
-	if ed25519.Verify(pubKey, CanonicalizeForSigning(req, epoch), sig) {
-		return true
+	revokedEpoch := EpochAt(*key.RevokedAt)
+	return e >= revokedEpoch
+}
+
+func stringsToAny(in []string) []any {
+	out := make([]any, len(in))
+	for i, s := range in {
+		out[i] = s
 	}
-	return ed25519.Verify(pubKey, CanonicalizeForSigning(req, epoch-1), sig)
+	return out
+}
+
+// mapAnyFromMap normalizes a map[string]any so every nested map[string]any
+// stays a map[string]any (json.Unmarshal already does this, but if a caller
+// constructs a Consent map directly we want the same flow through JCS).
+func mapAnyFromMap(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }

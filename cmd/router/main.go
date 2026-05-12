@@ -3,16 +3,20 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/router"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 var version = "dev"
@@ -33,9 +37,28 @@ func main() {
 	registry := router.NewRegistry("", "")
 	health := router.NewProviderHealth(cfg.Health.FailureThreshold, time.Duration(cfg.Health.CooldownSeconds)*time.Second)
 	fanOutMetrics := &fanOutMetricsAdapter{} // set after metrics registry is created
-	r, err := router.NewRouter(cfg.Providers, registry, health,
+
+	signer, signerErr := loadSigner(&cfg.Signing)
+	if signerErr != nil {
+		slog.Error("invalid signing configuration", "error", signerErr)
+		os.Exit(1)
+	}
+	if signer != nil {
+		jwk := signer.PublicJWK()
+		// Seed the registry with property records the operator authorized us
+		// to sign for, so providers fetching /registry/snapshot pick up the
+		// public key alongside the property metadata.
+		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, jwk)
+	}
+
+	routerOpts := []router.RouterOption{
 		router.WithLatencyBudget(cfg.LatencyBudget()),
-		router.WithFanOutMetrics(fanOutMetrics))
+		router.WithFanOutMetrics(fanOutMetrics),
+	}
+	if signer != nil {
+		routerOpts = append(routerOpts, router.WithTMPSigner(signer))
+	}
+	r, err := router.NewRouter(cfg.Providers, registry, health, routerOpts...)
 	if err != nil {
 		slog.Error("invalid router configuration", "error", err)
 		os.Exit(1)
@@ -177,7 +200,84 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 		cfg.Addr = envAddr
 	}
 
+	// Signing config — env vars override JSON, flags take precedence above
+	// neither (the router has no signing flags today).
+	if v := os.Getenv("TMP_ROUTER_SIGNING_KID"); v != "" {
+		cfg.Signing.KeyID = v
+	}
+	if v := os.Getenv("TMP_ROUTER_SIGNING_KEY_PATH"); v != "" {
+		cfg.Signing.PrivateKeyPath = v
+	}
+	if v := os.Getenv("TMP_ROUTER_SIGNING_PROPERTY_RIDS"); v != "" {
+		cfg.Signing.PropertyRIDs = splitAndTrim(v)
+	}
+	if v := os.Getenv("TMP_ROUTER_SIGNING_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
+		cfg.Signing.Disabled = true
+	}
+
 	return cfg
+}
+
+func splitAndTrim(s string) []string {
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// loadSigner builds a tmproto.Signer from the signing config, fail-closed when
+// the operator has not provided a key and has not explicitly opted out.
+func loadSigner(cfg *router.SigningConfig) (*tmproto.Signer, error) {
+	if cfg.Disabled {
+		slog.Warn("TMP request signing is disabled — fan-outs to spec-conformant providers will be rejected", "set_to_enable", "TMP_ROUTER_SIGNING_KEY_PATH")
+		return nil, nil
+	}
+	if cfg.KeyID == "" || cfg.PrivateKeyPath == "" {
+		return nil, errors.New("signing.key_id and signing.private_key_path are required (or set signing.disabled=true / TMP_ROUTER_SIGNING_DISABLED=true to opt out)")
+	}
+	pemBytes, err := os.ReadFile(cfg.PrivateKeyPath) //nolint:gosec // path is from operator config
+	if err != nil {
+		return nil, fmt.Errorf("read signing key %q: %w", cfg.PrivateKeyPath, err)
+	}
+	priv, err := tmproto.LoadEd25519PrivateKeyPEM(pemBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse signing key %q: %w", cfg.PrivateKeyPath, err)
+	}
+	signer, err := tmproto.NewSigner(cfg.KeyID, priv)
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("TMP signer loaded", "kid", cfg.KeyID, "properties", len(cfg.PropertyRIDs))
+	return signer, nil
+}
+
+// seedSigningProperties ensures every authorized property RID has a record in
+// the registry with the router's public key attached. Records that don't exist
+// yet (typical when running without a registry sync source) are created with
+// just the RID + signing key so downstream providers can resolve the kid.
+func seedSigningProperties(registry *router.Registry, propertyRIDs []string, jwk tmproto.SigningKey) {
+	if len(propertyRIDs) == 0 {
+		return
+	}
+	for _, rid := range propertyRIDs {
+		if _, ok := registry.LookupByRID(rid); !ok {
+			registry.ApplyUpdate(&router.RegistryUpdate{
+				Sequence: registry.Sequence() + 1,
+				Action:   "add",
+				Property: router.RegistryProperty{
+					PropertyRID: rid,
+					PropertyID:  rid, // placeholder until registry sync provides a slug
+				},
+			})
+		}
+		if !registry.AttachSigningKey(rid, jwk) {
+			slog.Warn("could not attach signing key to property", "property_rid", rid)
+		}
+	}
 }
 
 // healthCheckMetricsAdapter bridges router.HealthCheckMetrics to prommetrics.

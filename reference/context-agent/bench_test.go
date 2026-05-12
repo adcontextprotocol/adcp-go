@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -29,9 +30,14 @@ func BenchmarkBitmapCheck(b *testing.B) {
 	}
 }
 
-// BenchmarkSignatureVerify tests Ed25519 verify.
+// BenchmarkSignatureVerify tests Ed25519 verify of a TMP context-match
+// signature using the spec envelope (X-AdCP-Signature).
 func BenchmarkSignatureVerify(b *testing.B) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := tmproto.NewSigner("bench-kid", priv)
+	ks := tmproto.NewStaticKeyStore([]tmproto.SigningKey{tmproto.PublicSigningKey("bench-kid", pub)})
+	endpoint := "https://provider.example.com"
+	now := time.Now()
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sig",
 		PropertyRID:  "prop-1",
@@ -40,11 +46,11 @@ func BenchmarkSignatureVerify(b *testing.B) {
 		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
-	sig := tmproto.SignRequest(req, priv)
+	sig := signer.SignContextMatch(req, endpoint, tmproto.EpochAt(now))
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = tmproto.VerifyRequestSignature(req, sig, pub)
+		_ = tmproto.VerifyContextMatch(req, endpoint, sig, signer.KeyID, ks, now)
 	}
 }
 
@@ -124,9 +130,13 @@ func BenchmarkValkeyLookup(b *testing.B) {
 	}
 }
 
-// BenchmarkSignatureSign tests Ed25519 signing (router-side cost).
+// BenchmarkSignatureSign tests Ed25519 signing (router-side cost) using the
+// TMP envelope (X-AdCP-Signature).
 func BenchmarkSignatureSign(b *testing.B) {
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := tmproto.NewSigner("bench-kid", priv)
+	endpoint := "https://provider.example.com"
+	epoch := tmproto.CurrentEpoch()
 	req := &tmproto.ContextMatchRequest{
 		RequestID:    "bench-sign",
 		PropertyRID:  "prop-1",
@@ -138,7 +148,7 @@ func BenchmarkSignatureSign(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = tmproto.SignRequest(req, priv)
+		_ = signer.SignContextMatch(req, endpoint, epoch)
 	}
 }
 
@@ -155,7 +165,7 @@ func BenchmarkHMACSign(b *testing.B) {
 		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
-	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
+	payload := tmproto.BuildContextMatchSigningInput(req, "https://provider.example.com", tmproto.CurrentEpoch())
 
 	mac := hmac.New(sha256.New, key)
 	b.ResetTimer()
@@ -179,7 +189,7 @@ func BenchmarkHMACVerify(b *testing.B) {
 		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:benchmark-test"}},
 		PackageIDs:   []string{"pkg-1"},
 	}
-	payload := tmproto.CanonicalizeForSigning(req, tmproto.CurrentEpoch())
+	payload := tmproto.BuildContextMatchSigningInput(req, "https://provider.example.com", tmproto.CurrentEpoch())
 
 	mac := hmac.New(sha256.New, key)
 	mac.Write(payload)
@@ -198,6 +208,9 @@ func BenchmarkHMACVerify(b *testing.B) {
 func BenchmarkCachedSignature(b *testing.B) {
 	cache := make(map[string]string, 1000)
 	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	signer, _ := tmproto.NewSigner("bench-kid", priv)
+	endpoint := "https://provider.example.com"
+	epoch := tmproto.CurrentEpoch()
 
 	for i := range 1000 {
 		key := fmt.Sprintf("placement-%d:pkghash-abc", i)
@@ -207,7 +220,7 @@ func BenchmarkCachedSignature(b *testing.B) {
 			PlacementID: fmt.Sprintf("placement-%d", i),
 			PackageIDs:  []string{"pkg-1"},
 		}
-		cache[key] = tmproto.SignRequest(req, priv)
+		cache[key] = signer.SignContextMatch(req, endpoint, epoch)
 	}
 
 	b.ResetTimer()

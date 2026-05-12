@@ -5,6 +5,11 @@ go 1.25.0
 require github.com/adcontextprotocol/adcp-go v0.0.0
 
 require (
+	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/testify v1.11.1

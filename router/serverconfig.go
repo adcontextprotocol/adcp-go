@@ -16,6 +16,21 @@ type ServerConfig struct {
 	HealthCheck     HealthCheckConfig `json:"health_check"`
 	Discovery       DiscoveryConfig   `json:"discovery"`
 	Shutdown        ShutdownConfig    `json:"shutdown"`
+	Signing         SigningConfig     `json:"signing"`
+}
+
+// SigningConfig configures the TMP request-authentication signer the router
+// attaches to every provider fan-out, per the spec.
+//
+// Deployers MUST set KeyID and PrivateKeyPath unless Disabled is true (dev
+// only). PropertyRIDs lists the registry properties this signer is authorized
+// to sign for; the router publishes its public key on each listed property
+// so providers can verify by looking up the property → signing keys.
+type SigningConfig struct {
+	KeyID          string   `json:"key_id"`
+	PrivateKeyPath string   `json:"private_key_path"`
+	PropertyRIDs   []string `json:"property_rids,omitempty"`
+	Disabled       bool     `json:"disabled,omitempty"`
 }
 
 // LatencyBudget returns the latency budget as a time.Duration.

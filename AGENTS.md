@@ -34,7 +34,11 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `targeting/engine.go` | Evaluation pipeline — all targeting logic lives here. |
 | `targeting/store.go` | `Store` interface — abstracts Valkey. |
 | `targeting/prommetrics/` | Stdlib-only Prometheus text format implementation. |
-| `router/router.go` | Fan-out, merge, signing, circuit breaker. Embeddable via `RouterOption`. |
+| `router/router.go` | Fan-out, merge, circuit breaker. Embeddable via `RouterOption`. TMP request signing wired through `WithTMPSigner` (see `router/signing.go` and the spec's [Request Authentication](https://adcontextprotocol.org/docs/trusted-match/specification#request-authentication) section). |
+| `router/signing.go` | Router-side TMP signing — per-provider header attachment, context-match signature cache. |
+| `tmproto/signing.go` | TMP request-authentication envelope (Ed25519, `X-AdCP-Signature`/`X-AdCP-Key-Id`, JCS for identity match, daily-epoch replay window). |
+| `tmproto/verify_middleware.go` | `VerifyContextMatchHandler` / `VerifyIdentityMatchHandler` middleware used by reference providers. |
+| `tmproto/keystore_remote.go` | `RemoteKeyStore` polls the router's `/registry/snapshot` for signing keys. |
 | `router/serverconfig.go` | Config loading (JSON file, env vars, defaults). |
 | `cmd/router/main.go` | Router binary entry point — wires components, Prometheus metrics, env vars. |
 | `docs/network-surface.md` | Port map, data flow, pinhole spec, env var reference. |

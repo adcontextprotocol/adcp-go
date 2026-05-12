@@ -67,9 +67,9 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 ### Context Match
 
 1. Publisher client sends `POST /tmp/context` to router with `property_id`, `placement_id`, `available_packages`, `artifacts`
-2. Router enriches request: resolves `property_rid` from registry, computes URL hash, signs with Ed25519
-3. Router fans out to matching context agents in parallel (30ms timeout per provider)
-4. Each context agent evaluates: property bitmap → suppression → signature → URL filter → topic match
+2. Router enriches request: resolves `property_rid` from registry, computes URL hash, signs per provider with Ed25519 (`X-AdCP-Signature` / `X-AdCP-Key-Id`)
+3. Router fans out to matching context agents in parallel (30ms timeout per provider). Signature is reused across requests for the same `(placement_id, provider, epoch)` from the in-process cache.
+4. Each context agent verifies the signature against the router's published key, then evaluates: property bitmap → suppression → URL filter → topic match
 5. Router merges offers and signals from all agents
 6. Response to publisher: offers + signals
 
@@ -78,12 +78,13 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 ### Identity Match
 
 1. Publisher client sends `POST /tmp/identity` to router with `user_token` (or `identities`), `package_ids`, `country`
-2. Router filters providers by `country` and `uid_type`, strips `country` before forwarding
-3. Router fans out to matching identity agents (30ms timeout)
-4. Each identity agent evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
-5. Router merges eligible package lists (union — packages are provider-specific)
-6. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
-7. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
+2. Router filters providers by `country` and `uid_type`, strips `country` before forwarding (the country is not part of the signing input)
+3. Router signs per provider with Ed25519 — each signature binds to the provider's registered endpoint URL (a signature minted for provider A is rejected by provider B)
+4. Router fans out to matching identity agents (30ms timeout)
+5. Each identity agent verifies the signature, then evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
+6. Router merges eligible package lists (union — packages are provider-specific)
+7. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
+8. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
 
 ### Exposure Tracking (TMPX)
 
@@ -93,6 +94,34 @@ Exposure tracking uses encrypted TMPX tokens instead of a dedicated endpoint:
 2. Token flows through the router to the publisher as an opaque string
 3. Publisher substitutes provider-specific TMPX values into creative tracking URLs (e.g., `{TMPX_S3}`)
 4. Buyer's impression pixel receives the token, decrypts it, and updates per-user frequency state
+
+**Cipher suite (fixed by spec):** HPKE `mode_base` with KEM=DHKEM(X25519, HKDF-SHA256), KDF=HKDF-SHA256, AEAD=ChaCha20-Poly1305. Implemented in `tmproto/tmpx.go` against stdlib (`crypto/ecdh`, `crypto/hkdf`, `crypto/sha256`) plus `golang.org/x/crypto/chacha20poly1305`; validated against the RFC 9180 §A.3 vector.
+
+**Wire format:** `<kid>.<base64url_no_pad(enc || ciphertext_with_tag)>`. `kid` is opaque, ≤8 chars, MUST NOT encode geographic or deployment information.
+
+**Plaintext layout (16-byte header + entries):**
+
+| Field | Size | Notes |
+|---|---|---|
+| Version | 1 | `0x01` |
+| Timestamp | 4 | Unix seconds, big-endian uint32 |
+| Country | 2 | ISO 3166-1 alpha-2, ASCII; data-residency hint, buyer-internal |
+| Nonce | 8 | Random; deduplication at the master |
+| Count | 1 | Number of identity entries |
+| Entries | variable | `type_id (1 byte) + token (size from registry)` |
+
+**Reference identity-agent configuration:**
+
+| Flag / env var | Purpose |
+|---|---|
+| `--tmpx-encrypt-jwks-url` / `TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL` | Buyer's JWKS endpoint advertising the TMPX recipient (X25519, `adcp_use=tmpx-encrypt`, `alg=HPKE-DHKEM-X25519-HKDF-SHA256`). The agent polls this on `--tmpx-encrypt-jwks-ttl` and picks the entry with the newest `iat` for sealing. |
+| `--tmpx-encrypt-jwks-ttl` | JWKS poll interval (default 5 min — the spec's recommended cache TTL). |
+| `--tmpx-country` / `TMP_IDENTITY_TMPX_COUNTRY` | Country stamped into the TMPX plaintext header. |
+| `--tmpx-priority` / `TMP_IDENTITY_TMPX_PRIORITY` | Comma-separated UID type ordering used to truncate identities when the resolved set would exceed the 255-byte wire budget (e.g. `uid2,rampid,id5`). Without it, an over-budget set returns an error — the spec forbids arbitrary truncation. |
+
+When the URL and country are set, the agent generates a TMPX token alongside every identity-match response that has at least one eligible package. The agent reads the `kid` from the currently-active JWKS entry on each seal, so buyer-side key rotation propagates automatically within the TTL window. Identity tokens whose `uid_type` has no entry in the TMPX type-ID registry are skipped per the spec's forward-compatibility rule.
+
+**Reference-impl limitation:** the `string → binary token` conversion in the reference identity-agent is a SHA-512 truncation stub (`stubBinaryToken` in `cmd/identity-agent/main.go`). Real buyer deployments decode tokens per the source graph's encoding (UID2 base64, RampID Xi/XY format, MAID UUID parse, etc.). The reference output is **not** interoperable with a real buyer master — the agent refuses to start with TMPX configured unless `TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK=1` is set.
 
 ## Pinhole Specification
 
@@ -141,13 +170,38 @@ The router tracks per-provider health:
 - Timeout and error both count as failures
 - Success resets consecutive failure counter
 
-## Ed25519 Signing
+## Request Authentication (Ed25519)
 
-- Router signs context match requests with Ed25519 private key
-- Signature cached per `(placement_id, package_set_hash, epoch)`
-- Epoch = 60 seconds; signatures valid for current + previous epoch
-- Agents verify signatures using property's public key from registry
-- Verification can be sampled (0-100% rate)
+The router signs every outbound `/tmp/context` and `/tmp/identity` request per the [TMP spec](https://adcontextprotocol.org/docs/trusted-match/specification#request-authentication). Providers verify the signature against the router's published public key (discovered via the registry) before evaluating the request.
+
+**Headers attached to every fan-out:**
+
+| Header | Value |
+|---|---|
+| `X-AdCP-Signature` | Ed25519 signature, base64url, no padding |
+| `X-AdCP-Key-Id` | Key identifier (`kid`) used to sign |
+
+**Signed inputs:**
+
+- **Context match** — newline-joined: `context_match_request | property_rid | placement_id | sorted-comma-joined package_ids | provider_endpoint_url | daily_epoch`. Cached on the router per `(placement_id, provider_endpoint_url, epoch)` — context-match signing inputs are static across requests within an epoch.
+- **Identity match** — `hex(SHA-256(JCS({type, request_id, identities_hash, consent, package_ids, provider_endpoint_url, daily_epoch})))`. Per-request, never cached. RFC 8785 JCS protects against delimiter-injection from arbitrary-byte fields like `consent.gpp`.
+
+**Replay window:** `daily_epoch = floor(unix_timestamp / 86400)`. Verifiers accept signatures bound to current or previous epoch (~48h). Stale epochs are rejected.
+
+**Per-provider binding:** every signature includes the registered `provider_endpoint_url`. A signature minted for provider A is rejected by provider B even with an identical body.
+
+**Key distribution:** the router's public key is published as a `signing_keys` JWK on the property records served by `GET /registry/snapshot`. Reference providers poll the snapshot URL on a 5-minute interval (`tmproto.RemoteKeyStore`) and look up by `kid`. The keystore polls over HTTPS by default, denies cross-origin redirects, and limits snapshot bodies to 1 MB; plain-HTTP is opt-in via `RemoteKeyStoreOptions.AllowInsecureScheme` for local dev only.
+
+**Revocation:** set `revoked_at` on the JWK. The verifier rejects any signature candidate whose daily epoch is at or after the revocation epoch — `e >= floor(revoked_at_unix / 86400)` — but the spec's two-epoch acceptance window means a signature minted on day N-1 with `revoked_at` on day N still verifies under the previous-epoch candidate up to ~24 hours after the revocation marker is published. Operators who need a hard cutoff should rotate the key (replacing the kid) rather than rely on revocation alone.
+
+**Cross-property kid collision:** the registry and `RemoteKeyStore` both keep the first-seen entry on duplicate kids and warn — last-writer-wins would let one property's record shadow another's signing key namespace.
+
+**Crypto agility:** the implementation pins one signature suite (Ed25519/EdDSA, JWK `kty=OKP, crv=Ed25519`) and one HPKE suite (X25519/HKDF-SHA256/ChaCha20-Poly1305) per the current spec. Adding a second suite requires extending the `signingAlgorithm`/`signingCurve` constants in `tmproto/signing.go`, the `hpke*` IDs in `tmproto/tmpx.go`, and dispatching by `kid` prefix or the JWK `alg`/`crv` fields. The structure assumes one suite at a time — there is no in-band negotiation.
+
+**Configuration:**
+
+- Router: `TMP_ROUTER_SIGNING_KID`, `TMP_ROUTER_SIGNING_KEY_PATH` (PEM PKCS#8 Ed25519), `TMP_ROUTER_SIGNING_PROPERTY_RIDS` (comma-separated RIDs the router is authorized to sign for). Set `TMP_ROUTER_SIGNING_DISABLED=true` to opt out (dev only).
+- Reference agents: `--registry-url` (default off — accepts unsigned), `--require-signature`, `--own-endpoint-url`. Env equivalents: `TMP_{IDENTITY,CONTEXT}_REGISTRY_URL`, `TMP_{IDENTITY,CONTEXT}_REQUIRE_SIGNATURE`, `TMP_{IDENTITY,CONTEXT}_ENDPOINT_URL`.
 
 ## Environment Variables
 
@@ -155,10 +209,24 @@ The router tracks per-provider health:
 |----------|---------|---------|---------|
 | `TMP_ROUTER_ADDR` | Router | Listen address | `:8080` |
 | `TMP_ROUTER_CONFIG` | Router | Path to JSON config file | (none) |
+| `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
+| `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
+| `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |
+| `TMP_ROUTER_SIGNING_DISABLED` | Router | Disable request signing (dev only — fail-closed otherwise) | `false` |
 | `TMP_CONTEXT_ADDR` | Context Agent | Listen address | `:8081` |
-| `TMP_CONTEXT_REGISTRY` | Context Agent | Path to registry snapshot | (none) |
+| `TMP_CONTEXT_REGISTRY` | Context Agent | Path to local registry snapshot | (none) |
+| `TMP_CONTEXT_REGISTRY_URL` | Context Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_CONTEXT_ENDPOINT_URL` | Context Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent | Reject unsigned requests | `false` |
 | `TMP_IDENTITY_ADDR` | Identity Agent | Listen address | `:8082` |
 | `TMP_IDENTITY_REDIS_ADDR` | Identity Agent | Valkey/Redis address | (none, uses in-memory) |
+| `TMP_IDENTITY_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_IDENTITY_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_IDENTITY_REQUIRE_SIGNATURE` | Identity Agent | Reject unsigned requests | `false` |
+| `TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL` | Identity Agent | Buyer JWKS URL publishing the TMPX recipient key | (none) |
+| `TMP_IDENTITY_TMPX_COUNTRY` | Identity Agent | Country stamped into TMPX plaintext header | (none) |
+| `TMP_IDENTITY_TMPX_PRIORITY` | Identity Agent | Comma-separated UID type priority for budget-driven truncation | (none) |
+| `TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK` | Identity Agent | Set to `1` to acknowledge the SHA-512 reference token stub | (none) |
 
 All services also accept `--addr` and other flags. Flags take precedence over environment variables.
 

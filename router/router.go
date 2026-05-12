@@ -31,6 +31,14 @@ type Router struct {
 	logger                 *slog.Logger
 	metrics                FanOutMetrics
 	skipEndpointValidation bool
+
+	// TMP request signing per spec §"Request Authentication".
+	// signer is nil only when the deployer has explicitly opted out of signing
+	// (e.g., for local dev). Production deployments MUST set a signer — the
+	// spec mandates Ed25519 request authentication on all router→provider
+	// fan-outs.
+	signer       *tmproto.Signer
+	contextSigs  *contextSignatureCache
 }
 
 // RouterOption configures a Router.
@@ -65,20 +73,32 @@ func WithFanOutMetrics(m FanOutMetrics) RouterOption {
 	return func(r *Router) { r.metrics = m }
 }
 
+// WithTMPSigner attaches an Ed25519 signer that the router uses to sign
+// every outbound /tmp/context and /tmp/identity request per the TMP
+// specification. Required for any deployment that talks to spec-conformant
+// providers. The router holds onto signer for the rest of its lifetime.
+func WithTMPSigner(signer *tmproto.Signer) RouterOption {
+	return func(r *Router) { r.signer = signer }
+}
+
 // Providers returns the router's provider set for use by health checkers and discovery.
 func (r *Router) Providers() *ProviderSet { return r.providers }
 
 // NewRouter creates a router with the given provider configuration and registry.
 // Returns an error if any provider endpoint fails SSRF validation.
-// Transport-layer authentication (mTLS, bearer tokens) is the deployer's
-// responsibility — the TMP spec no longer defines request-level signing.
+//
+// Provider fan-outs are signed per the TMP spec §"Request Authentication"
+// (Ed25519 over X-AdCP-Signature / X-AdCP-Key-Id). Pass WithTMPSigner to
+// supply the signing key — without it, fan-outs go out unsigned and providers
+// configured to require signatures will reject the requests.
 func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderHealth, opts ...RouterOption) (*Router, error) {
 	maxPerHost := max(len(providers), 10)
 	r := &Router{
-		providers: NewProviderSet(providers),
-		registry:  registry,
-		health:    health,
-		logger:    slog.Default(),
+		providers:   NewProviderSet(providers),
+		registry:    registry,
+		health:      health,
+		logger:      slog.Default(),
+		contextSigs: newContextSignatureCache(0),
 	}
 	for _, o := range opts {
 		o(r)
@@ -133,11 +153,12 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Re-serialize with enriched data for fan-out.
-	// TODO: the spec says routers MUST strip access fields from artifacts
-	// (bearer tokens, service accounts, credentials) before forwarding.
-	// Today we rely on publishers not to include them. Add a sanitizer
-	// that walks cmReq.Artifact and removes known credential-bearing keys.
+	// Strip per-asset Access credentials before fan-out — the spec says
+	// routers MUST drop bearer tokens, service accounts, and credentials
+	// because the request is replicated to every matching buyer agent.
+	cmReq.Artifact.StripAccess()
+
+	// Re-serialize with enriched and sanitized data for fan-out.
 	body, err = json.Marshal(&cmReq)
 	if err != nil {
 		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInternalError, "failed to serialize request")
@@ -192,12 +213,19 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Strip country before forwarding — it's a routing directive, not an identity signal.
+	// Strip country before forwarding — it's a routing directive, not an
+	// identity signal — and not part of the signing input either.
 	imReq.Country = ""
-	body, _ = json.Marshal(&imReq)
+	body, err = json.Marshal(&imReq)
+	if err != nil {
+		r.logger.Error("failed to serialize identity-match request", "request_id", imReq.RequestID, "error", err)
+		r.writeError(w, imReq.RequestID, tmproto.ErrorCodeInternalError, "internal error")
+		return
+	}
 
-	// Fan out
-	results := r.fanOutIdentity(req.Context(), matching, body)
+	// Fan out — signer needs the parsed request (not just bytes) to build the
+	// JCS canonical form per provider.
+	results := r.fanOutIdentity(req.Context(), matching, &imReq, body)
 
 	// Merge — extract parallel slices for provider IDs and responses.
 	providerIDs := make([]string, len(results))
@@ -247,11 +275,15 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
 			defer cancel()
 
-			// Filter packages if provider has PackageIDs configured.
+			// Filter packages if provider has PackageIDs configured. The
+			// signing input must reflect what the provider actually receives,
+			// so we sign over the filtered request — not the original.
+			signed := cmReq
 			callBody := body
 			if len(p.PackageIDs) > 0 {
 				filtered := *cmReq
 				filtered.PackageIDs = filterPackageIDsForProvider(cmReq.PackageIDs, &p)
+				signed = &filtered
 				var err error
 				callBody, err = json.Marshal(&filtered)
 				if err != nil {
@@ -260,8 +292,10 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 				}
 			}
 
+			sigHeaders := r.signContextHeaders(signed, p.Endpoint)
+
 			var cmResp tmproto.ContextMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody, &cmResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody, sigHeaders, &cmResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -290,7 +324,7 @@ type identityResult struct {
 	response   *tmproto.IdentityMatchResponse
 }
 
-func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, body []byte) []identityResult {
+func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest, body []byte) []identityResult {
 	var mu sync.Mutex
 	var results []identityResult
 	var wg sync.WaitGroup
@@ -311,8 +345,14 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
 			defer cancel()
 
+			sigHeaders, err := r.signIdentityHeaders(imReq, p.Endpoint)
+			if err != nil {
+				r.logger.Error("failed to sign identity match request", "provider", p.ID, "error", err)
+				return
+			}
+
 			var imResp tmproto.IdentityMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body, &imResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body, sigHeaders, &imResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -336,12 +376,15 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 	return results
 }
 
-func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, target any) error {
+func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 
 	resp, err := r.client.Do(req)
 	if err != nil {

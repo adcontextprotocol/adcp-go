@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 func TestRegistry_LoadFromData(t *testing.T) {
@@ -191,4 +193,67 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	router.HandleContextMatch(w, req)
 
 	assert.Equal(t, "rid-1001", receivedRID)
+}
+
+func TestRegistry_AttachSigningKey(t *testing.T) {
+	reg := NewRegistry("", "")
+	reg.LoadFromData([]RegistryProperty{
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website"},
+	}, 1)
+
+	key1 := tmproto.PublicSigningKey("kid-1", make([]byte, 32))
+	require.True(t, reg.AttachSigningKey("rid-1001", key1))
+
+	got, ok := reg.LookupKey("kid-1")
+	require.True(t, ok)
+	assert.Equal(t, "kid-1", got.Kid)
+
+	// Idempotent on (kid, propertyRID): replaces the existing entry rather
+	// than appending a duplicate.
+	key1Updated := tmproto.PublicSigningKey("kid-1", make([]byte, 32))
+	key1Updated.Alg = "EdDSA"
+	require.True(t, reg.AttachSigningKey("rid-1001", key1Updated))
+	prop, _ := reg.LookupByRID("rid-1001")
+	assert.Len(t, prop.SigningKeys, 1)
+
+	// Unknown property RID — returns false, key not indexed.
+	require.False(t, reg.AttachSigningKey("rid-nonexistent", tmproto.PublicSigningKey("kid-x", make([]byte, 32))))
+	_, ok = reg.LookupKey("kid-x")
+	require.False(t, ok)
+}
+
+func TestRegistry_KeysSurvivedSnapshot(t *testing.T) {
+	reg := NewRegistry("", "")
+	reg.LoadFromData([]RegistryProperty{
+		{
+			PropertyID:  "pub-oakwood",
+			PropertyRID: "rid-1001",
+			SigningKeys: []tmproto.SigningKey{
+				tmproto.PublicSigningKey("kid-from-snapshot", make([]byte, 32)),
+			},
+		},
+	}, 1)
+	got, ok := reg.LookupKey("kid-from-snapshot")
+	require.True(t, ok)
+	assert.Equal(t, "kid-from-snapshot", got.Kid)
+}
+
+func TestRegistry_ApplyUpdate_RemovesKidIndex(t *testing.T) {
+	reg := NewRegistry("", "")
+	reg.LoadFromData([]RegistryProperty{
+		{
+			PropertyID:  "pub-oakwood",
+			PropertyRID: "rid-1001",
+			SigningKeys: []tmproto.SigningKey{tmproto.PublicSigningKey("kid-removed", make([]byte, 32))},
+		},
+	}, 1)
+
+	reg.ApplyUpdate(&RegistryUpdate{
+		Sequence: 2,
+		Action:   "remove",
+		Property: RegistryProperty{PropertyID: "pub-oakwood"},
+	})
+
+	_, ok := reg.LookupKey("kid-removed")
+	require.False(t, ok)
 }
