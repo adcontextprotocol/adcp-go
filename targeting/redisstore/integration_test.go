@@ -326,9 +326,8 @@ func TestIntegration_Engine_EvaluateIdentity_AgainstRealValkey(t *testing.T) {
 	})
 
 	resolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{"cooking_fans": {"pkg-food"}},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food": {TargetSegments: []string{"cooking_fans"}},
+			"pkg-food": {TargetSegments: &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}},
 		},
 	}
 

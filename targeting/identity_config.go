@@ -6,10 +6,87 @@ import (
 	"fmt"
 )
 
+// SegmentRule expresses audience-segment criteria for a package as a single
+// AND-of-clauses rule. A user matches the rule when:
+//
+//   - they belong to every segment listed in AllOf,
+//   - they belong to at least one segment listed in AnyOf (vacuously
+//     satisfied when AnyOf is empty),
+//   - they belong to none of the segments listed in NoneOf.
+//
+// A nil *SegmentRule on PackageIdentityConfig means no audience gating: every
+// user is eligible for the package.
+type SegmentRule struct {
+	AllOf  []string `json:"all_of,omitempty"`
+	AnyOf  []string `json:"any_of,omitempty"`
+	NoneOf []string `json:"none_of,omitempty"`
+}
+
+// Segments returns the deduplicated union of every segment ID referenced by
+// the rule across AllOf, AnyOf, and NoneOf. Returns nil for an empty or nil
+// rule. Callers use this to scope audience-membership lookups to segments the
+// rule actually mentions.
+func (r *SegmentRule) Segments() []string {
+	if r == nil {
+		return nil
+	}
+	total := len(r.AllOf) + len(r.AnyOf) + len(r.NoneOf)
+	if total == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, total)
+	out := make([]string, 0, total)
+	add := func(segs []string) {
+		for _, s := range segs {
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	add(r.AllOf)
+	add(r.AnyOf)
+	add(r.NoneOf)
+	return out
+}
+
+// Matches reports whether the given user-segment set satisfies the rule.
+// A nil rule trivially matches every user.
+func (r *SegmentRule) Matches(userSegments map[string]struct{}) bool {
+	if r == nil {
+		return true
+	}
+	for _, s := range r.AllOf {
+		if _, ok := userSegments[s]; !ok {
+			return false
+		}
+	}
+	if len(r.AnyOf) > 0 {
+		matchedAny := false
+		for _, s := range r.AnyOf {
+			if _, ok := userSegments[s]; ok {
+				matchedAny = true
+				break
+			}
+		}
+		if !matchedAny {
+			return false
+		}
+	}
+	for _, s := range r.NoneOf {
+		if _, ok := userSegments[s]; ok {
+			return false
+		}
+	}
+	return true
+}
+
 // PackageIdentityConfig is the identity-side configuration for a package,
-// stored in the Store as JSON at key "config:pkg:{packageID}".
+// keyed by (seller_agent_url, package_id) in the in-memory identityconfig
+// service.
 type PackageIdentityConfig struct {
-	TargetSegments []string `json:"target_segments,omitempty"`
+	TargetSegments *SegmentRule `json:"target_segments,omitempty"`
 }
 
 // batchLoadPackageContextConfigs loads context configs for multiple packages in one MGet.
@@ -37,40 +114,4 @@ func batchLoadPackageContextConfigs(ctx context.Context, store Store, pkgIDs []s
 		result[pkgIDs[i]] = &cfg
 	}
 	return result, nil
-}
-
-// batchLoadPackageIdentityConfigs loads identity configs for multiple packages in one MGet.
-func batchLoadPackageIdentityConfigs(ctx context.Context, store Store, pkgIDs []string) (map[string]*PackageIdentityConfig, error) {
-	if len(pkgIDs) == 0 {
-		return nil, nil
-	}
-	keys := make([]string, len(pkgIDs))
-	for i, id := range pkgIDs {
-		keys[i] = fmt.Sprintf("config:pkg:%s", id)
-	}
-	values, err := store.MGet(ctx, keys...)
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]*PackageIdentityConfig, len(pkgIDs))
-	for i, val := range values {
-		if val == "" {
-			continue
-		}
-		var cfg PackageIdentityConfig
-		if err := json.Unmarshal([]byte(val), &cfg); err != nil {
-			continue
-		}
-		result[pkgIDs[i]] = &cfg
-	}
-	return result, nil
-}
-
-// SeedPackageIdentityConfig writes identity config for a package to any Store.
-func SeedPackageIdentityConfig(ctx context.Context, store Store, pkgID string, cfg PackageIdentityConfig) error {
-	data, err := json.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	return store.Set(ctx, fmt.Sprintf("config:pkg:%s", pkgID), string(data), 0)
 }

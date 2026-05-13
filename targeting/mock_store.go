@@ -49,14 +49,6 @@ func (m *MockStore) SetAdd(key string, members ...string) {
 	}
 }
 
-// SetPackageIdentityConfig stores identity config for a package. Test helper.
-func (m *MockStore) SetPackageIdentityConfig(pkgID string, cfg PackageIdentityConfig) {
-	data, _ := json.Marshal(cfg)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.strings[fmt.Sprintf("config:pkg:%s", pkgID)] = stringEntry{value: string(data)}
-}
-
 // SetMediaBuy stores a media buy and adds it to the seller's set. Test helper.
 func (m *MockStore) SetMediaBuy(mb MediaBuy) {
 	data, _ := json.Marshal(mb)

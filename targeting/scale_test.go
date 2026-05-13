@@ -141,7 +141,6 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			staticPkgs = append(staticPkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{})
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
 				TopicTargets: true,
@@ -252,9 +251,6 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 				TopicTargets: true,
 				PropertyRIDs: []string{"1"},
 			})
-			store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-				TargetSegments: []string{"cooking_fans"},
-			})
 		}
 		store.SetMediaBuy(MediaBuy{
 			MediaBuyID: "mb-1", SellerID: "seller-1",
@@ -328,7 +324,6 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 			pkgIDs = append(pkgIDs, pkgID)
 			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
 			idCfg := PackageIdentityConfig{}
-			store.SetPackageIdentityConfig(pkgID, idCfg)
 			idConfigs[pkgID] = &idCfg
 		}
 		store.SetAdd("topics:artifact:article:food", "food.cooking")

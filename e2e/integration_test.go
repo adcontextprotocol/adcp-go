@@ -52,11 +52,6 @@ func setupStack(t *testing.T) *testStack {
 		},
 	})
 
-	store.SetPackageIdentityConfig("pkg-food", targeting.PackageIdentityConfig{
-		TargetSegments: []string{"cooking_fans"},
-	})
-	store.SetPackageIdentityConfig("pkg-family", targeting.PackageIdentityConfig{})
-
 	audSvc := audience.New(audience.NewMockStore())
 	require.NoError(t, audSvc.UpsertBatch(context.Background(), []audience.AudienceUpsert{
 		{AudienceID: "cooking_fans", Add: []audience.Member{{UserToken: "tok-alice", Score: 0.8}}},
@@ -75,11 +70,8 @@ func setupStack(t *testing.T) *testStack {
 	})
 
 	idResolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking_fans": {"pkg-food"},
-		},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food":   {TargetSegments: []string{"cooking_fans"}},
+			"pkg-food":   {TargetSegments: &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}},
 			"pkg-tech":   {},
 			"pkg-family": {},
 		},
@@ -354,12 +346,10 @@ func TestIntegration_Mediation(t *testing.T) {
 		},
 	})
 
-	oliveIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
-	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
-	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: []string{"cooking_fans"}}
-	store.SetPackageIdentityConfig("pkg-olive-oil", oliveIdCfg)
-	store.SetPackageIdentityConfig("pkg-cookware", cookwareIdCfg)
-	store.SetPackageIdentityConfig("pkg-wine", wineIdCfg)
+	cookingFans := &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}
+	oliveIdCfg := targeting.PackageIdentityConfig{TargetSegments: cookingFans}
+	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: cookingFans}
+	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: cookingFans}
 
 	identityEngine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "mediation-identity",
@@ -373,9 +363,6 @@ func TestIntegration_Mediation(t *testing.T) {
 	})
 
 	idResolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking_fans": {"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
-		},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
 			"pkg-olive-oil": &oliveIdCfg,
 			"pkg-cookware":  &cookwareIdCfg,

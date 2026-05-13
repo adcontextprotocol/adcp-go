@@ -44,18 +44,9 @@ func setupIdentityEngine(t *testing.T) *identityFixture {
 	audSvc := audience.New(audience.NewMockStore())
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
-		TargetSegments: []string{"cooking", "home"},
-	})
-	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{})
-
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking": {"pkg-display-001"},
-			"home":    {"pkg-display-001"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
 			"pkg-display-002": {},
 			"pkg-no-segments": {},
 		},
@@ -399,12 +390,8 @@ func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
 
 	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking": {"pkg-display-001"},
-			"home":    {"pkg-display-001"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
 		},
 	}
 

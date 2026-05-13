@@ -14,12 +14,9 @@ type ResolvedPackages struct {
 
 	// Context indexes (zero Store calls at eval time).
 	PropertyIndex     map[string][]string             // propertyRID → packageIDs
-	TopicIndex        map[string][]string            // topic → packageIDs
-	URLBlocklistIndex map[string][]string            // urlHash → packageIDs that block it
-	URLAllowlists     map[string]map[string]struct{} // pkgID → set of allowed urlHashes
-
-	// Identity indexes.
-	SegmentIndex map[string][]string // segment → packageIDs
+	TopicIndex        map[string][]string             // topic → packageIDs
+	URLBlocklistIndex map[string][]string             // urlHash → packageIDs that block it
+	URLAllowlists     map[string]map[string]struct{}  // pkgID → set of allowed urlHashes
 
 	// Pre-loaded configs.
 	ContextConfigs  map[string]*PackageContextConfig  // pkgID → config
@@ -67,13 +64,3 @@ func (r *ResolvedPackages) IsURLAllowed(pkgID, urlHash string) bool {
 	return allowed
 }
 
-// SegmentCandidates returns package IDs that target any of the given segments.
-func (r *ResolvedPackages) SegmentCandidates(segments []string) map[string]struct{} {
-	result := make(map[string]struct{})
-	for _, seg := range segments {
-		for _, pkgID := range r.SegmentIndex[seg] {
-			result[pkgID] = struct{}{}
-		}
-	}
-	return result
-}

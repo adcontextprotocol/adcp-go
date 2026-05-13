@@ -263,39 +263,29 @@ func splitHostPort(addr string) (string, int, bool) {
 	return addr[:idx], port, true
 }
 
-// seedConfigs pushes reference identity configs into the Store and returns
-// the resolved package indexes for identity evaluation. Frequency-cap state
-// is no longer seeded — that lives in fcap.Service and is set per-impression.
+// seedConfigs returns a static reference set of identity configs as a
+// pre-built ResolvedPackages, used until the in-memory identityconfig.Service
+// is wired in.
 func seedConfigs(store targeting.Store) (*targeting.ResolvedPackages, error) {
-	ctx := context.Background()
-
 	configs := []struct {
 		pkgID string
 		cfg   targeting.PackageIdentityConfig
 	}{
 		{"pkg-display-0041", targeting.PackageIdentityConfig{
-			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
+			TargetSegments: &targeting.SegmentRule{AnyOf: []string{"cooking_enthusiast", "home_improvement"}},
 		}},
 		{"pkg-display-0042", targeting.PackageIdentityConfig{}},
 		{"pkg-native-0078", targeting.PackageIdentityConfig{
-			TargetSegments: []string{"organic_food"},
+			TargetSegments: &targeting.SegmentRule{AnyOf: []string{"organic_food"}},
 		}},
 	}
 	idConfigs := make(map[string]*targeting.PackageIdentityConfig, len(configs))
-	segmentIndex := make(map[string][]string)
 	for _, c := range configs {
-		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
-			return nil, fmt.Errorf("seed package config %s: %w", c.pkgID, err)
-		}
 		cfg := c.cfg
 		idConfigs[c.pkgID] = &cfg
-		for _, seg := range cfg.TargetSegments {
-			segmentIndex[seg] = append(segmentIndex[seg], c.pkgID)
-		}
 	}
 
 	return &targeting.ResolvedPackages{
-		SegmentIndex:    segmentIndex,
 		IdentityConfigs: idConfigs,
 	}, nil
 }
