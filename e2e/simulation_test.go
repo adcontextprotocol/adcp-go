@@ -254,7 +254,7 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     60,
+		TTLSec:             60,
 	})
 }
 
@@ -659,4 +659,3 @@ func TestSimulation_FullLifecycle_WithTiming(t *testing.T) {
 		}
 	}
 }
-

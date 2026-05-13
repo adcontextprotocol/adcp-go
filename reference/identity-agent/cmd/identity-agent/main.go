@@ -147,7 +147,7 @@ func main() {
 		resp := &tmproto.IdentityMatchResponse{
 			RequestID:          result.RequestID,
 			EligiblePackageIDs: eligible,
-			ServeWindowSec:     60,
+			TTLSec:             60,
 		}
 		if tmpxCfg != nil && len(eligible) > 0 {
 			if token, terr := buildTmpxToken(tmpxCfg, req.Identities); terr != nil {

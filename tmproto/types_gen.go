@@ -111,8 +111,7 @@ type AvailablePackage struct {
 
 // Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.
 type ContextMatchRequest struct {
-	AdcpVersion      string          `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.
-	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.
+	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
 	Type             string          `json:"type"`                         // Message type discriminator for deserialization.
 	ProtocolVersion  string          `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
 	RequestID        string          `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any identity match request_id.
@@ -146,8 +145,7 @@ type ErrorResponse struct {
 
 // Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
 type IdentityMatchRequest struct {
-	AdcpVersion      string          `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.
-	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.
+	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.
 	Type             string          `json:"type"`                         // Message type discriminator for deserialization.
 	ProtocolVersion  string          `json:"protocol_version,omitempty"`   // TMP protocol version. Allows receivers to handle semantic differences across versions.
 	RequestID        string          `json:"request_id"`                   // Unique request identifier. MUST NOT correlate with any context match request_id.
@@ -158,12 +156,12 @@ type IdentityMatchRequest struct {
 	Country          string          `json:"country,omitempty"`            // ISO 3166-1 alpha-2 country code. Routing directive for the TMP Router — used to select the correct regional provider. The router MUST strip this field before forwarding the request to the buyer agent. Not an identity signal.
 }
 
-// Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
+// Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.
 type IdentityMatchResponse struct {
 	Type               string   `json:"type"`                 // Message type discriminator for deserialization.
 	RequestID          string   `json:"request_id"`           // Echoed request identifier from the identity match request
 	EligiblePackageIDs []string `json:"eligible_package_ids"` // Package IDs the user is eligible for. Packages not listed are ineligible.
-	ServeWindowSec     int      `json:"serve_window_sec"`     // Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.
+	TTLSec             int      `json:"ttl_sec"`              // How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.
 	Tmpx               string   `json:"tmpx,omitempty"`       // HPKE-encrypted exposure token containing the resolved user identity tokens. The publisher substitutes this into creative tracking URLs as {TMPX}. The buyer's impression pixel receives the token at serve time, enabling real-time per-user frequency state updates. Wire format: kid.base64url_nopad(ciphertext) — unpadded base64url per RFC 4648 section 5 (no = characters). Publishers MUST treat this value as opaque pass-through data.
 }
 

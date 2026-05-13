@@ -176,7 +176,7 @@ func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved *targeting.Res
 			json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          result.RequestID,
 				EligiblePackageIDs: eligible,
-				ServeWindowSec:     60,
+				TTLSec:             60,
 			})
 		})
 

@@ -114,7 +114,7 @@ func (a *mockIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     60,
+		TTLSec:             60,
 	})
 }
 
@@ -256,7 +256,7 @@ func (rt *mockRouter) handleIdentity(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     60,
+		TTLSec:             60,
 	})
 }
 

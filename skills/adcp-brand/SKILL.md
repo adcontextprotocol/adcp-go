@@ -194,7 +194,9 @@ Results: `acquired` (immediate), `pending_approval` (human review), or `rejected
 
 Common error codes:
 
-- `REFERENCE_NOT_FOUND`: Invalid brand_id, rights_id, or pricing_option_id (brand-protocol resources use the universal not-found fallback per `error-handling.mdx`; brands lack a dedicated `*_NOT_FOUND` code)
+- `BRAND_NOT_FOUND`: Invalid brand_id
+- `RIGHTS_NOT_FOUND`: Invalid rights_id
+- `PRICING_OPTION_NOT_FOUND`: Invalid pricing_option_id
 - `CATEGORY_CONFLICT`: Buyer brand conflicts with existing agreements
 - `GEOGRAPHIC_RESTRICTION`: Rights not available in requested countries
 - `AUTHORIZATION_REQUIRED`: Protected fields require OAuth

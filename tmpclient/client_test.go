@@ -39,7 +39,7 @@ func TestContextMatch_HappyPath(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "top-banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Offers, 1)
@@ -55,7 +55,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 		resp := tmproto.IdentityMatchResponse{
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{"pkg-1"},
-			ServeWindowSec:     300,
+			TTLSec:             300,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -72,7 +72,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.EligiblePackageIDs, 1)
 	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
-	assert.Equal(t, 300, resp.ServeWindowSec)
+	assert.Equal(t, 300, resp.TTLSec)
 }
 
 func TestContextMatch_ErrorResponse(t *testing.T) {
@@ -92,7 +92,7 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 	})
 	require.Error(t, err)
 	var tmpErr *TMPError
@@ -133,7 +133,7 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 		// RequestID intentionally empty.
 	})
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestActivate_HappyPath(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          "id-1",
 				EligiblePackageIDs: []string{"pkg-food"},
-				ServeWindowSec:     60,
+				TTLSec:             60,
 			})
 		}
 	}))
@@ -263,7 +263,7 @@ func TestActivate_MultiPackage(t *testing.T) {
 		case "/tmp/identity":
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				EligiblePackageIDs: []string{"pkg-a", "pkg-b", "pkg-c"},
-				ServeWindowSec:     120,
+				TTLSec:             120,
 			})
 		}
 	}))
