@@ -14,9 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeSource is a controllable Source backed by an in-memory state, useful
-// for exercising Service lifecycle and refresh behavior. Goroutine-safe.
-type fakeSource struct {
+// memorySource is a stateful in-memory implementation of Source for tests:
+// callers put configs and queue deltas, and the implementation serves them
+// through the Source contract. This is a fake, not a mock — there are no
+// per-call expectations. For call-by-call EXPECT-style assertions, use a
+// generated mock instead.
+//
+// Goroutine-safe.
+type memorySource struct {
 	mu sync.Mutex
 
 	loadAllErr           error
@@ -30,62 +35,62 @@ type fakeSource struct {
 	deltaQueue []Delta
 }
 
-func newFakeSource() *fakeSource {
-	return &fakeSource{configs: make(map[Key]*targeting.SegmentRule)}
+func newMemorySource() *memorySource {
+	return &memorySource{configs: make(map[Key]*targeting.SegmentRule)}
 }
 
-func (f *fakeSource) put(seller, pkg string, rule *targeting.SegmentRule, watermark time.Time) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.configs[Key{SellerAgentURL: seller, PackageID: pkg}] = rule
-	if watermark.After(f.lastUpdatedAt) {
-		f.lastUpdatedAt = watermark
+func (m *memorySource) put(seller, pkg string, rule *targeting.SegmentRule, watermark time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.configs[Key{SellerAgentURL: seller, PackageID: pkg}] = rule
+	if watermark.After(m.lastUpdatedAt) {
+		m.lastUpdatedAt = watermark
 	}
 }
 
-func (f *fakeSource) queueDelta(d Delta) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deltaQueue = append(f.deltaQueue, d)
+func (m *memorySource) queueDelta(d Delta) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.deltaQueue = append(m.deltaQueue, d)
 }
 
-func (f *fakeSource) setLoadAllError(err error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.loadAllErr = err
+func (m *memorySource) setLoadAllError(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.loadAllErr = err
 }
 
-func (f *fakeSource) LoadAll(_ context.Context) (Snapshot, error) {
-	f.loadAllCalls.Add(1)
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.loadAllErr != nil {
-		return Snapshot{}, f.loadAllErr
+func (m *memorySource) LoadAll(_ context.Context) (Snapshot, error) {
+	m.loadAllCalls.Add(1)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.loadAllErr != nil {
+		return Snapshot{}, m.loadAllErr
 	}
-	out := Snapshot{LastUpdatedAt: f.lastUpdatedAt}
-	for k, rule := range f.configs {
+	out := Snapshot{LastUpdatedAt: m.lastUpdatedAt}
+	for k, rule := range m.configs {
 		out.Configs = append(out.Configs, Entry{Key: k, TargetSegments: rule})
 	}
 	return out, nil
 }
 
-func (f *fakeSource) LoadUpdatedAfter(_ context.Context, after time.Time) (Delta, error) {
-	f.loadUpdatedAfterCall.Add(1)
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.loadUpdatedAfterErr != nil {
-		return Delta{}, f.loadUpdatedAfterErr
+func (m *memorySource) LoadUpdatedAfter(_ context.Context, after time.Time) (Delta, error) {
+	m.loadUpdatedAfterCall.Add(1)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.loadUpdatedAfterErr != nil {
+		return Delta{}, m.loadUpdatedAfterErr
 	}
-	if len(f.deltaQueue) == 0 {
+	if len(m.deltaQueue) == 0 {
 		return Delta{LastUpdatedAt: after}, nil
 	}
-	d := f.deltaQueue[0]
-	f.deltaQueue = f.deltaQueue[1:]
+	d := m.deltaQueue[0]
+	m.deltaQueue = m.deltaQueue[1:]
 	return d, nil
 }
 
 func TestService_StartLoadsInitialSnapshot(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	rule := &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}
 	src.put("https://seller.example/agent", "pkg-1", rule, time.Unix(1_000_000_000, 0))
 
@@ -103,7 +108,7 @@ func TestService_StartLoadsInitialSnapshot(t *testing.T) {
 }
 
 func TestService_GetBySellerReturnsAllEntries(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	r1 := &targeting.SegmentRule{AnyOf: []string{"a"}}
 	r2 := &targeting.SegmentRule{AnyOf: []string{"b"}}
 	src.put("https://seller.example/agent", "pkg-1", r1, time.Unix(1, 0))
@@ -129,7 +134,7 @@ func TestService_GetBySellerReturnsAllEntries(t *testing.T) {
 }
 
 func TestService_FailFastReturnsInitialLoadError(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	src.setLoadAllError(errors.New("boom"))
 
 	svc, err := New(src, time.Hour)
@@ -146,7 +151,7 @@ func TestService_FailFastReturnsInitialLoadError(t *testing.T) {
 }
 
 func TestService_BestEffortSwallowsInitialLoadError(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	src.setLoadAllError(errors.New("transient"))
 
 	svc, err := New(src, time.Hour, WithStartConfig(StartConfig{Mode: StartModeBestEffort}))
@@ -160,7 +165,7 @@ func TestService_BestEffortSwallowsInitialLoadError(t *testing.T) {
 }
 
 func TestService_RetryEventuallySucceeds(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	src.setLoadAllError(errors.New("not ready yet"))
 
 	// Recover after the second LoadAll call.
@@ -190,7 +195,7 @@ func TestService_RetryEventuallySucceeds(t *testing.T) {
 }
 
 func TestService_RetryExhaustsAttempts(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	src.setLoadAllError(errors.New("permanent"))
 
 	svc, err := New(src, time.Hour, WithStartConfig(StartConfig{
@@ -211,7 +216,7 @@ func TestService_RetryExhaustsAttempts(t *testing.T) {
 }
 
 func TestService_DeltaUpsertAndRemove(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	rule1 := &targeting.SegmentRule{AnyOf: []string{"a"}}
 	rule2 := &targeting.SegmentRule{AnyOf: []string{"b"}}
 	src.put("seller", "pkg-1", rule1, time.Unix(100, 0))
@@ -243,7 +248,7 @@ func TestService_DeltaUpsertAndRemove(t *testing.T) {
 }
 
 func TestService_NoDoubleStart(t *testing.T) {
-	svc, err := New(newFakeSource(), time.Hour)
+	svc, err := New(newMemorySource(), time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(context.Background()))
 	defer svc.Stop()
@@ -253,7 +258,7 @@ func TestService_NoDoubleStart(t *testing.T) {
 }
 
 func TestService_StopIsIdempotent(t *testing.T) {
-	svc, err := New(newFakeSource(), time.Hour)
+	svc, err := New(newMemorySource(), time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(context.Background()))
 	svc.Stop()
@@ -263,6 +268,6 @@ func TestService_StopIsIdempotent(t *testing.T) {
 func TestService_New_RejectsBadArgs(t *testing.T) {
 	_, err := New(nil, time.Hour)
 	assert.Error(t, err)
-	_, err = New(newFakeSource(), 0)
+	_, err = New(newMemorySource(), 0)
 	assert.Error(t, err)
 }

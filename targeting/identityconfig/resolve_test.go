@@ -12,7 +12,7 @@ import (
 )
 
 func TestResolveRequest_EmptyPackageIDsReturnsSellerSet(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	r1 := &targeting.SegmentRule{AnyOf: []string{"a"}}
 	r2 := &targeting.SegmentRule{AnyOf: []string{"b"}}
 	src.put("https://seller.example/agent", "pkg-1", r1, time.Unix(1, 0))
@@ -33,7 +33,7 @@ func TestResolveRequest_EmptyPackageIDsReturnsSellerSet(t *testing.T) {
 }
 
 func TestResolveRequest_FiltersIntersection(t *testing.T) {
-	src := newFakeSource()
+	src := newMemorySource()
 	src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
 	src.put("seller", "pkg-2", &targeting.SegmentRule{AnyOf: []string{"b"}}, time.Unix(1, 0))
 
@@ -51,7 +51,7 @@ func TestResolveRequest_FiltersIntersection(t *testing.T) {
 }
 
 func TestResolveRequest_UnknownSellerReturnsEmpty(t *testing.T) {
-	svc, err := New(newFakeSource(), time.Hour)
+	svc, err := New(newMemorySource(), time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(context.Background()))
 	defer svc.Stop()
