@@ -483,12 +483,42 @@ func TestService_GetBySellerCopyIsolated(t *testing.T) {
 
 	first := svc.GetBySeller("seller")
 	require.Len(t, first, 1)
-	// Mutate the returned slice — must not affect the snapshot.
+	// Mutate the returned slice slot — must not affect the snapshot.
 	first[0] = Entry{Key: Key{SellerAgentURL: "seller", PackageID: "tampered"}}
 
 	second := svc.GetBySeller("seller")
 	require.Len(t, second, 1)
-	assert.Equal(t, "pkg-1", second[0].Key.PackageID, "snapshot must be insulated from caller mutation")
+	assert.Equal(t, "pkg-1", second[0].Key.PackageID, "snapshot must be insulated from slot mutation")
+}
+
+func TestService_GetBySellerDeepCopyIsolatesRule(t *testing.T) {
+	// GetBySeller returns a deep copy: mutating the returned rule's
+	// clause slices must NOT bleed into the snapshot.
+	src := newMemorySource()
+	src.put("seller", "pkg-1", &targeting.SegmentRule{
+		AllOf:  []string{"must-have"},
+		AnyOf:  []string{"a", "b"},
+		NoneOf: []string{"d"},
+	}, time.Unix(1, 0))
+	svc, err := New(src, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	first := svc.GetBySeller("seller")
+	require.Len(t, first, 1)
+	require.NotNil(t, first[0].TargetSegments)
+	// Append to each clause; the snapshot's rule must be unaffected.
+	first[0].TargetSegments.AllOf = append(first[0].TargetSegments.AllOf, "tamper-all")
+	first[0].TargetSegments.AnyOf = append(first[0].TargetSegments.AnyOf, "tamper-any")
+	first[0].TargetSegments.NoneOf = append(first[0].TargetSegments.NoneOf, "tamper-none")
+
+	second := svc.GetBySeller("seller")
+	require.Len(t, second, 1)
+	require.NotNil(t, second[0].TargetSegments)
+	assert.Equal(t, []string{"must-have"}, second[0].TargetSegments.AllOf, "AllOf must be insulated from caller mutation")
+	assert.Equal(t, []string{"a", "b"}, second[0].TargetSegments.AnyOf, "AnyOf must be insulated from caller mutation")
+	assert.Equal(t, []string{"d"}, second[0].TargetSegments.NoneOf, "NoneOf must be insulated from caller mutation")
 }
 
 func TestService_GetBeforeStartReturnsNil(t *testing.T) {

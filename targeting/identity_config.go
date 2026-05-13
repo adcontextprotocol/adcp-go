@@ -22,6 +22,28 @@ type SegmentRule struct {
 	NoneOf []string `json:"none_of,omitempty"`
 }
 
+// Clone returns a deep copy of the rule, including independent backing
+// arrays for AllOf, AnyOf, and NoneOf. Callers receiving a rule from an
+// authoritative source (e.g. identityconfig.Service) that want to mutate
+// it without affecting the source must clone first. A nil receiver
+// returns nil.
+func (r *SegmentRule) Clone() *SegmentRule {
+	if r == nil {
+		return nil
+	}
+	out := &SegmentRule{}
+	if len(r.AllOf) > 0 {
+		out.AllOf = append([]string(nil), r.AllOf...)
+	}
+	if len(r.AnyOf) > 0 {
+		out.AnyOf = append([]string(nil), r.AnyOf...)
+	}
+	if len(r.NoneOf) > 0 {
+		out.NoneOf = append([]string(nil), r.NoneOf...)
+	}
+	return out
+}
+
 // IsEmpty reports whether the rule declares no clauses — i.e., it
 // references no segment IDs in AllOf, AnyOf, or NoneOf. An empty rule
 // trivially matches every user; callers can short-circuit audience

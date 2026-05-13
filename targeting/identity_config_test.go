@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSegmentRule_IsEmpty(t *testing.T) {
@@ -57,6 +58,40 @@ func TestSegmentRule_Matches(t *testing.T) {
 			assert.Equal(t, c.want, c.rule.Matches(c.user))
 		})
 	}
+}
+
+func TestSegmentRule_Clone(t *testing.T) {
+	assert.Nil(t, (*SegmentRule)(nil).Clone())
+
+	src := &SegmentRule{
+		AllOf:  []string{"a", "b"},
+		AnyOf:  []string{"c"},
+		NoneOf: []string{"d", "e"},
+	}
+	dst := src.Clone()
+
+	// Equal contents.
+	assert.Equal(t, src.AllOf, dst.AllOf)
+	assert.Equal(t, src.AnyOf, dst.AnyOf)
+	assert.Equal(t, src.NoneOf, dst.NoneOf)
+
+	// Independent backing arrays — appending to one must not affect the other.
+	dst.AllOf = append(dst.AllOf, "extra")
+	dst.AnyOf = append(dst.AnyOf, "extra")
+	dst.NoneOf = append(dst.NoneOf, "extra")
+	assert.Equal(t, []string{"a", "b"}, src.AllOf, "source AllOf must not be affected by clone mutation")
+	assert.Equal(t, []string{"c"}, src.AnyOf)
+	assert.Equal(t, []string{"d", "e"}, src.NoneOf)
+}
+
+func TestSegmentRule_CloneEmptyPreserveNilSlices(t *testing.T) {
+	// An empty rule clones to another empty rule with nil slices —
+	// don't waste allocation on empty clauses.
+	dst := (&SegmentRule{}).Clone()
+	require.NotNil(t, dst)
+	assert.Nil(t, dst.AllOf)
+	assert.Nil(t, dst.AnyOf)
+	assert.Nil(t, dst.NoneOf)
 }
 
 func TestSegmentRule_Segments(t *testing.T) {

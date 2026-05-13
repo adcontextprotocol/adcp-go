@@ -85,6 +85,10 @@ func WithLogger(logger *slog.Logger) Option {
 // packageID), or nil if no such config exists. A nil return value
 // is also valid for "config exists but has no audience gating" — callers
 // that need to distinguish absence from a nil rule should use Lookup.
+//
+// The returned pointer is shared with the current snapshot. Callers MUST
+// NOT mutate the rule or its slices; use SegmentRule.Clone if mutation
+// is needed.
 func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 	snap := s.snap.Load()
 	return snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
@@ -94,6 +98,10 @@ func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 // packageID) along with a presence flag. The rule itself may be nil even
 // when ok is true — that means the config exists but has no audience
 // gating. Callers that only need the rule can use Get.
+//
+// The returned pointer is shared with the current snapshot. Callers MUST
+// NOT mutate the rule or its slices; use SegmentRule.Clone if mutation
+// is needed.
 func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRule, bool) {
 	snap := s.snap.Load()
 	rule, ok := snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
@@ -105,9 +113,11 @@ func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRu
 // caller resolves the seller's full active package set from the service's
 // snapshot rather than the request body.
 //
-// The returned slice is a copy — mutating it does not affect the snapshot.
-// Entry order is implementation-defined and may differ between snapshots;
-// callers needing a stable order must sort the result.
+// The returned slice is an independent deep copy: both the entry slots
+// and each entry's *SegmentRule are insulated from concurrent snapshot
+// updates and from caller-side mutation. Entry order is
+// implementation-defined and may differ between snapshots; callers
+// needing a stable order must sort the result.
 func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 	snap := s.snap.Load()
 	entries := snap.bySeller[sellerAgentURL]
@@ -115,7 +125,9 @@ func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 		return nil
 	}
 	out := make([]Entry, len(entries))
-	copy(out, entries)
+	for i, e := range entries {
+		out[i] = Entry{Key: e.Key, TargetSegments: e.TargetSegments.Clone()}
+	}
 	return out
 }
 
