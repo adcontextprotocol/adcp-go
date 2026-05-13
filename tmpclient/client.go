@@ -115,7 +115,8 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	}
 
 	idReq := &tmproto.IdentityMatchRequest{
-		RequestID: idReqID,
+		RequestID:      idReqID,
+		SellerAgentURL: params.SellerAgentURL,
 		Identities: []tmproto.IdentityToken{
 			{UserToken: params.UserToken, UIDType: params.UIDType},
 		},

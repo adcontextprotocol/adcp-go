@@ -146,7 +146,7 @@ func TestIdentityMatchRequest_NoContextFields(t *testing.T) {
 	require.NoError(t, err, "marshal")
 
 	s := string(data)
-	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "url", "domain", "topic_ids"} {
+	for _, forbidden := range []string{"property_id", "property_type", "placement_id", "artifacts", "available_packages", "page_url", "domain", "topic_ids"} {
 		assert.NotContains(t, s, forbidden, "identity match request contains context field %q", forbidden)
 	}
 }

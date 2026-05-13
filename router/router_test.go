@@ -33,7 +33,7 @@ func TestValidateContextRequest_Valid(t *testing.T) {
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "sidebar-300x250",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 	}
 	assert.NoError(t, ValidateContextRequest(req))
 }
@@ -56,9 +56,10 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 
 func TestValidateIdentityRequest_Valid(t *testing.T) {
 	req := &tmproto.IdentityMatchRequest{
-		RequestID:  "id-001",
-		Identities: []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
-		PackageIDs: []string{"pkg-1", "pkg-2"},
+		RequestID:      "id-001",
+		SellerAgentURL: "https://seller.example.com/agent",
+		Identities:     []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
+		PackageIDs:     []string{"pkg-1", "pkg-2"},
 	}
 	assert.NoError(t, ValidateIdentityRequest(req))
 }
@@ -247,6 +248,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-e2e",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1", "pkg-2", "pkg-3"]
 	}`
@@ -354,6 +356,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 
 	reqBody := `{
 		"request_id": "id-strip",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test", "uid_type": "uid2"}],
 		"package_ids": ["pkg-1"],
 		"country": "US"

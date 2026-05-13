@@ -39,7 +39,7 @@ func TestContextMatch_HappyPath(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "top-banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Offers, 1)
@@ -64,9 +64,10 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	resp, err := c.IdentityMatch(context.Background(), &tmproto.IdentityMatchRequest{
-		RequestID:  "id-1",
-		Identities: []tmproto.IdentityToken{{UserToken: "tok-abc", UIDType: tmproto.UIDTypeUID2}},
-		PackageIDs: []string{"pkg-1"},
+		RequestID:      "id-1",
+		SellerAgentURL: "https://seller.example.com/agent",
+		Identities:     []tmproto.IdentityToken{{UserToken: "tok-abc", UIDType: tmproto.UIDTypeUID2}},
+		PackageIDs:     []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.EligiblePackageIDs, 1)
@@ -91,7 +92,7 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 	})
 	require.Error(t, err)
 	var tmpErr *TMPError
@@ -132,7 +133,7 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 		PropertyID:   "prop-1",
 		PropertyType: tmproto.PropertyTypeWebsite,
 		PlacementID:  "banner",
-		PackageIDs: []string{"pkg-1"},
+		PackageIDs:   []string{"pkg-1"},
 		// RequestID intentionally empty.
 	})
 	require.NoError(t, err)
@@ -168,12 +169,13 @@ func TestActivate_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-food", "pkg-tech"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-food", "pkg-tech"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -208,12 +210,13 @@ func TestActivate_NoOverlap(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 	assert.Empty(t, result.Activations, "expected 0 activations (no overlap)")
@@ -234,12 +237,13 @@ func TestActivate_ContextFails(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	assert.Error(t, err, "expected error when context match fails")
 }
@@ -267,12 +271,13 @@ func TestActivate_MultiPackage(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b", "pkg-c"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b", "pkg-c"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 
@@ -302,12 +307,13 @@ func TestActivate_PackageIDsSentToBothEndpoints(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-a", "pkg-b"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-a", "pkg-b"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pkg-a", "pkg-b"}, receivedPkgIDs, "expected [pkg-a pkg-b]")
@@ -332,13 +338,14 @@ func TestActivate_Tmpx(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
-		Country:      "US",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
+		Country:        "US",
 	})
 	require.NoError(t, err)
 	require.Len(t, result.Activations, 1)
@@ -364,13 +371,14 @@ func TestActivate_CountryPassedThrough(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
-		UserToken:    "tok-abc",
-		UIDType:      tmproto.UIDTypeUID2,
-		Country:      "DE",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		PackageIDs:     []string{"pkg-1"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-abc",
+		UIDType:        tmproto.UIDTypeUID2,
+		Country:        "DE",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "DE", receivedCountry, "expected country DE sent to router")

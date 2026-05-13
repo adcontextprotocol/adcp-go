@@ -8,9 +8,9 @@
 //	type | property_rid | placement_id | sorted-comma-joined package_ids | provider_endpoint_url | daily_epoch
 //
 // Identity match signs hex(SHA-256(JCS(canonical_object))) where the canonical
-// object holds {type, request_id, identities_hash, consent, package_ids,
-// provider_endpoint_url, daily_epoch}. JCS protects identity inputs against
-// delimiter injection from arbitrary-byte fields like consent.gpp.
+// object holds {type, request_id, seller_agent_url, identities_hash, consent,
+// package_ids, provider_endpoint_url, daily_epoch}. JCS protects identity
+// inputs against delimiter injection from arbitrary-byte fields like consent.gpp.
 package tmproto
 
 import (
@@ -234,6 +234,7 @@ func BuildIdentityMatchSigningInput(req *IdentityMatchRequest, providerEndpointU
 	canonical := map[string]any{
 		"type":                  signedTypeIdentity,
 		"request_id":            req.RequestID,
+		"seller_agent_url":      req.SellerAgentURL,
 		"identities_hash":       idsHash,
 		"consent":               consent,
 		"package_ids":           stringsToAny(pkgIDs),

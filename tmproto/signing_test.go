@@ -129,7 +129,8 @@ func TestSignerIdentityMatchRoundtrip(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	endpoint := "https://provider.example.com"
 	req := &IdentityMatchRequest{
-		RequestID: "req-id-1",
+		RequestID:      "req-id-1",
+		SellerAgentURL: "https://seller.example.com/agent",
 		Identities: []IdentityToken{
 			{UIDType: UIDTypeUID2, UserToken: "tok_b"},
 			{UIDType: UIDTypeID5, UserToken: "tok_a"},
@@ -194,6 +195,31 @@ func TestSignerIdentityMatchIdentityOrderIndependent(t *testing.T) {
 	}
 	if string(ia) != string(ib) {
 		t.Fatalf("identity order must not change signing input")
+	}
+}
+
+func TestSignerIdentityMatchSellerAgentURLBound(t *testing.T) {
+	// A signature minted for one seller_agent_url must NOT verify when replayed
+	// for a request whose seller_agent_url differs — the field is part of the
+	// canonical signing input.
+	signer, ks := newTestSigner(t)
+	now := time.Unix(1_700_000_000, 0)
+	endpoint := "https://provider.example.com"
+	base := &IdentityMatchRequest{
+		RequestID:      "r",
+		SellerAgentURL: "https://seller-a.example.com/agent",
+		Identities:     []IdentityToken{{UIDType: UIDTypeUID2, UserToken: "tok"}},
+		PackageIDs:     []string{"pkg"},
+	}
+	sig, err := signer.SignIdentityMatch(base, endpoint, EpochAt(now))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	swapped := *base
+	swapped.SellerAgentURL = "https://seller-b.example.com/agent"
+	if err := VerifyIdentityMatch(&swapped, endpoint, sig, signer.KeyID, ks, now); !errors.Is(err, ErrSignatureInvalid) {
+		t.Fatalf("expected ErrSignatureInvalid when seller_agent_url is swapped, got %v", err)
 	}
 }
 

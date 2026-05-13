@@ -200,13 +200,14 @@ func TestIntegration_ActivateHappyPath(t *testing.T) {
 	s := setupStack(t)
 
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food", "pkg-tech", "pkg-family"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-food", "pkg-tech", "pkg-family"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -238,13 +239,14 @@ func TestIntegration_AudienceGating(t *testing.T) {
 	s := setupStack(t)
 
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food"},
-		UserToken:    "tok-bob",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-food"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-bob",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -257,13 +259,14 @@ func TestIntegration_URLBlocklist(t *testing.T) {
 	s := setupStack(t)
 
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:adult-content"}},
-		PackageIDs:   []string{"pkg-family"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:adult-content"}},
+		PackageIDs:     []string{"pkg-family"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -276,13 +279,14 @@ func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 	s := setupStack(t)
 
 	result, err := s.client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-unknown",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-unknown",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-food"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -404,13 +408,14 @@ func TestIntegration_Mediation(t *testing.T) {
 	client := tmpclient.NewClient(routerSrv.URL, tmpclient.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
 
 	result, err := client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "main-content",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "main-content",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-olive-oil", "pkg-cookware", "pkg-wine"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -543,13 +548,14 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 	client := tmpclient.NewClient(routerSrv.URL, tmpclient.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
 
 	result, err := client.Activate(context.Background(), &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "main-content",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-premium-food"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "main-content",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-premium-food"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	})
 	require.NoError(t, err, "Activate failed")
 
@@ -600,13 +606,14 @@ func TestIntegration_Throughput(t *testing.T) {
 	ctx := context.Background()
 
 	params := &tmpclient.ActivateParams{
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food", "pkg-family"},
-		UserToken:    "tok-alice",
-		UIDType:      tmproto.UIDTypeUID2,
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar",
+		ArtifactRefs:   []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:     []string{"pkg-food", "pkg-family"},
+		SellerAgentURL: "https://seller.example.com/agent",
+		UserToken:      "tok-alice",
+		UIDType:        tmproto.UIDTypeUID2,
 	}
 
 	const iterations = 100
