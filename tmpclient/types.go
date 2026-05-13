@@ -47,9 +47,9 @@ type Activation struct {
 
 // ActivateResult is the joined output of parallel context + identity calls.
 type ActivateResult struct {
-	Activations   []Activation
-	Signals map[string]any
-	Tmpx    string // HPKE-encrypted exposure token
-	Context       *tmproto.ContextMatchResponse
-	Identity      *tmproto.IdentityMatchResponse
+	Activations []Activation
+	Signals     map[string]any
+	Tmpx        string // HPKE-encrypted exposure token
+	Context     *tmproto.ContextMatchResponse
+	Identity    *tmproto.IdentityMatchResponse
 }
