@@ -23,6 +23,25 @@ func TestNew_RequiresURLAndToken(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestWithHTTPTimeout_DoesNotMutateCustomClient(t *testing.T) {
+	custom := &http.Client{Timeout: 7 * time.Second}
+	// WithHTTPTimeout applied AFTER WithHTTPClient must not change the
+	// caller's client's Timeout — the caller's client is authoritative.
+	src, err := New("https://example", "tok",
+		WithHTTPClient(custom),
+		WithHTTPTimeout(123*time.Millisecond),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, 7*time.Second, custom.Timeout, "caller-supplied client Timeout must not be mutated")
+	assert.Same(t, custom, src.client, "Source must use the caller-supplied client")
+}
+
+func TestWithHTTPTimeout_SetsDefaultClientTimeout(t *testing.T) {
+	src, err := New("https://example", "tok", WithHTTPTimeout(123*time.Millisecond))
+	require.NoError(t, err)
+	assert.Equal(t, 123*time.Millisecond, src.client.Timeout)
+}
+
 func TestLoadAll_SendsBearerAndParsesResponse(t *testing.T) {
 	var receivedAuth atomic.Value
 	var receivedBody atomic.Value

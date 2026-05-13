@@ -313,10 +313,11 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 }
 
 // EvaluateIdentityResolved evaluates identity eligibility using segment gating only.
-// Packages that have no IdentityConfig in resolved, or whose config has no
-// TargetSegments rule, are reported eligible: segment matching is opt-in, not
-// a default deny. When the engine has no audience.Service configured, every
-// package with a TargetSegments rule is rejected (no segment data is reachable).
+// Packages that have no IdentityConfig in resolved, or whose config has an
+// empty TargetSegments rule (no clauses), are reported eligible: segment
+// matching is opt-in, not a default deny. When the engine has no
+// audience.Service configured, every package with a non-empty rule is
+// rejected (no segment data is reachable to evaluate the clauses).
 //
 // Audience lookups are scoped to the segments any requested package actually
 // references across AllOf/AnyOf/NoneOf, so users in unrelated audiences don't
@@ -335,7 +336,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		idCfg := resolved.IdentityConfigs[pkgID]
 		eligible := true
 
-		if idCfg != nil && idCfg.TargetSegments != nil {
+		if idCfg != nil && !idCfg.TargetSegments.IsEmpty() {
 			if e.audience == nil || !idCfg.TargetSegments.Matches(userSegments) {
 				eligible = false
 				e.metrics.IdentityEvaluated(pkgID, StageAudience, false)

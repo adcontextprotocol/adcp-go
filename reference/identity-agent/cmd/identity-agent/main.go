@@ -95,13 +95,10 @@ func main() {
 		slog.Error("config service init failed", "error", err)
 		os.Exit(1)
 	}
-	startCtx, startCancel := context.WithCancel(context.Background())
-	if err := configSvc.Start(startCtx); err != nil {
-		startCancel()
+	if err := configSvc.Start(context.Background()); err != nil {
 		slog.Error("config service initial load failed", "error", err)
 		os.Exit(1)
 	}
-	defer startCancel()
 	defer configSvc.Stop()
 
 	engine := targeting.NewEngine(targeting.EngineConfig{

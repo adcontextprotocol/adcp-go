@@ -22,6 +22,17 @@ type SegmentRule struct {
 	NoneOf []string `json:"none_of,omitempty"`
 }
 
+// IsEmpty reports whether the rule declares no clauses — i.e., it
+// references no segment IDs in AllOf, AnyOf, or NoneOf. An empty rule
+// trivially matches every user; callers can short-circuit audience
+// lookups when IsEmpty is true. A nil receiver is treated as empty.
+func (r *SegmentRule) IsEmpty() bool {
+	if r == nil {
+		return true
+	}
+	return len(r.AllOf) == 0 && len(r.AnyOf) == 0 && len(r.NoneOf) == 0
+}
+
 // Segments returns the deduplicated union of every segment ID referenced by
 // the rule across AllOf, AnyOf, and NoneOf. Returns nil for an empty or nil
 // rule. Callers use this to scope audience-membership lookups to segments the

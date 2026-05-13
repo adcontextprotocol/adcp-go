@@ -61,6 +61,24 @@ func TestResolveRequest_UnknownSellerReturnsEmpty(t *testing.T) {
 	assert.Empty(t, configs)
 }
 
+func TestResolveRequest_RegisteredSellerAllUnregisteredIDs(t *testing.T) {
+	// Seller is registered with at least one package, but none of the
+	// requested package IDs are in the registered set. Result must be
+	// empty — the unregistered IDs are silently dropped (per the
+	// registry-membership-leak invariant).
+	src := newMemorySource()
+	src.put("seller", "pkg-registered", &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(1, 0))
+
+	svc, err := New(src, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	effective, configs := ResolveRequest(svc, "seller", []string{"pkg-unknown-1", "pkg-unknown-2"})
+	assert.Empty(t, effective)
+	assert.Empty(t, configs)
+}
+
 func TestResolveRequest_NilServiceReturnsEmpty(t *testing.T) {
 	effective, configs := ResolveRequest(nil, "seller", []string{"pkg-1"})
 	assert.Empty(t, effective)

@@ -3,6 +3,7 @@ package identityconfig
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -270,4 +271,132 @@ func TestService_New_RejectsBadArgs(t *testing.T) {
 	assert.Error(t, err)
 	_, err = New(newMemorySource(), 0)
 	assert.Error(t, err)
+}
+
+// blockingSource holds LoadUpdatedAfter inside a channel until released.
+// Exercises Stop-vs-in-flight-refresh ordering.
+type blockingSource struct {
+	loadAllSrc *memorySource
+	release    chan struct{}
+	entered    chan struct{}
+	once       sync.Once
+}
+
+func (b *blockingSource) LoadAll(ctx context.Context) (Snapshot, error) {
+	return b.loadAllSrc.LoadAll(ctx)
+}
+
+func (b *blockingSource) LoadUpdatedAfter(ctx context.Context, _ time.Time) (Delta, error) {
+	b.once.Do(func() { close(b.entered) })
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return Delta{}, ctx.Err()
+	}
+	return Delta{LastUpdatedAt: time.Now()}, nil
+}
+
+func TestService_StopUnblocksInFlightRefresh(t *testing.T) {
+	bs := &blockingSource{
+		loadAllSrc: newMemorySource(),
+		release:    make(chan struct{}),
+		entered:    make(chan struct{}),
+	}
+	svc, err := New(bs, 5*time.Millisecond)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+
+	// Wait for the refresh loop to enter LoadUpdatedAfter.
+	select {
+	case <-bs.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("LoadUpdatedAfter was never called")
+	}
+
+	// Stop must return promptly even though the source is blocked: the
+	// ctx cancel propagates into LoadUpdatedAfter via ctx.Done().
+	stopDone := make(chan struct{})
+	go func() {
+		svc.Stop()
+		close(stopDone)
+	}()
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		close(bs.release) // unblock to let the test finish, then fail
+		t.Fatal("Service.Stop did not return promptly while a refresh was in flight")
+	}
+}
+
+func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
+	src := newMemorySource()
+	for i := range 50 {
+		src.put("seller", fmt.Sprintf("pkg-%d", i), &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(1, 0))
+	}
+
+	svc, err := New(src, 2*time.Millisecond)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	// Queue a sequence of deltas. The refresh ticker installs them as
+	// it goes; concurrent readers must always see a consistent snapshot.
+	for i := range 20 {
+		seg := fmt.Sprintf("seg-%d", i)
+		src.queueDelta(Delta{
+			Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-0"}, TargetSegments: &targeting.SegmentRule{AnyOf: []string{seg}}}},
+			LastUpdatedAt: time.Unix(int64(2+i), 0),
+		})
+	}
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				// Reads must never panic, return torn data, or race.
+				_ = svc.Get("seller", "pkg-0")
+				_ = svc.GetBySeller("seller")
+				_ = svc.LastUpdatedAt()
+			}
+		}()
+	}
+	time.Sleep(150 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+}
+
+func TestService_GetBySellerCopyIsolated(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
+	svc, err := New(src, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	first := svc.GetBySeller("seller")
+	require.Len(t, first, 1)
+	// Mutate the returned slice — must not affect the snapshot.
+	first[0] = Entry{Key: Key{SellerAgentURL: "seller", PackageID: "tampered"}}
+
+	second := svc.GetBySeller("seller")
+	require.Len(t, second, 1)
+	assert.Equal(t, "pkg-1", second[0].Key.PackageID, "snapshot must be insulated from caller mutation")
+}
+
+func TestService_GetBeforeStartReturnsNil(t *testing.T) {
+	svc, err := New(newMemorySource(), time.Hour)
+	require.NoError(t, err)
+	// No Start, no panic — empty snapshot is installed by the constructor.
+	assert.Nil(t, svc.Get("seller", "pkg"))
+	assert.Empty(t, svc.GetBySeller("seller"))
+	_, present := svc.Lookup("seller", "pkg")
+	assert.False(t, present)
 }

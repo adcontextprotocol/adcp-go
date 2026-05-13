@@ -72,7 +72,7 @@ func WithStartConfig(cfg StartConfig) Option {
 }
 
 // WithLogger sets a structured logger used for refresh-error reporting.
-// The default is slog.Default().
+// Passing nil is a no-op — the default slog.Default() logger is kept.
 func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		if logger != nil {
@@ -84,16 +84,30 @@ func WithLogger(logger *slog.Logger) Option {
 // Get returns the TargetSegments rule registered under (sellerAgentURL,
 // packageID), or nil if no such config exists. A nil return value
 // is also valid for "config exists but has no audience gating" — callers
-// should treat both the same way.
+// that need to distinguish absence from a nil rule should use Lookup.
 func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 	snap := s.snap.Load()
 	return snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
+}
+
+// Lookup returns the TargetSegments rule registered under (sellerAgentURL,
+// packageID) along with a presence flag. The rule itself may be nil even
+// when ok is true — that means the config exists but has no audience
+// gating. Callers that only need the rule can use Get.
+func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRule, bool) {
+	snap := s.snap.Load()
+	rule, ok := snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
+	return rule, ok
 }
 
 // GetBySeller returns every config registered under the given seller agent
 // URL. Used to evaluate requests whose `package_ids` field is omitted: the
 // caller resolves the seller's full active package set from the service's
 // snapshot rather than the request body.
+//
+// The returned slice is a copy — mutating it does not affect the snapshot.
+// Entry order is implementation-defined and may differ between snapshots;
+// callers needing a stable order must sort the result.
 func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 	snap := s.snap.Load()
 	entries := snap.bySeller[sellerAgentURL]
@@ -114,6 +128,11 @@ func (s *Service) LastUpdatedAt() time.Time {
 // Start begins periodic refresh in a background goroutine. The initial
 // LoadAll is performed inline before Start returns; its failure handling is
 // governed by StartConfig.Mode (and, for StartModeRetry, by RetryConfig).
+//
+// The supplied ctx governs ONLY the initial load (and any retries inside
+// that load). After Start returns successfully the refresh loop runs on a
+// fresh, background-rooted context until Stop is called — cancelling ctx
+// after Start returns has no effect on the loop.
 //
 // Calling Start more than once without an intervening Stop is an error.
 func (s *Service) Start(ctx context.Context) error {
@@ -275,7 +294,15 @@ func (s *Service) refreshDelta(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(delta.Upserted) == 0 && len(delta.Removed) == 0 && !delta.LastUpdatedAt.After(current.lastUpdatedAt) {
+	if len(delta.Upserted) == 0 && len(delta.Removed) == 0 {
+		// Watermark-only delta: skip the index rebuild. If the new
+		// watermark is meaningfully later, install a copy with the
+		// updated watermark so the next LoadUpdatedAfter advances.
+		if delta.LastUpdatedAt.After(current.lastUpdatedAt) {
+			updated := *current
+			updated.lastUpdatedAt = delta.LastUpdatedAt
+			s.snap.Store(&updated)
+		}
 		return nil
 	}
 	s.snap.Store(applyDelta(current, delta))

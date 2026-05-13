@@ -42,29 +42,32 @@ import (
 // Source posts identity-config queries to a configurable URL with Bearer
 // authentication and parses the JSON response into identityconfig types.
 type Source struct {
-	url    string
-	token  string
-	client *http.Client
+	url            string
+	token          string
+	client         *http.Client
+	customClient   bool // true when client was set via WithHTTPClient
 }
 
 // Option configures the Source at construction time.
 type Option func(*Source)
 
 // WithHTTPClient supplies a pre-configured *http.Client. Useful for custom
-// transports, dial timeouts, or test fakes. Overrides any timeout set via
-// WithHTTPTimeout.
+// transports, dial timeouts, or test fakes. Suppresses WithHTTPTimeout — the
+// caller's client owns its own timeout.
 func WithHTTPClient(client *http.Client) Option {
 	return func(s *Source) {
 		s.client = client
+		s.customClient = true
 	}
 }
 
-// WithHTTPTimeout sets the total request timeout on the default HTTP client.
-// Ignored when a custom client is supplied via WithHTTPClient.
+// WithHTTPTimeout sets the total request timeout on the Source's own HTTP
+// client. Has no effect when WithHTTPClient was used — that path treats the
+// caller's client as authoritative, so its Timeout is not mutated regardless
+// of option order.
 func WithHTTPTimeout(d time.Duration) Option {
 	return func(s *Source) {
-		if s.client == nil || s.client == http.DefaultClient {
-			s.client = &http.Client{Timeout: d}
+		if s.customClient {
 			return
 		}
 		s.client.Timeout = d
