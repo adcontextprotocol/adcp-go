@@ -132,7 +132,7 @@ type wireRemovedEntry struct {
 	PackageID      string `json:"package_id"`
 }
 
-func (s *Source) post(ctx context.Context, body requestBody) (*responseBody, error) {
+func (s *Source) post(ctx context.Context, body requestBody) (out *responseBody, retErr error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("scope3: marshal request: %w", err)
@@ -149,18 +149,30 @@ func (s *Source) post(ctx context.Context, body requestBody) (*responseBody, err
 	if err != nil {
 		return nil, fmt.Errorf("scope3: POST %s: %w", s.url, err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		// Drain any unread bytes so the underlying connection can be
+		// returned to the pool, then close. A close error is only worth
+		// surfacing when the function would otherwise have succeeded; on
+		// an existing error path the original error is the useful one.
+		_, _ = io.Copy(io.Discard, resp.Body)
+		if closeErr := resp.Body.Close(); closeErr != nil && retErr == nil {
+			retErr = fmt.Errorf("scope3: close response body: %w", closeErr)
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		snippet, readErr := io.ReadAll(io.LimitReader(resp.Body, 512))
+		if readErr != nil {
+			return nil, fmt.Errorf("scope3: POST %s returned %d (body read failed: %v)", s.url, resp.StatusCode, readErr)
+		}
 		return nil, fmt.Errorf("scope3: POST %s returned %d: %s", s.url, resp.StatusCode, string(snippet))
 	}
 
-	var out responseBody
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	var decoded responseBody
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
 		return nil, fmt.Errorf("scope3: decode response: %w", err)
 	}
-	return &out, nil
+	return &decoded, nil
 }
 
 func toEntries(cfgs []wireConfig) []identityconfig.Entry {
