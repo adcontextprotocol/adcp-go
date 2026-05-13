@@ -15,10 +15,10 @@ import (
 func TestMetricsInterface(t *testing.T) {
 	m := New()
 
-	m.ContextEvaluated("pkg-1", "property_bitmap", true)
-	m.ContextEvaluated("pkg-1", "property_bitmap", false)
-	m.ContextEvaluated("pkg-2", "topic_match", true)
-	m.IdentityEvaluated("pkg-2", "audience", false)
+	m.ContextEvaluated("property_bitmap", true)
+	m.ContextEvaluated("property_bitmap", false)
+	m.ContextEvaluated("topic_match", true)
+	m.IdentityEvaluated("audience", false)
 	m.StoreError("suppression", errors.New("timeout"))
 	m.Latency("property_bitmap", 50*time.Microsecond)
 	m.Latency("property_bitmap", 100*time.Microsecond)
@@ -91,7 +91,7 @@ func TestConcurrentAccess(t *testing.T) {
 	for range 10 {
 		go func() {
 			for range 1000 {
-				m.ContextEvaluated("pkg", "bitmap", true)
+				m.ContextEvaluated("bitmap", true)
 				m.Latency("bitmap", time.Microsecond)
 			}
 			done <- struct{}{}

@@ -152,11 +152,11 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		}
 
 		if propertyBitmap != nil && !propertyBitmap.Contains(rid) {
-			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 			continue
 		}
 		if !e.properties.ContainsPackage(pkgID, rid) {
-			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 			continue
 		}
 
@@ -165,7 +165,7 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 			if err != nil {
 				e.metrics.StoreError(StageURLFilter, err)
 			} else if blocked {
-				e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+				e.metrics.ContextEvaluated(StageURLFilter, false)
 				continue
 			}
 		}
@@ -175,12 +175,12 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 			if err != nil {
 				e.metrics.StoreError(StageTopicMatch, err)
 			} else if !matched {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated(pkgID, "", true)
+		e.metrics.ContextEvaluated("", true)
 		offers = append(offers, pkgOffers...)
 		segments = append(segments, emitSegments...)
 	}
@@ -253,18 +253,18 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 
 		if propertyCandidates != nil {
 			if _, ok := propertyCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+				e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 				continue
 			}
 		}
 
 		if cfg.TopicTargets && len(artifactRefs) > 0 {
 			if len(topicCandidates) == 0 {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 			if _, ok := topicCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 		}
@@ -277,7 +277,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 			}
 		}
 		if blocked {
-			e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+			e.metrics.ContextEvaluated(StageURLFilter, false)
 			continue
 		}
 
@@ -290,12 +290,12 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 				}
 			}
 			if !allowed {
-				e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+				e.metrics.ContextEvaluated(StageURLFilter, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated(pkgID, "", true)
+		e.metrics.ContextEvaluated("", true)
 		offers = append(offers, buildOffersFromDynamic(pkgID, cfg)...)
 		segments = append(segments, cfg.EmitSegments...)
 	}
@@ -339,7 +339,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 		if idCfg != nil && !idCfg.TargetSegments.IsEmpty() {
 			if e.audience == nil || !idCfg.TargetSegments.Matches(userSegments) {
 				eligible = false
-				e.metrics.IdentityEvaluated(pkgID, StageAudience, false)
+				e.metrics.IdentityEvaluated(StageAudience, false)
 			}
 		}
 
