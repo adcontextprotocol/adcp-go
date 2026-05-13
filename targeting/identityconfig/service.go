@@ -240,9 +240,8 @@ func (s *Service) loadAllWithRetry(ctx context.Context) error {
 	if cfg.Initial <= 0 {
 		cfg.Initial = time.Second
 	}
-	if cfg.Max <= 0 {
-		cfg.Max = cfg.Initial
-	}
+	// Floor Max at Initial. Catches both unset (Max <= 0) and
+	// misconfigured (Max < Initial) cases — Initial is positive here.
 	if cfg.Max < cfg.Initial {
 		cfg.Max = cfg.Initial
 	}
