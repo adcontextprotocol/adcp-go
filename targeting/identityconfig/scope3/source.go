@@ -151,12 +151,14 @@ func (s *Source) post(ctx context.Context, body requestBody) (out *responseBody,
 	}
 	defer func() {
 		// Drain any unread bytes so the underlying connection can be
-		// returned to the pool, then close. A close error is only worth
-		// surfacing when the function would otherwise have succeeded; on
-		// an existing error path the original error is the useful one.
+		// returned to the pool, then close. Close errors are usually
+		// downstream effects of whatever produced retErr on the read
+		// path — but on the rare path where the read succeeded and
+		// Close still fails (or both fail for independent reasons),
+		// joining preserves both for diagnostics.
 		_, _ = io.Copy(io.Discard, resp.Body)
-		if closeErr := resp.Body.Close(); closeErr != nil && retErr == nil {
-			retErr = fmt.Errorf("scope3: close response body: %w", closeErr)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("scope3: close response body: %w", closeErr))
 		}
 	}()
 
