@@ -266,6 +266,106 @@ func TestService_StopIsIdempotent(t *testing.T) {
 	svc.Stop() // must not panic or block
 }
 
+// retryingSource keeps LoadAll failing until released — used to exercise
+// Stop racing against a long retry-mode initial load.
+type retryingSource struct {
+	mu         sync.Mutex
+	failing    bool
+	calls      atomic.Int64
+	loadDelay  time.Duration
+}
+
+func (r *retryingSource) LoadAll(ctx context.Context) (Snapshot, error) {
+	r.calls.Add(1)
+	r.mu.Lock()
+	failing := r.failing
+	delay := r.loadDelay
+	r.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return Snapshot{}, ctx.Err()
+		}
+	}
+	if failing {
+		return Snapshot{}, errors.New("not ready")
+	}
+	return Snapshot{LastUpdatedAt: time.Unix(1, 0)}, nil
+}
+
+func (r *retryingSource) LoadUpdatedAfter(_ context.Context, after time.Time) (Delta, error) {
+	return Delta{LastUpdatedAt: after}, nil
+}
+
+func TestService_StopInterruptsInitialLoadRetry(t *testing.T) {
+	src := &retryingSource{failing: true}
+
+	svc, err := New(src, time.Hour, WithStartConfig(StartConfig{
+		Mode: StartModeRetry,
+		Retry: RetryConfig{
+			Initial:  10 * time.Millisecond,
+			Max:      10 * time.Millisecond,
+			Backoff:  BackoffConstant,
+			Deadline: time.Hour, // long enough that without cancellation the test would hang
+		},
+	}))
+	require.NoError(t, err)
+
+	// Start in a goroutine; the retry loop will keep failing until Stop fires.
+	startDone := make(chan error, 1)
+	go func() { startDone <- svc.Start(context.Background()) }()
+
+	// Wait for at least one LoadAll attempt to land.
+	require.Eventually(t, func() bool { return src.calls.Load() >= 1 }, time.Second, 5*time.Millisecond)
+
+	// Stop must abort the retry loop and unblock Start promptly.
+	stopDone := make(chan struct{})
+	go func() {
+		svc.Stop()
+		close(stopDone)
+	}()
+
+	select {
+	case <-stopDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Service.Stop did not return within 2s while initial load was in retry")
+	}
+
+	select {
+	case err := <-startDone:
+		assert.Error(t, err, "Start should return an error when Stop interrupts initial load")
+	case <-time.After(time.Second):
+		t.Fatal("Service.Start did not return after Stop")
+	}
+}
+
+func TestService_CallerCtxInterruptsInitialLoad(t *testing.T) {
+	// Caller-supplied ctx cancellation should also abort initial load,
+	// even under StartModeRetry.
+	src := &retryingSource{failing: true}
+
+	svc, err := New(src, time.Hour, WithStartConfig(StartConfig{
+		Mode: StartModeRetry,
+		Retry: RetryConfig{
+			Initial:  10 * time.Millisecond,
+			Max:      10 * time.Millisecond,
+			Backoff:  BackoffConstant,
+			Deadline: time.Hour,
+		},
+	}))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err = svc.Start(ctx)
+	elapsed := time.Since(start)
+	require.Error(t, err)
+	assert.Less(t, elapsed, time.Second, "Start should return promptly when caller ctx expires")
+}
+
 func TestService_New_RejectsBadArgs(t *testing.T) {
 	_, err := New(nil, time.Hour)
 	assert.Error(t, err)

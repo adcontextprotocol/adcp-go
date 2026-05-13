@@ -129,32 +129,53 @@ func (s *Service) LastUpdatedAt() time.Time {
 // LoadAll is performed inline before Start returns; its failure handling is
 // governed by StartConfig.Mode (and, for StartModeRetry, by RetryConfig).
 //
-// The supplied ctx governs ONLY the initial load (and any retries inside
-// that load). After Start returns successfully the refresh loop runs on a
-// fresh, background-rooted context until Stop is called — cancelling ctx
-// after Start returns has no effect on the loop.
+// Stop may be called at any time, including during a long initial load
+// (e.g. while StartModeRetry is backing off). Either the supplied ctx or a
+// concurrent Stop will interrupt the initial load and cause Start to return.
+// After Start returns successfully the refresh loop runs on the same
+// internal cancellation token, so Stop continues to halt it.
 //
 // Calling Start more than once without an intervening Stop is an error.
 func (s *Service) Start(ctx context.Context) error {
+	loopCtx, loopCancel := context.WithCancel(context.Background())
+
 	s.mu.Lock()
 	if s.running {
 		s.mu.Unlock()
+		loopCancel()
 		return errors.New("identityconfig: Service already started")
 	}
 	s.running = true
+	s.cancel = loopCancel
 	s.mu.Unlock()
 
-	if err := s.initialLoad(ctx); err != nil {
+	// The initial load runs under a context that is cancelled when EITHER
+	// the caller's ctx or loopCtx is cancelled. context.AfterFunc bridges
+	// loopCtx cancellation (the Stop signal) into the derived context.
+	loadCtx, cancelLoad := context.WithCancel(ctx)
+	stopLink := context.AfterFunc(loopCtx, cancelLoad)
+	loadErr := s.initialLoad(loadCtx)
+	stopLink()
+	cancelLoad()
+
+	if loadErr != nil {
 		s.mu.Lock()
 		s.running = false
+		s.cancel = nil
 		s.mu.Unlock()
-		return err
+		loopCancel()
+		return loadErr
 	}
 
-	loopCtx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	s.mu.Lock()
-	s.cancel = cancel
+	// If Stop ran between initialLoad's success and here, do not launch
+	// the refresh loop. The loopCtx is already cancelled.
+	if !s.running {
+		s.mu.Unlock()
+		loopCancel()
+		return errors.New("identityconfig: Service stopped during initial load")
+	}
 	s.done = done
 	s.mu.Unlock()
 
