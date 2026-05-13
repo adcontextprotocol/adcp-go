@@ -13,10 +13,10 @@ type ResolvedPackages struct {
 	Packages []tmproto.AvailablePackage
 
 	// Context indexes (zero Store calls at eval time).
-	PropertyIndex     map[string][]string             // propertyRID → packageIDs
-	TopicIndex        map[string][]string             // topic → packageIDs
-	URLBlocklistIndex map[string][]string             // urlHash → packageIDs that block it
-	URLAllowlists     map[string]map[string]struct{}  // pkgID → set of allowed urlHashes
+	PropertyIndex     map[string][]string            // propertyRID → packageIDs
+	TopicIndex        map[string][]string            // topic → packageIDs
+	URLBlocklistIndex map[string][]string            // urlHash → packageIDs that block it
+	URLAllowlists     map[string]map[string]struct{} // pkgID → set of allowed urlHashes
 
 	// Pre-loaded configs.
 	ContextConfigs  map[string]*PackageContextConfig  // pkgID → config
@@ -63,4 +63,3 @@ func (r *ResolvedPackages) IsURLAllowed(pkgID, urlHash string) bool {
 	_, allowed := allowlist[urlHash]
 	return allowed
 }
-
