@@ -12,11 +12,12 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// IdentityHandler returns an http.Handler that decodes an
-// IdentityMatchRequest, runs Service.Evaluate, optionally seals a TMPX
-// token, and writes the IdentityMatchResponse. Every request is bounded by
-// the requestTimeout supplied at construction; a request that doesn't
-// complete within that budget returns 504 with code "internal_error".
+// identityHandler is the http.Handler for POST /tmp/identity. It decodes an
+// IdentityMatchRequest under a hard request-timeout budget, runs
+// Service.Evaluate, optionally seals a TMPX token, and writes the
+// IdentityMatchResponse. Budget overruns produce a 200 response with an
+// empty EligiblePackageIDs slice — the same shape callers receive for any
+// other fail-closed outcome, so SDKs don't need a special branch.
 //
 // The handler is wrapped by TMP signature verification at a higher layer
 // (see ServeMux assembly in server.go).
@@ -39,7 +40,13 @@ type IdentityHandlerConfig struct {
 	TTLSeconds     int
 }
 
-const defaultResponseTTLSec = 60
+const (
+	defaultResponseTTLSec = 60
+
+	// maxRequestBodyBytes bounds the request body. Identity requests are
+	// small JSON objects; anything larger is rejected at decode time.
+	maxRequestBodyBytes = 64 * 1024
+)
 
 // NewIdentityHandler returns the http.Handler for POST /tmp/identity.
 func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
@@ -70,15 +77,9 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.requestTimeout)
 	defer cancel()
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
-	if err != nil {
-		h.writeError(w, "", http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "failed to read request body")
-		h.recordCompletion(ctx, start, "bad_request")
-		return
-	}
-
 	var req tmproto.IdentityMatchRequest
-	if err := json.Unmarshal(body, &req); err != nil {
+	dec := json.NewDecoder(io.LimitReader(r.Body, maxRequestBodyBytes))
+	if err := dec.Decode(&req); err != nil {
 		h.writeError(w, "", http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		h.recordCompletion(ctx, start, "bad_request")
 		return
@@ -91,13 +92,19 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result := h.service.Evaluate(ctx, &req)
 
-	if err := ctx.Err(); errors.Is(err, context.DeadlineExceeded) {
-		h.writeError(w, req.RequestID, http.StatusGatewayTimeout, tmproto.ErrorCodeInternalError, "request budget exceeded")
+	// Fail closed on budget overrun: return the standard wire shape with no
+	// eligible packages, matching what callers see for any other fail-closed
+	// outcome. RequestID is preserved so the buyer can correlate.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		h.writeResponse(w, &tmproto.IdentityMatchResponse{
+			RequestID: req.RequestID,
+			TTLSec:    h.ttlSec,
+		})
 		h.recordCompletion(ctx, start, "timeout")
 		return
 	}
 
-	var eligible []string
+	eligible := make([]string, 0, len(result.Eligibility))
 	for _, e := range result.Eligibility {
 		if e.Eligible {
 			eligible = append(eligible, e.PackageID)
@@ -122,10 +129,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recorder.StageDuration(ctx, StageTMPX, time.Since(tmpxStart))
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		h.logger.Warn("failed to write identity response", "request_id", req.RequestID, "error", err)
-	}
+	h.writeResponse(w, resp)
 	h.logger.Debug("identity match",
 		"request_id", req.RequestID,
 		"packages", len(req.PackageIDs),
@@ -134,14 +138,34 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.recordCompletion(ctx, start, "ok")
 }
 
-func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, status int, code tmproto.ErrorCode, message string) {
+// writeResponse marshals payload to JSON in one shot and writes it. Using
+// json.Marshal + w.Write avoids the json.Encoder allocation per request
+// that json.NewEncoder(w).Encode would incur on the hot path.
+func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.IdentityMatchResponse) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+	body, err := json.Marshal(resp)
+	if err != nil {
+		h.logger.Warn("failed to marshal identity response", "request_id", resp.RequestID, "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if _, err := w.Write(body); err != nil {
+		h.logger.Warn("failed to write identity response", "request_id", resp.RequestID, "error", err)
+	}
+}
+
+func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, status int, code tmproto.ErrorCode, message string) {
+	body, err := json.Marshal(tmproto.ErrorResponse{
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,
 	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err != nil {
+		return
+	}
+	_, _ = w.Write(body)
 }
 
 func (h *identityHandler) recordCompletion(ctx context.Context, start time.Time, status string) {

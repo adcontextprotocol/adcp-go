@@ -232,20 +232,20 @@ func newTargetingMetricsAdapter(r Recorder) targeting.Metrics {
 	return &targetingMetricsAdapter{recorder: r}
 }
 
-func (a *targetingMetricsAdapter) ContextEvaluated(stage string, passed bool) {
-	a.recorder.StageOutcome(context.Background(), stage, outcomeFromPassed(passed))
+func (a *targetingMetricsAdapter) ContextEvaluated(ctx context.Context, stage string, passed bool) {
+	a.recorder.StageOutcome(ctx, stage, outcomeFromPassed(passed))
 }
 
-func (a *targetingMetricsAdapter) IdentityEvaluated(stage string, passed bool) {
-	a.recorder.StageOutcome(context.Background(), stage, outcomeFromPassed(passed))
+func (a *targetingMetricsAdapter) IdentityEvaluated(ctx context.Context, stage string, passed bool) {
+	a.recorder.StageOutcome(ctx, stage, outcomeFromPassed(passed))
 }
 
-func (a *targetingMetricsAdapter) StoreError(operation string, _ error) {
-	a.recorder.StoreError(context.Background(), operation)
+func (a *targetingMetricsAdapter) StoreError(ctx context.Context, operation string, _ error) {
+	a.recorder.StoreError(ctx, operation)
 }
 
-func (a *targetingMetricsAdapter) Latency(stage string, d time.Duration) {
-	a.recorder.StageDuration(context.Background(), stage, d)
+func (a *targetingMetricsAdapter) Latency(ctx context.Context, stage string, d time.Duration) {
+	a.recorder.StageDuration(ctx, stage, d)
 }
 
 func outcomeFromPassed(passed bool) string {

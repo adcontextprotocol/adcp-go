@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
@@ -84,8 +83,8 @@ type ValkeyBlock struct {
 }
 
 // ToRedisStoreConfig projects onto the redisstore.Config the Build helper
-// consumes. Callers must check Enabled first; calling on a disabled block
-// returns a zero-value Config which will fail Validate.
+// consumes. Only meaningful when Enabled is true; the caller is responsible
+// for gating the call (the identityagent.Config.Validate flow does this).
 func (b ValkeyBlock) ToRedisStoreConfig() redisstore.Config {
 	return redisstore.Config{
 		Mode:         redisstore.Mode(b.Mode),
@@ -410,12 +409,3 @@ func isValidPromName(s string) bool {
 	return true
 }
 
-// LogLevelFromString turns a config-supplied log level into the matching
-// slog.Level, defaulting to info when unrecognized.
-func LogLevelFromString(s string) string {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "debug", "info", "warn", "warning", "error":
-		return strings.ToLower(strings.TrimSpace(s))
-	}
-	return "info"
-}

@@ -6,6 +6,7 @@
 package prommetrics
 
 import (
+	"context"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
@@ -31,19 +32,19 @@ func New() *Metrics {
 	return &Metrics{Registry: reg}
 }
 
-func (m *Metrics) ContextEvaluated(stage string, passed bool) {
+func (m *Metrics) ContextEvaluated(_ context.Context, stage string, passed bool) {
 	m.Registry.CounterInc("targeting_context_evaluated_total", stage, boolStr(passed))
 }
 
-func (m *Metrics) IdentityEvaluated(stage string, passed bool) {
+func (m *Metrics) IdentityEvaluated(_ context.Context, stage string, passed bool) {
 	m.Registry.CounterInc("targeting_identity_evaluated_total", stage, boolStr(passed))
 }
 
-func (m *Metrics) StoreError(operation string, _ error) {
+func (m *Metrics) StoreError(_ context.Context, operation string, _ error) {
 	m.Registry.CounterInc("targeting_store_errors_total", operation)
 }
 
-func (m *Metrics) Latency(stage string, d time.Duration) {
+func (m *Metrics) Latency(_ context.Context, stage string, d time.Duration) {
 	m.Registry.HistogramObserve("targeting_stage_duration_seconds", d.Seconds(), stage)
 }
 

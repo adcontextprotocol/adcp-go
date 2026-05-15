@@ -15,18 +15,23 @@ type shutdownTask struct {
 }
 
 // shutdownRegistry runs a set of named shutdown tasks sequentially. A panic
-// in one task is captured, joined into the returned error, and does not stop
-// remaining tasks from running. Tasks run in registration order.
+// in one task is captured, reported via the recorder, joined into the
+// returned error, and does not stop remaining tasks from running. Tasks run
+// in registration order.
 type shutdownRegistry struct {
-	tasks  []shutdownTask
-	logger *slog.Logger
+	tasks    []shutdownTask
+	logger   *slog.Logger
+	recorder Recorder
 }
 
-func newShutdownRegistry(logger *slog.Logger) *shutdownRegistry {
+func newShutdownRegistry(logger *slog.Logger, recorder Recorder) *shutdownRegistry {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &shutdownRegistry{logger: logger}
+	if recorder == nil {
+		recorder = noopRecorder{}
+	}
+	return &shutdownRegistry{logger: logger, recorder: recorder}
 }
 
 func (r *shutdownRegistry) add(name string, fn func(ctx context.Context) error) {
@@ -41,6 +46,7 @@ func (r *shutdownRegistry) cancel(ctx context.Context) error {
 				if rec := recover(); rec != nil {
 					err := fmt.Errorf("panic in shutdown task %s: %v", t.name, rec)
 					r.logger.Error("shutdown task panicked", "task", t.name, "err", err)
+					r.recorder.ShutdownPanic(ctx)
 					allErrors = errors.Join(allErrors, err)
 				}
 			}()

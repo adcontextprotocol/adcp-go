@@ -78,6 +78,9 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 // returned IdentityResult honors both audience gating and fcap gating; a
 // package is eligible only when both stages pass for it.
 //
+// The caller's IdentityMatchRequest is treated as read-only — Evaluate
+// computes the effective package set internally and never mutates req.
+//
 // Parent-context expiry (the handler's 40ms budget) terminates both
 // goroutines and forces a fail-closed result.
 func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchRequest) *targeting.IdentityResult {
@@ -87,7 +90,6 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 		return &targeting.IdentityResult{RequestID: req.RequestID}
 	}
 	s.recorder.StageOutcome(ctx, StageResolve, OutcomePass)
-	req.PackageIDs = effectivePkgIDs
 	resolved := &targeting.ResolvedPackages{IdentityConfigs: idConfigs}
 
 	pkgsWithSegments := s.packagesWithSegmentRules(resolved, effectivePkgIDs)
@@ -97,10 +99,9 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	defer cancel()
 
 	var (
-		wg          sync.WaitGroup
-		fcapResult  fcapResult
-		audResult   audienceResult
-		audCanceled bool
+		wg         sync.WaitGroup
+		fcapResult fcapResult
+		audResult  audienceResult
 	)
 
 	wg.Go(func() {
@@ -112,27 +113,25 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 
 	if audienceNeeded {
 		wg.Go(func() {
-			audResult = s.runAudienceStage(parCtx, req, resolved, pkgsWithSegments)
+			audResult = s.runAudienceStage(parCtx, req, resolved, effectivePkgIDs, pkgsWithSegments)
 			if audResult.allRejected(pkgsWithSegments) {
 				cancel()
 			}
 		})
-	} else {
-		audCanceled = true // audience stage did not run
 	}
 
 	wg.Wait()
 
 	if !audienceNeeded && len(pkgsWithSegments) > 0 {
 		// Audience is unconfigured but some packages declare segment
-		// rules. Per the documented contract, those packages are
-		// ineligible at request time. Mark them rejected in the
-		// audience result so the join below sees a definitive verdict.
+		// rules. Per the documented contract those packages are
+		// ineligible at request time; mark them rejected so joinResults
+		// sees a definitive verdict. Copy the set so audResult owns its
+		// rejected map and no other code can mutate it underneath us.
 		audResult = audienceResult{
-			rejected: pkgsWithSegments,
+			rejected: copySet(pkgsWithSegments),
 			outcome:  OutcomeFail,
 		}
-		_ = audCanceled
 	}
 
 	eligibility := s.joinResults(effectivePkgIDs, pkgsWithSegments, fcapResult, audResult)
@@ -142,11 +141,11 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	}
 }
 
-// packagesWithSegmentRules returns the subset of pkgIDs whose IdentityConfig
-// declares a non-empty TargetSegments rule. The returned slice is a set
-// (no duplicates) and preserves caller order.
+// packagesWithSegmentRules returns the set of pkgIDs whose IdentityConfig
+// declares a non-empty TargetSegments rule. Used to scope the audience
+// stage to packages that actually need it.
 func (s *Service) packagesWithSegmentRules(resolved *targeting.ResolvedPackages, pkgIDs []string) map[string]struct{} {
-	out := make(map[string]struct{})
+	out := make(map[string]struct{}, len(pkgIDs))
 	for _, id := range pkgIDs {
 		cfg := resolved.IdentityConfigs[id]
 		if cfg == nil {
@@ -181,25 +180,26 @@ func (r fcapResult) allCapped(pkgIDs []string) bool {
 	return true
 }
 
+// runFcapStage builds the (SellerAgentURL, packageID) field list once,
+// extracts user tokens from req.Identities, then defers to
+// fcap.Service.IsCappedAny which pipelines the cross-product internally
+// using a pooled scratch buffer. The result is the per-package cap verdict
+// across all request identities.
 func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, pkgIDs []string) fcapResult {
 	start := time.Now()
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
 	defer cancelFcap()
 
-	lookups := make([]fcap.CapLookup, 0, len(req.Identities)*len(pkgIDs))
-	for _, id := range req.Identities {
-		for _, pkgID := range pkgIDs {
-			lookups = append(lookups, fcap.CapLookup{
-				UserIdentity: id.UserToken,
-				Field: fcap.Field{
-					SellerAgentURL: req.SellerAgentURL,
-					PackageID:      pkgID,
-				},
-			})
-		}
+	fields := make([]fcap.Field, len(pkgIDs))
+	for i, pkgID := range pkgIDs {
+		fields[i] = fcap.Field{SellerAgentURL: req.SellerAgentURL, PackageID: pkgID}
+	}
+	identities := make([]string, len(req.Identities))
+	for i, id := range req.Identities {
+		identities[i] = id.UserToken
 	}
 
-	results, err := s.fcap.IsCappedBatch(fcapCtx, lookups)
+	cappedByField, err := s.fcap.IsCappedAny(fcapCtx, identities, fields)
 	dur := time.Since(start)
 	s.recorder.StageDuration(ctx, StageFCap, dur)
 
@@ -214,24 +214,16 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 	}
 
 	capped := make(map[string]bool, len(pkgIDs))
-	for _, id := range pkgIDs {
-		capped[id] = false
-	}
-	for i, l := range lookups {
-		if results[i] {
-			capped[l.Field.PackageID] = true
-		}
-	}
-
 	allCapped := true
-	for _, id := range pkgIDs {
-		if !capped[id] {
+	for i, pkgID := range pkgIDs {
+		if cappedByField[i] {
+			capped[pkgID] = true
+		} else {
 			allCapped = false
-			break
 		}
 	}
 	outcome := OutcomePass
-	if allCapped {
+	if allCapped && len(pkgIDs) > 0 {
 		outcome = OutcomeFail
 	}
 	s.recorder.StageOutcome(ctx, StageFCap, outcome)
@@ -269,12 +261,18 @@ func (r audienceResult) allRejected(pkgsWithSegments map[string]struct{}) bool {
 	return true
 }
 
-func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMatchRequest, resolved *targeting.ResolvedPackages, pkgsWithSegments map[string]struct{}) audienceResult {
+// runAudienceStage shadow-copies the request with the effective package
+// IDs before invoking the engine. The engine reads req.PackageIDs to scope
+// segment lookups; the original caller's request is left untouched.
+func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMatchRequest, resolved *targeting.ResolvedPackages, effectivePkgIDs []string, pkgsWithSegments map[string]struct{}) audienceResult {
 	start := time.Now()
 	audCtx, cancelAud := context.WithTimeout(ctx, s.audienceTimeout)
 	defer cancelAud()
 
-	result, err := s.engine.EvaluateIdentityResolved(audCtx, resolved, req)
+	engineReq := *req
+	engineReq.PackageIDs = effectivePkgIDs
+
+	result, err := s.engine.EvaluateIdentityResolved(audCtx, resolved, &engineReq)
 	dur := time.Since(start)
 	s.recorder.StageDuration(ctx, StageAudience, dur)
 
@@ -298,7 +296,7 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 		}
 	}
 	outcome := OutcomePass
-	if len(rejected) == len(pkgsWithSegments) && len(pkgsWithSegments) > 0 {
+	if len(pkgsWithSegments) > 0 && len(rejected) == len(pkgsWithSegments) {
 		outcome = OutcomeFail
 	}
 	s.recorder.StageOutcome(ctx, StageAudience, outcome)

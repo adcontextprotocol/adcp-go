@@ -77,13 +77,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		PprofEnabled:    cfg.Pprof.Enabled,
 	})
 
-	if cfg.AudienceValkey.Enabled || bundle.audienceSvc == nil {
-		if !cfg.AudienceValkey.Enabled && bundle.hasSegmentRules {
-			logger.Warn("AUDIENCE_VALKEY is unconfigured but identity-config contains packages with segment rules; those packages will be ineligible at request time")
-		}
-	}
-
-	registry := newShutdownRegistry(logger)
+	registry := newShutdownRegistry(logger, metricsProvider.Recorder)
 	registry.add("identity-config", func(_ context.Context) error {
 		bundle.configSvc.Stop()
 		return nil
@@ -99,7 +93,8 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	registry.add("fcap-valkey", func(_ context.Context) error {
 		return bundle.fcapCloser.Close()
 	})
-	registry.add("keystore", func(_ context.Context) error {
+	registry.add("background-refresh", func(_ context.Context) error {
+		// Cancels both the TMP keystore and TMPX JWKS refresh goroutines.
 		bundle.cancelBackground()
 		return nil
 	})
@@ -139,7 +134,16 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	}
 
 	running.Store(false)
-	time.Sleep(cfg.ShutdownGrace) // let readiness flip propagate to LBs
+	// Give load balancers time to observe the readiness flip and drain
+	// existing connections. A second SIGINT/SIGTERM short-circuits the
+	// wait so an operator can force a faster shutdown.
+	if cfg.ShutdownGrace > 0 {
+		select {
+		case <-time.After(cfg.ShutdownGrace):
+		case <-quit:
+			logger.Info("second signal received, skipping shutdown grace")
+		}
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), MaxShutdownDuration)
 	defer cancel()
@@ -163,20 +167,31 @@ type bundle struct {
 	keystore         tmproto.KeyStore
 	tmpx             *tmpxConfig
 	cancelBackground context.CancelFunc
-	hasSegmentRules  bool
 }
 
-func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (*bundle, error) {
-	bgCtx, cancel := context.WithCancel(context.Background())
-	cleanup := func(err error) error {
-		cancel()
-		return err
-	}
+// buildBundle wires up every dependency the Service needs. Constructed
+// resources push their teardown function onto rollback; on a build failure
+// rollback runs them in reverse order so partial state is released. The
+// rollback list is cleared before return on the success path.
+func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (b *bundle, retErr error) {
+	bgCtx, cancelBg := context.WithCancel(context.Background())
+
+	var rollback []func()
+	addRollback := func(fn func()) { rollback = append(rollback, fn) }
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		for i := len(rollback) - 1; i >= 0; i-- {
+			rollback[i]()
+		}
+		cancelBg()
+	}()
 
 	// Identity-config service (refreshed periodically).
 	source, err := scope3.New(cfg.IdentityConfig.URL, cfg.IdentityConfig.Token, scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout))
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("init scope3 source: %w", err))
+		return nil, fmt.Errorf("init scope3 source: %w", err)
 	}
 	configSvc, err := identityconfig.New(source, cfg.IdentityConfig.RefreshInterval,
 		identityconfig.WithStartConfig(identityconfig.StartConfig{
@@ -191,18 +206,19 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		identityconfig.WithLogger(logger),
 	)
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("init identityconfig service: %w", err))
+		return nil, fmt.Errorf("init identityconfig service: %w", err)
 	}
 	if err := configSvc.Start(ctx); err != nil {
-		return nil, cleanup(fmt.Errorf("identityconfig initial load: %w", err))
+		return nil, fmt.Errorf("identityconfig initial load: %w", err)
 	}
+	addRollback(configSvc.Stop)
 
 	// Fcap valkey (required).
 	fcapStore, fcapCloser, err := redisstore.Build(ctx, cfg.FCapValkey.ToRedisStoreConfig())
 	if err != nil {
-		configSvc.Stop()
-		return nil, cleanup(fmt.Errorf("fcap valkey: %w", err))
+		return nil, fmt.Errorf("fcap valkey: %w", err)
 	}
+	addRollback(func() { _ = fcapCloser.Close() })
 	fcapSvc := fcap.New(fcapStore)
 
 	// Audience valkey (optional).
@@ -213,10 +229,9 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	if cfg.AudienceValkey.Enabled {
 		store, closer, err := redisstore.Build(ctx, cfg.AudienceValkey.ToRedisStoreConfig())
 		if err != nil {
-			_ = fcapCloser.Close()
-			configSvc.Stop()
-			return nil, cleanup(fmt.Errorf("audience valkey: %w", err))
+			return nil, fmt.Errorf("audience valkey: %w", err)
 		}
+		addRollback(func() { _ = closer.Close() })
 		audienceSvc = audience.New(store)
 		audienceCloser = closer
 	}
@@ -236,32 +251,17 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		Recorder:        recorder,
 	})
 	if err != nil {
-		if audienceCloser != nil {
-			_ = audienceCloser.Close()
-		}
-		_ = fcapCloser.Close()
-		configSvc.Stop()
-		return nil, cleanup(fmt.Errorf("build service: %w", err))
+		return nil, fmt.Errorf("build service: %w", err)
 	}
 
 	keystore, err := buildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger)
 	if err != nil {
-		if audienceCloser != nil {
-			_ = audienceCloser.Close()
-		}
-		_ = fcapCloser.Close()
-		configSvc.Stop()
-		return nil, cleanup(fmt.Errorf("keystore: %w", err))
+		return nil, fmt.Errorf("keystore: %w", err)
 	}
 
 	tmpx, err := loadTmpxConfig(bgCtx, cfg.TMPX, logger)
 	if err != nil {
-		if audienceCloser != nil {
-			_ = audienceCloser.Close()
-		}
-		_ = fcapCloser.Close()
-		configSvc.Stop()
-		return nil, cleanup(fmt.Errorf("tmpx: %w", err))
+		return nil, fmt.Errorf("tmpx: %w", err)
 	}
 
 	return &bundle{
@@ -272,18 +272,6 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		fcapCloser:       fcapCloser,
 		keystore:         keystore,
 		tmpx:             tmpx,
-		cancelBackground: cancel,
-		hasSegmentRules:  configServiceHasSegmentRules(configSvc),
+		cancelBackground: cancelBg,
 	}, nil
-}
-
-// configServiceHasSegmentRules reports whether the current snapshot contains
-// any packages with non-empty TargetSegments rules. Used to decide whether
-// to emit the "audience unconfigured but rules exist" warning at startup.
-func configServiceHasSegmentRules(svc *identityconfig.Service) bool {
-	// identityconfig.Service has no enumeration API today; the snapshot
-	// is keyed by (seller, pkg) so an O(snapshot) scan would require new
-	// surface. Returning false defers the warning to the request-time
-	// path where the agent already marks such packages ineligible.
-	return false
 }

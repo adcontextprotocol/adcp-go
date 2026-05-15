@@ -1,7 +1,6 @@
 package identityagent
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/pprof"
@@ -105,11 +104,3 @@ type runningFlag struct{ b atomic.Bool }
 
 func (r *runningFlag) Store(v bool) { r.b.Store(v) }
 func (r *runningFlag) Load() bool   { return r.b.Load() }
-
-// jsonResponseHelper writes a JSON status payload. Used internally for
-// startup-time error responses where the request hasn't been routed yet.
-func writeJSONStatus(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}

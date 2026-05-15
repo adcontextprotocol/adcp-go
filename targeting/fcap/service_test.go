@@ -2,6 +2,7 @@ package fcap
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -138,6 +139,87 @@ func TestService_IsCappedBatch_Empty(t *testing.T) {
 	res, err := svc.IsCappedBatch(ctx, nil)
 	require.NoError(t, err)
 	assert.Nil(t, res)
+}
+
+func TestService_IsCappedAny(t *testing.T) {
+	store := NewMockStore()
+	svc := New(store)
+	ctx := context.Background()
+
+	expireAt := time.Now().Add(time.Hour)
+	require.NoError(t, svc.RecordCap(ctx, "user-a", []Field{
+		{SellerAgentURL: "s", PackageID: "p1"},
+	}, expireAt))
+	require.NoError(t, svc.RecordCap(ctx, "user-b", []Field{
+		{SellerAgentURL: "s", PackageID: "p3"},
+	}, expireAt))
+
+	identities := []string{"user-a", "user-b", "user-c"}
+	fields := []Field{
+		{SellerAgentURL: "s", PackageID: "p1"}, // user-a is capped
+		{SellerAgentURL: "s", PackageID: "p2"}, // no one capped
+		{SellerAgentURL: "s", PackageID: "p3"}, // user-b is capped
+	}
+
+	got, err := svc.IsCappedAny(ctx, identities, fields)
+	require.NoError(t, err)
+	assert.Equal(t, []bool{true, false, true}, got)
+}
+
+func TestService_IsCappedAny_EmptyInputs(t *testing.T) {
+	svc := New(NewMockStore())
+	ctx := context.Background()
+
+	got, err := svc.IsCappedAny(ctx, nil, []Field{{SellerAgentURL: "s", PackageID: "p"}})
+	require.NoError(t, err)
+	assert.Nil(t, got)
+
+	got, err = svc.IsCappedAny(ctx, []string{"u"}, nil)
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
+// TestService_IsCappedAny_PoolReuse exercises the sync.Pool path across
+// concurrent goroutines and varied batch sizes. A reused buffer that leaks
+// state across calls would show up as wrong results, not as a panic, so the
+// test reads results back rather than relying on the race detector alone.
+// Run with `go test -race ./targeting/fcap/` for the full check.
+func TestService_IsCappedAny_PoolReuse(t *testing.T) {
+	store := NewMockStore()
+	svc := New(store)
+	ctx := context.Background()
+	expireAt := time.Now().Add(time.Hour)
+	require.NoError(t, svc.RecordCap(ctx, "u-hot", []Field{
+		{SellerAgentURL: "s", PackageID: "hot"},
+	}, expireAt))
+
+	var wg sync.WaitGroup
+	const workers = 16
+	const iters = 200
+	for range workers {
+		wg.Go(func() {
+			for i := range iters {
+				identities := []string{"u-hot", "u-cold"}
+				fields := []Field{
+					{SellerAgentURL: "s", PackageID: "hot"},
+					{SellerAgentURL: "s", PackageID: "cold"},
+				}
+				// Occasionally vary size to force the pool to grow.
+				if i%5 == 0 {
+					fields = append(fields, Field{SellerAgentURL: "s", PackageID: "extra"})
+				}
+				got, err := svc.IsCappedAny(ctx, identities, fields)
+				require.NoError(t, err)
+				require.Equal(t, len(fields), len(got))
+				assert.True(t, got[0], "hot field should be capped on every call")
+				assert.False(t, got[1], "cold field should never be capped")
+				if len(got) > 2 {
+					assert.False(t, got[2], "extra field should never be capped")
+				}
+			}
+		})
+	}
+	wg.Wait()
 }
 
 func TestIdentityKey_Stable(t *testing.T) {
