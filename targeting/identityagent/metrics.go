@@ -56,6 +56,7 @@ type MetricsProvider struct {
 	Recorder Recorder
 
 	meterProvider *otelmetric.MeterProvider
+	namespace     string
 }
 
 // Shutdown flushes any pending metric data and tears down the meter
@@ -107,7 +108,35 @@ func Build(cfg MetricsConfig) (*MetricsProvider, error) {
 		Registry:      reg,
 		Recorder:      rec,
 		meterProvider: provider,
+		namespace:     cfg.Namespace,
 	}, nil
+}
+
+// RegisterOpenConnectionsObserver registers an OTEL ObservableGauge named
+// "<namespace>_open_connections" whose value is read from observerFn each
+// time the Prometheus exporter scrapes. No-op when metrics are disabled —
+// the gauge simply isn't published.
+//
+// observerFn is invoked from arbitrary goroutines on the exporter's
+// schedule; it must be safe to call concurrently and should be cheap
+// (an atomic load is the intended shape).
+func (m *MetricsProvider) RegisterOpenConnectionsObserver(observerFn func() int64) error {
+	if m == nil || m.meterProvider == nil || observerFn == nil {
+		return nil
+	}
+	meter := m.meterProvider.Meter("identity-agent")
+	gauge, err := meter.Int64ObservableGauge(fmt.Sprintf("%s_open_connections", m.namespace))
+	if err != nil {
+		return fmt.Errorf("register open_connections gauge: %w", err)
+	}
+	_, err = meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		o.ObserveInt64(gauge, observerFn())
+		return nil
+	}, gauge)
+	if err != nil {
+		return fmt.Errorf("register open_connections callback: %w", err)
+	}
+	return nil
 }
 
 // otelRecorder is the production Recorder. It uses an OTEL meter with the

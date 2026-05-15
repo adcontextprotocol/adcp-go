@@ -43,6 +43,17 @@ type Config struct {
 	// bytes. Anything larger is rejected at decode time.
 	RequestBodyLimitBytes int
 
+	// MaxHeaderBytes caps the total size of request headers. Goes onto
+	// http.Server.MaxHeaderBytes; tighter than Go's 1 MiB default to
+	// reject malformed bloat early.
+	MaxHeaderBytes int
+
+	// MaxOpenConnections caps the number of concurrently-accepted TCP
+	// connections to the listener. New SYNs queue in the kernel backlog
+	// once the cap is reached and are eventually rejected. Pair with the
+	// container's file-descriptor ulimit.
+	MaxOpenConnections int
+
 	// ResponseTTL is the cache TTL hint returned to callers in
 	// IdentityMatchResponse.TTLSec.
 	ResponseTTL time.Duration
@@ -160,6 +171,8 @@ const (
 	defaultShutdownGrace          = 1 * time.Second
 	defaultShutdownTimeout        = 10 * time.Second
 	defaultRequestBodyLimitBytes  = 64 * 1024
+	defaultMaxHeaderBytes         = 8 * 1024
+	defaultMaxOpenConnections     = 1024
 	defaultResponseTTL            = 60 * time.Second
 	defaultLogLevel               = "info"
 	defaultJWKSTTL                = 5 * time.Minute
@@ -223,6 +236,14 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	maxHeader, err := lookupInt("MAX_HEADER_BYTES", defaultMaxHeaderBytes)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	maxConns, err := lookupInt("MAX_OPEN_CONNECTIONS", defaultMaxOpenConnections)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	responseTTL, err := lookupDuration("RESPONSE_TTL", defaultResponseTTL)
 	if err != nil {
 		errs = append(errs, err)
@@ -283,6 +304,8 @@ func LoadConfigFromEnv() (Config, error) {
 		ShutdownGrace:         shutdownGrace,
 		ShutdownTimeout:       shutdownTimeout,
 		RequestBodyLimitBytes: bodyLimit,
+		MaxHeaderBytes:        maxHeader,
+		MaxOpenConnections:    maxConns,
 		ResponseTTL:           responseTTL,
 		LogLevel:              lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
@@ -365,6 +388,12 @@ func (c Config) Validate() error {
 	}
 	if c.RequestBodyLimitBytes <= 0 {
 		errs = append(errs, errors.New("REQUEST_BODY_LIMIT_BYTES must be positive"))
+	}
+	if c.MaxHeaderBytes <= 0 {
+		errs = append(errs, errors.New("MAX_HEADER_BYTES must be positive"))
+	}
+	if c.MaxOpenConnections <= 0 {
+		errs = append(errs, errors.New("MAX_OPEN_CONNECTIONS must be positive"))
 	}
 	if c.ResponseTTL <= 0 {
 		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))

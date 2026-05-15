@@ -18,6 +18,8 @@ func TestConfigValidate(t *testing.T) {
 			ShutdownGrace:         time.Second,
 			ShutdownTimeout:       10 * time.Second,
 			RequestBodyLimitBytes: 64 * 1024,
+			MaxHeaderBytes:        8 * 1024,
+			MaxOpenConnections:    1024,
 			ResponseTTL:           60 * time.Second,
 			AudienceTimeout:       10 * time.Millisecond,
 			FCapTimeout:           10 * time.Millisecond,
@@ -96,6 +98,16 @@ func TestConfigValidate(t *testing.T) {
 			name:    "non-positive body limit",
 			mutate:  func(c *Config) { c.RequestBodyLimitBytes = 0 },
 			wantErr: "REQUEST_BODY_LIMIT_BYTES",
+		},
+		{
+			name:    "non-positive max header bytes",
+			mutate:  func(c *Config) { c.MaxHeaderBytes = 0 },
+			wantErr: "MAX_HEADER_BYTES",
+		},
+		{
+			name:    "non-positive max open connections",
+			mutate:  func(c *Config) { c.MaxOpenConnections = 0 },
+			wantErr: "MAX_OPEN_CONNECTIONS",
 		},
 		{
 			name:    "non-positive response ttl",

@@ -33,6 +33,7 @@ type ServerConfig struct {
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
+	MaxHeaderBytes    int
 }
 
 // NewServer builds the *http.Server that exposes /tmp/identity, /live,
@@ -93,6 +94,7 @@ func NewServer(cfg ServerConfig) *http.Server {
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
 		IdleTimeout:       cfg.IdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 }
 

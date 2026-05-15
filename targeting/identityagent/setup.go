@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"golang.org/x/net/netutil"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
@@ -87,7 +90,13 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		ReadTimeout:       cfg.HTTPReadTimeout,
 		WriteTimeout:      cfg.HTTPWriteTimeout,
 		IdleTimeout:       cfg.HTTPIdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	})
+
+	tracker := &connTracker{}
+	if err := metricsProvider.RegisterOpenConnectionsObserver(tracker.Open); err != nil {
+		return fmt.Errorf("register open-connections observer: %w", err)
+	}
 
 	registry := newShutdownRegistry(logger, metricsProvider.Recorder)
 	registry.add("identity-config", func(_ context.Context) error {
@@ -117,9 +126,21 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
+	baseLn, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", srv.Addr, err)
+	}
+	// Compose: raw listener → LimitListener (caps concurrent accepts) →
+	// trackingListener (counts open conns for the open_connections gauge).
+	// LimitListener's Accept blocks when the cap is reached; new SYNs queue
+	// in the kernel backlog and are eventually dropped, which is the
+	// intended fail mode.
+	limitedLn := netutil.LimitListener(baseLn, cfg.MaxOpenConnections)
+	ln := &trackingListener{Listener: limitedLn, tracker: tracker}
+
 	serverErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
 		close(serverErr)
