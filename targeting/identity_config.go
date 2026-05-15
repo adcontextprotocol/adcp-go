@@ -17,9 +17,9 @@ import (
 // A nil *SegmentRule on PackageIdentityConfig means no audience gating: every
 // user is eligible for the package.
 type SegmentRule struct {
-	AllOf  []string `json:"all_of,omitempty"`
-	AnyOf  []string `json:"any_of,omitempty"`
-	NoneOf []string `json:"none_of,omitempty"`
+	AllOf  []string
+	AnyOf  []string
+	NoneOf []string
 }
 
 // Clone returns a deep copy of the rule, including independent backing
@@ -119,11 +119,11 @@ func (r *SegmentRule) Matches(userSegments map[string]struct{}) bool {
 // keyed by (seller_agent_url, package_id) in the in-memory identityconfig
 // service.
 type PackageIdentityConfig struct {
-	TargetSegments *SegmentRule `json:"target_segments,omitempty"`
+	TargetSegments *SegmentRule
 }
 
 // batchLoadPackageContextConfigs loads context configs for multiple packages in one MGet.
-func batchLoadPackageContextConfigs(ctx context.Context, store Store, pkgIDs []string) (map[string]*PackageContextConfig, error) {
+func batchLoadPackageContextConfigs(ctx context.Context, store ContextStore, pkgIDs []string) (map[string]*PackageContextConfig, error) {
 	if len(pkgIDs) == 0 {
 		return nil, nil
 	}

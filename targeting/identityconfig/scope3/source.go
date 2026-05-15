@@ -11,16 +11,16 @@
 //
 //	→ 200 OK
 //	{
-//	  "last_updated_at": "2026-05-13T11:00:00.000000000Z",
-//	  "targeting_configs": [
+//	  "lastUpdatedAt": "2026-05-13T11:00:00.000000000Z",
+//	  "targetingConfigs": [
 //	    {
-//	      "seller_agent_url": "https://seller.example.com/agent",
-//	      "package_id": "pkg-1",
-//	      "target_segments": { "all_of": [...], "any_of": [...], "none_of": [...] }
+//	      "sellerAgentUrl": "https://seller.example.com/agent",
+//	      "packageId": "pkg-1",
+//	      "targetSegments": { "allOf": [...], "anyOf": [...], "noneOf": [...] }
 //	    }
 //	  ],
-//	  "removed_targeting_configs": [
-//	    { "seller_agent_url": "...", "package_id": "..." }
+//	  "removedTargetingConfigs": [
+//	    { "sellerAgentUrl": "...", "packageId": "..." }
 //	  ]
 //	}
 package scope3
@@ -119,20 +119,43 @@ type requestBody struct {
 }
 
 type responseBody struct {
-	LastUpdatedAt           time.Time          `json:"last_updated_at"`
-	TargetingConfigs        []wireConfig       `json:"targeting_configs"`
-	RemovedTargetingConfigs []wireRemovedEntry `json:"removed_targeting_configs"`
+	LastUpdatedAt           time.Time          `json:"lastUpdatedAt"`
+	TargetingConfigs        []wireConfig       `json:"targetingConfigs"`
+	RemovedTargetingConfigs []wireRemovedEntry `json:"removedTargetingConfigs"`
 }
 
 type wireConfig struct {
-	SellerAgentURL string                 `json:"seller_agent_url"`
-	PackageID      string                 `json:"package_id"`
-	TargetSegments *targeting.SegmentRule `json:"target_segments,omitempty"`
+	SellerAgentURL string            `json:"sellerAgentUrl"`
+	PackageID      string            `json:"packageId"`
+	TargetSegments *wireSegmentRule  `json:"targetSegments,omitempty"`
 }
 
 type wireRemovedEntry struct {
-	SellerAgentURL string `json:"seller_agent_url"`
-	PackageID      string `json:"package_id"`
+	SellerAgentURL string `json:"sellerAgentUrl"`
+	PackageID      string `json:"packageId"`
+}
+
+type wireSegmentRule struct {
+	AllOf  []string `json:"allOf,omitempty"`
+	AnyOf  []string `json:"anyOf,omitempty"`
+	NoneOf []string `json:"noneOf,omitempty"`
+}
+
+// toDomain projects the wire rule onto its domain twin. Slice fields alias
+// the wire struct rather than deep-copying; this is safe because the wire
+// struct is request-scoped and identityconfig.Service.GetBySeller clones the
+// rule before exposing it to readers, so external callers never observe the
+// alias. Mutating a returned *SegmentRule before that clone would corrupt
+// the snapshot.
+func (w *wireSegmentRule) toDomain() *targeting.SegmentRule {
+	if w == nil {
+		return nil
+	}
+	return &targeting.SegmentRule{
+		AllOf:  w.AllOf,
+		AnyOf:  w.AnyOf,
+		NoneOf: w.NoneOf,
+	}
 }
 
 func (s *Source) post(ctx context.Context, body requestBody) (out *responseBody, retErr error) {
@@ -188,7 +211,7 @@ func toEntries(cfgs []wireConfig) []identityconfig.Entry {
 	for _, c := range cfgs {
 		out = append(out, identityconfig.Entry{
 			Key:            identityconfig.Key{SellerAgentURL: c.SellerAgentURL, PackageID: c.PackageID},
-			TargetSegments: c.TargetSegments,
+			TargetSegments: c.TargetSegments.toDomain(),
 		})
 	}
 	return out

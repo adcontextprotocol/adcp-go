@@ -53,23 +53,23 @@ func TestLoadAll_SendsBearerAndParsesResponse(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"last_updated_at": "2026-05-13T10:42:43.123456789Z",
-			"targeting_configs": [
+			"lastUpdatedAt": "2026-05-13T10:42:43.123456789Z",
+			"targetingConfigs": [
 				{
-					"seller_agent_url": "https://seller.example/agent",
-					"package_id": "pkg-1",
-					"target_segments": {
-						"all_of": ["high_intent"],
-						"any_of": ["cooking_fans", "home_improvement"],
-						"none_of": ["competitor"]
+					"sellerAgentUrl": "https://seller.example/agent",
+					"packageId": "pkg-1",
+					"targetSegments": {
+						"allOf": ["high_intent"],
+						"anyOf": ["cooking_fans", "home_improvement"],
+						"noneOf": ["competitor"]
 					}
 				},
 				{
-					"seller_agent_url": "https://seller.example/agent",
-					"package_id": "pkg-2"
+					"sellerAgentUrl": "https://seller.example/agent",
+					"packageId": "pkg-2"
 				}
 			],
-			"removed_targeting_configs": []
+			"removedTargetingConfigs": []
 		}`))
 	}))
 	defer srv.Close()
@@ -99,7 +99,7 @@ func TestLoadAll_SendsBearerAndParsesResponse(t *testing.T) {
 	assert.Equal(t, []string{"competitor"}, pkg1.TargetSegments.NoneOf)
 
 	pkg2 := byKey[identityconfig.Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-2"}]
-	assert.Nil(t, pkg2.TargetSegments, "missing target_segments unmarshals as nil rule")
+	assert.Nil(t, pkg2.TargetSegments, "missing targetSegments unmarshals as nil rule")
 }
 
 func TestLoadUpdatedAfter_SendsAfterField(t *testing.T) {
@@ -112,12 +112,12 @@ func TestLoadUpdatedAfter_SendsAfterField(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"last_updated_at": "2026-05-13T11:00:00Z",
-			"targeting_configs": [
-				{"seller_agent_url": "s", "package_id": "p", "target_segments": {"any_of": ["x"]}}
+			"lastUpdatedAt": "2026-05-13T11:00:00Z",
+			"targetingConfigs": [
+				{"sellerAgentUrl": "s", "packageId": "p", "targetSegments": {"anyOf": ["x"]}}
 			],
-			"removed_targeting_configs": [
-				{"seller_agent_url": "s", "package_id": "gone"}
+			"removedTargetingConfigs": [
+				{"sellerAgentUrl": "s", "packageId": "gone"}
 			]
 		}`))
 	}))
