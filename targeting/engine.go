@@ -1,11 +1,14 @@
-// Package targeting provides a data-driven targeting engine for TMP agents.
+// Package targeting provides data-driven targeting engines for TMP agents.
 //
 // Capabilities activate based on what data is present. Push property bitmaps
 // and property targeting works. Push audience segments and audience targeting
 // works. No data for a dimension means that dimension is a no-op.
 //
-// The engine evaluates both context match and identity match requests,
-// replacing the need for separate agent implementations.
+// Two engines live here: ContextEngine evaluates context-match requests
+// against a ContextStore (property bitmaps, URL filters, topic sets), and
+// IdentityEngine evaluates identity-match requests against an audience
+// service. They are deployed as separate processes — the context agent and
+// identity agent — so that user-token data never traverses the context path.
 package targeting
 
 import (
@@ -17,12 +20,11 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// Engine is the data-driven targeting engine. Push data (property lists,
-// entity configs) and it evaluates. No data for a dimension = no-op.
-type Engine struct {
+// ContextEngine evaluates context-match requests. Push data (property lists,
+// package configs) and it evaluates. No data for a dimension = no-op.
+type ContextEngine struct {
 	providerID string
-	store      Store
-	audience   *audience.Service
+	store      ContextStore
 
 	properties PropertyList
 
@@ -32,19 +34,18 @@ type Engine struct {
 	metrics Metrics
 }
 
-// EngineConfig holds all configuration for creating an Engine.
-type EngineConfig struct {
+// ContextEngineConfig holds all configuration for creating a ContextEngine.
+type ContextEngineConfig struct {
 	ProviderID      string
-	Store           Store
-	Audience        *audience.Service // nil = identity evaluation is segment-blind
+	Store           ContextStore
 	Properties      PropertyList
 	Packages        []PackageConfig
 	DynamicPackages bool    // When true, load package configs from Store at eval time.
 	Metrics         Metrics // nil = noop
 }
 
-// NewEngine creates a targeting engine.
-func NewEngine(cfg EngineConfig) *Engine {
+// NewContextEngine creates a context-match engine.
+func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	pkgMap := make(map[string]PackageConfig, len(cfg.Packages))
 	for _, p := range cfg.Packages {
 		pkgMap[p.PackageID] = p
@@ -53,14 +54,40 @@ func NewEngine(cfg EngineConfig) *Engine {
 	if metrics == nil {
 		metrics = noopMetrics{}
 	}
-	return &Engine{
+	return &ContextEngine{
 		providerID:      cfg.ProviderID,
 		store:           cfg.Store,
-		audience:        cfg.Audience,
 		properties:      cfg.Properties,
 		packages:        pkgMap,
 		dynamicPackages: cfg.DynamicPackages,
 		metrics:         metrics,
+	}
+}
+
+// IdentityEngine evaluates identity-match requests. It reads pre-resolved
+// package identity configs and consults an audience.Service for segment
+// membership. It does not touch the targeting ContextStore — identity data
+// flows through the audience service alone.
+type IdentityEngine struct {
+	audience *audience.Service
+	metrics  Metrics
+}
+
+// IdentityEngineConfig holds all configuration for creating an IdentityEngine.
+type IdentityEngineConfig struct {
+	Audience *audience.Service // nil = identity evaluation is segment-blind
+	Metrics  Metrics           // nil = noop
+}
+
+// NewIdentityEngine creates an identity-match engine.
+func NewIdentityEngine(cfg IdentityEngineConfig) *IdentityEngine {
+	metrics := cfg.Metrics
+	if metrics == nil {
+		metrics = noopMetrics{}
+	}
+	return &IdentityEngine{
+		audience: cfg.Audience,
+		metrics:  metrics,
 	}
 }
 
@@ -71,13 +98,19 @@ type ContextResult struct {
 	Signals   map[string]any
 }
 
+// IdentityResult holds the output of identity evaluation.
+type IdentityResult struct {
+	RequestID   string
+	Eligibility []tmproto.PackageEligibility
+}
+
 // EvaluateContext evaluates available packages against content context.
 //
 // Pipeline:
 //  1. Global property bitmap check
 //  2. Suppression check (property + geo)
 //  3. Per-package: property bitmap → URL filter → topic match → offers + segments
-func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 	evalStart := time.Now()
 	rid := req.PropertyRID
 
@@ -197,16 +230,10 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 	return result, nil
 }
 
-// IdentityResult holds the output of identity evaluation.
-type IdentityResult struct {
-	RequestID   string
-	Eligibility []tmproto.PackageEligibility
-}
-
 // EvaluateContextResolved evaluates context using pre-built indexes.
 // Minimal Store calls: only suppression checks and artifact→topic resolution.
 // All targeting lookups (property, topic, URL) are in-memory.
-func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 	evalStart := time.Now()
 	rid := req.PropertyRID
 
@@ -325,7 +352,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 //
 // Frequency capping is handled by the separate fcap.Service; the caller
 // composes engine output with fcap lookups when fcap gating is required.
-func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
+func (e *IdentityEngine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 	evalStart := time.Now()
 	identities := resolveIdentities(req)
 
@@ -358,7 +385,7 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 // against the supplied segment set, returning the set of segments the user
 // belongs to. Returns nil when there is no audience service, no identities,
 // or no target segments to evaluate.
-func (e *Engine) resolveUserSegments(ctx context.Context, identities []UserIdentity, targetSegments []string) map[string]struct{} {
+func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []UserIdentity, targetSegments []string) map[string]struct{} {
 	if e.audience == nil || len(identities) == 0 || len(targetSegments) == 0 {
 		return nil
 	}
@@ -410,7 +437,7 @@ func collectTargetSegments(resolved *ResolvedPackages, pkgIDs []string) []string
 }
 
 // checkURLFilter checks artifacts against URL blocklists and allowlists.
-func (e *Engine) checkURLFilter(ctx context.Context, artifacts []string, pkgID string, cfg PackageConfig) (bool, error) {
+func (e *ContextEngine) checkURLFilter(ctx context.Context, artifacts []string, pkgID string, cfg PackageConfig) (bool, error) {
 	for _, artifact := range artifacts {
 		urlHash := HashURL(artifact)
 
@@ -445,7 +472,7 @@ func (e *Engine) checkURLFilter(ctx context.Context, artifacts []string, pkgID s
 }
 
 // checkTopicMatch checks if artifacts have topic overlap with a package.
-func (e *Engine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID string) (bool, error) {
+func (e *ContextEngine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID string) (bool, error) {
 	if len(artifacts) == 0 {
 		return true, nil
 	}

@@ -80,5 +80,5 @@ The workspace uses Go multi-module layout. The root module has zero external dep
 - `targeting/prommetrics/` — stdlib only (no Prometheus client library)
 - `targeting/valkeystore/` — `go-redis/v9`
 - `reference/context-agent/` — `RoaringBitmap/roaring`
-- `reference/identity-agent/` — `go-redis/v9`, `prommetrics`
+- `reference/identity-agent/` — `prommetrics`
 - `cmd/router/` — `prommetrics`

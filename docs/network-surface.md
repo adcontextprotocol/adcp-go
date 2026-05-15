@@ -31,7 +31,7 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 | Router | `:8080` | HTTP | Inbound (publishers) | `--addr` / `TMP_ROUTER_ADDR` |
 | Context Agent | `:8081` | HTTP | Inbound (router) | `--addr` / `TMP_CONTEXT_ADDR` |
 | Identity Agent | `:8082` | HTTP | Inbound (router) | `--addr` / `TMP_IDENTITY_ADDR` |
-| Valkey | `localhost:6379` | Redis protocol | Local only | `--redis-addr` / `TMP_IDENTITY_REDIS_ADDR` |
+| Valkey | `localhost:6379` | Redis protocol | Local only | wired by the embedder via `glidestore`/`redisstore` |
 | Registry API | Remote | HTTPS | Outbound | `registry.NewClient(baseURL, token)` |
 
 ## HTTP Endpoints
@@ -219,7 +219,6 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_CONTEXT_ENDPOINT_URL` | Context Agent | Own registered endpoint URL (signed-binding check) | (none) |
 | `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent | Reject unsigned requests | `false` |
 | `TMP_IDENTITY_ADDR` | Identity Agent | Listen address | `:8082` |
-| `TMP_IDENTITY_REDIS_ADDR` | Identity Agent | Valkey/Redis address | (none, uses in-memory) |
 | `TMP_IDENTITY_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
 | `TMP_IDENTITY_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
 | `TMP_IDENTITY_REQUIRE_SIGNATURE` | Identity Agent | Reject unsigned requests | `false` |

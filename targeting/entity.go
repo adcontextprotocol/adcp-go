@@ -47,8 +47,12 @@ type PackageConfig struct {
 }
 
 // PackageContextConfig is the context-side configuration for a package,
-// stored in the Store as JSON at key "config:pkg:{packageID}:context".
-// Used when DynamicPackages is true on the Engine.
+// stored in the ContextStore as JSON at key "config:pkg:{packageID}:context"
+// and loaded when DynamicPackages is set on ContextEngine.
+//
+// The snake_case JSON tags describe the engine's own Valkey serialization
+// and are intentionally distinct from the camelCase wire shape used by
+// targeting/identityconfig/scope3, which is a separate external contract.
 type PackageContextConfig struct {
 	PackageID    string             `json:"package_id"`
 	MediaBuyID   string             `json:"media_buy_id,omitempty"`

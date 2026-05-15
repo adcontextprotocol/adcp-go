@@ -12,26 +12,20 @@ import (
 	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
-	"github.com/adcontextprotocol/adcp-go/targeting/glidestore"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig/scope3"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
-
-	glide "github.com/valkey-io/valkey-glide/go/v2"
-	"github.com/valkey-io/valkey-glide/go/v2/config"
 )
 
 var version = "dev"
 
 func main() {
 	addr := flag.String("addr", "", "Listen address")
-	valkeyAddr := flag.String("valkey-addr", "", "Valkey address (host:port). Falls back to in-memory store if empty or unreachable.")
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
 	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/identity requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
 	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
@@ -48,7 +42,6 @@ func main() {
 	flagSet := setFlags()
 
 	listenAddr := resolveAddr(*addr)
-	storeAddr := resolveValkeyAddr(*valkeyAddr)
 	regURL := resolveString(*registryURL, flagSet["registry-url"], "TMP_IDENTITY_REGISTRY_URL")
 	ownURL := resolveString(*ownEndpointURL, flagSet["own-endpoint-url"], "TMP_IDENTITY_ENDPOINT_URL")
 	if !flagSet["allow-unsigned"] {
@@ -62,7 +55,6 @@ func main() {
 	slog.SetDefault(logger)
 
 	metrics := prommetrics.New()
-	store := initStore(storeAddr)
 
 	cfgURL := resolveString(*configSourceURL, flagSet["config-source-url"], "TMP_IDENTITY_CONFIG_SOURCE_URL")
 	cfgToken := resolveString(*configSourceToken, flagSet["config-source-token"], "TMP_IDENTITY_CONFIG_SOURCE_TOKEN")
@@ -101,10 +93,8 @@ func main() {
 	}
 	defer configSvc.Stop()
 
-	engine := targeting.NewEngine(targeting.EngineConfig{
-		ProviderID: "reference-identity-agent",
-		Store:      store,
-		Metrics:    metrics,
+	engine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
+		Metrics: metrics,
 	})
 
 	keystoreCtx, keystoreCancel := context.WithCancel(context.Background())
@@ -241,62 +231,6 @@ func resolveAddr(flagVal string) string {
 		return env
 	}
 	return ":8082"
-}
-
-func resolveValkeyAddr(flagVal string) string {
-	if flagVal != "" {
-		return flagVal
-	}
-	return os.Getenv("TMP_IDENTITY_VALKEY_ADDR")
-}
-
-// initStore connects to Valkey when an address is configured, otherwise falls
-// back to the in-memory MockStore. Production agents that share state between
-// the targeting engine and fcap.Service should pass the same backend (a
-// glidestore.Store satisfies both interfaces) — this reference doesn't
-// exercise that path.
-func initStore(valkeyAddr string) targeting.Store {
-	if valkeyAddr == "" {
-		slog.Info("No Valkey address configured, using in-memory store")
-		return targeting.NewMockStore()
-	}
-
-	host, port, ok := splitHostPort(valkeyAddr)
-	if !ok {
-		slog.Warn("Invalid Valkey address, falling back to in-memory store", "addr", valkeyAddr)
-		return targeting.NewMockStore()
-	}
-
-	cfg := config.NewClientConfiguration().WithAddress(&config.NodeAddress{Host: host, Port: port})
-	client, err := glide.NewClient(cfg)
-	if err != nil {
-		slog.Warn("Cannot connect to Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
-		return targeting.NewMockStore()
-	}
-
-	// Verify reachability with a short PING.
-	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	if _, err := client.Ping(pingCtx); err != nil {
-		slog.Warn("Cannot reach Valkey, falling back to in-memory store", "addr", valkeyAddr, "error", err)
-		client.Close()
-		return targeting.NewMockStore()
-	}
-
-	slog.Info("Connected to Valkey", "addr", valkeyAddr)
-	return glidestore.New(client)
-}
-
-func splitHostPort(addr string) (string, int, bool) {
-	idx := strings.LastIndex(addr, ":")
-	if idx <= 0 || idx == len(addr)-1 {
-		return "", 0, false
-	}
-	port, err := strconv.Atoi(addr[idx+1:])
-	if err != nil {
-		return "", 0, false
-	}
-	return addr[:idx], port, true
 }
 
 // resolveString picks the configured value for a string flag with the

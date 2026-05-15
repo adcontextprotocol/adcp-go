@@ -1,5 +1,5 @@
 // Package glidestore provides Valkey-backed implementations of
-// targeting.Store, targeting/fcap.Store, and targeting/audience.Store
+// targeting.ContextStore, targeting/fcap.Store, and targeting/audience.Store
 // using valkey-glide/go/v2.
 //
 // Two topologies are supported through a single Store type:
@@ -35,8 +35,8 @@ import (
 )
 
 var (
-	_ targeting.Store = (*Store)(nil)
-	_ fcap.Store      = (*Store)(nil)
+	_ targeting.ContextStore = (*Store)(nil)
+	_ fcap.Store             = (*Store)(nil)
 )
 
 // ErrReadOnly is returned by every write method when Store is in
@@ -48,7 +48,7 @@ var ErrReadOnly = errors.New("glidestore: write not supported on shadow replica"
 // one shard.
 var ErrCrossShard = errors.New("glidestore: cross-shard keys are not supported")
 
-// Store implements targeting.Store, fcap.Store, and audience.Store on
+// Store implements targeting.ContextStore, fcap.Store, and audience.Store on
 // top of valkey-glide.
 type Store struct {
 	client   *glide.Client
@@ -162,7 +162,7 @@ func (s *Store) fanOut(ctx context.Context, byGroup map[int][]int, fn func(ctx c
 	return firstErr
 }
 
-// --- targeting.Store ---
+// --- targeting.ContextStore ---
 
 func (s *Store) SetIsMember(ctx context.Context, key, member string) (bool, error) {
 	return s.clientFor(key).SIsMember(ctx, key, member)

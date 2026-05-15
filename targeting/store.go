@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// Store is a storage backend for the targeting engine.
+// ContextStore is the storage backend the ContextEngine reads and writes.
 // Implementations wrap Valkey or an in-memory mock.
-type Store interface {
+type ContextStore interface {
 	// SetIsMember checks if member is in the set at key.
 	SetIsMember(ctx context.Context, key, member string) (bool, error)
 

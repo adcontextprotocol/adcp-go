@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func setupContextEngine(t *testing.T) (*Engine, *MockStore) {
+func setupContextEngine(t *testing.T) (*ContextEngine, *MockStore) {
 	t.Helper()
 	store := NewMockStore()
 	props := PropertyList{
 		Global: NewMapBitmap("1", "2", "3", "4", "5"),
 	}
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: props,
@@ -32,10 +32,10 @@ func setupContextEngine(t *testing.T) (*Engine, *MockStore) {
 // identityFixture wraps every dependency a per-test identity scenario needs
 // to construct without a tuple of return values.
 type identityFixture struct {
-	Engine    *Engine
-	Store     *MockStore
-	Audience  *audience.Service
-	Resolved  *ResolvedPackages
+	Engine   *IdentityEngine
+	Store    *MockStore
+	Audience *audience.Service
+	Resolved *ResolvedPackages
 }
 
 func setupIdentityEngine(t *testing.T) *identityFixture {
@@ -52,15 +52,8 @@ func setupIdentityEngine(t *testing.T) *identityFixture {
 		},
 	}
 
-	engine := NewEngine(EngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Audience:   audSvc,
-		Packages: []PackageConfig{
-			{PackageID: "pkg-display-001"},
-			{PackageID: "pkg-display-002"},
-			{PackageID: "pkg-no-segments"},
-		},
+	engine := NewIdentityEngine(IdentityEngineConfig{
+		Audience: audSvc,
 	})
 	store.Now = func() time.Time { return now }
 	return &identityFixture{
@@ -111,7 +104,7 @@ func TestContext_PropertySuppression(t *testing.T) {
 
 func TestContext_PerPackageTargeting(t *testing.T) {
 	store := NewMockStore()
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{
@@ -147,7 +140,7 @@ func TestContext_TopicMatch(t *testing.T) {
 	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.baking")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("10")},
@@ -169,7 +162,7 @@ func TestContext_TopicMiss(t *testing.T) {
 	store.SetAdd("topics:package:pkg-food", "food.cooking")
 	store.SetAdd("topics:artifact:article:cpu", "technology.hardware")
 
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("10")},
@@ -191,7 +184,7 @@ func TestContext_URLBlocklist(t *testing.T) {
 	blockedHash := HashURL("article:controversial")
 	store.SetAdd("url:blocklist:pkg-family", blockedHash)
 
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("20")},
@@ -213,7 +206,7 @@ func TestContext_URLAllowlist(t *testing.T) {
 	allowedHash := HashURL("article:safe-content")
 	store.SetAdd("url:allowlist:pkg-premium", allowedHash)
 
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("20")},
@@ -245,7 +238,7 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 	store.SetAdd("topics:package:pkg-tech", "technology.reviews")
 	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
 
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("30")},
@@ -273,7 +266,7 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 
 func TestContext_EmitSegments(t *testing.T) {
 	store := NewMockStore()
-	engine := NewEngine(EngineConfig{
+	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
 		Store:      store,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
@@ -369,8 +362,7 @@ func TestIdentity_EmptyRuleEligibleWithoutAudience(t *testing.T) {
 	// A non-nil but empty SegmentRule references no segments — it should
 	// match every user, even when the engine has no audience.Service to
 	// resolve membership against.
-	engine := NewEngine(EngineConfig{
-		ProviderID: "test-no-audience",
+	engine := NewIdentityEngine(IdentityEngineConfig{
 		// Audience intentionally nil.
 	})
 	resolved := &ResolvedPackages{
@@ -392,7 +384,7 @@ func TestIdentity_NonEmptyRuleRejectedWithoutAudience(t *testing.T) {
 	// A rule with clauses needs audience data to evaluate. With no
 	// audience.Service configured, packages carrying such rules must be
 	// rejected — segment data is not reachable.
-	engine := NewEngine(EngineConfig{ProviderID: "test-no-audience"})
+	engine := NewIdentityEngine(IdentityEngineConfig{})
 	resolved := &ResolvedPackages{
 		IdentityConfigs: map[string]*PackageIdentityConfig{
 			"pkg-targeted": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking_fans"}}},

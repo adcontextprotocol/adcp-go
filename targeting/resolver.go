@@ -36,7 +36,7 @@ type MediaBuyPackage struct {
 // The now parameter must be in UTC for correct date boundary comparison.
 //
 // Total: 2 Store round-trips (1 SetMembers + 1 MGet) regardless of media buy count.
-func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, country string, now time.Time) ([]tmproto.AvailablePackage, error) {
+func ResolvePackages(ctx context.Context, store ContextStore, sellerID, propertyID, country string, now time.Time) ([]tmproto.AvailablePackage, error) {
 	// 1. Get all media buy IDs for this seller.
 	mbIDs, err := store.SetMembers(ctx, "mediabuy:seller:"+sellerID)
 	if err != nil {
@@ -102,7 +102,7 @@ func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, cou
 // Identity configs are no longer loaded here; callers wanting identity gating
 // populate ResolvedPackages.IdentityConfigs from the identityconfig.Service
 // keyed by (seller_agent_url, package_id).
-func Resolve(ctx context.Context, store Store, sellerID, propertyID, country string, now time.Time) (*ResolvedPackages, error) {
+func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, country string, now time.Time) (*ResolvedPackages, error) {
 	pkgs, err := ResolvePackages(ctx, store, sellerID, propertyID, country, now)
 	if err != nil {
 		return nil, err

@@ -11,11 +11,11 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// TestMemory_EnginePackageScale measures in-memory footprint of the Engine
-// as the number of registered packages grows.
+// TestMemory_EnginePackageScale measures in-memory footprint of the
+// ContextEngine as the number of registered packages grows.
 func TestMemory_EnginePackageScale(t *testing.T) {
 	t.Log("")
-	t.Log("=== Engine Memory: packages map is in-memory ===")
+	t.Log("=== ContextEngine Memory: packages map is in-memory ===")
 	t.Logf("  sizeof(PackageConfig) = %d bytes (struct, no heap alloc for basic config)", unsafe.Sizeof(PackageConfig{}))
 	t.Log("")
 
@@ -35,7 +35,7 @@ func TestMemory_EnginePackageScale(t *testing.T) {
 		runtime.GC()
 		runtime.ReadMemStats(&m1)
 
-		engine := NewEngine(EngineConfig{
+		engine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Packages:   pkgs,
@@ -50,7 +50,7 @@ func TestMemory_EnginePackageScale(t *testing.T) {
 	}
 	t.Log("")
 	t.Log("  In production, identity config (segments) lives in Valkey, NOT in")
-	t.Log("  the packages map. The Engine only holds PackageID + context targeting flags per package.")
+	t.Log("  the packages map. The ContextEngine only holds PackageID + context targeting flags per package.")
 	t.Log("")
 }
 
@@ -59,7 +59,7 @@ func TestMemory_StoreScale(t *testing.T) {
 	t.Log("")
 	t.Log("=== What lives WHERE ===")
 	t.Log("")
-	t.Log("  IN GO PROCESS (Engine.packages map):")
+	t.Log("  IN GO PROCESS (ContextEngine.packages map):")
 	t.Log("    - PackageID + context flags (bitmap ref, URL/topic bools)")
 	t.Log("    - Offer templates (Brand, Price, Summary, CreativeManifest)")
 	t.Log("    - ~184 bytes/package base + string/slice heap allocations")
@@ -72,7 +72,7 @@ func TestMemory_StoreScale(t *testing.T) {
 	t.Log("    - Frequency cap state (fcap.Service hash fields with TTL)")
 	t.Log("")
 	t.Log("  Adding 1M audience members to Valkey = zero Go memory impact.")
-	t.Log("  The Engine only reads what it needs per-request via Store.Get.")
+	t.Log("  The ContextEngine only reads what it needs per-request via ContextStore.Get.")
 	t.Log("")
 }
 
@@ -85,20 +85,12 @@ func TestScale_IdentityNoTargeting(t *testing.T) {
 	t.Log("")
 
 	for _, numPkgs := range []int{1, 5, 10, 25, 50, 100} {
-		store := NewMockStore()
-		var pkgs []PackageConfig
 		var pkgIDs []string
 		for i := range numPkgs {
-			pkgID := fmt.Sprintf("pkg-%d", i)
-			pkgs = append(pkgs, PackageConfig{PackageID: pkgID})
-			pkgIDs = append(pkgIDs, pkgID)
+			pkgIDs = append(pkgIDs, fmt.Sprintf("pkg-%d", i))
 		}
 
-		engine := NewEngine(EngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Packages:   pkgs,
-		})
+		engine := NewIdentityEngine(IdentityEngineConfig{})
 
 		req := &tmproto.IdentityMatchRequest{
 			RequestID:  "bench",

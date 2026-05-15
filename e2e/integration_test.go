@@ -23,8 +23,8 @@ import (
 type testStack struct {
 	client         *tmpclient.Client
 	store          *targeting.MockStore
-	contextEngine  *targeting.Engine
-	identityEngine *targeting.Engine
+	contextEngine  *targeting.ContextEngine
+	identityEngine *targeting.IdentityEngine
 }
 
 func setupStack(t *testing.T) *testStack {
@@ -39,7 +39,7 @@ func setupStack(t *testing.T) *testStack {
 
 	store.SetAdd("url:blocklist:pkg-family", targeting.HashURL("article:adult-content"))
 
-	contextEngine := targeting.NewEngine(targeting.EngineConfig{
+	contextEngine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "integration-context",
 		Store:      store,
 		Properties: targeting.PropertyList{
@@ -58,15 +58,8 @@ func setupStack(t *testing.T) *testStack {
 		{AudienceID: "sports_fans", Add: []audience.Member{{UserToken: "tok-bob", Score: 0.5}}},
 	}))
 
-	identityEngine := targeting.NewEngine(targeting.EngineConfig{
-		ProviderID: "integration-identity",
-		Store:      store,
-		Audience:   audSvc,
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-food"},
-			{PackageID: "pkg-tech"},
-			{PackageID: "pkg-family"},
-		},
+	identityEngine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
+		Audience: audSvc,
 	})
 
 	idResolved := &targeting.ResolvedPackages{
@@ -112,7 +105,7 @@ func setupStack(t *testing.T) *testStack {
 }
 
 // agentHandler creates an HTTP handler that serves both context and identity endpoints.
-func agentHandler(ctxEngine, idEngine *targeting.Engine, resolved *targeting.ResolvedPackages) http.Handler {
+func agentHandler(ctxEngine *targeting.ContextEngine, idEngine *targeting.IdentityEngine, resolved *targeting.ResolvedPackages) http.Handler {
 	mux := http.NewServeMux()
 
 	if ctxEngine != nil {
@@ -312,7 +305,7 @@ func TestIntegration_Mediation(t *testing.T) {
 		return b
 	}
 
-	contextEngine := targeting.NewEngine(targeting.EngineConfig{
+	contextEngine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "mediation-context",
 		Store:      store,
 		Properties: targeting.PropertyList{Global: targeting.NewMapBitmap("1")},
@@ -351,15 +344,8 @@ func TestIntegration_Mediation(t *testing.T) {
 	cookwareIdCfg := targeting.PackageIdentityConfig{TargetSegments: cookingFans}
 	wineIdCfg := targeting.PackageIdentityConfig{TargetSegments: cookingFans}
 
-	identityEngine := targeting.NewEngine(targeting.EngineConfig{
-		ProviderID: "mediation-identity",
-		Store:      store,
-		Audience:   audSvc,
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-olive-oil"},
-			{PackageID: "pkg-cookware"},
-			{PackageID: "pkg-wine"},
-		},
+	identityEngine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
+		Audience: audSvc,
 	})
 
 	idResolved := &targeting.ResolvedPackages{
@@ -466,7 +452,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		return b
 	}
 
-	contextEngine := targeting.NewEngine(targeting.EngineConfig{
+	contextEngine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "multideal-context",
 		Store:      store,
 		Properties: targeting.PropertyList{Global: targeting.NewMapBitmap("1")},
@@ -496,13 +482,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 		},
 	})
 
-	identityEngine := targeting.NewEngine(targeting.EngineConfig{
-		ProviderID: "multideal-identity",
-		Store:      store,
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-premium-food"},
-		},
-	})
+	identityEngine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{})
 
 	idResolved := &targeting.ResolvedPackages{
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
