@@ -124,9 +124,17 @@ func (s *Store) fanOut(ctx context.Context, byGroup map[int][]int, fn func(ctx c
 		return nil
 	}
 	if len(byGroup) == 1 {
-		for g, idxs := range byGroup {
-			return fn(ctx, g, idxs)
+		// Single-group fast path: skip goroutine overhead. Extract the
+		// sole entry up front rather than relying on a return inside a
+		// for-range body, which would silently fall through if the body
+		// is ever refactored to continue.
+		var (
+			group   int
+			indices []int
+		)
+		for group, indices = range byGroup { //nolint:revive // single iteration: extracts the only entry
 		}
+		return fn(ctx, group, indices)
 	}
 	derived, cancel := context.WithCancel(ctx)
 	defer cancel()
