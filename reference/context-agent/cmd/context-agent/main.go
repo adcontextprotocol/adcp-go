@@ -68,8 +68,7 @@ func main() {
 	store.SetAdd("topics:package:pkg-display-0041", "food.cooking", "food.recipes", "lifestyle.home")
 	store.SetAdd("topics:package:pkg-native-0078", "technology.gadgets", "technology.reviews")
 
-	// Create targeting engine.
-	engine := targeting.NewEngine(targeting.EngineConfig{
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "reference-context-agent",
 		Store:      store,
 		Metrics:    metrics,

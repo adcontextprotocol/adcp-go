@@ -1,6 +1,6 @@
 # Embedding the TMP Router
 
-The router and targeting engine are designed to be embedded in existing ad tech infrastructure. This guide covers integration patterns for systems like Prebid Server, custom SSPs, or any Go HTTP service.
+The router and targeting engines (context and identity) are designed to be embedded in existing ad tech infrastructure. This guide covers integration patterns for systems like Prebid Server, custom SSPs, or any Go HTTP service.
 
 ## Basic embedding
 
@@ -73,10 +73,15 @@ func (m *MyMetrics) Latency(stage string, d time.Duration) {
 // ... implement remaining methods
 ```
 
-Then pass it to the engine:
+Then pass it to whichever engine you're constructing:
 
 ```go
-engine := targeting.NewEngine(targeting.EngineConfig{
+ctxEngine := targeting.NewContextEngine(targeting.ContextEngineConfig{
+    Metrics: &MyMetrics{...},
+    // ...
+})
+
+idEngine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
     Metrics: &MyMetrics{...},
     // ...
 })

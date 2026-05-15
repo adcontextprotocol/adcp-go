@@ -65,7 +65,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 		bm.Add(fmt.Sprintf("prop-%d", i))
 	}
 
-	engine := targeting.NewEngine(targeting.EngineConfig{
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "bench-provider",
 		Store:      store,
 		Properties: targeting.PropertyList{

@@ -6,9 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
-	"github.com/stretchr/testify/require"
 )
 
 // TestScale_PropertyBitmap measures property bitmap lookup at increasing scale.
@@ -24,7 +22,7 @@ func TestScale_PropertyBitmap(t *testing.T) {
 		}
 
 		store := NewMockStore()
-		engine := NewEngine(EngineConfig{
+		engine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Properties: PropertyList{Global: bm},
@@ -62,7 +60,7 @@ func TestScale_TopicSetSize(t *testing.T) {
 		}
 		store.SetAdd("topics:artifact:article:test", fmt.Sprintf("topic-%d", n-1))
 
-		engine := NewEngine(EngineConfig{
+		engine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Properties: PropertyList{Global: NewMapBitmap("1")},
@@ -100,7 +98,7 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 			store.SetAdd("url:blocklist:pkg-1", HashURL(fmt.Sprintf("article:blocked-%d", i)))
 		}
 
-		engine := NewEngine(EngineConfig{
+		engine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Properties: PropertyList{Global: NewMapBitmap("1")},
@@ -148,14 +146,14 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 		}
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
 
-		staticEngine := NewEngine(EngineConfig{
+		staticEngine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   staticPkgs,
 		})
 
-		dynamicEngine := NewEngine(EngineConfig{
+		dynamicEngine := NewContextEngine(ContextEngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
 			Properties:      PropertyList{Global: NewMapBitmap("1")},
@@ -259,21 +257,15 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			Packages: mbPkgs,
 		})
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
-		audSvc := audience.New(audience.NewMockStore())
-		require.NoError(t, audSvc.Upsert(context.Background(), audience.AudienceUpsert{
-			AudienceID: "cooking_fans",
-			Add:        []audience.Member{{UserToken: "tok-bench", Score: 1.0}},
-		}))
 
 		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		engine := NewEngine(EngineConfig{
+		engine := NewContextEngine(ContextEngineConfig{
 			ProviderID:      "bench",
 			Store:           store,
-			Audience:        audSvc,
 			Properties:      PropertyList{Global: NewMapBitmap("1")},
 			DynamicPackages: true,
 		})
@@ -328,12 +320,13 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		}
 		store.SetAdd("topics:artifact:article:food", "food.cooking")
 
-		engine := NewEngine(EngineConfig{
+		ctxEngine := NewContextEngine(ContextEngineConfig{
 			ProviderID: "bench",
 			Store:      store,
 			Properties: PropertyList{Global: NewMapBitmap("1")},
 			Packages:   pkgs,
 		})
+		idEngine := NewIdentityEngine(IdentityEngineConfig{})
 
 		resolved := &ResolvedPackages{IdentityConfigs: idConfigs}
 
@@ -352,8 +345,8 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 		const iterations = 1_000
 		start := time.Now()
 		for range iterations {
-			_, _ = engine.EvaluateContext(context.Background(), ctxReq)
-			_, _ = engine.EvaluateIdentityResolved(context.Background(), resolved, idReq)
+			_, _ = ctxEngine.EvaluateContext(context.Background(), ctxReq)
+			_, _ = idEngine.EvaluateIdentityResolved(context.Background(), resolved, idReq)
 		}
 		elapsed := time.Since(start)
 		perPkg := elapsed / time.Duration(iterations*numPkgs)

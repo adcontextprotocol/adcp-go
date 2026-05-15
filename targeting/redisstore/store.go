@@ -1,5 +1,5 @@
 // Package redisstore provides Valkey-backed implementations of
-// targeting.Store, targeting/fcap.Store, and targeting/audience.Store
+// targeting.ContextStore, targeting/fcap.Store, and targeting/audience.Store
 // using github.com/redis/go-redis/v9.
 //
 // Three topologies are supported through a single Store type:
@@ -14,7 +14,7 @@
 //     *redis.Client per shard ordinal. Reads route by app-level CRC16;
 //     writes return ErrReadOnly.
 //
-// One Store satisfies targeting.Store, fcap.Store, and audience.Store
+// One Store satisfies targeting.ContextStore, fcap.Store, and audience.Store
 // in every topology, so callers share connection state between the
 // targeting engine and the frequency-cap / audience services.
 //
@@ -85,8 +85,8 @@ import (
 )
 
 var (
-	_ targeting.Store = (*Store)(nil)
-	_ fcap.Store      = (*Store)(nil)
+	_ targeting.ContextStore = (*Store)(nil)
+	_ fcap.Store             = (*Store)(nil)
 )
 
 // ErrReadOnly is returned by every write method when Store is in
@@ -102,7 +102,7 @@ var ErrReadOnly = errors.New("redisstore: write not supported on shadow replica"
 // on one shard.
 var ErrCrossShard = errors.New("redisstore: cross-shard keys are not supported")
 
-// Store implements targeting.Store, fcap.Store, and audience.Store on
+// Store implements targeting.ContextStore, fcap.Store, and audience.Store on
 // top of go-redis.
 //
 // In single-client mode (standalone or cluster) client is set and
@@ -238,7 +238,7 @@ func (s *Store) fanOut(ctx context.Context, byGroup map[int][]int, fn func(ctx c
 	return firstErr
 }
 
-// --- targeting.Store ---
+// --- targeting.ContextStore ---
 
 func (s *Store) SetIsMember(ctx context.Context, key, member string) (bool, error) {
 	return s.cmdableFor(key).SIsMember(ctx, key, member).Result()
@@ -370,7 +370,7 @@ func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Durati
 	}
 	// MSET in Valkey doesn't accept a TTL. With TTL, batch SET-with-expiry per
 	// key in a non-atomic pipeline; atomicity is documented as
-	// implementation-defined on the targeting.Store interface.
+	// implementation-defined on the targeting.ContextStore interface.
 	pipe := s.client.Pipeline()
 	for k, v := range kvs {
 		pipe.Set(ctx, k, v, ttl)

@@ -280,7 +280,7 @@ func TestIntegration_Engine_EvaluateContext_AgainstRealValkey(t *testing.T) {
 	_, err = client.SAdd(ctx, "url:blocklist:pkg-family", []string{targeting.HashURL("article:adult-content")})
 	require.NoError(t, err)
 
-	engine := targeting.NewEngine(targeting.EngineConfig{
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "integration-engine",
 		Store:      store,
 		Properties: targeting.PropertyList{Global: targeting.NewMapBitmap("1")},
@@ -323,11 +323,8 @@ func TestIntegration_Engine_EvaluateIdentity_AgainstRealValkey(t *testing.T) {
 		Add:        []audience.Member{{UserToken: "tok-alice", Score: 1.0}},
 	}))
 
-	engine := targeting.NewEngine(targeting.EngineConfig{
-		ProviderID: "integration-id",
-		Store:      store,
-		Audience:   audSvc,
-		Packages:   []targeting.PackageConfig{{PackageID: "pkg-food"}},
+	engine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
+		Audience: audSvc,
 	})
 
 	resolved := &targeting.ResolvedPackages{

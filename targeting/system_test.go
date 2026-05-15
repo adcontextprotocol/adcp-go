@@ -126,27 +126,27 @@ func TestSystem_EndToEnd(t *testing.T) {
 		staticPkgs[i] = PackageConfig{PackageID: id, TopicTargets: true, URLBlocklist: true}
 	}
 
-	staticEngine := NewEngine(EngineConfig{
+	staticEngine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "bench",
 		Store:      store,
-		Audience:   audSvc,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
 		Packages:   staticPkgs,
 	})
 
-	dynamicEngine := NewEngine(EngineConfig{
+	dynamicEngine := NewContextEngine(ContextEngineConfig{
 		ProviderID:      "bench",
 		Store:           store,
-		Audience:        audSvc,
 		Properties:      PropertyList{Global: NewMapBitmap("1")},
 		DynamicPackages: true,
 	})
 
-	resolvedEngine := NewEngine(EngineConfig{
+	resolvedCtxEngine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "bench",
 		Store:      store,
-		Audience:   audSvc,
 		Properties: PropertyList{Global: NewMapBitmap("1")},
+	})
+	identityEngine := NewIdentityEngine(IdentityEngineConfig{
+		Audience: audSvc,
 	})
 
 	ctxReq := &tmproto.ContextMatchRequest{
@@ -215,14 +215,14 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	idEval := func(ctx context.Context, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
-		return resolvedEngine.EvaluateIdentityResolved(ctx, resolved, req)
+		return identityEngine.EvaluateIdentityResolved(ctx, resolved, req)
 	}
 
 	staticResult := runBench("Static", staticEngine.EvaluateContext, idEval)
 	dynamicResult := runBench("Dynamic", dynamicEngine.EvaluateContext, idEval)
 	resolvedResult := runBench("Resolved",
 		func(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
-			return resolvedEngine.EvaluateContextResolved(ctx, resolved, req)
+			return resolvedCtxEngine.EvaluateContextResolved(ctx, resolved, req)
 		},
 		idEval,
 	)
