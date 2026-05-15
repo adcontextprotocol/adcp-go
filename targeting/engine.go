@@ -152,11 +152,11 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 		}
 
 		if propertyBitmap != nil && !propertyBitmap.Contains(rid) {
-			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 			continue
 		}
 		if !e.properties.ContainsPackage(pkgID, rid) {
-			e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 			continue
 		}
 
@@ -165,7 +165,7 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 			if err != nil {
 				e.metrics.StoreError(StageURLFilter, err)
 			} else if blocked {
-				e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+				e.metrics.ContextEvaluated(StageURLFilter, false)
 				continue
 			}
 		}
@@ -175,12 +175,12 @@ func (e *Engine) EvaluateContext(ctx context.Context, req *tmproto.ContextMatchR
 			if err != nil {
 				e.metrics.StoreError(StageTopicMatch, err)
 			} else if !matched {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated(pkgID, "", true)
+		e.metrics.ContextEvaluated("", true)
 		offers = append(offers, pkgOffers...)
 		segments = append(segments, emitSegments...)
 	}
@@ -253,18 +253,18 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 
 		if propertyCandidates != nil {
 			if _, ok := propertyCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(pkgID, StagePropertyBitmap, false)
+				e.metrics.ContextEvaluated(StagePropertyBitmap, false)
 				continue
 			}
 		}
 
 		if cfg.TopicTargets && len(artifactRefs) > 0 {
 			if len(topicCandidates) == 0 {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 			if _, ok := topicCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(pkgID, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(StageTopicMatch, false)
 				continue
 			}
 		}
@@ -277,7 +277,7 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 			}
 		}
 		if blocked {
-			e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+			e.metrics.ContextEvaluated(StageURLFilter, false)
 			continue
 		}
 
@@ -290,12 +290,12 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 				}
 			}
 			if !allowed {
-				e.metrics.ContextEvaluated(pkgID, StageURLFilter, false)
+				e.metrics.ContextEvaluated(StageURLFilter, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated(pkgID, "", true)
+		e.metrics.ContextEvaluated("", true)
 		offers = append(offers, buildOffersFromDynamic(pkgID, cfg)...)
 		segments = append(segments, cfg.EmitSegments...)
 	}
@@ -313,14 +313,15 @@ func (e *Engine) EvaluateContextResolved(ctx context.Context, resolved *Resolved
 }
 
 // EvaluateIdentityResolved evaluates identity eligibility using segment gating only.
-// Packages that have no IdentityConfig in resolved, or whose config has no
-// TargetSegments, are reported eligible: segment matching is opt-in, not a
-// default deny. When the engine has no audience.Service configured, every
-// package with TargetSegments is rejected (no segment data is reachable).
+// Packages that have no IdentityConfig in resolved, or whose config has an
+// empty TargetSegments rule (no clauses), are reported eligible: segment
+// matching is opt-in, not a default deny. When the engine has no
+// audience.Service configured, every package with a non-empty rule is
+// rejected (no segment data is reachable to evaluate the clauses).
 //
 // Audience lookups are scoped to the segments any requested package actually
-// targets, so users in unrelated audiences don't pay HGETALL for fields the
-// engine wouldn't read.
+// references across AllOf/AnyOf/NoneOf, so users in unrelated audiences don't
+// pay for fields the engine wouldn't read.
 //
 // Frequency capping is handled by the separate fcap.Service; the caller
 // composes engine output with fcap lookups when fcap gating is required.
@@ -328,45 +329,17 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	evalStart := time.Now()
 	identities := resolveIdentities(req)
 
-	var segmentEligible map[string]struct{}
-	targetSegments := collectTargetSegments(resolved, req.PackageIDs)
-	if e.audience != nil && len(identities) > 0 && len(targetSegments) > 0 {
-		lookups := make([]audience.MembershipLookup, 0, len(identities)*len(targetSegments))
-		for _, uid := range identities {
-			for _, seg := range targetSegments {
-				lookups = append(lookups, audience.MembershipLookup{
-					UserToken:  uid.UserToken,
-					AudienceID: seg,
-				})
-			}
-		}
-		results, err := e.audience.IsMemberBatch(ctx, lookups)
-		if err != nil {
-			e.metrics.StoreError("load_user_audiences", err)
-			results = make([]bool, len(lookups))
-		}
-		matched := make(map[string]struct{})
-		for i, l := range lookups {
-			if results[i] {
-				matched[l.AudienceID] = struct{}{}
-			}
-		}
-		userSegments := make([]string, 0, len(matched))
-		for seg := range matched {
-			userSegments = append(userSegments, seg)
-		}
-		segmentEligible = resolved.SegmentCandidates(userSegments)
-	}
+	userSegments := e.resolveUserSegments(ctx, identities, collectTargetSegments(resolved, req.PackageIDs))
 
 	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
 		idCfg := resolved.IdentityConfigs[pkgID]
 		eligible := true
 
-		if idCfg != nil && len(idCfg.TargetSegments) > 0 {
-			if _, ok := segmentEligible[pkgID]; !ok {
+		if idCfg != nil && !idCfg.TargetSegments.IsEmpty() {
+			if e.audience == nil || !idCfg.TargetSegments.Matches(userSegments) {
 				eligible = false
-				e.metrics.IdentityEvaluated(pkgID, StageAudience, false)
+				e.metrics.IdentityEvaluated(StageAudience, false)
 			}
 		}
 
@@ -381,9 +354,40 @@ func (e *Engine) EvaluateIdentityResolved(ctx context.Context, resolved *Resolve
 	}, nil
 }
 
-// collectTargetSegments returns the unique union of TargetSegments declared
-// across every package in pkgIDs that has an identity config. Returns nil
-// when no requested package has segment targeting.
+// resolveUserSegments batch-queries audience membership for the identities
+// against the supplied segment set, returning the set of segments the user
+// belongs to. Returns nil when there is no audience service, no identities,
+// or no target segments to evaluate.
+func (e *Engine) resolveUserSegments(ctx context.Context, identities []UserIdentity, targetSegments []string) map[string]struct{} {
+	if e.audience == nil || len(identities) == 0 || len(targetSegments) == 0 {
+		return nil
+	}
+	lookups := make([]audience.MembershipLookup, 0, len(identities)*len(targetSegments))
+	for _, uid := range identities {
+		for _, seg := range targetSegments {
+			lookups = append(lookups, audience.MembershipLookup{
+				UserToken:  uid.UserToken,
+				AudienceID: seg,
+			})
+		}
+	}
+	results, err := e.audience.IsMemberBatch(ctx, lookups)
+	if err != nil {
+		e.metrics.StoreError("load_user_audiences", err)
+		results = make([]bool, len(lookups))
+	}
+	matched := make(map[string]struct{})
+	for i, l := range lookups {
+		if results[i] {
+			matched[l.AudienceID] = struct{}{}
+		}
+	}
+	return matched
+}
+
+// collectTargetSegments returns the deduplicated union of every segment ID
+// referenced (across AllOf/AnyOf/NoneOf) by any package's TargetSegments rule
+// in pkgIDs. Returns nil when no requested package has segment targeting.
 func collectTargetSegments(resolved *ResolvedPackages, pkgIDs []string) []string {
 	seen := make(map[string]struct{})
 	for _, pkgID := range pkgIDs {
@@ -391,7 +395,7 @@ func collectTargetSegments(resolved *ResolvedPackages, pkgIDs []string) []string
 		if cfg == nil {
 			continue
 		}
-		for _, seg := range cfg.TargetSegments {
+		for _, seg := range cfg.TargetSegments.Segments() {
 			seen[seg] = struct{}{}
 		}
 	}

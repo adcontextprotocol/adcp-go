@@ -31,11 +31,11 @@ func New() *Metrics {
 	return &Metrics{Registry: reg}
 }
 
-func (m *Metrics) ContextEvaluated(_ string, stage string, passed bool) {
+func (m *Metrics) ContextEvaluated(stage string, passed bool) {
 	m.Registry.CounterInc("targeting_context_evaluated_total", stage, boolStr(passed))
 }
 
-func (m *Metrics) IdentityEvaluated(_ string, stage string, passed bool) {
+func (m *Metrics) IdentityEvaluated(stage string, passed bool) {
 	m.Registry.CounterInc("targeting_identity_evaluated_total", stage, boolStr(passed))
 }
 

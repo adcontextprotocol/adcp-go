@@ -317,8 +317,6 @@ func TestIntegration_Engine_EvaluateIdentity_AgainstRealValkey(t *testing.T) {
 	_, store := startValkey9(t)
 	ctx := context.Background()
 
-	require.NoError(t, store.Set(ctx, "config:pkg:pkg-food", `{"target_segments":["cooking_fans"]}`, 0))
-
 	audSvc := audience.New(store)
 	require.NoError(t, audSvc.Upsert(ctx, audience.AudienceUpsert{
 		AudienceID: "cooking_fans",
@@ -333,9 +331,8 @@ func TestIntegration_Engine_EvaluateIdentity_AgainstRealValkey(t *testing.T) {
 	})
 
 	resolved := &targeting.ResolvedPackages{
-		SegmentIndex: map[string][]string{"cooking_fans": {"pkg-food"}},
 		IdentityConfigs: map[string]*targeting.PackageIdentityConfig{
-			"pkg-food": {TargetSegments: []string{"cooking_fans"}},
+			"pkg-food": {TargetSegments: &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}},
 		},
 	}
 

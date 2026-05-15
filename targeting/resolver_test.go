@@ -177,14 +177,6 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	// URL blocklist.
 	store.SetAdd("url:blocklist:pkg-food", HashURL("article:bad"))
 
-	// Identity configs.
-	store.SetPackageIdentityConfig("pkg-food", PackageIdentityConfig{
-		TargetSegments: []string{"cooking_fans"},
-	})
-	store.SetPackageIdentityConfig("pkg-tech", PackageIdentityConfig{
-		TargetSegments: []string{"tech_enthusiasts", "cooking_fans"},
-	})
-
 	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
 	require.NoError(t, err)
 
@@ -208,13 +200,8 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	require.Len(t, resolved.URLBlocklistIndex[badHash], 1)
 	assert.Equal(t, "pkg-food", resolved.URLBlocklistIndex[badHash][0])
 
-	// SegmentIndex.
-	assert.Len(t, resolved.SegmentIndex["cooking_fans"], 2)
-	assert.Len(t, resolved.SegmentIndex["tech_enthusiasts"], 1)
-
-	// Configs loaded.
+	// Context configs loaded.
 	assert.NotNil(t, resolved.ContextConfigs["pkg-food"], "expected context config for pkg-food")
-	assert.NotNil(t, resolved.IdentityConfigs["pkg-food"], "expected identity config for pkg-food")
 
 	// Test helper methods.
 	assert.True(t, resolved.IsURLBlocked("pkg-food", badHash))
@@ -222,9 +209,6 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 
 	candidates := resolved.TopicCandidates([]string{"food.cooking", "tech.gadgets"})
 	assert.Len(t, candidates, 2)
-
-	segCandidates := resolved.SegmentCandidates([]string{"cooking_fans"})
-	assert.Len(t, segCandidates, 2)
 }
 
 func TestResolver_MultipleMediaBuys_MixedResults(t *testing.T) {

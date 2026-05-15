@@ -44,18 +44,9 @@ func setupIdentityEngine(t *testing.T) *identityFixture {
 	audSvc := audience.New(audience.NewMockStore())
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	store.SetPackageIdentityConfig("pkg-display-001", PackageIdentityConfig{
-		TargetSegments: []string{"cooking", "home"},
-	})
-	store.SetPackageIdentityConfig("pkg-display-002", PackageIdentityConfig{})
-
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking": {"pkg-display-001"},
-			"home":    {"pkg-display-001"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
 			"pkg-display-002": {},
 			"pkg-no-segments": {},
 		},
@@ -374,6 +365,49 @@ func TestIdentity_UnknownPackage(t *testing.T) {
 	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
 }
 
+func TestIdentity_EmptyRuleEligibleWithoutAudience(t *testing.T) {
+	// A non-nil but empty SegmentRule references no segments — it should
+	// match every user, even when the engine has no audience.Service to
+	// resolve membership against.
+	engine := NewEngine(EngineConfig{
+		ProviderID: "test-no-audience",
+		// Audience intentionally nil.
+	})
+	resolved := &ResolvedPackages{
+		IdentityConfigs: map[string]*PackageIdentityConfig{
+			"pkg-empty-rule": {TargetSegments: &SegmentRule{}},
+		},
+	}
+	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "id-empty",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-empty-rule"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Eligibility, 1)
+	assert.True(t, resp.Eligibility[0].Eligible, "empty rule should match without audience.Service")
+}
+
+func TestIdentity_NonEmptyRuleRejectedWithoutAudience(t *testing.T) {
+	// A rule with clauses needs audience data to evaluate. With no
+	// audience.Service configured, packages carrying such rules must be
+	// rejected — segment data is not reachable.
+	engine := NewEngine(EngineConfig{ProviderID: "test-no-audience"})
+	resolved := &ResolvedPackages{
+		IdentityConfigs: map[string]*PackageIdentityConfig{
+			"pkg-targeted": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking_fans"}}},
+		},
+	}
+	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
+		RequestID:  "id-targeted",
+		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
+		PackageIDs: []string{"pkg-targeted"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Eligibility, 1)
+	assert.False(t, resp.Eligibility[0].Eligible, "non-empty rule must be rejected without audience.Service")
+}
+
 func TestIdentity_RequestIDPreserved(t *testing.T) {
 	f := setupIdentityEngine(t)
 	resp, _ := f.Engine.EvaluateIdentityResolved(context.Background(), f.Resolved, &tmproto.IdentityMatchRequest{
@@ -399,12 +433,8 @@ func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
 
 	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
 	resolved := &ResolvedPackages{
-		SegmentIndex: map[string][]string{
-			"cooking": {"pkg-display-001"},
-			"home":    {"pkg-display-001"},
-		},
 		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: []string{"cooking", "home"}},
+			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
 		},
 	}
 

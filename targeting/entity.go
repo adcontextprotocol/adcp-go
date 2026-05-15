@@ -26,9 +26,8 @@ type PackageConfig struct {
 	URLAllowlist bool   // If true, check "url:allowlist:{pkg}" in Store.
 	TopicTargets bool   // If true, check "topics:package:{pkg}" in Store.
 
-	// Identity dimensions are data-driven from the Store.
-	// Push PackageIdentityConfig to "config:pkg:{packageID}" and
-	// CampaignFreqConfig to "config:campaign:{campaignID}".
+	// Identity dimensions are served by the in-memory
+	// identityconfig.Service, keyed by (seller_agent_url, package_id).
 
 	// Offers — competing brand offers for this package. When the package
 	// activates, each entry produces a separate Offer in the response.

@@ -18,6 +18,8 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/glidestore"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig/scope3"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 
@@ -37,6 +39,10 @@ func main() {
 	tmpxEncryptJWKSTTL := flag.Duration("tmpx-encrypt-jwks-ttl", 5*time.Minute, "How often to re-poll the TMPX encryption JWKS for key rotation.")
 	tmpxCountry := flag.String("tmpx-country", "", "ISO 3166-1 alpha-2 country code stamped into the TMPX header. Required when TMPX is enabled.")
 	tmpxPriority := flag.String("tmpx-priority", "", "Comma-separated UID type ordering used to truncate identities when the TMPX wire size would exceed 255 bytes (e.g. 'uid2,rampid,id5'). Spec requires this list be configured before any truncation; without it, an over-budget identity set returns an error.")
+	configSourceURL := flag.String("config-source-url", "", "URL of the Scope3 identity-config endpoint. When set, the agent loads PackageIdentityConfig entries from this URL keyed by (seller_agent_url, package_id) and refreshes them periodically.")
+	configSourceToken := flag.String("config-source-token", "", "Bearer token sent as Authorization on identity-config requests. Required when --config-source-url is set.")
+	configSourceTimeout := flag.Duration("config-source-timeout", 30*time.Second, "Total HTTP timeout for each identity-config request.")
+	configRefreshInterval := flag.Duration("config-refresh-interval", 5*time.Minute, "Interval between identity-config delta refreshes.")
 	flag.Parse()
 
 	flagSet := setFlags()
@@ -57,21 +63,48 @@ func main() {
 
 	metrics := prommetrics.New()
 	store := initStore(storeAddr)
-	resolved, err := seedConfigs(store)
-	if err != nil {
-		slog.Error("seed configs failed", "error", err)
+
+	cfgURL := resolveString(*configSourceURL, flagSet["config-source-url"], "TMP_IDENTITY_CONFIG_SOURCE_URL")
+	cfgToken := resolveString(*configSourceToken, flagSet["config-source-token"], "TMP_IDENTITY_CONFIG_SOURCE_TOKEN")
+	if cfgURL == "" {
+		slog.Error("--config-source-url is required (Scope3 identity-config endpoint)")
 		os.Exit(1)
 	}
+	if cfgToken == "" {
+		slog.Error("--config-source-token is required when --config-source-url is set")
+		os.Exit(1)
+	}
+	cfgSource, err := scope3.New(cfgURL, cfgToken, scope3.WithHTTPTimeout(*configSourceTimeout))
+	if err != nil {
+		slog.Error("config source init failed", "error", err)
+		os.Exit(1)
+	}
+	configSvc, err := identityconfig.New(cfgSource, *configRefreshInterval,
+		identityconfig.WithStartConfig(identityconfig.StartConfig{
+			Mode: identityconfig.StartModeRetry,
+			Retry: identityconfig.RetryConfig{
+				Initial:  time.Second,
+				Max:      30 * time.Second,
+				Backoff:  identityconfig.BackoffExponential,
+				Deadline: 5 * time.Minute,
+			},
+		}),
+		identityconfig.WithLogger(slog.Default()),
+	)
+	if err != nil {
+		slog.Error("config service init failed", "error", err)
+		os.Exit(1)
+	}
+	if err := configSvc.Start(context.Background()); err != nil {
+		slog.Error("config service initial load failed", "error", err)
+		os.Exit(1)
+	}
+	defer configSvc.Stop()
 
 	engine := targeting.NewEngine(targeting.EngineConfig{
 		ProviderID: "reference-identity-agent",
 		Store:      store,
 		Metrics:    metrics,
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-display-0041"},
-			{PackageID: "pkg-display-0042"},
-			{PackageID: "pkg-native-0078"},
-		},
 	})
 
 	keystoreCtx, keystoreCancel := context.WithCancel(context.Background())
@@ -131,6 +164,9 @@ func main() {
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
+		effectivePkgIDs, idConfigs := identityconfig.ResolveRequest(configSvc, req.SellerAgentURL, req.PackageIDs)
+		req.PackageIDs = effectivePkgIDs
+		resolved := &targeting.ResolvedPackages{IdentityConfigs: idConfigs}
 		result, err := engine.EvaluateIdentityResolved(r.Context(), resolved, &req)
 		if err != nil {
 			slog.Error("EvaluateIdentityResolved failed", "request_id", req.RequestID, "error", err)
@@ -261,43 +297,6 @@ func splitHostPort(addr string) (string, int, bool) {
 		return "", 0, false
 	}
 	return addr[:idx], port, true
-}
-
-// seedConfigs pushes reference identity configs into the Store and returns
-// the resolved package indexes for identity evaluation. Frequency-cap state
-// is no longer seeded — that lives in fcap.Service and is set per-impression.
-func seedConfigs(store targeting.Store) (*targeting.ResolvedPackages, error) {
-	ctx := context.Background()
-
-	configs := []struct {
-		pkgID string
-		cfg   targeting.PackageIdentityConfig
-	}{
-		{"pkg-display-0041", targeting.PackageIdentityConfig{
-			TargetSegments: []string{"cooking_enthusiast", "home_improvement"},
-		}},
-		{"pkg-display-0042", targeting.PackageIdentityConfig{}},
-		{"pkg-native-0078", targeting.PackageIdentityConfig{
-			TargetSegments: []string{"organic_food"},
-		}},
-	}
-	idConfigs := make(map[string]*targeting.PackageIdentityConfig, len(configs))
-	segmentIndex := make(map[string][]string)
-	for _, c := range configs {
-		if err := targeting.SeedPackageIdentityConfig(ctx, store, c.pkgID, c.cfg); err != nil {
-			return nil, fmt.Errorf("seed package config %s: %w", c.pkgID, err)
-		}
-		cfg := c.cfg
-		idConfigs[c.pkgID] = &cfg
-		for _, seg := range cfg.TargetSegments {
-			segmentIndex[seg] = append(segmentIndex[seg], c.pkgID)
-		}
-	}
-
-	return &targeting.ResolvedPackages{
-		SegmentIndex:    segmentIndex,
-		IdentityConfigs: idConfigs,
-	}, nil
 }
 
 // resolveString picks the configured value for a string flag with the

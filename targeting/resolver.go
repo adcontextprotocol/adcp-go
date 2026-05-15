@@ -98,8 +98,11 @@ func ResolvePackages(ctx context.Context, store Store, sellerID, propertyID, cou
 // Resolve builds a fully-indexed ResolvedPackages for a seller+property+country.
 // This is the cacheable entry point — call once, cache the result, use for
 // many requests. Loads all configs and builds all indexes.
+//
+// Identity configs are no longer loaded here; callers wanting identity gating
+// populate ResolvedPackages.IdentityConfigs from the identityconfig.Service
+// keyed by (seller_agent_url, package_id).
 func Resolve(ctx context.Context, store Store, sellerID, propertyID, country string, now time.Time) (*ResolvedPackages, error) {
-	// Step 1: Resolve active packages.
 	pkgs, err := ResolvePackages(ctx, store, sellerID, propertyID, country, now)
 	if err != nil {
 		return nil, err
@@ -113,40 +116,28 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		pkgIDs[i] = p.PackageID
 	}
 
-	// Step 2: Batch-load context configs (1 MGet).
 	ctxConfigs, err := batchLoadPackageContextConfigs(ctx, store, pkgIDs)
 	if err != nil {
 		ctxConfigs = make(map[string]*PackageContextConfig)
 	}
 
-	// Step 3: Batch-load identity configs (1 MGet).
-	idConfigs, err := batchLoadPackageIdentityConfigs(ctx, store, pkgIDs)
-	if err != nil {
-		idConfigs = make(map[string]*PackageIdentityConfig)
-	}
-
-	// Step 4: Build indexes.
 	propertyIdx := make(map[string][]string)
 	topicIdx := make(map[string][]string)
 	urlBlockIdx := make(map[string][]string)
 	urlAllowlists := make(map[string]map[string]struct{})
-	segmentIdx := make(map[string][]string)
 
 	for _, pkgID := range pkgIDs {
-		// Property index from context config.
 		if cc := ctxConfigs[pkgID]; cc != nil {
 			for _, rid := range cc.PropertyRIDs {
 				propertyIdx[rid] = append(propertyIdx[rid], pkgID)
 			}
 		}
 
-		// Topic index: load topic set from Store.
 		topics, _ := store.SetMembers(ctx, "topics:package:"+pkgID)
 		for _, topic := range topics {
 			topicIdx[topic] = append(topicIdx[topic], pkgID)
 		}
 
-		// URL blocklist index: load blocklist from Store.
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLBlocklist {
 			blocked, _ := store.SetMembers(ctx, "url:blocklist:"+pkgID)
 			for _, hash := range blocked {
@@ -154,7 +145,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 			}
 		}
 
-		// URL allowlist: load allowlist from Store.
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLAllowlist {
 			allowed, _ := store.SetMembers(ctx, "url:allowlist:"+pkgID)
 			if len(allowed) > 0 {
@@ -165,13 +155,6 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 				urlAllowlists[pkgID] = set
 			}
 		}
-
-		// Segment index from identity config.
-		if ic := idConfigs[pkgID]; ic != nil {
-			for _, seg := range ic.TargetSegments {
-				segmentIdx[seg] = append(segmentIdx[seg], pkgID)
-			}
-		}
 	}
 
 	return &ResolvedPackages{
@@ -180,9 +163,7 @@ func Resolve(ctx context.Context, store Store, sellerID, propertyID, country str
 		TopicIndex:        topicIdx,
 		URLBlocklistIndex: urlBlockIdx,
 		URLAllowlists:     urlAllowlists,
-		SegmentIndex:      segmentIdx,
 		ContextConfigs:    ctxConfigs,
-		IdentityConfigs:   idConfigs,
 	}, nil
 }
 

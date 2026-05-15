@@ -77,10 +77,6 @@ func TestSystem_EndToEnd(t *testing.T) {
 			store.SetAdd("url:blocklist:"+pkgID, HashURL(fmt.Sprintf("blocked-%d-%d", i, bl)))
 		}
 
-		targetSegs := []string{segments[i%numSegments], segments[(i+1)%numSegments]}
-		store.SetPackageIdentityConfig(pkgID, PackageIdentityConfig{
-			TargetSegments: targetSegs,
-		})
 	}
 
 	userTokens := make([]string, numUsers)
@@ -122,9 +118,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 	t.Logf("  PropertyIndex entries: %d", len(resolved.PropertyIndex))
 	t.Logf("  TopicIndex entries: %d", len(resolved.TopicIndex))
 	t.Logf("  URLBlocklistIndex entries: %d", len(resolved.URLBlocklistIndex))
-	t.Logf("  SegmentIndex entries: %d", len(resolved.SegmentIndex))
 	t.Logf("  ContextConfigs: %d", len(resolved.ContextConfigs))
-	t.Logf("  IdentityConfigs: %d", len(resolved.IdentityConfigs))
 	t.Logf("")
 
 	staticPkgs := make([]PackageConfig, len(allPkgIDs))
