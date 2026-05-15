@@ -13,8 +13,11 @@ var _ audience.Store = (*Store)(nil)
 
 // HSetBatch performs HSET for multiple (key, field, value) triples in one
 // pipelined round-trip. Items targeting the same key are grouped into a
-// single HSET command.
+// single HSET command. Returns ErrReadOnly in shadow-shards mode.
 func (s *Store) HSetBatch(ctx context.Context, items []audience.HSetItem) error {
+	if s.shadow() {
+		return ErrReadOnly
+	}
 	if len(items) == 0 {
 		return nil
 	}
@@ -35,65 +38,87 @@ func (s *Store) HSetBatch(ctx context.Context, items []audience.HSetItem) error 
 	return err
 }
 
-// HExistsBatch checks one (key, field) pair per lookup, returning results in
-// the same order. Pipelined.
+// HExistsBatch checks one (key, field) pair per lookup, returning results
+// in the same order. Pipelined per shard; in shadow mode the per-shard
+// pipelines run in parallel.
 func (s *Store) HExistsBatch(ctx context.Context, lookups []audience.HLookup) ([]bool, error) {
 	if len(lookups) == 0 {
 		return nil, nil
 	}
-	pipe := s.client.Pipeline()
-	cmds := make([]*redis.BoolCmd, len(lookups))
+	keys := make([]string, len(lookups))
 	for i, l := range lookups {
-		cmds[i] = pipe.HExists(ctx, l.Key, l.Field)
-	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, err
+		keys[i] = l.Key
 	}
 	out := make([]bool, len(lookups))
-	for i, c := range cmds {
-		b, err := c.Result()
-		if err != nil {
-			return nil, fmt.Errorf("redisstore: HEXISTS result %d: %w", i, err)
+	byGroup := s.groupKeys(keys)
+	err := s.fanOut(ctx, byGroup, func(ctx context.Context, group int, indices []int) error {
+		pipe := s.pipelineFor(group)
+		cmds := make([]*redis.BoolCmd, len(indices))
+		for j, i := range indices {
+			cmds[j] = pipe.HExists(ctx, lookups[i].Key, lookups[i].Field)
 		}
-		out[i] = b
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+		for j, c := range cmds {
+			b, err := c.Result()
+			if err != nil {
+				return fmt.Errorf("redisstore: HEXISTS result %d: %w", indices[j], err)
+			}
+			out[indices[j]] = b
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
 
-// HGetAll returns every (field, value) under key. Empty map for missing keys —
-// go-redis returns an empty map rather than nil for unknown keys.
+// HGetAll returns every (field, value) under key. Empty map for missing
+// keys — go-redis returns an empty map rather than nil.
 func (s *Store) HGetAll(ctx context.Context, key string) (map[string]string, error) {
-	return s.client.HGetAll(ctx, key).Result()
+	return s.cmdableFor(key).HGetAll(ctx, key).Result()
 }
 
-// HGetAllBatch returns HGETALL results for each key in input order. Missing
-// keys produce empty maps at their index.
+// HGetAllBatch returns HGETALL results for each key in input order.
+// Missing keys produce empty maps at their index.
 func (s *Store) HGetAllBatch(ctx context.Context, keys []string) ([]map[string]string, error) {
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	pipe := s.client.Pipeline()
-	cmds := make([]*redis.MapStringStringCmd, len(keys))
-	for i, k := range keys {
-		cmds[i] = pipe.HGetAll(ctx, k)
-	}
-	if _, err := pipe.Exec(ctx); err != nil {
-		return nil, err
-	}
 	out := make([]map[string]string, len(keys))
-	for i, c := range cmds {
-		m, err := c.Result()
-		if err != nil {
-			return nil, fmt.Errorf("redisstore: HGETALL result %d: %w", i, err)
+	byGroup := s.groupKeys(keys)
+	err := s.fanOut(ctx, byGroup, func(ctx context.Context, group int, indices []int) error {
+		pipe := s.pipelineFor(group)
+		cmds := make([]*redis.MapStringStringCmd, len(indices))
+		for j, i := range indices {
+			cmds[j] = pipe.HGetAll(ctx, keys[i])
 		}
-		out[i] = m
+		if _, err := pipe.Exec(ctx); err != nil {
+			return err
+		}
+		for j, c := range cmds {
+			m, err := c.Result()
+			if err != nil {
+				return fmt.Errorf("redisstore: HGETALL result %d: %w", indices[j], err)
+			}
+			out[indices[j]] = m
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }
 
-// HDelBatch performs HDEL for multiple (key, fields) pairs in one pipelined
-// round-trip.
+// HDelBatch performs HDEL for multiple (key, fields) pairs in one
+// pipelined round-trip. Returns ErrReadOnly in shadow-shards mode.
 func (s *Store) HDelBatch(ctx context.Context, items []audience.HDelItem) error {
+	if s.shadow() {
+		return ErrReadOnly
+	}
 	if len(items) == 0 {
 		return nil
 	}
