@@ -23,8 +23,31 @@ import (
 type Config struct {
 	HTTPPort       int
 	RequestTimeout time.Duration
-	ShutdownGrace  time.Duration
-	LogLevel       string
+
+	// HTTP server timeouts. RequestTimeout is the per-request handler-internal
+	// budget enforced via context.WithTimeout; the four below are outer
+	// listener-level bounds that absorb slow-client behavior and shut the
+	// door on slow-header / slow-body / slow-read attacks.
+	HTTPReadHeaderTimeout time.Duration
+	HTTPReadTimeout       time.Duration
+	HTTPWriteTimeout      time.Duration
+	HTTPIdleTimeout       time.Duration
+
+	// ShutdownGrace is the readiness-flip propagation window; ShutdownTimeout
+	// is the hard ceiling on graceful shutdown after that window expires.
+	// Together they must fit inside the orchestrator's terminationGracePeriod.
+	ShutdownGrace   time.Duration
+	ShutdownTimeout time.Duration
+
+	// RequestBodyLimitBytes is the maximum POST /tmp/identity body size in
+	// bytes. Anything larger is rejected at decode time.
+	RequestBodyLimitBytes int
+
+	// ResponseTTL is the cache TTL hint returned to callers in
+	// IdentityMatchResponse.TTLSec.
+	ResponseTTL time.Duration
+
+	LogLevel string
 
 	TMP             TMPConfig
 	TMPX            TMPXConfig
@@ -124,18 +147,29 @@ type PprofConfig struct {
 }
 
 const (
-	defaultHTTPPort           = 8080
-	defaultRequestTimeout     = 40 * time.Millisecond
-	defaultShutdownGrace      = 1 * time.Second
-	defaultLogLevel           = "info"
-	defaultJWKSTTL            = 5 * time.Minute
-	defaultConfigTimeout      = 30 * time.Second
-	defaultRefreshInterval    = 5 * time.Minute
-	defaultStartMode          = "retry"
-	defaultStartRetryDeadline = 5 * time.Minute
-	defaultAudienceTimeout    = 10 * time.Millisecond
-	defaultFCapTimeout        = 10 * time.Millisecond
-	defaultNamespace          = "identity_agent"
+	defaultHTTPPort = 8080
+
+	// 40ms per-request internal budget. The four HTTP server timeouts below
+	// are outer slow-client absorbing bounds; tightened from the values used
+	// when the listener didn't have a per-request timeout above it.
+	defaultRequestTimeout         = 40 * time.Millisecond
+	defaultHTTPReadHeaderTimeout  = 200 * time.Millisecond
+	defaultHTTPReadTimeout        = 500 * time.Millisecond
+	defaultHTTPWriteTimeout       = 1 * time.Second
+	defaultHTTPIdleTimeout        = 30 * time.Second
+	defaultShutdownGrace          = 1 * time.Second
+	defaultShutdownTimeout        = 10 * time.Second
+	defaultRequestBodyLimitBytes  = 64 * 1024
+	defaultResponseTTL            = 60 * time.Second
+	defaultLogLevel               = "info"
+	defaultJWKSTTL                = 5 * time.Minute
+	defaultConfigTimeout          = 30 * time.Second
+	defaultRefreshInterval        = 5 * time.Minute
+	defaultStartMode              = "retry"
+	defaultStartRetryDeadline     = 5 * time.Minute
+	defaultAudienceTimeout        = 10 * time.Millisecond
+	defaultFCapTimeout            = 10 * time.Millisecond
+	defaultNamespace              = "identity_agent"
 )
 
 // Valid CONFIG_START_MODE values. Exported so callers and tests can refer
@@ -162,6 +196,34 @@ func LoadConfigFromEnv() (Config, error) {
 		errs = append(errs, err)
 	}
 	shutdownGrace, err := lookupDuration("SHUTDOWN_GRACE", defaultShutdownGrace)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	shutdownTimeout, err := lookupDuration("SHUTDOWN_TIMEOUT", defaultShutdownTimeout)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	readHeaderTimeout, err := lookupDuration("HTTP_READ_HEADER_TIMEOUT", defaultHTTPReadHeaderTimeout)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	readTimeout, err := lookupDuration("HTTP_READ_TIMEOUT", defaultHTTPReadTimeout)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	writeTimeout, err := lookupDuration("HTTP_WRITE_TIMEOUT", defaultHTTPWriteTimeout)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	idleTimeout, err := lookupDuration("HTTP_IDLE_TIMEOUT", defaultHTTPIdleTimeout)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	bodyLimit, err := lookupInt("REQUEST_BODY_LIMIT_BYTES", defaultRequestBodyLimitBytes)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	responseTTL, err := lookupDuration("RESPONSE_TTL", defaultResponseTTL)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -212,10 +274,17 @@ func LoadConfigFromEnv() (Config, error) {
 	errs = append(errs, blockErrs...)
 
 	cfg := Config{
-		HTTPPort:       port,
-		RequestTimeout: reqTimeout,
-		ShutdownGrace:  shutdownGrace,
-		LogLevel:       lookupString("LOG_LEVEL", defaultLogLevel),
+		HTTPPort:              port,
+		RequestTimeout:        reqTimeout,
+		HTTPReadHeaderTimeout: readHeaderTimeout,
+		HTTPReadTimeout:       readTimeout,
+		HTTPWriteTimeout:      writeTimeout,
+		HTTPIdleTimeout:       idleTimeout,
+		ShutdownGrace:         shutdownGrace,
+		ShutdownTimeout:       shutdownTimeout,
+		RequestBodyLimitBytes: bodyLimit,
+		ResponseTTL:           responseTTL,
+		LogLevel:              lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
 			RegistryURL:    os.Getenv("TMP_REGISTRY_URL"),
 			OwnEndpointURL: os.Getenv("TMP_OWN_ENDPOINT_URL"),
@@ -264,6 +333,41 @@ func (c Config) Validate() error {
 	}
 	if c.ShutdownGrace < 0 {
 		errs = append(errs, errors.New("SHUTDOWN_GRACE must be non-negative"))
+	}
+	if c.ShutdownTimeout <= 0 {
+		errs = append(errs, errors.New("SHUTDOWN_TIMEOUT must be positive"))
+	}
+	if c.HTTPReadHeaderTimeout <= 0 {
+		errs = append(errs, errors.New("HTTP_READ_HEADER_TIMEOUT must be positive"))
+	}
+	if c.HTTPReadTimeout <= 0 {
+		errs = append(errs, errors.New("HTTP_READ_TIMEOUT must be positive"))
+	}
+	if c.HTTPReadTimeout > 0 && c.HTTPReadHeaderTimeout > c.HTTPReadTimeout {
+		errs = append(errs, fmt.Errorf("HTTP_READ_HEADER_TIMEOUT (%s) must be <= HTTP_READ_TIMEOUT (%s); the inner bound is meaningless otherwise",
+			c.HTTPReadHeaderTimeout, c.HTTPReadTimeout))
+	}
+	if c.HTTPWriteTimeout <= 0 {
+		errs = append(errs, errors.New("HTTP_WRITE_TIMEOUT must be positive"))
+	}
+	if c.RequestTimeout > 0 && c.HTTPWriteTimeout > 0 && c.HTTPWriteTimeout <= c.RequestTimeout {
+		// Go's http.Server starts the WriteTimeout clock at end-of-headers,
+		// so it covers body-read + handler + response-write. If it doesn't
+		// exceed the per-request internal budget, the listener kills the
+		// connection before the handler finishes and the client sees a
+		// truncated/closed response instead of the 200+empty fail-closed
+		// shape.
+		errs = append(errs, fmt.Errorf("HTTP_WRITE_TIMEOUT (%s) must be greater than REQUEST_TIMEOUT (%s); otherwise the listener cuts the response off mid-write",
+			c.HTTPWriteTimeout, c.RequestTimeout))
+	}
+	if c.HTTPIdleTimeout <= 0 {
+		errs = append(errs, errors.New("HTTP_IDLE_TIMEOUT must be positive"))
+	}
+	if c.RequestBodyLimitBytes <= 0 {
+		errs = append(errs, errors.New("REQUEST_BODY_LIMIT_BYTES must be positive"))
+	}
+	if c.ResponseTTL <= 0 {
+		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))
 	}
 	if c.AudienceTimeout <= 0 {
 		errs = append(errs, errors.New("AUDIENCE_TIMEOUT must be positive"))

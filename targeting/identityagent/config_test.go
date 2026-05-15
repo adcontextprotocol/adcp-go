@@ -9,11 +9,18 @@ import (
 func TestConfigValidate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			HTTPPort:        8080,
-			RequestTimeout:  40 * time.Millisecond,
-			ShutdownGrace:   time.Second,
-			AudienceTimeout: 10 * time.Millisecond,
-			FCapTimeout:     10 * time.Millisecond,
+			HTTPPort:              8080,
+			RequestTimeout:        40 * time.Millisecond,
+			HTTPReadHeaderTimeout: 200 * time.Millisecond,
+			HTTPReadTimeout:       500 * time.Millisecond,
+			HTTPWriteTimeout:      1 * time.Second,
+			HTTPIdleTimeout:       30 * time.Second,
+			ShutdownGrace:         time.Second,
+			ShutdownTimeout:       10 * time.Second,
+			RequestBodyLimitBytes: 64 * 1024,
+			ResponseTTL:           60 * time.Second,
+			AudienceTimeout:       10 * time.Millisecond,
+			FCapTimeout:           10 * time.Millisecond,
 			IdentityConfig: IdentityConfigSourceConfig{
 				URL:                "https://config.example/",
 				Token:              "tok",
@@ -48,6 +55,52 @@ func TestConfigValidate(t *testing.T) {
 			name:    "non-positive request timeout",
 			mutate:  func(c *Config) { c.RequestTimeout = 0 },
 			wantErr: "REQUEST_TIMEOUT",
+		},
+		{
+			name:    "non-positive shutdown timeout",
+			mutate:  func(c *Config) { c.ShutdownTimeout = 0 },
+			wantErr: "SHUTDOWN_TIMEOUT",
+		},
+		{
+			name:    "non-positive read-header timeout",
+			mutate:  func(c *Config) { c.HTTPReadHeaderTimeout = 0 },
+			wantErr: "HTTP_READ_HEADER_TIMEOUT",
+		},
+		{
+			name: "read-header timeout exceeds read timeout",
+			mutate: func(c *Config) {
+				c.HTTPReadHeaderTimeout = 2 * time.Second
+				c.HTTPReadTimeout = 1 * time.Second
+			},
+			wantErr: "must be <= HTTP_READ_TIMEOUT",
+		},
+		{
+			name:    "non-positive write timeout",
+			mutate:  func(c *Config) { c.HTTPWriteTimeout = 0 },
+			wantErr: "HTTP_WRITE_TIMEOUT",
+		},
+		{
+			name: "write timeout does not exceed request timeout",
+			mutate: func(c *Config) {
+				c.RequestTimeout = 1 * time.Second
+				c.HTTPWriteTimeout = 1 * time.Second
+			},
+			wantErr: "must be greater than REQUEST_TIMEOUT",
+		},
+		{
+			name:    "non-positive idle timeout",
+			mutate:  func(c *Config) { c.HTTPIdleTimeout = 0 },
+			wantErr: "HTTP_IDLE_TIMEOUT",
+		},
+		{
+			name:    "non-positive body limit",
+			mutate:  func(c *Config) { c.RequestBodyLimitBytes = 0 },
+			wantErr: "REQUEST_BODY_LIMIT_BYTES",
+		},
+		{
+			name:    "non-positive response ttl",
+			mutate:  func(c *Config) { c.ResponseTTL = 0 },
+			wantErr: "RESPONSE_TTL",
 		},
 		{
 			name:    "missing config url",

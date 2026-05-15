@@ -22,33 +22,29 @@ import (
 // The handler is wrapped by TMP signature verification at a higher layer
 // (see ServeMux assembly in server.go).
 type identityHandler struct {
-	service        *Service
-	tmpxCfg        *tmpxConfig
-	requestTimeout time.Duration
-	recorder       Recorder
-	logger         *slog.Logger
-	ttlSec         int
+	service          *Service
+	tmpxCfg          *tmpxConfig
+	requestTimeout   time.Duration
+	requestBodyLimit int64
+	responseTTL      time.Duration
+	recorder         Recorder
+	logger           *slog.Logger
 }
 
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
 type IdentityHandlerConfig struct {
-	Service        *Service
-	TMPXConfig     *tmpxConfig
-	RequestTimeout time.Duration
-	Recorder       Recorder
-	Logger         *slog.Logger
-	TTLSeconds     int
+	Service          *Service
+	TMPXConfig       *tmpxConfig
+	RequestTimeout   time.Duration
+	RequestBodyLimit int64
+	ResponseTTL      time.Duration
+	Recorder         Recorder
+	Logger           *slog.Logger
 }
 
-const (
-	defaultResponseTTLSec = 60
-
-	// maxRequestBodyBytes bounds the request body. Identity requests are
-	// small JSON objects; anything larger is rejected at decode time.
-	maxRequestBodyBytes = 64 * 1024
-)
-
 // NewIdentityHandler returns the http.Handler for POST /tmp/identity.
+// Callers must supply positive RequestTimeout, RequestBodyLimit, and
+// ResponseTTL; the agent's Config.Validate enforces this at startup.
 func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	if cfg.Recorder == nil {
 		cfg.Recorder = noopRecorder{}
@@ -56,17 +52,14 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	ttl := cfg.TTLSeconds
-	if ttl <= 0 {
-		ttl = defaultResponseTTLSec
-	}
 	return &identityHandler{
-		service:        cfg.Service,
-		tmpxCfg:        cfg.TMPXConfig,
-		requestTimeout: cfg.RequestTimeout,
-		recorder:       cfg.Recorder,
-		logger:         cfg.Logger,
-		ttlSec:         ttl,
+		service:          cfg.Service,
+		tmpxCfg:          cfg.TMPXConfig,
+		requestTimeout:   cfg.RequestTimeout,
+		requestBodyLimit: cfg.RequestBodyLimit,
+		responseTTL:      cfg.ResponseTTL,
+		recorder:         cfg.Recorder,
+		logger:           cfg.Logger,
 	}
 }
 
@@ -78,7 +71,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var req tmproto.IdentityMatchRequest
-	dec := json.NewDecoder(io.LimitReader(r.Body, maxRequestBodyBytes))
+	dec := json.NewDecoder(io.LimitReader(r.Body, h.requestBodyLimit))
 	if err := dec.Decode(&req); err != nil {
 		h.writeError(w, "", http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		h.recordCompletion(ctx, start, "bad_request")
@@ -98,7 +91,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		h.writeResponse(w, &tmproto.IdentityMatchResponse{
 			RequestID: req.RequestID,
-			TTLSec:    h.ttlSec,
+			TTLSec:    int(h.responseTTL.Seconds()),
 		})
 		h.recordCompletion(ctx, start, "timeout")
 		return
@@ -114,7 +107,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	resp := &tmproto.IdentityMatchResponse{
 		RequestID:          result.RequestID,
 		EligiblePackageIDs: eligible,
-		TTLSec:             h.ttlSec,
+		TTLSec:             int(h.responseTTL.Seconds()),
 	}
 	if h.tmpxCfg != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()

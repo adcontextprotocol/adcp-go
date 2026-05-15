@@ -20,10 +20,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// MaxShutdownDuration is the hard upper bound on graceful shutdown. After
-// this elapses the process exits regardless of pending shutdown tasks.
-const MaxShutdownDuration = 10 * time.Second
-
 // identity-config retry curve. The deadline and mode are env-configurable
 // (see IdentityConfigSourceConfig); these three control the curve shape
 // between retries and are stable across deployments. Tune in code if a
@@ -59,11 +55,13 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	}
 
 	identityHandler := NewIdentityHandler(IdentityHandlerConfig{
-		Service:        bundle.service,
-		TMPXConfig:     bundle.tmpx,
-		RequestTimeout: cfg.RequestTimeout,
-		Recorder:       metricsProvider.Recorder,
-		Logger:         logger,
+		Service:          bundle.service,
+		TMPXConfig:       bundle.tmpx,
+		RequestTimeout:   cfg.RequestTimeout,
+		RequestBodyLimit: int64(cfg.RequestBodyLimitBytes),
+		ResponseTTL:      cfg.ResponseTTL,
+		Recorder:         metricsProvider.Recorder,
+		Logger:           logger,
 	})
 
 	requireSig := !cfg.TMP.AllowUnsigned
@@ -76,15 +74,19 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 
 	running := &runningFlag{}
 	srv := NewServer(ServerConfig{
-		Port:            cfg.HTTPPort,
-		IdentityHandler: identityHandler,
-		KeyStore:        bundle.keystore,
-		OwnEndpointURL:  cfg.TMP.OwnEndpointURL,
-		RequireSig:      requireSig,
-		Registry:        metricsProvider.Registry,
-		IsRunning:       running.Load,
-		Version:         version,
-		PprofEnabled:    cfg.Pprof.Enabled,
+		Port:              cfg.HTTPPort,
+		IdentityHandler:   identityHandler,
+		KeyStore:          bundle.keystore,
+		OwnEndpointURL:    cfg.TMP.OwnEndpointURL,
+		RequireSig:        requireSig,
+		Registry:          metricsProvider.Registry,
+		IsRunning:         running.Load,
+		Version:           version,
+		PprofEnabled:      cfg.Pprof.Enabled,
+		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+		ReadTimeout:       cfg.HTTPReadTimeout,
+		WriteTimeout:      cfg.HTTPWriteTimeout,
+		IdleTimeout:       cfg.HTTPIdleTimeout,
 	})
 
 	registry := newShutdownRegistry(logger, metricsProvider.Recorder)
@@ -155,7 +157,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		}
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), MaxShutdownDuration)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	if err := registry.cancel(shutdownCtx); err != nil {
 		logger.Error("shutdown tasks finished with errors", "err", err)

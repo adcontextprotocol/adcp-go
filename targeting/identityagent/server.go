@@ -14,17 +14,10 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// Server-level timeouts. The 40ms per-request budget is enforced inside the
-// identity handler via context.WithTimeout, so these are generous outer
-// bounds that absorb slow-client behavior without affecting the budget.
-const (
-	httpReadHeaderTimeout = 1 * time.Second
-	httpReadTimeout       = 2 * time.Second
-	httpWriteTimeout      = 5 * time.Second
-	httpIdleTimeout       = 60 * time.Second
-)
-
-// ServerConfig packages the inputs for NewServer.
+// ServerConfig packages the inputs for NewServer. All four HTTP timeouts
+// are required (Config.Validate rejects zero values) and act as outer
+// listener bounds — the per-request 40ms budget is enforced inside the
+// identity handler via context.WithTimeout.
 type ServerConfig struct {
 	Port            int
 	IdentityHandler http.Handler
@@ -35,6 +28,11 @@ type ServerConfig struct {
 	IsRunning       func() bool
 	Version         string
 	PprofEnabled    bool
+
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
 }
 
 // NewServer builds the *http.Server that exposes /tmp/identity, /live,
@@ -91,10 +89,10 @@ func NewServer(cfg ServerConfig) *http.Server {
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
 		Handler:           mux,
-		ReadHeaderTimeout: httpReadHeaderTimeout,
-		ReadTimeout:       httpReadTimeout,
-		WriteTimeout:      httpWriteTimeout,
-		IdleTimeout:       httpIdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
 	}
 }
 
