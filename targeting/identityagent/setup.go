@@ -24,6 +24,16 @@ import (
 // this elapses the process exits regardless of pending shutdown tasks.
 const MaxShutdownDuration = 10 * time.Second
 
+// identity-config retry curve. The deadline and mode are env-configurable
+// (see IdentityConfigSourceConfig); these three control the curve shape
+// between retries and are stable across deployments. Tune in code if a
+// future incident shows the curve itself is wrong.
+const (
+	configRetryInitial = 1 * time.Second
+	configRetryMax     = 30 * time.Second
+	configRetryBackoff = identityconfig.BackoffExponential
+)
+
 // Run executes the agent lifecycle: build dependencies, start the HTTP
 // server, then block until SIGINT/SIGTERM and run an orderly shutdown.
 // Returns a non-nil error only when startup fails; once the server is
@@ -194,15 +204,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("init scope3 source: %w", err)
 	}
 	configSvc, err := identityconfig.New(source, cfg.IdentityConfig.RefreshInterval,
-		identityconfig.WithStartConfig(identityconfig.StartConfig{
-			Mode: identityconfig.StartModeRetry,
-			Retry: identityconfig.RetryConfig{
-				Initial:  time.Second,
-				Max:      30 * time.Second,
-				Backoff:  identityconfig.BackoffExponential,
-				Deadline: 5 * time.Minute,
-			},
-		}),
+		identityconfig.WithStartConfig(startConfigFor(cfg.IdentityConfig)),
 		identityconfig.WithLogger(logger),
 	)
 	if err != nil {
@@ -274,4 +276,26 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		tmpx:             tmpx,
 		cancelBackground: cancelBg,
 	}, nil
+}
+
+// startConfigFor maps the env-configurable IdentityConfigSourceConfig onto
+// the identityconfig.StartConfig the Service.Start expects. Unknown
+// StartMode values fall through to retry — Config.Validate rejects them at
+// startup, so this branch is unreachable in normal operation.
+func startConfigFor(cfg IdentityConfigSourceConfig) identityconfig.StartConfig {
+	switch cfg.StartMode {
+	case StartModeFailFast:
+		return identityconfig.StartConfig{Mode: identityconfig.StartModeFailFast}
+	case StartModeBestEffort:
+		return identityconfig.StartConfig{Mode: identityconfig.StartModeBestEffort}
+	}
+	return identityconfig.StartConfig{
+		Mode: identityconfig.StartModeRetry,
+		Retry: identityconfig.RetryConfig{
+			Initial:  configRetryInitial,
+			Max:      configRetryMax,
+			Backoff:  configRetryBackoff,
+			Deadline: cfg.StartRetryDeadline,
+		},
+	}
 }

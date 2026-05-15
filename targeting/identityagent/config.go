@@ -57,11 +57,23 @@ type TMPXConfig struct {
 
 // IdentityConfigSourceConfig drives the Scope3 identity-config refresh
 // service.
+//
+// StartMode controls behavior when the initial LoadAll fails:
+//   - "retry"       (default) — block startup retrying until StartRetryDeadline
+//   - "fail-fast"             — exit on the first failure
+//   - "best-effort"           — start with an empty snapshot; rely on the
+//                               normal refresh tick to populate
+//
+// StartRetryDeadline bounds the StartMode=retry retry loop. Ignored for
+// the other modes. A pod whose config source is down for longer than this
+// will exit; pick a value that matches your upstream's recovery SLO.
 type IdentityConfigSourceConfig struct {
-	URL             string
-	Token           string
-	Timeout         time.Duration
-	RefreshInterval time.Duration
+	URL                string
+	Token              string
+	Timeout            time.Duration
+	RefreshInterval    time.Duration
+	StartMode          string
+	StartRetryDeadline time.Duration
 }
 
 // ValkeyBlock is the per-backend Valkey configuration. Use ToRedisStoreConfig
@@ -112,16 +124,26 @@ type PprofConfig struct {
 }
 
 const (
-	defaultHTTPPort        = 8080
-	defaultRequestTimeout  = 40 * time.Millisecond
-	defaultShutdownGrace   = 1 * time.Second
-	defaultLogLevel        = "info"
-	defaultJWKSTTL         = 5 * time.Minute
-	defaultConfigTimeout   = 30 * time.Second
-	defaultRefreshInterval = 5 * time.Minute
-	defaultAudienceTimeout = 10 * time.Millisecond
-	defaultFCapTimeout     = 10 * time.Millisecond
-	defaultNamespace       = "identity_agent"
+	defaultHTTPPort           = 8080
+	defaultRequestTimeout     = 40 * time.Millisecond
+	defaultShutdownGrace      = 1 * time.Second
+	defaultLogLevel           = "info"
+	defaultJWKSTTL            = 5 * time.Minute
+	defaultConfigTimeout      = 30 * time.Second
+	defaultRefreshInterval    = 5 * time.Minute
+	defaultStartMode          = "retry"
+	defaultStartRetryDeadline = 5 * time.Minute
+	defaultAudienceTimeout    = 10 * time.Millisecond
+	defaultFCapTimeout        = 10 * time.Millisecond
+	defaultNamespace          = "identity_agent"
+)
+
+// Valid CONFIG_START_MODE values. Exported so callers and tests can refer
+// to them by name rather than literal strings.
+const (
+	StartModeRetry      = "retry"
+	StartModeFailFast   = "fail-fast"
+	StartModeBestEffort = "best-effort"
 )
 
 // LoadConfigFromEnv reads every recognized environment variable into a Config.
@@ -160,6 +182,10 @@ func LoadConfigFromEnv() (Config, error) {
 		errs = append(errs, err)
 	}
 	refreshInterval, err := lookupDuration("CONFIG_REFRESH_INTERVAL", defaultRefreshInterval)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	startRetryDeadline, err := lookupDuration("CONFIG_START_RETRY_DEADLINE", defaultStartRetryDeadline)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -203,10 +229,12 @@ func LoadConfigFromEnv() (Config, error) {
 			ReferenceStubAck: stubAck,
 		},
 		IdentityConfig: IdentityConfigSourceConfig{
-			URL:             os.Getenv("CONFIG_SOURCE_URL"),
-			Token:           os.Getenv("CONFIG_SOURCE_TOKEN"),
-			Timeout:         cfgTimeout,
-			RefreshInterval: refreshInterval,
+			URL:                os.Getenv("CONFIG_SOURCE_URL"),
+			Token:              os.Getenv("CONFIG_SOURCE_TOKEN"),
+			Timeout:            cfgTimeout,
+			RefreshInterval:    refreshInterval,
+			StartMode:          lookupString("CONFIG_START_MODE", defaultStartMode),
+			StartRetryDeadline: startRetryDeadline,
 		},
 		AudienceValkey:  audienceBlock,
 		FCapValkey:      fcapBlock,
@@ -251,6 +279,17 @@ func (c Config) Validate() error {
 	}
 	if c.IdentityConfig.RefreshInterval <= 0 {
 		errs = append(errs, errors.New("CONFIG_REFRESH_INTERVAL must be positive"))
+	}
+	switch c.IdentityConfig.StartMode {
+	case StartModeRetry:
+		if c.IdentityConfig.StartRetryDeadline <= 0 {
+			errs = append(errs, errors.New("CONFIG_START_RETRY_DEADLINE must be positive when CONFIG_START_MODE=retry"))
+		}
+	case StartModeFailFast, StartModeBestEffort:
+		// no further validation
+	default:
+		errs = append(errs, fmt.Errorf("CONFIG_START_MODE %q is not one of %q, %q, %q",
+			c.IdentityConfig.StartMode, StartModeRetry, StartModeFailFast, StartModeBestEffort))
 	}
 	if !c.TMP.AllowUnsigned {
 		if c.TMP.RegistryURL == "" {

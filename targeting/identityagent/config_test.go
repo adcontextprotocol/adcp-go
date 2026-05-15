@@ -15,9 +15,11 @@ func TestConfigValidate(t *testing.T) {
 			AudienceTimeout: 10 * time.Millisecond,
 			FCapTimeout:     10 * time.Millisecond,
 			IdentityConfig: IdentityConfigSourceConfig{
-				URL:             "https://config.example/",
-				Token:           "tok",
-				RefreshInterval: time.Minute,
+				URL:                "https://config.example/",
+				Token:              "tok",
+				RefreshInterval:    time.Minute,
+				StartMode:          StartModeRetry,
+				StartRetryDeadline: time.Minute,
 			},
 			TMP: TMPConfig{
 				RegistryURL:    "https://registry.example/snapshot",
@@ -56,6 +58,33 @@ func TestConfigValidate(t *testing.T) {
 			name:    "missing config token",
 			mutate:  func(c *Config) { c.IdentityConfig.Token = "" },
 			wantErr: "CONFIG_SOURCE_TOKEN",
+		},
+		{
+			name:    "unknown start mode",
+			mutate:  func(c *Config) { c.IdentityConfig.StartMode = "bogus" },
+			wantErr: "CONFIG_START_MODE",
+		},
+		{
+			name: "retry mode requires deadline",
+			mutate: func(c *Config) {
+				c.IdentityConfig.StartMode = StartModeRetry
+				c.IdentityConfig.StartRetryDeadline = 0
+			},
+			wantErr: "CONFIG_START_RETRY_DEADLINE",
+		},
+		{
+			name: "fail-fast ignores deadline",
+			mutate: func(c *Config) {
+				c.IdentityConfig.StartMode = StartModeFailFast
+				c.IdentityConfig.StartRetryDeadline = 0
+			},
+		},
+		{
+			name: "best-effort ignores deadline",
+			mutate: func(c *Config) {
+				c.IdentityConfig.StartMode = StartModeBestEffort
+				c.IdentityConfig.StartRetryDeadline = 0
+			},
 		},
 		{
 			name:    "fcap disabled",
