@@ -19,7 +19,7 @@ func TestTrackingListener_AcceptAndClose(t *testing.T) {
 		t.Fatalf("Listen: %v", err)
 	}
 	ln := &trackingListener{Listener: base, tracker: tracker}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	const dialN = 8
 	dialErr := make(chan error, dialN)
