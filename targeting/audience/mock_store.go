@@ -2,6 +2,7 @@ package audience
 
 import (
 	"context"
+	"maps"
 	"sync"
 )
 
@@ -45,9 +46,7 @@ func (m *MockStore) HGetAll(_ context.Context, key string) (map[string]string, e
 		return map[string]string{}, nil
 	}
 	out := make(map[string]string, len(h))
-	for f, v := range h {
-		out[f] = v
-	}
+	maps.Copy(out, h)
 	return out, nil
 }
 

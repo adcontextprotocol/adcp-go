@@ -193,10 +193,7 @@ func jcsCompareKeys(a, b string) int {
 	}
 	au := utf16.Encode([]rune(a))
 	bu := utf16.Encode([]rune(b))
-	n := len(au)
-	if len(bu) < n {
-		n = len(bu)
-	}
+	n := min(len(bu), len(au))
 	for i := 0; i < n; i++ {
 		if au[i] != bu[i] {
 			if au[i] < bu[i] {

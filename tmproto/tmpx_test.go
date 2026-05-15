@@ -157,7 +157,7 @@ func TestHPKESealOpenRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	pkR := skR.PublicKey()
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		pt := make([]byte, 1+i*7)
 		_, _ = rand.Read(pt)
 		info := []byte("test-info")
