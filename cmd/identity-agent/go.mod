@@ -19,7 +19,7 @@ require (
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/redis/go-redis/v9 v9.19.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/prometheus v0.65.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
