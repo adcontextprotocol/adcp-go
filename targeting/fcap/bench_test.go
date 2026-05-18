@@ -1,7 +1,6 @@
 package fcap
 
 import (
-	"context"
 	"testing"
 )
 
@@ -11,7 +10,7 @@ import (
 // IsCappedBatch to quantify the win.
 func BenchmarkIsCappedAny(b *testing.B) {
 	svc := New(NewMockStore())
-	ctx := context.Background()
+	ctx := b.Context()
 	identities := []string{"u1", "u2", "u3", "u4"}
 	fields := make([]Field, 10)
 	for i := range fields {
@@ -26,7 +25,7 @@ func BenchmarkIsCappedAny(b *testing.B) {
 
 func BenchmarkIsCappedBatch(b *testing.B) {
 	svc := New(NewMockStore())
-	ctx := context.Background()
+	ctx := b.Context()
 	identities := []string{"u1", "u2", "u3", "u4"}
 	pkgs := []string{"pkg-a", "pkg-b", "pkg-c", "pkg-d", "pkg-e", "pkg-f", "pkg-g", "pkg-h", "pkg-i", "pkg-j"}
 	b.ReportAllocs()

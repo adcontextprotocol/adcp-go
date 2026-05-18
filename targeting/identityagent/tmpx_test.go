@@ -1,7 +1,6 @@
 package identityagent
 
 import (
-	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
@@ -40,7 +39,7 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 }
 
 func TestNewTMPXSealerDisabled(t *testing.T) {
-	sealer, err := NewTMPXSealer(context.Background(), TMPXConfig{}, nil)
+	sealer, err := NewTMPXSealer(t.Context(), TMPXConfig{}, nil)
 	require.NoError(t, err)
 	assert.Nil(t, sealer)
 }
@@ -51,7 +50,7 @@ func TestNewTMPXSealerPartialFails(t *testing.T) {
 		{Country: "US"},
 	}
 	for _, c := range cases {
-		_, err := NewTMPXSealer(context.Background(), c, nil)
+		_, err := NewTMPXSealer(t.Context(), c, nil)
 		assert.Error(t, err, "partial config %+v should fail", c)
 	}
 }
@@ -368,6 +367,6 @@ func testJWKSStoreFor(t *testing.T, srv *httptest.Server) *tmproto.JWKSStore {
 		HTTPClient: srv.Client(),
 	})
 	require.NoError(t, err)
-	require.NoError(t, store.Refresh(context.Background()))
+	require.NoError(t, store.Refresh(t.Context()))
 	return store
 }

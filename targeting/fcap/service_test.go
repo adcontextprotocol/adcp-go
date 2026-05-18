@@ -1,7 +1,6 @@
 package fcap
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 func TestService_RecordCapAndIsCapped(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	expireAt := time.Now().Add(time.Hour)
 	field := Field{SellerAgentURL: "https://seller.example.com/agent", PackageID: "pkg-1"}
@@ -37,7 +36,7 @@ func TestService_RecordCapAndIsCapped(t *testing.T) {
 func TestService_RecordCap_Empty(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	require.NoError(t, svc.RecordCap(ctx, "user-x", nil, time.Now().Add(time.Hour)))
 	require.NoError(t, svc.RecordCap(ctx, "user-x", []Field{}, time.Now().Add(time.Hour)))
@@ -46,7 +45,7 @@ func TestService_RecordCap_Empty(t *testing.T) {
 func TestService_RecordCap_MultipleFieldsSameTTL(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	expireAt := time.Now().Add(time.Hour)
 	fields := []Field{
@@ -66,7 +65,7 @@ func TestService_RecordCap_MultipleFieldsSameTTL(t *testing.T) {
 func TestService_RecordCapBatch(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	expire1 := time.Now().Add(time.Hour)
 	expire2 := time.Now().Add(2 * time.Hour)
@@ -99,7 +98,7 @@ func TestService_RecordCapBatch(t *testing.T) {
 func TestService_RecordCapBatch_SkipsEmpty(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	require.NoError(t, svc.RecordCapBatch(ctx, nil))
 	require.NoError(t, svc.RecordCapBatch(ctx, []CapBatch{
@@ -110,7 +109,7 @@ func TestService_RecordCapBatch_SkipsEmpty(t *testing.T) {
 func TestService_IsCappedBatch(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	expireAt := time.Now().Add(time.Hour)
 	require.NoError(t, svc.RecordCap(ctx, "user-1", []Field{
@@ -134,7 +133,7 @@ func TestService_IsCappedBatch(t *testing.T) {
 func TestService_IsCappedBatch_Empty(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	res, err := svc.IsCappedBatch(ctx, nil)
 	require.NoError(t, err)
@@ -144,7 +143,7 @@ func TestService_IsCappedBatch_Empty(t *testing.T) {
 func TestService_IsCappedAny(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	expireAt := time.Now().Add(time.Hour)
 	require.NoError(t, svc.RecordCap(ctx, "user-a", []Field{
@@ -168,7 +167,7 @@ func TestService_IsCappedAny(t *testing.T) {
 
 func TestService_IsCappedAny_EmptyInputs(t *testing.T) {
 	svc := New(NewMockStore())
-	ctx := context.Background()
+	ctx := t.Context()
 
 	got, err := svc.IsCappedAny(ctx, nil, []Field{{SellerAgentURL: "s", PackageID: "p"}})
 	require.NoError(t, err)
@@ -187,7 +186,7 @@ func TestService_IsCappedAny_EmptyInputs(t *testing.T) {
 func TestService_IsCappedAny_PoolReuse(t *testing.T) {
 	store := NewMockStore()
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 	expireAt := time.Now().Add(time.Hour)
 	require.NoError(t, svc.RecordCap(ctx, "u-hot", []Field{
 		{SellerAgentURL: "s", PackageID: "hot"},
@@ -245,7 +244,7 @@ func TestMockStore_FieldExpiresAtTTL(t *testing.T) {
 	store.Now = func() time.Time { return now }
 
 	svc := New(store)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	field := Field{SellerAgentURL: "url", PackageID: "pkg-1"}
 	require.NoError(t, svc.RecordCap(ctx, "user-ttl", []Field{field}, now.Add(time.Hour)))

@@ -39,7 +39,7 @@ func newTestConfigService(t *testing.T, entries []identityconfig.Entry) *identit
 	src := &memSource{entries: entries}
 	svc, err := identityconfig.New(src, time.Minute)
 	require.NoError(t, err)
-	require.NoError(t, svc.Start(context.Background()))
+	require.NoError(t, svc.Start(t.Context()))
 	t.Cleanup(svc.Stop)
 	return svc
 }
@@ -54,7 +54,7 @@ func newTestService(t *testing.T, opts testServiceOptions) *Service {
 	if len(opts.cappedTuples) > 0 {
 		expireAt := time.Now().Add(time.Hour)
 		for _, tup := range opts.cappedTuples {
-			require.NoError(t, fcapSvc.RecordCap(context.Background(), tup.identity,
+			require.NoError(t, fcapSvc.RecordCap(t.Context(), tup.identity,
 				[]fcap.Field{{SellerAgentURL: tup.seller, PackageID: tup.pkg}},
 				expireAt))
 		}
@@ -71,7 +71,7 @@ func newTestService(t *testing.T, opts testServiceOptions) *Service {
 		for audID, members := range byAudience {
 			upserts = append(upserts, audience.AudienceUpsert{AudienceID: audID, Add: members})
 		}
-		require.NoError(t, audSvc.UpsertBatch(context.Background(), upserts))
+		require.NoError(t, audSvc.UpsertBatch(t.Context(), upserts))
 	}
 
 	engine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{
@@ -123,7 +123,7 @@ func TestService_EmptyEffectivePackages(t *testing.T) {
 		PackageIDs:     []string{"pkg-1"},
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
-	result := svc.Evaluate(context.Background(), req)
+	result := svc.Evaluate(t.Context(), req)
 	assert.Empty(t, result.Eligibility)
 }
 
@@ -144,7 +144,7 @@ func TestService_NoSegmentRules_OnlyFCapGates(t *testing.T) {
 		PackageIDs:     []string{"pkg-1", "pkg-2"},
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
-	got := eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	assert.False(t, got["pkg-1"], "pkg-1 should be capped")
 	assert.True(t, got["pkg-2"], "pkg-2 should be eligible")
 }
@@ -171,7 +171,7 @@ func TestService_FCapPerIdentity(t *testing.T) {
 			{UserToken: "id5-token", UIDType: tmproto.UIDTypeID5},
 		},
 	}
-	got := eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	assert.False(t, got["pkg-1"], "any identity capped → ineligible")
 	assert.True(t, got["pkg-2"], "no identity capped → eligible")
 }
@@ -194,13 +194,13 @@ func TestService_AudienceFiltersByRule(t *testing.T) {
 		PackageIDs:     []string{"pkg-1", "pkg-2"},
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
-	got := eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	assert.True(t, got["pkg-1"], "user in seg-a → eligible")
 	assert.True(t, got["pkg-2"], "no rule → eligible regardless")
 
 	// Same request, different user not in seg-a → pkg-1 ineligible, pkg-2 still eligible.
 	req.Identities = []tmproto.IdentityToken{{UserToken: "stranger", UIDType: tmproto.UIDTypeID5}}
-	got = eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got = eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	assert.False(t, got["pkg-1"], "stranger not in seg-a → ineligible")
 	assert.True(t, got["pkg-2"], "no rule → still eligible")
 }
@@ -221,7 +221,7 @@ func TestService_AudienceUnconfigured_RulesMarkIneligible(t *testing.T) {
 		PackageIDs:     []string{"pkg-1", "pkg-2"},
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
-	got := eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	assert.False(t, got["pkg-1"], "audience unconfigured + non-empty rule → ineligible (fail-closed)")
 	assert.True(t, got["pkg-2"], "no rule → eligible")
 }
@@ -249,7 +249,7 @@ func TestService_FCapTimeout_FailClosed(t *testing.T) {
 		PackageIDs:     []string{"pkg-1"},
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
-	got := eligibilityMap(svc.Evaluate(context.Background(), req).Eligibility)
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
 	require.False(t, got["pkg-1"], "fcap timeout must fail closed")
 }
 

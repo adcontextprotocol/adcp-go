@@ -1,7 +1,6 @@
 package prommetrics
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -15,7 +14,7 @@ import (
 
 func TestMetricsInterface(t *testing.T) {
 	m := New()
-	ctx := context.Background()
+	ctx := t.Context()
 
 	m.ContextEvaluated(ctx, "property_bitmap", true)
 	m.ContextEvaluated(ctx, "property_bitmap", false)
@@ -89,7 +88,7 @@ func TestGaugeSet_Overwrite(t *testing.T) {
 
 func TestConcurrentAccess(t *testing.T) {
 	m := New()
-	ctx := context.Background()
+	ctx := t.Context()
 	done := make(chan struct{})
 	for range 10 {
 		go func() {
