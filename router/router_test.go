@@ -29,6 +29,7 @@ func testRouter(providers []ProviderConfig) *Router {
 
 func TestValidateContextRequest_Valid(t *testing.T) {
 	req := &tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
 		RequestID:    "ctx-001",
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
@@ -171,6 +172,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "context_match_request",
 		"request_id": "ctx-e2e",
 		"property_id": "pub-test",
 		"property_type": "website",
@@ -204,6 +206,7 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	})
 
 	cm := tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
 		RequestID:    "ctx-strip",
 		PropertyID:   "pub-test",
 		PropertyType: "website",
@@ -424,6 +427,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "context_match_request",
 		"request_id": "ctx-timeout",
 		"property_id": "pub-test",
 		"property_type": "website",

@@ -64,8 +64,14 @@ func validateProtocolVersion(v string) error {
 	return errors.New("unsupported protocol_version")
 }
 
-// ValidateContextRequest checks that required fields are present on a context match request.
+// ValidateContextRequest checks that required fields are present on a
+// context match request and that the message-type discriminator matches the
+// endpoint per the TMP spec: a mismatched or missing `type` must be
+// rejected.
 func ValidateContextRequest(req *ContextMatchRequest) error {
+	if req.Type != TypeContextMatchRequest {
+		return fmt.Errorf("type must be %q", TypeContextMatchRequest)
+	}
 	if err := validateProtocolVersion(req.ProtocolVersion); err != nil {
 		return err
 	}

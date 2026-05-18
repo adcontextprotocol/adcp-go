@@ -109,7 +109,7 @@ func agentHandler(ctxEngine *targeting.ContextEngine, idEngine *targeting.Identi
 	mux := http.NewServeMux()
 
 	if ctxEngine != nil {
-		mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("POST /context", func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 			if err != nil {
 				writeAgentError(w, "", "failed to read body")
@@ -135,7 +135,7 @@ func agentHandler(ctxEngine *targeting.ContextEngine, idEngine *targeting.Identi
 	}
 
 	if idEngine != nil {
-		mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("POST /identity", func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 			if err != nil {
 				writeAgentError(w, "", "failed to read body")

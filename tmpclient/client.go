@@ -63,10 +63,13 @@ func NewClient(routerURL string, opts ...Option) *Client {
 }
 
 // ContextMatch sends a context match request to the router.
-// Populates RequestID if empty.
+// Populates RequestID and Type if empty.
 func (c *Client) ContextMatch(ctx context.Context, req *tmproto.ContextMatchRequest) (*tmproto.ContextMatchResponse, error) {
 	if req.RequestID == "" {
 		req.RequestID = c.genRequestID()
+	}
+	if req.Type == "" {
+		req.Type = tmproto.TypeContextMatchRequest
 	}
 	if err := tmproto.ValidateContextRequest(req); err != nil {
 		return nil, fmt.Errorf("validate context request: %w", err)
@@ -108,6 +111,7 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	idReqID := c.genRequestID()
 
 	ctxReq := &tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
 		RequestID:    ctxReqID,
 		PropertyID:   params.PropertyID,
 		PropertyType: params.PropertyType,

@@ -107,6 +107,11 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedADCPMajorVersions[req.AdcpMajorVersion]; !ok {
+			// adcp/schemas/tmp/identity-match-request.json's description
+			// names VERSION_UNSUPPORTED here, but the error.json schema's
+			// `code` enum does not include it. Use invalid_request — the
+			// closest valid code — until the spec is internally
+			// consistent. The message preserves diagnostic detail.
 			h.writeError(w, req.RequestID, http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest,
 				fmt.Sprintf("adcp_major_version %d is not supported", req.AdcpMajorVersion))
 			h.recordCompletion(ctx, start, "bad_request")

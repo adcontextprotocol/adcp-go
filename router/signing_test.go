@@ -43,6 +43,7 @@ func TestRouter_SignsContextMatchFanOut(t *testing.T) {
 	})
 
 	body := `{
+		"type":"context_match_request",
 		"request_id":"ctx-sign",
 		"property_id":"pub",
 		"property_rid":"00000000-0000-0000-0000-000000000001",
@@ -139,7 +140,7 @@ func TestRouter_NoSigner_DoesNotSetHeaders(t *testing.T) {
 	router := testRouter([]ProviderConfig{
 		{ID: "p1", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
 	})
-	body := `{"request_id":"x","property_id":"p","property_type":"website","placement_id":"s","package_ids":["a"]}`
+	body := `{"type":"context_match_request","request_id":"x","property_id":"p","property_type":"website","placement_id":"s","package_ids":["a"]}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
 	router.HandleContextMatch(w, req)

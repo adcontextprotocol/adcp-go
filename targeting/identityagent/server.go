@@ -97,9 +97,13 @@ func NewServer(cfg ServerConfig) *http.Server {
 		mountOperatorEndpoints(mux, cfg.Registry, cfg.Version, cfg.PprofEnabled)
 	}
 
+	// Outer recoverMiddleware catches panics from /health and the operator
+	// endpoints (when AdminPort == 0). The identity chain has its own
+	// recoverMiddleware deeper in the stack; that inner one fires first, so
+	// the outer wrapper only fires for handlers that don't have their own.
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           mux,
+		Handler:           recoverMiddleware(mux, cfg.Recorder, cfg.Logger),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,

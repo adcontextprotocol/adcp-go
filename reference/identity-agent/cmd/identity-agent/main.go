@@ -23,7 +23,7 @@ var version = "dev"
 func main() {
 	addr := flag.String("addr", "", "Listen address")
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
-	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/identity requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
+	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /identity requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
 	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required when --registry-url is set.")
 	tmpxEncryptJWKSURL := flag.String("tmpx-encrypt-jwks-url", "", "URL of the buyer's JWKS endpoint that publishes the active TMPX recipient key (X25519, adcp_use=tmpx-encrypt). Enables TMPX token generation when set.")
 	tmpxEncryptJWKSTTL := flag.Duration("tmpx-encrypt-jwks-ttl", 5*time.Minute, "How often to re-poll the TMPX encryption JWKS for key rotation.")
@@ -105,7 +105,7 @@ func main() {
 		os.Exit(1)
 	}
 	if !requireSig {
-		slog.Warn("/tmp/identity accepts unsigned requests — TMP signing should be required in production")
+		slog.Warn("/identity accepts unsigned requests — TMP signing should be required in production")
 	}
 
 	// The reference agent preserves the TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK
@@ -131,18 +131,18 @@ func main() {
 		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "failed to read request body"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Type: tmproto.TypeError, Code: tmproto.ErrorCodeInvalidRequest, Message: "failed to read request body"})
 			return
 		}
 		var req tmproto.IdentityMatchRequest
 		if err := json.Unmarshal(body, &req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Type: tmproto.TypeError, Code: tmproto.ErrorCodeInvalidRequest, Message: "request body is not valid JSON"})
 			return
 		}
 		if err := tmproto.ValidateIdentityRequest(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Type: tmproto.TypeError, RequestID: req.RequestID, Code: tmproto.ErrorCodeInvalidRequest, Message: err.Error()})
 			return
 		}
 		effectivePkgIDs, idConfigs := identityconfig.ResolveRequest(configSvc, req.SellerAgentURL, req.PackageIDs)
@@ -152,16 +152,17 @@ func main() {
 		if err != nil {
 			slog.Error("EvaluateIdentityResolved failed", "request_id", req.RequestID, "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{RequestID: req.RequestID, Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
+			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{Type: tmproto.TypeError, RequestID: req.RequestID, Code: tmproto.ErrorCodeInternalError, Message: "internal error"})
 			return
 		}
-		var eligible []string
+		eligible := make([]string, 0, len(result.Eligibility))
 		for _, e := range result.Eligibility {
 			if e.Eligible {
 				eligible = append(eligible, e.PackageID)
 			}
 		}
 		resp := &tmproto.IdentityMatchResponse{
+			Type:               tmproto.TypeIdentityMatchResponse,
 			RequestID:          result.RequestID,
 			EligiblePackageIDs: eligible,
 			TTLSec:             60,
@@ -183,22 +184,19 @@ func main() {
 	// who care about authenticated fan-outs MUST set --registry-url and
 	// --require-signature (or TMP_IDENTITY_REQUIRE_SIGNATURE=1).
 	if keystore != nil {
-		mux.Handle("POST /tmp/identity", tmproto.VerifyIdentityMatchHandler(identityHandler, tmproto.VerifyOptions{
+		mux.Handle("POST /identity", tmproto.VerifyIdentityMatchHandler(identityHandler, tmproto.VerifyOptions{
 			KeyStore:         keystore,
 			OwnEndpointURL:   ownURL,
 			RequireSignature: requireSig,
 		}))
 	} else {
-		mux.Handle("POST /tmp/identity", identityHandler)
+		mux.Handle("POST /identity", identityHandler)
 	}
 
 	mux.Handle("GET /metrics", metrics.Registry.Handler())
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"status":  "ok",
-			"version": version,
-		})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 
 	srv := &http.Server{

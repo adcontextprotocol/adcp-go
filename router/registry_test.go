@@ -180,6 +180,7 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	router.registry = reg
 
 	reqBody := `{
+		"type": "context_match_request",
 		"request_id": "ctx-rid",
 		"property_id": "pub-oakwood",
 		"property_type": "website",
