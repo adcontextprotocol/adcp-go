@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	otelmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -44,6 +46,7 @@ type Recorder interface {
 	StoreError(ctx context.Context, store string)
 	ConfigRefresh(ctx context.Context, outcome string)
 	ShutdownPanic(ctx context.Context)
+	HandlerPanic(ctx context.Context)
 }
 
 // MetricsProvider wires together a Prometheus registry, an OTEL meter
@@ -83,6 +86,17 @@ func (m *MetricsProvider) Shutdown(ctx context.Context) error {
 //     surfaces as a startup error per the contract: invalid metrics config
 //     fails startup.
 func Build(cfg MetricsConfig) (*MetricsProvider, error) {
+	// Install the W3C TraceContext + Baggage propagator regardless of
+	// whether metrics are enabled. otelhttp on the request path uses it to
+	// extract inbound traceparent / baggage headers into r.Context() so
+	// downstream code (and any future TracerProvider) sees the parent span.
+	// No spans are created in-process until a TracerProvider is configured;
+	// extraction is the only effect.
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
 	if !cfg.Enabled {
 		return &MetricsProvider{Recorder: noopRecorder{}}, nil
 	}
@@ -143,13 +157,14 @@ func (m *MetricsProvider) RegisterOpenConnectionsObserver(observerFn func() int6
 // Prometheus exporter to surface metrics on the Prometheus registry the
 // /metrics handler reads from.
 type otelRecorder struct {
-	requestStarted   metric.Int64Counter
-	requestDuration  metric.Float64Histogram
-	stageOutcome     metric.Int64Counter
-	stageDuration    metric.Float64Histogram
-	storeError       metric.Int64Counter
-	configRefresh    metric.Int64Counter
-	shutdownPanic    metric.Int64Counter
+	requestStarted  metric.Int64Counter
+	requestDuration metric.Float64Histogram
+	stageOutcome    metric.Int64Counter
+	stageDuration   metric.Float64Histogram
+	storeError      metric.Int64Counter
+	configRefresh   metric.Int64Counter
+	shutdownPanic   metric.Int64Counter
+	handlerPanic    metric.Int64Counter
 }
 
 var _ Recorder = (*otelRecorder)(nil)
@@ -190,6 +205,11 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 	if err != nil {
 		return nil, err
 	}
+	handlerPanic, err := meter.Int64Counter(
+		fmt.Sprintf("%s_handler_panic_total", namespace))
+	if err != nil {
+		return nil, err
+	}
 	return &otelRecorder{
 		requestStarted:  requestStarted,
 		requestDuration: requestDuration,
@@ -198,6 +218,7 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		storeError:      storeError,
 		configRefresh:   configRefresh,
 		shutdownPanic:   shutdownPanic,
+		handlerPanic:    handlerPanic,
 	}, nil
 }
 
@@ -232,6 +253,10 @@ func (r *otelRecorder) ShutdownPanic(ctx context.Context) {
 	r.shutdownPanic.Add(ctx, 1)
 }
 
+func (r *otelRecorder) HandlerPanic(ctx context.Context) {
+	r.handlerPanic.Add(ctx, 1)
+}
+
 // noopRecorder is used when metrics are disabled or in tests. Every method
 // is a no-op.
 type noopRecorder struct{}
@@ -243,6 +268,7 @@ func (noopRecorder) StageDuration(context.Context, string, time.Duration)    {}
 func (noopRecorder) StoreError(context.Context, string)                      {}
 func (noopRecorder) ConfigRefresh(context.Context, string)                   {}
 func (noopRecorder) ShutdownPanic(context.Context)                           {}
+func (noopRecorder) HandlerPanic(context.Context)                            {}
 
 // targetingMetricsAdapter projects the agent's Recorder onto the
 // targeting.Metrics interface the IdentityEngine wants. The engine emits

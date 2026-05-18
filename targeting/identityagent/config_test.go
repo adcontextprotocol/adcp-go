@@ -21,6 +21,9 @@ func TestConfigValidate(t *testing.T) {
 			MaxHeaderBytes:        8 * 1024,
 			MaxOpenConnections:    1024,
 			ResponseTTL:           60 * time.Second,
+			StrictContentType:     true,
+			AccessLogEnabled:      false,
+			AdminPort:             0,
 			AudienceTimeout:       10 * time.Millisecond,
 			FCapTimeout:           10 * time.Millisecond,
 			IdentityConfig: IdentityConfigSourceConfig{
@@ -108,6 +111,24 @@ func TestConfigValidate(t *testing.T) {
 			name:    "non-positive max open connections",
 			mutate:  func(c *Config) { c.MaxOpenConnections = 0 },
 			wantErr: "MAX_OPEN_CONNECTIONS",
+		},
+		{
+			name:    "admin port out of range",
+			mutate:  func(c *Config) { c.AdminPort = 99999 },
+			wantErr: "ADMIN_PORT",
+		},
+		{
+			name: "admin port equals http port",
+			mutate: func(c *Config) {
+				c.AdminPort = c.HTTPPort
+			},
+			wantErr: "must differ from HTTP_PORT",
+		},
+		{
+			name: "admin port set and distinct ok",
+			mutate: func(c *Config) {
+				c.AdminPort = c.HTTPPort + 1
+			},
 		},
 		{
 			name:    "non-positive response ttl",

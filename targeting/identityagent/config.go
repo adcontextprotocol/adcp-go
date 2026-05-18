@@ -58,6 +58,25 @@ type Config struct {
 	// IdentityMatchResponse.TTLSec.
 	ResponseTTL time.Duration
 
+	// StrictContentType rejects requests whose Content-Type is not
+	// application/json with 415 Unsupported Media Type. Enabled by default
+	// to close content-type confusion attacks; disable only for legacy
+	// callers that send a different type.
+	StrictContentType bool
+
+	// AccessLogEnabled emits one structured INFO log line per request
+	// (method, path, status, bytes, latency, request_id). Off by default
+	// to avoid log-volume cost at 10k QPS; useful in staging or for
+	// incident triage.
+	AccessLogEnabled bool
+
+	// AdminPort, when > 0, moves /metrics, /live, /health, and /debug/pprof
+	// onto a second HTTP listener on that port. /tmp/identity stays on
+	// HTTPPort. When 0 (default) all endpoints share HTTPPort. Splitting
+	// lets ops apply different network policies to observability vs the
+	// public attack surface.
+	AdminPort int
+
 	LogLevel string
 
 	TMP             TMPConfig
@@ -174,6 +193,9 @@ const (
 	defaultMaxHeaderBytes         = 8 * 1024
 	defaultMaxOpenConnections     = 1024
 	defaultResponseTTL            = 60 * time.Second
+	defaultStrictContentType      = true
+	defaultAccessLogEnabled       = false
+	defaultAdminPort              = 0
 	defaultLogLevel               = "info"
 	defaultJWKSTTL                = 5 * time.Minute
 	defaultConfigTimeout          = 30 * time.Second
@@ -244,6 +266,18 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	strictCT, err := lookupBool("STRICT_CONTENT_TYPE", defaultStrictContentType)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	accessLog, err := lookupBool("ACCESS_LOG_ENABLED", defaultAccessLogEnabled)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	adminPort, err := lookupInt("ADMIN_PORT", defaultAdminPort)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	responseTTL, err := lookupDuration("RESPONSE_TTL", defaultResponseTTL)
 	if err != nil {
 		errs = append(errs, err)
@@ -307,6 +341,9 @@ func LoadConfigFromEnv() (Config, error) {
 		MaxHeaderBytes:        maxHeader,
 		MaxOpenConnections:    maxConns,
 		ResponseTTL:           responseTTL,
+		StrictContentType:     strictCT,
+		AccessLogEnabled:      accessLog,
+		AdminPort:             adminPort,
 		LogLevel:              lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
 			RegistryURL:    os.Getenv("TMP_REGISTRY_URL"),
@@ -394,6 +431,14 @@ func (c Config) Validate() error {
 	}
 	if c.MaxOpenConnections <= 0 {
 		errs = append(errs, errors.New("MAX_OPEN_CONNECTIONS must be positive"))
+	}
+	if c.AdminPort != 0 {
+		if c.AdminPort < 1 || c.AdminPort > 65535 {
+			errs = append(errs, fmt.Errorf("ADMIN_PORT %d is out of range [1,65535]", c.AdminPort))
+		}
+		if c.AdminPort == c.HTTPPort {
+			errs = append(errs, fmt.Errorf("ADMIN_PORT (%d) must differ from HTTP_PORT", c.AdminPort))
+		}
 	}
 	if c.ResponseTTL <= 0 {
 		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))

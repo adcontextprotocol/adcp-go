@@ -91,7 +91,30 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		WriteTimeout:      cfg.HTTPWriteTimeout,
 		IdleTimeout:       cfg.HTTPIdleTimeout,
 		MaxHeaderBytes:    cfg.MaxHeaderBytes,
+		AdminPort:         cfg.AdminPort,
+		StrictContentType: cfg.StrictContentType,
+		AccessLogEnabled:  cfg.AccessLogEnabled,
+		Recorder:          metricsProvider.Recorder,
+		Logger:            logger,
 	})
+
+	var adminSrv *http.Server
+	if cfg.AdminPort > 0 {
+		adminSrv = NewAdminServer(AdminServerConfig{
+			Port:              cfg.AdminPort,
+			Registry:          metricsProvider.Registry,
+			IsRunning:         running.Load,
+			Version:           version,
+			PprofEnabled:      cfg.Pprof.Enabled,
+			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
+			ReadTimeout:       cfg.HTTPReadTimeout,
+			WriteTimeout:      cfg.HTTPWriteTimeout,
+			IdleTimeout:       cfg.HTTPIdleTimeout,
+			MaxHeaderBytes:    cfg.MaxHeaderBytes,
+			Recorder:          metricsProvider.Recorder,
+			Logger:            logger,
+		})
+	}
 
 	tracker := &connTracker{}
 	if err := metricsProvider.RegisterOpenConnectionsObserver(tracker.Open); err != nil {
@@ -106,6 +129,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	registry.add("server", func(c context.Context) error {
 		return srv.Shutdown(c)
 	})
+	if adminSrv != nil {
+		registry.add("admin-server", func(c context.Context) error {
+			return adminSrv.Shutdown(c)
+		})
+	}
 	if bundle.audienceCloser != nil {
 		registry.add("audience-valkey", func(_ context.Context) error {
 			return bundle.audienceCloser.Close()
@@ -138,13 +166,26 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	limitedLn := netutil.LimitListener(baseLn, cfg.MaxOpenConnections)
 	ln := &trackingListener{Listener: limitedLn, tracker: tracker}
 
-	serverErr := make(chan error, 1)
+	// Channel buffered for both servers so neither goroutine blocks when
+	// the other has already pushed a fatal error.
+	serverErr := make(chan error, 2)
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
-		close(serverErr)
 	}()
+	if adminSrv != nil {
+		go func() {
+			// The admin listener is not connection-capped: it serves
+			// observability traffic from a small set of known peers
+			// (kubelet, Prometheus scraper) and shares its timeouts with
+			// the main server. A noisy scrape pattern shouldn't be able
+			// to starve identity traffic of FDs.
+			if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- err
+			}
+		}()
+	}
 
 	running.Store(true)
 	logger.Info("identity agent started",

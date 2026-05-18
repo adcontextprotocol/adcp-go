@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -70,9 +69,20 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), h.requestTimeout)
 	defer cancel()
 
+	// MaxBytesReader installs a hard byte cap on the inbound body and
+	// surfaces a typed *http.MaxBytesError when exceeded, so we can answer
+	// with 413 instead of a generic JSON decode error.
+	r.Body = http.MaxBytesReader(w, r.Body, h.requestBodyLimit)
+
 	var req tmproto.IdentityMatchRequest
-	dec := json.NewDecoder(io.LimitReader(r.Body, h.requestBodyLimit))
+	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.writeError(w, "", http.StatusRequestEntityTooLarge, tmproto.ErrorCodeInvalidRequest, "request body too large")
+			h.recordCompletion(ctx, start, "body_too_large")
+			return
+		}
 		h.writeError(w, "", http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		h.recordCompletion(ctx, start, "bad_request")
 		return
