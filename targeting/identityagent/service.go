@@ -130,7 +130,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 		// sees a definitive verdict. Copy the set so audResult owns its
 		// rejected map and no other code can mutate it underneath us.
 		audResult = audienceResult{
-			rejected: copySet(pkgsWithSegments),
+			rejected: maps.Clone(pkgsWithSegments),
 			outcome:  OutcomeFail,
 		}
 	}
@@ -284,7 +284,7 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 		}
 		s.recorder.StoreError(ctx, StageAudience)
 		s.recorder.StageOutcome(ctx, StageAudience, outcome)
-		return audienceResult{rejected: copySet(pkgsWithSegments), outcome: outcome, duration: dur}
+		return audienceResult{rejected: maps.Clone(pkgsWithSegments), outcome: outcome, duration: dur}
 	}
 
 	rejected := make(map[string]struct{})
@@ -302,12 +302,6 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 	}
 	s.recorder.StageOutcome(ctx, StageAudience, outcome)
 	return audienceResult{rejected: rejected, outcome: outcome, duration: dur}
-}
-
-func copySet(in map[string]struct{}) map[string]struct{} {
-	out := make(map[string]struct{}, len(in))
-	maps.Copy(out, in)
-	return out
 }
 
 // joinResults computes the final per-package eligibility from the parallel
