@@ -22,7 +22,7 @@ import (
 // (see ServeMux assembly in server.go).
 type identityHandler struct {
 	service          *Service
-	tmpxCfg          *tmpxConfig
+	tmpx             *TMPXSealer
 	requestTimeout   time.Duration
 	requestBodyLimit int64
 	responseTTL      time.Duration
@@ -33,7 +33,7 @@ type identityHandler struct {
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
 type IdentityHandlerConfig struct {
 	Service          *Service
-	TMPXConfig       *tmpxConfig
+	TMPXSealer       *TMPXSealer
 	RequestTimeout   time.Duration
 	RequestBodyLimit int64
 	ResponseTTL      time.Duration
@@ -53,7 +53,7 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	}
 	return &identityHandler{
 		service:          cfg.Service,
-		tmpxCfg:          cfg.TMPXConfig,
+		tmpx:             cfg.TMPXSealer,
 		requestTimeout:   cfg.RequestTimeout,
 		requestBodyLimit: cfg.RequestBodyLimit,
 		responseTTL:      cfg.ResponseTTL,
@@ -119,9 +119,9 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		EligiblePackageIDs: eligible,
 		TTLSec:             int(h.responseTTL.Seconds()),
 	}
-	if h.tmpxCfg != nil && len(eligible) > 0 {
+	if h.tmpx != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()
-		if token, terr := buildTmpxToken(h.tmpxCfg, req.Identities); terr != nil {
+		if token, terr := h.tmpx.Seal(req.Identities); terr != nil {
 			h.logger.Warn("tmpx generation failed, response will omit tmpx",
 				"request_id", req.RequestID, "error", terr)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomeError)

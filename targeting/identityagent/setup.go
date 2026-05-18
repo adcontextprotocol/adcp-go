@@ -59,7 +59,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 
 	identityHandler := NewIdentityHandler(IdentityHandlerConfig{
 		Service:          bundle.service,
-		TMPXConfig:       bundle.tmpx,
+		TMPXSealer:       bundle.tmpx,
 		RequestTimeout:   cfg.RequestTimeout,
 		RequestBodyLimit: int64(cfg.RequestBodyLimitBytes),
 		ResponseTTL:      cfg.ResponseTTL,
@@ -239,7 +239,7 @@ type bundle struct {
 	audienceCloser   interface{ Close() error }
 	fcapCloser       interface{ Close() error }
 	keystore         tmproto.KeyStore
-	tmpx             *tmpxConfig
+	tmpx             *TMPXSealer
 	cancelBackground context.CancelFunc
 }
 
@@ -320,12 +320,12 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("build service: %w", err)
 	}
 
-	keystore, err := buildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger)
+	keystore, err := BuildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger)
 	if err != nil {
 		return nil, fmt.Errorf("keystore: %w", err)
 	}
 
-	tmpx, err := loadTmpxConfig(bgCtx, cfg.TMPX, logger)
+	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, logger)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}

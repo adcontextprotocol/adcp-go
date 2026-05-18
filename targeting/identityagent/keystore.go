@@ -10,19 +10,22 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// buildKeyStore constructs a tmproto.KeyStore from the configured registry
+// BuildKeyStore constructs a tmproto.KeyStore from the configured registry
 // URL. Returns (nil, nil) when no registry URL is set and signature
-// verification is not required — the agent then accepts unsigned requests.
+// verification is not required — callers then accept unsigned requests.
 //
 // runCtx governs the long-lived background refresh goroutine; cancel it
-// during shutdown to drain the goroutine. The synchronous initial fetch is
-// bounded to 10 seconds independently.
-func buildKeyStore(runCtx context.Context, registryURL string, requireSignature bool, logger *slog.Logger) (tmproto.KeyStore, error) {
+// during shutdown to drain. The synchronous initial fetch is bounded to
+// 10 seconds independently.
+func BuildKeyStore(runCtx context.Context, registryURL string, requireSignature bool, logger *slog.Logger) (tmproto.KeyStore, error) {
 	if registryURL == "" {
 		if requireSignature {
-			return nil, errors.New("TMP_REGISTRY_URL is required for signature verification (default); set TMP_ALLOW_UNSIGNED=true to opt out")
+			return nil, errors.New("registry URL is required for signature verification; pass requireSignature=false to opt out")
 		}
 		return nil, nil
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{URL: registryURL})
 	if err != nil {

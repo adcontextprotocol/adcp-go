@@ -13,19 +13,26 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// tmpxConfig holds the resolved TMPX recipient settings used to seal tokens
-// alongside identity-match responses.
-type tmpxConfig struct {
-	Country  string
-	EncStore tmpxRecipientResolver
+// TMPXSealer holds the resolved TMPX recipient state used to seal tokens
+// alongside identity-match responses. Construct with NewTMPXSealer; call
+// Seal at request time to produce a per-request HPKE token.
+//
+// The string→binary conversion underlying Seal is the spec's reference
+// SHA-512 stub — tokens are NOT interoperable with any real buyer master.
+// Real deployments decode UID2/RampID/etc. according to the source graph's
+// encoding. NewTMPXSealer refuses to construct an instance unless the
+// caller has acknowledged this via TMPXConfig.ReferenceStubAck.
+type TMPXSealer struct {
+	country  string
+	encStore tmpxRecipientResolver
 
-	// Priority is the explicit per-spec priority ordering used when the
+	// priority is the explicit per-spec priority ordering used when the
 	// resolved identities exceed the 255-byte wire budget. Entries earlier
 	// in the slice rank higher; entries whose UIDType is absent are
 	// dropped (the spec requires explicit configuration — arbitrary
-	// truncation is forbidden). When Priority is empty, no truncation is
+	// truncation is forbidden). When priority is empty, no truncation is
 	// performed and an over-budget token is reported as an error.
-	Priority []tmproto.UIDType
+	priority []tmproto.UIDType
 }
 
 // tmpxRecipientResolver returns the buyer-cluster TMPX recipient at the
@@ -35,13 +42,16 @@ type tmpxRecipientResolver interface {
 	CurrentEncryptionRecipient() (tmproto.TmpxRecipient, bool)
 }
 
-// loadTmpxConfig validates flag inputs and parses the recipient X25519 public
-// key from disk. Returns (nil, nil) when TMPX is not configured.
+// NewTMPXSealer builds a TMPXSealer from the supplied config, starts the
+// underlying JWKS refresh goroutine bound to runCtx, and validates the
+// initial key fetch. Returns (nil, nil) when TMPX is not configured
+// (every relevant field empty). Returns an error when the configuration
+// is partially set, the initial JWKS fetch fails, the JWKS publishes no
+// recipient key, or the caller has not acknowledged the SHA-512 stub.
 //
-// The reference identity-agent uses a SHA-512 stub for the string→binary
-// token decoding that is NOT interoperable with any real buyer master. Set
-// referenceStubAck=true on the TMPXConfig to acknowledge and proceed.
-func loadTmpxConfig(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger) (*tmpxConfig, error) {
+// runCtx governs the long-lived refresh goroutine; cancel it during
+// shutdown to drain.
+func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -51,6 +61,9 @@ func loadTmpxConfig(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger)
 	}
 	if !cfg.ReferenceStubAck {
 		return nil, errors.New("TMPX is configured but uses a SHA-512 stub that is NOT interoperable with any real buyer master; set TMPX_REFERENCE_STUB_ACK=true to acknowledge")
+	}
+	if logger == nil {
+		logger = slog.Default()
 	}
 	store, err := tmproto.NewJWKSStore(tmproto.JWKSStoreOptions{
 		URL:             cfg.EncryptJWKSURL,
@@ -78,11 +91,41 @@ func loadTmpxConfig(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger)
 	}
 	logger.Warn("TMPX generation enabled with reference SHA-512 stub — buyer masters will not be able to decode these tokens",
 		"country", cfg.Country)
-	return &tmpxConfig{Country: cfg.Country, EncStore: store, Priority: order}, nil
+	return &TMPXSealer{country: cfg.Country, encStore: store, priority: order}, nil
+}
+
+// Seal produces an HPKE TMPX token containing the resolved identities.
+// Identities whose UIDType has no TMPX type-ID mapping are dropped per the
+// spec's forward-compatibility rule. When the sealer was constructed with
+// a non-empty Priority, entries are sorted by priority and the
+// highest-priority prefix that fits the TmpxMaxWireBytes (255) budget is
+// included; identities whose UIDType is not in the priority list are
+// excluded entirely. When Priority is empty the spec forbids arbitrary
+// truncation — an over-budget set returns an error.
+//
+// Returns "" without error when no identity is encodable (e.g. the
+// request carried only UID types with no TMPX mapping).
+func (s *TMPXSealer) Seal(ids []tmproto.IdentityToken) (string, error) {
+	recipient, ok := s.encStore.CurrentEncryptionRecipient()
+	if !ok {
+		return "", errors.New("no TMPX encryption recipient currently published — buyer JWKS missing adcp_use=tmpx-encrypt key")
+	}
+	entries, err := s.selectEntries(ids)
+	if err != nil {
+		return "", err
+	}
+	if len(entries) == 0 {
+		return "", nil
+	}
+	plaintext, err := tmproto.EncodeTmpxPlaintext(s.country, entries, time.Now())
+	if err != nil {
+		return "", err
+	}
+	return tmproto.SealTmpx(recipient, nil, plaintext)
 }
 
 // parseTmpxPriority parses a comma-separated list of UID type names into the
-// ordered slice used by buildTmpxToken. Whitespace around tokens is tolerated;
+// ordered slice used by selectEntries. Whitespace around tokens is tolerated;
 // unknown UID types are rejected (a typo would silently drop identities).
 func parseTmpxPriority(s string) ([]tmproto.UIDType, error) {
 	s = strings.TrimSpace(s)
@@ -123,47 +166,16 @@ var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
 	tmproto.UIDTypePublisherFirstParty: tmproto.TmpxTypePublisherFirstParty,
 }
 
-// buildTmpxToken seals an HPKE TMPX token containing the resolved identities.
-// Identities whose UIDType has no TMPX type-ID mapping are dropped per the
-// spec's forward-compatibility rule. When cfg.Priority is non-empty, entries
-// are sorted by priority and the highest-priority prefix that fits the
-// TmpxMaxWireBytes (255) budget is included; identities with a UIDType not in
-// the priority list are excluded entirely. When cfg.Priority is empty, the
-// spec forbids arbitrary truncation — an over-budget set returns an error.
-//
-// The string→binary conversion in stubBinaryToken is a reference stub —
-// real buyer deployments decode UID2/RampID/etc. according to the source
-// graph's encoding. Tokens produced here are not interoperable with a real
-// buyer master.
-func buildTmpxToken(cfg *tmpxConfig, ids []tmproto.IdentityToken) (string, error) {
-	recipient, ok := cfg.EncStore.CurrentEncryptionRecipient()
-	if !ok {
-		return "", errors.New("no TMPX encryption recipient currently published — buyer JWKS missing adcp_use=tmpx-encrypt key")
-	}
-	entries, err := selectTmpxEntries(cfg, ids)
-	if err != nil {
-		return "", err
-	}
-	if len(entries) == 0 {
-		return "", nil
-	}
-	plaintext, err := tmproto.EncodeTmpxPlaintext(cfg.Country, entries, time.Now())
-	if err != nil {
-		return "", err
-	}
-	return tmproto.SealTmpx(recipient, nil, plaintext)
-}
-
-// selectTmpxEntries returns the ordered TmpxEntries that buildTmpxToken will
-// seal: mappable UIDTypes filtered through the operator-configured priority
-// list, sorted by priority (highest first), then truncated to fit the
+// selectEntries returns the ordered TmpxEntries that Seal will encode:
+// mappable UIDTypes filtered through the operator-configured priority list,
+// sorted by priority (highest first), then truncated to fit the
 // TmpxMaxWireBytes budget. The budget is computed against the spec-defined
 // TmpxMaxKidLen rather than the currently advertised kid — a JWKS rotation
-// can change the kid length between seals, and a prefix that just fits today
-// must still fit if the kid grows from 1 to 8 chars at the next refresh.
-// When cfg.Priority is empty and the candidates don't all fit, returns an
-// error — the spec forbids arbitrary truncation.
-func selectTmpxEntries(cfg *tmpxConfig, ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
+// can change the kid length between seals, and a prefix that just fits
+// today must still fit if the kid grows from 1 to 8 chars at the next
+// refresh. When the sealer has no priority configured and the candidates
+// don't all fit, returns an error — the spec forbids arbitrary truncation.
+func (s *TMPXSealer) selectEntries(ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
 	type candidate struct {
 		priority int
 		entry    tmproto.TmpxEntry
@@ -174,8 +186,8 @@ func selectTmpxEntries(cfg *tmpxConfig, ids []tmproto.IdentityToken) ([]tmproto.
 		if !ok {
 			continue
 		}
-		p := indexOfUIDType(cfg.Priority, id.UIDType)
-		if len(cfg.Priority) > 0 && p < 0 {
+		p := indexOfUIDType(s.priority, id.UIDType)
+		if len(s.priority) > 0 && p < 0 {
 			continue
 		}
 		bin, err := stubBinaryToken(typeID, id.UserToken)
@@ -187,7 +199,7 @@ func selectTmpxEntries(cfg *tmpxConfig, ids []tmproto.IdentityToken) ([]tmproto.
 	if len(candidates) == 0 {
 		return nil, nil
 	}
-	if len(cfg.Priority) > 0 {
+	if len(s.priority) > 0 {
 		sort.SliceStable(candidates, func(i, j int) bool {
 			return candidates[i].priority < candidates[j].priority
 		})
@@ -199,7 +211,7 @@ func selectTmpxEntries(cfg *tmpxConfig, ids []tmproto.IdentityToken) ([]tmproto.
 		need := 1 + len(c.entry.Token)
 		nextWire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes+need)
 		if nextWire > tmproto.TmpxMaxWireBytes {
-			if len(cfg.Priority) == 0 {
+			if len(s.priority) == 0 {
 				return nil, fmt.Errorf("tmpx wire size %d exceeds %d-byte budget and no TMPX_PRIORITY configured: spec forbids arbitrary truncation",
 					nextWire, tmproto.TmpxMaxWireBytes)
 			}
