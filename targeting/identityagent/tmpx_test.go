@@ -1,7 +1,6 @@
 package identityagent
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
@@ -12,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -30,9 +32,7 @@ func (f *fakeRecipientResolver) CurrentEncryptionRecipient() (tmproto.TmpxRecipi
 func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 	t.Helper()
 	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return &fakeRecipientResolver{
 		recipient: tmproto.TmpxRecipient{Kid: kid, PublicKey: sk.PublicKey()},
 		ok:        true,
@@ -41,9 +41,8 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 
 func TestNewTMPXSealerDisabled(t *testing.T) {
 	sealer, err := NewTMPXSealer(context.Background(), TMPXConfig{}, nil)
-	if err != nil || sealer != nil {
-		t.Fatalf("expected (nil, nil), got (%v, %v)", sealer, err)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, sealer)
 }
 
 func TestNewTMPXSealerPartialFails(t *testing.T) {
@@ -53,15 +52,14 @@ func TestNewTMPXSealerPartialFails(t *testing.T) {
 	}
 	for _, c := range cases {
 		_, err := NewTMPXSealer(context.Background(), c, nil)
-		if err == nil {
-			t.Errorf("partial config %+v should fail", c)
-		}
+		assert.Error(t, err, "partial config %+v should fail", c)
 	}
 }
 
 func TestTMPXSealerFromJWKSServer(t *testing.T) {
 	encKey := mustEncKeyJSON(t, "kid-abc")
-	body, _ := json.Marshal(map[string]any{"keys": []map[string]any{encKey}})
+	body, err := json.Marshal(map[string]any{"keys": []map[string]any{encKey}})
+	require.NoError(t, err)
 
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(body)
@@ -78,9 +76,8 @@ func TestTMPXSealerFromJWKSServer(t *testing.T) {
 		priority: []tmproto.UIDType{tmproto.UIDTypeUID2},
 	}
 	rcp, ok := cfg.encStore.CurrentEncryptionRecipient()
-	if !ok || rcp.Kid != "kid-abc" {
-		t.Fatalf("recipient missing or wrong kid: %+v ok=%v", rcp, ok)
-	}
+	require.True(t, ok)
+	assert.Equal(t, "kid-abc", rcp.Kid)
 }
 
 func TestSealRoundtrip(t *testing.T) {
@@ -95,32 +92,21 @@ func TestSealRoundtrip(t *testing.T) {
 		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
 	}
 	wire, err := cfg.Seal(ids)
-	if err != nil {
-		t.Fatalf("Seal: %v", err)
-	}
+	require.NoError(t, err)
 	kid, payload, ok := strings.Cut(wire, ".")
-	if !ok || kid != "k1" {
-		t.Fatalf("wire format: %q", wire)
-	}
+	require.True(t, ok, "wire format: %q", wire)
+	assert.Equal(t, "k1", kid)
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
-	if err != nil {
-		t.Fatalf("decode payload: %v", err)
-	}
-	if len(raw) <= 32+16 {
-		t.Fatalf("payload suspiciously short (%d bytes)", len(raw))
-	}
+	require.NoError(t, err)
+	assert.Greater(t, len(raw), 32+16, "payload suspiciously short")
 }
 
 func TestSealEmptyWhenNoMappableIdentities(t *testing.T) {
 	cfg := &TMPXSealer{country: "US", encStore: newFakeResolver(t, "k1")}
 	ids := []tmproto.IdentityToken{{UIDType: tmproto.UIDTypeOther, UserToken: "x"}}
 	wire, err := cfg.Seal(ids)
-	if err != nil {
-		t.Fatalf("err: %v", err)
-	}
-	if wire != "" {
-		t.Errorf("expected empty wire when no mappable identities, got %q", wire)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, wire, "expected empty wire when no mappable identities")
 }
 
 func TestSealErrorsWhenJWKSPublishesNoEncryptionKey(t *testing.T) {
@@ -131,9 +117,7 @@ func TestSealErrorsWhenJWKSPublishesNoEncryptionKey(t *testing.T) {
 	_, err := cfg.Seal([]tmproto.IdentityToken{
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	})
-	if err == nil {
-		t.Fatal("expected error when JWKS has no encryption key")
-	}
+	assert.Error(t, err, "expected error when JWKS has no encryption key")
 }
 
 func TestStubBinaryTokenSizes(t *testing.T) {
@@ -147,12 +131,8 @@ func TestStubBinaryTokenSizes(t *testing.T) {
 	}
 	for _, c := range cases {
 		bin, err := stubBinaryToken(c.typeID, "any-input-string")
-		if err != nil {
-			t.Errorf("type %d: %v", c.typeID, err)
-			continue
-		}
-		if len(bin) != c.want {
-			t.Errorf("type %d: got %d bytes, want %d", c.typeID, len(bin), c.want)
+		if assert.NoError(t, err, "type %d", c.typeID) {
+			assert.Len(t, bin, c.want, "type %d", c.typeID)
 		}
 	}
 }
@@ -160,9 +140,7 @@ func TestStubBinaryTokenSizes(t *testing.T) {
 func TestStubBinaryTokenDeterministic(t *testing.T) {
 	a, _ := stubBinaryToken(tmproto.TmpxTypeUID2, "same-input")
 	b, _ := stubBinaryToken(tmproto.TmpxTypeUID2, "same-input")
-	if !bytes.Equal(a, b) {
-		t.Fatal("stub must be deterministic for same input")
-	}
+	assert.Equal(t, a, b, "stub must be deterministic for same input")
 }
 
 func TestSealFreshNonceEachCall(t *testing.T) {
@@ -171,37 +149,26 @@ func TestSealFreshNonceEachCall(t *testing.T) {
 	a, _ := cfg.Seal(ids)
 	time.Sleep(time.Millisecond)
 	b, _ := cfg.Seal(ids)
-	if a == b {
-		t.Fatal("two seal calls must produce distinct wire output")
-	}
+	assert.NotEqual(t, a, b, "two seal calls must produce distinct wire output")
 }
 
 func TestParseTmpxPriority(t *testing.T) {
 	got, err := parseTmpxPriority("uid2, rampid ,id5")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []tmproto.UIDType{tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5}
-	if len(got) != len(want) {
-		t.Fatalf("len(got)=%d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("got[%d]=%s, want %s", i, got[i], want[i])
-		}
-	}
+	require.NoError(t, err)
+	assert.Equal(t,
+		[]tmproto.UIDType{tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5},
+		got,
+	)
 }
 
 func TestParseTmpxPriorityRejectsUnknown(t *testing.T) {
-	if _, err := parseTmpxPriority("uid2,not_a_real_uid_type"); err == nil {
-		t.Fatal("unknown uid_type must be rejected")
-	}
+	_, err := parseTmpxPriority("uid2,not_a_real_uid_type")
+	assert.Error(t, err, "unknown uid_type must be rejected")
 }
 
 func TestParseTmpxPriorityRejectsDuplicate(t *testing.T) {
-	if _, err := parseTmpxPriority("uid2,id5,uid2"); err == nil {
-		t.Fatal("duplicate uid_type must be rejected")
-	}
+	_, err := parseTmpxPriority("uid2,id5,uid2")
+	assert.Error(t, err, "duplicate uid_type must be rejected")
 }
 
 func TestSelectEntries_PrioritySortsHighestFirst(t *testing.T) {
@@ -218,17 +185,11 @@ func TestSelectEntries_PrioritySortsHighestFirst(t *testing.T) {
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
 	got, err := cfg.selectEntries(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 3 {
-		t.Fatalf("got %d entries, want 3", len(got))
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 3)
 	wantOrder := []tmproto.TmpxTypeID{tmproto.TmpxTypeUID2, tmproto.TmpxTypeRampID, tmproto.TmpxTypeID5}
 	for i, w := range wantOrder {
-		if got[i].TypeID != w {
-			t.Errorf("entry %d: got type %d, want %d", i, got[i].TypeID, w)
-		}
+		assert.Equal(t, w, got[i].TypeID, "entry %d", i)
 	}
 }
 
@@ -240,12 +201,9 @@ func TestSelectEntries_DropsUidTypesNotInPriority(t *testing.T) {
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
 	got, err := cfg.selectEntries(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].TypeID != tmproto.TmpxTypeUID2 {
-		t.Fatalf("got %+v, want one UID2 entry", got)
-	}
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, tmproto.TmpxTypeUID2, got[0].TypeID)
 }
 
 func TestSelectEntries_PriorityTruncatesUnderBudget(t *testing.T) {
@@ -264,26 +222,17 @@ func TestSelectEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 		{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2")},
 	}
 	got, err := cfg.selectEntries(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) >= len(ids) {
-		t.Fatalf("expected truncation (got %d entries, started with %d)", len(got), len(ids))
-	}
+	require.NoError(t, err)
+	assert.Less(t, len(got), len(ids), "expected truncation")
 	for i, e := range got {
-		want := uidToTmpxTypeID[cfg.priority[i]]
-		if e.TypeID != want {
-			t.Errorf("entry %d: got %d, want %d", i, e.TypeID, want)
-		}
+		assert.Equal(t, uidToTmpxTypeID[cfg.priority[i]], e.TypeID, "entry %d", i)
 	}
 	usedBytes := 0
 	for _, e := range got {
 		usedBytes += 1 + len(e.Token)
 	}
 	wire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
-	if wire > tmproto.TmpxMaxWireBytes {
-		t.Errorf("selected entries produce wire %d > %d", wire, tmproto.TmpxMaxWireBytes)
-	}
+	assert.LessOrEqual(t, wire, tmproto.TmpxMaxWireBytes, "selected entries within budget")
 }
 
 func TestSelectEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
@@ -297,12 +246,8 @@ func TestSelectEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
 		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
 	}
 	_, err := cfg.selectEntries(ids)
-	if err == nil {
-		t.Fatal("over-budget without TMPX_PRIORITY must error")
-	}
-	if !strings.Contains(err.Error(), "TMPX_PRIORITY") {
-		t.Errorf("error must reference TMPX_PRIORITY, got: %v", err)
-	}
+	require.Error(t, err, "over-budget without TMPX_PRIORITY must error")
+	assert.Contains(t, err.Error(), "TMPX_PRIORITY")
 }
 
 func TestSelectEntries_NoPriorityPassesUnderBudget(t *testing.T) {
@@ -312,12 +257,8 @@ func TestSelectEntries_NoPriorityPassesUnderBudget(t *testing.T) {
 		{UIDType: tmproto.UIDTypeMAID, UserToken: fixtureToken("maid")},
 	}
 	got, err := cfg.selectEntries(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("got %d, want 2", len(got))
-	}
+	require.NoError(t, err)
+	assert.Len(t, got, 2)
 }
 
 func TestSeal_PriorityResultsInValidWire(t *testing.T) {
@@ -339,12 +280,8 @@ func TestSeal_PriorityResultsInValidWire(t *testing.T) {
 		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
 	}
 	wire, err := cfg.Seal(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(wire) > tmproto.TmpxMaxWireBytes {
-		t.Fatalf("wire %d exceeds %d", len(wire), tmproto.TmpxMaxWireBytes)
-	}
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(wire), tmproto.TmpxMaxWireBytes)
 }
 
 func TestSelectEntries_BudgetStableAcrossKidRotation(t *testing.T) {
@@ -367,9 +304,7 @@ func TestSelectEntries_BudgetStableAcrossKidRotation(t *testing.T) {
 		{UIDType: tmproto.UIDTypePairID, UserToken: fixtureToken("pairid")},
 	}
 	got, err := cfg.selectEntries(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	// The chosen prefix must produce a valid wire at the *maximum* possible
 	// kid length the buyer might rotate to.
 	usedBytes := 0
@@ -377,9 +312,8 @@ func TestSelectEntries_BudgetStableAcrossKidRotation(t *testing.T) {
 		usedBytes += 1 + len(e.Token)
 	}
 	wireAtMaxKid := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
-	if wireAtMaxKid > tmproto.TmpxMaxWireBytes {
-		t.Fatalf("selected prefix overflows when kid grows to TmpxMaxKidLen: %d > %d", wireAtMaxKid, tmproto.TmpxMaxWireBytes)
-	}
+	require.LessOrEqual(t, wireAtMaxKid, tmproto.TmpxMaxWireBytes,
+		"selected prefix must fit when kid grows to TmpxMaxKidLen")
 
 	// Cross-check: the actual seal under a 1-char kid is well under budget.
 	resolver := &fakeRecipientResolver{
@@ -389,20 +323,14 @@ func TestSelectEntries_BudgetStableAcrossKidRotation(t *testing.T) {
 	cfg.country = "US"
 	cfg.encStore = resolver
 	wire, err := cfg.Seal(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(wire) > tmproto.TmpxMaxWireBytes {
-		t.Errorf("actual wire %d > %d under 1-char kid", len(wire), tmproto.TmpxMaxWireBytes)
-	}
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(wire), tmproto.TmpxMaxWireBytes, "actual wire under 1-char kid")
 }
 
 func mustEcdhPub(t *testing.T) *ecdh.PublicKey {
 	t.Helper()
 	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return sk.PublicKey()
 }
 
@@ -418,9 +346,7 @@ func fixtureToken(scheme string) string {
 func mustEncKeyJSON(t *testing.T, kid string) map[string]any {
 	t.Helper()
 	sk, err := ecdh.X25519().GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	return map[string]any{
 		"kid":      kid,
 		"kty":      "OKP",
@@ -441,11 +367,7 @@ func testJWKSStoreFor(t *testing.T, srv *httptest.Server) *tmproto.JWKSStore {
 		URL:        srv.URL,
 		HTTPClient: srv.Client(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.Refresh(context.Background()); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+	require.NoError(t, store.Refresh(context.Background()))
 	return store
 }

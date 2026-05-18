@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 // TestTrackingListener_AcceptAndClose exercises the basic increment/decrement
@@ -15,9 +17,7 @@ import (
 func TestTrackingListener_AcceptAndClose(t *testing.T) {
 	tracker := &connTracker{}
 	base, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Listen: %v", err)
-	}
+	require.NoError(t, err)
 	ln := &trackingListener{Listener: base, tracker: tracker}
 	defer func() { _ = ln.Close() }()
 
@@ -54,14 +54,10 @@ func TestTrackingListener_AcceptAndClose(t *testing.T) {
 
 	<-acceptDone
 	for range dialN {
-		if err := <-dialErr; err != nil {
-			t.Fatalf("dial: %v", err)
-		}
+		require.NoError(t, <-dialErr)
 	}
 
-	if got := tracker.Open(); got != int64(dialN) {
-		t.Fatalf("after accepts: open=%d, want %d", got, dialN)
-	}
+	require.Equal(t, int64(dialN), tracker.Open(), "after accepts")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -70,7 +66,5 @@ func TestTrackingListener_AcceptAndClose(t *testing.T) {
 		// Idempotency: a second Close must not double-decrement.
 		_ = c.Close()
 	}
-	if got := tracker.Open(); got != 0 {
-		t.Fatalf("after closes: open=%d, want 0", got)
-	}
+	require.Equal(t, int64(0), tracker.Open(), "after closes")
 }

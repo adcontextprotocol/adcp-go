@@ -1,8 +1,10 @@
 package redisstore
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigValidate(t *testing.T) {
@@ -60,31 +62,16 @@ func TestConfigValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.cfg.Validate()
 			if tc.wantErr == "" {
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
+				require.NoError(t, err)
 				return
 			}
-			if err == nil {
-				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
-			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
 }
 
 func TestSortedValues(t *testing.T) {
-	m := map[string]string{"2": "c", "0": "a", "10": "d", "1": "b"}
-	got := sortedValues(m)
-	want := []string{"a", "b", "c", "d"}
-	if len(got) != len(want) {
-		t.Fatalf("len mismatch: got %v want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("index %d: got %q want %q (full %v)", i, got[i], want[i], got)
-		}
-	}
+	got := sortedValues(map[string]string{"2": "c", "0": "a", "10": "d", "1": "b"})
+	assert.Equal(t, []string{"a", "b", "c", "d"}, got)
 }

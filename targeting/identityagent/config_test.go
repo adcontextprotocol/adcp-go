@@ -1,9 +1,11 @@
 package identityagent
 
 import (
-	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestConfigValidate(t *testing.T) {
@@ -245,17 +247,11 @@ func TestConfigValidate(t *testing.T) {
 			tc.mutate(&cfg)
 			err := cfg.Validate()
 			if tc.wantErr == "" {
-				if err != nil {
-					t.Fatalf("expected no error, got %v", err)
-				}
+				require.NoError(t, err)
 				return
 			}
-			if err == nil {
-				t.Fatalf("expected error containing %q, got nil", tc.wantErr)
-			}
-			if !strings.Contains(err.Error(), tc.wantErr) {
-				t.Fatalf("expected error containing %q, got %q", tc.wantErr, err.Error())
-			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
 }
@@ -271,9 +267,6 @@ func TestIsValidPromName(t *testing.T) {
 		"with.dot":       false,
 	}
 	for in, want := range cases {
-		got := isValidPromName(in)
-		if got != want {
-			t.Errorf("isValidPromName(%q)=%v want %v", in, got, want)
-		}
+		assert.Equal(t, want, isValidPromName(in), "input %q", in)
 	}
 }

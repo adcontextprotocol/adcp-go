@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestContentTypeMiddleware_RejectsNonJSON(t *testing.T) {
@@ -23,15 +26,9 @@ func TestContentTypeMiddleware_RejectsNonJSON(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if called {
-		t.Fatal("inner handler should not be called for non-JSON content type")
-	}
-	if rr.Code != http.StatusUnsupportedMediaType {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnsupportedMediaType)
-	}
-	if !strings.Contains(rr.Body.String(), "application/json") {
-		t.Fatalf("body should mention application/json: %s", rr.Body.String())
-	}
+	assert.False(t, called, "inner handler should not be called for non-JSON content type")
+	assert.Equal(t, http.StatusUnsupportedMediaType, rr.Code)
+	assert.Contains(t, rr.Body.String(), "application/json")
 }
 
 func TestContentTypeMiddleware_AcceptsJSONWithCharset(t *testing.T) {
@@ -44,12 +41,8 @@ func TestContentTypeMiddleware_AcceptsJSONWithCharset(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if !called {
-		t.Fatal("inner handler should be called for application/json")
-	}
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
-	}
+	assert.True(t, called, "inner handler should be called for application/json")
+	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
 func TestContentTypeMiddleware_DisabledIsPassThrough(t *testing.T) {
@@ -62,9 +55,7 @@ func TestContentTypeMiddleware_DisabledIsPassThrough(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if !called {
-		t.Fatal("inner handler should be called when strict=false")
-	}
+	assert.True(t, called, "inner handler should be called when strict=false")
 }
 
 func TestRecoverMiddleware_TrapsPanic(t *testing.T) {
@@ -80,19 +71,11 @@ func TestRecoverMiddleware_TrapsPanic(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rec.count.Load() != 1 {
-		t.Fatalf("HandlerPanic count = %d, want 1", rec.count.Load())
-	}
-	if rr.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
-	}
+	assert.Equal(t, int64(1), rec.count.Load(), "HandlerPanic count")
+	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	var body map[string]string
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
-		t.Fatalf("response body not JSON: %v / %s", err, rr.Body.String())
-	}
-	if body["code"] != string("internal_error") {
-		t.Fatalf("body.code = %q, want internal_error", body["code"])
-	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body), "response body must be JSON: %s", rr.Body.String())
+	assert.Equal(t, "internal_error", body["code"])
 }
 
 // countingPanicRecorder is a Recorder whose HandlerPanic call is observable.
@@ -115,12 +98,8 @@ func TestRequestIDMiddleware_EchoesHeader(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if sawCtxID != "abc-123" {
-		t.Fatalf("ctx request id = %q, want abc-123", sawCtxID)
-	}
-	if got := rr.Header().Get("X-Request-ID"); got != "abc-123" {
-		t.Fatalf("response header = %q, want abc-123", got)
-	}
+	assert.Equal(t, "abc-123", sawCtxID, "ctx request id")
+	assert.Equal(t, "abc-123", rr.Header().Get("X-Request-ID"), "response header")
 }
 
 func TestRequestIDMiddleware_MissingHeaderNoEcho(t *testing.T) {
@@ -131,9 +110,7 @@ func TestRequestIDMiddleware_MissingHeaderNoEcho(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if got := rr.Header().Get("X-Request-ID"); got != "" {
-		t.Fatalf("response should not echo a missing request id, got %q", got)
-	}
+	assert.Empty(t, rr.Header().Get("X-Request-ID"), "response should not echo a missing request id")
 }
 
 func TestAccessLogMiddleware_Disabled(t *testing.T) {
@@ -146,9 +123,7 @@ func TestAccessLogMiddleware_Disabled(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if captured.Len() != 0 {
-		t.Fatalf("disabled middleware should not log; got %q", captured.String())
-	}
+	assert.Zero(t, captured.Len(), "disabled middleware should not log: %q", captured.String())
 }
 
 func TestAccessLogMiddleware_EnabledEmitsOnce(t *testing.T) {
@@ -170,10 +145,6 @@ func TestAccessLogMiddleware_EnabledEmitsOnce(t *testing.T) {
 	composed.ServeHTTP(rr, req)
 
 	out := captured.String()
-	if !strings.Contains(out, "status=202") {
-		t.Fatalf("expected status=202 in log line, got %q", out)
-	}
-	if !strings.Contains(out, `request_id=req-xyz`) {
-		t.Fatalf("expected request_id=req-xyz in log line, got %q", out)
-	}
+	assert.Contains(t, out, "status=202")
+	assert.Contains(t, out, "request_id=req-xyz")
 }
