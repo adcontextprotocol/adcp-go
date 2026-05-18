@@ -40,7 +40,7 @@ const (
 // value but the function still returns.
 //
 // The supplied logger is used for structured event logs. version is stamped
-// into /live and /health responses.
+// into /live responses; /health intentionally omits it per the TMP spec.
 func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
@@ -103,7 +103,6 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		adminSrv = NewAdminServer(AdminServerConfig{
 			Port:              cfg.AdminPort,
 			Registry:          metricsProvider.Registry,
-			IsRunning:         running.Load,
 			Version:           version,
 			PprofEnabled:      cfg.Pprof.Enabled,
 			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,

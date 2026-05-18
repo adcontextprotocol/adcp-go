@@ -70,11 +70,13 @@ type Config struct {
 	// incident triage.
 	AccessLogEnabled bool
 
-	// AdminPort, when > 0, moves /metrics, /live, /health, and /debug/pprof
-	// onto a second HTTP listener on that port. /tmp/identity stays on
-	// HTTPPort. When 0 (default) all endpoints share HTTPPort. Splitting
-	// lets ops apply different network policies to observability vs the
-	// public attack surface.
+	// AdminPort, when > 0, moves /metrics, /live, and /debug/pprof onto a
+	// second HTTP listener on that port. /tmp/identity and /health stay on
+	// HTTPPort — /health is part of the TMP protocol surface that publisher
+	// routers probe externally, so it MUST share the listener serving
+	// /tmp/identity. When 0 (default) all endpoints share HTTPPort.
+	// Splitting lets ops apply different network policies to observability
+	// vs the public attack surface.
 	AdminPort int
 
 	LogLevel string

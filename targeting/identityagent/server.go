@@ -21,9 +21,11 @@ import (
 // listener bounds — the per-request 40ms budget is enforced inside the
 // identity handler via context.WithTimeout.
 //
-// When AdminPort > 0 the four observability endpoints (/live, /health,
-// /metrics, /debug/pprof) move onto a second listener built by
-// NewAdminServer. /tmp/identity always stays on Port.
+// /tmp/identity and /health always stay on Port — /health is part of the
+// TMP protocol surface that publisher routers probe externally, so it
+// MUST share the listener that serves /tmp/identity. When AdminPort > 0
+// the operator-facing endpoints (/live, /metrics, /debug/pprof) move
+// onto a second listener built by NewAdminServer.
 type ServerConfig struct {
 	Port            int
 	IdentityHandler http.Handler
@@ -56,10 +58,12 @@ type ServerConfig struct {
 	Logger   *slog.Logger
 }
 
-// NewServer builds the *http.Server for /tmp/identity. When AdminPort == 0,
-// the observability endpoints also mount on this server's mux. When
-// AdminPort > 0 they're omitted here and the caller wires NewAdminServer
-// onto a second listener.
+// NewServer builds the *http.Server for /tmp/identity and /health. When
+// AdminPort == 0 the operator endpoints (/live, /metrics, /debug/pprof)
+// also mount on this server's mux. When AdminPort > 0 those are omitted
+// here and the caller wires NewAdminServer onto a second listener; /health
+// stays on the main mux unconditionally because it's part of the TMP
+// protocol surface that publisher routers probe externally.
 //
 // The handler chain on POST /tmp/identity reads outermost-to-innermost:
 //
@@ -88,8 +92,9 @@ func NewServer(cfg ServerConfig) *http.Server {
 	identity = otelhttp.NewHandler(identity, "POST /tmp/identity")
 	mux.Handle("POST /tmp/identity", identity)
 
+	mountHealthEndpoint(mux, cfg.IsRunning)
 	if cfg.AdminPort == 0 {
-		mountAdminEndpoints(mux, cfg.Registry, cfg.IsRunning, cfg.Version, cfg.PprofEnabled)
+		mountOperatorEndpoints(mux, cfg.Registry, cfg.Version, cfg.PprofEnabled)
 	}
 
 	return &http.Server{
@@ -108,7 +113,6 @@ func NewServer(cfg ServerConfig) *http.Server {
 type AdminServerConfig struct {
 	Port         int
 	Registry     *prometheus.Registry
-	IsRunning    func() bool
 	Version      string
 	PprofEnabled bool
 
@@ -122,13 +126,15 @@ type AdminServerConfig struct {
 	Logger   *slog.Logger
 }
 
-// NewAdminServer builds the *http.Server hosting /metrics, /live, /health,
-// and (when enabled) /debug/pprof on a separate port. The mux is wrapped in
-// recoverMiddleware so a panic in any observability handler doesn't take
-// the process down with it.
+// NewAdminServer builds the *http.Server hosting /metrics, /live, and
+// (when enabled) /debug/pprof on a separate port. /health stays on the
+// main server (see NewServer) — it's part of the protocol surface and
+// must share the listener publisher routers reach externally. The mux
+// is wrapped in recoverMiddleware so a panic in any observability handler
+// doesn't take the process down with it.
 func NewAdminServer(cfg AdminServerConfig) *http.Server {
 	mux := http.NewServeMux()
-	mountAdminEndpoints(mux, cfg.Registry, cfg.IsRunning, cfg.Version, cfg.PprofEnabled)
+	mountOperatorEndpoints(mux, cfg.Registry, cfg.Version, cfg.PprofEnabled)
 
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
@@ -141,25 +147,33 @@ func NewAdminServer(cfg AdminServerConfig) *http.Server {
 	}
 }
 
-// mountAdminEndpoints registers /live, /health, /metrics (when Registry is
-// non-nil), and pprof endpoints (when enabled) on the supplied mux. Shared
-// by NewServer (when AdminPort == 0) and NewAdminServer.
-func mountAdminEndpoints(mux *http.ServeMux, reg *prometheus.Registry, isRunning func() bool, version string, pprofEnabled bool) {
-	mux.HandleFunc("GET /live", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, `{"status":"ok","version":%q}`, version)
-	})
-
+// mountHealthEndpoint registers GET /health on the supplied mux. The
+// response body is constrained by the TMP spec: it MUST be exactly
+// {"status":"ok"} when ready (200) or {"status":"not ready"} when not
+// (503), with no version, build hash, hostname, or subsystem detail.
+// Differentiating bodies or status codes by failing subsystem would be
+// a side channel mapping external probes onto internal topology.
+func mountHealthEndpoint(mux *http.ServeMux, isRunning func() bool) {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if isRunning != nil && isRunning() {
 			w.WriteHeader(http.StatusOK)
-			_, _ = fmt.Fprintf(w, `{"status":"ok","version":%q}`, version)
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
 			return
 		}
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"not ready"}`))
+	})
+}
+
+// mountOperatorEndpoints registers /live, /metrics (when Registry is
+// non-nil), and pprof endpoints (when enabled) on the supplied mux.
+// Shared by NewServer (when AdminPort == 0) and NewAdminServer.
+func mountOperatorEndpoints(mux *http.ServeMux, reg *prometheus.Registry, version string, pprofEnabled bool) {
+	mux.HandleFunc("GET /live", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `{"status":"ok","version":%q}`, version)
 	})
 
 	if reg != nil {
