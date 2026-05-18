@@ -3,6 +3,7 @@ package identityagent
 import (
 	"context"
 	"errors"
+	"maps"
 	"sync"
 	"time"
 
@@ -305,9 +306,7 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 
 func copySet(in map[string]struct{}) map[string]struct{} {
 	out := make(map[string]struct{}, len(in))
-	for k := range in {
-		out[k] = struct{}{}
-	}
+	maps.Copy(out, in)
 	return out
 }
 
