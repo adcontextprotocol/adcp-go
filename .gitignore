@@ -28,6 +28,7 @@ go.work.sum
 .env
 
 # Compiled binaries
+cmd/identity-agent/identity-agent
 cmd/router/router
 internal/generate/generate
 reference/context-agent/context-agent
