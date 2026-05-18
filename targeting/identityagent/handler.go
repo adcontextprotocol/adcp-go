@@ -99,11 +99,14 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// eligible packages, matching what callers see for any other fail-closed
 	// outcome. RequestID is preserved so the buyer can correlate.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		h.writeResponse(w, &tmproto.IdentityMatchResponse{
+		status := "timeout"
+		if !h.writeResponse(w, &tmproto.IdentityMatchResponse{
 			RequestID: req.RequestID,
 			TTLSec:    int(h.responseTTL.Seconds()),
-		})
-		h.recordCompletion(ctx, start, "timeout")
+		}) {
+			status = "write_error"
+		}
+		h.recordCompletion(ctx, start, status)
 		return
 	}
 
@@ -132,29 +135,38 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recorder.StageDuration(ctx, StageTMPX, time.Since(tmpxStart))
 	}
 
-	h.writeResponse(w, resp)
+	status := "ok"
+	if !h.writeResponse(w, resp) {
+		status = "write_error"
+	}
 	h.logger.Debug("identity match",
 		"request_id", req.RequestID,
 		"packages", len(req.PackageIDs),
 		"eligible", len(eligible),
 		"latency_ms", time.Since(start).Milliseconds())
-	h.recordCompletion(ctx, start, "ok")
+	h.recordCompletion(ctx, start, status)
 }
 
 // writeResponse marshals payload to JSON in one shot and writes it. Using
 // json.Marshal + w.Write avoids the json.Encoder allocation per request
 // that json.NewEncoder(w).Encode would incur on the hot path.
-func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.IdentityMatchResponse) {
+//
+// Returns true on success and false when either marshal or write failed —
+// the caller stamps this onto the request-completion metric so a write
+// failure shows up distinctly from "ok".
+func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.IdentityMatchResponse) bool {
 	w.Header().Set("Content-Type", "application/json")
 	body, err := json.Marshal(resp)
 	if err != nil {
 		h.logger.Warn("failed to marshal identity response", "request_id", resp.RequestID, "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		return
+		return false
 	}
 	if _, err := w.Write(body); err != nil {
 		h.logger.Warn("failed to write identity response", "request_id", resp.RequestID, "error", err)
+		return false
 	}
+	return true
 }
 
 func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, status int, code tmproto.ErrorCode, message string) {

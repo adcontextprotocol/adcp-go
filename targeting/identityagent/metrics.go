@@ -2,6 +2,7 @@ package identityagent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -30,10 +31,11 @@ const (
 
 // Outcome labels paired with stages. Bounded to a fixed set.
 const (
-	OutcomePass    = "pass"
-	OutcomeFail    = "fail"
-	OutcomeTimeout = "timeout"
-	OutcomeError   = "error"
+	OutcomePass     = "pass"
+	OutcomeFail     = "fail"
+	OutcomeTimeout  = "timeout"
+	OutcomeError    = "error"
+	OutcomeCanceled = "canceled"
 )
 
 // Recorder is the metric API the identity-agent hot path uses. The OTEL
@@ -47,6 +49,7 @@ type Recorder interface {
 	ConfigRefresh(ctx context.Context, outcome string)
 	ShutdownPanic(ctx context.Context)
 	HandlerPanic(ctx context.Context)
+	BackgroundPanic(ctx context.Context, where string)
 }
 
 // MetricsProvider wires together a Prometheus registry, an OTEL meter
@@ -69,12 +72,10 @@ func (m *MetricsProvider) Shutdown(ctx context.Context) error {
 	if m == nil || m.meterProvider == nil {
 		return nil
 	}
-	flushErr := m.meterProvider.ForceFlush(ctx)
-	shutdownErr := m.meterProvider.Shutdown(ctx)
-	if flushErr != nil {
-		return flushErr
-	}
-	return shutdownErr
+	return errors.Join(
+		m.meterProvider.ForceFlush(ctx),
+		m.meterProvider.Shutdown(ctx),
+	)
 }
 
 // Build constructs a MetricsProvider per the supplied config.
@@ -165,6 +166,7 @@ type otelRecorder struct {
 	configRefresh   metric.Int64Counter
 	shutdownPanic   metric.Int64Counter
 	handlerPanic    metric.Int64Counter
+	backgroundPanic metric.Int64Counter
 }
 
 var _ Recorder = (*otelRecorder)(nil)
@@ -210,6 +212,11 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 	if err != nil {
 		return nil, err
 	}
+	backgroundPanic, err := meter.Int64Counter(
+		fmt.Sprintf("%s_background_panic_total", namespace))
+	if err != nil {
+		return nil, err
+	}
 	return &otelRecorder{
 		requestStarted:  requestStarted,
 		requestDuration: requestDuration,
@@ -219,6 +226,7 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		configRefresh:   configRefresh,
 		shutdownPanic:   shutdownPanic,
 		handlerPanic:    handlerPanic,
+		backgroundPanic: backgroundPanic,
 	}, nil
 }
 
@@ -257,6 +265,10 @@ func (r *otelRecorder) HandlerPanic(ctx context.Context) {
 	r.handlerPanic.Add(ctx, 1)
 }
 
+func (r *otelRecorder) BackgroundPanic(ctx context.Context, where string) {
+	r.backgroundPanic.Add(ctx, 1, metric.WithAttributes(stringAttr("where", where)))
+}
+
 // noopRecorder is used when metrics are disabled or in tests. Every method
 // is a no-op.
 type noopRecorder struct{}
@@ -269,6 +281,7 @@ func (noopRecorder) StoreError(context.Context, string)                      {}
 func (noopRecorder) ConfigRefresh(context.Context, string)                   {}
 func (noopRecorder) ShutdownPanic(context.Context)                           {}
 func (noopRecorder) HandlerPanic(context.Context)                            {}
+func (noopRecorder) BackgroundPanic(context.Context, string)                 {}
 
 // targetingMetricsAdapter projects the agent's Recorder onto the
 // targeting.Metrics interface the IdentityEngine wants. The engine emits

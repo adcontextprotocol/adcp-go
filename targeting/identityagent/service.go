@@ -205,11 +205,14 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 	s.recorder.StageDuration(ctx, StageFCap, dur)
 
 	if err != nil {
-		outcome := OutcomeError
-		if errors.Is(err, context.DeadlineExceeded) {
-			outcome = OutcomeTimeout
+		outcome := stageErrorOutcome(err)
+		// Cancellation by the sibling stage is the intentional
+		// short-circuit; it's not a store error. Only count
+		// timeout/error against StoreError so the metric reflects real
+		// upstream failures.
+		if outcome != OutcomeCanceled {
+			s.recorder.StoreError(ctx, StageFCap)
 		}
-		s.recorder.StoreError(ctx, StageFCap)
 		s.recorder.StageOutcome(ctx, StageFCap, outcome)
 		return fcapResult{cappedByPkg: failClosedFcap(pkgIDs), outcome: outcome, duration: dur}
 	}
@@ -229,6 +232,22 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 	}
 	s.recorder.StageOutcome(ctx, StageFCap, outcome)
 	return fcapResult{cappedByPkg: capped, outcome: outcome, duration: dur}
+}
+
+// stageErrorOutcome categorises an error from a parallel stage into the
+// metric outcome label. Deadline exceeded means the stage's own sub-timeout
+// fired; Canceled means the sibling stage cancelled the shared parent ctx
+// after determining a final outcome (e.g. fcap saw every package capped
+// and short-circuited audience). Everything else is a real upstream error.
+func stageErrorOutcome(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return OutcomeTimeout
+	case errors.Is(err, context.Canceled):
+		return OutcomeCanceled
+	default:
+		return OutcomeError
+	}
 }
 
 func failClosedFcap(pkgIDs []string) map[string]bool {
@@ -278,11 +297,10 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 	s.recorder.StageDuration(ctx, StageAudience, dur)
 
 	if err != nil {
-		outcome := OutcomeError
-		if errors.Is(err, context.DeadlineExceeded) {
-			outcome = OutcomeTimeout
+		outcome := stageErrorOutcome(err)
+		if outcome != OutcomeCanceled {
+			s.recorder.StoreError(ctx, StageAudience)
 		}
-		s.recorder.StoreError(ctx, StageAudience)
 		s.recorder.StageOutcome(ctx, StageAudience, outcome)
 		return audienceResult{rejected: maps.Clone(pkgsWithSegments), outcome: outcome, duration: dur}
 	}

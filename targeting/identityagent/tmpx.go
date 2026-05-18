@@ -51,7 +51,12 @@ type tmpxRecipientResolver interface {
 //
 // runCtx governs the long-lived refresh goroutine; cancel it during
 // shutdown to drain.
-func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger) (*TMPXSealer, error) {
+//
+// The background refresh runs under safeGo: a panic inside the upstream
+// library is logged at ERROR and recorded on
+// recorder.BackgroundPanic("tmpx-jwks-refresh") rather than taking down
+// the process. recorder may be nil for callers without observability.
+func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -80,11 +85,11 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger) 
 	if _, ok := store.CurrentEncryptionRecipient(); !ok {
 		return nil, fmt.Errorf("TMPX JWKS at %s does not publish an adcp_use=tmpx-encrypt key", cfg.EncryptJWKSURL)
 	}
-	go func() {
+	safeGo(logger, recorder, "tmpx-jwks-refresh", func() {
 		if err := store.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Warn("TMPX JWKS Run terminated", "url", cfg.EncryptJWKSURL, "error", err)
+			logger.Error("TMPX JWKS Run terminated", "url", cfg.EncryptJWKSURL, "error", err)
 		}
-	}()
+	})
 	order, err := parseTmpxPriority(cfg.Priority)
 	if err != nil {
 		return nil, err

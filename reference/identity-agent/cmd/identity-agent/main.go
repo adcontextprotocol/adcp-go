@@ -95,7 +95,7 @@ func main() {
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	defer bgCancel()
-	keystore, ksErr := identityagent.BuildKeyStore(bgCtx, regURL, requireSig, slog.Default())
+	keystore, ksErr := identityagent.BuildKeyStore(bgCtx, regURL, requireSig, slog.Default(), nil)
 	if ksErr != nil {
 		slog.Error("keystore init failed", "error", ksErr)
 		os.Exit(1)
@@ -118,7 +118,7 @@ func main() {
 		Country:          resolveString(*tmpxCountry, flagSet["tmpx-country"], "TMP_IDENTITY_TMPX_COUNTRY"),
 		Priority:         resolveString(*tmpxPriority, flagSet["tmpx-priority"], "TMP_IDENTITY_TMPX_PRIORITY"),
 		ReferenceStubAck: ack == "1" || ack == "true",
-	}, slog.Default())
+	}, slog.Default(), nil)
 	if err != nil {
 		slog.Error("tmpx config load failed", "error", err)
 		os.Exit(1)

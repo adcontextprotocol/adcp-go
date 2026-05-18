@@ -169,22 +169,22 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	// Channel buffered for both servers so neither goroutine blocks when
 	// the other has already pushed a fatal error.
 	serverErr := make(chan error, 2)
-	go func() {
+	safeGo(logger, metricsProvider.Recorder, "http-server", func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
-	}()
+	})
 	if adminSrv != nil {
-		go func() {
-			// The admin listener is not connection-capped: it serves
-			// observability traffic from a small set of known peers
-			// (kubelet, Prometheus scraper) and shares its timeouts with
-			// the main server. A noisy scrape pattern shouldn't be able
-			// to starve identity traffic of FDs.
+		// The admin listener is not connection-capped: it serves
+		// observability traffic from a small set of known peers
+		// (kubelet, Prometheus scraper) and shares its timeouts with
+		// the main server. A noisy scrape pattern shouldn't be able
+		// to starve identity traffic of FDs.
+		safeGo(logger, metricsProvider.Recorder, "admin-http-server", func() {
 			if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				serverErr <- err
 			}
-		}()
+		})
 	}
 
 	running.Store(true)
@@ -194,14 +194,14 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		"version", version,
 	)
 
+	var startupErr error
 	select {
 	case sig := <-quit:
 		logger.Info("shutting down", "signal", sig.String())
 	case err := <-serverErr:
 		if err != nil {
-			logger.Error("server failed to start", "error", err)
-			bundle.cancelBackground()
-			return err
+			logger.Error("server returned with error", "error", err)
+			startupErr = err
 		}
 	case <-ctx.Done():
 		logger.Info("shutting down", "reason", ctx.Err().Error())
@@ -221,12 +221,30 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	if err := registry.cancel(shutdownCtx); err != nil {
-		logger.Error("shutdown tasks finished with errors", "err", err)
-		return err
+	shutdownErr := registry.cancel(shutdownCtx)
+	if shutdownErr != nil {
+		logger.Error("shutdown tasks finished with errors", "err", shutdownErr)
 	}
-	logger.Info("shutdown complete")
-	return nil
+
+	// Drain any late errors from the server goroutines. A non-ErrServerClosed
+	// return from Serve/ListenAndServe after shutdown is a diagnostic we'd
+	// otherwise lose to a dead channel.
+	for {
+		select {
+		case err, ok := <-serverErr:
+			if ok && err != nil {
+				logger.Error("server goroutine returned with error during shutdown", "error", err)
+			}
+			if !ok {
+				return errors.Join(startupErr, shutdownErr)
+			}
+		default:
+			if startupErr == nil && shutdownErr == nil {
+				logger.Info("shutdown complete")
+			}
+			return errors.Join(startupErr, shutdownErr)
+		}
+	}
 }
 
 // bundle holds the constructed dependencies passed between Run and the
@@ -250,14 +268,31 @@ type bundle struct {
 func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (b *bundle, retErr error) {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 
-	var rollback []func()
-	addRollback := func(fn func()) { rollback = append(rollback, fn) }
+	type rollbackStep struct {
+		name string
+		fn   func() error
+	}
+	var rollback []rollbackStep
+	addRollback := func(name string, fn func() error) {
+		rollback = append(rollback, rollbackStep{name: name, fn: fn})
+	}
 	defer func() {
 		if retErr == nil {
 			return
 		}
 		for i := len(rollback) - 1; i >= 0; i-- {
-			rollback[i]()
+			step := rollback[i]
+			func() {
+				defer func() {
+					if rec := recover(); rec != nil {
+						logger.Error("rollback step panicked",
+							"step", step.name, "panic", fmt.Sprintf("%v", rec))
+					}
+				}()
+				if err := step.fn(); err != nil {
+					logger.Warn("rollback step error", "step", step.name, "error", err)
+				}
+			}()
 		}
 		cancelBg()
 	}()
@@ -277,14 +312,14 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	if err := configSvc.Start(ctx); err != nil {
 		return nil, fmt.Errorf("identityconfig initial load: %w", err)
 	}
-	addRollback(configSvc.Stop)
+	addRollback("identity-config", func() error { configSvc.Stop(); return nil })
 
 	// Fcap valkey (required).
 	fcapStore, fcapCloser, err := redisstore.Build(ctx, cfg.FCapValkey.ToRedisStoreConfig())
 	if err != nil {
 		return nil, fmt.Errorf("fcap valkey: %w", err)
 	}
-	addRollback(func() { _ = fcapCloser.Close() })
+	addRollback("fcap-valkey", fcapCloser.Close)
 	fcapSvc := fcap.New(fcapStore)
 
 	// Audience valkey (optional).
@@ -297,7 +332,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		if err != nil {
 			return nil, fmt.Errorf("audience valkey: %w", err)
 		}
-		addRollback(func() { _ = closer.Close() })
+		addRollback("audience-valkey", closer.Close)
 		audienceSvc = audience.New(store)
 		audienceCloser = closer
 	}
@@ -320,12 +355,12 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("build service: %w", err)
 	}
 
-	keystore, err := BuildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger)
+	keystore, err := BuildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger, recorder)
 	if err != nil {
 		return nil, fmt.Errorf("keystore: %w", err)
 	}
 
-	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, logger)
+	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, logger, recorder)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}
