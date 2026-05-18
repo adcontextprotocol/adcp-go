@@ -131,6 +131,10 @@ type IdentityConfigSourceConfig struct {
 
 // ValkeyBlock is the per-backend Valkey configuration. Use ToRedisStoreConfig
 // to project onto the redisstore.Config the Build helper consumes.
+//
+// The identity-agent only issues read commands (HEXISTS) against Valkey;
+// fcap writes come from the frequency-writer and audience writes from a
+// separate audience-writer. WriteTimeout is intentionally not exposed.
 type ValkeyBlock struct {
 	Enabled bool
 
@@ -141,10 +145,9 @@ type ValkeyBlock struct {
 	DB       int
 	TLS      bool
 
-	DialTimeout  time.Duration
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	PoolSize     int
+	DialTimeout time.Duration
+	ReadTimeout time.Duration
+	PoolSize    int
 }
 
 // ToRedisStoreConfig projects onto the redisstore.Config the Build helper
@@ -152,16 +155,15 @@ type ValkeyBlock struct {
 // for gating the call (the identityagent.Config.Validate flow does this).
 func (b ValkeyBlock) ToRedisStoreConfig() redisstore.Config {
 	return redisstore.Config{
-		Mode:         redisstore.Mode(b.Mode),
-		Shards:       b.Shards,
-		Username:     b.Username,
-		Password:     b.Password,
-		DB:           b.DB,
-		TLS:          b.TLS,
-		DialTimeout:  b.DialTimeout,
-		ReadTimeout:  b.ReadTimeout,
-		WriteTimeout: b.WriteTimeout,
-		PoolSize:     b.PoolSize,
+		Mode:        redisstore.Mode(b.Mode),
+		Shards:      b.Shards,
+		Username:    b.Username,
+		Password:    b.Password,
+		DB:          b.DB,
+		TLS:         b.TLS,
+		DialTimeout: b.DialTimeout,
+		ReadTimeout: b.ReadTimeout,
+		PoolSize:    b.PoolSize,
 	}
 }
 
@@ -540,27 +542,22 @@ func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	write, err := lookupDuration(prefix+"_VALKEY_WRITE_TIMEOUT", 0)
-	if err != nil {
-		errs = append(errs, err)
-	}
 	pool, err := lookupInt(prefix+"_VALKEY_POOL_SIZE", 0)
 	if err != nil {
 		errs = append(errs, err)
 	}
 
 	return ValkeyBlock{
-		Enabled:      true,
-		Mode:         mode,
-		Shards:       shards,
-		Username:     os.Getenv(prefix + "_VALKEY_USERNAME"),
-		Password:     os.Getenv(prefix + "_VALKEY_PASSWORD"),
-		DB:           db,
-		TLS:          tls,
-		DialTimeout:  dial,
-		ReadTimeout:  read,
-		WriteTimeout: write,
-		PoolSize:     pool,
+		Enabled:     true,
+		Mode:        mode,
+		Shards:      shards,
+		Username:    os.Getenv(prefix + "_VALKEY_USERNAME"),
+		Password:    os.Getenv(prefix + "_VALKEY_PASSWORD"),
+		DB:          db,
+		TLS:         tls,
+		DialTimeout: dial,
+		ReadTimeout: read,
+		PoolSize:    pool,
 	}, errs
 }
 
