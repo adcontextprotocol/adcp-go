@@ -5,6 +5,7 @@ go 1.25
 use (
 	.
 	./bench
+	./cmd/identity-agent
 	./cmd/router
 	./e2e
 	./internal/generate

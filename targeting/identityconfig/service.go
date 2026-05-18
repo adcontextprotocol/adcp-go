@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -289,10 +290,7 @@ func (s *Service) loadAllWithRetry(ctx context.Context) error {
 func nextBackoff(current time.Duration, cfg RetryConfig) time.Duration {
 	switch cfg.Backoff {
 	case BackoffExponential:
-		next := current * 2
-		if next > cfg.Max {
-			next = cfg.Max
-		}
+		next := min(current*2, cfg.Max)
 		return next
 	case BackoffConstant:
 		fallthrough
@@ -369,9 +367,7 @@ func buildSnapshot(s Snapshot) *snapshotData {
 // keep working.
 func applyDelta(current *snapshotData, delta Delta) *snapshotData {
 	newByKey := make(map[Key]*targeting.SegmentRule, len(current.byKey)+len(delta.Upserted))
-	for k, v := range current.byKey {
-		newByKey[k] = v
-	}
+	maps.Copy(newByKey, current.byKey)
 	for _, e := range delta.Upserted {
 		newByKey[e.Key] = e.TargetSegments
 	}

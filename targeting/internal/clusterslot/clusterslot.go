@@ -50,7 +50,7 @@ func NewShardMap(numShards int) *ShardMap {
 	slotsPerNode := float64(Total) / float64(numShards)
 	cursor := 0.0
 	first := 0
-	for i := 0; i < numShards; i++ {
+	for i := range numShards {
 		end := int(math.Round(cursor + slotsPerNode - 1))
 		if end > Total-1 || i == numShards-1 {
 			end = Total - 1

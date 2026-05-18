@@ -121,21 +121,21 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 	suppressionStart := time.Now()
 	suppressed, err := e.isPropertySuppressed(ctx, rid)
 	if err != nil {
-		e.metrics.StoreError(StageSuppression, err)
+		e.metrics.StoreError(ctx, StageSuppression, err)
 	} else if suppressed {
-		e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
+		e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
 	if country, _ := req.Geo["country"].(string); country != "" {
 		geoSuppressed, err := e.isGeoSuppressed(ctx, country)
 		if err != nil {
-			e.metrics.StoreError(StageSuppression, err)
+			e.metrics.StoreError(ctx, StageSuppression, err)
 		} else if geoSuppressed {
-			e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
+			e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 			return &ContextResult{RequestID: req.RequestID}, nil
 		}
 	}
-	e.metrics.Latency(StageSuppression, time.Since(suppressionStart))
+	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
 	artifactRefs := extractArtifactRefURLs(req)
 
@@ -144,7 +144,7 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 		var err error
 		dynCtxConfigs, err = batchLoadPackageContextConfigs(ctx, e.store, req.PackageIDs)
 		if err != nil {
-			e.metrics.StoreError("load_context_configs", err)
+			e.metrics.StoreError(ctx, "load_context_configs", err)
 			dynCtxConfigs = make(map[string]*PackageContextConfig)
 		}
 	}
@@ -185,20 +185,20 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 		}
 
 		if propertyBitmap != nil && !propertyBitmap.Contains(rid) {
-			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(ctx, StagePropertyBitmap, false)
 			continue
 		}
 		if !e.properties.ContainsPackage(pkgID, rid) {
-			e.metrics.ContextEvaluated(StagePropertyBitmap, false)
+			e.metrics.ContextEvaluated(ctx, StagePropertyBitmap, false)
 			continue
 		}
 
 		if urlBlocklist || urlAllowlist {
 			blocked, err := e.checkURLFilter(ctx, artifactRefs, pkgID, PackageConfig{URLBlocklist: urlBlocklist, URLAllowlist: urlAllowlist})
 			if err != nil {
-				e.metrics.StoreError(StageURLFilter, err)
+				e.metrics.StoreError(ctx, StageURLFilter, err)
 			} else if blocked {
-				e.metrics.ContextEvaluated(StageURLFilter, false)
+				e.metrics.ContextEvaluated(ctx, StageURLFilter, false)
 				continue
 			}
 		}
@@ -206,19 +206,19 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 		if topicTargets {
 			matched, err := e.checkTopicMatch(ctx, artifactRefs, pkgID)
 			if err != nil {
-				e.metrics.StoreError(StageTopicMatch, err)
+				e.metrics.StoreError(ctx, StageTopicMatch, err)
 			} else if !matched {
-				e.metrics.ContextEvaluated(StageTopicMatch, false)
+				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated("", true)
+		e.metrics.ContextEvaluated(ctx, "", true)
 		offers = append(offers, pkgOffers...)
 		segments = append(segments, emitSegments...)
 	}
 
-	e.metrics.Latency("context_eval", time.Since(evalStart))
+	e.metrics.Latency(ctx, "context_eval", time.Since(evalStart))
 
 	result := &ContextResult{
 		RequestID: req.RequestID,
@@ -243,7 +243,7 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 
 	suppressed, err := e.isPropertySuppressed(ctx, rid)
 	if err != nil {
-		e.metrics.StoreError(StageSuppression, err)
+		e.metrics.StoreError(ctx, StageSuppression, err)
 	} else if suppressed {
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
@@ -256,7 +256,7 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 	for _, artifact := range artifactRefs {
 		topics, err := e.store.SetMembers(ctx, "topics:artifact:"+artifact)
 		if err != nil {
-			e.metrics.StoreError(StageTopicMatch, err)
+			e.metrics.StoreError(ctx, StageTopicMatch, err)
 		} else {
 			artifactTopics = append(artifactTopics, topics...)
 		}
@@ -280,18 +280,18 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 
 		if propertyCandidates != nil {
 			if _, ok := propertyCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(StagePropertyBitmap, false)
+				e.metrics.ContextEvaluated(ctx, StagePropertyBitmap, false)
 				continue
 			}
 		}
 
 		if cfg.TopicTargets && len(artifactRefs) > 0 {
 			if len(topicCandidates) == 0 {
-				e.metrics.ContextEvaluated(StageTopicMatch, false)
+				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
 				continue
 			}
 			if _, ok := topicCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(StageTopicMatch, false)
+				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
 				continue
 			}
 		}
@@ -304,7 +304,7 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 			}
 		}
 		if blocked {
-			e.metrics.ContextEvaluated(StageURLFilter, false)
+			e.metrics.ContextEvaluated(ctx, StageURLFilter, false)
 			continue
 		}
 
@@ -317,17 +317,17 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 				}
 			}
 			if !allowed {
-				e.metrics.ContextEvaluated(StageURLFilter, false)
+				e.metrics.ContextEvaluated(ctx, StageURLFilter, false)
 				continue
 			}
 		}
 
-		e.metrics.ContextEvaluated("", true)
+		e.metrics.ContextEvaluated(ctx, "", true)
 		offers = append(offers, buildOffersFromDynamic(pkgID, cfg)...)
 		segments = append(segments, cfg.EmitSegments...)
 	}
 
-	e.metrics.Latency("context_eval", time.Since(evalStart))
+	e.metrics.Latency(ctx, "context_eval", time.Since(evalStart))
 
 	result := &ContextResult{
 		RequestID: req.RequestID,
@@ -366,14 +366,14 @@ func (e *IdentityEngine) EvaluateIdentityResolved(ctx context.Context, resolved 
 		if idCfg != nil && !idCfg.TargetSegments.IsEmpty() {
 			if e.audience == nil || !idCfg.TargetSegments.Matches(userSegments) {
 				eligible = false
-				e.metrics.IdentityEvaluated(StageAudience, false)
+				e.metrics.IdentityEvaluated(ctx, StageAudience, false)
 			}
 		}
 
 		eligibility = append(eligibility, tmproto.PackageEligibility{PackageID: pkgID, Eligible: eligible})
 	}
 
-	e.metrics.Latency("identity_eval", time.Since(evalStart))
+	e.metrics.Latency(ctx, "identity_eval", time.Since(evalStart))
 
 	return &IdentityResult{
 		RequestID:   req.RequestID,
@@ -400,7 +400,7 @@ func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []U
 	}
 	results, err := e.audience.IsMemberBatch(ctx, lookups)
 	if err != nil {
-		e.metrics.StoreError("load_user_audiences", err)
+		e.metrics.StoreError(ctx, "load_user_audiences", err)
 		results = make([]bool, len(lookups))
 	}
 	matched := make(map[string]struct{})

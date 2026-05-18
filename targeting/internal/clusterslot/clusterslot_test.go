@@ -71,7 +71,7 @@ func TestShardMap_SingleShardAbsorbsEverything(t *testing.T) {
 func TestShardMap_ShardInRange(t *testing.T) {
 	for _, n := range []int{1, 2, 3, 4, 5, 8} {
 		m := NewShardMap(n)
-		for s := 0; s < Total; s++ {
+		for s := range Total {
 			got := lookup(m, s)
 			require.Truef(t, got >= 0 && got < n, "n=%d slot=%d returned shard %d", n, s, got)
 		}

@@ -145,7 +145,6 @@ func (s *Store) fanOut(ctx context.Context, byGroup map[int][]int, fn func(ctx c
 	)
 	wg.Add(len(byGroup))
 	for g, idxs := range byGroup {
-		g, idxs := g, idxs
 		go func() {
 			defer wg.Done()
 			if err := fn(derived, g, idxs); err != nil {

@@ -2,6 +2,7 @@ package fcap
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
@@ -92,6 +93,81 @@ func (s *Service) RecordCapBatch(ctx context.Context, batches []CapBatch) error 
 // IsCapped reports whether the (userIdentity, field) tuple is currently capped.
 func (s *Service) IsCapped(ctx context.Context, userIdentity string, field Field) (bool, error) {
 	return s.store.FieldExists(ctx, identityKey(userIdentity), fieldString(field))
+}
+
+// IsCappedAny reports, per field, whether AT LEAST ONE of the supplied user
+// identities is currently capped on that field. The result has length
+// len(fields); cappedByField[i] corresponds to fields[i].
+//
+// Designed for the per-request hot path: identities × fields are sent as a
+// single pipelined batch to the store, with the scratch buffer carrying the
+// cross-product retrieved from a sync.Pool so the per-request allocation
+// scales with the result slice (one per call) rather than N×M.
+//
+// Both input slices are read-only and must not be retained past return.
+// Empty identities or empty fields returns (nil, nil) without touching the
+// store.
+//
+// Goroutine-safe: each invocation uses its own scratch buffer and shares no
+// state with concurrent callers. The store call inherits the supplied ctx
+// and routes through the configured topology — cluster/shadow distribution
+// is unchanged from IsCappedBatch.
+func (s *Service) IsCappedAny(ctx context.Context, identities []string, fields []Field) ([]bool, error) {
+	if len(identities) == 0 || len(fields) == 0 {
+		return nil, nil
+	}
+	need := len(identities) * len(fields)
+
+	bufPtr := fieldLookupBufPool.Get().(*[]FieldLookup)
+	buf := *bufPtr
+	if cap(buf) < need {
+		buf = make([]FieldLookup, need)
+	} else {
+		buf = buf[:need]
+	}
+	defer func() {
+		// Clear references so pooled buffers don't pin string heap.
+		for i := range buf {
+			buf[i] = FieldLookup{}
+		}
+		*bufPtr = buf[:0]
+		fieldLookupBufPool.Put(bufPtr)
+	}()
+
+	for i, id := range identities {
+		key := identityKey(id)
+		base := i * len(fields)
+		for j, f := range fields {
+			buf[base+j] = FieldLookup{Key: key, Field: fieldString(f)}
+		}
+	}
+
+	results, err := s.store.FieldExistsBatch(ctx, buf)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]bool, len(fields))
+	for i := range identities {
+		base := i * len(fields)
+		for j := range fields {
+			if results[base+j] {
+				out[j] = true
+			}
+		}
+	}
+	return out, nil
+}
+
+// fieldLookupBufPool reuses []FieldLookup scratch buffers across IsCappedAny
+// calls. Pool entries are *[]FieldLookup so Get/Put avoid boxing the slice
+// header into an interface{}. The Reset behavior clears each entry before
+// returning a buffer to the pool so pooled storage doesn't pin string heap.
+var fieldLookupBufPool = sync.Pool{
+	New: func() any {
+		s := make([]FieldLookup, 0, 64)
+		return &s
+	},
 }
 
 // IsCappedBatch reports cap state for many (user, field) tuples. The result

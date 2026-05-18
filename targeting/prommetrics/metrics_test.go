@@ -14,14 +14,15 @@ import (
 
 func TestMetricsInterface(t *testing.T) {
 	m := New()
+	ctx := t.Context()
 
-	m.ContextEvaluated("property_bitmap", true)
-	m.ContextEvaluated("property_bitmap", false)
-	m.ContextEvaluated("topic_match", true)
-	m.IdentityEvaluated("audience", false)
-	m.StoreError("suppression", errors.New("timeout"))
-	m.Latency("property_bitmap", 50*time.Microsecond)
-	m.Latency("property_bitmap", 100*time.Microsecond)
+	m.ContextEvaluated(ctx, "property_bitmap", true)
+	m.ContextEvaluated(ctx, "property_bitmap", false)
+	m.ContextEvaluated(ctx, "topic_match", true)
+	m.IdentityEvaluated(ctx, "audience", false)
+	m.StoreError(ctx, "suppression", errors.New("timeout"))
+	m.Latency(ctx, "property_bitmap", 50*time.Microsecond)
+	m.Latency(ctx, "property_bitmap", 100*time.Microsecond)
 
 	rec := httptest.NewRecorder()
 	m.Registry.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
@@ -87,12 +88,13 @@ func TestGaugeSet_Overwrite(t *testing.T) {
 
 func TestConcurrentAccess(t *testing.T) {
 	m := New()
+	ctx := t.Context()
 	done := make(chan struct{})
 	for range 10 {
 		go func() {
 			for range 1000 {
-				m.ContextEvaluated("bitmap", true)
-				m.Latency("bitmap", time.Microsecond)
+				m.ContextEvaluated(ctx, "bitmap", true)
+				m.Latency(ctx, "bitmap", time.Microsecond)
 			}
 			done <- struct{}{}
 		}()

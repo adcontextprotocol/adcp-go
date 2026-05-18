@@ -269,10 +269,10 @@ func TestService_StopIsIdempotent(t *testing.T) {
 // retryingSource keeps LoadAll failing until released — used to exercise
 // Stop racing against a long retry-mode initial load.
 type retryingSource struct {
-	mu         sync.Mutex
-	failing    bool
-	calls      atomic.Int64
-	loadDelay  time.Duration
+	mu        sync.Mutex
+	failing   bool
+	calls     atomic.Int64
+	loadDelay time.Duration
 }
 
 func (r *retryingSource) LoadAll(ctx context.Context) (Snapshot, error) {
@@ -452,9 +452,7 @@ func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	for range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for {
 				select {
 				case <-stop:
@@ -466,7 +464,7 @@ func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 				_ = svc.GetBySeller("seller")
 				_ = svc.LastUpdatedAt()
 			}
-		}()
+		})
 	}
 	time.Sleep(150 * time.Millisecond)
 	close(stop)
