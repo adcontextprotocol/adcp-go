@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
@@ -39,7 +40,7 @@ type Config struct {
 	ShutdownGrace   time.Duration
 	ShutdownTimeout time.Duration
 
-	// RequestBodyLimitBytes is the maximum POST /tmp/identity body size in
+	// RequestBodyLimitBytes is the maximum POST /identity body size in
 	// bytes. Anything larger is rejected at decode time.
 	RequestBodyLimitBytes int
 
@@ -71,13 +72,20 @@ type Config struct {
 	AccessLogEnabled bool
 
 	// AdminPort, when > 0, moves /metrics, /live, and /debug/pprof onto a
-	// second HTTP listener on that port. /tmp/identity and /health stay on
-	// HTTPPort — /health is part of the TMP protocol surface that publisher
-	// routers probe externally, so it MUST share the listener serving
-	// /tmp/identity. When 0 (default) all endpoints share HTTPPort.
-	// Splitting lets ops apply different network policies to observability
-	// vs the public attack surface.
+	// second HTTP listener on that port. /identity and /health stay on
+	// HTTPPort — both are part of the TMP protocol surface that publisher
+	// routers probe externally, so they MUST share the listener serving
+	// /identity. When 0 (default) all endpoints share HTTPPort. Splitting
+	// lets ops apply different network policies to observability vs the
+	// public attack surface.
 	AdminPort int
+
+	// SupportedADCPMajorVersions enumerates the AdCP major versions this
+	// agent accepts on inbound `adcp_major_version`. Requests carrying an
+	// unsupported value are rejected with HTTP 400. Empty means "accept any
+	// value" — but Validate rejects empty, so deployments must declare
+	// support explicitly.
+	SupportedADCPMajorVersions []int
 
 	LogLevel string
 
@@ -93,20 +101,20 @@ type Config struct {
 	Pprof   PprofConfig
 }
 
-// TMPConfig drives TMP signature verification on /tmp/identity.
+// TMPConfig drives TMP signature verification on /identity.
 type TMPConfig struct {
-	RegistryURL     string
-	OwnEndpointURL  string
-	AllowUnsigned   bool
+	RegistryURL    string
+	OwnEndpointURL string
+	AllowUnsigned  bool
 }
 
 // TMPXConfig drives TMPX response sealing. Disabled when EncryptJWKSURL is
 // empty.
 type TMPXConfig struct {
-	EncryptJWKSURL  string
-	EncryptJWKSTTL  time.Duration
-	Country         string
-	Priority        string
+	EncryptJWKSURL   string
+	EncryptJWKSTTL   time.Duration
+	Country          string
+	Priority         string
 	ReferenceStubAck bool
 }
 
@@ -117,7 +125,7 @@ type TMPXConfig struct {
 //   - "retry"       (default) — block startup retrying until StartRetryDeadline
 //   - "fail-fast"             — exit on the first failure
 //   - "best-effort"           — start with an empty snapshot; rely on the
-//                               normal refresh tick to populate
+//     normal refresh tick to populate
 //
 // StartRetryDeadline bounds the StartMode=retry retry loop. Ignored for
 // the other modes. A pod whose config source is down for longer than this
@@ -186,30 +194,35 @@ const (
 	// 40ms per-request internal budget. The four HTTP server timeouts below
 	// are outer slow-client absorbing bounds; tightened from the values used
 	// when the listener didn't have a per-request timeout above it.
-	defaultRequestTimeout         = 40 * time.Millisecond
-	defaultHTTPReadHeaderTimeout  = 200 * time.Millisecond
-	defaultHTTPReadTimeout        = 500 * time.Millisecond
-	defaultHTTPWriteTimeout       = 1 * time.Second
-	defaultHTTPIdleTimeout        = 30 * time.Second
-	defaultShutdownGrace          = 1 * time.Second
-	defaultShutdownTimeout        = 10 * time.Second
-	defaultRequestBodyLimitBytes  = 64 * 1024
-	defaultMaxHeaderBytes         = 8 * 1024
-	defaultMaxOpenConnections     = 1024
-	defaultResponseTTL            = 60 * time.Second
-	defaultStrictContentType      = true
-	defaultAccessLogEnabled       = false
-	defaultAdminPort              = 0
-	defaultLogLevel               = "info"
-	defaultJWKSTTL                = 5 * time.Minute
-	defaultConfigTimeout          = 30 * time.Second
-	defaultRefreshInterval        = 5 * time.Minute
-	defaultStartMode              = "retry"
-	defaultStartRetryDeadline     = 5 * time.Minute
-	defaultAudienceTimeout        = 10 * time.Millisecond
-	defaultFCapTimeout            = 10 * time.Millisecond
-	defaultNamespace              = "identity_agent"
+	defaultRequestTimeout        = 40 * time.Millisecond
+	defaultHTTPReadHeaderTimeout = 200 * time.Millisecond
+	defaultHTTPReadTimeout       = 500 * time.Millisecond
+	defaultHTTPWriteTimeout      = 1 * time.Second
+	defaultHTTPIdleTimeout       = 30 * time.Second
+	defaultShutdownGrace         = 1 * time.Second
+	defaultShutdownTimeout       = 10 * time.Second
+	defaultRequestBodyLimitBytes = 64 * 1024
+	defaultMaxHeaderBytes        = 8 * 1024
+	defaultMaxOpenConnections    = 1024
+	defaultResponseTTL           = 60 * time.Second
+	defaultStrictContentType     = true
+	defaultAccessLogEnabled      = false
+	defaultAdminPort             = 0
+	defaultLogLevel              = "info"
+	defaultJWKSTTL               = 5 * time.Minute
+	defaultConfigTimeout         = 30 * time.Second
+	defaultRefreshInterval       = 5 * time.Minute
+	defaultStartMode             = "retry"
+	defaultStartRetryDeadline    = 5 * time.Minute
+	defaultAudienceTimeout       = 10 * time.Millisecond
+	defaultFCapTimeout           = 10 * time.Millisecond
+	defaultNamespace             = "identity_agent"
 )
+
+// defaultSupportedADCPMajorVersions is the AdCP major-version set the agent
+// accepts when SUPPORTED_ADCP_MAJOR_VERSIONS is unset. Tracks the latest
+// stable major surface.
+var defaultSupportedADCPMajorVersions = []int{3}
 
 // Valid CONFIG_START_MODE values. Exported so callers and tests can refer
 // to them by name rather than literal strings.
@@ -326,6 +339,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	supportedVersions, err := lookupIntList("SUPPORTED_ADCP_MAJOR_VERSIONS", defaultSupportedADCPMajorVersions)
+	if err != nil {
+		errs = append(errs, err)
+	}
 
 	audienceBlock, blockErrs := loadValkeyBlock("AUDIENCE")
 	errs = append(errs, blockErrs...)
@@ -333,22 +350,23 @@ func LoadConfigFromEnv() (Config, error) {
 	errs = append(errs, blockErrs...)
 
 	cfg := Config{
-		HTTPPort:              port,
-		RequestTimeout:        reqTimeout,
-		HTTPReadHeaderTimeout: readHeaderTimeout,
-		HTTPReadTimeout:       readTimeout,
-		HTTPWriteTimeout:      writeTimeout,
-		HTTPIdleTimeout:       idleTimeout,
-		ShutdownGrace:         shutdownGrace,
-		ShutdownTimeout:       shutdownTimeout,
-		RequestBodyLimitBytes: bodyLimit,
-		MaxHeaderBytes:        maxHeader,
-		MaxOpenConnections:    maxConns,
-		ResponseTTL:           responseTTL,
-		StrictContentType:     strictCT,
-		AccessLogEnabled:      accessLog,
-		AdminPort:             adminPort,
-		LogLevel:              lookupString("LOG_LEVEL", defaultLogLevel),
+		HTTPPort:                   port,
+		RequestTimeout:             reqTimeout,
+		HTTPReadHeaderTimeout:      readHeaderTimeout,
+		HTTPReadTimeout:            readTimeout,
+		HTTPWriteTimeout:           writeTimeout,
+		HTTPIdleTimeout:            idleTimeout,
+		ShutdownGrace:              shutdownGrace,
+		ShutdownTimeout:            shutdownTimeout,
+		RequestBodyLimitBytes:      bodyLimit,
+		MaxHeaderBytes:             maxHeader,
+		MaxOpenConnections:         maxConns,
+		ResponseTTL:                responseTTL,
+		StrictContentType:          strictCT,
+		AccessLogEnabled:           accessLog,
+		AdminPort:                  adminPort,
+		SupportedADCPMajorVersions: supportedVersions,
+		LogLevel:                   lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
 			RegistryURL:    os.Getenv("TMP_REGISTRY_URL"),
 			OwnEndpointURL: os.Getenv("TMP_OWN_ENDPOINT_URL"),
@@ -446,6 +464,14 @@ func (c Config) Validate() error {
 	}
 	if c.ResponseTTL <= 0 {
 		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))
+	}
+	if len(c.SupportedADCPMajorVersions) == 0 {
+		errs = append(errs, errors.New("SUPPORTED_ADCP_MAJOR_VERSIONS must declare at least one major version"))
+	}
+	for _, v := range c.SupportedADCPMajorVersions {
+		if v < 1 || v > 99 {
+			errs = append(errs, fmt.Errorf("SUPPORTED_ADCP_MAJOR_VERSIONS entry %d is out of range [1,99]", v))
+		}
 	}
 	if c.AudienceTimeout <= 0 {
 		errs = append(errs, errors.New("AUDIENCE_TIMEOUT must be positive"))
@@ -606,6 +632,33 @@ func lookupDuration(name string, def time.Duration) (time.Duration, error) {
 	return d, nil
 }
 
+// lookupIntList parses a comma-separated list of integers from env. Returns
+// a copy of def when the variable is unset; the copy isolates callers from
+// later mutation of the default slice. Empty entries are rejected so a
+// trailing comma surfaces as a config error rather than a silent typo.
+func lookupIntList(name string, def []int) ([]int, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		out := make([]int, len(def))
+		copy(out, def)
+		return out, nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]int, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil, fmt.Errorf("%s=%q contains an empty entry", name, v)
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return nil, fmt.Errorf("%s=%q has non-integer entry %q: %w", name, v, p, err)
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
 // isValidPromName mirrors the Prometheus metric name grammar
 // ([a-zA-Z_][a-zA-Z0-9_]*) used for namespace prefixes.
 func isValidPromName(s string) bool {
@@ -624,4 +677,3 @@ func isValidPromName(s string) bool {
 	}
 	return true
 }
-

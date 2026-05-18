@@ -56,6 +56,7 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 
 func TestValidateIdentityRequest_Valid(t *testing.T) {
 	req := &tmproto.IdentityMatchRequest{
+		Type:           tmproto.TypeIdentityMatchRequest,
 		RequestID:      "id-001",
 		SellerAgentURL: "https://seller.example.com/agent",
 		Identities:     []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
@@ -247,6 +248,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "identity_match_request",
 		"request_id": "id-e2e",
 		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
@@ -355,6 +357,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "identity_match_request",
 		"request_id": "id-strip",
 		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test", "uid_type": "uid2"}],

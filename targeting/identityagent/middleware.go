@@ -60,6 +60,7 @@ func recoverMiddleware(next http.Handler, recorder Recorder, logger *slog.Logger
 // shape lets clients pattern-match without inspecting a stack trace.
 var panicResponseBody = func() []byte {
 	body, _ := json.Marshal(tmproto.ErrorResponse{
+		Type:    tmproto.TypeError,
 		Code:    tmproto.ErrorCodeInternalError,
 		Message: "handler panic",
 	})
@@ -97,11 +98,10 @@ func requestIDFromRequest(r *http.Request) string {
 	return r.Header.Get(requestIDHeader)
 }
 
-// contentTypeMiddleware rejects any /tmp/identity request whose
-// Content-Type is not application/json (case-insensitive, parameters
-// ignored) with 415 Unsupported Media Type. Pass strict=false to disable
-// the check for legacy callers — Config.StrictContentType controls this
-// at startup.
+// contentTypeMiddleware rejects any /identity request whose Content-Type is
+// not application/json (case-insensitive, parameters ignored) with 415
+// Unsupported Media Type. Pass strict=false to disable the check for legacy
+// callers — Config.StrictContentType controls this at startup.
 func contentTypeMiddleware(next http.Handler, strict bool) http.Handler {
 	if !strict {
 		return next
@@ -178,6 +178,7 @@ func writeJSONErrorResponse(w http.ResponseWriter, requestID string, status int,
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	body, err := json.Marshal(tmproto.ErrorResponse{
+		Type:      tmproto.TypeError,
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,

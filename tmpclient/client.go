@@ -80,10 +80,13 @@ func (c *Client) ContextMatch(ctx context.Context, req *tmproto.ContextMatchRequ
 }
 
 // IdentityMatch sends an identity match request to the router.
-// Populates RequestID if empty.
+// Populates RequestID and Type if empty.
 func (c *Client) IdentityMatch(ctx context.Context, req *tmproto.IdentityMatchRequest) (*tmproto.IdentityMatchResponse, error) {
 	if req.RequestID == "" {
 		req.RequestID = c.genRequestID()
+	}
+	if req.Type == "" {
+		req.Type = tmproto.TypeIdentityMatchRequest
 	}
 	if err := tmproto.ValidateIdentityRequest(req); err != nil {
 		return nil, fmt.Errorf("validate identity request: %w", err)
@@ -115,6 +118,7 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	}
 
 	idReq := &tmproto.IdentityMatchRequest{
+		Type:           tmproto.TypeIdentityMatchRequest,
 		RequestID:      idReqID,
 		SellerAgentURL: params.SellerAgentURL,
 		Identities: []tmproto.IdentityToken{

@@ -58,18 +58,19 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	}
 
 	identityHandler := NewIdentityHandler(IdentityHandlerConfig{
-		Service:          bundle.service,
-		TMPXSealer:       bundle.tmpx,
-		RequestTimeout:   cfg.RequestTimeout,
-		RequestBodyLimit: int64(cfg.RequestBodyLimitBytes),
-		ResponseTTL:      cfg.ResponseTTL,
-		Recorder:         metricsProvider.Recorder,
-		Logger:           logger,
+		Service:                    bundle.service,
+		TMPXSealer:                 bundle.tmpx,
+		RequestTimeout:             cfg.RequestTimeout,
+		RequestBodyLimit:           int64(cfg.RequestBodyLimitBytes),
+		ResponseTTL:                cfg.ResponseTTL,
+		SupportedADCPMajorVersions: cfg.SupportedADCPMajorVersions,
+		Recorder:                   metricsProvider.Recorder,
+		Logger:                     logger,
 	})
 
 	requireSig := !cfg.TMP.AllowUnsigned
 	if !requireSig {
-		logger.Warn("/tmp/identity accepts unsigned requests — TMP signing should be required in production")
+		logger.Warn("/identity accepts unsigned requests — TMP signing should be required in production")
 	}
 	if requireSig && cfg.TMP.OwnEndpointURL == "" {
 		return errors.New("TMP_OWN_ENDPOINT_URL is required when signature verification is enabled")

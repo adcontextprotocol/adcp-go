@@ -104,6 +104,7 @@ func TestRouter_SignsIdentityMatchPerProvider(t *testing.T) {
 	})
 
 	body := `{
+		"type":"identity_match_request",
 		"request_id":"id-sign",
 		"seller_agent_url":"https://seller.example.com/agent",
 		"identities":[{"user_token":"tok","uid_type":"uid2"}],

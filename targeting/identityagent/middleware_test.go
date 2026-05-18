@@ -21,7 +21,7 @@ func TestContentTypeMiddleware_RejectsNonJSON(t *testing.T) {
 	inner := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
 	h := contentTypeMiddleware(inner, true)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", strings.NewReader(""))
+	req := httptest.NewRequest(http.MethodPost, "/identity", strings.NewReader(""))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -36,7 +36,7 @@ func TestContentTypeMiddleware_AcceptsJSONWithCharset(t *testing.T) {
 	inner := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
 	h := contentTypeMiddleware(inner, true)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", strings.NewReader("{}"))
+	req := httptest.NewRequest(http.MethodPost, "/identity", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -50,7 +50,7 @@ func TestContentTypeMiddleware_DisabledIsPassThrough(t *testing.T) {
 	inner := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true })
 	h := contentTypeMiddleware(inner, false)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", strings.NewReader(""))
+	req := httptest.NewRequest(http.MethodPost, "/identity", strings.NewReader(""))
 	req.Header.Set("Content-Type", "text/plain")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -67,7 +67,7 @@ func TestRecoverMiddleware_TrapsPanic(t *testing.T) {
 	})
 	h := recoverMiddleware(inner, rec, logger)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", nil)
+	req := httptest.NewRequest(http.MethodPost, "/identity", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -93,7 +93,7 @@ func TestRequestIDMiddleware_EchoesHeader(t *testing.T) {
 	})
 	h := requestIDMiddleware(inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", nil)
+	req := httptest.NewRequest(http.MethodPost, "/identity", nil)
 	req.Header.Set("X-Request-ID", "abc-123")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -106,7 +106,7 @@ func TestRequestIDMiddleware_MissingHeaderNoEcho(t *testing.T) {
 	inner := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
 	h := requestIDMiddleware(inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", nil)
+	req := httptest.NewRequest(http.MethodPost, "/identity", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -119,7 +119,7 @@ func TestAccessLogMiddleware_Disabled(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) })
 	h := accessLogMiddleware(inner, false, logger)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", nil)
+	req := httptest.NewRequest(http.MethodPost, "/identity", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
@@ -135,7 +135,7 @@ func TestAccessLogMiddleware_EnabledEmitsOnce(t *testing.T) {
 	})
 	h := accessLogMiddleware(inner, true, logger)
 
-	req := httptest.NewRequest(http.MethodPost, "/tmp/identity", nil)
+	req := httptest.NewRequest(http.MethodPost, "/identity", nil)
 	req.Header.Set("X-Request-ID", "req-xyz")
 	rr := httptest.NewRecorder()
 	// The access log reads the request id from context, which is set by

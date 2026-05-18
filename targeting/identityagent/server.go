@@ -21,11 +21,11 @@ import (
 // listener bounds — the per-request 40ms budget is enforced inside the
 // identity handler via context.WithTimeout.
 //
-// /tmp/identity and /health always stay on Port — /health is part of the
-// TMP protocol surface that publisher routers probe externally, so it
-// MUST share the listener that serves /tmp/identity. When AdminPort > 0
-// the operator-facing endpoints (/live, /metrics, /debug/pprof) move
-// onto a second listener built by NewAdminServer.
+// /identity and /health always stay on Port — both are part of the TMP
+// protocol surface that publisher routers probe externally, so they MUST
+// share the listener exposed at the registered base URL. When AdminPort > 0
+// the operator-facing endpoints (/live, /metrics, /debug/pprof) move onto
+// a second listener built by NewAdminServer.
 type ServerConfig struct {
 	Port            int
 	IdentityHandler http.Handler
@@ -58,14 +58,14 @@ type ServerConfig struct {
 	Logger   *slog.Logger
 }
 
-// NewServer builds the *http.Server for /tmp/identity and /health. When
+// NewServer builds the *http.Server for /identity and /health. When
 // AdminPort == 0 the operator endpoints (/live, /metrics, /debug/pprof)
 // also mount on this server's mux. When AdminPort > 0 those are omitted
 // here and the caller wires NewAdminServer onto a second listener; /health
 // stays on the main mux unconditionally because it's part of the TMP
 // protocol surface that publisher routers probe externally.
 //
-// The handler chain on POST /tmp/identity reads outermost-to-innermost:
+// The handler chain on POST /identity reads outermost-to-innermost:
 //
 //	otelhttp.NewHandler                # extract inbound traceparent
 //	→ recoverMiddleware                # trap panics, record + log + 500
@@ -89,8 +89,8 @@ func NewServer(cfg ServerConfig) *http.Server {
 	identity = accessLogMiddleware(identity, cfg.AccessLogEnabled, cfg.Logger)
 	identity = requestIDMiddleware(identity)
 	identity = recoverMiddleware(identity, cfg.Recorder, cfg.Logger)
-	identity = otelhttp.NewHandler(identity, "POST /tmp/identity")
-	mux.Handle("POST /tmp/identity", identity)
+	identity = otelhttp.NewHandler(identity, "POST /identity")
+	mux.Handle("POST /identity", identity)
 
 	mountHealthEndpoint(mux, cfg.IsRunning)
 	if cfg.AdminPort == 0 {
