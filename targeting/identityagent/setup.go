@@ -40,7 +40,7 @@ const (
 // value but the function still returns.
 //
 // The supplied logger is used for structured event logs. version is stamped
-// into /live and /health responses.
+// into /live responses; /health intentionally omits it per the TMP spec.
 func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
@@ -58,18 +58,19 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	}
 
 	identityHandler := NewIdentityHandler(IdentityHandlerConfig{
-		Service:          bundle.service,
-		TMPXSealer:       bundle.tmpx,
-		RequestTimeout:   cfg.RequestTimeout,
-		RequestBodyLimit: int64(cfg.RequestBodyLimitBytes),
-		ResponseTTL:      cfg.ResponseTTL,
-		Recorder:         metricsProvider.Recorder,
-		Logger:           logger,
+		Service:                    bundle.service,
+		TMPXSealer:                 bundle.tmpx,
+		RequestTimeout:             cfg.RequestTimeout,
+		RequestBodyLimit:           int64(cfg.RequestBodyLimitBytes),
+		ResponseTTL:                cfg.ResponseTTL,
+		SupportedADCPMajorVersions: cfg.SupportedADCPMajorVersions,
+		Recorder:                   metricsProvider.Recorder,
+		Logger:                     logger,
 	})
 
 	requireSig := !cfg.TMP.AllowUnsigned
 	if !requireSig {
-		logger.Warn("/tmp/identity accepts unsigned requests — TMP signing should be required in production")
+		logger.Warn("/identity accepts unsigned requests — TMP signing should be required in production")
 	}
 	if requireSig && cfg.TMP.OwnEndpointURL == "" {
 		return errors.New("TMP_OWN_ENDPOINT_URL is required when signature verification is enabled")
@@ -103,7 +104,6 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		adminSrv = NewAdminServer(AdminServerConfig{
 			Port:              cfg.AdminPort,
 			Registry:          metricsProvider.Registry,
-			IsRunning:         running.Load,
 			Version:           version,
 			PprofEnabled:      cfg.Pprof.Enabled,
 			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,

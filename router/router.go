@@ -37,8 +37,8 @@ type Router struct {
 	// (e.g., for local dev). Production deployments MUST set a signer — the
 	// spec mandates Ed25519 request authentication on all router→provider
 	// fan-outs.
-	signer       *tmproto.Signer
-	contextSigs  *contextSignatureCache
+	signer      *tmproto.Signer
+	contextSigs *contextSignatureCache
 }
 
 // RouterOption configures a Router.
@@ -74,9 +74,9 @@ func WithFanOutMetrics(m FanOutMetrics) RouterOption {
 }
 
 // WithTMPSigner attaches an Ed25519 signer that the router uses to sign
-// every outbound /tmp/context and /tmp/identity request per the TMP
-// specification. Required for any deployment that talks to spec-conformant
-// providers. The router holds onto signer for the rest of its lifetime.
+// every outbound /context and /identity request per the TMP specification.
+// Required for any deployment that talks to spec-conformant providers. The
+// router holds onto signer for the rest of its lifetime.
 func WithTMPSigner(signer *tmproto.Signer) RouterOption {
 	return func(r *Router) { r.signer = signer }
 }
@@ -295,7 +295,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			sigHeaders := r.signContextHeaders(signed, p.Endpoint)
 
 			var cmResp tmproto.ContextMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/context", callBody, sigHeaders, &cmResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/context", callBody, sigHeaders, &cmResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -352,7 +352,7 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			var imResp tmproto.IdentityMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/tmp/identity", body, sigHeaders, &imResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/identity", body, sigHeaders, &imResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)
@@ -405,6 +405,7 @@ func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte,
 // mergeContextResponses combines offers and signals from multiple providers.
 func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchResponse) *tmproto.ContextMatchResponse {
 	merged := &tmproto.ContextMatchResponse{
+		Type:      tmproto.TypeContextMatchResponse,
 		RequestID: requestID,
 		Offers:    []tmproto.Offer{},
 	}
@@ -455,6 +456,7 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 	}
 
 	merged := &tmproto.IdentityMatchResponse{
+		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
 		TTLSec:             minTTL,
@@ -496,6 +498,7 @@ func (r *Router) writeError(w http.ResponseWriter, requestID string, code tmprot
 	}
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+		Type:      tmproto.TypeError,
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,

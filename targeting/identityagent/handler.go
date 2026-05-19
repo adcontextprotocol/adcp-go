@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// identityHandler is the http.Handler for POST /tmp/identity. It decodes an
+// identityHandler is the http.Handler for POST /identity. It decodes an
 // IdentityMatchRequest under a hard request-timeout budget, runs
 // Service.Evaluate, optionally seals a TMPX token, and writes the
 // IdentityMatchResponse. Budget overruns produce a 200 response with an
@@ -21,13 +22,14 @@ import (
 // The handler is wrapped by TMP signature verification at a higher layer
 // (see ServeMux assembly in server.go).
 type identityHandler struct {
-	service          *Service
-	tmpx             *TMPXSealer
-	requestTimeout   time.Duration
-	requestBodyLimit int64
-	responseTTL      time.Duration
-	recorder         Recorder
-	logger           *slog.Logger
+	service                    *Service
+	tmpx                       *TMPXSealer
+	requestTimeout             time.Duration
+	requestBodyLimit           int64
+	responseTTL                time.Duration
+	supportedADCPMajorVersions map[int]struct{}
+	recorder                   Recorder
+	logger                     *slog.Logger
 }
 
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
@@ -37,11 +39,17 @@ type IdentityHandlerConfig struct {
 	RequestTimeout   time.Duration
 	RequestBodyLimit int64
 	ResponseTTL      time.Duration
-	Recorder         Recorder
-	Logger           *slog.Logger
+	// SupportedADCPMajorVersions enumerates the AdCP major versions this
+	// agent will accept on inbound `adcp_major_version`. When the field is
+	// present on a request and not in this set, the handler rejects with
+	// HTTP 400 and ErrorCodeInvalidRequest. When the field is omitted, the
+	// seller assumes its highest supported version (per the TMP schema).
+	SupportedADCPMajorVersions []int
+	Recorder                   Recorder
+	Logger                     *slog.Logger
 }
 
-// NewIdentityHandler returns the http.Handler for POST /tmp/identity.
+// NewIdentityHandler returns the http.Handler for POST /identity.
 // Callers must supply positive RequestTimeout, RequestBodyLimit, and
 // ResponseTTL; the agent's Config.Validate enforces this at startup.
 func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
@@ -51,14 +59,19 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	supported := make(map[int]struct{}, len(cfg.SupportedADCPMajorVersions))
+	for _, v := range cfg.SupportedADCPMajorVersions {
+		supported[v] = struct{}{}
+	}
 	return &identityHandler{
-		service:          cfg.Service,
-		tmpx:             cfg.TMPXSealer,
-		requestTimeout:   cfg.RequestTimeout,
-		requestBodyLimit: cfg.RequestBodyLimit,
-		responseTTL:      cfg.ResponseTTL,
-		recorder:         cfg.Recorder,
-		logger:           cfg.Logger,
+		service:                    cfg.Service,
+		tmpx:                       cfg.TMPXSealer,
+		requestTimeout:             cfg.RequestTimeout,
+		requestBodyLimit:           cfg.RequestBodyLimit,
+		responseTTL:                cfg.ResponseTTL,
+		supportedADCPMajorVersions: supported,
+		recorder:                   cfg.Recorder,
+		logger:                     cfg.Logger,
 	}
 }
 
@@ -92,17 +105,32 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recordCompletion(ctx, start, "bad_request")
 		return
 	}
+	if req.AdcpMajorVersion != 0 {
+		if _, ok := h.supportedADCPMajorVersions[req.AdcpMajorVersion]; !ok {
+			// adcp/schemas/tmp/identity-match-request.json's description
+			// names VERSION_UNSUPPORTED here, but the error.json schema's
+			// `code` enum does not include it. Use invalid_request — the
+			// closest valid code — until the spec is internally
+			// consistent. The message preserves diagnostic detail.
+			h.writeError(w, req.RequestID, http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest,
+				fmt.Sprintf("adcp_major_version %d is not supported", req.AdcpMajorVersion))
+			h.recordCompletion(ctx, start, "bad_request")
+			return
+		}
+	}
 
 	result := h.service.Evaluate(ctx, &req)
 
-	// Fail closed on budget overrun: return the standard wire shape with no
-	// eligible packages, matching what callers see for any other fail-closed
-	// outcome. RequestID is preserved so the buyer can correlate.
+	// Fail closed on budget overrun: return the standard wire shape with an
+	// empty eligible-packages array, matching what callers see for any other
+	// fail-closed outcome. RequestID is preserved so the buyer can correlate.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		status := "timeout"
 		if !h.writeResponse(w, &tmproto.IdentityMatchResponse{
-			RequestID: req.RequestID,
-			TTLSec:    int(h.responseTTL.Seconds()),
+			Type:               tmproto.TypeIdentityMatchResponse,
+			RequestID:          req.RequestID,
+			EligiblePackageIDs: []string{},
+			TTLSec:             int(h.responseTTL.Seconds()),
 		}) {
 			status = "write_error"
 		}
@@ -118,6 +146,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := &tmproto.IdentityMatchResponse{
+		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          result.RequestID,
 		EligiblePackageIDs: eligible,
 		TTLSec:             int(h.responseTTL.Seconds()),
@@ -171,6 +200,7 @@ func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.Ide
 
 func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, status int, code tmproto.ErrorCode, message string) {
 	body, err := json.Marshal(tmproto.ErrorResponse{
+		Type:      tmproto.TypeError,
 		RequestID: requestID,
 		Code:      code,
 		Message:   message,

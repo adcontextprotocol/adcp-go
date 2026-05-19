@@ -6,6 +6,18 @@ import (
 	"strings"
 )
 
+// Message type discriminators required on every TMP envelope. The spec
+// instructs agents to reject requests whose `type` does not match the
+// endpoint, and to stamp the corresponding response type on outbound
+// payloads.
+const (
+	TypeContextMatchRequest   = "context_match_request"
+	TypeContextMatchResponse  = "context_match_response"
+	TypeIdentityMatchRequest  = "identity_match_request"
+	TypeIdentityMatchResponse = "identity_match_response"
+	TypeError                 = "error"
+)
+
 // Maximum sizes for request arrays to prevent denial-of-service.
 const (
 	MaxPackagesPerRequest     = 500
@@ -14,6 +26,21 @@ const (
 	// — matches the TMPX plaintext budget (~120 bytes after HPKE overhead).
 	MaxIdentitiesPerRequest = 3
 )
+
+// validUIDTypes is the closed set of identifier types the TMP schema allows
+// on identity-match identities. Drawn from /schemas/enums/uid-type.json.
+var validUIDTypes = map[UIDType]struct{}{
+	UIDTypeRampID:              {},
+	UIDTypeRampIDDerived:       {},
+	UIDTypeID5:                 {},
+	UIDTypeUID2:                {},
+	UIDTypeEUID:                {},
+	UIDTypePairID:              {},
+	UIDTypeMAID:                {},
+	UIDTypeHashedEmail:         {},
+	UIDTypePublisherFirstParty: {},
+	UIDTypeOther:               {},
+}
 
 // MaxIDLength caps identifier fields to prevent oversized store keys.
 const MaxIDLength = 256
@@ -37,8 +64,14 @@ func validateProtocolVersion(v string) error {
 	return errors.New("unsupported protocol_version")
 }
 
-// ValidateContextRequest checks that required fields are present on a context match request.
+// ValidateContextRequest checks that required fields are present on a
+// context match request and that the message-type discriminator matches the
+// endpoint per the TMP spec: a mismatched or missing `type` must be
+// rejected.
 func ValidateContextRequest(req *ContextMatchRequest) error {
+	if req.Type != TypeContextMatchRequest {
+		return fmt.Errorf("type must be %q", TypeContextMatchRequest)
+	}
 	if err := validateProtocolVersion(req.ProtocolVersion); err != nil {
 		return err
 	}
@@ -80,8 +113,13 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	return nil
 }
 
-// ValidateIdentityRequest checks that required fields are present on an identity match request.
+// ValidateIdentityRequest checks that required fields are present on an
+// identity match request and that the message-type discriminator matches the
+// endpoint per the TMP spec: a mismatched or missing `type` must be rejected.
 func ValidateIdentityRequest(req *IdentityMatchRequest) error {
+	if req.Type != TypeIdentityMatchRequest {
+		return fmt.Errorf("type must be %q", TypeIdentityMatchRequest)
+	}
 	if err := validateProtocolVersion(req.ProtocolVersion); err != nil {
 		return err
 	}
@@ -110,6 +148,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		if id.UIDType == "" {
 			return fmt.Errorf("identities[%d].uid_type is required", i)
 		}
+		if _, ok := validUIDTypes[id.UIDType]; !ok {
+			return fmt.Errorf("identities[%d].uid_type %q is not a recognized TMP identity type", i, id.UIDType)
+		}
 	}
 	if req.Country != "" {
 		req.Country = strings.ToUpper(req.Country)
@@ -127,4 +168,3 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	}
 	return nil
 }
-

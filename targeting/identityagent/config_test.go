@@ -11,23 +11,24 @@ import (
 func TestConfigValidate(t *testing.T) {
 	base := func() Config {
 		return Config{
-			HTTPPort:              8080,
-			RequestTimeout:        40 * time.Millisecond,
-			HTTPReadHeaderTimeout: 200 * time.Millisecond,
-			HTTPReadTimeout:       500 * time.Millisecond,
-			HTTPWriteTimeout:      1 * time.Second,
-			HTTPIdleTimeout:       30 * time.Second,
-			ShutdownGrace:         time.Second,
-			ShutdownTimeout:       10 * time.Second,
-			RequestBodyLimitBytes: 64 * 1024,
-			MaxHeaderBytes:        8 * 1024,
-			MaxOpenConnections:    1024,
-			ResponseTTL:           60 * time.Second,
-			StrictContentType:     true,
-			AccessLogEnabled:      false,
-			AdminPort:             0,
-			AudienceTimeout:       10 * time.Millisecond,
-			FCapTimeout:           10 * time.Millisecond,
+			HTTPPort:                   8080,
+			RequestTimeout:             40 * time.Millisecond,
+			HTTPReadHeaderTimeout:      200 * time.Millisecond,
+			HTTPReadTimeout:            500 * time.Millisecond,
+			HTTPWriteTimeout:           1 * time.Second,
+			HTTPIdleTimeout:            30 * time.Second,
+			ShutdownGrace:              time.Second,
+			ShutdownTimeout:            10 * time.Second,
+			RequestBodyLimitBytes:      64 * 1024,
+			MaxHeaderBytes:             8 * 1024,
+			MaxOpenConnections:         1024,
+			ResponseTTL:                60 * time.Second,
+			StrictContentType:          true,
+			AccessLogEnabled:           false,
+			AdminPort:                  0,
+			SupportedADCPMajorVersions: []int{3},
+			AudienceTimeout:            10 * time.Millisecond,
+			FCapTimeout:                10 * time.Millisecond,
 			IdentityConfig: IdentityConfigSourceConfig{
 				URL:                "https://config.example/",
 				Token:              "tok",
@@ -37,12 +38,12 @@ func TestConfigValidate(t *testing.T) {
 			},
 			TMP: TMPConfig{
 				RegistryURL:    "https://registry.example/snapshot",
-				OwnEndpointURL: "https://self.example/tmp/identity",
+				OwnEndpointURL: "https://self.example/identity",
 			},
 			FCapValkey: ValkeyBlock{
-				Enabled:  true,
-				Mode:     "standalone",
-				Shards:   map[string]string{"0": "h:1"},
+				Enabled: true,
+				Mode:    "standalone",
+				Shards:  map[string]string{"0": "h:1"},
 			},
 		}
 	}
@@ -239,6 +240,20 @@ func TestConfigValidate(t *testing.T) {
 				c.Metrics.Enabled = true
 				c.Metrics.Namespace = "identity_agent"
 			},
+		},
+		{
+			name:    "empty supported major versions",
+			mutate:  func(c *Config) { c.SupportedADCPMajorVersions = nil },
+			wantErr: "SUPPORTED_ADCP_MAJOR_VERSIONS",
+		},
+		{
+			name:    "supported major version out of range",
+			mutate:  func(c *Config) { c.SupportedADCPMajorVersions = []int{100} },
+			wantErr: "out of range",
+		},
+		{
+			name:   "multiple supported major versions ok",
+			mutate: func(c *Config) { c.SupportedADCPMajorVersions = []int{2, 3} },
 		},
 	}
 	for _, tc := range cases {

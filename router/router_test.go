@@ -29,6 +29,7 @@ func testRouter(providers []ProviderConfig) *Router {
 
 func TestValidateContextRequest_Valid(t *testing.T) {
 	req := &tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
 		RequestID:    "ctx-001",
 		PropertyID:   "pub-oakwood",
 		PropertyType: tmproto.PropertyTypeWebsite,
@@ -56,6 +57,7 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 
 func TestValidateIdentityRequest_Valid(t *testing.T) {
 	req := &tmproto.IdentityMatchRequest{
+		Type:           tmproto.TypeIdentityMatchRequest,
 		RequestID:      "id-001",
 		SellerAgentURL: "https://seller.example.com/agent",
 		Identities:     []tmproto.IdentityToken{{UserToken: "tok_abc", UIDType: tmproto.UIDTypeUID2}},
@@ -170,6 +172,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "context_match_request",
 		"request_id": "ctx-e2e",
 		"property_id": "pub-test",
 		"property_type": "website",
@@ -203,6 +206,7 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	})
 
 	cm := tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
 		RequestID:    "ctx-strip",
 		PropertyID:   "pub-test",
 		PropertyType: "website",
@@ -247,6 +251,7 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "identity_match_request",
 		"request_id": "id-e2e",
 		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
@@ -355,6 +360,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "identity_match_request",
 		"request_id": "id-strip",
 		"seller_agent_url": "https://seller.example.com/agent",
 		"identities": [{"user_token": "tok_test", "uid_type": "uid2"}],
@@ -421,6 +427,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	})
 
 	reqBody := `{
+		"type": "context_match_request",
 		"request_id": "ctx-timeout",
 		"property_id": "pub-test",
 		"property_type": "website",
