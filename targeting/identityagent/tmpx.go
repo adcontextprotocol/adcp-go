@@ -2,7 +2,6 @@ package identityagent
 
 import (
 	"context"
-	"crypto/sha512"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,18 +9,130 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// LiveRampSidecar is the interface NewTMPXSealer accepts for decoding
+// RampID identities. The production implementation lives in
+// targeting/internal/liveramp; the interface is declared here so tests can
+// supply a fake without spinning up an httptest server and without
+// importing the internal package.
+type LiveRampSidecar interface {
+	MappedID(ctx context.Context, env string) (string, error)
+}
+
+// Compile-time assertion: the production LiveRamp client satisfies
+// LiveRampSidecar. Lives next to the interface so a method-set drift fails
+// at the point of declaration rather than at the setup wire-up.
+var _ LiveRampSidecar = (*liveramp.Client)(nil)
+
+// TmpxTokenDecoder converts a user_token string supplied on an inbound
+// IdentityToken into the binary form TMPX packs into its encrypted
+// plaintext. Concrete implementations live in
+// targeting/internal/tmpxdecoders; the interface is declared here so tests
+// can supply fakes without taking a dependency on the internal package.
+//
+// Decode receives the request's context.Context so HTTP-backed decoders
+// (LiveRamp sidecar, identity graph lookups) can honor the caller's
+// deadline. Format-only decoders ignore it.
+//
+// Implementations must return exactly tmproto.TmpxTokenSize(typeID) bytes
+// for the UID type they are registered against; selectEntries validates the
+// length before adding the entry to the wire payload. A decoder may return
+// ErrDropIdentity to signal that the user_token was consumed but the
+// resulting identity should be omitted from the wire (LiveRamp miss is the
+// canonical example).
+type TmpxTokenDecoder interface {
+	Decode(ctx context.Context, userToken string) ([]byte, error)
+}
+
+// ErrDropIdentity is the sentinel a TmpxTokenDecoder returns to signal
+// "consumed the input, but produce no entry for this identity" — e.g. the
+// LiveRamp sidecar returned no mapping for a RampID. Decode treats it as
+// a silent drop, not an error.
+var ErrDropIdentity = tmpxdecoders.ErrDropFromSeal
+
+// DecodedIdentity is the per-request decode result for one inbound
+// IdentityToken. Both the TMPX seal path and the audience/fcap lookup
+// path consume this so identities are decoded exactly once per request
+// (a hot concern for LiveRamp-backed RampIDs that make a sidecar call)
+// and both paths see consistent drop decisions.
+//
+// Bytes is the canonical decoded form. A nil or zero-length slice means
+// the identity was dropped during decode (no mapped type, no decoder,
+// sentinel, transport error, size mismatch) — selectEntries and
+// audienceEligibleIdentities treat both the same and skip the entry.
+//
+// HasReal flags whether the decoder behind these bytes is a
+// buyer-decodable real implementation (MAID, HashedEmail,
+// RampID-with-LiveRamp) as opposed to a SHA-512 stub. Stub bytes still
+// ship to TMPX (preserving the legacy behavior gated on
+// TMPX_REFERENCE_STUB_ACK) but are excluded from audience/fcap lookups
+// where they would never match anything in the downstream store.
+//
+// The canonical predicate for "this identity is safe to use for non-TMPX
+// downstream lookups" is AudienceEligible — callers should use that
+// rather than checking HasReal or len(Bytes) on their own.
+type DecodedIdentity struct {
+	UIDType tmproto.UIDType
+	Bytes   []byte
+	HasReal bool
+}
+
+// AudienceEligible reports whether the decoded identity is safe to feed
+// into hash-keyed audience and frequency-cap lookups. True iff a real
+// (non-stub) decoder produced a non-empty byte slice. Splitting the
+// predicate into a method prevents future drift where one call site
+// checks only HasReal or only len(Bytes) and silently mishandles the
+// other case.
+func (d DecodedIdentity) AudienceEligible() bool {
+	return d.HasReal && len(d.Bytes) > 0
+}
+
+// audienceEligibleIdentities projects a decoded slice onto the
+// IdentityToken shape the audience and frequency-cap services expect.
+// Only identities passing AudienceEligible are emitted — stub-decoded
+// UID types (UID2/EUID/ID5/PairID/PublisherFirstParty until they get
+// real decoders) and missing-decoder types (RampID without LiveRamp
+// configured) are dropped silently so downstream Valkey lookups don't
+// waste round trips on keys the buyer master will never have populated.
+//
+// UserToken is set to string(Bytes) so identityhash.Hash hashes the
+// canonical decoded form — the same form the buyer master will key its
+// downstream stores on.
+func audienceEligibleIdentities(decoded []DecodedIdentity) []tmproto.IdentityToken {
+	out := make([]tmproto.IdentityToken, 0, len(decoded))
+	for _, d := range decoded {
+		if !d.AudienceEligible() {
+			continue
+		}
+		out = append(out, tmproto.IdentityToken{
+			UIDType:   d.UIDType,
+			UserToken: string(d.Bytes),
+		})
+	}
+	return out
+}
 
 // TMPXSealer holds the resolved TMPX recipient state used to seal tokens
 // alongside identity-match responses. Construct with NewTMPXSealer; call
 // Seal at request time to produce a per-request HPKE token.
 //
-// The string→binary conversion underlying Seal is the spec's reference
-// SHA-512 stub — tokens are NOT interoperable with any real buyer master.
-// Real deployments decode UID2/RampID/etc. according to the source graph's
-// encoding. NewTMPXSealer refuses to construct an instance unless the
-// caller has acknowledged this via TMPXConfig.ReferenceStubAck.
+// String→binary conversion is delegated to a per-UID-type registry of
+// TmpxTokenDecoders (default constructed by NewTMPXSealer from
+// targeting/internal/tmpxdecoders). MAID and HashedEmail have real
+// format-only decoders. UID2 / EUID / ID5 / PairID / PublisherFirstParty
+// remain on SHA-512-truncated stubs whose output is NOT interoperable with
+// any real buyer master. RampID and RampIDDerived are decoded via the
+// optional LiveRamp sidecar — when the sidecar is not configured those UID
+// types are silently dropped from the wire.
+//
+// NewTMPXSealer refuses to construct an instance unless the caller has
+// acknowledged the stubbed types via TMPXConfig.ReferenceStubAck, and emits
+// a warning at startup listing the UID types still on the stub and the
+// UID types that will be dropped.
 type TMPXSealer struct {
 	country  string
 	encStore tmpxRecipientResolver
@@ -33,6 +144,26 @@ type TMPXSealer struct {
 	// truncation is forbidden). When priority is empty, no truncation is
 	// performed and an over-budget token is reported as an error.
 	priority []tmproto.UIDType
+
+	// decoders maps each TMPX-encodable UID type to the adapter that
+	// converts user_token strings into the binary form TMPX expects.
+	// Missing entries are treated as silent drops by Decode — operators
+	// opt UID types in (RampID via LiveRamp) or out without failing the
+	// sealer.
+	decoders map[tmproto.UIDType]TmpxTokenDecoder
+
+	// realTypes flags the UID types whose decoder produces buyer-decodable
+	// canonical bytes (as opposed to a SHA-512 stub). Populated from
+	// tmpxdecoders.RealUIDTypes at construction; selectors that need to
+	// distinguish "decoded bytes safe for downstream join" from "stub
+	// bytes only safe for TMPX" consult this map.
+	realTypes map[tmproto.UIDType]bool
+
+	// logger and recorder are used by Decode to surface per-identity
+	// drop events. Both may be nil; helpers fall back to slog.Default() and
+	// a no-op recorder respectively.
+	logger   *slog.Logger
+	recorder Recorder
 }
 
 // tmpxRecipientResolver returns the buyer-cluster TMPX recipient at the
@@ -49,6 +180,18 @@ type tmpxRecipientResolver interface {
 // is partially set, the initial JWKS fetch fails, the JWKS publishes no
 // recipient key, or the caller has not acknowledged the SHA-512 stub.
 //
+// The decoder registry is intentionally allowed to be incomplete: any UID
+// type in uidToTmpxTypeID without a registered decoder is treated as a
+// silent drop at Seal time (this is how `LIVERAMP_SIDECAR_URL=""` ignores
+// RampID). selectEntries counts these drops via the `no_decoder` reason
+// on the TmpxIdentityDrop counter so operators can see them.
+//
+// lrClient is the optional LiveRamp sidecar used to decode RampID /
+// RampIDDerived identities. When nil, those UID types have no decoder
+// registered and selectEntries drops them silently from the TMPX wire.
+// Pass nil — not a typed nil pointer to a concrete client — to disable
+// (Go's interface-nil rules treat a typed nil as non-nil).
+//
 // runCtx governs the long-lived refresh goroutine; cancel it during
 // shutdown to drain.
 //
@@ -56,7 +199,7 @@ type tmpxRecipientResolver interface {
 // library is logged at ERROR and recorded on
 // recorder.BackgroundPanic("tmpx-jwks-refresh") rather than taking down
 // the process. recorder may be nil for callers without observability.
-func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
+func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -94,28 +237,196 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger, 
 	if err != nil {
 		return nil, err
 	}
-	logger.Warn("TMPX generation enabled with reference SHA-512 stub — buyer masters will not be able to decode these tokens",
-		"country", cfg.Country)
-	return &TMPXSealer{country: cfg.Country, encStore: store, priority: order}, nil
+	// The decoder package's LiveRampClient interface is structurally
+	// identical to LiveRampSidecar, so any concrete type that satisfies one
+	// satisfies the other. We assign through an interface variable to keep
+	// the nil check correct (avoid the typed-nil trap).
+	var decoderAdapter tmpxdecoders.LiveRampClient
+	if lrClient != nil {
+		decoderAdapter = lrClient
+	}
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+	realTypes := make(map[tmproto.UIDType]bool)
+	for _, t := range tmpxdecoders.RealUIDTypes(lrClient != nil) {
+		realTypes[t] = true
+	}
+	logDecoderLayout(logger, cfg.Country, lrClient != nil)
+	return &TMPXSealer{
+		country:   cfg.Country,
+		encStore:  store,
+		priority:  order,
+		decoders:  decoders,
+		realTypes: realTypes,
+		logger:    logger,
+		recorder:  recorder,
+	}, nil
 }
 
-// Seal produces an HPKE TMPX token containing the resolved identities.
-// Identities whose UIDType has no TMPX type-ID mapping are dropped per the
-// spec's forward-compatibility rule. When the sealer was constructed with
-// a non-empty Priority, entries are sorted by priority and the
-// highest-priority prefix that fits the TmpxMaxWireBytes (255) budget is
-// included; identities whose UIDType is not in the priority list are
-// excluded entirely. When Priority is empty the spec forbids arbitrary
-// truncation — an over-budget set returns an error.
+// log returns the sealer's logger, falling back to slog.Default() when none
+// was configured. Tests that construct TMPXSealer directly without a
+// logger still get sensible output.
+func (s *TMPXSealer) log() *slog.Logger {
+	if s.logger != nil {
+		return s.logger
+	}
+	return slog.Default()
+}
+
+// recordDrop emits a TmpxIdentityDrop counter for an identity that did not
+// make it onto the TMPX wire. Safe to call when recorder is nil.
+func (s *TMPXSealer) recordDrop(ctx context.Context, reason string, uid tmproto.UIDType) {
+	if s.recorder == nil {
+		return
+	}
+	s.recorder.TmpxIdentityDrop(ctx, reason, string(uid))
+}
+
+// buildTmpxDecoders projects the tmpxdecoders.Decoder map onto the
+// identityagent.TmpxTokenDecoder map TMPXSealer holds. UID types absent
+// from the registry (typically RampID / RampIDDerived when the LiveRamp
+// sidecar is disabled) are intentionally omitted — selectEntries treats
+// missing decoders as a silent drop signal.
+func buildTmpxDecoders(opts tmpxdecoders.RegistryOptions) map[tmproto.UIDType]TmpxTokenDecoder {
+	raw := tmpxdecoders.NewDefaultRegistry(opts)
+	out := make(map[tmproto.UIDType]TmpxTokenDecoder, len(raw))
+	for uid, dec := range raw {
+		out[uid] = dec
+	}
+	return out
+}
+
+// logDecoderLayout emits a startup line describing which UID types have
+// real, stubbed, or dropped behavior. Operators read this to confirm a
+// LiveRamp misconfiguration didn't silently disable RampID handling.
+func logDecoderLayout(logger *slog.Logger, country string, liveRampEnabled bool) {
+	stubbed := tmpxdecoders.StubbedUIDTypes()
+	sortUIDs(stubbed)
+	dropped := make([]tmproto.UIDType, 0, 2)
+	if !liveRampEnabled {
+		dropped = append(dropped, tmproto.UIDTypeRampID, tmproto.UIDTypeRampIDDerived)
+	}
+	attrs := []any{"country", country}
+	if len(stubbed) > 0 {
+		attrs = append(attrs, "stubbed_uid_types", joinUIDs(stubbed))
+	}
+	if len(dropped) > 0 {
+		attrs = append(attrs, "dropped_uid_types", joinUIDs(dropped))
+	}
+	if liveRampEnabled {
+		attrs = append(attrs, "liveramp", "enabled")
+	} else {
+		attrs = append(attrs, "liveramp", "disabled")
+	}
+	switch {
+	case len(stubbed) > 0:
+		logger.Warn("TMPX generation enabled with reference SHA-512 stub for some UID types — buyer masters will not be able to decode tokens for those types", attrs...)
+	case len(dropped) > 0:
+		logger.Info("TMPX generation enabled; some UID types will be dropped from the wire (no decoder configured)", attrs...)
+	default:
+		logger.Info("TMPX generation enabled with real decoders for every UID type", attrs...)
+	}
+}
+
+func sortUIDs(s []tmproto.UIDType) {
+	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+}
+
+func joinUIDs(s []tmproto.UIDType) string {
+	parts := make([]string, len(s))
+	for i, u := range s {
+		parts[i] = string(u)
+	}
+	return strings.Join(parts, ",")
+}
+
+// Decode runs every supplied identity through its UID-type decoder and
+// returns the results in input order. Per-identity drops (unmapped, no
+// decoder, decoder drop sentinel, decoder error, size mismatch) are
+// surfaced on the recorder's TmpxIdentityDrop counter with these reasons:
 //
-// Returns "" without error when no identity is encodable (e.g. the
-// request carried only UID types with no TMPX mapping).
-func (s *TMPXSealer) Seal(ids []tmproto.IdentityToken) (string, error) {
+//   - unmapped       — UIDType has no TMPX type-ID mapping
+//   - no_decoder     — UIDType mapped but no decoder configured (LiveRamp off)
+//   - decoder_drop   — decoder returned ErrDropIdentity (LiveRamp miss)
+//   - decoder_error  — decoder returned a transport/parse error
+//   - size_mismatch  — decoder produced wrong byte length for the type
+//
+// Dropped identities have Bytes == nil in the returned slice; downstream
+// stages (SealDecoded, audience/fcap lookups) skip them silently.
+//
+// The handler calls Decode once per request and shares the result so
+// LiveRamp-backed RampIDs make at most one sidecar call per request even
+// when both TMPX and audience need them.
+func (s *TMPXSealer) Decode(ctx context.Context, ids []tmproto.IdentityToken) []DecodedIdentity {
+	out := make([]DecodedIdentity, len(ids))
+	for i, id := range ids {
+		out[i].UIDType = id.UIDType
+		typeID, ok := uidToTmpxTypeID[id.UIDType]
+		if !ok {
+			s.recordDrop(ctx, TmpxDropUnmapped, id.UIDType)
+			continue
+		}
+		decoder, ok := s.decoders[id.UIDType]
+		if !ok {
+			s.recordDrop(ctx, TmpxDropNoDecoder, id.UIDType)
+			continue
+		}
+		bin, err := decoder.Decode(ctx, id.UserToken)
+		if err != nil {
+			if errors.Is(err, ErrDropIdentity) {
+				s.recordDrop(ctx, TmpxDropDecoderDrop, id.UIDType)
+				continue
+			}
+			s.recordDrop(ctx, TmpxDropDecoderError, id.UIDType)
+			s.log().Warn("tmpx decoder error — dropping identity",
+				"uid_type", id.UIDType,
+				"error", err)
+			continue
+		}
+		wantSize, _ := tmproto.TmpxTokenSize(typeID)
+		if len(bin) != wantSize {
+			s.recordDrop(ctx, TmpxDropSizeMismatch, id.UIDType)
+			s.log().Warn("tmpx decoder returned wrong byte length — dropping identity",
+				"uid_type", id.UIDType,
+				"got", len(bin),
+				"want", wantSize)
+			continue
+		}
+		out[i].Bytes = bin
+		out[i].HasReal = s.realTypes[id.UIDType]
+	}
+	return out
+}
+
+// Seal is a convenience that runs Decode and then SealDecoded. Callers
+// that share decoded identities across the TMPX and audience/fcap paths
+// should call Decode and SealDecoded directly so the per-request decode
+// pass happens exactly once.
+func (s *TMPXSealer) Seal(ctx context.Context, ids []tmproto.IdentityToken) (string, error) {
+	return s.SealDecoded(ctx, s.Decode(ctx, ids))
+}
+
+// SealDecoded produces an HPKE TMPX token from a pre-decoded identity
+// slice. Identities with no Bytes (those Decode dropped) are skipped.
+//
+// When TMPX_PRIORITY is set, entries are packed in priority order and
+// trailing ones that don't fit the 255-byte wire budget are dropped.
+// When TMPX_PRIORITY is empty, the spec's "no arbitrary truncation" rule
+// applies: if the set overflows the budget, SealDecoded returns an error
+// and the handler omits TMPX from the response.
+//
+// Returns "" without error when no identity is encodable.
+func (s *TMPXSealer) SealDecoded(ctx context.Context, decoded []DecodedIdentity) (string, error) {
+	// Sealing is sub-millisecond CPU work and won't observe ctx mid-flight,
+	// but checking at the top closes the seal-after-timeout window where
+	// the handler's deadline already fired during Decode.
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	recipient, ok := s.encStore.CurrentEncryptionRecipient()
 	if !ok {
 		return "", errors.New("no TMPX encryption recipient currently published — buyer JWKS missing adcp_use=tmpx-encrypt key")
 	}
-	entries, err := s.selectEntries(ids)
+	entries, err := s.selectEntries(decoded)
 	if err != nil {
 		return "", err
 	}
@@ -171,61 +482,70 @@ var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
 	tmproto.UIDTypePublisherFirstParty: tmproto.TmpxTypePublisherFirstParty,
 }
 
-// selectEntries returns the ordered TmpxEntries that Seal will encode:
-// mappable UIDTypes filtered through the operator-configured priority list,
-// sorted by priority (highest first), then truncated to fit the
-// TmpxMaxWireBytes budget. The budget is computed against the spec-defined
-// TmpxMaxKidLen rather than the currently advertised kid — a JWKS rotation
-// can change the kid length between seals, and a prefix that just fits
-// today must still fit if the kid grows from 1 to 8 chars at the next
-// refresh. When the sealer has no priority configured and the candidates
-// don't all fit, returns an error — the spec forbids arbitrary truncation.
-func (s *TMPXSealer) selectEntries(ids []tmproto.IdentityToken) ([]tmproto.TmpxEntry, error) {
+// selectEntries packs already-decoded identities into the wire TmpxEntry
+// list under the TmpxMaxWireBytes budget. Identities the Decode pass
+// dropped (Bytes == nil) and identities whose UIDType is not in
+// TMPX_PRIORITY (when priority is configured) are skipped here without
+// further accounting — drop counters fired in Decode.
+//
+// The budget is computed against TmpxMaxKidLen rather than the currently
+// advertised kid: a JWKS rotation can change the kid length between
+// seals, and a prefix that just fits today must still fit if the kid
+// grows from 1 to 8 chars at the next refresh.
+//
+// When TMPX_PRIORITY is empty and the surviving set overflows the wire
+// budget, returns an error — the spec forbids arbitrary truncation.
+// When TMPX_PRIORITY is set, trailing entries that don't fit are
+// dropped; if even the highest-priority entry doesn't fit, that's a
+// configuration bug and is also surfaced as an error.
+func (s *TMPXSealer) selectEntries(decoded []DecodedIdentity) ([]tmproto.TmpxEntry, error) {
 	type candidate struct {
+		d        DecodedIdentity
+		typeID   tmproto.TmpxTypeID
 		priority int
-		entry    tmproto.TmpxEntry
 	}
-	candidates := make([]candidate, 0, len(ids))
-	for _, id := range ids {
-		typeID, ok := uidToTmpxTypeID[id.UIDType]
-		if !ok {
+	// Invariant: Decode only sets Bytes when uidToTmpxTypeID[d.UIDType] is
+	// present, so every survivor here has a valid TmpxTypeID. We rely on
+	// this rather than re-checking the mapping.
+	survivors := make([]candidate, 0, len(decoded))
+	for _, d := range decoded {
+		if len(d.Bytes) == 0 {
 			continue
 		}
-		p := indexOfUIDType(s.priority, id.UIDType)
+		typeID := uidToTmpxTypeID[d.UIDType]
+		p := indexOfUIDType(s.priority, d.UIDType)
 		if len(s.priority) > 0 && p < 0 {
 			continue
 		}
-		bin, err := stubBinaryToken(typeID, id.UserToken)
-		if err != nil {
-			return nil, err
-		}
-		candidates = append(candidates, candidate{priority: p, entry: tmproto.TmpxEntry{TypeID: typeID, Token: bin}})
+		survivors = append(survivors, candidate{d: d, typeID: typeID, priority: p})
 	}
-	if len(candidates) == 0 {
+	if len(survivors) == 0 {
 		return nil, nil
 	}
 	if len(s.priority) > 0 {
-		sort.SliceStable(candidates, func(i, j int) bool {
-			return candidates[i].priority < candidates[j].priority
+		sort.SliceStable(survivors, func(i, j int) bool {
+			return survivors[i].priority < survivors[j].priority
 		})
 	}
 
-	entries := make([]tmproto.TmpxEntry, 0, len(candidates))
+	entries := make([]tmproto.TmpxEntry, 0, len(survivors))
 	usedBytes := 0
-	for _, c := range candidates {
-		need := 1 + len(c.entry.Token)
+	budgetOverflowed := false
+	for _, c := range survivors {
+		need := 1 + len(c.d.Bytes)
 		nextWire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes+need)
 		if nextWire > tmproto.TmpxMaxWireBytes {
 			if len(s.priority) == 0 {
 				return nil, fmt.Errorf("tmpx wire size %d exceeds %d-byte budget and no TMPX_PRIORITY configured: spec forbids arbitrary truncation",
 					nextWire, tmproto.TmpxMaxWireBytes)
 			}
+			budgetOverflowed = true
 			break
 		}
-		entries = append(entries, c.entry)
+		entries = append(entries, tmproto.TmpxEntry{TypeID: c.typeID, Token: c.d.Bytes})
 		usedBytes += need
 	}
-	if len(entries) == 0 {
+	if len(entries) == 0 && budgetOverflowed {
 		return nil, fmt.Errorf("tmpx wire budget %d cannot fit even the highest-priority entry", tmproto.TmpxMaxWireBytes)
 	}
 	return entries, nil
@@ -241,17 +561,3 @@ func indexOfUIDType(list []tmproto.UIDType, uid tmproto.UIDType) int {
 	return -1
 }
 
-// stubBinaryToken converts a string user_token to the binary representation
-// TMPX expects for the given type ID. Reference impl only: hashes the source
-// string with SHA-512 and truncates to the spec-required byte length. Real
-// buyer deployments decode tokens per source-graph encoding.
-func stubBinaryToken(typeID tmproto.TmpxTypeID, token string) ([]byte, error) {
-	size, ok := tmproto.TmpxTokenSize(typeID)
-	if !ok {
-		return nil, fmt.Errorf("unknown TMPX type id %d", typeID)
-	}
-	h := sha512.Sum512([]byte(token))
-	out := make([]byte, size)
-	copy(out, h[:size])
-	return out, nil
-}
