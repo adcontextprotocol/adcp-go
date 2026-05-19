@@ -516,6 +516,10 @@ func validUserTokenFor(uid tmproto.UIDType) string {
 		return "550e8400-e29b-41d4-a716-446655440000"
 	case tmproto.UIDTypeHashedEmail:
 		return strings.Repeat("0", 64)
+	case tmproto.UIDTypeID5:
+		// ID5 is a real pass-through decoder; input must be exactly the
+		// 32-byte TMPX type-registry slot.
+		return "id5-canonical-token-padded--32by"
 	case tmproto.UIDTypeRampIDDerived:
 		// The fixedLiveRampClient looks at the env string to decide which
 		// length blob to return; "derived" triggers the 48-byte path.

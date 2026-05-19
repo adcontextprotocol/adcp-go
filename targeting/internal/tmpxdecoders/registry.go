@@ -8,6 +8,7 @@ import "github.com/adcontextprotocol/adcp-go/tmproto"
 var realDecoders = map[tmproto.UIDType]Decoder{
 	tmproto.UIDTypeMAID:        MAID{},
 	tmproto.UIDTypeHashedEmail: HashedEmail{},
+	tmproto.UIDTypeID5:         ID5{},
 }
 
 // RegistryOptions controls which TMPX-encodable UID types end up in the

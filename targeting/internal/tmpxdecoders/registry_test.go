@@ -75,7 +75,9 @@ func TestNewDefaultRegistry_DecodersReturnCorrectSize(t *testing.T) {
 		tmproto.UIDTypeHashedEmail:         "0000000000000000000000000000000000000000000000000000000000000000",
 		tmproto.UIDTypeUID2:                "anything",
 		tmproto.UIDTypeEUID:                "anything",
-		tmproto.UIDTypeID5:                 "anything",
+		// ID5 is a real pass-through decoder, so input length must match
+		// the type's 32-byte slot.
+		tmproto.UIDTypeID5:                 "id5-canonical-token-padded--32by",
 		tmproto.UIDTypeRampID:              "any-env",
 		tmproto.UIDTypeRampIDDerived:       "any-env",
 		tmproto.UIDTypePairID:              "anything",
@@ -113,6 +115,7 @@ func TestStubbedUIDTypes_ExcludesRealDecoders(t *testing.T) {
 	for _, real := range []tmproto.UIDType{
 		tmproto.UIDTypeMAID,
 		tmproto.UIDTypeHashedEmail,
+		tmproto.UIDTypeID5,
 		tmproto.UIDTypeRampID,
 		tmproto.UIDTypeRampIDDerived,
 	} {
@@ -124,7 +127,7 @@ func TestStubbedUIDTypes_ExcludesRealDecoders(t *testing.T) {
 func TestStubbedUIDTypes_StableContent(t *testing.T) {
 	got := StubbedUIDTypes()
 	want := []tmproto.UIDType{
-		tmproto.UIDTypeEUID, tmproto.UIDTypeID5,
+		tmproto.UIDTypeEUID,
 		tmproto.UIDTypePairID, tmproto.UIDTypePublisherFirstParty,
 		tmproto.UIDTypeUID2,
 	}

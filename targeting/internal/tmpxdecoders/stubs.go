@@ -39,15 +39,6 @@ func (EUIDStub) Decode(_ context.Context, userToken string) ([]byte, error) {
 	return sha512Truncate(userToken, tokenSize(tmproto.TmpxTypeEUID)), nil
 }
 
-// TODO: replace with a real ID5 decoder. ID5 IDs arrive as signed tokens or
-// as the underlying 32-byte universal ID; the source-graph encoding is
-// proprietary to ID5 and requires their SDK or documented binary layout.
-type ID5Stub struct{}
-
-func (ID5Stub) Decode(_ context.Context, userToken string) ([]byte, error) {
-	return sha512Truncate(userToken, tokenSize(tmproto.TmpxTypeID5)), nil
-}
-
 // TODO: replace with a real Google PAIR ID decoder. PAIR's published binary
 // form is documented; this stub stands in until a decoder lands.
 type PairIDStub struct{}
@@ -73,7 +64,6 @@ func (PublisherFirstPartyStub) Decode(_ context.Context, userToken string) ([]by
 var stubDecoders = map[tmproto.UIDType]Decoder{
 	tmproto.UIDTypeUID2:                UID2Stub{},
 	tmproto.UIDTypeEUID:                EUIDStub{},
-	tmproto.UIDTypeID5:                 ID5Stub{},
 	tmproto.UIDTypePairID:              PairIDStub{},
 	tmproto.UIDTypePublisherFirstParty: PublisherFirstPartyStub{},
 }
