@@ -59,6 +59,10 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 2. If you need a hand-written struct (methods, oneOf flattening, inline response item): add the struct to `adcp/types.go`, add its name to `KNOWN_TYPES` in `adcp/schemas/generate.py`, and regenerate. If the schema is a oneOf that you're flattening into one struct, also add the name to `EXEMPT` in `adcp/schemas/lint.py` so drift-check skips it. The `KNOWN_TYPES` comment block documents the criteria in more detail.
 3. Run `cd adcp/schemas && python3 lint.py` locally — it prints missing/extra fields and remediation guidance. CI runs it with `--strict`.
 
+## PR review (Argus)
+
+Every non-draft, non-dependabot PR is reviewed by Argus, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO IPR GitHub App. Workflow lives at `.github/workflows/ai-review.yml`; the reviewer prompt — MUST-FIX gates, expert-triage rules — is at `.github/ai-review/expert-adcp-reviewer.md`. Both files are forked from `adcontextprotocol/adcp`; upstream drift is surfaced weekly by `sync-argus-upstream-check.yml`, which opens an issue listing new upstream commits to reconcile by hand. The fork-point SHAs are pinned in `.github/ai-review/UPSTREAM_FORK_POINT` — bump them in the porting PR.
+
 ## Testing
 
 ```bash
