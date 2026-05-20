@@ -112,13 +112,18 @@ func main() {
 	// env name for backwards compatibility; the library accepts the ack as
 	// a struct field, so translate at the boundary.
 	ack := os.Getenv("TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK")
+	// The reference agent does not wire a LiveRamp sidecar; RampID and
+	// RampID-derived identities are silently dropped from the TMPX wire.
+	// Pass a nil interface — not a typed-nil pointer — so the sealer's
+	// nil check sees genuine absence rather than the typed-nil-trap.
+	var lrSidecar identityagent.LiveRampSidecar
 	tmpxSealer, err := identityagent.NewTMPXSealer(bgCtx, identityagent.TMPXConfig{
 		EncryptJWKSURL:   resolveString(*tmpxEncryptJWKSURL, flagSet["tmpx-encrypt-jwks-url"], "TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL"),
 		EncryptJWKSTTL:   *tmpxEncryptJWKSTTL,
 		Country:          resolveString(*tmpxCountry, flagSet["tmpx-country"], "TMP_IDENTITY_TMPX_COUNTRY"),
 		Priority:         resolveString(*tmpxPriority, flagSet["tmpx-priority"], "TMP_IDENTITY_TMPX_PRIORITY"),
 		ReferenceStubAck: ack == "1" || ack == "true",
-	}, slog.Default(), nil)
+	}, lrSidecar, slog.Default(), nil)
 	if err != nil {
 		slog.Error("tmpx config load failed", "error", err)
 		os.Exit(1)
@@ -168,7 +173,7 @@ func main() {
 			TTLSec:             60,
 		}
 		if tmpxSealer != nil && len(eligible) > 0 {
-			if token, terr := tmpxSealer.Seal(req.Identities); terr != nil {
+			if token, terr := tmpxSealer.Seal(r.Context(), req.Identities); terr != nil {
 				slog.Warn("tmpx generation failed, response will omit tmpx", "request_id", req.RequestID, "error", terr)
 			} else {
 				resp.Tmpx = token

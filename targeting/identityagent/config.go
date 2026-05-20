@@ -91,6 +91,7 @@ type Config struct {
 
 	TMP             TMPConfig
 	TMPX            TMPXConfig
+	LiveRamp        LiveRampSidecarConfig
 	IdentityConfig  IdentityConfigSourceConfig
 	AudienceValkey  ValkeyBlock
 	FCapValkey      ValkeyBlock
@@ -117,6 +118,24 @@ type TMPXConfig struct {
 	Priority         string
 	ReferenceStubAck bool
 }
+
+// LiveRampSidecarConfig optionally enables calls to the Scope3 LiveRamp
+// mapping sidecar for decoding RampID and RampID-derived identities into
+// the binary form TMPX expects.
+//
+// When URL is empty the sidecar is disabled: any RampID arriving on
+// /identity is silently dropped from the TMPX wire (other UID types are
+// unaffected). Timeout and DialTimeout default to 2s / 1s respectively
+// when zero. The sidecar is assumed to be reachable in the same network
+// trust boundary as the agent (matching rtdp) so no auth is sent.
+type LiveRampSidecarConfig struct {
+	URL         string
+	Timeout     time.Duration
+	DialTimeout time.Duration
+}
+
+// Enabled reports whether a LiveRamp sidecar URL was configured.
+func (c LiveRampSidecarConfig) Enabled() bool { return c.URL != "" }
 
 // IdentityConfigSourceConfig drives the Scope3 identity-config refresh
 // service.
@@ -311,6 +330,14 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	lrTimeout, err := lookupDuration("LIVERAMP_SIDECAR_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	lrDialTimeout, err := lookupDuration("LIVERAMP_SIDECAR_DIAL_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	cfgTimeout, err := lookupDuration("CONFIG_SOURCE_TIMEOUT", defaultConfigTimeout)
 	if err != nil {
 		errs = append(errs, err)
@@ -378,6 +405,11 @@ func LoadConfigFromEnv() (Config, error) {
 			Country:          os.Getenv("TMPX_COUNTRY"),
 			Priority:         os.Getenv("TMPX_PRIORITY"),
 			ReferenceStubAck: stubAck,
+		},
+		LiveRamp: LiveRampSidecarConfig{
+			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
+			Timeout:     lrTimeout,
+			DialTimeout: lrDialTimeout,
 		},
 		IdentityConfig: IdentityConfigSourceConfig{
 			URL:                os.Getenv("CONFIG_SOURCE_URL"),
@@ -526,6 +558,17 @@ func (c Config) Validate() error {
 		}
 		if c.TMPX.EncryptJWKSURL != "" && !c.TMPX.ReferenceStubAck {
 			errs = append(errs, errors.New("TMPX_REFERENCE_STUB_ACK=true is required to enable TMPX with the reference SHA-512 stub encoder"))
+		}
+	}
+	if c.LiveRamp.URL != "" {
+		if !strings.HasPrefix(c.LiveRamp.URL, "http://") && !strings.HasPrefix(c.LiveRamp.URL, "https://") {
+			errs = append(errs, fmt.Errorf("LIVERAMP_SIDECAR_URL %q must use http:// or https://", c.LiveRamp.URL))
+		}
+		if c.LiveRamp.Timeout < 0 {
+			errs = append(errs, errors.New("LIVERAMP_SIDECAR_TIMEOUT must be non-negative"))
+		}
+		if c.LiveRamp.DialTimeout < 0 {
+			errs = append(errs, errors.New("LIVERAMP_SIDECAR_DIAL_TIMEOUT must be non-negative"))
 		}
 	}
 	if c.Metrics.Enabled {
