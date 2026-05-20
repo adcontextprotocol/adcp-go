@@ -2,10 +2,11 @@ package tmpxdecoders
 
 import "github.com/adcontextprotocol/adcp-go/tmproto"
 
-// realDecoders holds the per-UID-type decoders that produce buyer-decodable
-// binary tokens without any external dependency. New format-only real
-// decoders move from stubDecoders into this map.
-var realDecoders = map[tmproto.UIDType]Decoder{
+// formatOnlyDecoders holds the per-UID-type decoders that produce
+// buyer-decodable binary tokens by parsing the inbound user_token string
+// directly, with no external dependency. Decoders that need an outside
+// service (e.g. LiveRamp) are attached separately in NewDefaultRegistry.
+var formatOnlyDecoders = map[tmproto.UIDType]Decoder{
 	tmproto.UIDTypeMAID:        MAID{},
 	tmproto.UIDTypeHashedEmail: HashedEmail{},
 	tmproto.UIDTypeID5:         ID5{},
@@ -13,56 +14,33 @@ var realDecoders = map[tmproto.UIDType]Decoder{
 
 // RegistryOptions controls which TMPX-encodable UID types end up in the
 // default registry. Today the only opt-in lever is the LiveRamp sidecar:
-// when LiveRampClient is non-nil, RampID and RampIDDerived gain real
-// decoders backed by the sidecar; when it is nil, those UID types are
-// omitted from the registry entirely and the agent's selectEntries silently
-// drops them from the TMPX wire (the operator-visible behavior is: "no
-// LiveRamp config → RampIDs are ignored").
+// when LiveRampClient is non-nil, RampID and RampIDDerived gain decoders
+// backed by the sidecar; when it is nil, those UID types are omitted from
+// the registry and the agent's selectEntries silently drops them from the
+// TMPX wire (the operator-visible behavior is: "no LiveRamp config →
+// RampIDs are ignored").
 type RegistryOptions struct {
 	LiveRampClient LiveRampClient
 }
 
 // NewDefaultRegistry returns the canonical UID type → decoder map TMPX uses
-// to convert IdentityToken.UserToken values into binary TMPX tokens. MAID
-// and HashedEmail are real implementations; UID2 / EUID / ID5 / PairID /
-// PublisherFirstParty are SHA-512-truncated stubs (each flagged with a
-// TODO at its definition site). RampID and RampIDDerived appear only when
-// opts.LiveRampClient is non-nil.
+// to convert IdentityToken.UserToken values into binary TMPX tokens. MAID,
+// HashedEmail, and ID5 are format-only decoders that need no external
+// dependency. RampID and RampIDDerived appear only when opts.LiveRampClient
+// is non-nil. UID types without a registered decoder are silently dropped
+// at decode time.
 //
 // The returned map is freshly allocated on every call so callers can mutate
 // it (e.g. swap in a custom decoder for tests) without affecting other
 // callers.
 func NewDefaultRegistry(opts RegistryOptions) map[tmproto.UIDType]Decoder {
-	out := make(map[tmproto.UIDType]Decoder, len(realDecoders)+len(stubDecoders)+2)
-	for k, v := range realDecoders {
-		out[k] = v
-	}
-	for k, v := range stubDecoders {
+	out := make(map[tmproto.UIDType]Decoder, len(formatOnlyDecoders)+2)
+	for k, v := range formatOnlyDecoders {
 		out[k] = v
 	}
 	if opts.LiveRampClient != nil {
 		out[tmproto.UIDTypeRampID] = RampID{Client: opts.LiveRampClient}
 		out[tmproto.UIDTypeRampIDDerived] = RampIDDerived{Client: opts.LiveRampClient}
-	}
-	return out
-}
-
-// RealUIDTypes returns the UID types whose decoder produces buyer-decodable
-// canonical bytes (as opposed to a SHA-512 stub). Audience and frequency-
-// cap lookups consume this list to decide which identities have a
-// downstream-joinable form; types absent from this list still flow through
-// the TMPX seal path (as stubs) but are ignored for non-TMPX lookups.
-//
-// Adding a real decoder is intentionally a single-file change: move the
-// type from stubDecoders to realDecoders in this package and RealUIDTypes
-// updates automatically.
-func RealUIDTypes(liveRampEnabled bool) []tmproto.UIDType {
-	out := make([]tmproto.UIDType, 0, len(realDecoders)+2)
-	for k := range realDecoders {
-		out = append(out, k)
-	}
-	if liveRampEnabled {
-		out = append(out, tmproto.UIDTypeRampID, tmproto.UIDTypeRampIDDerived)
 	}
 	return out
 }

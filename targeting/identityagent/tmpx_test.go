@@ -95,7 +95,7 @@ func TestSeal_ProducesParseableWireFormat(t *testing.T) {
 		decoders: defaultTestDecoders(t),
 	}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
 		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
 	}
@@ -128,7 +128,7 @@ func TestSealErrorsWhenJWKSPublishesNoEncryptionKey(t *testing.T) {
 		decoders: defaultTestDecoders(t),
 	}
 	_, err := cfg.Seal(t.Context(), []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 	})
 	assert.Error(t, err, "expected error when JWKS has no encryption key")
 }
@@ -155,9 +155,8 @@ func TestSeal_DecoderErrorDropsIdentityNotWholeToken(t *testing.T) {
 }
 
 func TestSelectEntries_HashedEmailDecoderProducesExpectedBytes(t *testing.T) {
-	// Sister test to MAID's bytes assertion: HashedEmail decoder must
-	// hex-decode the 64-char SHA-256 string to its 32 raw bytes, not
-	// SHA-512-stub it.
+	// HashedEmail decoder must hex-decode the 64-char SHA-256 string to
+	// its 32 raw bytes.
 	cfg := &TMPXSealer{
 		priority: []tmproto.UIDType{tmproto.UIDTypeHashedEmail},
 		decoders: defaultTestDecoders(t),
@@ -180,43 +179,60 @@ func TestSelectEntries_HashedEmailDecoderProducesExpectedBytes(t *testing.T) {
 		"HashedEmail decoder must yield the raw 32 bytes of the SHA-256 input")
 }
 
-func TestDecode_HasRealReflectsRegistry(t *testing.T) {
-	cfg := &TMPXSealer{
-		decoders:  defaultTestDecoders(t),
-		realTypes: defaultTestRealTypes(),
-	}
+func TestDecode_PopulatesBytesOnlyForRegisteredDecoders(t *testing.T) {
+	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	decoded := cfg.Decode(t.Context(), []tmproto.IdentityToken{
-		// MAID has a real decoder → HasReal=true
+		// MAID has a decoder.
 		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
-		// HashedEmail has a real decoder → HasReal=true
+		// HashedEmail has a decoder.
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		// UID2 is on a stub → HasReal=false but Bytes populated
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
-		// RampID via fake LR client → HasReal=true (treated as real when LR enabled)
+		// UID2 has no registered decoder — dropped at decode time.
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "anything"},
+		// RampID via fake LR client.
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
-		// UIDTypeOther has no mapping → Bytes nil, HasReal false
+		// UIDTypeOther has no TMPX mapping — dropped.
 		{UIDType: tmproto.UIDTypeOther, UserToken: "x"},
 	})
 	require.Len(t, decoded, 5)
-	assert.True(t, decoded[0].HasReal, "MAID must be real")
-	assert.NotEmpty(t, decoded[0].Bytes)
-	assert.True(t, decoded[1].HasReal, "HashedEmail must be real")
-	assert.False(t, decoded[2].HasReal, "stub UID2 must not be flagged real")
-	assert.NotEmpty(t, decoded[2].Bytes, "stub UID2 still produces bytes for TMPX")
-	assert.True(t, decoded[3].HasReal, "RampID with LR enabled must be real")
-	assert.False(t, decoded[4].HasReal, "unmapped type must not be flagged real")
+	assert.NotEmpty(t, decoded[0].Bytes, "MAID must be decoded")
+	assert.NotEmpty(t, decoded[1].Bytes, "HashedEmail must be decoded")
+	assert.Empty(t, decoded[2].Bytes, "UID2 has no decoder and must be dropped")
+	assert.NotEmpty(t, decoded[3].Bytes, "RampID with LR enabled must be decoded")
 	assert.Empty(t, decoded[4].Bytes, "unmapped type must have no bytes")
 }
 
-func TestAudienceEligibleIdentities_FiltersStubAndDropped(t *testing.T) {
+// TestNoDecoder_DropsFromBothWireAndAudience locks in the contract that a
+// UID type without a registered decoder is dropped from BOTH the TMPX wire
+// and the audience/fcap shadow request — driven by the same Decode pass
+// to prove the two consumers can't disagree.
+func TestNoDecoder_DropsFromBothWireAndAudience(t *testing.T) {
+	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
+	decoded := cfg.Decode(t.Context(), []tmproto.IdentityToken{
+		// UID2 has no registered decoder; must be dropped from both paths.
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"},
+		// MAID has a decoder; must survive on both paths.
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
+	})
+
+	shadow := audienceEligibleIdentities(decoded)
+	require.Len(t, shadow, 1, "shadow must contain only MAID")
+	assert.Equal(t, tmproto.UIDTypeMAID, shadow[0].UIDType)
+
+	entries, err := cfg.selectEntries(decoded)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "wire must contain only MAID")
+	assert.Equal(t, tmproto.TmpxTypeMAID, entries[0].TypeID)
+}
+
+func TestAudienceEligibleIdentities_FiltersDropped(t *testing.T) {
 	decoded := []DecodedIdentity{
-		{UIDType: tmproto.UIDTypeMAID, Bytes: []byte{0x01, 0x02, 0x03}, HasReal: true},
-		{UIDType: tmproto.UIDTypeUID2, Bytes: []byte{0xaa}, HasReal: false},        // stub
-		{UIDType: tmproto.UIDTypeRampID, Bytes: nil, HasReal: true},                 // dropped (LR miss)
-		{UIDType: tmproto.UIDTypeHashedEmail, Bytes: []byte{0xff, 0xee}, HasReal: true},
+		{UIDType: tmproto.UIDTypeMAID, Bytes: []byte{0x01, 0x02, 0x03}},
+		{UIDType: tmproto.UIDTypeUID2, Bytes: nil},                       // dropped at decode (no decoder)
+		{UIDType: tmproto.UIDTypeRampID, Bytes: nil},                     // dropped (LR miss)
+		{UIDType: tmproto.UIDTypeHashedEmail, Bytes: []byte{0xff, 0xee}},
 	}
 	got := audienceEligibleIdentities(decoded)
-	require.Len(t, got, 2, "must keep only real + non-empty entries")
+	require.Len(t, got, 2, "must keep only non-empty entries")
 	assert.Equal(t, tmproto.UIDTypeMAID, got[0].UIDType)
 	assert.Equal(t, string([]byte{0x01, 0x02, 0x03}), got[0].UserToken)
 	assert.Equal(t, tmproto.UIDTypeHashedEmail, got[1].UIDType)
@@ -225,33 +241,29 @@ func TestAudienceEligibleIdentities_FiltersStubAndDropped(t *testing.T) {
 
 func TestDecode_RecordsDropsByReason(t *testing.T) {
 	rec := newTestRecorder()
-	// Build a registry that excludes RampID so we exercise the no_decoder
-	// path. UID2 has a (stub) decoder so it still gets included.
-	dec := defaultTestDecoders(t)
-	delete(dec, tmproto.UIDTypeRampID)
 	cfg := &TMPXSealer{
-		decoders: dec,
+		decoders: defaultTestDecoders(t),
 		recorder: rec,
 	}
 	cfg.Decode(t.Context(), []tmproto.IdentityToken{
 		// unmapped: UIDTypeOther is not in uidToTmpxTypeID
 		{UIDType: tmproto.UIDTypeOther, UserToken: "anything"},
-		// no_decoder: RampID exists in mapping but we deleted its decoder
-		{UIDType: tmproto.UIDTypeRampID, UserToken: "any-rampid"},
+		// no_decoder: UID2 is mapped to a TMPX type-ID but has no decoder.
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"},
 		// decoder_error: HashedEmail with a too-short hex string is
-		// rejected by the real decoder at the input-length check.
+		// rejected by the decoder at the input-length check.
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: "deadbeef"},
 		// happy path so the test runs through to the end
 		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 	})
 	assert.Equal(t, 1, rec.dropCount(TmpxDropUnmapped, string(tmproto.UIDTypeOther)))
-	assert.Equal(t, 1, rec.dropCount(TmpxDropNoDecoder, string(tmproto.UIDTypeRampID)))
+	assert.Equal(t, 1, rec.dropCount(TmpxDropNoDecoder, string(tmproto.UIDTypeUID2)))
 	assert.Equal(t, 1, rec.dropCount(TmpxDropDecoderError, string(tmproto.UIDTypeHashedEmail)))
 }
 
 func TestSelectEntries_MAIDDecoderProducesExpectedBytes(t *testing.T) {
 	// The MAID decoder is content-addressed: a canonical UUID input must
-	// produce its 16 raw bytes, not a SHA-512 stub of the string.
+	// produce its 16 raw bytes.
 	cfg := &TMPXSealer{
 		priority: []tmproto.UIDType{tmproto.UIDTypeMAID},
 		decoders: defaultTestDecoders(t),
@@ -274,7 +286,7 @@ func TestSealFreshNonceEachCall(t *testing.T) {
 		encStore: newFakeResolver(t, "k1"),
 		decoders: defaultTestDecoders(t),
 	}
-	ids := []tmproto.IdentityToken{{UIDType: tmproto.UIDTypeUID2, UserToken: "tok"}}
+	ids := []tmproto.IdentityToken{{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)}}
 	a, _ := cfg.Seal(t.Context(), ids)
 	time.Sleep(time.Millisecond)
 	b, _ := cfg.Seal(t.Context(), ids)
@@ -303,7 +315,7 @@ func TestParseTmpxPriorityRejectsDuplicate(t *testing.T) {
 func TestSelectEntries_PrioritySortsHighestFirst(t *testing.T) {
 	cfg := &TMPXSealer{
 		priority: []tmproto.UIDType{
-			tmproto.UIDTypeUID2,
+			tmproto.UIDTypeMAID,
 			tmproto.UIDTypeRampID,
 			tmproto.UIDTypeID5,
 		},
@@ -312,12 +324,12 @@ func TestSelectEntries_PrioritySortsHighestFirst(t *testing.T) {
 	ids := []tmproto.IdentityToken{
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 	}
 	got, err := decodeAndSelect(t, cfg, ids)
 	require.NoError(t, err)
 	require.Len(t, got, 3)
-	wantOrder := []tmproto.TmpxTypeID{tmproto.TmpxTypeUID2, tmproto.TmpxTypeRampID, tmproto.TmpxTypeID5}
+	wantOrder := []tmproto.TmpxTypeID{tmproto.TmpxTypeMAID, tmproto.TmpxTypeRampID, tmproto.TmpxTypeID5}
 	for i, w := range wantOrder {
 		assert.Equal(t, w, got[i].TypeID, "entry %d", i)
 	}
@@ -325,35 +337,34 @@ func TestSelectEntries_PrioritySortsHighestFirst(t *testing.T) {
 
 func TestSelectEntries_DropsUidTypesNotInPriority(t *testing.T) {
 	cfg := &TMPXSealer{
-		priority: []tmproto.UIDType{tmproto.UIDTypeUID2},
+		priority: []tmproto.UIDType{tmproto.UIDTypeMAID},
 		decoders: defaultTestDecoders(t),
 	}
 	ids := []tmproto.IdentityToken{
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 	}
 	got, err := decodeAndSelect(t, cfg, ids)
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	assert.Equal(t, tmproto.TmpxTypeUID2, got[0].TypeID)
+	assert.Equal(t, tmproto.TmpxTypeMAID, got[0].TypeID)
 }
 
 func TestSelectEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 	cfg := &TMPXSealer{
 		priority: []tmproto.UIDType{
-			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
-			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,
 		},
 		decoders: defaultTestDecoders(t),
 	}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypePairID, UserToken: validUserTokenFor(tmproto.UIDTypePairID)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		{UIDType: tmproto.UIDTypeEUID, UserToken: validUserTokenFor(tmproto.UIDTypeEUID)},
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
 	}
 	got, err := decodeAndSelect(t, cfg, ids)
 	require.NoError(t, err)
@@ -372,12 +383,11 @@ func TestSelectEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 func TestSelectEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
 	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
-		{UIDType: tmproto.UIDTypeEUID, UserToken: validUserTokenFor(tmproto.UIDTypeEUID)},
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		{UIDType: tmproto.UIDTypePairID, UserToken: validUserTokenFor(tmproto.UIDTypePairID)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
 	}
 	_, err := decodeAndSelect(t, cfg, ids)
 	require.Error(t, err, "over-budget without TMPX_PRIORITY must error")
@@ -387,7 +397,7 @@ func TestSelectEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
 func TestSelectEntries_NoPriorityPassesUnderBudget(t *testing.T) {
 	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
 		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 	}
 	got, err := decodeAndSelect(t, cfg, ids)
@@ -401,18 +411,17 @@ func TestSeal_PriorityResultsInValidWire(t *testing.T) {
 		country:  "US",
 		encStore: resolver,
 		priority: []tmproto.UIDType{
-			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
-			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,
 		},
 		decoders: defaultTestDecoders(t),
 	}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
-		{UIDType: tmproto.UIDTypeEUID, UserToken: validUserTokenFor(tmproto.UIDTypeEUID)},
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		{UIDType: tmproto.UIDTypePairID, UserToken: validUserTokenFor(tmproto.UIDTypePairID)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
 	}
 	wire, err := cfg.Seal(t.Context(), ids)
 	require.NoError(t, err)
@@ -426,18 +435,17 @@ func TestSelectEntries_BudgetStableAcrossKidRotation(t *testing.T) {
 	// resulting wire would silently overflow at the next refresh.
 	cfg := &TMPXSealer{
 		priority: []tmproto.UIDType{
-			tmproto.UIDTypeUID2, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
-			tmproto.UIDTypeEUID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypePairID,
+			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,
 		},
 		decoders: defaultTestDecoders(t),
 	}
 	ids := []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeUID2, UserToken: validUserTokenFor(tmproto.UIDTypeUID2)},
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
 		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
-		{UIDType: tmproto.UIDTypeEUID, UserToken: validUserTokenFor(tmproto.UIDTypeEUID)},
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		{UIDType: tmproto.UIDTypePairID, UserToken: validUserTokenFor(tmproto.UIDTypePairID)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
 	}
 	got, err := decodeAndSelect(t, cfg, ids)
 	require.NoError(t, err)
@@ -507,9 +515,16 @@ func decodeAndSelect(t *testing.T, cfg *TMPXSealer, ids []tmproto.IdentityToken)
 // for the given UID type will accept. Used by selectEntries/Seal tests so
 // the focus stays on routing/priority/sealing rather than format quirks.
 //
-//   - MAID            → a canonical RFC 4122 dashed UUID
-//   - HashedEmail     → a 64-char hex string (all zeros — content doesn't matter)
-//   - everything else → fixtureToken(uid), which the stub decoders accept
+//   - MAID          → a canonical RFC 4122 dashed UUID
+//   - HashedEmail   → a 64-char hex string (content doesn't matter)
+//   - ID5           → a 32-char pass-through string
+//   - RampID        → any env string (the fixedLiveRampClient returns a 32-char blob)
+//   - RampIDDerived → "...derived..." so the fixedLiveRampClient returns 48 chars
+//
+// UID types without a registered decoder (UID2, EUID, PairID,
+// PublisherFirstParty) are not handled here — tests that exercise those
+// types either expect them to be dropped at decode time or supply a custom
+// fake decoder explicitly.
 func validUserTokenFor(uid tmproto.UIDType) string {
 	switch uid {
 	case tmproto.UIDTypeMAID:
@@ -517,12 +532,8 @@ func validUserTokenFor(uid tmproto.UIDType) string {
 	case tmproto.UIDTypeHashedEmail:
 		return strings.Repeat("0", 64)
 	case tmproto.UIDTypeID5:
-		// ID5 is a real pass-through decoder; input must be exactly the
-		// 32-byte TMPX type-registry slot.
 		return "id5-canonical-token-padded--32by"
 	case tmproto.UIDTypeRampIDDerived:
-		// The fixedLiveRampClient looks at the env string to decide which
-		// length blob to return; "derived" triggers the 48-byte path.
 		return "rampid-derived-input"
 	default:
 		return fixtureToken(string(uid))
@@ -543,18 +554,6 @@ func defaultTestDecoders(t *testing.T) map[tmproto.UIDType]TmpxTokenDecoder {
 	out := make(map[tmproto.UIDType]TmpxTokenDecoder, len(raw))
 	for k, v := range raw {
 		out[k] = v
-	}
-	return out
-}
-
-// defaultTestRealTypes mirrors what NewTMPXSealer wires up when LiveRamp is
-// enabled — MAID + HashedEmail + RampID + RampIDDerived. Tests that
-// construct TMPXSealer directly need it to make Decode populate HasReal
-// correctly.
-func defaultTestRealTypes() map[tmproto.UIDType]bool {
-	out := make(map[tmproto.UIDType]bool)
-	for _, t := range tmpxdecoders.RealUIDTypes(true) {
-		out[t] = true
 	}
 	return out
 }

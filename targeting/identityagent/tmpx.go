@@ -60,44 +60,21 @@ var ErrDropIdentity = tmpxdecoders.ErrDropFromSeal
 // (a hot concern for LiveRamp-backed RampIDs that make a sidecar call)
 // and both paths see consistent drop decisions.
 //
-// Bytes is the canonical decoded form. A nil or zero-length slice means
-// the identity was dropped during decode (no mapped type, no decoder,
-// sentinel, transport error, size mismatch) — selectEntries and
-// audienceEligibleIdentities treat both the same and skip the entry.
-//
-// HasReal flags whether the decoder behind these bytes is a
-// buyer-decodable real implementation (MAID, HashedEmail,
-// RampID-with-LiveRamp) as opposed to a SHA-512 stub. Stub bytes still
-// ship to TMPX (preserving the legacy behavior gated on
-// TMPX_REFERENCE_STUB_ACK) but are excluded from audience/fcap lookups
-// where they would never match anything in the downstream store.
-//
-// The canonical predicate for "this identity is safe to use for non-TMPX
-// downstream lookups" is AudienceEligible — callers should use that
-// rather than checking HasReal or len(Bytes) on their own.
+// Bytes is the canonical decoded form the buyer master keys its
+// downstream stores on. A nil or zero-length slice means the identity
+// was dropped during decode (no mapped type, no decoder, sentinel,
+// transport error, size mismatch) — selectEntries and
+// audienceEligibleIdentities skip such entries.
 type DecodedIdentity struct {
 	UIDType tmproto.UIDType
 	Bytes   []byte
-	HasReal bool
-}
-
-// AudienceEligible reports whether the decoded identity is safe to feed
-// into hash-keyed audience and frequency-cap lookups. True iff a real
-// (non-stub) decoder produced a non-empty byte slice. Splitting the
-// predicate into a method prevents future drift where one call site
-// checks only HasReal or only len(Bytes) and silently mishandles the
-// other case.
-func (d DecodedIdentity) AudienceEligible() bool {
-	return d.HasReal && len(d.Bytes) > 0
 }
 
 // audienceEligibleIdentities projects a decoded slice onto the
 // IdentityToken shape the audience and frequency-cap services expect.
-// Only identities passing AudienceEligible are emitted — stub-decoded
-// UID types (UID2/EUID/ID5/PairID/PublisherFirstParty until they get
-// real decoders) and missing-decoder types (RampID without LiveRamp
-// configured) are dropped silently so downstream Valkey lookups don't
-// waste round trips on keys the buyer master will never have populated.
+// Identities the Decode pass dropped (Bytes == nil) are skipped so
+// downstream Valkey lookups don't waste round trips on keys the buyer
+// master will never have populated.
 //
 // UserToken is set to string(Bytes) so identityhash.Hash hashes the
 // canonical decoded form — the same form the buyer master will key its
@@ -105,7 +82,7 @@ func (d DecodedIdentity) AudienceEligible() bool {
 func audienceEligibleIdentities(decoded []DecodedIdentity) []tmproto.IdentityToken {
 	out := make([]tmproto.IdentityToken, 0, len(decoded))
 	for _, d := range decoded {
-		if !d.AudienceEligible() {
+		if len(d.Bytes) == 0 {
 			continue
 		}
 		out = append(out, tmproto.IdentityToken{
@@ -122,17 +99,9 @@ func audienceEligibleIdentities(decoded []DecodedIdentity) []tmproto.IdentityTok
 //
 // String→binary conversion is delegated to a per-UID-type registry of
 // TmpxTokenDecoders (default constructed by NewTMPXSealer from
-// targeting/internal/tmpxdecoders). MAID and HashedEmail have real
-// format-only decoders. UID2 / EUID / ID5 / PairID / PublisherFirstParty
-// remain on SHA-512-truncated stubs whose output is NOT interoperable with
-// any real buyer master. RampID and RampIDDerived are decoded via the
-// optional LiveRamp sidecar — when the sidecar is not configured those UID
-// types are silently dropped from the wire.
-//
-// NewTMPXSealer refuses to construct an instance unless the caller has
-// acknowledged the stubbed types via TMPXConfig.ReferenceStubAck, and emits
-// a warning at startup listing the UID types still on the stub and the
-// UID types that will be dropped.
+// targeting/internal/tmpxdecoders). UID types without a registered decoder
+// are silently dropped from both the TMPX wire and the audience/fcap
+// shadow request.
 type TMPXSealer struct {
 	country  string
 	encStore tmpxRecipientResolver
@@ -152,13 +121,6 @@ type TMPXSealer struct {
 	// sealer.
 	decoders map[tmproto.UIDType]TmpxTokenDecoder
 
-	// realTypes flags the UID types whose decoder produces buyer-decodable
-	// canonical bytes (as opposed to a SHA-512 stub). Populated from
-	// tmpxdecoders.RealUIDTypes at construction; selectors that need to
-	// distinguish "decoded bytes safe for downstream join" from "stub
-	// bytes only safe for TMPX" consult this map.
-	realTypes map[tmproto.UIDType]bool
-
 	// logger and recorder are used by Decode to surface per-identity
 	// drop events. Both may be nil; helpers fall back to slog.Default() and
 	// a no-op recorder respectively.
@@ -177,14 +139,13 @@ type tmpxRecipientResolver interface {
 // underlying JWKS refresh goroutine bound to runCtx, and validates the
 // initial key fetch. Returns (nil, nil) when TMPX is not configured
 // (every relevant field empty). Returns an error when the configuration
-// is partially set, the initial JWKS fetch fails, the JWKS publishes no
-// recipient key, or the caller has not acknowledged the SHA-512 stub.
+// is partially set, the initial JWKS fetch fails, or the JWKS publishes
+// no recipient key.
 //
 // The decoder registry is intentionally allowed to be incomplete: any UID
 // type in uidToTmpxTypeID without a registered decoder is treated as a
-// silent drop at Seal time (this is how `LIVERAMP_SIDECAR_URL=""` ignores
-// RampID). selectEntries counts these drops via the `no_decoder` reason
-// on the TmpxIdentityDrop counter so operators can see them.
+// silent drop at Seal time. Decode counts these drops via the `no_decoder`
+// reason on the TmpxIdentityDrop counter so operators can see them.
 //
 // lrClient is the optional LiveRamp sidecar used to decode RampID /
 // RampIDDerived identities. When nil, those UID types have no decoder
@@ -206,9 +167,6 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	}
 	if cfg.EncryptJWKSURL == "" || cfg.Country == "" {
 		return nil, errors.New("TMPX requires TMPX_ENCRYPT_JWKS_URL and TMPX_COUNTRY")
-	}
-	if !cfg.ReferenceStubAck {
-		return nil, errors.New("TMPX is configured but uses a SHA-512 stub that is NOT interoperable with any real buyer master; set TMPX_REFERENCE_STUB_ACK=true to acknowledge")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -246,19 +204,14 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 		decoderAdapter = lrClient
 	}
 	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
-	realTypes := make(map[tmproto.UIDType]bool)
-	for _, t := range tmpxdecoders.RealUIDTypes(lrClient != nil) {
-		realTypes[t] = true
-	}
-	logDecoderLayout(logger, cfg.Country, lrClient != nil)
+	logDecoderLayout(logger, cfg.Country, decoders, order)
 	return &TMPXSealer{
-		country:   cfg.Country,
-		encStore:  store,
-		priority:  order,
-		decoders:  decoders,
-		realTypes: realTypes,
-		logger:    logger,
-		recorder:  recorder,
+		country:  cfg.Country,
+		encStore: store,
+		priority: order,
+		decoders: decoders,
+		logger:   logger,
+		recorder: recorder,
 	}, nil
 }
 
@@ -295,35 +248,46 @@ func buildTmpxDecoders(opts tmpxdecoders.RegistryOptions) map[tmproto.UIDType]Tm
 	return out
 }
 
-// logDecoderLayout emits a startup line describing which UID types have
-// real, stubbed, or dropped behavior. Operators read this to confirm a
-// LiveRamp misconfiguration didn't silently disable RampID handling.
-func logDecoderLayout(logger *slog.Logger, country string, liveRampEnabled bool) {
-	stubbed := tmpxdecoders.StubbedUIDTypes()
-	sortUIDs(stubbed)
-	dropped := make([]tmproto.UIDType, 0, 2)
-	if !liveRampEnabled {
-		dropped = append(dropped, tmproto.UIDTypeRampID, tmproto.UIDTypeRampIDDerived)
+// logDecoderLayout emits startup lines describing which TMPX-encodable UID
+// types have a registered decoder, which will be dropped at decode time,
+// and which priority entries are unreachable because their decoder is
+// missing. Operators read this to confirm a LiveRamp misconfiguration
+// didn't silently disable RampID handling and that their TMPX_PRIORITY
+// list isn't half-dead.
+func logDecoderLayout(logger *slog.Logger, country string, decoders map[tmproto.UIDType]TmpxTokenDecoder, priority []tmproto.UIDType) {
+	enabled := make([]tmproto.UIDType, 0, len(decoders))
+	dropped := make([]tmproto.UIDType, 0, len(uidToTmpxTypeID))
+	for uid := range uidToTmpxTypeID {
+		if _, ok := decoders[uid]; ok {
+			enabled = append(enabled, uid)
+		} else {
+			dropped = append(dropped, uid)
+		}
 	}
-	attrs := []any{"country", country}
-	if len(stubbed) > 0 {
-		attrs = append(attrs, "stubbed_uid_types", joinUIDs(stubbed))
-	}
+	sortUIDs(enabled)
+	sortUIDs(dropped)
+	attrs := []any{"country", country, "enabled_uid_types", joinUIDs(enabled)}
 	if len(dropped) > 0 {
 		attrs = append(attrs, "dropped_uid_types", joinUIDs(dropped))
 	}
-	if liveRampEnabled {
-		attrs = append(attrs, "liveramp", "enabled")
-	} else {
-		attrs = append(attrs, "liveramp", "disabled")
-	}
 	switch {
-	case len(stubbed) > 0:
-		logger.Warn("TMPX generation enabled with reference SHA-512 stub for some UID types — buyer masters will not be able to decode tokens for those types", attrs...)
+	case len(enabled) == 0:
+		logger.Warn("TMPX generation enabled but no UID type has a decoder — every identity will be dropped at decode time", attrs...)
 	case len(dropped) > 0:
 		logger.Info("TMPX generation enabled; some UID types will be dropped from the wire (no decoder configured)", attrs...)
 	default:
-		logger.Info("TMPX generation enabled with real decoders for every UID type", attrs...)
+		logger.Info("TMPX generation enabled with decoders for every UID type", attrs...)
+	}
+
+	unreachable := make([]tmproto.UIDType, 0, len(priority))
+	for _, uid := range priority {
+		if _, ok := decoders[uid]; !ok {
+			unreachable = append(unreachable, uid)
+		}
+	}
+	if len(unreachable) > 0 {
+		logger.Warn("TMPX_PRIORITY contains UID types without a configured decoder — those entries are unreachable and will be dropped at decode time",
+			"unreachable_uid_types", joinUIDs(unreachable))
 	}
 }
 
@@ -392,7 +356,6 @@ func (s *TMPXSealer) Decode(ctx context.Context, ids []tmproto.IdentityToken) []
 			continue
 		}
 		out[i].Bytes = bin
-		out[i].HasReal = s.realTypes[id.UIDType]
 	}
 	return out
 }
@@ -484,9 +447,11 @@ var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
 
 // selectEntries packs already-decoded identities into the wire TmpxEntry
 // list under the TmpxMaxWireBytes budget. Identities the Decode pass
-// dropped (Bytes == nil) and identities whose UIDType is not in
-// TMPX_PRIORITY (when priority is configured) are skipped here without
-// further accounting — drop counters fired in Decode.
+// dropped (Bytes == nil) are skipped here; their drop counters fired in
+// Decode. Identities whose UIDType is not in TMPX_PRIORITY (when priority
+// is configured) are also skipped here without a counter — operators set
+// priority explicitly, so unreachable entries are intentional and surfaced
+// at startup by logDecoderLayout, not per-request.
 //
 // The budget is computed against TmpxMaxKidLen rather than the currently
 // advertised kid: a JWKS rotation can change the kid length between

@@ -225,10 +225,11 @@ func (h *identityHandler) recordCompletion(ctx context.Context, start time.Time,
 // When TMPX is enabled, the request's identities are decoded once via
 // h.tmpx.Decode (so LiveRamp-backed RampIDs hit the sidecar at most once
 // per request) and a shallow shadow request is built whose Identities
-// slice carries only the AudienceEligible() entries with UserToken set to
-// the decoded byte form — that way identityhash.Hash(user_token) inside
-// audience/fcap keys onto the canonical decoded form, matching whatever
-// the buyer-master populator publishes downstream.
+// slice carries only the entries that successfully decoded, with
+// UserToken set to the decoded byte form — that way
+// identityhash.Hash(user_token) inside audience/fcap keys onto the
+// canonical decoded form, matching whatever the buyer-master populator
+// publishes downstream.
 //
 // When TMPX is disabled, no decode is performed and the original request
 // passes through unchanged — preserving legacy behavior for deployments
