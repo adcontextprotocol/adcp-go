@@ -55,6 +55,13 @@ jobs:
         with:
           app-id: ${{ secrets.IPR_APP_ID }}
           private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+          # Narrow the minted installation token to what Argus actually
+          # needs. The IPR App's installed perms are broader; this caps
+          # what propagates to `claude-code-action` and the workflow
+          # steps that consume the token.
+          permission-contents: read
+          permission-pull-requests: write
+          permission-issues: write
 
       # ─────────────────────────────────────────────────────────────────────
       # Self-modification gate. If the PR's cumulative diff touches Argus's
@@ -220,7 +227,7 @@ jobs:
           use_sticky_comment: false
           track_progress: false
           claude_args: |
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Bash(gh api:*),Read,Glob,Grep,Task"
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Read,Glob,Grep,Task"
             --max-turns 60
             --model claude-opus-4-7
 
@@ -232,24 +239,26 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
+          # Filter to reviews posted by *this App* on *this commit*. Drops
+          # the "any bot" misattribution risk if another bot posts in the
+          # same window, and removes time-window dependence on the job's
+          # 20-min timeout. APP_SLUG comes from `actions/create-github-app-token`;
+          # the bot user login is `${APP_SLUG}[bot]`.
           LATEST="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
-            --jq '[.[] | select(.user.type == "Bot")] | sort_by(.submitted_at) | last // {}')"
+            --jq --arg login "${APP_SLUG}[bot]" --arg sha "$HEAD_SHA" \
+              '[.[] | select(.user.login == $login and .commit_id == $sha)] | sort_by(.submitted_at) | last // {}')"
           STATE="$(echo "$LATEST" | jq -r '.state // ""')"
           AUTHOR="$(echo "$LATEST" | jq -r '.user.login // ""')"
           SUBMITTED="$(echo "$LATEST" | jq -r '.submitted_at // ""')"
-          echo "Latest bot review — author: $AUTHOR, state: $STATE, submitted: $SUBMITTED"
+          COMMIT="$(echo "$LATEST" | jq -r '.commit_id // ""')"
+          echo "Latest review by ${APP_SLUG}[bot] on ${HEAD_SHA:0:12} — state: $STATE, submitted: $SUBMITTED, commit: ${COMMIT:0:12}"
           if [ -z "$STATE" ]; then
             echo "review_posted=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No bot review found on PR #$PR_NUMBER"
-            exit 0
-          fi
-          SUBMITTED_TS="$(date -u -d "$SUBMITTED" +%s 2>/dev/null || date -u -j -f '%Y-%m-%dT%H:%M:%SZ' "$SUBMITTED" +%s)"
-          NOW_TS="$(date -u +%s)"
-          if [ $((NOW_TS - SUBMITTED_TS)) -gt 600 ]; then
-            echo "review_posted=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Latest bot review is older than 10 minutes — Argus didn't post in this run"
+            echo "::warning::No review from ${APP_SLUG}[bot] found on PR #${PR_NUMBER} at ${HEAD_SHA:0:12}"
             exit 0
           fi
           echo "review_posted=true" >> "$GITHUB_OUTPUT"

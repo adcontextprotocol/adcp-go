@@ -39,7 +39,12 @@ jobs:
           git clone --quiet --depth 200 "https://github.com/${UPSTREAM}.git" "$tmp/upstream"
 
           drift_lines=""
-          while IFS='=' read -r path sha; do
+          # `|| [ -n "$path" ]` lets the last line through if it lacks a
+          # trailing newline. The `%$'\r'` strips any CRLF a Windows
+          # editor may have introduced on save.
+          while IFS='=' read -r path sha || [ -n "$path" ]; do
+            path="${path%$'\r'}"
+            sha="${sha%$'\r'}"
             [ -z "$path" ] && continue
             case "$path" in '#'*) continue ;; esac
             if ! git -C "$tmp/upstream" cat-file -e "$sha" 2>/dev/null; then
