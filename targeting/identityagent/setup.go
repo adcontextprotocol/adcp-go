@@ -299,7 +299,12 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	}()
 
 	// Identity-config service (refreshed periodically).
-	source, err := scope3.New(cfg.IdentityConfig.URL, cfg.IdentityConfig.Token, scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout))
+	source, err := scope3.New(
+		cfg.IdentityConfig.URL,
+		cfg.IdentityConfig.Token,
+		scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout),
+		scope3.WithExtraHeaders(cfg.IdentityConfig.ExtraHeaders),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("init scope3 source: %w", err)
 	}
