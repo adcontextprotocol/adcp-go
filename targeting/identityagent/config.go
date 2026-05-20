@@ -155,6 +155,13 @@ type IdentityConfigSourceConfig struct {
 	RefreshInterval    time.Duration
 	StartMode          string
 	StartRetryDeadline time.Duration
+
+	// ExtraHeaders are added to every outbound config-source request on top
+	// of the headers the source manages itself (Authorization, Content-Type,
+	// Accept). Loaded from CONFIG_SOURCE_EXTRA_HEADERS as a JSON object of
+	// name→value pairs. Collisions with the managed headers are rejected by
+	// the source constructor.
+	ExtraHeaders map[string]string
 }
 
 // ValkeyBlock is the per-backend Valkey configuration. Use ToRedisStoreConfig
@@ -345,6 +352,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	extraHeaders, err := lookupStringMapJSON("CONFIG_SOURCE_EXTRA_HEADERS")
+	if err != nil {
+		errs = append(errs, err)
+	}
 	audienceTimeout, err := lookupDuration("AUDIENCE_TIMEOUT", defaultAudienceTimeout)
 	if err != nil {
 		errs = append(errs, err)
@@ -412,6 +423,7 @@ func LoadConfigFromEnv() (Config, error) {
 			RefreshInterval:    refreshInterval,
 			StartMode:          lookupString("CONFIG_START_MODE", defaultStartMode),
 			StartRetryDeadline: startRetryDeadline,
+			ExtraHeaders:       extraHeaders,
 		},
 		AudienceValkey:  audienceBlock,
 		FCapValkey:      fcapBlock,
@@ -689,6 +701,27 @@ func lookupIntList(name string, def []int) ([]int, error) {
 			return nil, fmt.Errorf("%s=%q has non-integer entry %q: %w", name, v, p, err)
 		}
 		out = append(out, n)
+	}
+	return out, nil
+}
+
+// lookupStringMapJSON parses an env var as a JSON object of string→string.
+// Returns nil (with nil error) when the variable is unset or empty. Rejects
+// any non-object payload and empty keys so configuration errors surface at
+// startup rather than at first refresh.
+func lookupStringMapJSON(name string) (map[string]string, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	if err := json.Unmarshal([]byte(v), &out); err != nil {
+		return nil, fmt.Errorf("%s is not a JSON object of string→string: %w", name, err)
+	}
+	for k := range out {
+		if strings.TrimSpace(k) == "" {
+			return nil, fmt.Errorf("%s contains an empty key", name)
+		}
 	}
 	return out, nil
 }

@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
@@ -42,22 +43,29 @@ import (
 // Source posts identity-config queries to a configurable URL with Bearer
 // authentication and parses the JSON response into identityconfig types.
 type Source struct {
-	url            string
-	token          string
-	client         *http.Client
-	customClient   bool // true when client was set via WithHTTPClient
+	url          string
+	token        string
+	client       *http.Client
+	customClient bool // true when client was set via WithHTTPClient
+	extraHeaders http.Header
 }
 
+// reservedHeaderNames are the headers Source sets itself. WithExtraHeaders
+// rejects entries that collide with these — silently overriding Authorization
+// would be a surprising footgun.
+var reservedHeaderNames = []string{"Authorization", "Content-Type", "Accept"}
+
 // Option configures the Source at construction time.
-type Option func(*Source)
+type Option func(*Source) error
 
 // WithHTTPClient supplies a pre-configured *http.Client. Useful for custom
 // transports, dial timeouts, or test fakes. Suppresses WithHTTPTimeout — the
 // caller's client owns its own timeout.
 func WithHTTPClient(client *http.Client) Option {
-	return func(s *Source) {
+	return func(s *Source) error {
 		s.client = client
 		s.customClient = true
+		return nil
 	}
 }
 
@@ -66,11 +74,44 @@ func WithHTTPClient(client *http.Client) Option {
 // caller's client as authoritative, so its Timeout is not mutated regardless
 // of option order.
 func WithHTTPTimeout(d time.Duration) Option {
-	return func(s *Source) {
+	return func(s *Source) error {
 		if s.customClient {
-			return
+			return nil
 		}
 		s.client.Timeout = d
+		return nil
+	}
+}
+
+// WithExtraHeaders adds caller-supplied headers to every outbound request.
+// Names are matched case-insensitively against the headers Source manages
+// itself (Authorization, Content-Type, Accept) and a collision is rejected
+// so a misconfigured value can't silently strip auth. Empty names are also
+// rejected. Values are sent verbatim.
+//
+// Repeated calls merge: later values for the same canonical header name
+// overwrite earlier ones.
+func WithExtraHeaders(headers map[string]string) Option {
+	return func(s *Source) error {
+		if len(headers) == 0 {
+			return nil
+		}
+		if s.extraHeaders == nil {
+			s.extraHeaders = http.Header{}
+		}
+		for name, value := range headers {
+			if strings.TrimSpace(name) == "" {
+				return errors.New("scope3: extra header name must be non-empty")
+			}
+			canonical := http.CanonicalHeaderKey(name)
+			for _, reserved := range reservedHeaderNames {
+				if canonical == reserved {
+					return fmt.Errorf("scope3: extra header %q collides with reserved header %q", name, reserved)
+				}
+			}
+			s.extraHeaders.Set(canonical, value)
+		}
+		return nil
 	}
 }
 
@@ -84,7 +125,9 @@ func New(url, bearerToken string, opts ...Option) (*Source, error) {
 	}
 	s := &Source{url: url, token: bearerToken, client: &http.Client{Timeout: 30 * time.Second}}
 	for _, opt := range opts {
-		opt(s)
+		if err := opt(s); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
@@ -170,6 +213,9 @@ func (s *Source) post(ctx context.Context, body requestBody) (out *responseBody,
 	req.Header.Set("Authorization", "Bearer "+s.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	for name, values := range s.extraHeaders {
+		req.Header[name] = values
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {

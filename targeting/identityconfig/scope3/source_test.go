@@ -42,6 +42,52 @@ func TestWithHTTPTimeout_SetsDefaultClientTimeout(t *testing.T) {
 	assert.Equal(t, 123*time.Millisecond, src.client.Timeout)
 }
 
+func TestWithExtraHeaders_SetsCustomHeadersOnRequest(t *testing.T) {
+	var receivedHeaders atomic.Value
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders.Store(r.Header.Clone())
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"lastUpdatedAt": "2026-05-13T10:42:43Z", "targetingConfigs": [], "removedTargetingConfigs": []}`))
+	}))
+	defer srv.Close()
+
+	src, err := New(srv.URL, "secret-token", WithExtraHeaders(map[string]string{
+		"X-Custom-One": "alpha",
+		"x-custom-two": "beta",
+	}))
+	require.NoError(t, err)
+
+	_, err = src.LoadAll(context.Background())
+	require.NoError(t, err)
+
+	got, _ := receivedHeaders.Load().(http.Header)
+	require.NotNil(t, got)
+	assert.Equal(t, "Bearer secret-token", got.Get("Authorization"))
+	assert.Equal(t, "alpha", got.Get("X-Custom-One"))
+	assert.Equal(t, "beta", got.Get("X-Custom-Two"), "header names should be canonicalized")
+}
+
+func TestWithExtraHeaders_RejectsReservedNames(t *testing.T) {
+	for _, name := range []string{"Authorization", "authorization", "Content-Type", "accept"} {
+		_, err := New("https://example", "tok", WithExtraHeaders(map[string]string{name: "x"}))
+		require.Error(t, err, "extra header %q must be rejected", name)
+		assert.Contains(t, err.Error(), "reserved header")
+	}
+}
+
+func TestWithExtraHeaders_RejectsEmptyName(t *testing.T) {
+	_, err := New("https://example", "tok", WithExtraHeaders(map[string]string{"   ": "x"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "non-empty")
+}
+
+func TestWithExtraHeaders_EmptyMapIsNoop(t *testing.T) {
+	src, err := New("https://example", "tok", WithExtraHeaders(nil), WithExtraHeaders(map[string]string{}))
+	require.NoError(t, err)
+	assert.Nil(t, src.extraHeaders)
+}
+
 func TestLoadAll_SendsBearerAndParsesResponse(t *testing.T) {
 	var receivedAuth atomic.Value
 	var receivedBody atomic.Value
