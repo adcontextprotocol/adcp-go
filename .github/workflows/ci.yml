@@ -52,10 +52,6 @@ jobs:
         working-directory: reference/context-agent
         run: go test -race -count=1 ./...
 
-      - name: Test identity agent
-        working-directory: reference/identity-agent
-        run: go test -race -count=1 ./...
-
       - name: Test e2e
         working-directory: e2e
         run: go test -race -count=1 ./...
@@ -86,11 +82,4 @@ jobs:
         with:
           version: v2.11
           working-directory: reference/context-agent
-          args: ./...
-
-      - name: Run golangci-lint (identity agent)
-        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
-        with:
-          version: v2.11
-          working-directory: reference/identity-agent
           args: ./...

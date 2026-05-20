@@ -32,15 +32,12 @@ func TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged(t *testing.T) {
 // canonical decoded byte form (so identityhash.Hash inside audience/fcap
 // keys on the same bytes the buyer master will populate downstream).
 //
-// MAID and HashedEmail have real decoders → survive with decoded bytes
+// MAID and HashedEmail have decoders → survive with decoded bytes
 // in UserToken.
-// UID2 has a SHA-512 stub → dropped from the shadow (HasReal=false).
+// UID2 has no registered decoder → dropped at decode time.
 // UIDTypeOther has no TMPX mapping → dropped entirely.
 func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedBytes(t *testing.T) {
-	cfg := &TMPXSealer{
-		decoders:  defaultTestDecoders(t),
-		realTypes: defaultTestRealTypes(),
-	}
+	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	h := &identityHandler{tmpx: cfg}
 
 	maidUUID := validUserTokenFor(tmproto.UIDTypeMAID)
@@ -50,7 +47,7 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedByt
 		Identities: []tmproto.IdentityToken{
 			{UIDType: tmproto.UIDTypeMAID, UserToken: maidUUID},
 			{UIDType: tmproto.UIDTypeHashedEmail, UserToken: hashedEmail},
-			{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2-stub")},
+			{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2-no-decoder")},
 			{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
 		},
 	}
@@ -61,8 +58,8 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedByt
 	require.NotEqual(t, &req.Identities, &shadow.Identities, "shadow must have its own Identities slice")
 	assert.Equal(t, req.RequestID, shadow.RequestID, "non-Identities fields must survive the shadow copy")
 
-	// Two real identities survive (MAID, HashedEmail). Stub UID2 and
-	// unmapped UIDTypeOther are filtered out.
+	// Two identities survive (MAID, HashedEmail). UID2 lacks a decoder
+	// and unmapped UIDTypeOther are filtered out.
 	require.Len(t, shadow.Identities, 2)
 
 	wantMAIDBytes := []byte{
@@ -88,9 +85,8 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedByt
 	// so positional correspondence is preserved; dropped entries have
 	// nil/empty Bytes.
 	require.Len(t, decoded, 4)
-	assert.True(t, decoded[0].HasReal && len(decoded[0].Bytes) > 0, "MAID must be decoded for TMPX too")
-	assert.True(t, decoded[1].HasReal && len(decoded[1].Bytes) > 0, "HashedEmail must be decoded for TMPX too")
-	assert.False(t, decoded[2].HasReal, "UID2 stub must not be flagged real")
-	assert.NotEmpty(t, decoded[2].Bytes, "UID2 stub still produces bytes for the TMPX seal path")
+	assert.NotEmpty(t, decoded[0].Bytes, "MAID must be decoded for TMPX too")
+	assert.NotEmpty(t, decoded[1].Bytes, "HashedEmail must be decoded for TMPX too")
+	assert.Empty(t, decoded[2].Bytes, "UID2 has no decoder and must be dropped at decode")
 	assert.Empty(t, decoded[3].Bytes, "UIDTypeOther has no TMPX mapping and must be dropped at decode")
 }

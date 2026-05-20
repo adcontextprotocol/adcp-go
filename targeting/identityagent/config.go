@@ -112,11 +112,10 @@ type TMPConfig struct {
 // TMPXConfig drives TMPX response sealing. Disabled when EncryptJWKSURL is
 // empty.
 type TMPXConfig struct {
-	EncryptJWKSURL   string
-	EncryptJWKSTTL   time.Duration
-	Country          string
-	Priority         string
-	ReferenceStubAck bool
+	EncryptJWKSURL string
+	EncryptJWKSTTL time.Duration
+	Country        string
+	Priority       string
 }
 
 // LiveRampSidecarConfig optionally enables calls to the Scope3 LiveRamp
@@ -326,10 +325,6 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	stubAck, err := lookupBool("TMPX_REFERENCE_STUB_ACK", false)
-	if err != nil {
-		errs = append(errs, err)
-	}
 	lrTimeout, err := lookupDuration("LIVERAMP_SIDECAR_TIMEOUT", 0)
 	if err != nil {
 		errs = append(errs, err)
@@ -400,11 +395,10 @@ func LoadConfigFromEnv() (Config, error) {
 			AllowUnsigned:  allowUnsigned,
 		},
 		TMPX: TMPXConfig{
-			EncryptJWKSURL:   os.Getenv("TMPX_ENCRYPT_JWKS_URL"),
-			EncryptJWKSTTL:   jwksTTL,
-			Country:          os.Getenv("TMPX_COUNTRY"),
-			Priority:         os.Getenv("TMPX_PRIORITY"),
-			ReferenceStubAck: stubAck,
+			EncryptJWKSURL: os.Getenv("TMPX_ENCRYPT_JWKS_URL"),
+			EncryptJWKSTTL: jwksTTL,
+			Country:        os.Getenv("TMPX_COUNTRY"),
+			Priority:       os.Getenv("TMPX_PRIORITY"),
 		},
 		LiveRamp: LiveRampSidecarConfig{
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
@@ -555,9 +549,6 @@ func (c Config) Validate() error {
 		}
 		if c.TMPX.Country == "" {
 			errs = append(errs, errors.New("TMPX_COUNTRY is required when any TMPX_* is set"))
-		}
-		if c.TMPX.EncryptJWKSURL != "" && !c.TMPX.ReferenceStubAck {
-			errs = append(errs, errors.New("TMPX_REFERENCE_STUB_ACK=true is required to enable TMPX with the reference SHA-512 stub encoder"))
 		}
 	}
 	if c.LiveRamp.URL != "" {
