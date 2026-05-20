@@ -57,6 +57,63 @@ jobs:
           private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
 
       # ─────────────────────────────────────────────────────────────────────
+      # Self-modification gate. If the PR's cumulative diff touches Argus's
+      # own configuration (`.github/workflows/ai-review.yml` or any file
+      # under `.github/ai-review/**`), skip Argus entirely and post a
+      # notice that a human reviewer is required. Argus must not approve
+      # PRs that rewrite its own gates — CODEOWNERS gates the merge, but
+      # this stops a misleading "approved by bot" signal from showing up.
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Self-modification check
+        id: self-mod
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TOUCHED="$(gh api --paginate "/repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '.[].filename' \
+            | grep -E '^(\.github/workflows/ai-review\.yml|\.github/ai-review/)' || true)"
+          if [ -n "$TOUCHED" ]; then
+            echo "touches=true" >> "$GITHUB_OUTPUT"
+            echo "Argus paths touched — pausing Argus on this PR. Files:"
+            echo "$TOUCHED"
+          else
+            echo "touches=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post Argus-paused notice
+        if: steps.self-mod.outputs.touches == 'true'
+        uses: actions/github-script@v7
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            // Only post the notice once per PR — re-runs on `synchronize`
+            // shouldn't spam. Look for an existing notice from the App.
+            const marker = '<!-- argus-self-mod-notice -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            if (comments.some(c => c.body && c.body.includes(marker))) {
+              core.info('Notice already posted on this PR — skipping.');
+              return;
+            }
+            const runUrl = process.env.RUN_URL;
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${marker}\n🛑 **Argus paused on this PR.**\n\nThis PR modifies Argus's own configuration (\`.github/workflows/ai-review.yml\` or \`.github/ai-review/**\`). Argus will not post an approving review on changes to its own gates — a human reviewer must take this PR. CODEOWNERS already requires a human approval on these paths.\n\n[Workflow run](${runUrl})\n\n<sub>Automated by the Argus self-modification gate.</sub>`,
+            });
+
+      # ─────────────────────────────────────────────────────────────────────
       # Skip re-runs on `synchronize` when the last bot review on this PR
       # was APPROVED and the new commits only touch trivial paths (docs,
       # tests, lockfiles). Cuts thrash on rebases and docs/test follow-up
@@ -65,7 +122,7 @@ jobs:
       # ─────────────────────────────────────────────────────────────────────
       - name: Check for skippable re-run
         id: skip-check
-        if: github.event.action == 'synchronize'
+        if: github.event.action == 'synchronize' && steps.self-mod.outputs.touches != 'true'
         continue-on-error: true
         shell: bash
         env:
@@ -127,7 +184,7 @@ jobs:
           fi
 
       - name: Build Argus review prompt
-        if: steps.skip-check.outputs.skip != 'true'
+        if: steps.self-mod.outputs.touches != 'true' && steps.skip-check.outputs.skip != 'true'
         id: build-prompt
         shell: bash
         env:
@@ -153,7 +210,7 @@ jobs:
 
       - name: Run Argus PR Review
         id: ai-review
-        if: steps.skip-check.outputs.skip != 'true'
+        if: steps.self-mod.outputs.touches != 'true' && steps.skip-check.outputs.skip != 'true'
         continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
@@ -169,7 +226,7 @@ jobs:
 
       - name: Verify Argus posted a review
         id: verify
-        if: always() && steps.app-token.outcome == 'success' && steps.skip-check.outputs.skip != 'true'
+        if: always() && steps.app-token.outcome == 'success' && steps.self-mod.outputs.touches != 'true' && steps.skip-check.outputs.skip != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -199,7 +256,7 @@ jobs:
           echo "review_state=$STATE" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR if Argus review failed
-        if: steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
+        if: steps.self-mod.outputs.touches != 'true' && steps.skip-check.outputs.skip != 'true' && (steps.ai-review.outcome == 'failure' || steps.verify.outputs.review_posted != 'true')
         uses: actions/github-script@v7
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
