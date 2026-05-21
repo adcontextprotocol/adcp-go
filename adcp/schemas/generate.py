@@ -441,7 +441,10 @@ def schema_to_struct(name, schema):
         comment = f' // {desc}' if desc else ''
 
         if prop.get('deprecated', False):
-            deprecated_msg = desc if desc else 'No replacement specified.'
+            # Strip a leading "Deprecated: " some authors add to description when
+            # they also set deprecated:true, to avoid "// Deprecated: Deprecated: ..."
+            raw = re.sub(r'^deprecated:\s*', '', desc, flags=re.IGNORECASE) if desc else ''
+            deprecated_msg = raw if raw else 'No replacement specified.'
             fields.append(f'\t// Deprecated: {deprecated_msg}')
             fields.append(f'\t{go_name} {go_type} {tag}')
         else:

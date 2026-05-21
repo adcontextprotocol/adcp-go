@@ -107,9 +107,49 @@ class TestDeprecatedField(unittest.TestCase):
         # id: 1 line, status: 2 lines (comment + field), new_status: 1 line = 4 total
         self.assertEqual(len(lines), 4)
         deprecated_comment_idx = next(
-            i for i, l in enumerate(lines) if "// Deprecated:" in l
+            (i for i, l in enumerate(lines) if "// Deprecated:" in l), None
         )
+        self.assertIsNotNone(deprecated_comment_idx,
+            "Expected a // Deprecated: line in mixed struct output")
         self.assertIn("Status string", lines[deprecated_comment_idx + 1])
+
+    def test_deprecated_field_description_already_prefixed(self):
+        """When a schema author sets both deprecated:true and a description that
+        starts with 'Deprecated: ', the generator must not emit
+        '// Deprecated: Deprecated: ...' (double-prefix)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "axe_include_segment": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "Deprecated: Use TMP provider fields instead.",
+                }
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(
+            lines[0],
+            "\t// Deprecated: Use TMP provider fields instead.",
+            "Double 'Deprecated:' prefix must be stripped",
+        )
+        self.assertNotIn("Deprecated: Deprecated:", lines[0])
+
+    def test_deprecated_case_insensitive_prefix_strip(self):
+        """Prefix stripping is case-insensitive (e.g. 'deprecated:' lowercase)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "old_field": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "deprecated: use new_field.",
+                }
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(lines[0], "\t// Deprecated: use new_field.")
 
 
 if __name__ == "__main__":
