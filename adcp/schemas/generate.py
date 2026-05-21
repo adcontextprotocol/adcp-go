@@ -440,7 +440,12 @@ def schema_to_struct(name, schema):
         desc = safe_comment(prop.get('description', ''), 80)
         comment = f' // {desc}' if desc else ''
 
-        fields.append(f'\t{go_name} {go_type} {tag}{comment}')
+        if prop.get('deprecated', False):
+            deprecated_msg = desc if desc else 'No replacement specified.'
+            fields.append(f'\t// Deprecated: {deprecated_msg}')
+            fields.append(f'\t{go_name} {go_type} {tag}')
+        else:
+            fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
     desc = safe_comment(schema.get('description', ''), 100)
     doc = f'// {name} — {desc}\n' if desc else ''
