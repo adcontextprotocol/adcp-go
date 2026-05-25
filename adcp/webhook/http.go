@@ -268,6 +268,8 @@ func Deliver(ctx context.Context, url string, p Payload, signer *signing.Signer,
 		return nil, fmt.Errorf("webhook: sign request: %w", err)
 	}
 	effective := clientNoRedirect(client)
+	// Ownership of resp.Body is returned to the caller in DeliverResult.
+	//nolint:bodyclose
 	resp, err := effective.Do(req)
 	if err != nil {
 		return nil, err

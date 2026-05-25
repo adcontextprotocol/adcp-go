@@ -389,12 +389,12 @@ func isValidLabel(label string) bool {
 	// first char must be lcalpha or "*". We accept a slightly broader set since
 	// the only labels we see in practice are sig1, sig2, etc.
 	first := label[0]
-	if !((first >= 'a' && first <= 'z') || first == '*') {
+	if (first < 'a' || first > 'z') && first != '*' {
 		return false
 	}
 	for i := 1; i < len(label); i++ {
 		c := label[i]
-		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == '*') {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' && c != '-' && c != '.' && c != '*' {
 			return false
 		}
 	}

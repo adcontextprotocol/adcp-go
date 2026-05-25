@@ -18,6 +18,8 @@ type TestControllerStore struct {
 	ForceSessionStatus  func(sessionID, status string, terminationReason string) (*StateTransition, error)
 	SimulateDelivery    func(mediaBuyID string, params SimulateDeliveryParams) (*SimulationResult, error)
 	SimulateBudgetSpend func(params SimulateBudgetParams) (*SimulationResult, error)
+	CustomScenario      func(scenario string, params map[string]any) (any, error)
+	CustomScenarios     []string
 }
 
 // StateTransition is returned by force_* scenarios.
@@ -67,8 +69,10 @@ func (e *TestControllerError) Error() string {
 }
 
 type controllerInput struct {
-	Scenario string         `json:"scenario"`
-	Params   map[string]any `json:"params,omitempty"`
+	Scenario string            `json:"scenario"`
+	Account  *AccountReference `json:"account,omitempty"`
+	Params   map[string]any    `json:"params,omitempty"`
+	Context  any               `json:"context,omitempty"`
 }
 
 type controllerErrorResponse struct {
@@ -90,7 +94,8 @@ func RegisterTestController(server *mcp.Server, store *TestControllerStore) {
 	AddTool(server, "comply_test_controller",
 		"Triggers seller-side state transitions for compliance testing. Sandbox only.",
 		func(ctx context.Context, req *mcp.CallToolRequest, input controllerInput) (*mcp.CallToolResult, any, error) {
-			return handleTestController(store, input)
+			result, out, err := handleTestController(store, input)
+			return attachContext(result, input.Context), out, err
 		})
 }
 
@@ -119,6 +124,16 @@ func handleTestController(store *TestControllerStore, input controllerInput) (*m
 	case "simulate_budget_spend":
 		return handleSimulateBudget(store, input.Params)
 	default:
+		if store.CustomScenario != nil {
+			result, err := store.CustomScenario(input.Scenario, input.Params)
+			if err != nil {
+				if tce, ok := err.(*TestControllerError); ok {
+					return controllerErr(tce.Code, tce.Message, tce.CurrentState)
+				}
+				return controllerErr("INTERNAL_ERROR", "An unexpected error occurred in the test controller store", "")
+			}
+			return controllerOK(result)
+		}
 		return controllerErr("UNKNOWN_SCENARIO", "Unrecognized scenario name", "")
 	}
 }
@@ -236,6 +251,9 @@ func listScenarios(store *TestControllerStore) []string {
 	}
 	if store.SimulateBudgetSpend != nil {
 		scenarios = append(scenarios, "simulate_budget_spend")
+	}
+	if store.CustomScenario != nil {
+		scenarios = append(scenarios, store.CustomScenarios...)
 	}
 	return scenarios
 }
