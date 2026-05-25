@@ -430,6 +430,144 @@ type MediaBuyListItem struct {
 	Packages   []Package `json:"packages"`
 }
 
+// MediaBuyData is one item in a get_media_buys response.
+type MediaBuyData struct {
+	MediaBuyID       string                 `json:"media_buy_id"`
+	Account          *Account               `json:"account,omitempty"`
+	Status           string                 `json:"status"`
+	Currency         string                 `json:"currency"`
+	TotalBudget      float64                `json:"total_budget"`
+	StartTime        string                 `json:"start_time,omitempty"`
+	EndTime          string                 `json:"end_time,omitempty"`
+	InvoiceRecipient any                    `json:"invoice_recipient,omitempty"`
+	ConfirmedAt      string                 `json:"confirmed_at,omitempty"`
+	Cancellation     any                    `json:"cancellation,omitempty"`
+	CreativeDeadline string                 `json:"creative_deadline,omitempty"`
+	Revision         int                    `json:"revision,omitempty"`
+	CreatedAt        string                 `json:"created_at,omitempty"`
+	UpdatedAt        string                 `json:"updated_at,omitempty"`
+	ValidActions     []string               `json:"valid_actions,omitempty"`
+	History          []MediaBuyHistoryEntry `json:"history,omitempty"`
+	Packages         []PackageStatus        `json:"packages"`
+	Ext              any                    `json:"ext,omitempty"`
+}
+
+// MarshalJSON preserves an explicitly empty valid_actions array. In the protocol,
+// [] means no actions are available; omission means the seller did not say.
+func (d MediaBuyData) MarshalJSON() ([]byte, error) {
+	type mediaBuyData MediaBuyData
+	b, err := json.Marshal(mediaBuyData(d))
+	if err != nil {
+		return nil, err
+	}
+	if d.ValidActions == nil {
+		return b, nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	out["valid_actions"] = d.ValidActions
+	return json.Marshal(out)
+}
+
+// MediaBuyHistoryEntry is a get_media_buys revision history entry.
+type MediaBuyHistoryEntry struct {
+	Revision  int    `json:"revision"`
+	Timestamp string `json:"timestamp"`
+	Actor     string `json:"actor,omitempty"`
+	Action    string `json:"action"`
+	Summary   string `json:"summary,omitempty"`
+	PackageID string `json:"package_id,omitempty"`
+	Ext       any    `json:"ext,omitempty"`
+}
+
+// PackageStatus is a package row in get_media_buys. It embeds Package for
+// ergonomic construction from create/update state, but marshals only the fields
+// modeled by the get_media_buys response schema.
+type PackageStatus struct {
+	Package
+	Currency                  string                    `json:"currency,omitempty"`
+	CreativeApprovals         []PackageCreativeApproval `json:"creative_approvals,omitempty"`
+	FormatIDsPending          []FormatRef               `json:"format_ids_pending,omitempty"`
+	SnapshotUnavailableReason string                    `json:"snapshot_unavailable_reason,omitempty"`
+	Snapshot                  *PackageSnapshot          `json:"snapshot,omitempty"`
+}
+
+func (p PackageStatus) MarshalJSON() ([]byte, error) {
+	out := map[string]any{"package_id": p.PackageID}
+	if p.ProductID != "" {
+		out["product_id"] = p.ProductID
+	}
+	if p.Budget != 0 {
+		out["budget"] = p.Budget
+	}
+	if p.BidPrice != 0 {
+		out["bid_price"] = p.BidPrice
+	}
+	if p.Impressions != 0 {
+		out["impressions"] = p.Impressions
+	}
+	if p.Currency != "" {
+		out["currency"] = p.Currency
+	}
+	if p.StartTime != "" {
+		out["start_time"] = p.StartTime
+	}
+	if p.EndTime != "" {
+		out["end_time"] = p.EndTime
+	}
+	if p.Paused != nil {
+		out["paused"] = p.Paused
+	}
+	if p.Canceled != nil {
+		out["canceled"] = p.Canceled
+	}
+	if p.Cancellation != nil {
+		out["cancellation"] = p.Cancellation
+	}
+	if p.CreativeDeadline != "" {
+		out["creative_deadline"] = p.CreativeDeadline
+	}
+	if p.TargetingOverlay != nil {
+		out["targeting_overlay"] = p.TargetingOverlay
+	}
+	if p.Ext != nil {
+		out["ext"] = p.Ext
+	}
+	if len(p.CreativeApprovals) > 0 {
+		out["creative_approvals"] = p.CreativeApprovals
+	}
+	if len(p.FormatIDsPending) > 0 {
+		out["format_ids_pending"] = p.FormatIDsPending
+	}
+	if p.SnapshotUnavailableReason != "" {
+		out["snapshot_unavailable_reason"] = p.SnapshotUnavailableReason
+	}
+	if p.Snapshot != nil {
+		out["snapshot"] = p.Snapshot
+	}
+	return json.Marshal(out)
+}
+
+type PackageCreativeApproval struct {
+	CreativeID      string `json:"creative_id"`
+	ApprovalStatus  string `json:"approval_status"`
+	RejectionReason string `json:"rejection_reason,omitempty"`
+}
+
+type PackageSnapshot struct {
+	AsOf             string  `json:"as_of"`
+	StalenessSeconds int     `json:"staleness_seconds"`
+	Impressions      float64 `json:"impressions"`
+	Spend            float64 `json:"spend"`
+	Currency         string  `json:"currency,omitempty"`
+	Clicks           float64 `json:"clicks,omitempty"`
+	PacingIndex      float64 `json:"pacing_index,omitempty"`
+	DeliveryStatus   string  `json:"delivery_status,omitempty"`
+	Ext              any     `json:"ext,omitempty"`
+}
+
 type DeliveryData struct {
 	ReportingPeriod    ReportingPeriod    `json:"reporting_period"`
 	Currency           string             `json:"currency"`
@@ -450,12 +588,14 @@ type MediaBuyDelivery struct {
 }
 
 type PackageDelivery struct {
-	PackageID    string         `json:"package_id"`
-	Totals       DeliveryTotals `json:"totals"`
-	Spend        float64        `json:"spend"`
-	PricingModel string         `json:"pricing_model,omitempty"`
-	Rate         float64        `json:"rate,omitempty"`
-	Currency     string         `json:"currency,omitempty"`
+	PackageID   string  `json:"package_id"`
+	Impressions float64 `json:"impressions,omitempty"`
+	// package-delivery composes delivery-metrics and requires spend at this level.
+	Spend        float64 `json:"spend"`
+	Clicks       float64 `json:"clicks,omitempty"`
+	PricingModel string  `json:"pricing_model,omitempty"`
+	Rate         float64 `json:"rate,omitempty"`
+	Currency     string  `json:"currency,omitempty"`
 }
 
 // MarshalJSON preserves the schema-required spend field even when it is zero.

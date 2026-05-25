@@ -18,14 +18,14 @@ import (
 //
 // Usage:
 //
-//	type GetProductsInput struct {
+//	type GetProductsRequest struct {
 //	    Brief   string `json:"brief,omitempty"`
 //	    Account any    `json:"account,omitempty"`
 //	}
 //
 //	adcp.AddTool(server, "get_products", "Returns available products",
-//	    func(ctx context.Context, req *mcp.CallToolRequest, input GetProductsInput) (*mcp.CallToolResult, any, error) {
-//	        return adcp.ProductsResult(&adcp.ProductsData{Products: products, Sandbox: true})
+//	    func(ctx context.Context, req *mcp.CallToolRequest, input GetProductsRequest) (*mcp.CallToolResult, any, error) {
+//	        return adcp.ProductsResponse(&adcp.ProductsData{Products: products, Sandbox: true})
 //	    })
 func AddTool[In any](server *mcp.Server, name, description string, handler func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error)) {
 	schema := permissiveSchemaFor[In]()

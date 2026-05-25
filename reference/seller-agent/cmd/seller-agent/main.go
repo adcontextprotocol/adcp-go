@@ -194,7 +194,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	if !ok {
 		return errorResult("MEDIA_BUY_NOT_FOUND", "Media buy not found.", input.Context)
 	}
-	if input.Canceled {
+	if input.Canceled != nil && *input.Canceled {
 		if buy.Status == "canceled" {
 			return errorResult("NOT_CANCELLABLE", "Media buy is already canceled.", input.Context)
 		}
@@ -203,8 +203,8 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		buy.Cancellation = map[string]any{"reason": input.CancellationReason, "canceled_by": "buyer", "canceled_at": now}
 		buy.Revision++
 		buy.UpdatedAt = now
-		buy.Ext = mediaBuyExt(buy.Status)
-		return updateMediaBuyResult(buy, buy.Packages, input.Context)
+		decorateMediaBuy(buy)
+		return updateMediaBuyResult(buy, packagesForCreateSuccess(buy.Packages), input.Context)
 	}
 	if input.Paused != nil {
 		if *input.Paused {
@@ -212,7 +212,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		} else {
 			buy.Status = "active"
 		}
-		buy.Ext = mediaBuyExt(buy.Status)
+		decorateMediaBuy(buy)
 	}
 
 	packageIndex := make(map[string]int, len(buy.Packages))
@@ -235,16 +235,16 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 			buy.Packages[i].TargetingOverlay = upd.TargetingOverlay
 		}
 		if len(upd.CreativeAssignments) > 0 {
-			buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, upd.CreativeAssignments...)
+			buy.Packages[i].CreativeAssignments = upd.CreativeAssignments
 			if buy.Status == "pending_creatives" {
 				buy.Status = "active"
-				buy.Ext = mediaBuyExt(buy.Status)
+				decorateMediaBuy(buy)
 			}
 		}
-		affected = append(affected, buy.Packages[i])
+		affected = append(affected, buy.Packages[i].Package)
 	}
 	if len(affected) == 0 {
-		affected = buy.Packages
+		affected = packagesForCreateSuccess(buy.Packages)
 	}
 	buy.Revision++
 	buy.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -256,13 +256,13 @@ func (b *backend) listCreatives(input adcp.ListCreativesRequest) (*mcp.CallToolR
 	defer b.mu.RUnlock()
 
 	creativeIDs := map[string]bool{}
-	formatIDs := map[string]bool{}
+	formatIDs := map[adcp.FormatRef]bool{}
 	if input.Filters != nil {
 		for _, id := range input.Filters.CreativeIDs {
 			creativeIDs[id] = true
 		}
 		for _, ref := range input.Filters.FormatIDs {
-			formatIDs[ref.ID] = true
+			formatIDs[ref] = true
 		}
 	}
 	creatives := make([]map[string]any, 0, len(b.creatives))
@@ -270,7 +270,7 @@ func (b *backend) listCreatives(input adcp.ListCreativesRequest) (*mcp.CallToolR
 		if len(creativeIDs) > 0 && !creativeIDs[c.ID] {
 			continue
 		}
-		if len(formatIDs) > 0 && (c.FormatID == nil || !formatIDs[c.FormatID.ID]) {
+		if len(formatIDs) > 0 && (c.FormatID == nil || !formatIDs[*c.FormatID]) {
 			continue
 		}
 		item := map[string]any{
@@ -300,11 +300,6 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.forced != nil {
-		forced := b.forced
-		b.forced = nil
-		return &adcp.MediaBuyData{Status: "submitted", Ext: map[string]any{"task_id": forced.TaskID, "message": forced.Message, "context": input.Context}}, nil
-	}
 	for _, p := range input.Packages {
 		if p.MeasurementTerms != nil && p.MeasurementTerms.BillingMeasurement != nil {
 			bm := p.MeasurementTerms.BillingMeasurement
@@ -320,20 +315,22 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 	}
 	n := b.buySeq.Add(1)
 	id := fmt.Sprintf("mb-%d", n)
-	pkgs := make([]adcp.Package, 0, len(input.Packages))
+	pkgs := make([]adcp.PackageStatus, 0, len(input.Packages))
 	hasCreatives := false
 	for i, p := range input.Packages {
 		if len(p.CreativeAssignments) > 0 {
 			hasCreatives = true
 		}
-		pkgs = append(pkgs, adcp.Package{
-			PackageID: fmt.Sprintf("%s-pkg-%d", id, i+1), ProductID: p.ProductID,
-			PricingOptionID: p.PricingOptionID, Budget: p.Budget,
-			StartTime: p.StartTime, EndTime: p.EndTime,
-			AgencyEstimateNumber: p.AgencyEstimateNumber,
-			MeasurementTerms:     p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
-			TargetingOverlay:    p.TargetingOverlay,
-			CreativeAssignments: p.CreativeAssignments,
+		pkgs = append(pkgs, adcp.PackageStatus{
+			Package: adcp.Package{
+				PackageID: fmt.Sprintf("%s-pkg-%d", id, i+1), ProductID: p.ProductID,
+				PricingOptionID: p.PricingOptionID, Budget: p.Budget,
+				StartTime: p.StartTime, EndTime: p.EndTime,
+				AgencyEstimateNumber: p.AgencyEstimateNumber,
+				MeasurementTerms:     p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
+				TargetingOverlay:    p.TargetingOverlay,
+				CreativeAssignments: p.CreativeAssignments,
+			},
 		})
 	}
 	var totalBudget float64
@@ -345,12 +342,30 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 		status = "active"
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	buy := &adcp.MediaBuyData{MediaBuyID: id, Status: status, TotalBudget: totalBudget, Packages: pkgs, ConfirmedAt: now, CreatedAt: now, UpdatedAt: now, Revision: 1, Ext: mediaBuyExt(status)}
+	buy := &adcp.MediaBuyData{MediaBuyID: id, Status: status, TotalBudget: totalBudget, Packages: pkgs, ConfirmedAt: now, CreatedAt: now, UpdatedAt: now, Revision: 1}
+	decorateMediaBuy(buy)
 	b.mediaBuys[id] = buy
 	for _, pkg := range pkgs {
 		b.delivery[pkg.PackageID] = &deliveryState{}
 	}
 	return buy, nil
+}
+
+func (b *backend) createMediaBuyResponse(input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
+	b.mu.Lock()
+	if b.forced != nil {
+		forced := b.forced
+		b.forced = nil
+		b.mu.Unlock()
+		return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: forced.TaskID, Message: forced.Message}, nil
+	}
+	b.mu.Unlock()
+
+	buy, err := b.createMediaBuy(input)
+	if err != nil {
+		return nil, err
+	}
+	return mediaBuyCreateSuccess(buy), nil
 }
 
 func (b *backend) syncCreatives(input *adcp.SyncCreativesRequest) ([]adcp.CreativeResult, error) {
@@ -366,23 +381,21 @@ func (b *backend) syncCreatives(input *adcp.SyncCreativesRequest) ([]adcp.Creati
 		b.creatives[c.CreativeID] = &creativeRecord{ID: c.CreativeID, Name: c.Name, FormatID: c.FormatID, Status: "approved", Assets: c.Assets}
 		results = append(results, adcp.CreativeResult{CreativeID: c.CreativeID, Action: action, Status: "approved"})
 	}
-	for _, raw := range input.Assignments {
-		assign, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		creativeID, _ := assign["creative_id"].(string)
-		packageID, _ := assign["package_id"].(string)
-		if creativeID == "" || packageID == "" {
+	for _, assign := range input.Assignments {
+		if assign.CreativeID == "" || assign.PackageID == "" {
 			continue
 		}
 		for _, buy := range b.mediaBuys {
 			for i := range buy.Packages {
-				if buy.Packages[i].PackageID == packageID {
-					buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, map[string]any{"creative_id": creativeID})
+				if buy.Packages[i].PackageID == assign.PackageID {
+					buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, adcp.CreativeAssignment{
+						CreativeID:   assign.CreativeID,
+						Weight:       assign.Weight,
+						PlacementIDs: assign.PlacementIDs,
+					})
 					if buy.Status == "pending_creatives" {
 						buy.Status = "active"
-						buy.Ext = mediaBuyExt(buy.Status)
+						decorateMediaBuy(buy)
 						buy.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 						buy.Revision++
 					}
@@ -418,7 +431,15 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 			if ds == nil {
 				ds = &deliveryState{}
 			}
-			pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Totals: adcp.DeliveryTotals{Impressions: float64(ds.Impressions), Clicks: float64(ds.Clicks), Spend: ds.Spend}, Spend: ds.Spend, PricingModel: "cpm", Rate: 10, Currency: "USD"})
+			pkgDel = append(pkgDel, adcp.PackageDelivery{
+				PackageID:    pkg.PackageID,
+				Impressions:  float64(ds.Impressions),
+				Clicks:       float64(ds.Clicks),
+				Spend:        ds.Spend,
+				PricingModel: "cpm",
+				Rate:         10,
+				Currency:     "USD",
+			})
 			totImps += ds.Impressions
 			totClicks += ds.Clicks
 			totSpend += ds.Spend
@@ -488,7 +509,7 @@ func (b *backend) simulateDelivery(mediaBuyID string, p adcp.SimulateDeliveryPar
 	}
 	baseImps, extraImps := p.Impressions/count, p.Impressions%count
 	baseClicks, extraClicks := p.Clicks/count, p.Clicks%count
-	spendPerPackage := spend / float64(count)
+	totalBudget := mediaBuyBudget(buy)
 	for i, pkg := range buy.Packages {
 		ds := b.delivery[pkg.PackageID]
 		if ds == nil {
@@ -505,7 +526,7 @@ func (b *backend) simulateDelivery(mediaBuyID string, p adcp.SimulateDeliveryPar
 		}
 		ds.Impressions += imps
 		ds.Clicks += clicks
-		ds.Spend += spendPerPackage
+		ds.Spend += weightedSpend(spend, pkg.Budget, totalBudget, count)
 	}
 	return &adcp.SimulationResult{Success: true, Simulated: map[string]any{"impressions": p.Impressions, "clicks": p.Clicks, "spend": spend}}, nil
 }
@@ -518,10 +539,7 @@ func (b *backend) simulateBudgetSpend(p adcp.SimulateBudgetParams) (*adcp.Simula
 	if !ok {
 		return nil, fmt.Errorf("NOT_FOUND")
 	}
-	var total float64
-	for _, pkg := range buy.Packages {
-		total += pkg.Budget
-	}
+	total := mediaBuyBudget(buy)
 	spend := total * p.SpendPercentage
 	for _, pkg := range buy.Packages {
 		if total == 0 {
@@ -532,9 +550,27 @@ func (b *backend) simulateBudgetSpend(p adcp.SimulateBudgetParams) (*adcp.Simula
 			ds = &deliveryState{}
 			b.delivery[pkg.PackageID] = ds
 		}
-		ds.Spend += spend * (pkg.Budget / total)
+		ds.Spend += weightedSpend(spend, pkg.Budget, total, len(buy.Packages))
 	}
 	return &adcp.SimulationResult{Success: true, Simulated: map[string]any{"spend": spend, "percentage": p.SpendPercentage}}, nil
+}
+
+func mediaBuyBudget(buy *adcp.MediaBuyData) float64 {
+	var total float64
+	for _, pkg := range buy.Packages {
+		total += pkg.Budget
+	}
+	return total
+}
+
+func weightedSpend(spend, packageBudget, totalBudget float64, packageCount int) float64 {
+	if spend == 0 || packageCount == 0 {
+		return 0
+	}
+	if totalBudget == 0 {
+		return spend / float64(packageCount)
+	}
+	return spend * (packageBudget / totalBudget)
 }
 
 func (b *backend) handleCustomScenario(scenario string, params map[string]any) (any, error) {
@@ -588,19 +624,39 @@ func updateMediaBuyResult(buy *adcp.MediaBuyData, affected []adcp.Package, conte
 	}
 	if buy.Cancellation != nil {
 		out["cancellation"] = buy.Cancellation
-		if cancellation, ok := buy.Cancellation.(map[string]any); ok {
-			out["canceled_by"] = cancellation["canceled_by"]
-			out["canceled_at"] = cancellation["canceled_at"]
-		}
 	}
 	return adcp.Result(out, "Media buy updated")
 }
 
-func mediaBuyExt(status string) map[string]any {
-	return map[string]any{
-		"currency":      "USD",
-		"valid_actions": validActions(status),
+func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
+	return &adcp.CreateMediaBuySuccess{
+		MediaBuyID:       buy.MediaBuyID,
+		Account:          buy.Account,
+		InvoiceRecipient: buy.InvoiceRecipient,
+		Status:           buy.Status,
+		ConfirmedAt:      buy.ConfirmedAt,
+		CreativeDeadline: buy.CreativeDeadline,
+		Revision:         buy.Revision,
+		ValidActions:     buy.ValidActions,
+		Packages:         packagesForCreateSuccess(buy.Packages),
+		Sandbox:          adcp.Bool(true),
+		Ext:              buy.Ext,
 	}
+}
+
+func packagesForCreateSuccess(statuses []adcp.PackageStatus) []adcp.Package {
+	pkgs := make([]adcp.Package, 0, len(statuses))
+	for _, status := range statuses {
+		pkgs = append(pkgs, status.Package)
+	}
+	return pkgs
+}
+
+func decorateMediaBuy(buy *adcp.MediaBuyData) {
+	buy.Currency = "USD"
+	buy.ValidActions = validActions(buy.Status)
+	// Response envelope fields are typed; do not smuggle them through ext.
+	buy.Ext = nil
 }
 
 func validActions(status string) []string {
@@ -727,10 +783,10 @@ func main() {
 				}
 				return data, nil
 			},
-			CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (*adcp.MediaBuyData, error) {
-				return b.createMediaBuy(input)
+			CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
+				return b.createMediaBuyResponse(input)
 			},
-			GetMediaBuys: func(_ context.Context, _ any, input *adcp.GetMediaBuysRequest) ([]adcp.MediaBuyData, error) {
+			GetMediaBuys: func(_ context.Context, _ any, input *adcp.GetMediaBuysRequest) (*adcp.GetMediaBuysResponse, error) {
 				b.mu.RLock()
 				defer b.mu.RUnlock()
 				buys := make([]adcp.MediaBuyData, 0)
@@ -738,18 +794,18 @@ func main() {
 					for _, id := range input.MediaBuyIDs {
 						if buy, ok := b.mediaBuys[id]; ok {
 							item := *buy
-							item.Ext = mediaBuyExt(item.Status)
+							decorateMediaBuy(&item)
 							buys = append(buys, item)
 						}
 					}
 				} else {
 					for _, buy := range b.mediaBuys {
 						item := *buy
-						item.Ext = mediaBuyExt(item.Status)
+						decorateMediaBuy(&item)
 						buys = append(buys, item)
 					}
 				}
-				return buys, nil
+				return &adcp.GetMediaBuysResponse{MediaBuys: buys}, nil
 			},
 			ListCreativeFormats: func(_ context.Context, input *adcp.ListCreativeFormatsRequest) ([]adcp.CreativeFormat, error) {
 				if len(input.FormatIDs) > 0 {

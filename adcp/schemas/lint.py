@@ -76,7 +76,9 @@ EXEMPT = {
     'AccountResult', 'AccountSetup', 'CreativeResult', 'CatalogResult',
     'EventSourceResult', 'LogEventResult', 'GovernanceResult',
     'GovernanceAccount', 'GovernanceAgent', 'CreativeListItem',
-    'MediaBuyListItem', 'PackageDelivery', 'DeliveryTotals', 'DeliveryData',
+    'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
+    'PackageStatus', 'PackageCreativeApproval', 'PackageSnapshot',
+    'SyncCreativeAssignment', 'PackageDelivery', 'DeliveryTotals', 'DeliveryData',
     'MediaBuyDelivery', 'ReportingPeriod', 'PreviewResult', 'Preview',
     'PreviewRender', 'BuildCreativeResult', 'ProductsData',
     # capability blocks — generator doesn't own these yet
@@ -120,7 +122,7 @@ EXEMPT = {
 EXPLICIT_SCHEMA = {
     'Product': 'core/product.json',
     'Package': 'core/package.json',
-    'MediaBuyData': 'core/media-buy.json',
+    'CreativeAssignment': 'core/creative-assignment.json',
     'Targeting': 'core/targeting.json',
     'FormatRef': 'core/format-id.json',
     'PricingOption': 'core/pricing-option.json',
@@ -180,6 +182,8 @@ def parse_go_structs():
             body = m.group(2)
             fields = []
             for fm in FIELD_LINE_RE.finditer(body):
+                if fm.group(3) == '-':
+                    continue
                 fields.append((
                     fm.group(1),
                     fm.group(2).strip(),

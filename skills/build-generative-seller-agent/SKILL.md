@@ -51,7 +51,7 @@ Echo brand/operator back, assign an account_id.
 
 ```go
 adcp.AddTool(server, "sync_accounts", "Register accounts",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncAccountsInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncAccountsRequest) (*mcp.CallToolResult, any, error) {
         var results []adcp.AccountResult
         for i, acct := range input.Accounts {
             id := fmt.Sprintf("acct-%s-%d", acct.Brand.Domain, i+1)
@@ -71,7 +71,7 @@ Input has `accounts[]` with nested `account.brand`, `account.operator`, and `gov
 
 ```go
 adcp.AddTool(server, "sync_governance", "Register governance agents",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncGovernanceInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncGovernanceRequest) (*mcp.CallToolResult, any, error) {
         var results []adcp.GovernanceResult
         for _, acct := range input.Accounts {
             govAcct := acct.Account
@@ -107,7 +107,7 @@ var products = []adcp.Product{
 }
 
 adcp.AddTool(server, "get_products", "Available products",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetProductsInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetProductsRequest) (*mcp.CallToolResult, any, error) {
         return adcp.ProductsResponse(&adcp.ProductsData{Products: products, Sandbox: true})
     })
 ```
@@ -116,17 +116,19 @@ adcp.AddTool(server, "get_products", "Available products",
 
 ```go
 adcp.AddTool(server, "create_media_buy", "Create media buy",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.CreateMediaBuyInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.CreateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
         id := fmt.Sprintf("mb-%d", counter)
         var pkgs []adcp.Package
         for i, p := range input.Packages {
             pkgs = append(pkgs, adcp.Package{
                 PackageID: fmt.Sprintf("%s-pkg-%d", id, i+1),
                 ProductID: p.ProductID, PricingOptionID: p.PricingOptionID, Budget: p.Budget,
+                CreativeAssignments: p.CreativeAssignments,
             })
         }
-        return adcp.MediaBuyResponse(&adcp.MediaBuyData{
-            MediaBuyID: id, Status: "active", Currency: "USD", Packages: pkgs,
+        return adcp.MediaBuyResponse(&adcp.CreateMediaBuySuccess{
+            MediaBuyID: id, Status: "active", Packages: pkgs,
+            ValidActions: []string{"pause", "cancel", "sync_creatives", "update_packages"},
         })
     })
 ```
@@ -135,9 +137,12 @@ adcp.AddTool(server, "create_media_buy", "Create media buy",
 
 ```go
 adcp.AddTool(server, "get_media_buys", "List media buys",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetMediaBuysInput) (*mcp.CallToolResult, any, error) {
-        buys := make([]adcp.MediaBuyData, 0) // make, not var — ensures JSON [] not null
-        // ... populate from store
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetMediaBuysRequest) (*mcp.CallToolResult, any, error) {
+        buys := []adcp.MediaBuyData{{
+            MediaBuyID: "mb-1", Status: "active", Currency: "USD", TotalBudget: 1000,
+            ValidActions: []string{"pause", "cancel", "sync_creatives", "update_packages"},
+            Packages: []adcp.PackageStatus{{Package: adcp.Package{PackageID: "mb-1-pkg-1", ProductID: "display", Budget: 1000}}},
+        }}
         return adcp.MediaBuysResponse(buys, true)
     })
 ```
@@ -165,7 +170,7 @@ var creativeFormats = []adcp.CreativeFormat{
 }
 
 adcp.AddTool(server, "list_creative_formats", "Available formats",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativeFormatsInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativeFormatsRequest) (*mcp.CallToolResult, any, error) {
         return adcp.CreativeFormatsResponse(creativeFormats, true)
     })
 ```
@@ -176,7 +181,7 @@ Check format to decide status: generative → `"pending_review"`, standard → `
 
 ```go
 adcp.AddTool(server, "sync_creatives", "Submit creatives",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesRequest) (*mcp.CallToolResult, any, error) {
         var results []adcp.CreativeResult
         for _, c := range input.Creatives {
             status := "approved"
@@ -199,7 +204,7 @@ Use `make([]T, 0)` for empty slices to ensure JSON `[]` not `null`.
 
 ```go
 adcp.AddTool(server, "get_media_buy_delivery", "Delivery metrics",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetMediaBuyDeliveryInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetMediaBuyDeliveryRequest) (*mcp.CallToolResult, any, error) {
         deliveries := make([]adcp.MediaBuyDelivery, 0)
         // ... populate from store
         return adcp.DeliveryResponse(&adcp.DeliveryData{
@@ -312,7 +317,10 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_generative_s
 | `adcp.RegisterTestController(server, store)` | Test controller |
 | `adcp.CapabilitiesResponse(data)` | Capabilities |
 | `adcp.ProductsResponse(data)` | Products |
-| `adcp.MediaBuyResponse(data)` | Create media buy |
+| `adcp.MediaBuyResponse(*CreateMediaBuySuccess\|*CreateMediaBuyError\|*CreateMediaBuySubmitted)` | Create media buy |
+| `adcp.CreateMediaBuySuccessResponse(data)` | Sync create media buy |
+| `adcp.CreateMediaBuyErrorResponse(data)` | Create media buy error branch |
+| `adcp.CreateMediaBuySubmittedResponse(taskID, message)` | Async create media buy |
 | `adcp.MediaBuysResponse(buys, sandbox)` | List media buys |
 | `adcp.DeliveryResponse(data)` | Delivery metrics |
 | `adcp.SyncAccountsResponse(accounts, sandbox)` | Sync accounts |
@@ -322,6 +330,6 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_generative_s
 | `adcp.Result(data, summary)` | Generic response |
 | `adcp.Errorf(code, opts)` | Error response |
 
-Input types: `adcp.EmptyInput`, `adcp.SyncAccountsInput`, `adcp.SyncGovernanceInput`, `adcp.GetProductsInput`, `adcp.CreateMediaBuyInput`, `adcp.GetMediaBuysInput`, `adcp.ListCreativeFormatsInput`, `adcp.SyncCreativesInput`, `adcp.GetMediaBuyDeliveryInput`
+Input types: `adcp.EmptyInput`, `adcp.SyncAccountsRequest`, `adcp.SyncGovernanceRequest`, `adcp.GetProductsRequest`, `adcp.CreateMediaBuyRequest`, `adcp.GetMediaBuysRequest`, `adcp.ListCreativeFormatsRequest`, `adcp.SyncCreativesRequest`, `adcp.GetMediaBuyDeliveryRequest`
 
 The skill contains everything you need.
