@@ -30,6 +30,42 @@ type PackageInput struct {
 	EndTime              string `json:"end_time,omitempty"`
 }
 
+// UpdateMediaBuyRequest is the input for update_media_buy.
+type UpdateMediaBuyRequest struct {
+	AdcpMajorVersion       int              `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string           `json:"idempotency_key"`
+	Account                AccountReference `json:"account"`
+	MediaBuyID             string           `json:"media_buy_id"`
+	Revision               int              `json:"revision,omitempty"`
+	Paused                 *bool            `json:"paused,omitempty"`
+	Canceled               bool             `json:"canceled,omitempty"`
+	CancellationReason     string           `json:"cancellation_reason,omitempty"`
+	StartTime              any              `json:"start_time,omitempty"`
+	EndTime                string           `json:"end_time,omitempty"`
+	Packages               []PackageUpdate  `json:"packages,omitempty"`
+	InvoiceRecipient       any              `json:"invoice_recipient,omitempty"`
+	NewPackages            []PackageInput   `json:"new_packages,omitempty"`
+	ReportingWebhook       any              `json:"reporting_webhook,omitempty"`
+	PushNotificationConfig any              `json:"push_notification_config,omitempty"`
+	Context                any              `json:"context,omitempty"`
+	Ext                    any              `json:"ext,omitempty"`
+}
+
+// PackageUpdate identifies a package and fields to update in update_media_buy.
+type PackageUpdate struct {
+	PackageID           string     `json:"package_id"`
+	Budget              float64    `json:"budget,omitempty"`
+	BidPrice            float64    `json:"bid_price,omitempty"`
+	Impressions         float64    `json:"impressions,omitempty"`
+	StartTime           string     `json:"start_time,omitempty"`
+	EndTime             string     `json:"end_time,omitempty"`
+	Paused              *bool      `json:"paused,omitempty"`
+	Canceled            bool       `json:"canceled,omitempty"`
+	CancellationReason  string     `json:"cancellation_reason,omitempty"`
+	TargetingOverlay    *Targeting `json:"targeting_overlay,omitempty"`
+	CreativeAssignments []any      `json:"creative_assignments,omitempty"`
+}
+
 // --- Nested item types (inline objects in schemas, no $ref) ---
 
 // AccountInput is a single account in a sync_accounts request.

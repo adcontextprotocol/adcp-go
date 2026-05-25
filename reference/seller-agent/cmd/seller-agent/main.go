@@ -128,24 +128,6 @@ type deliveryState struct {
 	Spend               float64
 }
 
-type updateMediaBuyInput struct {
-	Account            *adcp.AccountReference `json:"account,omitempty"`
-	MediaBuyID         string                 `json:"media_buy_id"`
-	Paused             *bool                  `json:"paused,omitempty"`
-	Canceled           *bool                  `json:"canceled,omitempty"`
-	CancellationReason string                 `json:"cancellation_reason,omitempty"`
-	Packages           []packageUpdate        `json:"packages,omitempty"`
-	IdempotencyKey     string                 `json:"idempotency_key,omitempty"`
-	Context            any                    `json:"context,omitempty"`
-}
-
-type packageUpdate struct {
-	PackageID           string           `json:"package_id"`
-	Paused              *bool            `json:"paused,omitempty"`
-	TargetingOverlay    *adcp.Targeting  `json:"targeting_overlay,omitempty"`
-	CreativeAssignments []map[string]any `json:"creative_assignments,omitempty"`
-}
-
 func (b *backend) seedProduct(productID string, fixture map[string]any) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -204,7 +186,7 @@ func (b *backend) seedPricingOption(productID, pricingOptionID string, fixture m
 	product.PricingOptions = append(product.PricingOptions, adcp.PricingOption{PricingOptionID: pricingOptionID, PricingModel: model, Currency: currency, FixedPrice: fixedPrice})
 }
 
-func (b *backend) updateMediaBuy(input updateMediaBuyInput) (*mcp.CallToolResult, any, error) {
+func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -212,7 +194,7 @@ func (b *backend) updateMediaBuy(input updateMediaBuyInput) (*mcp.CallToolResult
 	if !ok {
 		return errorResult("MEDIA_BUY_NOT_FOUND", "Media buy not found.", input.Context)
 	}
-	if input.Canceled != nil && *input.Canceled {
+	if input.Canceled {
 		if buy.Status == "canceled" {
 			return errorResult("NOT_CANCELLABLE", "Media buy is already canceled.", input.Context)
 		}
@@ -253,9 +235,7 @@ func (b *backend) updateMediaBuy(input updateMediaBuyInput) (*mcp.CallToolResult
 			buy.Packages[i].TargetingOverlay = upd.TargetingOverlay
 		}
 		if len(upd.CreativeAssignments) > 0 {
-			for _, assignment := range upd.CreativeAssignments {
-				buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, assignment)
-			}
+			buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, upd.CreativeAssignments...)
 			if buy.Status == "pending_creatives" {
 				buy.Status = "active"
 				buy.Ext = mediaBuyExt(buy.Status)
@@ -351,7 +331,7 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 			PricingOptionID: p.PricingOptionID, Budget: p.Budget,
 			StartTime: p.StartTime, EndTime: p.EndTime,
 			AgencyEstimateNumber: p.AgencyEstimateNumber,
-			MeasurementTerms:    p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
+			MeasurementTerms:     p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
 			TargetingOverlay:    p.TargetingOverlay,
 			CreativeAssignments: p.CreativeAssignments,
 		})
@@ -502,15 +482,30 @@ func (b *backend) simulateDelivery(mediaBuyID string, p adcp.SimulateDeliveryPar
 	if p.ReportedSpend != nil {
 		spend = p.ReportedSpend.Amount
 	}
-	for _, pkg := range buy.Packages {
+	count := len(buy.Packages)
+	if count == 0 {
+		return &adcp.SimulationResult{Success: true, Simulated: map[string]any{"impressions": p.Impressions, "clicks": p.Clicks, "spend": spend}}, nil
+	}
+	baseImps, extraImps := p.Impressions/count, p.Impressions%count
+	baseClicks, extraClicks := p.Clicks/count, p.Clicks%count
+	spendPerPackage := spend / float64(count)
+	for i, pkg := range buy.Packages {
 		ds := b.delivery[pkg.PackageID]
 		if ds == nil {
 			ds = &deliveryState{}
 			b.delivery[pkg.PackageID] = ds
 		}
-		ds.Impressions += p.Impressions
-		ds.Clicks += p.Clicks
-		ds.Spend += spend
+		imps := baseImps
+		if i < extraImps {
+			imps++
+		}
+		clicks := baseClicks
+		if i < extraClicks {
+			clicks++
+		}
+		ds.Impressions += imps
+		ds.Clicks += clicks
+		ds.Spend += spendPerPackage
 	}
 	return &adcp.SimulationResult{Success: true, Simulated: map[string]any{"impressions": p.Impressions, "clicks": p.Clicks, "spend": spend}}, nil
 }
@@ -626,12 +621,12 @@ func errorResult(code, message string, context any) (*mcp.CallToolResult, any, e
 		"adcp_error": map[string]any{
 			"code":     code,
 			"message":  message,
-			"recovery": "revise",
+			"recovery": "correctable",
 		},
 		"errors": []map[string]any{{
 			"code":     code,
 			"message":  message,
-			"recovery": "revise",
+			"recovery": "correctable",
 		}},
 		"context": context,
 	}
@@ -779,7 +774,7 @@ func main() {
 		})
 
 		adcp.AddTool(server, "update_media_buy", "Update a media buy",
-			func(ctx context.Context, req *mcp.CallToolRequest, input updateMediaBuyInput) (*mcp.CallToolResult, any, error) {
+			func(ctx context.Context, req *mcp.CallToolRequest, input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
 				return b.updateMediaBuy(input)
 			})
 
@@ -791,8 +786,8 @@ func main() {
 		// Test controller — sandbox only. Do not register in production.
 		if os.Getenv("ADCP_SANDBOX") != "false" {
 			adcp.RegisterTestController(server, &adcp.TestControllerStore{
-				CustomScenarios: customScenarios,
-				ForceAccountStatus: b.forceAccountStatus,
+				CustomScenarios:     customScenarios,
+				ForceAccountStatus:  b.forceAccountStatus,
 				ForceMediaBuyStatus: b.forceMediaBuyStatus,
 				ForceCreativeStatus: b.forceCreativeStatus,
 				SimulateDelivery:    b.simulateDelivery,

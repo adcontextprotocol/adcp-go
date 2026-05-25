@@ -105,11 +105,11 @@ func TestPendingCreativesToActive_ViaUpdateMediaBuy(t *testing.T) {
 	buy := mustCreateBuy(t, b, false)
 	pkgID := buy.Packages[0].PackageID
 
-	result, _, err := b.updateMediaBuy(updateMediaBuyInput{
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{
 		MediaBuyID: buy.MediaBuyID,
-		Packages: []packageUpdate{{
+		Packages: []adcp.PackageUpdate{{
 			PackageID:           pkgID,
-			CreativeAssignments: []map[string]any{{"creative_id": "cr-upd-1"}},
+			CreativeAssignments: []any{map[string]any{"creative_id": "cr-upd-1"}},
 		}},
 	})
 	if err != nil {
@@ -132,9 +132,9 @@ func TestCancellation(t *testing.T) {
 	buy := mustCreateBuy(t, b, false)
 	canceled := true
 
-	result, _, err := b.updateMediaBuy(updateMediaBuyInput{
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{
 		MediaBuyID:         buy.MediaBuyID,
-		Canceled:           &canceled,
+		Canceled:           canceled,
 		CancellationReason: "budget_cut",
 	})
 	if err != nil {
@@ -159,10 +159,10 @@ func TestDoubleCancellation(t *testing.T) {
 	canceled := true
 
 	// First cancel succeeds.
-	_, _, _ = b.updateMediaBuy(updateMediaBuyInput{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
+	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
 
 	// Second cancel must return an error result (NOT_CANCELLABLE), not a hard error.
-	result, _, err := b.updateMediaBuy(updateMediaBuyInput{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
 	if err != nil {
 		t.Fatalf("second cancel: unexpected hard error: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestForceMediaBuyStatus_TerminalStateBlocked(t *testing.T) {
 	b := newTestBackend()
 	buy := mustCreateBuy(t, b, false)
 	canceled := true
-	_, _, _ = b.updateMediaBuy(updateMediaBuyInput{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
+	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
 
 	_, err := b.forceMediaBuyStatus(buy.MediaBuyID, "active", "")
 	if err == nil {

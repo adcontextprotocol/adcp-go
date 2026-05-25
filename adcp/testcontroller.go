@@ -252,7 +252,9 @@ func listScenarios(store *TestControllerStore) []string {
 	if store.SimulateBudgetSpend != nil {
 		scenarios = append(scenarios, "simulate_budget_spend")
 	}
-	scenarios = append(scenarios, store.CustomScenarios...)
+	if store.CustomScenario != nil {
+		scenarios = append(scenarios, store.CustomScenarios...)
+	}
 	return scenarios
 }
 
