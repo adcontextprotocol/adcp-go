@@ -249,7 +249,7 @@ jobs:
           # 20-min timeout. APP_SLUG comes from `actions/create-github-app-token`;
           # the bot user login is `${APP_SLUG}[bot]`.
           LATEST="$(gh api "/repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
-            --jq --arg login "${APP_SLUG}[bot]" --arg sha "$HEAD_SHA" \
+            | jq --arg login "${APP_SLUG}[bot]" --arg sha "$HEAD_SHA" \
               '[.[] | select(.user.login == $login and .commit_id == $sha)] | sort_by(.submitted_at) | last // {}')"
           STATE="$(echo "$LATEST" | jq -r '.state // ""')"
           AUTHOR="$(echo "$LATEST" | jq -r '.user.login // ""')"
