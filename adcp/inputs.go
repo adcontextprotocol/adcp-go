@@ -16,10 +16,13 @@ type PackageInput struct {
 	PricingOptionID string  `json:"pricing_option_id,omitempty"`
 	Budget          float64 `json:"budget"`
 	BidPrice        float64 `json:"bid_price,omitempty"`
+	BuyerRef        string  `json:"buyer_ref,omitempty"`
 
 	// Business terms (buyer proposals, override product defaults)
-	MeasurementTerms     *MeasurementTerms    `json:"measurement_terms,omitempty"`
+	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
+	TargetingOverlay     *Targeting            `json:"targeting_overlay,omitempty"`
+	CreativeAssignments  []any                 `json:"creative_assignments,omitempty"`
 
 	// Broadcast / scheduling
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
@@ -49,15 +52,16 @@ type GovernanceAccountInput struct {
 
 // CreativeInput is a single creative in a sync_creatives request.
 type CreativeInput struct {
-	CreativeID string            `json:"creative_id"`
-	FormatID   *FormatRef `json:"format_id,omitempty"`
-	Name       string            `json:"name,omitempty"`
-	Assets     map[string]any    `json:"assets,omitempty"`
+	CreativeID string         `json:"creative_id"`
+	FormatID   *FormatRef     `json:"format_id,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	Assets     map[string]any `json:"assets,omitempty"`
 }
 
 // CreativeFilters contains filters for list_creatives.
 type CreativeFilters struct {
-	FormatIDs []FormatRef `json:"format_ids,omitempty"`
+	CreativeIDs []string    `json:"creative_ids,omitempty"`
+	FormatIDs   []FormatRef `json:"format_ids,omitempty"`
 }
 
 // CatalogInput is a single catalog in a sync_catalogs request.

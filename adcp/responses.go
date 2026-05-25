@@ -22,12 +22,26 @@ func ProductsResponse(data *ProductsData) (*mcp.CallToolResult, any, error) {
 
 // MediaBuyResponse builds a create_media_buy response.
 func MediaBuyResponse(data *MediaBuyData) (*mcp.CallToolResult, any, error) {
-	return buildResult(fmt.Sprintf("Media buy %s created", data.MediaBuyID), data), data, nil
+	if data.Status == "submitted" {
+		out := map[string]any{"status": "submitted"}
+		if ext, ok := data.Ext.(map[string]any); ok {
+			for k, v := range ext {
+				out[k] = v
+			}
+		}
+		return buildResult("Media buy submitted", out), out, nil
+	}
+	out := flattenExt(data)
+	return buildResult(fmt.Sprintf("Media buy %s created", data.MediaBuyID), out), out, nil
 }
 
 // MediaBuysResponse builds a get_media_buys response.
 func MediaBuysResponse(mediaBuys []MediaBuyData, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"media_buys": mediaBuys, "sandbox": sandbox}
+	items := make([]any, 0, len(mediaBuys))
+	for _, buy := range mediaBuys {
+		items = append(items, flattenExt(buy))
+	}
+	out := map[string]any{"media_buys": items, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Found %d media buys", len(mediaBuys)), out), out, nil
 }
 
@@ -213,4 +227,33 @@ func buildResult(summary string, data any) *mcp.CallToolResult {
 		},
 		StructuredContent: jsonRoundTrip(data),
 	}
+}
+
+func attachContext(result *mcp.CallToolResult, context any) *mcp.CallToolResult {
+	if result == nil || context == nil {
+		return result
+	}
+	obj, ok := jsonRoundTrip(result.StructuredContent).(map[string]any)
+	if !ok {
+		return result
+	}
+	obj["context"] = context
+	result.StructuredContent = obj
+	return result
+}
+
+func flattenExt(v any) any {
+	item, ok := jsonRoundTrip(v).(map[string]any)
+	if !ok {
+		return v
+	}
+	ext, ok := item["ext"].(map[string]any)
+	if !ok {
+		return item
+	}
+	for k, val := range ext {
+		item[k] = val
+	}
+	delete(item, "ext")
+	return item
 }

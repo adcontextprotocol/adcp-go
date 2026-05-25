@@ -116,7 +116,7 @@ func TestPermissiveSchemaSerializesToJSON(t *testing.T) {
 	require.NoError(t, err, "failed to marshal schema")
 
 	var m map[string]any
-	json.Unmarshal(b, &m)
+	require.NoError(t, json.Unmarshal(b, &m))
 
 	// Should have type: "object" and properties but NO additionalProperties
 	assert.Equal(t, "object", m["type"], "expected type=object in JSON")

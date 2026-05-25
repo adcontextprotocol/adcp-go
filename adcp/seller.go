@@ -42,8 +42,11 @@ func Register(server *mcp.Server, cfg Config) {
 
 	// Capabilities (always registered)
 	AddTool(server, "get_adcp_capabilities", "Returns agent capabilities",
-		func(ctx context.Context, req *mcp.CallToolRequest, input EmptyInput) (*mcp.CallToolResult, any, error) {
-			return CapabilitiesResponse(caps)
+		func(ctx context.Context, req *mcp.CallToolRequest, input struct {
+			Context any `json:"context,omitempty"`
+		}) (*mcp.CallToolResult, any, error) {
+			result, out, err := CapabilitiesResponse(caps)
+			return attachContext(result, input.Context), out, err
 		})
 
 	// --- Media buy tools ---
@@ -53,9 +56,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncAccountsRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncAccounts(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return SyncAccountsResponse(results, sandbox)
+				result, out, err := SyncAccountsResponse(results, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -64,9 +69,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncGovernanceRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncGovernance(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return GovernanceResponse(results)
+				result, out, err := GovernanceResponse(results)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -79,10 +86,13 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				data, err := cfg.GetProducts(ctx, acct, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
 				data.Sandbox = sandbox
-				return ProductsResponse(data)
+				data.Context = input.Context
+				result, out, err := ProductsResponse(data)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -95,9 +105,11 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				buy, err := cfg.CreateMediaBuy(ctx, acct, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return MediaBuyResponse(buy)
+				result, out, err := MediaBuyResponse(buy)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -110,9 +122,11 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				buys, err := cfg.GetMediaBuys(ctx, acct, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return MediaBuysResponse(buys, sandbox)
+				result, out, err := MediaBuysResponse(buys, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -125,9 +139,12 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				data, err := cfg.GetDelivery(ctx, acct, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return DeliveryResponse(data)
+				data.Context = input.Context
+				result, out, err := DeliveryResponse(data)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -138,9 +155,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input ListCreativeFormatsRequest) (*mcp.CallToolResult, any, error) {
 				formats, err := cfg.ListCreativeFormats(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return CreativeFormatsResponse(formats, sandbox)
+				result, out, err := CreativeFormatsResponse(formats, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -149,9 +168,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncCreativesRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncCreatives(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return SyncCreativesResponse(results, sandbox)
+				result, out, err := SyncCreativesResponse(results, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -404,7 +425,7 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 	if existing := caps.ADCP.Idempotency.ReplayTTLSeconds; existing != 0 && existing != ttlSeconds {
 		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL (%ds) conflicts with Capabilities.ADCP.Idempotency.ReplayTTLSeconds (%ds) — set one or the other, not both", ttlSeconds, existing))
 	}
-	caps.ADCP.Idempotency = IdempotencyCaps{ReplayTTLSeconds: ttlSeconds}
+	caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
 
 	if len(caps.SupportedProtocols) == 0 {
 		caps.SupportedProtocols = detectProtocols(cfg)

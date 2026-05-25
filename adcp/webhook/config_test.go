@@ -20,6 +20,7 @@ func TestDecodeConfigEmptyObjectReturnsNil(t *testing.T) {
 }
 
 func TestDecodeConfigHappyPath(t *testing.T) {
+	// #nosec G101 -- test fixture uses a fake validation token.
 	raw := map[string]any{
 		"url":   "https://buyer.example.com/webhooks/task-status",
 		"token": "opaque-client-validation-token-1234567890",

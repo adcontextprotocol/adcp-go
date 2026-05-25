@@ -71,7 +71,7 @@ func TestNewSignedHTTPClientRoundTripsAgainstVerifier(t *testing.T) {
 
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer closeResponseBody(t, resp)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -96,7 +96,7 @@ func TestNewSignedHTTPClientRejectsRedirects(t *testing.T) {
 
 	resp, err := client.Post(srv.URL+"/adcp/create_media_buy", "application/json", bytes.NewReader([]byte(`{}`)))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer closeResponseBody(t, resp)
 	// CheckRedirect returns http.ErrUseLastResponse → caller sees the 3xx
 	// directly rather than the redirect's body.
 	assert.Equal(t, http.StatusMovedPermanently, resp.StatusCode)
@@ -151,11 +151,16 @@ func TestNewSignedHTTPClientRespectsCustomInnerTransport(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	assert.NotEmpty(t, got.Header.Get("Signature"))
 	assert.NotEmpty(t, got.Header.Get("Signature-Input"))
+}
+
+func closeResponseBody(t *testing.T, resp *http.Response) {
+	t.Helper()
+	require.NoError(t, resp.Body.Close())
 }
 
 type roundTripperFunc func(r *http.Request) (*http.Response, error)
@@ -197,7 +202,7 @@ func TestCapabilityProviderSignsRequiredFor(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	assert.NotEmpty(t, got.Header.Get("Signature"), "required_for op must be signed")
@@ -232,7 +237,7 @@ func TestCapabilityProviderSkipsUnlistedOperation(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	assert.Empty(t, got.Header.Get("Signature"), "op not in any list must NOT be signed")
@@ -266,7 +271,7 @@ func TestCapabilityProviderReturningNilSkipsSigning(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	assert.Equal(t, int32(1), providerCalls.Load())
 	got := <-captured
@@ -305,7 +310,7 @@ func TestCapabilityProviderHonorsCoversContentDigestRequired(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	sigInput := got.Header.Get("Signature-Input")
@@ -346,7 +351,7 @@ func TestCapabilityProviderHonorsCoversContentDigestForbidden(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	sigInput := got.Header.Get("Signature-Input")
@@ -385,7 +390,7 @@ func TestCapabilityProviderSkipsWhenSupportedFalse(t *testing.T) {
 	require.NoError(t, err)
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 
 	got := <-captured
 	assert.Empty(t, got.Header.Get("Signature"), "supported=false ⇒ skip signing")
@@ -436,13 +441,13 @@ func TestMiddlewareDefaultsReplayStoreToInMemory(t *testing.T) {
 
 	// First signed request: 200.
 	resp := signAndSend()
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// Each new request gets a fresh nonce, so two distinct signed requests
 	// both succeed — proves the default store accepts new (kid, nonce) pairs.
 	resp = signAndSend()
-	resp.Body.Close()
+	closeResponseBody(t, resp)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -500,13 +505,13 @@ func TestMiddlewareDefaultReplayStoreRejectsActualReplay(t *testing.T) {
 	// First → 200.
 	resp1, err := srv.Client().Do(build())
 	require.NoError(t, err)
-	resp1.Body.Close()
+	closeResponseBody(t, resp1)
 	assert.Equal(t, http.StatusOK, resp1.StatusCode)
 
 	// Same (kid, nonce, body) → the default in-memory store must reject.
 	resp2, err := srv.Client().Do(build())
 	require.NoError(t, err)
-	resp2.Body.Close()
+	closeResponseBody(t, resp2)
 	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
 	assert.Contains(t, resp2.Header.Get("WWW-Authenticate"), `error="request_signature_replayed"`)
 }

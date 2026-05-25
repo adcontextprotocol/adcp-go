@@ -37,8 +37,9 @@ func AddTool[In any](server *mcp.Server, name, description string, handler func(
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var input In
 		if req.Params.Arguments != nil {
-			if err := json.Unmarshal(req.Params.Arguments, &input); err != nil {
-				return makeErrResult("INVALID_INPUT", "Failed to parse input: invalid JSON or type mismatch"), nil
+			if parseErr := json.Unmarshal(req.Params.Arguments, &input); parseErr != nil {
+				// Return an MCP tool error payload, not a transport-level error.
+				return makeErrResult("INVALID_INPUT", "Failed to parse input: invalid JSON or type mismatch"), nil //nolint:nilerr
 			}
 		}
 
@@ -148,9 +149,14 @@ func isTrueSchema(s *jsonschema.Schema) bool {
 // jsonRoundTrip marshals a value to JSON and back, ensuring struct tags
 // (like json:"name") are respected in the structured content output.
 func jsonRoundTrip(v any) any {
-	b, _ := json.Marshal(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
 	var m any
-	json.Unmarshal(b, &m)
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
 	return m
 }
 

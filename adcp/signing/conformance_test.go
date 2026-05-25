@@ -135,6 +135,7 @@ func operationFromURL(rawURL string) string {
 
 func loadVectorFile(t *testing.T, rel string) Vector {
 	t.Helper()
+	// #nosec G304 -- test reads conformance vectors discovered under testdata.
 	data, err := os.ReadFile(rel)
 	require.NoError(t, err, "open %s", rel)
 	var v Vector

@@ -62,7 +62,7 @@ func TestMiddlewareEndToEndSignAndVerify(t *testing.T) {
 
 	resp, err := srv.Client().Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer closeResponseBody(t, resp)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	got := <-verified
@@ -131,9 +131,8 @@ func TestRoundTripperSignsAndBodyIsPreserved(t *testing.T) {
 	client := &http.Client{Transport: signer.RoundTripper(srv.Client().Transport, true)}
 	resp, err := client.Post(srv.URL+"/adcp/x", "application/json", bytes.NewReader([]byte(`{"a":1}`)))
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer closeResponseBody(t, resp)
 
 	assert.Equal(t, `{"a":1}`, string(receivedBody))
 	assert.NotEmpty(t, receivedSig)
 }
-

@@ -79,6 +79,14 @@ func GenerateKeyForProfile(alg Algorithm, kid string, profile Profile) (*Generat
 		if err != nil {
 			return nil, err
 		}
+		ecdhPub, err := priv.PublicKey.ECDH()
+		if err != nil {
+			return nil, err
+		}
+		pubBytes := ecdhPub.Bytes()
+		if len(pubBytes) != 65 || pubBytes[0] != 4 {
+			return nil, errors.New("unexpected P-256 public key encoding")
+		}
 		pemBytes, err := encodePKCS8PEM(priv)
 		if err != nil {
 			return nil, err
@@ -93,8 +101,8 @@ func GenerateKeyForProfile(alg Algorithm, kid string, profile Profile) (*Generat
 				Use:     "sig",
 				KeyOps:  []string{"verify"},
 				AdcpUse: profile.AdcpUse,
-				X:       b64UrlEncodeRaw(leftPad(priv.PublicKey.X.Bytes(), 32)),
-				Y:       b64UrlEncodeRaw(leftPad(priv.PublicKey.Y.Bytes(), 32)),
+				X:       b64UrlEncodeRaw(pubBytes[1:33]),
+				Y:       b64UrlEncodeRaw(pubBytes[33:65]),
 			},
 		}, nil
 	}
@@ -107,15 +115,6 @@ func encodePKCS8PEM(priv any) ([]byte, error) {
 		return nil, err
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), nil
-}
-
-func leftPad(b []byte, size int) []byte {
-	if len(b) >= size {
-		return b
-	}
-	out := make([]byte, size)
-	copy(out[size-len(b):], b)
-	return out
 }
 
 // LoadPrivateKey parses a PEM-encoded PKCS#8 private key produced by

@@ -68,6 +68,11 @@ func publisherForTest(t *testing.T) *Publisher {
 	})
 }
 
+func closeResponseBody(t *testing.T, resp *http.Response) {
+	t.Helper()
+	require.NoError(t, resp.Body.Close())
+}
+
 func TestPublisherRetriesThenSucceeds(t *testing.T) {
 	srv, attempts, _ := flappyServer(t, 2) // first 2 attempts 5xx, third 200
 	pub := publisherForTest(t)
@@ -77,7 +82,7 @@ func TestPublisherRetriesThenSucceeds(t *testing.T) {
 	}
 	res, err := pub.Emit(context.Background(), srv.URL, p)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 	assert.Equal(t, http.StatusOK, res.Response.StatusCode)
 	assert.Equal(t, 3, res.Attempts)
 	assert.Equal(t, int32(3), attempts.Load())
@@ -145,7 +150,7 @@ func TestPublisherRetriesOn408And429(t *testing.T) {
 			}
 			res, err := pub.Emit(context.Background(), srv.URL, p)
 			require.NoError(t, err)
-			res.Response.Body.Close()
+			closeResponseBody(t, res.Response)
 			assert.Equal(t, 2, res.Attempts)
 		})
 	}
@@ -185,7 +190,7 @@ func TestPublisherHonorsRetryAfter(t *testing.T) {
 	}
 	res, err := pub.Emit(context.Background(), srv.URL, p)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 	assert.Equal(t, 42*time.Second, sleptWith, "Retry-After must override computed backoff")
 }
 
@@ -276,7 +281,7 @@ func TestPublisherEachAttemptFreshSignature(t *testing.T) {
 	}
 	res, err := pub.Emit(context.Background(), srv.URL, p)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 
 	got := *sigs.Load()
 	require.Len(t, got, 2)
@@ -311,7 +316,7 @@ func TestPublisherIdempotencyKeyStableAcrossAttempts(t *testing.T) {
 	}
 	res, err := pub.Emit(context.Background(), srv.URL, p)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 
 	got := *keys.Load()
 	require.Len(t, got, 2)
@@ -364,7 +369,7 @@ func TestPublisherEndToEndWithVerifyingReceiver(t *testing.T) {
 	}
 	res, err := pub.Emit(context.Background(), srv.URL+"/webhooks/mcp", p)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 	assert.Equal(t, http.StatusOK, res.Response.StatusCode)
 	assert.Equal(t, int32(1), delivered.Load())
 }
