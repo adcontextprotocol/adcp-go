@@ -112,7 +112,7 @@ func jcsEncodeString(buf *bytes.Buffer, s string) {
 
 func jcsEncodeNumber(buf *bytes.Buffer, f float64) error {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return fmt.Errorf("tmproto: jcs forbids non-finite number %v", f)
+		return fmt.Errorf("tmproto: jcs forbids non-finite number")
 	}
 	if f == 0 {
 		buf.WriteByte('0')
@@ -128,7 +128,7 @@ func jcsEncodeNumber(buf *bytes.Buffer, f float64) error {
 	// reproduce. TMP signing inputs do not carry non-integer floats today;
 	// surfacing an error keeps two implementations from diverging silently
 	// when one starts emitting them.
-	return fmt.Errorf("tmproto: jcs non-integer floats are unsupported (got %v); only integers are canonicalized today", f)
+	return fmt.Errorf("tmproto: jcs non-integer floats are unsupported; only integers are canonicalized today")
 }
 
 func jcsEncodeJSONNumber(buf *bytes.Buffer, n json.Number) error {
@@ -139,7 +139,7 @@ func jcsEncodeJSONNumber(buf *bytes.Buffer, n json.Number) error {
 	if f, err := n.Float64(); err == nil {
 		return jcsEncodeNumber(buf, f)
 	}
-	return fmt.Errorf("tmproto: jcs cannot parse json.Number %q", string(n))
+	return fmt.Errorf("tmproto: jcs cannot parse json.Number")
 }
 
 func jcsEncodeArray(buf *bytes.Buffer, a []any) error {

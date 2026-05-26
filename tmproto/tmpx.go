@@ -121,7 +121,7 @@ func EncodeTmpxPlaintext(country string, entries []TmpxEntry, ts time.Time) ([]b
 
 func encodeTmpxPlaintextWith(country string, entries []TmpxEntry, ts time.Time, r io.Reader) ([]byte, error) {
 	if len(country) != 2 || !isASCIIUpper(country[0]) || !isASCIIUpper(country[1]) {
-		return nil, fmt.Errorf("tmproto: tmpx country must be ISO 3166-1 alpha-2 (uppercase ASCII), got %q", country)
+		return nil, fmt.Errorf("tmproto: tmpx country must be ISO 3166-1 alpha-2 uppercase ASCII")
 	}
 	if len(entries) > 255 {
 		return nil, fmt.Errorf("tmproto: tmpx supports at most 255 entries, got %d", len(entries))

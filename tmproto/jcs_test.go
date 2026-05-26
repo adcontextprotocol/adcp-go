@@ -2,6 +2,8 @@ package tmproto
 
 import (
 	"encoding/json"
+	"math"
+	"strings"
 	"testing"
 )
 
@@ -130,6 +132,24 @@ func TestJCSStringSlice(t *testing.T) {
 func TestJCSRejectsNonIntegerFloats(t *testing.T) {
 	if _, err := jcsMarshal(1.5); err == nil {
 		t.Fatal("non-integer float must be rejected until ECMA-262 number canonicalization is implemented")
+	} else if strings.Contains(err.Error(), "1.5") {
+		t.Fatalf("non-integer float error echoed rejected value: %q", err.Error())
+	}
+}
+
+func TestJCSRejectsNonFiniteFloatsWithoutEcho(t *testing.T) {
+	if _, err := jcsMarshal(math.Inf(1)); err == nil {
+		t.Fatal("non-finite float must be rejected")
+	} else if strings.Contains(err.Error(), "+Inf") || strings.Contains(err.Error(), "Inf") {
+		t.Fatalf("non-finite float error echoed rejected value: %q", err.Error())
+	}
+}
+
+func TestJCSRejectsInvalidJSONNumberWithoutEcho(t *testing.T) {
+	if _, err := jcsMarshal(json.Number("leaky-number")); err == nil {
+		t.Fatal("invalid json.Number must be rejected")
+	} else if strings.Contains(err.Error(), "leaky-number") {
+		t.Fatalf("json.Number error echoed rejected value: %q", err.Error())
 	}
 }
 

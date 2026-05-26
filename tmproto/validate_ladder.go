@@ -70,11 +70,11 @@ func (c *ContextSignals) Validate() error {
 		return fmt.Errorf("context_signals.summary: %d chars exceeds max %d", len(c.Summary), MaxSummaryLength)
 	}
 	if c.Language != "" && !bcp47TwoLetter.MatchString(c.Language) {
-		return fmt.Errorf("context_signals.language: %q does not match pattern ^[a-z]{2}$", c.Language)
+		return fmt.Errorf("context_signals.language: does not match pattern ^[a-z]{2}$")
 	}
 	if c.Sentiment != "" {
 		if _, ok := validSentiment[c.Sentiment]; !ok {
-			return fmt.Errorf("context_signals.sentiment: %q not in [positive, negative, neutral, mixed]", c.Sentiment)
+			return fmt.Errorf("context_signals.sentiment: not in [positive, negative, neutral, mixed]")
 		}
 	}
 	// Embedding triad: all three must be set together.
@@ -95,7 +95,7 @@ func (r *ArtifactRef) Validate() error {
 		return nil
 	}
 	if _, ok := validArtifactRefType[r.Type]; !ok {
-		return fmt.Errorf("artifact_ref.type: %q not a known ArtifactRefType", r.Type)
+		return fmt.Errorf("artifact_ref.type: not a known ArtifactRefType")
 	}
 	if r.Value == "" {
 		return fmt.Errorf("artifact_ref.value: required")
@@ -114,7 +114,7 @@ func (a *AssetAccess) Validate() error {
 		return fmt.Errorf("asset_access.method: required")
 	}
 	if _, ok := validAssetAccessMethod[a.Method]; !ok {
-		return fmt.Errorf("asset_access.method: %q not a known AssetAccessMethod", a.Method)
+		return fmt.Errorf("asset_access.method: not a known AssetAccessMethod")
 	}
 	switch a.Method {
 	case AssetAccessMethodBearerToken:
@@ -126,7 +126,7 @@ func (a *AssetAccess) Validate() error {
 			return fmt.Errorf("asset_access: provider required for method=service_account")
 		}
 		if a.Provider != "gcp" && a.Provider != "aws" {
-			return fmt.Errorf("asset_access.provider: %q not in [gcp, aws]", a.Provider)
+			return fmt.Errorf("asset_access.provider: not in [gcp, aws]")
 		}
 	}
 	return nil

@@ -264,6 +264,13 @@ func TestEncodeTmpxPlaintextRejectsBadCountry(t *testing.T) {
 			t.Errorf("country %q must be rejected", c)
 		}
 	}
+	_, err := EncodeTmpxPlaintext("LEAKY", nil, time.Now())
+	if err == nil {
+		t.Fatal("country LEAKY must be rejected")
+	}
+	if strings.Contains(err.Error(), "LEAKY") {
+		t.Fatalf("country error echoed rejected value: %q", err.Error())
+	}
 }
 
 func TestEncodeTmpxPlaintextRejectsWrongTokenSize(t *testing.T) {
