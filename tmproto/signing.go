@@ -400,7 +400,7 @@ func decodeSignature(s string) ([]byte, error) {
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(s)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSignatureMalformed, err)
+		return nil, ErrSignatureMalformed
 	}
 	if len(raw) != ed25519.SignatureSize {
 		return nil, fmt.Errorf("%w: signature length %d", ErrSignatureMalformed, len(raw))
