@@ -1,13 +1,166 @@
 package identityagent
 
 import (
+	"bytes"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+func TestIdentityHandlerValidationErrorIsGenericAndLogged(t *testing.T) {
+	var logs bytes.Buffer
+	h := NewIdentityHandler(IdentityHandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		Logger:                     slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+
+	body := `{
+		"type": "identity_match_request",
+		"request_id": "id-invalid",
+		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}]
+	}`
+	req := httptest.NewRequest("POST", "/identity", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, tmproto.ErrorCodeInvalidRequest, resp.Code)
+	assert.Equal(t, "id-invalid", resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, resp.Message, "seller_agent_url")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "invalid identity-match request")
+	assert.Contains(t, logText, `"method":"POST"`)
+	assert.Contains(t, logText, `"path":"/identity"`)
+	assert.Contains(t, logText, "id-invalid")
+	assert.Contains(t, logText, "seller_agent_url is required")
+}
+
+func TestIdentityHandlerInvalidRequestIDIsNotEchoed(t *testing.T) {
+	var logs bytes.Buffer
+	h := NewIdentityHandler(IdentityHandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		Logger:                     slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+
+	body := `{
+		"type": "identity_match_request",
+		"request_id": "bad/id",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}]
+	}`
+	req := httptest.NewRequest("POST", "/identity", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, w.Body.String(), "bad/id")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "invalid identity-match request")
+	assert.Contains(t, logText, `"method":"POST"`)
+	assert.Contains(t, logText, `"path":"/identity"`)
+	assert.Contains(t, logText, `"request_id_valid":false`)
+	assert.NotContains(t, logText, "bad/id")
+}
+
+func TestIdentityHandlerLongRequestIDIsNotEchoed(t *testing.T) {
+	var logs bytes.Buffer
+	h := NewIdentityHandler(IdentityHandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		Logger:                     slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+
+	longID := strings.Repeat("a", tmproto.MaxIDLength+1)
+	body, err := json.Marshal(tmproto.IdentityMatchRequest{
+		Type:           tmproto.TypeIdentityMatchRequest,
+		RequestID:      longID,
+		SellerAgentURL: "https://seller.example.com/agent",
+		Identities: []tmproto.IdentityToken{
+			{UserToken: "tok_test_abc", UIDType: tmproto.UIDTypeUID2},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/identity", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, w.Body.String(), longID)
+
+	logText := logs.String()
+	assert.Contains(t, logText, `"request_id_valid":false`)
+	assert.NotContains(t, logText, longID)
+}
+
+func TestIdentityHandlerUnsupportedMajorVersionIsGenericAndLogged(t *testing.T) {
+	var logs bytes.Buffer
+	h := NewIdentityHandler(IdentityHandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		Logger:                     slog.New(slog.NewJSONHandler(&logs, nil)),
+	})
+
+	body, err := json.Marshal(tmproto.IdentityMatchRequest{
+		Type:             tmproto.TypeIdentityMatchRequest,
+		RequestID:        "id-version",
+		SellerAgentURL:   "https://seller.example.com/agent",
+		AdcpMajorVersion: 999,
+		Identities: []tmproto.IdentityToken{
+			{UserToken: "tok_test_abc", UIDType: tmproto.UIDTypeUID2},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest("POST", "/identity", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, "id-version", resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, w.Body.String(), "999")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "invalid identity-match request")
+	assert.Contains(t, logText, `"request_id":"id-version"`)
+	assert.Contains(t, logText, "adcp_major_version is not supported")
+	assert.NotContains(t, logText, "999")
+}
 
 // TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged covers the
 // legacy code path: when the handler has no sealer, the request flows to

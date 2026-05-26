@@ -142,7 +142,8 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := ValidateContextRequest(&cmReq); err != nil {
-		r.writeError(w, cmReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
+		r.logValidationFailure("invalid context-match request", req, cmReq.RequestID, err)
+		r.writeError(w, tmproto.SafeRequestIDForEcho(cmReq.RequestID), tmproto.ErrorCodeInvalidRequest, "invalid request")
 		return
 	}
 
@@ -201,7 +202,8 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := ValidateIdentityRequest(&imReq); err != nil {
-		r.writeError(w, imReq.RequestID, tmproto.ErrorCodeInvalidRequest, err.Error())
+		r.logValidationFailure("invalid identity-match request", req, imReq.RequestID, err)
+		r.writeError(w, tmproto.SafeRequestIDForEcho(imReq.RequestID), tmproto.ErrorCodeInvalidRequest, "invalid request")
 		return
 	}
 
@@ -505,4 +507,14 @@ func (r *Router) writeError(w http.ResponseWriter, requestID string, code tmprot
 	}); err != nil {
 		r.logger.Debug("failed to write error response", "error", err)
 	}
+}
+
+func (r *Router) logValidationFailure(message string, req *http.Request, requestID string, err error) {
+	attrs := []any{"method", req.Method, "path", req.URL.Path, "error", err}
+	if safeID := tmproto.SafeRequestIDForEcho(requestID); safeID != "" {
+		attrs = append(attrs, "request_id", safeID)
+	} else if requestID != "" {
+		attrs = append(attrs, "request_id_valid", false)
+	}
+	r.logger.Warn(message, attrs...)
 }

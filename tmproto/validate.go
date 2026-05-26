@@ -57,6 +57,19 @@ func validateSafeID(field, value string) error {
 	return nil
 }
 
+// SafeRequestIDForEcho returns requestID only when it satisfies the same
+// constraints as request_id validation. HTTP boundaries use it before echoing a
+// parsed request_id in an error response or structured log.
+func SafeRequestIDForEcho(requestID string) string {
+	if requestID == "" {
+		return ""
+	}
+	if err := validateSafeID("request_id", requestID); err != nil {
+		return ""
+	}
+	return requestID
+}
+
 func validateProtocolVersion(v string) error {
 	if v == "" || v == "1.0" {
 		return nil
