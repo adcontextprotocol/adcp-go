@@ -4,6 +4,120 @@ from collections import OrderedDict
 import generate
 
 
+class TestDeprecatedField(unittest.TestCase):
+    """Tests that deprecated: true in a JSON Schema property produces a
+    preceding // Deprecated: doc comment in the emitted Go struct field."""
+
+    def _struct_lines(self, schema):
+        output = generate.schema_to_struct("TestStruct", schema)
+        return [l for l in output.splitlines() if l.startswith('\t')]
+
+    def test_deprecated_field_emits_preceding_comment(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "Use new_status instead.",
+                }
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(len(lines), 2,
+            "Deprecated field should produce exactly 2 lines: comment + field")
+        self.assertEqual(lines[0], "\t// Deprecated: Use new_status instead.")
+        self.assertTrue(lines[1].startswith("\tStatus string"),
+            f"Field line should start with field declaration, got: {lines[1]!r}")
+        self.assertNotIn("//", lines[1],
+            "Trailing inline comment suppressed for deprecated fields")
+
+    def test_deprecated_field_without_description_uses_fallback(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "old_field": {"type": "string", "deprecated": True}
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(lines[0], "\t// Deprecated: No replacement specified.")
+
+    def test_non_deprecated_field_unchanged(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "The display name."}
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(len(lines), 1,
+            "Non-deprecated field should produce exactly one line")
+        self.assertIn("// The display name.", lines[0])
+
+    def test_non_deprecated_field_no_description(self):
+        schema = {
+            "type": "object",
+            "properties": {"count": {"type": "integer"}},
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn("//", lines[0])
+
+    def test_mixed_struct_deprecated_and_normal(self):
+        """Regression: other fields in the same struct are unaffected."""
+        schema = {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+                "id": {"type": "string", "description": "Unique identifier."},
+                "status": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "Use new_status instead.",
+                },
+                "new_status": {"type": "string", "description": "Current status."},
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(len(lines), 4)
+        deprecated_comment_idx = next(
+            (i for i, l in enumerate(lines) if "// Deprecated:" in l), None
+        )
+        self.assertIsNotNone(deprecated_comment_idx)
+        self.assertIn("Status string", lines[deprecated_comment_idx + 1])
+
+    def test_deprecated_field_double_prefix_stripped(self):
+        """Schema author sets deprecated:true and prefixes description with
+        'Deprecated: ' — generator must not emit '// Deprecated: Deprecated: …'."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "axe_include_segment": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "Deprecated: Use TMP provider fields instead.",
+                }
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(lines[0], "\t// Deprecated: Use TMP provider fields instead.")
+        self.assertNotIn("Deprecated: Deprecated:", lines[0])
+
+    def test_deprecated_case_insensitive_prefix_strip(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "old_field": {
+                    "type": "string",
+                    "deprecated": True,
+                    "description": "deprecated: use new_field.",
+                }
+            },
+        }
+        lines = self._struct_lines(schema)
+        self.assertEqual(lines[0], "\t// Deprecated: use new_field.")
+
+
 def scalar_or_array_schema(min_items=1, description="Test union"):
     return {
         "description": description,
