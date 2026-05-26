@@ -1773,8 +1773,21 @@ type PolicyCategoryDefinition struct {
 
 // AudienceConstraints — Buyer-defined audience targeting constraints for a campaign plan. Specifies who the campaign should
 type AudienceConstraints struct {
-	Include []any `json:"include,omitempty"` // Desired audience criteria. The seller's targeting should align with these. Each
-	Exclude []any `json:"exclude,omitempty"` // Excluded audience criteria. The seller's targeting must not overlap with these.
+	Include []AudienceSelector `json:"include,omitempty"` // Desired audience criteria. The seller's targeting should align with these. Each
+	Exclude []AudienceSelector `json:"exclude,omitempty"` // Excluded audience criteria. The seller's targeting must not overlap with these.
+}
+
+// AudienceSelector — Selects an audience by signal reference or natural language description. Uses 'type' as the primary
+type AudienceSelector struct {
+	Type string `json:"type,omitempty"` // Discriminator for description-based selectors
+	SignalID *SignalID `json:"signal_id,omitempty"` // The signal to target
+	ValueType string `json:"value_type,omitempty"` // Discriminator for numeric signals
+	Value *bool `json:"value,omitempty"` // Whether to include (true) or exclude (false) users matching this signal
+	Values []string `json:"values,omitempty"` // Values to target. Users with any of these values will be included.
+	MinValue float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
+	MaxValue float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
+	Description string `json:"description,omitempty"` // Natural language description of the audience (e.g., 'likely EV buyers', 'high ne
+	Category string `json:"category,omitempty"` // Optional grouping hint for the governance agent (e.g., 'demographic', 'behaviora
 }
 
 // Product — Represents available advertising inventory
@@ -1799,7 +1812,7 @@ type Product struct {
 	CreativePolicy *CreativePolicy `json:"creative_policy,omitempty"`
 	IsCustom *bool `json:"is_custom,omitempty"` // Whether this is a custom product
 	PropertyTargetingAllowed *bool `json:"property_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its publisher_properties.
-	DataProviderSignals []any `json:"data_provider_signals,omitempty"` // Data provider signals available for this product. Buyers fetch signal definition
+	DataProviderSignals []DataProviderSignalSelector `json:"data_provider_signals,omitempty"` // Data provider signals available for this product. Buyers fetch signal definition
 	SignalTargetingAllowed *bool `json:"signal_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its data_provider_signals.
 	CatalogTypes []string `json:"catalog_types,omitempty"` // Catalog types this product supports for catalog-driven campaigns. A sponsored pr
 	MetricOptimization any `json:"metric_optimization,omitempty"` // Metric optimization capabilities for this product. Presence indicates the produc
@@ -1818,6 +1831,14 @@ type Product struct {
 	TrustedMatch any `json:"trusted_match,omitempty"` // Trusted Match Protocol capabilities for this product. When present, the product
 	MaterialSubmission any `json:"material_submission,omitempty"` // Instructions for submitting physical creative materials (print, static OOH, cine
 	Ext any `json:"ext,omitempty"`
+}
+
+// DataProviderSignalSelector — Selects signals from a data provider's adagents.json catalog. Used for product definitions and agent
+type DataProviderSignalSelector struct {
+	DataProviderDomain string `json:"data_provider_domain,omitempty"` // Domain where data provider's adagents.json is hosted (e.g., 'polk.com')
+	SelectionType string `json:"selection_type,omitempty"` // Discriminator indicating selection by signal tags
+	SignalIDs []string `json:"signal_ids,omitempty"` // Specific signal IDs from the data provider's catalog
+	SignalTags []string `json:"signal_tags,omitempty"` // Signal tags from the data provider's catalog. Selector covers all signals with t
 }
 
 // Placement — Represents a specific ad placement within a product's inventory. When the publisher declares a place
@@ -2010,6 +2031,14 @@ type CreativeManifest struct {
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Cle
 	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
 	Ext any `json:"ext,omitempty"`
+}
+
+// Destination — A deployment target where signals can be activated (DSP, sales agent, etc.)
+type Destination struct {
+	Type string `json:"type,omitempty"` // Discriminator indicating this is an agent URL-based deployment
+	Platform string `json:"platform,omitempty"` // Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp')
+	Account string `json:"account,omitempty"` // Optional account identifier on the agent
+	AgentURL string `json:"agent_url,omitempty"` // URL identifying the deployment agent (for sales agents, etc.)
 }
 
 // Signal — Definition of a signal in a data provider's catalog, published via adagents.json
@@ -2261,7 +2290,7 @@ type PlannedDelivery struct {
 	EndTime string `json:"end_time,omitempty"` // Actual flight end the seller will use.
 	FrequencyCap *FrequencyCap `json:"frequency_cap,omitempty"` // Frequency cap the seller will apply.
 	AudienceSummary string `json:"audience_summary,omitempty"` // Human-readable summary of the audience the seller will target.
-	AudienceTargeting []any `json:"audience_targeting,omitempty"` // Structured audience targeting the seller will activate. Each entry is either a s
+	AudienceTargeting []AudienceSelector `json:"audience_targeting,omitempty"` // Structured audience targeting the seller will activate. Each entry is either a s
 	TotalBudget float64 `json:"total_budget,omitempty"` // Total budget the seller will deliver against.
 	Currency string `json:"currency,omitempty"` // ISO 4217 currency code for the budget.
 	EnforcedPolicies []string `json:"enforced_policies,omitempty"` // Registry policy IDs the seller will enforce for this delivery.
@@ -2949,7 +2978,7 @@ type GetSignalsRequest struct {
 	Account *AccountReference `json:"account,omitempty"` // Account for this request. When provided, the signals agent returns per-account p
 	SignalSpec string `json:"signal_spec,omitempty"` // Natural language description of the desired signals. When used alone, enables se
 	SignalIDs []SignalID `json:"signal_ids,omitempty"` // Specific signals to look up by data provider and ID. Returns exact matches from
-	Destinations []any `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When omitted,
+	Destinations []Destination `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When omitted,
 	Countries []string `json:"countries,omitempty"` // Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, n
 	Filters *SignalFilters `json:"filters,omitempty"`
 	MaxResults int `json:"max_results,omitempty"` // DEPRECATED: Use pagination.max_results instead. When both fields are present, ag
