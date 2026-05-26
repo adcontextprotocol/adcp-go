@@ -1741,6 +1741,9 @@ const (
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
 type MediaBuyStatusFilter []MediaBuyStatus
 
+// NewMediaBuyStatusFilter returns a pointer to a MediaBuyStatusFilter containing values.
+// It returns nil when called with no values so optional fields omit instead
+// of triggering a MarshalJSON error on a schema-invalid empty array.
 func NewMediaBuyStatusFilter(values ...MediaBuyStatus) *MediaBuyStatusFilter {
 	if len(values) == 0 {
 		return nil

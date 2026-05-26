@@ -1301,22 +1301,37 @@ def scalar_or_array_union_to_type(name, schema):
         raise ValueError(f'{name} is not a supported scalar-or-array union')
     desc = safe_comment(schema.get('description', ''), 100)
     doc = f'// {name} — {desc}\n' if desc else ''
-    reject_empty = '' if schema_accepts_empty_array(schema) else f'''\tif len(v) == 0 {{
+    accepts_empty = schema_accepts_empty_array(schema)
+    reject_empty = '' if accepts_empty else f'''\tif len(v) == 0 {{
 \t\treturn nil, fmt.Errorf("{name} must contain at least one value")
 \t}}
 '''
-    reject_empty_unmarshal = '' if schema_accepts_empty_array(schema) else f'''\tif len(many) == 0 {{
+    reject_empty_unmarshal = '' if accepts_empty else f'''\tif len(many) == 0 {{
 \t\treturn fmt.Errorf("{name} must contain at least one value")
 \t}}
 '''
-    empty_constructor = '' if schema_accepts_empty_array(schema) else f'''\tif len(values) == 0 {{
+    empty_constructor = '' if accepts_empty else f'''\tif len(values) == 0 {{
 \t\treturn nil
 \t}}
 '''
+    constructor_value = f'append({name}{{}}, values...)' if accepts_empty else f'{name}(values)'
+    if accepts_empty:
+        constructor_doc = (
+            f'// New{name} returns a pointer to a {name} containing values.\n'
+            f'// Use nil instead of New{name}() when an optional field should be omitted.\n'
+            f'// New{name}() returns a non-nil empty slice pointer that marshals as [].\n'
+        )
+    else:
+        constructor_doc = (
+            f'// New{name} returns a pointer to a {name} containing values.\n'
+            '// It returns nil when called with no values so optional fields omit instead\n'
+            '// of triggering a MarshalJSON error on a schema-invalid empty array.\n'
+        )
     return f'''{doc}type {name} []{elem_type}
 
+{constructor_doc}\
 func New{name}(values ...{elem_type}) *{name} {{
-{empty_constructor}\tv := {name}(values)
+{empty_constructor}\tv := {constructor_value}
 \treturn &v
 }}
 
