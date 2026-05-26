@@ -120,19 +120,21 @@ func EncodeTmpxPlaintext(country string, entries []TmpxEntry, ts time.Time) ([]b
 }
 
 func encodeTmpxPlaintextWith(country string, entries []TmpxEntry, ts time.Time, r io.Reader) ([]byte, error) {
+	// TMPX validation errors are caller-visible, so diagnostics below avoid
+	// echoing submitted values, indices, type IDs, or counts.
 	if len(country) != 2 || !isASCIIUpper(country[0]) || !isASCIIUpper(country[1]) {
-		return nil, fmt.Errorf("tmproto: tmpx country must be ISO 3166-1 alpha-2 uppercase ASCII")
+		return nil, errors.New("tmproto: tmpx country invalid; expected ISO 3166-1 alpha-2 uppercase ASCII")
 	}
 	if len(entries) > 255 {
-		return nil, fmt.Errorf("tmproto: tmpx supports at most 255 entries, got %d", len(entries))
+		return nil, errors.New("tmproto: tmpx entries exceed maximum")
 	}
-	for i, e := range entries {
+	for _, e := range entries {
 		size, ok := TmpxTokenSize(e.TypeID)
 		if !ok {
-			return nil, fmt.Errorf("tmproto: tmpx entry %d has unknown type id %d", i, e.TypeID)
+			return nil, errors.New("tmproto: tmpx entry has unknown type id")
 		}
 		if len(e.Token) != size {
-			return nil, fmt.Errorf("tmproto: tmpx entry %d (type %d) token must be %d bytes, got %d", i, e.TypeID, size, len(e.Token))
+			return nil, errors.New("tmproto: tmpx entry token has invalid size")
 		}
 	}
 
@@ -181,7 +183,7 @@ func isASCIIUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
 // callers should pass nil unless the buyer profile defines a value.
 func SealTmpx(recipient TmpxRecipient, info, plaintext []byte) (string, error) {
 	if recipient.Kid == "" || len(recipient.Kid) > TmpxMaxKidLen {
-		return "", fmt.Errorf("tmproto: tmpx kid must be 1..%d chars", TmpxMaxKidLen)
+		return "", errors.New("tmproto: tmpx kid must be 1..8 chars")
 	}
 	if recipient.PublicKey == nil {
 		return "", errors.New("tmproto: tmpx recipient public key required")
@@ -293,7 +295,7 @@ func labeledExtract(salt, label, ikm, suiteID []byte) ([]byte, error) {
 // future caller can't silently truncate.
 func labeledExpand(prk, label, info []byte, length int, suiteID []byte) ([]byte, error) {
 	if length < 0 || length > 0xffff {
-		return nil, fmt.Errorf("tmproto: hpke labeled_expand length %d outside uint16 range", length)
+		return nil, errors.New("tmproto: hpke labeled_expand length outside uint16 range")
 	}
 	labeledInfo := make([]byte, 0, 2+7+len(suiteID)+len(label)+len(info))
 	labeledInfo = binary.BigEndian.AppendUint16(labeledInfo, uint16(length))
