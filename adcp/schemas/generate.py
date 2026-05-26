@@ -195,7 +195,9 @@ CORE_SCHEMAS = [
     "governance/policy-entry.json",
     "governance/policy-category-definition.json",
     "governance/audience-constraints.json",
+    "core/audience-selector.json",
     "core/product.json",
+    "core/data-provider-signal-selector.json",
     "core/placement.json",
     "core/delivery-forecast.json",
     "core/forecast-point.json",
@@ -216,6 +218,7 @@ CORE_SCHEMAS = [
     "core/creative-asset.json",
     "core/creative-manifest.json",
     "core/deployment.json",
+    "core/destination.json",
     "core/activation-key.json",
     "core/signal-definition.json",
     "core/signal-id.json",
@@ -557,6 +560,13 @@ def schema_required_names(schema, _visited=None):
         required.update(schema_required_names(branch, _visited))
     return required
 
+def has_struct_fields(schema):
+    """True when a schema can emit a Go struct. This includes top-level oneOf
+    schemas whose branches declare object properties; Go represents those as a
+    flattened struct with the union of variant fields, matching the hand-written
+    oneOf pattern used elsewhere in this package."""
+    return bool(schema_properties(schema))
+
 def ref_to_go_name(ref):
     """Convert a $ref path to a Go type name.
     /schemas/core/product.json -> Product
@@ -605,13 +615,27 @@ def _will_generate_set():
     """Names (after REF_ALIASES) that this generator run will emit as structs.
     Used so `resolve_go_type` can typed-reference a schema-derived type even
     though it hasn't been emitted yet at the moment of the first reference.
-    Excludes schemas that will not produce a struct (no `properties`, oneOf-
-    only, etc.) because a ref to such a name resolves to `any`."""
+    Excludes schemas that will not produce a struct. Core/support oneOf schemas
+    with object branches are included because generation flattens their variant
+    fields into one struct; top-level tool oneOf schemas still emit `type X =
+    any` and are not treated as typed refs."""
     global _WILL_GENERATE_CACHE
     if _WILL_GENERATE_CACHE is not None:
         return _WILL_GENERATE_CACHE
     names = set()
-    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
+    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS:
+        if not schema_exists(rel):
+            continue
+        try:
+            schema = load_schema(rel)
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            print(f'// Warning: skipped schema {rel}: {e}', file=sys.stderr)
+            continue
+        if has_struct_fields(schema):
+            stem = Path(rel).stem
+            name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
+            names.add(name)
+    for rel in TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
         if not schema_exists(rel):
             continue
         try:
@@ -832,7 +856,7 @@ def generated_schema_entries():
             if name in generated:
                 continue
             generated.add(name)
-            if schema_properties(schema):
+            if has_struct_fields(schema):
                 yield {
                     'section': section,
                     'name': name,
@@ -849,7 +873,7 @@ def generated_schema_entries():
             schema = load_schema_spec(spec)
         except SCHEMA_RESOLUTION_ERRORS:
             continue
-        if schema_properties(schema):
+        if has_struct_fields(schema):
             yield {
                 'section': 'inline',
                 'name': name,
@@ -1049,7 +1073,7 @@ def generate():
         if name in generated:
             continue
         generated.add(name)
-        if schema.get('type') == 'object' and 'properties' in schema:
+        if has_struct_fields(schema):
             print(schema_to_struct(name, schema))
 
     # Generate support/helper schema types.
@@ -1065,7 +1089,7 @@ def generate():
         if name in generated:
             continue
         generated.add(name)
-        if schema_properties(schema):
+        if has_struct_fields(schema):
             print(schema_to_struct(name, schema))
 
     # Generate named inline schema-pointer types.

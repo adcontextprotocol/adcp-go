@@ -56,6 +56,11 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 				Message:  "purchase events are active",
 			}},
 		},
+		DataProviderSignals: []DataProviderSignalSelector{{
+			DataProviderDomain: "signals.example",
+			SelectionType:      "signal_ids",
+			SignalIDs:          []string{"auto_intenders"},
+		}},
 		Collections: []CollectionSelector{{
 			PublisherDomain: "example.com",
 			CollectionIDs:   []string{"sports"},
@@ -74,11 +79,44 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
 		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
 		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
+		`"data_provider_signals":[{"data_provider_domain":"signals.example","selection_type":"signal_ids","signal_ids":["auto_intenders"]}]`,
 		`"collections":[{"publisher_domain":"example.com","collection_ids":["sports"]}]`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("marshaled product missing %s:\n%s", want, body)
 		}
+	}
+}
+
+func TestGeneratedOneOfRefsMarshalFlattenedFields(t *testing.T) {
+	req := GetSignalsRequest{
+		SignalSpec: "auto intenders",
+		Destinations: []Destination{{
+			Type:     "platform",
+			Platform: "the-trade-desk",
+		}},
+	}
+	plan := PlannedDelivery{
+		AudienceTargeting: []AudienceSelector{{
+			Type:        "description",
+			Description: "likely auto intenders",
+		}},
+	}
+
+	rawReq, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal get signals request: %v", err)
+	}
+	if !strings.Contains(string(rawReq), `"destinations":[{"type":"platform","platform":"the-trade-desk"}]`) {
+		t.Fatalf("destinations did not marshal as typed field: %s", rawReq)
+	}
+
+	rawPlan, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatalf("marshal planned delivery: %v", err)
+	}
+	if !strings.Contains(string(rawPlan), `"audience_targeting":[{"type":"description","description":"likely auto intenders"}]`) {
+		t.Fatalf("audience targeting did not marshal as typed field: %s", rawPlan)
 	}
 }
 

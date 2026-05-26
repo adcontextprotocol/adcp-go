@@ -84,9 +84,14 @@ be populated.
 | `Product.MeasurementReadiness` | `*adcp.MeasurementReadiness` |
 | `MeasurementReadiness.Issues` | `[]adcp.DiagnosticIssue` |
 | `Product.Collections` | `[]adcp.CollectionSelector` |
+| `Product.DataProviderSignals` | `[]adcp.DataProviderSignalSelector` |
 | `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
 | `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
 | `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
+| `AudienceConstraints.Include` | `[]adcp.AudienceSelector` |
+| `AudienceConstraints.Exclude` | `[]adcp.AudienceSelector` |
+| `PlannedDelivery.AudienceTargeting` | `[]adcp.AudienceSelector` |
+| `GetSignalsRequest.Destinations` | `[]adcp.Destination` |
 
 Buyer request migration example:
 
