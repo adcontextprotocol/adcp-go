@@ -178,18 +178,19 @@ func TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged(t *testing.T) {
 	assert.Nil(t, decoded, "TMPX-off must not produce a decoded slice")
 }
 
-// TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedBytes
-// is the contract the second iteration of this work was built around:
-// when TMPX is enabled, the request that flows into service.Evaluate has
-// the audience/fcap-eligible identities only, and their UserToken is the
-// canonical decoded byte form (so identityhash.Hash inside audience/fcap
-// keys on the same bytes the buyer master will populate downstream).
+// TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalForm
+// pins the shadow-request contract: when TMPX is enabled, the request
+// that flows into service.Evaluate carries audience/fcap-eligible
+// identities only, and their UserToken is the canonical lowercase-hex
+// form of the decoded bytes — matching ExposureLog.user_token per its
+// proto spec, which is the keying convention downstream marker writers
+// and buyer-master readers honor.
 //
-// MAID and HashedEmail have decoders → survive with decoded bytes
-// in UserToken.
+// MAID and HashedEmail have decoders → survive with canonical hex in
+// UserToken.
 // UID2 has no registered decoder → dropped at decode time.
 // UIDTypeOther has no TMPX mapping → dropped entirely.
-func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedBytes(t *testing.T) {
+func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalForm(t *testing.T) {
 	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	h := &identityHandler{tmpx: cfg}
 
@@ -215,23 +216,18 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithDecodedByt
 	// and unmapped UIDTypeOther are filtered out.
 	require.Len(t, shadow.Identities, 2)
 
-	wantMAIDBytes := []byte{
-		0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4,
-		0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00, 0x00,
-	}
-	wantHashedEmailBytes := []byte{
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-		0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-	}
+	// The canonical key form is the lowercase-hex of the decoded bytes:
+	// MAID's dashed UUID collapses to its 32-char hex, and HashedEmail's
+	// hex input round-trips through decode→hex unchanged.
+	wantMAIDHex := "550e8400e29b41d4a716446655440000"
+	wantHashedEmailHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	assert.Equal(t, tmproto.UIDTypeMAID, shadow.Identities[0].UIDType)
-	assert.Equal(t, string(wantMAIDBytes), shadow.Identities[0].UserToken,
-		"audience/fcap must see UserToken set to the raw decoded MAID bytes, not the input UUID string — "+
-			"otherwise identityhash.Hash keys mismatch what the buyer master populator publishes")
+	assert.Equal(t, wantMAIDHex, shadow.Identities[0].UserToken,
+		"audience/fcap must see UserToken in the canonical lowercase-hex form so identityhash.Hash "+
+			"keys match the form ExposureLog.user_token publishes downstream")
 	assert.Equal(t, tmproto.UIDTypeHashedEmail, shadow.Identities[1].UIDType)
-	assert.Equal(t, string(wantHashedEmailBytes), shadow.Identities[1].UserToken,
-		"HashedEmail UserToken must be the raw 32 bytes of the SHA-256 hex input")
+	assert.Equal(t, wantHashedEmailHex, shadow.Identities[1].UserToken,
+		"HashedEmail UserToken must be the lowercase-hex of the SHA-256 input")
 
 	// The full decoded slice (including the dropped UID2/Other entries)
 	// flows separately to the TMPX seal path. Length matches the input

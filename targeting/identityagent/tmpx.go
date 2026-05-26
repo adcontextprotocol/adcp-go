@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/tmpxdecoders"
+	"github.com/adcontextprotocol/adcp-go/targeting/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -76,9 +76,10 @@ type DecodedIdentity struct {
 // downstream Valkey lookups don't waste round trips on keys the buyer
 // master will never have populated.
 //
-// UserToken is set to string(Bytes) so identityhash.Hash hashes the
-// canonical decoded form — the same form the buyer master will key its
-// downstream stores on.
+// UserToken is set to the canonical lowercase-hex form of the decoded
+// bytes — matching ExposureLog.user_token per its proto spec, which is
+// the keying convention downstream marker writers and buyer-master
+// readers honor.
 func audienceEligibleIdentities(decoded []DecodedIdentity) []tmproto.IdentityToken {
 	out := make([]tmproto.IdentityToken, 0, len(decoded))
 	for _, d := range decoded {
@@ -87,7 +88,7 @@ func audienceEligibleIdentities(decoded []DecodedIdentity) []tmproto.IdentityTok
 		}
 		out = append(out, tmproto.IdentityToken{
 			UIDType:   d.UIDType,
-			UserToken: string(d.Bytes),
+			UserToken: tmpxdecoders.Canonical(d.Bytes),
 		})
 	}
 	return out
