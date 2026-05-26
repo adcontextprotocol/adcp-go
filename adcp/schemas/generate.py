@@ -31,7 +31,9 @@ KNOWN_TYPES = {
     'CapabilitiesData', 'ADCPVersion', 'BrandReference', 'AccountReference',
     'AccountResult', 'AccountSetup', 'GovernanceResult', 'GovernanceAccount',
     'GovernanceAgent', 'ProductsData',
-    'MediaBuyListItem', 'DeliveryData', 'ReportingPeriod', 'MediaBuyDelivery',
+    'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
+    'PackageStatus', 'PackageCreativeApproval', 'PackageSnapshot',
+    'DeliveryData', 'ReportingPeriod', 'MediaBuyDelivery',
     'PackageDelivery',
     'Render', 'AssetSlot', 'CreativeResult', 'CreativeListItem', 'PreviewResult',
     'Preview', 'PreviewRender', 'BuildCreativeResult', 'SignalID',
@@ -43,7 +45,8 @@ KNOWN_TYPES = {
     # From inputs.go (hand-written types that need custom Go code)
     'EmptyInput', 'PackageInput',
     'AccountInput', 'GovernanceAccountInput',
-    'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
+    'CreativeInput', 'SyncCreativeAssignment',
+    'CatalogInput', 'EventSourceInput', 'DestinationInput',
     'CreativeFilters', 'SignalFilters',
     # From errors.go
     'Error', 'ErrorOptions',
@@ -67,7 +70,7 @@ KNOWN_TYPES = {
     'ListCollectionListsResponse',
     # New core types (from types.go)
     'Duration', 'CancellationPolicy', 'CancellationFee',
-    'CollectionListRef', 'CreativeConsumption', 'IndustryIdentifier',
+    'CollectionListRef', 'CreativeAssignment', 'CreativeConsumption', 'IndustryIdentifier',
     'MeasurementTerms', 'BillingMeasurement', 'MakegoodPolicy',
     'MeasurementWindow', 'PerformanceStandard', 'VendorPricingOption',
     # Hand-written in types.go; listed here so $ref resolution uses the typed name.
@@ -252,6 +255,7 @@ INLINE_TYPE_HINTS = {
     ('SyncAccountsRequest', 'accounts'): 'AccountInput',
     ('SyncGovernanceRequest', 'accounts'): 'GovernanceAccountInput',
     ('SyncCreativesRequest', 'creatives'): 'CreativeInput',
+    ('SyncCreativesRequest', 'assignments'): 'SyncCreativeAssignment',
     ('ListCreativesRequest', 'filters'): 'CreativeFilters',
     ('SyncCatalogsRequest', 'catalogs'): 'CatalogInput',
     ('SyncEventSourcesRequest', 'event_sources'): 'EventSourceInput',
@@ -263,6 +267,7 @@ INLINE_TYPE_HINTS = {
     # Render/AssetSlot so reference-agent code can keep using typed literals.
     ('CreativeFormat', 'renders'): 'Render',
     ('CreativeFormat', 'assets'): 'AssetSlot',
+    ('GetMediaBuysResponse', 'media_buys'): 'MediaBuyData',
 }
 
 # Enum schemas
@@ -271,7 +276,7 @@ ENUM_DIR = "enums"
 def safe_comment(text, max_len=80):
     """Sanitize text for embedding in a Go // comment. Strips newlines to
     prevent code injection via schema descriptions."""
-    return text.replace('\n', ' ').replace('\r', '')[:max_len] if text else ''
+    return text.replace('\n', ' ').replace('\r', '')[:max_len].rstrip() if text else ''
 
 def load_schema(path):
     """Load a JSON schema file, preserving property order."""

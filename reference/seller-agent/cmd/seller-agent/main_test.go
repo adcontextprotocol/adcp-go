@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/adcp"
@@ -20,7 +21,7 @@ func mustCreateBuy(t *testing.T, b *backend, withCreatives bool) *adcp.MediaBuyD
 	t.Helper()
 	pkg := adcp.PackageInput{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 1000}
 	if withCreatives {
-		pkg.CreativeAssignments = []any{map[string]any{"creative_id": "cr-initial"}}
+		pkg.CreativeAssignments = []adcp.CreativeAssignment{{CreativeID: "cr-initial"}}
 	}
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
 		Packages: []adcp.PackageInput{pkg},
@@ -81,11 +82,8 @@ func TestPendingCreativesToActive_ViaSyncCreatives(t *testing.T) {
 	revisionBefore := buy.Revision
 
 	_, err := b.syncCreatives(&adcp.SyncCreativesRequest{
-		Creatives: []adcp.CreativeInput{{CreativeID: "cr-sync-1", Name: "Banner"}},
-		Assignments: []any{map[string]any{
-			"creative_id": "cr-sync-1",
-			"package_id":  pkgID,
-		}},
+		Creatives:   []adcp.CreativeInput{{CreativeID: "cr-sync-1", Name: "Banner"}},
+		Assignments: []adcp.SyncCreativeAssignment{{CreativeID: "cr-sync-1", PackageID: pkgID}},
 	})
 	if err != nil {
 		t.Fatalf("syncCreatives: %v", err)
@@ -109,7 +107,7 @@ func TestPendingCreativesToActive_ViaUpdateMediaBuy(t *testing.T) {
 		MediaBuyID: buy.MediaBuyID,
 		Packages: []adcp.PackageUpdate{{
 			PackageID:           pkgID,
-			CreativeAssignments: []any{map[string]any{"creative_id": "cr-upd-1"}},
+			CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-upd-1"}},
 		}},
 	})
 	if err != nil {
@@ -134,7 +132,7 @@ func TestCancellation(t *testing.T) {
 
 	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{
 		MediaBuyID:         buy.MediaBuyID,
-		Canceled:           canceled,
+		Canceled:           &canceled,
 		CancellationReason: "budget_cut",
 	})
 	if err != nil {
@@ -159,10 +157,10 @@ func TestDoubleCancellation(t *testing.T) {
 	canceled := true
 
 	// First cancel succeeds.
-	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
+	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
 
 	// Second cancel must return an error result (NOT_CANCELLABLE), not a hard error.
-	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
 	if err != nil {
 		t.Fatalf("second cancel: unexpected hard error: %v", err)
 	}
@@ -202,10 +200,12 @@ func TestListCreatives_FilterByFormatID(t *testing.T) {
 	b := newTestBackend()
 	fmtA := &adcp.FormatRef{AgentURL: "http://test", ID: "banner-300x250"}
 	fmtB := &adcp.FormatRef{AgentURL: "http://test", ID: "video-15s"}
+	fmtOtherAgent := &adcp.FormatRef{AgentURL: "http://other-agent", ID: "banner-300x250"}
 	_, _ = b.syncCreatives(&adcp.SyncCreativesRequest{
 		Creatives: []adcp.CreativeInput{
 			{CreativeID: "cr-fmt-a", FormatID: fmtA},
 			{CreativeID: "cr-fmt-b", FormatID: fmtB},
+			{CreativeID: "cr-fmt-other-agent", FormatID: fmtOtherAgent},
 		},
 	})
 
@@ -282,6 +282,21 @@ func TestDeliveryReporting_SimulateDelivery(t *testing.T) {
 	if totals.Spend != 15.00 {
 		t.Errorf("want 15.00 spend, got %.2f", totals.Spend)
 	}
+	pkg := data.MediaBuyDeliveries[0].ByPackage[0]
+	if pkg.Impressions != 1000 || pkg.Clicks != 50 || pkg.Spend != 15.00 {
+		t.Errorf("want flat package metrics, got impressions=%.0f clicks=%.0f spend=%.2f", pkg.Impressions, pkg.Clicks, pkg.Spend)
+	}
+	wire, err := json.Marshal(pkg)
+	if err != nil {
+		t.Fatalf("marshal package delivery: %v", err)
+	}
+	var row map[string]any
+	if err := json.Unmarshal(wire, &row); err != nil {
+		t.Fatalf("unmarshal package delivery: %v", err)
+	}
+	if _, ok := row["totals"]; ok {
+		t.Error("package delivery row should use flat delivery metrics, not nested totals")
+	}
 }
 
 func TestDeliveryReporting_SimulateBudgetSpend(t *testing.T) {
@@ -306,6 +321,40 @@ func TestDeliveryReporting_SimulateBudgetSpend(t *testing.T) {
 	want := buy.TotalBudget * 0.5
 	if totals.Spend != want {
 		t.Errorf("want spend %.2f (50%% of budget %.2f), got %.2f", want, buy.TotalBudget, totals.Spend)
+	}
+}
+
+func TestDeliveryReporting_SimulateDeliveryWeightsSpendByBudget(t *testing.T) {
+	b := newTestBackend()
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		Packages: []adcp.PackageInput{
+			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 100, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
+			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 300, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+
+	_, err = b.simulateDelivery(buy.MediaBuyID, adcp.SimulateDeliveryParams{
+		Impressions:   100,
+		Clicks:        10,
+		ReportedSpend: &adcp.ReportedSpend{Amount: 40, Currency: "USD"},
+	})
+	if err != nil {
+		t.Fatalf("simulateDelivery: %v", err)
+	}
+
+	data, err := b.getDelivery(&adcp.GetMediaBuyDeliveryRequest{MediaBuyIDs: []string{buy.MediaBuyID}})
+	if err != nil {
+		t.Fatalf("getDelivery: %v", err)
+	}
+	packages := data.MediaBuyDeliveries[0].ByPackage
+	if len(packages) != 2 {
+		t.Fatalf("want 2 package rows, got %d", len(packages))
+	}
+	if packages[0].Spend != 10 || packages[1].Spend != 30 {
+		t.Errorf("want spend weighted by 100/300 budget split, got %.2f/%.2f", packages[0].Spend, packages[1].Spend)
 	}
 }
 
@@ -405,18 +454,24 @@ func TestCustomScenario_ForceCreateMediaBuyArm_Submitted(t *testing.T) {
 		t.Fatalf("force_create_media_buy_arm: %v", err)
 	}
 
-	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+	resp, err := b.createMediaBuyResponse(&adcp.CreateMediaBuyRequest{
 		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy after forced arm: %v", err)
 	}
-	if buy.Status != "submitted" {
-		t.Errorf("want submitted status after forced arm, got %s", buy.Status)
+	submitted, ok := resp.(*adcp.CreateMediaBuySubmitted)
+	if !ok {
+		t.Fatalf("want submitted response after forced arm, got %T", resp)
 	}
-	ext, _ := buy.Ext.(map[string]any)
-	if ext["task_id"] != "task-abc-123" {
-		t.Errorf("want task_id task-abc-123 in Ext, got %v", ext["task_id"])
+	if submitted.Status != "submitted" {
+		t.Errorf("want submitted status after forced arm, got %s", submitted.Status)
+	}
+	if submitted.TaskID != "task-abc-123" {
+		t.Errorf("want task_id task-abc-123, got %v", submitted.TaskID)
+	}
+	if submitted.Message != "processing in async queue" {
+		t.Errorf("want async message, got %q", submitted.Message)
 	}
 
 	// Forced arm is consumed — next create should be normal.
@@ -474,7 +529,7 @@ func TestForceMediaBuyStatus_TerminalStateBlocked(t *testing.T) {
 	b := newTestBackend()
 	buy := mustCreateBuy(t, b, false)
 	canceled := true
-	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: canceled})
+	_, _, _ = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: &canceled})
 
 	_, err := b.forceMediaBuyStatus(buy.MediaBuyID, "active", "")
 	if err == nil {

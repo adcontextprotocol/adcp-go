@@ -1,5 +1,7 @@
 package adcp
 
+import "encoding/json"
+
 // Request types for AdCP tools are generated from JSON schemas in types_gen.go
 // (e.g., GetProductsRequest, CreateMediaBuyRequest, SyncAccountsRequest).
 //
@@ -9,6 +11,106 @@ package adcp
 
 // EmptyInput is the input type for tools that accept no parameters (e.g. get_adcp_capabilities).
 type EmptyInput struct{}
+
+// Bool returns a pointer to v for optional boolean request fields.
+func Bool(v bool) *bool {
+	return &v
+}
+
+// Float64 returns a pointer to v for optional numeric fields where zero is meaningful.
+func Float64(v float64) *float64 {
+	return &v
+}
+
+// CreativeAssignment assigns an existing creative to a package.
+type CreativeAssignment struct {
+	CreativeID   string         `json:"creative_id"`
+	Weight       *float64       `json:"weight,omitempty"`
+	PlacementIDs []string       `json:"placement_ids,omitempty"`
+	Extra        map[string]any `json:"-"`
+}
+
+// SyncCreativeAssignment assigns a synced creative to an existing package.
+type SyncCreativeAssignment struct {
+	CreativeID   string   `json:"creative_id"`
+	PackageID    string   `json:"package_id"`
+	Weight       *float64 `json:"weight,omitempty"`
+	PlacementIDs []string `json:"placement_ids,omitempty"`
+}
+
+// MarshalJSON preserves schema-allowed vendor fields while keeping typed fields
+// authoritative when keys collide.
+func (a CreativeAssignment) MarshalJSON() ([]byte, error) {
+	out := make(map[string]any, len(a.Extra)+3)
+	for k, v := range a.Extra {
+		if isCreativeAssignmentField(k) {
+			continue
+		}
+		out[k] = v
+	}
+	out["creative_id"] = a.CreativeID
+	if a.Weight != nil {
+		out["weight"] = *a.Weight
+	}
+	if len(a.PlacementIDs) > 0 {
+		out["placement_ids"] = a.PlacementIDs
+	}
+	return json.Marshal(out)
+}
+
+// UnmarshalJSON captures schema-allowed vendor fields so agents can round-trip
+// platform-specific assignment metadata.
+func (a *CreativeAssignment) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw == nil {
+		return nil
+	}
+	if v, ok := raw["creative_id"]; ok {
+		if err := json.Unmarshal(v, &a.CreativeID); err != nil {
+			return err
+		}
+		delete(raw, "creative_id")
+	}
+	if v, ok := raw["weight"]; ok {
+		var weight float64
+		if err := json.Unmarshal(v, &weight); err != nil {
+			return err
+		}
+		a.Weight = &weight
+		delete(raw, "weight")
+	}
+	if v, ok := raw["placement_ids"]; ok {
+		if err := json.Unmarshal(v, &a.PlacementIDs); err != nil {
+			return err
+		}
+		delete(raw, "placement_ids")
+	}
+	if len(raw) == 0 {
+		a.Extra = nil
+		return nil
+	}
+	a.Extra = make(map[string]any, len(raw))
+	for k, v := range raw {
+		var value any
+		if err := json.Unmarshal(v, &value); err != nil {
+			return err
+		}
+		a.Extra[k] = value
+	}
+	return nil
+}
+
+func isCreativeAssignmentField(key string) bool {
+	switch key {
+	case "creative_id", "weight", "placement_ids":
+		return true
+	default:
+		return false
+	}
+}
 
 // PackageInput is a single package in a create_media_buy request.
 type PackageInput struct {
@@ -22,7 +124,7 @@ type PackageInput struct {
 	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
 	TargetingOverlay     *Targeting            `json:"targeting_overlay,omitempty"`
-	CreativeAssignments  []any                 `json:"creative_assignments,omitempty"`
+	CreativeAssignments  []CreativeAssignment  `json:"creative_assignments,omitempty"`
 
 	// Broadcast / scheduling
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
@@ -38,7 +140,7 @@ type UpdateMediaBuyRequest struct {
 	MediaBuyID             string           `json:"media_buy_id"`
 	Revision               int              `json:"revision,omitempty"`
 	Paused                 *bool            `json:"paused,omitempty"`
-	Canceled               bool             `json:"canceled,omitempty"`
+	Canceled               *bool            `json:"canceled,omitempty"`
 	CancellationReason     string           `json:"cancellation_reason,omitempty"`
 	StartTime              any              `json:"start_time,omitempty"`
 	EndTime                string           `json:"end_time,omitempty"`
@@ -53,17 +155,17 @@ type UpdateMediaBuyRequest struct {
 
 // PackageUpdate identifies a package and fields to update in update_media_buy.
 type PackageUpdate struct {
-	PackageID           string     `json:"package_id"`
-	Budget              float64    `json:"budget,omitempty"`
-	BidPrice            float64    `json:"bid_price,omitempty"`
-	Impressions         float64    `json:"impressions,omitempty"`
-	StartTime           string     `json:"start_time,omitempty"`
-	EndTime             string     `json:"end_time,omitempty"`
-	Paused              *bool      `json:"paused,omitempty"`
-	Canceled            bool       `json:"canceled,omitempty"`
-	CancellationReason  string     `json:"cancellation_reason,omitempty"`
-	TargetingOverlay    *Targeting `json:"targeting_overlay,omitempty"`
-	CreativeAssignments []any      `json:"creative_assignments,omitempty"`
+	PackageID           string               `json:"package_id"`
+	Budget              float64              `json:"budget,omitempty"`
+	BidPrice            float64              `json:"bid_price,omitempty"`
+	Impressions         float64              `json:"impressions,omitempty"`
+	StartTime           string               `json:"start_time,omitempty"`
+	EndTime             string               `json:"end_time,omitempty"`
+	Paused              *bool                `json:"paused,omitempty"`
+	Canceled            *bool                `json:"canceled,omitempty"`
+	CancellationReason  string               `json:"cancellation_reason,omitempty"`
+	TargetingOverlay    *Targeting           `json:"targeting_overlay,omitempty"`
+	CreativeAssignments []CreativeAssignment `json:"creative_assignments,omitempty"`
 }
 
 // --- Nested item types (inline objects in schemas, no $ref) ---

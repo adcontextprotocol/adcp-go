@@ -23,7 +23,7 @@ Ask the user — don't guess.
 1. **What kind of seller?** Premium publisher (guaranteed, fixed pricing) / SSP (non-guaranteed, auction) / Retail media (both)
 2. **Guaranteed or non-guaranteed?** `delivery_type: "guaranteed"` vs `"non_guaranteed"`. Many sellers support both.
 3. **Products and pricing.** Each product needs: product_id, name, description, channels (array of channel enums), delivery_type, pricing_options, format_ids. publisher_properties is optional; if present, it's a list of `PublisherPropertySelector` entries each pointing at a publisher_domain.
-4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "pending_approval"`). Async can surface via buyer polling `get_media_buys` OR via signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern. Webhooks are baseline in AdCP 3.0; polling is the legacy fallback.
+4. **Approval workflow.** Instant create returns a media buy such as `status: "active"` or `status: "pending_creatives"`. Async create returns the submitted task envelope (`status: "submitted"`, `task_id`, optional `message`) and later exposes the confirmed buy via `get_media_buys` or signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern.
 5. **Creative management.** Standard (`list_creative_formats` + `sync_creatives`) or none.
 
 ## Complete Skeleton
@@ -149,31 +149,50 @@ func main() {
                 return &adcp.ProductsData{Products: products}, nil
             },
 
-            CreateMediaBuy: func(_ context.Context, _ any, req *adcp.CreateMediaBuyRequest) (*adcp.MediaBuyData, error) {
+            CreateMediaBuy: func(_ context.Context, _ any, req *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
                 b.mu.Lock()
                 defer b.mu.Unlock()
                 // In production: book into your OMS / ad server
                 n := b.buySeq.Add(1)
                 id := fmt.Sprintf("mb-%d", n)
-                pkgs := make([]adcp.Package, 0, len(req.Packages))
+                pkgs := make([]adcp.PackageStatus, 0, len(req.Packages))
+                createPkgs := make([]adcp.Package, 0, len(req.Packages))
+                hasCreatives := false
                 for i, p := range req.Packages {
-                    pkgs = append(pkgs, adcp.Package{
+                    if len(p.CreativeAssignments) > 0 { hasCreatives = true }
+                    pkg := adcp.Package{
                         PackageID: fmt.Sprintf("%s-pkg-%d", id, i+1), ProductID: p.ProductID,
                         PricingOptionID: p.PricingOptionID, Budget: p.Budget,
                         StartTime: p.StartTime, EndTime: p.EndTime,
                         AgencyEstimateNumber: p.AgencyEstimateNumber,
                         MeasurementTerms: p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
-                    })
+                        CreativeAssignments: p.CreativeAssignments,
+                    }
+                    pkgs = append(pkgs, adcp.PackageStatus{Package: pkg})
+                    createPkgs = append(createPkgs, pkg)
                 }
                 var totalBudget float64
                 for _, p := range req.Packages { totalBudget += p.Budget }
-                buy := &adcp.MediaBuyData{MediaBuyID: id, Status: "active", TotalBudget: totalBudget, Packages: pkgs}
+                status := "active"
+                if !hasCreatives { status = "pending_creatives" }
+                validActions := []string{"pause", "cancel", "sync_creatives", "update_packages"}
+                if status == "pending_creatives" { validActions = []string{"cancel", "sync_creatives", "update_packages"} }
+                buy := &adcp.MediaBuyData{
+                    MediaBuyID: id, Status: status, TotalBudget: totalBudget, Packages: pkgs,
+                    Currency: "USD", ValidActions: validActions,
+                }
                 b.mediaBuys[id] = buy
                 for _, pkg := range pkgs { b.delivery[pkg.PackageID] = &struct{ Impressions, Clicks int; Spend float64 }{} }
-                return buy, nil
+                return &adcp.CreateMediaBuySuccess{
+                    MediaBuyID: id, Status: status, Packages: createPkgs,
+                    ValidActions: buy.ValidActions, Sandbox: adcp.Bool(true),
+                }, nil
             },
 
-            GetMediaBuys: func(_ context.Context, _ any, req *adcp.GetMediaBuysRequest) ([]adcp.MediaBuyData, error) {
+            // Async sellers can return:
+            // return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: "Awaiting IO signature"}, nil
+
+            GetMediaBuys: func(_ context.Context, _ any, req *adcp.GetMediaBuysRequest) (*adcp.GetMediaBuysResponse, error) {
                 b.mu.RLock()
                 defer b.mu.RUnlock()
                 buys := make([]adcp.MediaBuyData, 0)
@@ -184,7 +203,7 @@ func main() {
                 } else {
                     for _, buy := range b.mediaBuys { buys = append(buys, *buy) }
                 }
-                return buys, nil
+                return &adcp.GetMediaBuysResponse{MediaBuys: buys}, nil
             },
 
             ListCreativeFormats: func(_ context.Context, _ *adcp.ListCreativeFormatsRequest) ([]adcp.CreativeFormat, error) {
@@ -202,6 +221,19 @@ func main() {
                     b.creatives[c.CreativeID] = "approved"
                     results = append(results, adcp.CreativeResult{CreativeID: c.CreativeID, Action: action, Status: "approved"})
                 }
+                for _, assign := range req.Assignments {
+                    for _, buy := range b.mediaBuys {
+                        for i := range buy.Packages {
+                            if buy.Packages[i].PackageID == assign.PackageID {
+                                buy.Packages[i].CreativeAssignments = append(buy.Packages[i].CreativeAssignments, adcp.CreativeAssignment{
+                                    CreativeID: assign.CreativeID, Weight: assign.Weight, PlacementIDs: assign.PlacementIDs,
+                                })
+                                buy.Status = "active"
+                                buy.ValidActions = []string{"pause", "cancel", "sync_creatives", "update_packages"}
+                            }
+                        }
+                    }
+                }
                 return results, nil
             },
 
@@ -218,7 +250,7 @@ func main() {
                     if !ok { continue }
                     pkgDel := make([]adcp.PackageDelivery, 0)
                     for _, pkg := range buy.Packages {
-                        pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Totals: adcp.DeliveryTotals{}})
+                        pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Spend: 0, PricingModel: "cpm", Rate: 0, Currency: "USD"})
                     }
                     deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.DeliveryTotals{}, ByPackage: pkgDel})
                 }

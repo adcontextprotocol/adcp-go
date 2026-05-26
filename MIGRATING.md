@@ -1,5 +1,36 @@
 # Migrating adcp-go
 
+## Next: typed seller media-buy helpers
+
+This release tightens the Go seller SDK around AdCP 3.0.12 media-buy shapes.
+Most wire payloads are unchanged, but several public Go structs are more typed.
+
+- `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
+  Use nil when the field is absent and `adcp.Bool(true)` when requesting
+  cancellation. The AdCP schema constrains `canceled` to true; do not send
+  `adcp.Bool(false)` to mean resume. Use `Paused: adcp.Bool(false)` for resume.
+- `CreativeAssignments` is now `[]adcp.CreativeAssignment`. Use
+  `adcp.Float64(0)` for an explicit paused creative weight; omitted weight
+  still means equal rotation. Seller-specific assignment fields round-trip via
+  `CreativeAssignment.Extra`.
+- `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
+- `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
+  implemented by the generated schema variants. Return
+  `*adcp.CreateMediaBuySuccess` for synchronous success,
+  `*adcp.CreateMediaBuySubmitted` for async submission, or
+  `*adcp.CreateMediaBuyError` when building the schema error branch directly.
+- `CreateMediaBuySubmitted` carries async `task_id` / `message` fields:
+  `return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: msg}, nil`.
+- `MediaBuyData` is now scoped to `get_media_buys` items. It carries fields such
+  as `currency`, `total_budget`, `start_time`, `end_time`, `history`, and
+  `valid_actions`, but not create-task fields like `task_id` / `message`.
+- `MediaBuyData.Packages` is `[]adcp.PackageStatus` so `get_media_buys` can
+  include creative approvals, pending formats, and delivery snapshots.
+  `CreateMediaBuySuccess.Packages` remains `[]adcp.Package`.
+- `PackageDelivery` is flat. Read package-level delivery metrics directly from
+  `PackageDelivery.Impressions`, `Spend`, and `Clicks`; `Spend` remains present
+  on the wire even when zero.
+
 ## v3.0.0-rc.4 (governance / policy framework)
 
 rc.4 lands the AdCP governance plan schema with breaking changes. If you

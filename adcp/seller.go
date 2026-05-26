@@ -32,7 +32,7 @@ import (
 //	    GetProducts: func(ctx context.Context, acct any, req *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
 //	        return &adcp.ProductsData{Products: catalog.Query(req.Brief)}, nil
 //	    },
-//	    CreateMediaBuy: func(ctx context.Context, acct any, req *adcp.CreateMediaBuyRequest) (*adcp.MediaBuyData, error) {
+//	    CreateMediaBuy: func(ctx context.Context, acct any, req *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
 //	        return oms.BookCampaign(req)
 //	    },
 //	})
@@ -120,12 +120,20 @@ func Register(server *mcp.Server, cfg Config) {
 				if result != nil {
 					return result, nil, nil
 				}
-				buys, err := cfg.GetMediaBuys(ctx, acct, &input)
+				data, err := cfg.GetMediaBuys(ctx, acct, &input)
 				if err != nil {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
-				result, out, err := MediaBuysResponse(buys, sandbox)
+				if data == nil {
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
+				}
+				if data.Sandbox == nil {
+					data.Sandbox = Bool(sandbox)
+				}
+				data.Context = input.Context
+				result, out, err := MediaBuysDataResponse(data)
 				return attachContext(result, input.Context), out, err
 			})
 	}
@@ -183,9 +191,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetSignalsRequest) (*mcp.CallToolResult, any, error) {
 				signals, err := cfg.GetSignals(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return SignalsResponse(signals, sandbox)
+				result, out, err := SignalsResponse(signals, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -194,9 +204,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input ActivateSignalRequest) (*mcp.CallToolResult, any, error) {
 				deployments, err := cfg.ActivateSignal(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return ActivateSignalResponse(deployments, sandbox)
+				result, out, err := ActivateSignalResponse(deployments, sandbox)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -207,12 +219,15 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input CreateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.CreateCollectionList(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
 				if result == nil || result.List == nil {
-					return errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
 				}
-				return CreateCollectionListResponse(result.List, result.AuthToken)
+				callResult, out, err := CreateCollectionListResponse(result.List, result.AuthToken)
+				return attachContext(callResult, input.Context), out, err
 			})
 	}
 
@@ -221,12 +236,15 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.GetCollectionList(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
 				if result == nil || result.List == nil {
-					return errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
 				}
-				return GetCollectionListResponse(result.List, result.Collections, result.Pagination)
+				callResult, out, err := GetCollectionListResponse(result.List, result.Collections, result.Pagination)
+				return attachContext(callResult, input.Context), out, err
 			})
 	}
 
@@ -235,12 +253,15 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input UpdateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				list, err := cfg.UpdateCollectionList(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
 				if list == nil {
-					return errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
 				}
-				return UpdateCollectionListResponse(list)
+				result, out, err := UpdateCollectionListResponse(list)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -249,9 +270,11 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input DeleteCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				err := cfg.DeleteCollectionList(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
-				return DeleteCollectionListResponse(input.ListID)
+				result, out, err := DeleteCollectionListResponse(input.ListID)
+				return attachContext(result, input.Context), out, err
 			})
 	}
 
@@ -260,12 +283,15 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input ListCollectionListsRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.ListCollectionLists(ctx, &input)
 				if err != nil {
-					return errorToResult(err)
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
 				}
 				if result == nil {
-					return errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
 				}
-				return ListCollectionListsResponse(result.Lists, result.Pagination)
+				callResult, out, err := ListCollectionListsResponse(result.Lists, result.Pagination)
+				return attachContext(callResult, input.Context), out, err
 			})
 	}
 }
@@ -301,8 +327,8 @@ type Config struct {
 	SyncAccounts   func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
 	SyncGovernance func(ctx context.Context, req *SyncGovernanceRequest) ([]GovernanceResult, error)
 	GetProducts    func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
-	CreateMediaBuy func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (*MediaBuyData, error)
-	GetMediaBuys   func(ctx context.Context, acct any, req *GetMediaBuysRequest) ([]MediaBuyData, error)
+	CreateMediaBuy func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResult, error)
+	GetMediaBuys   func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
 	GetDelivery    func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
 
 	// --- Creative ---
