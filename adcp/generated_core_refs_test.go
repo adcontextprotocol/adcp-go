@@ -355,7 +355,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 		{
 			name: "media buy status filter scalar",
 			value: GetMediaBuysRequest{
-				StatusFilter: Ptr(MediaBuyStatusFilter{MediaBuyStatusActive}),
+				StatusFilter: NewMediaBuyStatusFilter(MediaBuyStatusActive),
 			},
 			want: []string{
 				`"status_filter":"active"`,
@@ -365,10 +365,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			name: "delivery status filter array",
 			value: GetMediaBuyDeliveryRequest{
 				MediaBuyIDs: []string{"mb-1"},
-				StatusFilter: Ptr(MediaBuyStatusFilter{
+				StatusFilter: NewMediaBuyStatusFilter(
 					MediaBuyStatusActive,
 					MediaBuyStatusPaused,
-				}),
+				),
 			},
 			want: []string{
 				`"status_filter":["active","paused"]`,
@@ -459,6 +459,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 }
 
 func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
+	if got := NewMediaBuyStatusFilter(); got != nil {
+		t.Fatalf("empty status filter constructor returned %#v, want nil", got)
+	}
+
 	var listReq GetMediaBuysRequest
 	if err := json.Unmarshal([]byte(`{"status_filter":"active"}`), &listReq); err != nil {
 		t.Fatalf("unmarshal scalar status filter: %v", err)

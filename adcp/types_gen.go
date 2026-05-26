@@ -1741,6 +1741,14 @@ const (
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
 type MediaBuyStatusFilter []MediaBuyStatus
 
+func NewMediaBuyStatusFilter(values ...MediaBuyStatus) *MediaBuyStatusFilter {
+	if len(values) == 0 {
+		return nil
+	}
+	v := MediaBuyStatusFilter(values)
+	return &v
+}
+
 func (v MediaBuyStatusFilter) MarshalJSON() ([]byte, error) {
 	if len(v) == 0 {
 		return nil, fmt.Errorf("MediaBuyStatusFilter must contain at least one value")

@@ -112,6 +112,13 @@ class UnionHelperGenerationTest(unittest.TestCase):
         self.assertTrue(generate.schema_accepts_empty_array(None))
         self.assertTrue(generate.schema_accepts_empty_array([]))
 
+    def test_scalar_or_array_union_helper_includes_constructor(self):
+        src = generate.scalar_or_array_union_to_type("TestUnion", scalar_or_array_schema())
+
+        self.assertIn("func NewTestUnion(values ...string) *TestUnion", src)
+        self.assertIn("if len(values) == 0", src)
+        self.assertIn("return nil", src)
+
 
 if __name__ == "__main__":
     unittest.main()

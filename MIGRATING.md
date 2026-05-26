@@ -226,10 +226,10 @@ Status filter migration example:
 
 ```go
 req := adcp.GetMediaBuysRequest{
-    StatusFilter: adcp.Ptr(adcp.MediaBuyStatusFilter{
+    StatusFilter: adcp.NewMediaBuyStatusFilter(
         adcp.MediaBuyStatusActive,
         adcp.MediaBuyStatusPaused,
-    }),
+    ),
 }
 ```
 
