@@ -1,3 +1,6 @@
+import subprocess
+import tempfile
+import textwrap
 import unittest
 from collections import OrderedDict
 
@@ -116,8 +119,53 @@ class UnionHelperGenerationTest(unittest.TestCase):
         src = generate.scalar_or_array_union_to_type("TestUnion", scalar_or_array_schema())
 
         self.assertIn("func NewTestUnion(values ...string) *TestUnion", src)
+        self.assertIn("It returns nil when called with no values", src)
+        self.assertIn("triggering a MarshalJSON error on a schema-invalid empty array", src)
         self.assertIn("if len(values) == 0", src)
         self.assertIn("return nil", src)
+
+    def test_scalar_or_array_union_helper_documents_empty_accepting_constructor(self):
+        src = generate.scalar_or_array_union_to_type("TestUnion", scalar_or_array_schema(min_items=0))
+
+        self.assertIn("func NewTestUnion(values ...string) *TestUnion", src)
+        self.assertIn("Use nil instead of NewTestUnion() when an optional field should be omitted.", src)
+        self.assertIn("NewTestUnion() returns a non-nil empty slice pointer that marshals as [].", src)
+        self.assertIn("v := append(TestUnion{}, values...)", src)
+        self.assertNotIn("if len(values) == 0", src)
+
+    def test_empty_accepting_constructor_marshal_runtime(self):
+        generated = generate.scalar_or_array_union_to_type("TestUnion", scalar_or_array_schema(min_items=0))
+        source = textwrap.dedent(f"""
+            package uniontest
+
+            import (
+                "encoding/json"
+                "fmt"
+                "testing"
+            )
+
+            {generated}
+
+            func TestEmptyConstructorMarshalsArray(t *testing.T) {{
+                got := NewTestUnion()
+                if got == nil {{
+                    t.Fatal("NewTestUnion() returned nil")
+                }}
+                raw, err := json.Marshal(got)
+                if err != nil {{
+                    t.Fatalf("marshal empty test union: %v", err)
+                }}
+                if string(raw) != "[]" {{
+                    t.Fatalf("empty constructor marshaled %s, want []", raw)
+                }}
+            }}
+        """)
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(f"{tmp}/go.mod", "w") as f:
+                f.write("module uniontest\n\ngo 1.25\n")
+            with open(f"{tmp}/union_test.go", "w") as f:
+                f.write(source)
+            subprocess.run(["go", "test", "."], cwd=tmp, check=True)
 
 
 if __name__ == "__main__":
