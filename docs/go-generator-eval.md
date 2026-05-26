@@ -81,6 +81,10 @@ As of this evaluation:
 | `adcp/types.go` | 24 | 1 | 0 |
 | `adcp/inputs.go` | 6 | 0 | 0 |
 
+This table is a raw source snapshot. The generator coverage command below
+reports logical generator-owned fallback records, so its totals will not match
+these raw occurrence counts one-for-one.
+
 Some `any` fields are valid protocol escape hatches (`context`, `ext`,
 open-ended maps). The problematic ones are schema-owned fields that fall back to
 `any` because the generator cannot yet name inline objects, represent unions, or
@@ -130,3 +134,35 @@ Practical estimate:
 
 That gets the SDK out of the "made-up struct" trap without adopting a large
 OpenAPI runtime or generating an HTTP stack that AdCP does not need.
+
+## Coverage Command
+
+The generator can report the current `any` fallback surface without changing
+generated Go:
+
+```bash
+cd adcp/schemas
+python3 generate.py --coverage-summary
+python3 generate.py --coverage-json
+```
+
+The report marks intentional escape hatches separately from unreviewed generator
+gaps. Use the JSON form for CI gates and issue filing.
+
+Common reason codes:
+
+- `inline_object`: the schema has an inline object with properties, but no
+  generated name yet.
+- `array_item:inline_object`: same issue inside an array item.
+- `unknown_ref:<ref>`: the referenced schema is not hand-written, generated, or
+  otherwise known to the generator.
+- `unsupported_allOf`: the generator cannot flatten this composed shape yet.
+- `union`: the field uses `oneOf` or `anyOf` and needs a union strategy.
+- `top_level_oneOf_alias`: the whole schema is currently emitted as `type X =
+  any`.
+- `adcp_error_alias`: the field uses `AdcpError`, which aliases
+  `map[string]any`.
+
+Intentional escape hatches are listed in `INTENTIONAL_ANY_FIELD_NAMES` and
+`INTENTIONAL_ANY_FIELDS` in `adcp/schemas/generate.py`. Add to those lists only
+when the dynamic shape is intentionally part of the protocol surface.
