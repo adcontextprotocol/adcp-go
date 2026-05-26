@@ -61,6 +61,18 @@ be populated.
 | `Event.UserMatch` | `*adcp.UserMatch` |
 | `Event.CustomData` | `*adcp.EventCustomData` |
 | `ProvidePerformanceFeedbackRequest.MeasurementPeriod` | `adcp.DatetimeRange` |
+| `GetAdcpCapabilitiesResponse.Adcp` | `adcp.ADCPVersion` |
+| `GetAdcpCapabilitiesResponse.Account` | `*adcp.AccountCapabilities` |
+| `GetAdcpCapabilitiesResponse.MediaBuy` | `*adcp.MediaBuyCapabilities` |
+| `GetAdcpCapabilitiesResponse.Signals` | `*adcp.SignalsCapabilities` |
+| `GetAdcpCapabilitiesResponse.Governance` | `*adcp.GovernanceCapabilities` |
+| `GetAdcpCapabilitiesResponse.SponsoredIntelligence` | `*adcp.SICapabilities` |
+| `GetAdcpCapabilitiesResponse.Brand` | `*adcp.BrandCapabilities` |
+| `GetAdcpCapabilitiesResponse.Creative` | `*adcp.CreativeCapabilities` |
+| `GetAdcpCapabilitiesResponse.RequestSigning` | `*adcp.RequestSigningCapabilities` |
+| `GetAdcpCapabilitiesResponse.WebhookSigning` | `*adcp.WebhookSigningCapabilities` |
+| `GetAdcpCapabilitiesResponse.Identity` | `*adcp.IdentityCapabilities` |
+| `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
 
 Buyer request migration example:
 

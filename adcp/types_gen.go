@@ -2383,19 +2383,19 @@ type GetAdcpCapabilitiesRequest struct {
 
 // GetAdcpCapabilitiesResponse — Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP
 type GetAdcpCapabilitiesResponse struct {
-	Adcp any `json:"adcp"` // Core AdCP protocol information
+	Adcp ADCPVersion `json:"adcp"` // Core AdCP protocol information
 	SupportedProtocols []string `json:"supported_protocols"` // AdCP protocols this agent supports. Each value both (a) declares which tools the
-	Account any `json:"account,omitempty"` // Account management capabilities. Required when media_buy is in supported_protoco
-	MediaBuy any `json:"media_buy,omitempty"` // Media-buy protocol capabilities. Expected when media_buy is in supported_protoco
-	Signals any `json:"signals,omitempty"` // Signals protocol capabilities. Only present if signals is in supported_protocols
-	Governance any `json:"governance,omitempty"` // Governance protocol capabilities. Only present if governance is in supported_pro
-	SponsoredIntelligence any `json:"sponsored_intelligence,omitempty"` // Sponsored Intelligence protocol capabilities. Only present if sponsored_intellig
-	Brand any `json:"brand,omitempty"` // Brand protocol capabilities. Only present if brand is in supported_protocols. Br
-	Creative any `json:"creative,omitempty"` // Creative protocol capabilities. Only present if creative is in supported_protoco
-	RequestSigning any `json:"request_signing,omitempty"` // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capabi
-	WebhookSigning any `json:"webhook_signing,omitempty"` // RFC 9421 webhook-signature support for outbound webhook callbacks (top-level pee
-	Identity any `json:"identity,omitempty"` // Operator identity posture — key-scoping and compromise-response controls the age
-	ComplianceTesting any `json:"compliance_testing,omitempty"` // Compliance testing capabilities. The presence of this block declares that the ag
+	Account *AccountCapabilities `json:"account,omitempty"` // Account management capabilities. Required when media_buy is in supported_protoco
+	MediaBuy *MediaBuyCapabilities `json:"media_buy,omitempty"` // Media-buy protocol capabilities. Expected when media_buy is in supported_protoco
+	Signals *SignalsCapabilities `json:"signals,omitempty"` // Signals protocol capabilities. Only present if signals is in supported_protocols
+	Governance *GovernanceCapabilities `json:"governance,omitempty"` // Governance protocol capabilities. Only present if governance is in supported_pro
+	SponsoredIntelligence *SICapabilities `json:"sponsored_intelligence,omitempty"` // Sponsored Intelligence protocol capabilities. Only present if sponsored_intellig
+	Brand *BrandCapabilities `json:"brand,omitempty"` // Brand protocol capabilities. Only present if brand is in supported_protocols. Br
+	Creative *CreativeCapabilities `json:"creative,omitempty"` // Creative protocol capabilities. Only present if creative is in supported_protoco
+	RequestSigning *RequestSigningCapabilities `json:"request_signing,omitempty"` // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capabi
+	WebhookSigning *WebhookSigningCapabilities `json:"webhook_signing,omitempty"` // RFC 9421 webhook-signature support for outbound webhook callbacks (top-level pee
+	Identity *IdentityCapabilities `json:"identity,omitempty"` // Operator identity posture — key-scoping and compromise-response controls the age
+	ComplianceTesting *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"` // Compliance testing capabilities. The presence of this block declares that the ag
 	Specialisms []string `json:"specialisms,omitempty"` // Optional — specialized compliance claims this agent supports. Values MUST be keb
 	ExtensionsSupported []string `json:"extensions_supported,omitempty"` // Extension namespaces this agent supports. Buyers can expect meaningful data in e
 	ExperimentalFeatures []string `json:"experimental_features,omitempty"` // Experimental AdCP surfaces this agent implements. A surface is experimental when
