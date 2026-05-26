@@ -357,6 +357,42 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "LegacyWebhookAuthentication",
         "core/push-notification-config.json#/properties/authentication",
     ),
+    (
+        "PackageCancellation",
+        "core/package.json#/properties/cancellation",
+    ),
+    (
+        "CreativeFormatAccessibility",
+        "core/format.json#/properties/accessibility",
+    ),
+    (
+        "SignalRange",
+        "core/signal-definition.json#/properties/range",
+    ),
+    (
+        "DeliveryQuartileData",
+        "core/delivery-metrics.json#/properties/quartile_data",
+    ),
+    (
+        "MediaBuyBudget",
+        "media-buy/create-media-buy-request.json#/properties/total_budget",
+    ),
+    (
+        "CollectionRequestPagination",
+        "collection/get-collection-list-request.json#/properties/pagination",
+    ),
+    (
+        "CollectionChangeSummary",
+        "collection/collection-list-changed-webhook.json#/properties/change_summary",
+    ),
+    (
+        "PropertyChangeSummary",
+        "property/property-list-changed-webhook.json#/properties/change_summary",
+    ),
+    (
+        "RightsAgentRef",
+        "core/rights-constraint.json#/properties/rights_agent",
+    ),
 ])
 
 # Hand-written types that should be drift-checked against a schema path or JSON
@@ -486,6 +522,17 @@ INLINE_TYPE_HINTS = {
     ('BusinessEntity', 'bank'): '*BankAccount',
     ('PushNotificationConfig', 'authentication'): '*LegacyWebhookAuthentication',
     ('ReportingWebhook', 'authentication'): 'LegacyWebhookAuthentication',
+    ('Package', 'cancellation'): '*PackageCancellation',
+    ('CreativeFormat', 'accessibility'): '*CreativeFormatAccessibility',
+    ('Signal', 'range'): '*SignalRange',
+    ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
+    ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
+    ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
+    ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
+    ('GetCollectionListRequest', 'pagination'): '*CollectionRequestPagination',
+    ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
+    ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
+    ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
     ('GetAdcpCapabilitiesResponse', 'adcp'): 'ADCPVersion',
     ('GetAdcpCapabilitiesResponse', 'account'): 'AccountCapabilities',
     ('GetAdcpCapabilitiesResponse', 'media_buy'): 'MediaBuyCapabilities',

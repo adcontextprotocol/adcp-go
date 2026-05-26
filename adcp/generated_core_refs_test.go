@@ -132,6 +132,40 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "signal range",
+			value: Signal{
+				ID:        "affinity_score",
+				Name:      "Affinity Score",
+				ValueType: "numeric",
+				Range:     Ptr(SignalRange{Min: 0, Max: 100, Unit: "score"}),
+			},
+			want: []string{
+				`"range":{"min":0,"max":100,"unit":"score"}`,
+			},
+		},
+		{
+			name: "delivery quartiles",
+			value: DeliveryTotals{
+				QuartileData: Ptr(DeliveryQuartileData{Q1Views: 10, Q4Views: 4}),
+			},
+			want: []string{
+				`"quartile_data":{"q1_views":10,"q4_views":4}`,
+			},
+		},
+		{
+			name: "proposal total budget",
+			value: CreateMediaBuyRequest{
+				IdempotencyKey: "idem-budget",
+				Account:        AccountReference{AccountID: "acct-1"},
+				ProposalID:     "proposal-1",
+				TotalBudget:    Ptr(MediaBuyBudget{Amount: 10000, Currency: "USD"}),
+				Brand:          BrandReference{Domain: "brand.example"},
+			},
+			want: []string{
+				`"total_budget":{"amount":10000,"currency":"USD"}`,
+			},
+		},
+		{
 			name: "performance feedback measurement period",
 			value: ProvidePerformanceFeedbackRequest{
 				MediaBuyID:        "mb-1",

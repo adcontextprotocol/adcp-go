@@ -1964,7 +1964,7 @@ type Package struct {
 	EndTime string `json:"end_time,omitempty"` // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
 	Paused *bool `json:"paused,omitempty"` // Whether this package is paused by the buyer. Paused packages do not deliver impr
 	Canceled *bool `json:"canceled,omitempty"` // Whether this package has been canceled. Canceled packages stop delivery and cann
-	Cancellation any `json:"cancellation,omitempty"` // Cancellation metadata. Present only when canceled is true.
+	Cancellation *PackageCancellation `json:"cancellation,omitempty"` // Cancellation metadata. Present only when canceled is true.
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Echoed from the buyer'
 	CreativeDeadline string `json:"creative_deadline,omitempty"` // ISO 8601 timestamp for creative upload or change deadline for this package. Afte
 	Context any `json:"context,omitempty"`
@@ -1991,7 +1991,7 @@ type CreativeFormat struct {
 	InputFormatIDs []FormatRef `json:"input_format_ids,omitempty"` // Array of format IDs this format accepts as input creative manifests. When presen
 	OutputFormatIDs []FormatRef `json:"output_format_ids,omitempty"` // Array of format IDs that this format can produce as output. When present, indica
 	FormatCard any `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
-	Accessibility any `json:"accessibility,omitempty"` // Accessibility posture of this format. Declares the WCAG conformance level that c
+	Accessibility *CreativeFormatAccessibility `json:"accessibility,omitempty"` // Accessibility posture of this format. Declares the WCAG conformance level that c
 	SupportedDisclosurePositions []string `json:"supported_disclosure_positions,omitempty"` // Disclosure positions this format can render. Buyers use this to determine whethe
 	DisclosureCapabilities []any `json:"disclosure_capabilities,omitempty"` // Structured disclosure capabilities per position with persistence modes. Declares
 	FormatCardDetailed any `json:"format_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich form
@@ -2051,7 +2051,7 @@ type Signal struct {
 	AllowedValues []string `json:"allowed_values,omitempty"` // For categorical signals, the valid values users can be assigned
 	RestrictedAttributes []string `json:"restricted_attributes,omitempty"` // Restricted attribute categories this signal touches. Data providers SHOULD decla
 	PolicyCategories []string `json:"policy_categories,omitempty"` // Policy categories this signal is sensitive for (e.g., a children's interest sign
-	Range any `json:"range,omitempty"` // For numeric signals, the valid value range
+	Range *SignalRange `json:"range,omitempty"` // For numeric signals, the valid value range
 }
 
 // DeliveryTotals — Standard delivery metrics that can be reported at media buy, package, or creative level
@@ -2074,7 +2074,7 @@ type DeliveryTotals struct {
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
-	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
 	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
 	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
@@ -2323,7 +2323,7 @@ type ReportingWebhook struct {
 // RightsConstraint — Rights metadata attached to a creative manifest. Each entry represents constraints from a single rig
 type RightsConstraint struct {
 	RightsID string `json:"rights_id"` // Rights grant identifier from the acquire_rights response
-	RightsAgent any `json:"rights_agent"` // The agent that granted these rights
+	RightsAgent RightsAgentRef `json:"rights_agent"` // The agent that granted these rights
 	ValidFrom string `json:"valid_from,omitempty"` // Start of the rights validity period
 	ValidUntil string `json:"valid_until,omitempty"` // End of the rights validity period. Creative should not be served after this time
 	Uses []string `json:"uses"` // Rights uses covered by this constraint
@@ -2451,7 +2451,7 @@ type MediaBuyDeliveryTotals struct {
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
-	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
 	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
 	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
@@ -2494,7 +2494,7 @@ type PackageDelivery struct {
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
-	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
 	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
 	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
@@ -2624,6 +2624,67 @@ type BankAccount struct {
 type LegacyWebhookAuthentication struct {
 	Schemes []string `json:"schemes"` // Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['
 	Credentials string `json:"credentials"` // Credentials for the legacy scheme. For Bearer: token sent in Authorization heade
+}
+
+// PackageCancellation — Cancellation metadata. Present only when canceled is true.
+type PackageCancellation struct {
+	CanceledAt string `json:"canceled_at"` // ISO 8601 timestamp when this package was canceled.
+	CanceledBy string `json:"canceled_by"` // Which party initiated the package cancellation.
+	Reason string `json:"reason,omitempty"` // Reason the package was canceled.
+	AcknowledgedAt string `json:"acknowledged_at,omitempty"` // ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inven
+}
+
+// CreativeFormatAccessibility — Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by
+type CreativeFormatAccessibility struct {
+	WcagLevel string `json:"wcag_level"` // WCAG conformance level that this format achieves. For format-rendered creatives,
+	RequiresAccessibleAssets *bool `json:"requires_accessible_assets,omitempty"` // When true, all assets with x-accessibility fields must include those fields. For
+}
+
+// SignalRange — For numeric signals, the valid value range
+type SignalRange struct {
+	Min float64 `json:"min"` // Minimum value
+	Max float64 `json:"max"` // Maximum value
+	Unit string `json:"unit,omitempty"` // Unit of measurement (e.g., 'score', 'dollars', 'years')
+}
+
+// DeliveryQuartileData — Audio/video quartile completion data
+type DeliveryQuartileData struct {
+	Q1Views float64 `json:"q1_views,omitempty"` // 25% completion views
+	Q2Views float64 `json:"q2_views,omitempty"` // 50% completion views
+	Q3Views float64 `json:"q3_views,omitempty"` // 75% completion views
+	Q4Views float64 `json:"q4_views,omitempty"` // 100% completion views
+}
+
+// MediaBuyBudget — Total budget for the media buy when executing a proposal. The publisher applies the proposal's alloc
+type MediaBuyBudget struct {
+	Amount float64 `json:"amount"` // Total budget amount
+	Currency string `json:"currency"` // ISO 4217 currency code
+}
+
+// CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can cont
+type CollectionRequestPagination struct {
+	MaxResults int `json:"max_results,omitempty"` // Maximum number of collections to return per page
+	Cursor string `json:"cursor,omitempty"` // Opaque cursor from a previous response to fetch the next page
+}
+
+// CollectionChangeSummary — Summary of changes to the resolved list
+type CollectionChangeSummary struct {
+	CollectionsAdded int `json:"collections_added,omitempty"` // Number of collections added since last resolution
+	CollectionsRemoved int `json:"collections_removed,omitempty"` // Number of collections removed since last resolution
+	TotalCollections int `json:"total_collections,omitempty"` // Total collections in the resolved list
+}
+
+// PropertyChangeSummary — Summary of changes to the resolved list
+type PropertyChangeSummary struct {
+	PropertiesAdded int `json:"properties_added,omitempty"` // Number of properties added since last resolution
+	PropertiesRemoved int `json:"properties_removed,omitempty"` // Number of properties removed since last resolution
+	TotalProperties int `json:"total_properties,omitempty"` // Total properties in the resolved list
+}
+
+// RightsAgentRef — The agent that granted these rights
+type RightsAgentRef struct {
+	URL string `json:"url"` // MCP endpoint URL of the rights agent
+	ID string `json:"id"` // Agent identifier
 }
 
 // --- Tool request/response types ---
@@ -2759,7 +2820,7 @@ type CreateMediaBuyRequest struct {
 	PlanID string `json:"plan_id,omitempty"` // Campaign governance plan identifier. Required when the account has governance_ag
 	Account AccountReference `json:"account"` // Account to bill for this media buy. Pass a natural key (brand, operator, optiona
 	ProposalID string `json:"proposal_id,omitempty"` // ID of a proposal from get_products to execute. When provided with total_budget,
-	TotalBudget any `json:"total_budget,omitempty"` // Total budget for the media buy when executing a proposal. The publisher applies
+	TotalBudget *MediaBuyBudget `json:"total_budget,omitempty"` // Total budget for the media buy when executing a proposal. The publisher applies
 	Packages []PackageInput `json:"packages,omitempty"` // Array of package configurations. Required when not using proposal_id. When execu
 	Brand BrandReference `json:"brand"` // Brand reference for this media buy. Resolved to full brand identity at execution
 	AdvertiserIndustry string `json:"advertiser_industry,omitempty"` // Industry classification for this specific campaign. A brand may operate across m
@@ -3292,7 +3353,7 @@ type GetCollectionListRequest struct {
 	ListID string `json:"list_id"` // ID of the collection list to retrieve
 	Account *AccountReference `json:"account,omitempty"` // Account that owns the list. Required when the authenticated agent has access to
 	Resolve *bool `json:"resolve,omitempty"` // Whether to apply filters and return resolved collections (default: true)
-	Pagination any `json:"pagination,omitempty"` // Pagination parameters. Uses higher limits than standard pagination because colle
+	Pagination *CollectionRequestPagination `json:"pagination,omitempty"` // Pagination parameters. Uses higher limits than standard pagination because colle
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -3355,7 +3416,7 @@ type CollectionListChangedWebhook struct {
 	Event string `json:"event"` // The event type
 	ListID string `json:"list_id"` // ID of the collection list that changed
 	ListName string `json:"list_name,omitempty"` // Name of the collection list
-	ChangeSummary any `json:"change_summary,omitempty"` // Summary of changes to the resolved list
+	ChangeSummary *CollectionChangeSummary `json:"change_summary,omitempty"` // Summary of changes to the resolved list
 	ResolvedAt string `json:"resolved_at"` // When the list was re-resolved
 	CacheValidUntil string `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
 	Signature string `json:"signature"` // HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes} using
@@ -3368,7 +3429,7 @@ type PropertyListChangedWebhook struct {
 	Event string `json:"event"` // The event type
 	ListID string `json:"list_id"` // ID of the property list that changed
 	ListName string `json:"list_name,omitempty"` // Name of the property list
-	ChangeSummary any `json:"change_summary,omitempty"` // Summary of changes to the resolved list
+	ChangeSummary *PropertyChangeSummary `json:"change_summary,omitempty"` // Summary of changes to the resolved list
 	ResolvedAt string `json:"resolved_at"` // When the list was re-resolved
 	CacheValidUntil string `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
 	Signature string `json:"signature"` // Cryptographic signature of the webhook payload, signed with the agent's private
