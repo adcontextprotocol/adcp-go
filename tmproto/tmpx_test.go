@@ -262,15 +262,23 @@ func TestEncodeTmpxPlaintextRejectsBadCountry(t *testing.T) {
 		_, err := EncodeTmpxPlaintext(c, nil, time.Now())
 		if err == nil {
 			t.Errorf("country %q must be rejected", c)
+			continue
+		}
+		if c == "us" {
+			if !strings.Contains(err.Error(), "country invalid") {
+				t.Fatalf("unexpected country error: %v", err)
+			}
+			assertErrorOmits(t, err, "us")
 		}
 	}
 	_, err := EncodeTmpxPlaintext("LEAKY", nil, time.Now())
 	if err == nil {
 		t.Fatal("country LEAKY must be rejected")
 	}
-	if strings.Contains(err.Error(), "LEAKY") {
-		t.Fatalf("country error echoed rejected value: %q", err.Error())
+	if !strings.Contains(err.Error(), "country invalid") {
+		t.Fatalf("unexpected country error: %v", err)
 	}
+	assertErrorOmits(t, err, "LEAKY")
 }
 
 func TestEncodeTmpxPlaintextRejectsWrongTokenSize(t *testing.T) {
@@ -280,6 +288,10 @@ func TestEncodeTmpxPlaintextRejectsWrongTokenSize(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for wrong token size")
 	}
+	if !strings.Contains(err.Error(), "invalid size") {
+		t.Fatalf("unexpected token-size error: %v", err)
+	}
+	assertErrorOmits(t, err, "too short", "9", "32")
 }
 
 func TestEncodeTmpxPlaintextRejectsUnknownType(t *testing.T) {
@@ -289,6 +301,25 @@ func TestEncodeTmpxPlaintextRejectsUnknownType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown type id")
 	}
+	if !strings.Contains(err.Error(), "unknown type id") {
+		t.Fatalf("unexpected type-id error: %v", err)
+	}
+	assertErrorOmits(t, err, "200")
+}
+
+func TestEncodeTmpxPlaintextRejectsTooManyEntriesWithoutCount(t *testing.T) {
+	entries := make([]TmpxEntry, 256)
+	for i := range entries {
+		entries[i] = TmpxEntry{TypeID: TmpxTypeUID2, Token: bytes.Repeat([]byte{0}, 32)}
+	}
+	_, err := EncodeTmpxPlaintext("US", entries, time.Now())
+	if err == nil {
+		t.Fatal("expected error for too many entries")
+	}
+	if !strings.Contains(err.Error(), "entries exceed maximum") {
+		t.Fatalf("unexpected entries error: %v", err)
+	}
+	assertErrorOmits(t, err, "255", "256")
 }
 
 func TestSealTmpxKidValidation(t *testing.T) {
@@ -300,6 +331,31 @@ func TestSealTmpxKidValidation(t *testing.T) {
 	rcp.Kid = "abcdefghi" // 9 chars, exceeds spec max of 8
 	if _, err := SealTmpx(rcp, nil, []byte("x")); err == nil {
 		t.Error("9-char kid must be rejected")
+	} else {
+		assertErrorOmits(t, err, "abcdefghi", "9")
+	}
+}
+
+func TestLabeledExpandRejectsOutOfRangeLengthWithoutEcho(t *testing.T) {
+	_, err := labeledExpand(nil, nil, nil, 0x10000, nil)
+	if err == nil {
+		t.Fatal("expected error for out-of-range length")
+	}
+	if !strings.Contains(err.Error(), "outside uint16 range") {
+		t.Fatalf("unexpected length error: %v", err)
+	}
+	assertErrorOmits(t, err, "65536")
+}
+
+func assertErrorOmits(t *testing.T, err error, forbidden ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, s := range forbidden {
+		if strings.Contains(err.Error(), s) {
+			t.Fatalf("error %q echoed forbidden value %q", err.Error(), s)
+		}
 	}
 }
 
