@@ -237,7 +237,7 @@ func TestArtifactRef_Validate(t *testing.T) {
 	}{
 		{"valid url", ArtifactRef{Type: ArtifactRefTypeURL, Value: "https://x"}, "", ""},
 		{"missing value", ArtifactRef{Type: ArtifactRefTypeURL}, "value", ""},
-		{"unknown type", ArtifactRef{Type: "starlink", Value: "x"}, "type", "starlink"},
+		{"unknown type", ArtifactRef{Type: "starlink", Value: "x"}, "not a known ArtifactRefType", "starlink"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -270,7 +270,7 @@ func TestAssetAccess_Validate(t *testing.T) {
 		{"sa bad provider", AssetAccess{Method: AssetAccessMethodServiceAccount, Provider: "azure"}, "provider", "azure"},
 		{"signed ok", NewSignedURLAccess(), "", ""},
 		{"missing method", AssetAccess{}, "method: required", ""},
-		{"unknown method", AssetAccess{Method: "unknown"}, "method", "unknown"},
+		{"unknown method", AssetAccess{Method: "unknown"}, "not a known AssetAccessMethod", "unknown"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
