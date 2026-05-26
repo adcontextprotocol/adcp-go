@@ -3,6 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 COPY tmproto/ tmproto/
 COPY targeting/ targeting/
+COPY urlutil/ urlutil/
 COPY cmd/identity-agent/ cmd/identity-agent/
 WORKDIR /src/cmd/identity-agent
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /identity-agent .
