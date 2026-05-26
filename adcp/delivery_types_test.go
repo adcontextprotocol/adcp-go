@@ -46,9 +46,7 @@ func TestGeneratedDeliveryTypesRoundTrip(t *testing.T) {
 				Paused:            &paused,
 				IsFinal:           &isFinal,
 				MeasurementWindow: "c7",
-				DailyBreakdown: []any{
-					map[string]any{"date": "2026-05-25", "impressions": 1000, "spend": 125},
-				},
+				DailyBreakdown:    []PackageDailyBreakdown{{Date: "2026-05-25", Impressions: 1000, Spend: 125}},
 			}},
 		}},
 	}

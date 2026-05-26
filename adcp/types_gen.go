@@ -137,7 +137,7 @@ const (
 	AdvertiserIndustryTechnology AdvertiserIndustry = "technology"
 	AdvertiserIndustryTechnologySoftware AdvertiserIndustry = "technology.software"
 	AdvertiserIndustryTechnologyHardware AdvertiserIndustry = "technology.hardware"
-	AdvertiserIndustryTechnologyAiMl AdvertiserIndustry = "technology.ai_ml"
+	AdvertiserIndustryTechnologyAIMl AdvertiserIndustry = "technology.ai_ml"
 	AdvertiserIndustryTelecom AdvertiserIndustry = "telecom"
 	AdvertiserIndustryTelecomMobileCarriers AdvertiserIndustry = "telecom.mobile_carriers"
 	AdvertiserIndustryTelecomInternetProviders AdvertiserIndustry = "telecom.internet_providers"
@@ -1237,7 +1237,7 @@ const (
 	PropertyTypeRadio PropertyType = "radio"
 	PropertyTypeLinearTv PropertyType = "linear_tv"
 	PropertyTypeStreamingAudio PropertyType = "streaming_audio"
-	PropertyTypeAiAssistant PropertyType = "ai_assistant"
+	PropertyTypeAIAssistant PropertyType = "ai_assistant"
 )
 
 // ProposalStatus — Lifecycle status of a proposal. Absent means the proposal is ready to buy (backw
@@ -1333,7 +1333,7 @@ const (
 	RightUseBackgroundMusic RightUse = "background_music"
 	RightUseEditorial RightUse = "editorial"
 	RightUseCommercial RightUse = "commercial"
-	RightUseAiGeneratedImage RightUse = "ai_generated_image"
+	RightUseAIGeneratedImage RightUse = "ai_generated_image"
 )
 
 // RightsBillingPeriod — Billing period for brand rights pricing
@@ -1815,21 +1815,21 @@ type Product struct {
 	DataProviderSignals []DataProviderSignalSelector `json:"data_provider_signals,omitempty"` // Data provider signals available for this product. Buyers fetch signal definition
 	SignalTargetingAllowed *bool `json:"signal_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its data_provider_signals.
 	CatalogTypes []string `json:"catalog_types,omitempty"` // Catalog types this product supports for catalog-driven campaigns. A sponsored pr
-	MetricOptimization any `json:"metric_optimization,omitempty"` // Metric optimization capabilities for this product. Presence indicates the produc
+	MetricOptimization *ProductMetricOptimization `json:"metric_optimization,omitempty"` // Metric optimization capabilities for this product. Presence indicates the produc
 	MaxOptimizationGoals int `json:"max_optimization_goals,omitempty"` // Maximum number of optimization_goals this product accepts on a package. When abs
 	MeasurementReadiness *MeasurementReadiness `json:"measurement_readiness,omitempty"` // Assessment of whether the buyer's event source setup is sufficient for this prod
-	ConversionTracking any `json:"conversion_tracking,omitempty"` // Conversion event tracking for this product. Presence indicates the product suppo
+	ConversionTracking *ProductConversionTracking `json:"conversion_tracking,omitempty"` // Conversion event tracking for this product. Presence indicates the product suppo
 	CatalogMatch *ProductCatalogMatch `json:"catalog_match,omitempty"` // When the buyer provides a catalog on get_products, indicates which catalog items
 	BriefRelevance string `json:"brief_relevance,omitempty"` // Explanation of why this product matches the brief (only included when brief is p
 	ExpiresAt string `json:"expires_at,omitempty"` // Expiration timestamp. After this time, the product may no longer be available fo
-	ProductCard any `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
-	ProductCardDetailed any `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
+	ProductCard *ProductCard `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
+	ProductCardDetailed *ProductCardDetailed `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
 	Collections []CollectionSelector `json:"collections,omitempty"` // Collections available in this product. Each entry references collections declare
 	CollectionTargetingAllowed *bool `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false (de
 	Installments []any `json:"installments,omitempty"` // Specific installments included in this product. Each installment references its
 	EnforcedPolicies []string `json:"enforced_policies,omitempty"` // Registry policy IDs the seller enforces for this product. Enforcement level come
-	TrustedMatch any `json:"trusted_match,omitempty"` // Trusted Match Protocol capabilities for this product. When present, the product
-	MaterialSubmission any `json:"material_submission,omitempty"` // Instructions for submitting physical creative materials (print, static OOH, cine
+	TrustedMatch *ProductTrustedMatch `json:"trusted_match,omitempty"` // Trusted Match Protocol capabilities for this product. When present, the product
+	MaterialSubmission *ProductMaterialSubmission `json:"material_submission,omitempty"` // Instructions for submitting physical creative materials (print, static OOH, cine
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -1974,7 +1974,7 @@ type Package struct {
 // PriceBreakdown — Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjust
 type PriceBreakdown struct {
 	ListPrice float64 `json:"list_price"` // Rate card or base price before any adjustments. The starting point from which fi
-	Adjustments []any `json:"adjustments"` // Ordered list of price adjustments. Fee and discount adjustments walk list_price
+	Adjustments []PriceAdjustment `json:"adjustments"` // Ordered list of price adjustments. Fee and discount adjustments walk list_price
 }
 
 // CreativeFormat — Represents a creative format with its requirements
@@ -1990,11 +1990,11 @@ type CreativeFormat struct {
 	SupportedMacros []any `json:"supported_macros,omitempty"` // List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUST
 	InputFormatIDs []FormatRef `json:"input_format_ids,omitempty"` // Array of format IDs this format accepts as input creative manifests. When presen
 	OutputFormatIDs []FormatRef `json:"output_format_ids,omitempty"` // Array of format IDs that this format can produce as output. When present, indica
-	FormatCard any `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
+	FormatCard *CreativeFormatCard `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
 	Accessibility *CreativeFormatAccessibility `json:"accessibility,omitempty"` // Accessibility posture of this format. Declares the WCAG conformance level that c
 	SupportedDisclosurePositions []string `json:"supported_disclosure_positions,omitempty"` // Disclosure positions this format can render. Buyers use this to determine whethe
-	DisclosureCapabilities []any `json:"disclosure_capabilities,omitempty"` // Structured disclosure capabilities per position with persistence modes. Declares
-	FormatCardDetailed any `json:"format_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich form
+	DisclosureCapabilities []CreativeFormatDisclosureCapability `json:"disclosure_capabilities,omitempty"` // Structured disclosure capabilities per position with persistence modes. Declares
+	FormatCardDetailed *CreativeFormatCardDetailed `json:"format_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich form
 	ReportedMetrics []string `json:"reported_metrics,omitempty"` // Metrics this format can produce in delivery reporting. Buyers receive the inters
 	PricingOptions []VendorPricingOption `json:"pricing_options,omitempty"` // Pricing options for this format. Used by transformation and generation agents th
 }
@@ -2014,13 +2014,13 @@ type CreativeAsset struct {
 	Name string `json:"name"` // Human-readable creative name
 	FormatID FormatRef `json:"format_id"` // Always a structured object {agent_url, id} — never a plain string. Format identi
 	Assets map[string]any `json:"assets"` // Assets required by the format, keyed by asset_id. Each asset value carries an `a
-	Inputs []any `json:"inputs,omitempty"` // Preview contexts for generative formats - defines what scenarios to generate pre
+	Inputs []CreativeAssetInput `json:"inputs,omitempty"` // Preview contexts for generative formats - defines what scenarios to generate pre
 	Tags []string `json:"tags,omitempty"` // User-defined tags for organization and searchability
 	Status string `json:"status,omitempty"` // For generative creatives: set to 'approved' to finalize, 'rejected' to request r
 	Weight float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
 	PlacementIDs []string `json:"placement_ids,omitempty"` // Optional array of placement IDs where this creative should run when uploading vi
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast cl
-	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
+	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
 }
 
 // CreativeManifest — Complete specification of a creative: format_id + assets. Everything the creative needs — images, te
@@ -2029,7 +2029,21 @@ type CreativeManifest struct {
 	Assets map[string]any `json:"assets"` // Map of asset IDs to actual asset content. Each key MUST match an asset_id from t
 	Rights []RightsConstraint `json:"rights,omitempty"` // Rights constraints attached to this creative. Each entry represents constraints
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Cle
-	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
+	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
+	Ext any `json:"ext,omitempty"`
+}
+
+// Provenance — Declares how content was produced, whether AI was involved, and what disclosure obligations apply. A
+type Provenance struct {
+	DigitalSourceType string `json:"digital_source_type,omitempty"` // IPTC-aligned classification of AI involvement in producing this content
+	AITool *ProvenanceAITool `json:"ai_tool,omitempty"` // AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI me
+	HumanOversight string `json:"human_oversight,omitempty"` // Level of human involvement in the AI-assisted creation process
+	DeclaredBy *ProvenanceDeclaredBy `json:"declared_by,omitempty"` // Party declaring this provenance. Identifies who attached the provenance claim, e
+	DeclaredAt string `json:"declared_at,omitempty"` // When this provenance claim was made (ISO 8601). Distinct from created_time, whic
+	CreatedTime string `json:"created_time,omitempty"` // When this content was created or generated (ISO 8601)
+	C2PA *ProvenanceC2PA `json:"c2pa,omitempty"` // C2PA Content Credentials reference. Links to the cryptographic provenance manife
+	Disclosure *ProvenanceDisclosure `json:"disclosure,omitempty"` // Regulatory disclosure requirements for this content. Indicates whether AI disclo
+	Verification []ProvenanceVerification `json:"verification,omitempty"` // Third-party verification or detection results for this content. Multiple service
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -2069,21 +2083,21 @@ type DeliveryTotals struct {
 	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
 	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
 	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
-	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
 	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
 	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
-	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
 	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
 	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
 	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
 	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
 	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
-	ByActionSource []any `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
 }
 
 // Account — A billing account representing the relationship between a buyer and seller. The account determines r
@@ -2131,7 +2145,7 @@ type Targeting struct {
 	DevicePlatform []string `json:"device_platform,omitempty"` // Restrict to specific platforms. Use for technical compatibility (app only works
 	DeviceType []string `json:"device_type,omitempty"` // Restrict to specific device form factors. Use for campaigns targeting hardware c
 	DeviceTypeExclude []string `json:"device_type_exclude,omitempty"` // Exclude specific device form factors from delivery (e.g., exclude CTV for app-in
-	StoreCatchments []any `json:"store_catchments,omitempty"` // Target users within store catchment areas from a synced store catalog. Each entr
+	StoreCatchments []TargetingStoreCatchment `json:"store_catchments,omitempty"` // Target users within store catchment areas from a synced store catalog. Each entr
 	GeoProximity []any `json:"geo_proximity,omitempty"` // Target users within travel time, distance, or a custom boundary around arbitrary
 	Language []string `json:"language,omitempty"` // Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en
 	KeywordTargets []KeywordTarget `json:"keyword_targets,omitempty"` // Keyword targeting for search and retail media platforms. Restricts delivery to q
@@ -2446,21 +2460,21 @@ type MediaBuyDeliveryTotals struct {
 	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
 	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
 	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
-	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
 	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
 	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
-	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
 	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
 	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
 	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
 	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
 	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
-	ByActionSource []any `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
 	EffectiveRate float64 `json:"effective_rate,omitempty"` // Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm',
 }
 
@@ -2472,7 +2486,7 @@ type MediaBuyDelivery struct {
 	PricingModel string `json:"pricing_model,omitempty"` // Pricing model used for this media buy
 	Totals MediaBuyDeliveryTotals `json:"totals"`
 	ByPackage []PackageDelivery `json:"by_package"` // Metrics broken down by package
-	DailyBreakdown []any `json:"daily_breakdown,omitempty"` // Day-by-day delivery
+	DailyBreakdown []MediaBuyDailyBreakdown `json:"daily_breakdown,omitempty"` // Day-by-day delivery
 }
 
 type PackageDelivery struct {
@@ -2489,21 +2503,21 @@ type PackageDelivery struct {
 	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
 	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
 	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
-	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
 	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
 	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
 	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
-	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
 	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
 	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
 	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
 	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
 	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
 	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
-	ByActionSource []any `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
 	PackageID string `json:"package_id"` // Seller's package identifier
 	PacingIndex float64 `json:"pacing_index,omitempty"` // Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)
 	PricingModel string `json:"pricing_model"` // The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how th
@@ -2514,20 +2528,20 @@ type PackageDelivery struct {
 	IsFinal *bool `json:"is_final,omitempty"` // Whether this delivery data is final for the reporting period. When false, the da
 	MeasurementWindow string `json:"measurement_window,omitempty"` // Which measurement window this data represents, referencing a window_id from the
 	SupersedesWindow string `json:"supersedes_window,omitempty"` // Which measurement window this data replaces. Present on window_update notificati
-	ByCatalogItem []any `json:"by_catalog_item,omitempty"` // Delivery by catalog item within this package. Available for catalog-driven packa
-	ByCreative []any `json:"by_creative,omitempty"` // Metrics broken down by creative within this package. Available when the seller s
-	ByKeyword []any `json:"by_keyword,omitempty"` // Metrics broken down by keyword within this package. One row per (keyword, match_
-	ByGeo []any `json:"by_geo,omitempty"` // Delivery by geographic area within this package. Available when the buyer reques
+	ByCatalogItem []PackageCatalogItemDelivery `json:"by_catalog_item,omitempty"` // Delivery by catalog item within this package. Available for catalog-driven packa
+	ByCreative []PackageCreativeDelivery `json:"by_creative,omitempty"` // Metrics broken down by creative within this package. Available when the seller s
+	ByKeyword []PackageKeywordDelivery `json:"by_keyword,omitempty"` // Metrics broken down by keyword within this package. One row per (keyword, match_
+	ByGeo []PackageGeoDelivery `json:"by_geo,omitempty"` // Delivery by geographic area within this package. Available when the buyer reques
 	ByGeoTruncated *bool `json:"by_geo_truncated,omitempty"` // Whether by_geo was truncated due to the requested limit or a seller-imposed maxi
-	ByDeviceType []any `json:"by_device_type,omitempty"` // Delivery by device form factor within this package. Available when the buyer req
+	ByDeviceType []PackageDeviceTypeDelivery `json:"by_device_type,omitempty"` // Delivery by device form factor within this package. Available when the buyer req
 	ByDeviceTypeTruncated *bool `json:"by_device_type_truncated,omitempty"` // Whether by_device_type was truncated. Sellers MUST return this flag whenever by_
-	ByDevicePlatform []any `json:"by_device_platform,omitempty"` // Delivery by operating system within this package. Available when the buyer reque
+	ByDevicePlatform []PackageDevicePlatformDelivery `json:"by_device_platform,omitempty"` // Delivery by operating system within this package. Available when the buyer reque
 	ByDevicePlatformTruncated *bool `json:"by_device_platform_truncated,omitempty"` // Whether by_device_platform was truncated. Sellers MUST return this flag whenever
-	ByAudience []any `json:"by_audience,omitempty"` // Delivery by audience segment within this package. Available when the buyer reque
+	ByAudience []PackageAudienceDelivery `json:"by_audience,omitempty"` // Delivery by audience segment within this package. Available when the buyer reque
 	ByAudienceTruncated *bool `json:"by_audience_truncated,omitempty"` // Whether by_audience was truncated. Sellers MUST return this flag whenever by_aud
-	ByPlacement []any `json:"by_placement,omitempty"` // Delivery by placement within this package. Available when the buyer requests pla
+	ByPlacement []PackagePlacementDelivery `json:"by_placement,omitempty"` // Delivery by placement within this package. Available when the buyer requests pla
 	ByPlacementTruncated *bool `json:"by_placement_truncated,omitempty"` // Whether by_placement was truncated. Sellers MUST return this flag whenever by_pl
-	DailyBreakdown []any `json:"daily_breakdown,omitempty"` // Day-by-day delivery for this package. Only present when include_package_daily_br
+	DailyBreakdown []PackageDailyBreakdown `json:"daily_breakdown,omitempty"` // Day-by-day delivery for this package. Only present when include_package_daily_br
 }
 
 // ProductDeliveryMeasurement — Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider a
@@ -2685,6 +2699,470 @@ type PropertyChangeSummary struct {
 type RightsAgentRef struct {
 	URL string `json:"url"` // MCP endpoint URL of the rights agent
 	ID string `json:"id"` // Agent identifier
+}
+
+// ProductCard — Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be ren
+type ProductCard struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the card layout (typically product_card_standard)
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the card, structure defined by the format
+}
+
+// ProductCardDetailed — Optional detailed card with carousel and full specifications. Provides rich product presentation sim
+type ProductCardDetailed struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the detailed card layout (typically product_card_detail
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the detailed card, structure defined by the format
+}
+
+// CreativeFormatCard — Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rend
+type CreativeFormatCard struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the card layout (typically format_card_standard)
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the card, structure defined by the format
+}
+
+// CreativeFormatCardDetailed — Optional detailed card with carousel and full specifications. Provides rich format documentation sim
+type CreativeFormatCardDetailed struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the detailed card layout (typically format_card_detaile
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the detailed card, structure defined by the format
+}
+
+// ProvenanceAITool — AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2
+type ProvenanceAITool struct {
+	Name string `json:"name"` // Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')
+	Version string `json:"version,omitempty"` // Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For g
+	Provider string `json:"provider,omitempty"` // Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google'
+}
+
+// ProvenanceDeclaredBy — Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving pa
+type ProvenanceDeclaredBy struct {
+	AgentURL string `json:"agent_url,omitempty"` // URL of the agent or service that declared this provenance
+	Role string `json:"role"` // Role of the declaring party in the supply chain
+}
+
+// ProvenanceC2PA — C2PA Content Credentials reference. Links to the cryptographic provenance manifest for this content.
+type ProvenanceC2PA struct {
+	ManifestURL string `json:"manifest_url"` // URL to the C2PA manifest store for this content
+}
+
+// ProvenanceDisclosure — Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and
+type ProvenanceDisclosure struct {
+	Required bool `json:"required"` // Whether AI disclosure is required for this content based on applicable regulatio
+	Jurisdictions []ProvenanceDisclosureJurisdiction `json:"jurisdictions,omitempty"` // Jurisdictions where disclosure obligations apply
+}
+
+type ProvenanceDisclosureJurisdiction struct {
+	Country string `json:"country"` // ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')
+	Region string `json:"region,omitempty"` // Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)
+	Regulation string `json:"regulation"` // Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synth
+	LabelText string `json:"label_text,omitempty"` // Required disclosure label text for this jurisdiction, in the local language
+	RenderGuidance *ProvenanceDisclosureRenderGuidance `json:"render_guidance,omitempty"` // How the disclosure should be rendered for this jurisdiction. Expresses the decla
+}
+
+// ProvenanceDisclosureRenderGuidance — How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent
+type ProvenanceDisclosureRenderGuidance struct {
+	Persistence string `json:"persistence,omitempty"` // How long the disclosure must persist during content playback or display
+	MinDurationMs int `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds for initial persistence. Recommended wh
+	Positions []string `json:"positions,omitempty"` // Preferred disclosure positions in priority order. The first position a format su
+	Ext any `json:"ext,omitempty"`
+}
+
+type ProvenanceVerification struct {
+	VerifiedBy string `json:"verified_by"` // Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Real
+	VerifiedTime string `json:"verified_time,omitempty"` // When the verification was performed (ISO 8601)
+	Result string `json:"result"` // Verification outcome
+	Confidence float64 `json:"confidence,omitempty"` // Confidence score of the verification result (0.0 to 1.0)
+	DetailsURL string `json:"details_url,omitempty"` // URL to the full verification report
+}
+
+// ProductMetricOptimization — Metric optimization capabilities for this product. Presence indicates the product supports optimizat
+type ProductMetricOptimization struct {
+	SupportedMetrics []string `json:"supported_metrics"` // Metric kinds this product can optimize for. Buyers should only request metric go
+	SupportedReachUnits []string `json:"supported_reach_units,omitempty"` // Reach units this product can optimize for. Required when supported_metrics inclu
+	SupportedViewDurations []float64 `json:"supported_view_durations,omitempty"` // Video view duration thresholds (in seconds) this product supports for completed_
+	SupportedTargets []string `json:"supported_targets,omitempty"` // Target kinds available for metric goals on this product. Values match target.kin
+}
+
+// ProductConversionTracking — Conversion event tracking for this product. Presence indicates the product supports optimization_goa
+type ProductConversionTracking struct {
+	ActionSources []string `json:"action_sources,omitempty"` // Action sources relevant to this product (e.g. a retail media product might have
+	SupportedTargets []string `json:"supported_targets,omitempty"` // Target kinds available for event goals on this product. Values match target.kind
+	PlatformManaged *bool `json:"platform_managed,omitempty"` // Whether the seller provides its own always-on measurement (e.g. Amazon sales att
+}
+
+// ProductTrustedMatch — Trusted Match Protocol capabilities for this product. When present, the product supports real-time c
+type ProductTrustedMatch struct {
+	ContextMatch bool `json:"context_match"` // Whether this product supports Context Match requests. When true, the publisher's
+	IdentityMatch *bool `json:"identity_match,omitempty"` // Whether this product supports Identity Match requests. When true, the publisher'
+	ResponseTypes []string `json:"response_types,omitempty"` // What the publisher can accept back from context match.
+	DynamicBrands *bool `json:"dynamic_brands,omitempty"` // Whether the buyer can select a brand at match time. When false (default), the br
+	Providers []ProductTrustedMatchProvider `json:"providers,omitempty"` // TMP providers integrated with this product's inventory. Each entry identifies a
+}
+
+type ProductTrustedMatchProvider struct {
+	AgentURL string `json:"agent_url"` // Provider's agent URL from the registry. Canonical identifier for this TMP provid
+	ContextMatch *bool `json:"context_match,omitempty"` // Whether this provider handles context match for this product.
+	IdentityMatch *bool `json:"identity_match,omitempty"` // Whether this provider handles identity match for this product.
+	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 country codes this provider serves for identity match. The ro
+	UIDTypes []string `json:"uid_types,omitempty"` // Identity types this regional provider can resolve. The router filters providers
+}
+
+// ProductMaterialSubmission — Instructions for submitting physical creative materials (print, static OOH, cinema). Present only fo
+type ProductMaterialSubmission struct {
+	URL string `json:"url,omitempty"` // HTTPS URL for uploading or submitting physical creative materials
+	Email string `json:"email,omitempty"` // Email address for creative material submission
+	Instructions string `json:"instructions,omitempty"` // Human-readable instructions for material submission (file naming conventions, sh
+	Ext any `json:"ext,omitempty"`
+}
+
+type PriceAdjustment struct {
+	Kind string `json:"kind"`
+	Name string `json:"name"` // Specific adjustment name. Use well-known values where applicable for interoperab
+	Rate float64 `json:"rate,omitempty"` // Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind
+	Amount float64 `json:"amount,omitempty"` // Adjustment as a fixed monetary amount in the pricing option's currency. Always p
+	Description string `json:"description,omitempty"` // Human-readable description of this adjustment (e.g., 'Malstaffel 12x', '2% Skont
+	Beneficiary string `json:"beneficiary,omitempty"` // Identifies who receives this adjustment's value. For commissions, the intermedia
+}
+
+type CreativeFormatDisclosureCapability struct {
+	Position string `json:"position"` // The disclosure position
+	Persistence []string `json:"persistence"` // Persistence modes this position supports
+}
+
+type CreativeAssetInput struct {
+	Name string `json:"name"` // Human-readable name for this preview variant
+	Macros map[string]string `json:"macros,omitempty"` // Macro values to apply for this preview
+	ContextDescription string `json:"context_description,omitempty"` // Natural language description of the context for AI-generated content
+}
+
+type TargetingStoreCatchment struct {
+	CatalogID string `json:"catalog_id"` // Synced store-type catalog ID from sync_catalogs.
+	StoreIDs []string `json:"store_ids,omitempty"` // Filter to specific stores within the catalog. Omit to target all stores.
+	CatchmentIDs []string `json:"catchment_ids,omitempty"` // Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchme
+}
+
+type DeliveryEventTypeMetrics struct {
+	EventType string `json:"event_type"` // The event type
+	EventSourceID string `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple e
+	Count float64 `json:"count"` // Number of events of this type
+	Value float64 `json:"value,omitempty"` // Total monetary value of events of this type
+}
+
+// DeliveryDOOHMetrics — DOOH-specific metrics (only included for DOOH campaigns)
+type DeliveryDOOHMetrics struct {
+	LoopPlays int `json:"loop_plays,omitempty"` // Number of times ad played in rotation
+	ScreensUsed int `json:"screens_used,omitempty"` // Number of unique screens displaying the ad
+	ScreenTimeSeconds int `json:"screen_time_seconds,omitempty"` // Total display time in seconds
+	SovAchieved float64 `json:"sov_achieved,omitempty"` // Actual share of voice delivered (0.0 to 1.0)
+	CalculationNotes string `json:"calculation_notes,omitempty"` // Explanation of how DOOH impressions were calculated
+	VenueBreakdown []DeliveryDOOHVenueBreakdown `json:"venue_breakdown,omitempty"` // Per-venue performance breakdown
+}
+
+type DeliveryDOOHVenueBreakdown struct {
+	VenueID string `json:"venue_id"` // Venue identifier
+	VenueName string `json:"venue_name,omitempty"` // Human-readable venue name
+	VenueType string `json:"venue_type,omitempty"` // Venue type (e.g., 'airport', 'transit', 'retail', 'billboard')
+	Impressions int `json:"impressions"` // Impressions delivered at this venue
+	LoopPlays int `json:"loop_plays,omitempty"` // Loop plays at this venue
+	ScreensUsed int `json:"screens_used,omitempty"` // Number of screens used at this venue
+}
+
+// DeliveryViewability — Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impress
+type DeliveryViewability struct {
+	MeasurableImpressions float64 `json:"measurable_impressions,omitempty"` // Impressions where viewability could be measured. Excludes environments without m
+	ViewableImpressions float64 `json:"viewable_impressions,omitempty"` // Impressions that met the viewability threshold defined by the measurement standa
+	ViewableRate float64 `json:"viewable_rate,omitempty"` // Viewable impression rate (viewable_impressions / measurable_impressions). Range
+	Standard string `json:"standard,omitempty"` // Viewability measurement standard applied to these metrics.
+}
+
+type DeliveryActionSourceMetrics struct {
+	ActionSource string `json:"action_source"` // Where the conversion occurred
+	EventSourceID string `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple e
+	Count float64 `json:"count"` // Number of conversions from this action source
+	Value float64 `json:"value,omitempty"` // Total monetary value of conversions from this action source
+}
+
+type MediaBuyDailyBreakdown struct {
+	Date string `json:"date"` // Date (YYYY-MM-DD)
+	Impressions float64 `json:"impressions"` // Daily impressions
+	Spend float64 `json:"spend"` // Daily spend
+	Conversions float64 `json:"conversions,omitempty"` // Daily conversions
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Daily conversion value
+	Roas float64 `json:"roas,omitempty"` // Daily return on ad spend (conversion_value / spend)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+}
+
+type PackageCatalogItemDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	ContentID string `json:"content_id"` // Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)
+	ContentIDType string `json:"content_id_type,omitempty"` // Identifier type for this content_id
+}
+
+type PackageCreativeDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	CreativeID string `json:"creative_id"` // Creative identifier matching the creative assignment
+	Weight float64 `json:"weight,omitempty"` // Observed delivery share for this creative within the package during the reportin
+}
+
+type PackageKeywordDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	Keyword string `json:"keyword"` // The targeted keyword
+	MatchType string `json:"match_type"`
+}
+
+type PackageGeoDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	GeoLevel string `json:"geo_level"` // Geographic level of this entry (country, region, metro, postal_area)
+	System string `json:"system,omitempty"` // Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_
+	GeoCode string `json:"geo_code"` // Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US').
+	GeoName string `json:"geo_name,omitempty"` // Human-readable geographic name (e.g., 'United States', 'California', 'New York D
+}
+
+type PackageDeviceTypeDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	DeviceType string `json:"device_type"` // Device form factor (desktop, mobile, tablet, ctv, dooh, unknown)
+}
+
+type PackageDevicePlatformDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	DevicePlatform string `json:"device_platform"` // Operating system platform
+}
+
+type PackageAudienceDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	AudienceID string `json:"audience_id"` // Audience segment identifier. For 'synced' source, matches audience_id from sync_
+	AudienceSource string `json:"audience_source"` // Origin of the audience segment (synced, platform, third_party, lookalike, retarg
+	AudienceName string `json:"audience_name,omitempty"` // Human-readable audience segment name
+}
+
+type PackagePlacementDelivery struct {
+	Impressions float64 `json:"impressions"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []DeliveryEventTypeMetrics `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData *DeliveryQuartileData `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics *DeliveryDOOHMetrics `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability *DeliveryViewability `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	PlacementID string `json:"placement_id"` // Placement identifier from the product's placements array
+	PlacementName string `json:"placement_name,omitempty"` // Human-readable placement name
+}
+
+type PackageDailyBreakdown struct {
+	Date string `json:"date"` // Date (YYYY-MM-DD)
+	Impressions float64 `json:"impressions"` // Daily impressions for this package
+	Spend float64 `json:"spend"` // Daily spend for this package
+	Conversions float64 `json:"conversions,omitempty"` // Daily conversions for this package
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Daily conversion value for this package
+	Roas float64 `json:"roas,omitempty"` // Daily return on ad spend (conversion_value / spend)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)
 }
 
 // --- Tool request/response types ---

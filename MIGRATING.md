@@ -81,6 +81,8 @@ be populated.
 | `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
 | `Product.Placements` | `[]adcp.Placement` |
 | `Product.DeliveryMeasurement` | `*adcp.ProductDeliveryMeasurement` |
+| `Product.ProductCard` | `*adcp.ProductCard` |
+| `Product.ProductCardDetailed` | `*adcp.ProductCardDetailed` |
 | `Product.CatalogMatch` | `*adcp.ProductCatalogMatch` |
 | `Product.Forecast` | `*adcp.DeliveryForecast` |
 | `DeliveryForecast.Points` | `[]adcp.ForecastPoint` |
@@ -91,13 +93,56 @@ be populated.
 | `Product.CreativePolicy` | `*adcp.CreativePolicy` |
 | `Product.MeasurementReadiness` | `*adcp.MeasurementReadiness` |
 | `MeasurementReadiness.Issues` | `[]adcp.DiagnosticIssue` |
+| `Product.MetricOptimization` | `*adcp.ProductMetricOptimization` |
+| `Product.ConversionTracking` | `*adcp.ProductConversionTracking` |
+| `Product.TrustedMatch` | `*adcp.ProductTrustedMatch` |
+| `ProductTrustedMatch.Providers` | `[]adcp.ProductTrustedMatchProvider` |
+| `Product.MaterialSubmission` | `*adcp.ProductMaterialSubmission` |
 | `Product.Collections` | `[]adcp.CollectionSelector` |
 | `Product.DataProviderSignals` | `[]adcp.DataProviderSignalSelector` |
 | `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
+| `PriceBreakdown.Adjustments` | `[]adcp.PriceAdjustment` |
 | `Package.Cancellation` | `*adcp.PackageCancellation` |
 | `CreativeFormat.Accessibility` | `*adcp.CreativeFormatAccessibility` |
+| `CreativeFormat.FormatCard` | `*adcp.CreativeFormatCard` |
+| `CreativeFormat.FormatCardDetailed` | `*adcp.CreativeFormatCardDetailed` |
+| `CreativeFormat.DisclosureCapabilities` | `[]adcp.CreativeFormatDisclosureCapability` |
+| `CreativeAsset.Inputs` | `[]adcp.CreativeAssetInput` |
+| `CreativeAsset.Provenance` | `*adcp.Provenance` |
+| `CreativeManifest.Provenance` | `*adcp.Provenance` |
+| `Provenance.AITool` | `*adcp.ProvenanceAITool` |
+| `Provenance.DeclaredBy` | `*adcp.ProvenanceDeclaredBy` |
+| `Provenance.C2PA` | `*adcp.ProvenanceC2PA` |
+| `Provenance.Disclosure` | `*adcp.ProvenanceDisclosure` |
+| `Provenance.Disclosure.Jurisdictions` | `[]adcp.ProvenanceDisclosureJurisdiction` |
+| `Provenance.Verification` | `[]adcp.ProvenanceVerification` |
 | `Signal.Range` | `*adcp.SignalRange` |
+| `Targeting.StoreCatchments` | `[]adcp.TargetingStoreCatchment` |
+| `DeliveryTotals.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
 | `DeliveryTotals.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `DeliveryTotals.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `DeliveryTotals.Viewability` | `*adcp.DeliveryViewability` |
+| `DeliveryTotals.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `MediaBuyDeliveryTotals.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
+| `MediaBuyDeliveryTotals.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `MediaBuyDeliveryTotals.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `MediaBuyDeliveryTotals.Viewability` | `*adcp.DeliveryViewability` |
+| `MediaBuyDeliveryTotals.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `PackageDelivery.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
+| `PackageDelivery.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `PackageDelivery.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `PackageDelivery.Viewability` | `*adcp.DeliveryViewability` |
+| `PackageDelivery.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `MediaBuyDelivery.DailyBreakdown` | `[]adcp.MediaBuyDailyBreakdown` |
+| `PackageDelivery.ByCatalogItem` | `[]adcp.PackageCatalogItemDelivery` |
+| `PackageDelivery.ByCreative` | `[]adcp.PackageCreativeDelivery` |
+| `PackageDelivery.ByKeyword` | `[]adcp.PackageKeywordDelivery` |
+| `PackageDelivery.ByGeo` | `[]adcp.PackageGeoDelivery` |
+| `PackageDelivery.ByDeviceType` | `[]adcp.PackageDeviceTypeDelivery` |
+| `PackageDelivery.ByDevicePlatform` | `[]adcp.PackageDevicePlatformDelivery` |
+| `PackageDelivery.ByAudience` | `[]adcp.PackageAudienceDelivery` |
+| `PackageDelivery.ByPlacement` | `[]adcp.PackagePlacementDelivery` |
+| `PackageDelivery.DailyBreakdown` | `[]adcp.PackageDailyBreakdown` |
 | `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
 | `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
 | `RightsConstraint.RightsAgent` | `adcp.RightsAgentRef` |
@@ -148,6 +193,19 @@ req := adcp.GetProductsRequest{
 }
 ```
 
+Price adjustment migration example:
+
+```go
+breakdown := adcp.PriceBreakdown{
+    ListPrice: 20,
+    Adjustments: []adcp.PriceAdjustment{{
+        Kind:   "discount",
+        Name:   "volume",
+        Amount: 5,
+    }},
+}
+```
+
 Seller response and governance migration example:
 
 ```go
@@ -194,6 +252,11 @@ feedback := adcp.ProvidePerformanceFeedbackRequest{
   emitted as schema-required fields even when their Go values are zero.
   `MediaBuyDelivery.Totals` is now `adcp.MediaBuyDeliveryTotals`, which includes
   the schema-specific `effective_rate` field.
+- Delivery metric breakdowns use the same generated metric helper types across
+  `DeliveryTotals`, `MediaBuyDeliveryTotals`, package rows, and package
+  breakdown rows: `DeliveryEventTypeMetrics`, `DeliveryQuartileData`,
+  `DeliveryDOOHMetrics`, `DeliveryViewability`, and
+  `DeliveryActionSourceMetrics`.
 - `GetMediaBuyDeliveryResponse.ReportingPeriod`,
   `GetMediaBuyDeliveryResponse.AggregatedTotals`, and
   `GetMediaBuyDeliveryResponse.MediaBuyDeliveries` are now typed as
