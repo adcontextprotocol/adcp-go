@@ -353,6 +353,28 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "media buy status filter scalar",
+			value: GetMediaBuysRequest{
+				StatusFilter: Ptr(MediaBuyStatusFilter{MediaBuyStatusActive}),
+			},
+			want: []string{
+				`"status_filter":"active"`,
+			},
+		},
+		{
+			name: "delivery status filter array",
+			value: GetMediaBuyDeliveryRequest{
+				MediaBuyIDs: []string{"mb-1"},
+				StatusFilter: Ptr(MediaBuyStatusFilter{
+					MediaBuyStatusActive,
+					MediaBuyStatusPaused,
+				}),
+			},
+			want: []string{
+				`"status_filter":["active","paused"]`,
+			},
+		},
+		{
 			name: "creative agent refs",
 			value: ListCreativeFormatsResponse{
 				Formats: []CreativeFormat{},
@@ -433,6 +455,38 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
+	var listReq GetMediaBuysRequest
+	if err := json.Unmarshal([]byte(`{"status_filter":"active"}`), &listReq); err != nil {
+		t.Fatalf("unmarshal scalar status filter: %v", err)
+	}
+	if listReq.StatusFilter == nil || len(*listReq.StatusFilter) != 1 || (*listReq.StatusFilter)[0] != MediaBuyStatusActive {
+		t.Fatalf("scalar status filter did not decode as one active status: %#v", listReq.StatusFilter)
+	}
+
+	var deliveryReq GetMediaBuyDeliveryRequest
+	if err := json.Unmarshal([]byte(`{"status_filter":["active","paused"]}`), &deliveryReq); err != nil {
+		t.Fatalf("unmarshal array status filter: %v", err)
+	}
+	if deliveryReq.StatusFilter == nil || len(*deliveryReq.StatusFilter) != 2 {
+		t.Fatalf("array status filter did not decode two statuses: %#v", deliveryReq.StatusFilter)
+	}
+	if (*deliveryReq.StatusFilter)[0] != MediaBuyStatusActive || (*deliveryReq.StatusFilter)[1] != MediaBuyStatusPaused {
+		t.Fatalf("array status filter decoded unexpected values: %#v", *deliveryReq.StatusFilter)
+	}
+
+	emptyFilter := MediaBuyStatusFilter{}
+	if _, err := json.Marshal(emptyFilter); err == nil {
+		t.Fatal("marshal empty status filter succeeded, want error")
+	}
+	if err := json.Unmarshal([]byte(`null`), &emptyFilter); err == nil {
+		t.Fatal("unmarshal null status filter succeeded, want error")
+	}
+	if err := json.Unmarshal([]byte(`{"status_filter":[]}`), &deliveryReq); err == nil {
+		t.Fatal("unmarshal empty status filter succeeded, want error")
 	}
 }
 

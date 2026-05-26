@@ -159,6 +159,8 @@ be populated.
 | `PackageDelivery.ByAudience` | `[]adcp.PackageAudienceDelivery` |
 | `PackageDelivery.ByPlacement` | `[]adcp.PackagePlacementDelivery` |
 | `PackageDelivery.DailyBreakdown` | `[]adcp.PackageDailyBreakdown` |
+| `GetMediaBuysRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
+| `GetMediaBuyDeliveryRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
 | `DeliveryAttributionWindow.PostClick` | `*adcp.Duration` |
 | `DeliveryAttributionWindow.PostView` | `*adcp.Duration` |
@@ -217,6 +219,17 @@ req := adcp.GetProductsRequest{
         ListID:   "pl-123",
     }),
     TimeBudget: adcp.Ptr(adcp.Duration{Interval: 5, Unit: "minutes"}),
+}
+```
+
+Status filter migration example:
+
+```go
+req := adcp.GetMediaBuysRequest{
+    StatusFilter: adcp.Ptr(adcp.MediaBuyStatusFilter{
+        adcp.MediaBuyStatusActive,
+        adcp.MediaBuyStatusPaused,
+    }),
 }
 ```
 

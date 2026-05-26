@@ -4,6 +4,11 @@
 
 package adcp
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Type aliases for $ref targets from schemas not directly generated.
 type AdcpError = map[string]any
 
@@ -1730,6 +1735,41 @@ const (
 	WebhookSecurityMethodAPIKey WebhookSecurityMethod = "api_key"
 	WebhookSecurityMethodNone WebhookSecurityMethod = "none"
 )
+
+// --- Union helper types ---
+
+// MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
+type MediaBuyStatusFilter []MediaBuyStatus
+
+func (v MediaBuyStatusFilter) MarshalJSON() ([]byte, error) {
+	if len(v) == 0 {
+		return nil, fmt.Errorf("MediaBuyStatusFilter must contain at least one value")
+	}
+	if len(v) == 1 {
+		return json.Marshal(v[0])
+	}
+	return json.Marshal([]MediaBuyStatus(v))
+}
+
+func (v *MediaBuyStatusFilter) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return fmt.Errorf("MediaBuyStatusFilter cannot be null")
+	}
+	var single MediaBuyStatus
+	if err := json.Unmarshal(data, &single); err == nil {
+		*v = MediaBuyStatusFilter{single}
+		return nil
+	}
+	var many []MediaBuyStatus
+	if err := json.Unmarshal(data, &many); err != nil {
+		return err
+	}
+	if len(many) == 0 {
+		return fmt.Errorf("MediaBuyStatusFilter must contain at least one value")
+	}
+	*v = MediaBuyStatusFilter(many)
+	return nil
+}
 
 // --- Core types ---
 
@@ -3567,7 +3607,7 @@ type GetMediaBuysRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	Account *AccountReference `json:"account,omitempty"` // Account to retrieve media buys for. When omitted, returns data across all access
 	MediaBuyIDs []string `json:"media_buy_ids,omitempty"` // Array of media buy IDs to retrieve. When omitted, returns a paginated set of acc
-	StatusFilter any `json:"status_filter,omitempty"` // Filter by status. Can be a single status or array of statuses. Defaults to ["act
+	StatusFilter *MediaBuyStatusFilter `json:"status_filter,omitempty"` // Filter by status. Can be a single status or array of statuses. Defaults to ["act
 	IncludeSnapshot *bool `json:"include_snapshot,omitempty"` // When true, include a near-real-time delivery snapshot for each package. Snapshot
 	IncludeHistory int `json:"include_history,omitempty"` // When present, include the last N revision history entries for each media buy (re
 	Pagination *PaginationRequest `json:"pagination,omitempty"` // Cursor-based pagination controls. Strongly recommended when querying broad scope
@@ -3590,7 +3630,7 @@ type GetMediaBuyDeliveryRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	Account *AccountReference `json:"account,omitempty"` // Filter delivery data to a specific account. When omitted, returns data across al
 	MediaBuyIDs []string `json:"media_buy_ids,omitempty"` // Array of media buy IDs to get delivery data for
-	StatusFilter any `json:"status_filter,omitempty"` // Filter by status. Can be a single status or array of statuses
+	StatusFilter *MediaBuyStatusFilter `json:"status_filter,omitempty"` // Filter by status. Can be a single status or array of statuses
 	StartDate string `json:"start_date,omitempty"` // Start date for reporting period (YYYY-MM-DD). When omitted along with end_date,
 	EndDate string `json:"end_date,omitempty"` // End date for reporting period (YYYY-MM-DD). When omitted along with start_date,
 	IncludePackageDailyBreakdown *bool `json:"include_package_daily_breakdown,omitempty"` // When true, include daily_breakdown arrays within each package in by_package. Use
