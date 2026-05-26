@@ -1,4 +1,9 @@
 // Package adcp provides helpers for building AdCP MCP servers in Go.
+//
+// Generated enum aliases preserve unknown wire values for forward-compatible
+// JSON decoding. Use helpers such as KnownMediaBuyStatusValues,
+// IsKnownMediaBuyStatus, and ParseMediaBuyStatus when a handler needs strict
+// validation against the current schema values.
 package adcp
 
 import "encoding/json"

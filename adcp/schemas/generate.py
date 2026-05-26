@@ -1394,6 +1394,75 @@ def supported_union_schemas(skip_names=None):
         schemas[name] = primary_schema
     return schemas
 
+def enum_members(name, values):
+    """Return `(const_name, value)` entries this generator can safely emit."""
+    members = []
+    seen_const_names = {}
+    for v in values:
+        if not isinstance(v, str):
+            raise ValueError(f'{name} enum value {v!r} is not a string')
+        if v == '':
+            raise ValueError(f'{name} enum value must not be empty')
+        # Replace dots and other invalid chars for Go identifiers
+        safe_v = v.replace('.', '_').replace('-', '_').replace(' ', '_')
+        const_name = name + pascal_case(safe_v)
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', const_name):
+            raise ValueError(f'{name} enum value {v!r} cannot be converted to a Go identifier')
+        if const_name in seen_const_names:
+            raise ValueError(
+                f'{name} enum values {seen_const_names[const_name]!r} and {v!r} '
+                f'both convert to {const_name}'
+            )
+        seen_const_names[const_name] = v
+        members.append((const_name, v))
+    return members
+
+def enum_to_type(name, desc, values):
+    """Generate a Go enum alias, constants, and opt-in validation helpers."""
+    lines = []
+    members = enum_members(name, values)
+
+    lines.append(f'// {name} — {safe_comment(desc, 80)}' if desc else f'// {name} enum values')
+    lines.append(f'type {name} = string')
+    lines.append('const (')
+    for const_name, value in members:
+        lines.append(f'\t{const_name} {name} = "{value}"')
+    lines.append(')')
+    lines.append('')
+
+    constants = ', '.join(const_name for const_name, _ in members)
+    lines.append(f'// Known{name}Values returns the current schema-defined values for {name}.')
+    lines.append(f'func Known{name}Values() []{name} {{')
+    lines.append(f'\treturn []{name}{{{constants}}}')
+    lines.append('}')
+    lines.append('')
+
+    lines.append(f'// IsKnown{name} reports whether v is one of the current schema-defined {name} values.')
+    lines.append('// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.')
+    lines.append(f'func IsKnown{name}(v {name}) bool {{')
+    lines.append('\tswitch v {')
+    if members:
+        lines.append(f'\tcase {constants}:')
+        lines.append('\t\treturn true')
+    lines.append('\tdefault:')
+    lines.append('\t\treturn false')
+    lines.append('\t}')
+    lines.append('}')
+    lines.append('')
+
+    lines.append(f'// Parse{name} returns s as {name} when s is one of the current schema-defined values.')
+    lines.append('// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.')
+    lines.append(f'func Parse{name}(s string) ({name}, error) {{')
+    lines.append(f'\tv := {name}(s)')
+    lines.append(f'\tif IsKnown{name}(v) {{')
+    lines.append('\t\treturn v, nil')
+    lines.append('\t}')
+    lines.append(f'\treturn "", fmt.Errorf("unknown {name} value")')
+    lines.append('}')
+    lines.append('')
+
+    return '\n'.join(lines)
+
 def generate_enums():
     """Generate Go string constants for all enum schemas."""
     lines = []
@@ -1411,20 +1480,7 @@ def generate_enums():
             continue
 
         desc = schema.get('description', '')
-        lines.append(f'// {name} — {safe_comment(desc, 80)}' if desc else f'// {name} enum values')
-        lines.append(f'type {name} = string')
-        lines.append('const (')
-        for v in values:
-            if isinstance(v, str):
-                # Replace dots and other invalid chars for Go identifiers
-                safe_v = v.replace('.', '_').replace('-', '_').replace(' ', '_')
-                const_name = name + pascal_case(safe_v)
-                # Skip if still not a valid Go identifier
-                if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', const_name):
-                    continue
-                lines.append(f'\t{const_name} {name} = "{v}"')
-        lines.append(')')
-        lines.append('')
+        lines.append(enum_to_type(name, desc, values))
 
     return '\n'.join(lines)
 
@@ -1635,10 +1691,16 @@ def generate():
     print('package adcp')
     print()
     union_schemas = supported_union_schemas(skip_names=KNOWN_TYPES)
+    enums = generate_enums()
+    imports = []
     if union_schemas:
+        imports.append('encoding/json')
+    if union_schemas or enums:
+        imports.append('fmt')
+    if imports:
         print('import (')
-        print('\t"encoding/json"')
-        print('\t"fmt"')
+        for pkg in imports:
+            print(f'\t"{pkg}"')
         print(')')
         print()
 
@@ -1647,8 +1709,6 @@ def generate():
     print('type AdcpError = map[string]any')
     print()
 
-    # Generate enums
-    enums = generate_enums()
     if enums:
         print('// --- Enum types ---')
         print()

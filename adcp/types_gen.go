@@ -23,6 +23,32 @@ const (
 	AccountScopeAgent AccountScope = "agent"
 )
 
+// KnownAccountScopeValues returns the current schema-defined values for AccountScope.
+func KnownAccountScopeValues() []AccountScope {
+	return []AccountScope{AccountScopeOperator, AccountScopeBrand, AccountScopeOperatorBrand, AccountScopeAgent}
+}
+
+// IsKnownAccountScope reports whether v is one of the current schema-defined AccountScope values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAccountScope(v AccountScope) bool {
+	switch v {
+	case AccountScopeOperator, AccountScopeBrand, AccountScopeOperatorBrand, AccountScopeAgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAccountScope returns s as AccountScope when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAccountScope(s string) (AccountScope, error) {
+	v := AccountScope(s)
+	if IsKnownAccountScope(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AccountScope value")
+}
+
 // AccountStatus — Advertiser account status in the account lifecycle
 type AccountStatus = string
 const (
@@ -33,6 +59,32 @@ const (
 	AccountStatusSuspended AccountStatus = "suspended"
 	AccountStatusClosed AccountStatus = "closed"
 )
+
+// KnownAccountStatusValues returns the current schema-defined values for AccountStatus.
+func KnownAccountStatusValues() []AccountStatus {
+	return []AccountStatus{AccountStatusActive, AccountStatusPendingApproval, AccountStatusRejected, AccountStatusPaymentRequired, AccountStatusSuspended, AccountStatusClosed}
+}
+
+// IsKnownAccountStatus reports whether v is one of the current schema-defined AccountStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAccountStatus(v AccountStatus) bool {
+	switch v {
+	case AccountStatusActive, AccountStatusPendingApproval, AccountStatusRejected, AccountStatusPaymentRequired, AccountStatusSuspended, AccountStatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAccountStatus returns s as AccountStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAccountStatus(s string) (AccountStatus, error) {
+	v := AccountStatus(s)
+	if IsKnownAccountStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AccountStatus value")
+}
 
 // ActionSource — Where the conversion event originated
 type ActionSource = string
@@ -48,6 +100,32 @@ const (
 	ActionSourceOther ActionSource = "other"
 )
 
+// KnownActionSourceValues returns the current schema-defined values for ActionSource.
+func KnownActionSourceValues() []ActionSource {
+	return []ActionSource{ActionSourceWebsite, ActionSourceApp, ActionSourceOffline, ActionSourcePhoneCall, ActionSourceChat, ActionSourceEmail, ActionSourceInStore, ActionSourceSystemGenerated, ActionSourceOther}
+}
+
+// IsKnownActionSource reports whether v is one of the current schema-defined ActionSource values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownActionSource(v ActionSource) bool {
+	switch v {
+	case ActionSourceWebsite, ActionSourceApp, ActionSourceOffline, ActionSourcePhoneCall, ActionSourceChat, ActionSourceEmail, ActionSourceInStore, ActionSourceSystemGenerated, ActionSourceOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseActionSource returns s as ActionSource when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseActionSource(s string) (ActionSource, error) {
+	v := ActionSource(s)
+	if IsKnownActionSource(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ActionSource value")
+}
+
 // AdcpProtocol — AdCP protocols for task categorization — referenced by tasks-list-request, webho
 type AdcpProtocol = string
 const (
@@ -59,6 +137,32 @@ const (
 	AdcpProtocolSponsoredIntelligence AdcpProtocol = "sponsored-intelligence"
 )
 
+// KnownAdcpProtocolValues returns the current schema-defined values for AdcpProtocol.
+func KnownAdcpProtocolValues() []AdcpProtocol {
+	return []AdcpProtocol{AdcpProtocolMediaBuy, AdcpProtocolSignals, AdcpProtocolGovernance, AdcpProtocolCreative, AdcpProtocolBrand, AdcpProtocolSponsoredIntelligence}
+}
+
+// IsKnownAdcpProtocol reports whether v is one of the current schema-defined AdcpProtocol values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAdcpProtocol(v AdcpProtocol) bool {
+	switch v {
+	case AdcpProtocolMediaBuy, AdcpProtocolSignals, AdcpProtocolGovernance, AdcpProtocolCreative, AdcpProtocolBrand, AdcpProtocolSponsoredIntelligence:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAdcpProtocol returns s as AdcpProtocol when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAdcpProtocol(s string) (AdcpProtocol, error) {
+	v := AdcpProtocol(s)
+	if IsKnownAdcpProtocol(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AdcpProtocol value")
+}
+
 // AdjustmentKind — Categorizes how a price adjustment affects the transaction
 type AdjustmentKind = string
 const (
@@ -67,6 +171,32 @@ const (
 	AdjustmentKindCommission AdjustmentKind = "commission"
 	AdjustmentKindSettlement AdjustmentKind = "settlement"
 )
+
+// KnownAdjustmentKindValues returns the current schema-defined values for AdjustmentKind.
+func KnownAdjustmentKindValues() []AdjustmentKind {
+	return []AdjustmentKind{AdjustmentKindFee, AdjustmentKindDiscount, AdjustmentKindCommission, AdjustmentKindSettlement}
+}
+
+// IsKnownAdjustmentKind reports whether v is one of the current schema-defined AdjustmentKind values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAdjustmentKind(v AdjustmentKind) bool {
+	switch v {
+	case AdjustmentKindFee, AdjustmentKindDiscount, AdjustmentKindCommission, AdjustmentKindSettlement:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAdjustmentKind returns s as AdjustmentKind when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAdjustmentKind(s string) (AdjustmentKind, error) {
+	v := AdjustmentKind(s)
+	if IsKnownAdjustmentKind(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AdjustmentKind value")
+}
 
 // AdvertiserIndustry — Standardized advertiser industry classification. Top-level categories classify t
 type AdvertiserIndustry = string
@@ -154,6 +284,32 @@ const (
 	AdvertiserIndustryTravelHospitalityTourism AdvertiserIndustry = "travel_hospitality.tourism"
 )
 
+// KnownAdvertiserIndustryValues returns the current schema-defined values for AdvertiserIndustry.
+func KnownAdvertiserIndustryValues() []AdvertiserIndustry {
+	return []AdvertiserIndustry{AdvertiserIndustryAutomotive, AdvertiserIndustryAutomotiveElectricVehicles, AdvertiserIndustryAutomotivePartsAccessories, AdvertiserIndustryAutomotiveLuxury, AdvertiserIndustryBeautyCosmetics, AdvertiserIndustryBeautyCosmeticsSkincare, AdvertiserIndustryBeautyCosmeticsFragrance, AdvertiserIndustryBeautyCosmeticsHaircare, AdvertiserIndustryCannabis, AdvertiserIndustryCpg, AdvertiserIndustryCpgPersonalCare, AdvertiserIndustryCpgHousehold, AdvertiserIndustryDating, AdvertiserIndustryEducation, AdvertiserIndustryEducationHigherEducation, AdvertiserIndustryEducationOnlineLearning, AdvertiserIndustryEducationK12, AdvertiserIndustryEnergyUtilities, AdvertiserIndustryEnergyUtilitiesRenewable, AdvertiserIndustryFashionApparel, AdvertiserIndustryFashionApparelLuxury, AdvertiserIndustryFashionApparelSportswear, AdvertiserIndustryFinance, AdvertiserIndustryFinanceBanking, AdvertiserIndustryFinanceInsurance, AdvertiserIndustryFinanceInvestment, AdvertiserIndustryFinanceCryptocurrency, AdvertiserIndustryFoodBeverage, AdvertiserIndustryFoodBeverageAlcohol, AdvertiserIndustryFoodBeverageRestaurants, AdvertiserIndustryFoodBeveragePackagedGoods, AdvertiserIndustryGamblingBetting, AdvertiserIndustryGamblingBettingSportsBetting, AdvertiserIndustryGamblingBettingCasino, AdvertiserIndustryGaming, AdvertiserIndustryGamingMobile, AdvertiserIndustryGamingConsolePc, AdvertiserIndustryGamingEsports, AdvertiserIndustryGovernmentNonprofit, AdvertiserIndustryGovernmentNonprofitPolitical, AdvertiserIndustryGovernmentNonprofitCharity, AdvertiserIndustryHealthcare, AdvertiserIndustryHealthcarePharmaceutical, AdvertiserIndustryHealthcareMedicalDevices, AdvertiserIndustryHealthcareWellness, AdvertiserIndustryHomeGarden, AdvertiserIndustryHomeGardenFurniture, AdvertiserIndustryHomeGardenHomeImprovement, AdvertiserIndustryMediaEntertainment, AdvertiserIndustryMediaEntertainmentPodcasts, AdvertiserIndustryMediaEntertainmentMusic, AdvertiserIndustryMediaEntertainmentFilmTv, AdvertiserIndustryMediaEntertainmentPublishing, AdvertiserIndustryMediaEntertainmentLiveEvents, AdvertiserIndustryPets, AdvertiserIndustryProfessionalServices, AdvertiserIndustryProfessionalServicesLegal, AdvertiserIndustryProfessionalServicesConsulting, AdvertiserIndustryRealEstate, AdvertiserIndustryRealEstateResidential, AdvertiserIndustryRealEstateCommercial, AdvertiserIndustryRecruitmentHr, AdvertiserIndustryRetail, AdvertiserIndustryRetailEcommerce, AdvertiserIndustryRetailDepartmentStores, AdvertiserIndustrySportsFitness, AdvertiserIndustrySportsFitnessEquipment, AdvertiserIndustrySportsFitnessTeamsLeagues, AdvertiserIndustryTechnology, AdvertiserIndustryTechnologySoftware, AdvertiserIndustryTechnologyHardware, AdvertiserIndustryTechnologyAIMl, AdvertiserIndustryTelecom, AdvertiserIndustryTelecomMobileCarriers, AdvertiserIndustryTelecomInternetProviders, AdvertiserIndustryTransportationLogistics, AdvertiserIndustryTravelHospitality, AdvertiserIndustryTravelHospitalityAirlines, AdvertiserIndustryTravelHospitalityHotels, AdvertiserIndustryTravelHospitalityCruise, AdvertiserIndustryTravelHospitalityTourism}
+}
+
+// IsKnownAdvertiserIndustry reports whether v is one of the current schema-defined AdvertiserIndustry values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAdvertiserIndustry(v AdvertiserIndustry) bool {
+	switch v {
+	case AdvertiserIndustryAutomotive, AdvertiserIndustryAutomotiveElectricVehicles, AdvertiserIndustryAutomotivePartsAccessories, AdvertiserIndustryAutomotiveLuxury, AdvertiserIndustryBeautyCosmetics, AdvertiserIndustryBeautyCosmeticsSkincare, AdvertiserIndustryBeautyCosmeticsFragrance, AdvertiserIndustryBeautyCosmeticsHaircare, AdvertiserIndustryCannabis, AdvertiserIndustryCpg, AdvertiserIndustryCpgPersonalCare, AdvertiserIndustryCpgHousehold, AdvertiserIndustryDating, AdvertiserIndustryEducation, AdvertiserIndustryEducationHigherEducation, AdvertiserIndustryEducationOnlineLearning, AdvertiserIndustryEducationK12, AdvertiserIndustryEnergyUtilities, AdvertiserIndustryEnergyUtilitiesRenewable, AdvertiserIndustryFashionApparel, AdvertiserIndustryFashionApparelLuxury, AdvertiserIndustryFashionApparelSportswear, AdvertiserIndustryFinance, AdvertiserIndustryFinanceBanking, AdvertiserIndustryFinanceInsurance, AdvertiserIndustryFinanceInvestment, AdvertiserIndustryFinanceCryptocurrency, AdvertiserIndustryFoodBeverage, AdvertiserIndustryFoodBeverageAlcohol, AdvertiserIndustryFoodBeverageRestaurants, AdvertiserIndustryFoodBeveragePackagedGoods, AdvertiserIndustryGamblingBetting, AdvertiserIndustryGamblingBettingSportsBetting, AdvertiserIndustryGamblingBettingCasino, AdvertiserIndustryGaming, AdvertiserIndustryGamingMobile, AdvertiserIndustryGamingConsolePc, AdvertiserIndustryGamingEsports, AdvertiserIndustryGovernmentNonprofit, AdvertiserIndustryGovernmentNonprofitPolitical, AdvertiserIndustryGovernmentNonprofitCharity, AdvertiserIndustryHealthcare, AdvertiserIndustryHealthcarePharmaceutical, AdvertiserIndustryHealthcareMedicalDevices, AdvertiserIndustryHealthcareWellness, AdvertiserIndustryHomeGarden, AdvertiserIndustryHomeGardenFurniture, AdvertiserIndustryHomeGardenHomeImprovement, AdvertiserIndustryMediaEntertainment, AdvertiserIndustryMediaEntertainmentPodcasts, AdvertiserIndustryMediaEntertainmentMusic, AdvertiserIndustryMediaEntertainmentFilmTv, AdvertiserIndustryMediaEntertainmentPublishing, AdvertiserIndustryMediaEntertainmentLiveEvents, AdvertiserIndustryPets, AdvertiserIndustryProfessionalServices, AdvertiserIndustryProfessionalServicesLegal, AdvertiserIndustryProfessionalServicesConsulting, AdvertiserIndustryRealEstate, AdvertiserIndustryRealEstateResidential, AdvertiserIndustryRealEstateCommercial, AdvertiserIndustryRecruitmentHr, AdvertiserIndustryRetail, AdvertiserIndustryRetailEcommerce, AdvertiserIndustryRetailDepartmentStores, AdvertiserIndustrySportsFitness, AdvertiserIndustrySportsFitnessEquipment, AdvertiserIndustrySportsFitnessTeamsLeagues, AdvertiserIndustryTechnology, AdvertiserIndustryTechnologySoftware, AdvertiserIndustryTechnologyHardware, AdvertiserIndustryTechnologyAIMl, AdvertiserIndustryTelecom, AdvertiserIndustryTelecomMobileCarriers, AdvertiserIndustryTelecomInternetProviders, AdvertiserIndustryTransportationLogistics, AdvertiserIndustryTravelHospitality, AdvertiserIndustryTravelHospitalityAirlines, AdvertiserIndustryTravelHospitalityHotels, AdvertiserIndustryTravelHospitalityCruise, AdvertiserIndustryTravelHospitalityTourism:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAdvertiserIndustry returns s as AdvertiserIndustry when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAdvertiserIndustry(s string) (AdvertiserIndustry, error) {
+	v := AdvertiserIndustry(s)
+	if IsKnownAdvertiserIndustry(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AdvertiserIndustry value")
+}
+
 // AgeVerificationMethod — Methods for verifying user age for compliance. Does not include 'inferred' as it
 type AgeVerificationMethod = string
 const (
@@ -164,6 +320,32 @@ const (
 	AgeVerificationMethodWorldID AgeVerificationMethod = "world_id"
 )
 
+// KnownAgeVerificationMethodValues returns the current schema-defined values for AgeVerificationMethod.
+func KnownAgeVerificationMethodValues() []AgeVerificationMethod {
+	return []AgeVerificationMethod{AgeVerificationMethodFacialAgeEstimation, AgeVerificationMethodIDDocument, AgeVerificationMethodDigitalID, AgeVerificationMethodCreditCard, AgeVerificationMethodWorldID}
+}
+
+// IsKnownAgeVerificationMethod reports whether v is one of the current schema-defined AgeVerificationMethod values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAgeVerificationMethod(v AgeVerificationMethod) bool {
+	switch v {
+	case AgeVerificationMethodFacialAgeEstimation, AgeVerificationMethodIDDocument, AgeVerificationMethodDigitalID, AgeVerificationMethodCreditCard, AgeVerificationMethodWorldID:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAgeVerificationMethod returns s as AgeVerificationMethod when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAgeVerificationMethod(s string) (AgeVerificationMethod, error) {
+	v := AgeVerificationMethod(s)
+	if IsKnownAgeVerificationMethod(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AgeVerificationMethod value")
+}
+
 // AssessmentStatus — Standardized quality level for health and readiness assessments. Comparable acro
 type AssessmentStatus = string
 const (
@@ -172,6 +354,32 @@ const (
 	AssessmentStatusGood AssessmentStatus = "good"
 	AssessmentStatusExcellent AssessmentStatus = "excellent"
 )
+
+// KnownAssessmentStatusValues returns the current schema-defined values for AssessmentStatus.
+func KnownAssessmentStatusValues() []AssessmentStatus {
+	return []AssessmentStatus{AssessmentStatusInsufficient, AssessmentStatusMinimum, AssessmentStatusGood, AssessmentStatusExcellent}
+}
+
+// IsKnownAssessmentStatus reports whether v is one of the current schema-defined AssessmentStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAssessmentStatus(v AssessmentStatus) bool {
+	switch v {
+	case AssessmentStatusInsufficient, AssessmentStatusMinimum, AssessmentStatusGood, AssessmentStatusExcellent:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAssessmentStatus returns s as AssessmentStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAssessmentStatus(s string) (AssessmentStatus, error) {
+	v := AssessmentStatus(s)
+	if IsKnownAssessmentStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AssessmentStatus value")
+}
 
 // AssetContentType — Types of content that can be used as creative assets. Describes what KIND of con
 type AssetContentType = string
@@ -192,6 +400,32 @@ const (
 	AssetContentTypeCatalog AssetContentType = "catalog"
 )
 
+// KnownAssetContentTypeValues returns the current schema-defined values for AssetContentType.
+func KnownAssetContentTypeValues() []AssetContentType {
+	return []AssetContentType{AssetContentTypeImage, AssetContentTypeVideo, AssetContentTypeAudio, AssetContentTypeText, AssetContentTypeMarkdown, AssetContentTypeHTML, AssetContentTypeCSS, AssetContentTypeJavascript, AssetContentTypeVast, AssetContentTypeDaast, AssetContentTypeURL, AssetContentTypeWebhook, AssetContentTypeBrief, AssetContentTypeCatalog}
+}
+
+// IsKnownAssetContentType reports whether v is one of the current schema-defined AssetContentType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAssetContentType(v AssetContentType) bool {
+	switch v {
+	case AssetContentTypeImage, AssetContentTypeVideo, AssetContentTypeAudio, AssetContentTypeText, AssetContentTypeMarkdown, AssetContentTypeHTML, AssetContentTypeCSS, AssetContentTypeJavascript, AssetContentTypeVast, AssetContentTypeDaast, AssetContentTypeURL, AssetContentTypeWebhook, AssetContentTypeBrief, AssetContentTypeCatalog:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAssetContentType returns s as AssetContentType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAssetContentType(s string) (AssetContentType, error) {
+	v := AssetContentType(s)
+	if IsKnownAssetContentType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AssetContentType value")
+}
+
 // AttributionModel — Attribution model used for conversion measurement
 type AttributionModel = string
 const (
@@ -201,6 +435,32 @@ const (
 	AttributionModelTimeDecay AttributionModel = "time_decay"
 	AttributionModelDataDriven AttributionModel = "data_driven"
 )
+
+// KnownAttributionModelValues returns the current schema-defined values for AttributionModel.
+func KnownAttributionModelValues() []AttributionModel {
+	return []AttributionModel{AttributionModelLastTouch, AttributionModelFirstTouch, AttributionModelLinear, AttributionModelTimeDecay, AttributionModelDataDriven}
+}
+
+// IsKnownAttributionModel reports whether v is one of the current schema-defined AttributionModel values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAttributionModel(v AttributionModel) bool {
+	switch v {
+	case AttributionModelLastTouch, AttributionModelFirstTouch, AttributionModelLinear, AttributionModelTimeDecay, AttributionModelDataDriven:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAttributionModel returns s as AttributionModel when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAttributionModel(s string) (AttributionModel, error) {
+	v := AttributionModel(s)
+	if IsKnownAttributionModel(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AttributionModel value")
+}
 
 // AudienceSource — Origin of an audience segment in delivery reporting breakdowns. Only 'synced' au
 type AudienceSource = string
@@ -213,6 +473,32 @@ const (
 	AudienceSourceUnknown AudienceSource = "unknown"
 )
 
+// KnownAudienceSourceValues returns the current schema-defined values for AudienceSource.
+func KnownAudienceSourceValues() []AudienceSource {
+	return []AudienceSource{AudienceSourceSynced, AudienceSourcePlatform, AudienceSourceThirdParty, AudienceSourceLookalike, AudienceSourceRetargeting, AudienceSourceUnknown}
+}
+
+// IsKnownAudienceSource reports whether v is one of the current schema-defined AudienceSource values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAudienceSource(v AudienceSource) bool {
+	switch v {
+	case AudienceSourceSynced, AudienceSourcePlatform, AudienceSourceThirdParty, AudienceSourceLookalike, AudienceSourceRetargeting, AudienceSourceUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAudienceSource returns s as AudienceSource when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAudienceSource(s string) (AudienceSource, error) {
+	v := AudienceSource(s)
+	if IsKnownAudienceSource(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AudienceSource value")
+}
+
 // AudienceStatus — Matching status of a synced audience on a seller platform. Present when the sync
 type AudienceStatus = string
 const (
@@ -220,6 +506,32 @@ const (
 	AudienceStatusReady AudienceStatus = "ready"
 	AudienceStatusTooSmall AudienceStatus = "too_small"
 )
+
+// KnownAudienceStatusValues returns the current schema-defined values for AudienceStatus.
+func KnownAudienceStatusValues() []AudienceStatus {
+	return []AudienceStatus{AudienceStatusProcessing, AudienceStatusReady, AudienceStatusTooSmall}
+}
+
+// IsKnownAudienceStatus reports whether v is one of the current schema-defined AudienceStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAudienceStatus(v AudienceStatus) bool {
+	switch v {
+	case AudienceStatusProcessing, AudienceStatusReady, AudienceStatusTooSmall:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAudienceStatus returns s as AudienceStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAudienceStatus(s string) (AudienceStatus, error) {
+	v := AudienceStatus(s)
+	if IsKnownAudienceStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AudienceStatus value")
+}
 
 // AudioChannelLayout — Audio channel configuration for audio and video assets
 type AudioChannelLayout = string
@@ -230,12 +542,64 @@ const (
 	AudioChannelLayout71 AudioChannelLayout = "7.1"
 )
 
+// KnownAudioChannelLayoutValues returns the current schema-defined values for AudioChannelLayout.
+func KnownAudioChannelLayoutValues() []AudioChannelLayout {
+	return []AudioChannelLayout{AudioChannelLayoutMono, AudioChannelLayoutStereo, AudioChannelLayout51, AudioChannelLayout71}
+}
+
+// IsKnownAudioChannelLayout reports whether v is one of the current schema-defined AudioChannelLayout values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAudioChannelLayout(v AudioChannelLayout) bool {
+	switch v {
+	case AudioChannelLayoutMono, AudioChannelLayoutStereo, AudioChannelLayout51, AudioChannelLayout71:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAudioChannelLayout returns s as AudioChannelLayout when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAudioChannelLayout(s string) (AudioChannelLayout, error) {
+	v := AudioChannelLayout(s)
+	if IsKnownAudioChannelLayout(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AudioChannelLayout value")
+}
+
 // AuthScheme — Legacy authentication schemes for the webhook auth block. Bearer: token sent in
 type AuthScheme = string
 const (
 	AuthSchemeBearer AuthScheme = "Bearer"
 	AuthSchemeHMACSHA256 AuthScheme = "HMAC-SHA256"
 )
+
+// KnownAuthSchemeValues returns the current schema-defined values for AuthScheme.
+func KnownAuthSchemeValues() []AuthScheme {
+	return []AuthScheme{AuthSchemeBearer, AuthSchemeHMACSHA256}
+}
+
+// IsKnownAuthScheme reports whether v is one of the current schema-defined AuthScheme values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAuthScheme(v AuthScheme) bool {
+	switch v {
+	case AuthSchemeBearer, AuthSchemeHMACSHA256:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAuthScheme returns s as AuthScheme when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAuthScheme(s string) (AuthScheme, error) {
+	v := AuthScheme(s)
+	if IsKnownAuthScheme(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AuthScheme value")
+}
 
 // AvailableMetric — Standard delivery and performance metrics available for reporting
 type AvailableMetric = string
@@ -264,6 +628,32 @@ const (
 	AvailableMetricCostPerClick AvailableMetric = "cost_per_click"
 )
 
+// KnownAvailableMetricValues returns the current schema-defined values for AvailableMetric.
+func KnownAvailableMetricValues() []AvailableMetric {
+	return []AvailableMetric{AvailableMetricImpressions, AvailableMetricSpend, AvailableMetricClicks, AvailableMetricCtr, AvailableMetricVideoCompletions, AvailableMetricCompletionRate, AvailableMetricConversions, AvailableMetricConversionValue, AvailableMetricRoas, AvailableMetricCostPerAcquisition, AvailableMetricNewToBrandRate, AvailableMetricViewability, AvailableMetricEngagementRate, AvailableMetricViews, AvailableMetricCompletedViews, AvailableMetricLeads, AvailableMetricReach, AvailableMetricFrequency, AvailableMetricGrps, AvailableMetricQuartileData, AvailableMetricDoohMetrics, AvailableMetricCostPerClick}
+}
+
+// IsKnownAvailableMetric reports whether v is one of the current schema-defined AvailableMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownAvailableMetric(v AvailableMetric) bool {
+	switch v {
+	case AvailableMetricImpressions, AvailableMetricSpend, AvailableMetricClicks, AvailableMetricCtr, AvailableMetricVideoCompletions, AvailableMetricCompletionRate, AvailableMetricConversions, AvailableMetricConversionValue, AvailableMetricRoas, AvailableMetricCostPerAcquisition, AvailableMetricNewToBrandRate, AvailableMetricViewability, AvailableMetricEngagementRate, AvailableMetricViews, AvailableMetricCompletedViews, AvailableMetricLeads, AvailableMetricReach, AvailableMetricFrequency, AvailableMetricGrps, AvailableMetricQuartileData, AvailableMetricDoohMetrics, AvailableMetricCostPerClick:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseAvailableMetric returns s as AvailableMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseAvailableMetric(s string) (AvailableMetric, error) {
+	v := AvailableMetric(s)
+	if IsKnownAvailableMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown AvailableMetric value")
+}
+
 // BillingParty — Which party the seller invoices for an account. Determines the billing entity an
 type BillingParty = string
 const (
@@ -272,12 +662,64 @@ const (
 	BillingPartyAdvertiser BillingParty = "advertiser"
 )
 
+// KnownBillingPartyValues returns the current schema-defined values for BillingParty.
+func KnownBillingPartyValues() []BillingParty {
+	return []BillingParty{BillingPartyOperator, BillingPartyAgent, BillingPartyAdvertiser}
+}
+
+// IsKnownBillingParty reports whether v is one of the current schema-defined BillingParty values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownBillingParty(v BillingParty) bool {
+	switch v {
+	case BillingPartyOperator, BillingPartyAgent, BillingPartyAdvertiser:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseBillingParty returns s as BillingParty when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseBillingParty(s string) (BillingParty, error) {
+	v := BillingParty(s)
+	if IsKnownBillingParty(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown BillingParty value")
+}
+
 // BinaryVerdict — Strictly two-outcome evaluation result used for overall record-level verdicts in
 type BinaryVerdict = string
 const (
 	BinaryVerdictPass BinaryVerdict = "pass"
 	BinaryVerdictFail BinaryVerdict = "fail"
 )
+
+// KnownBinaryVerdictValues returns the current schema-defined values for BinaryVerdict.
+func KnownBinaryVerdictValues() []BinaryVerdict {
+	return []BinaryVerdict{BinaryVerdictPass, BinaryVerdictFail}
+}
+
+// IsKnownBinaryVerdict reports whether v is one of the current schema-defined BinaryVerdict values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownBinaryVerdict(v BinaryVerdict) bool {
+	switch v {
+	case BinaryVerdictPass, BinaryVerdictFail:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseBinaryVerdict returns s as BinaryVerdict when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseBinaryVerdict(s string) (BinaryVerdict, error) {
+	v := BinaryVerdict(s)
+	if IsKnownBinaryVerdict(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown BinaryVerdict value")
+}
 
 // BrandAgentType — Functional roles for agents declared in brand.json. Each type represents a disti
 type BrandAgentType = string
@@ -292,12 +734,64 @@ const (
 	BrandAgentTypeSignals BrandAgentType = "signals"
 )
 
+// KnownBrandAgentTypeValues returns the current schema-defined values for BrandAgentType.
+func KnownBrandAgentTypeValues() []BrandAgentType {
+	return []BrandAgentType{BrandAgentTypeBrand, BrandAgentTypeRights, BrandAgentTypeMeasurement, BrandAgentTypeGovernance, BrandAgentTypeCreative, BrandAgentTypeSales, BrandAgentTypeBuying, BrandAgentTypeSignals}
+}
+
+// IsKnownBrandAgentType reports whether v is one of the current schema-defined BrandAgentType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownBrandAgentType(v BrandAgentType) bool {
+	switch v {
+	case BrandAgentTypeBrand, BrandAgentTypeRights, BrandAgentTypeMeasurement, BrandAgentTypeGovernance, BrandAgentTypeCreative, BrandAgentTypeSales, BrandAgentTypeBuying, BrandAgentTypeSignals:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseBrandAgentType returns s as BrandAgentType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseBrandAgentType(s string) (BrandAgentType, error) {
+	v := BrandAgentType(s)
+	if IsKnownBrandAgentType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown BrandAgentType value")
+}
+
 // CanceledBy — Identifies which party initiated a cancellation.
 type CanceledBy = string
 const (
 	CanceledByBuyer CanceledBy = "buyer"
 	CanceledBySeller CanceledBy = "seller"
 )
+
+// KnownCanceledByValues returns the current schema-defined values for CanceledBy.
+func KnownCanceledByValues() []CanceledBy {
+	return []CanceledBy{CanceledByBuyer, CanceledBySeller}
+}
+
+// IsKnownCanceledBy reports whether v is one of the current schema-defined CanceledBy values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCanceledBy(v CanceledBy) bool {
+	switch v {
+	case CanceledByBuyer, CanceledBySeller:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCanceledBy returns s as CanceledBy when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCanceledBy(s string) (CanceledBy, error) {
+	v := CanceledBy(s)
+	if IsKnownCanceledBy(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CanceledBy value")
+}
 
 // CatalogAction — Action taken on a catalog during sync operation
 type CatalogAction = string
@@ -309,6 +803,32 @@ const (
 	CatalogActionDeleted CatalogAction = "deleted"
 )
 
+// KnownCatalogActionValues returns the current schema-defined values for CatalogAction.
+func KnownCatalogActionValues() []CatalogAction {
+	return []CatalogAction{CatalogActionCreated, CatalogActionUpdated, CatalogActionUnchanged, CatalogActionFailed, CatalogActionDeleted}
+}
+
+// IsKnownCatalogAction reports whether v is one of the current schema-defined CatalogAction values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCatalogAction(v CatalogAction) bool {
+	switch v {
+	case CatalogActionCreated, CatalogActionUpdated, CatalogActionUnchanged, CatalogActionFailed, CatalogActionDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCatalogAction returns s as CatalogAction when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCatalogAction(s string) (CatalogAction, error) {
+	v := CatalogAction(s)
+	if IsKnownCatalogAction(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CatalogAction value")
+}
+
 // CatalogItemStatus — Approval status of an individual item within a synced catalog. Platforms review
 type CatalogItemStatus = string
 const (
@@ -317,6 +837,32 @@ const (
 	CatalogItemStatusRejected CatalogItemStatus = "rejected"
 	CatalogItemStatusWarning CatalogItemStatus = "warning"
 )
+
+// KnownCatalogItemStatusValues returns the current schema-defined values for CatalogItemStatus.
+func KnownCatalogItemStatusValues() []CatalogItemStatus {
+	return []CatalogItemStatus{CatalogItemStatusApproved, CatalogItemStatusPending, CatalogItemStatusRejected, CatalogItemStatusWarning}
+}
+
+// IsKnownCatalogItemStatus reports whether v is one of the current schema-defined CatalogItemStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCatalogItemStatus(v CatalogItemStatus) bool {
+	switch v {
+	case CatalogItemStatusApproved, CatalogItemStatusPending, CatalogItemStatusRejected, CatalogItemStatusWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCatalogItemStatus returns s as CatalogItemStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCatalogItemStatus(s string) (CatalogItemStatus, error) {
+	v := CatalogItemStatus(s)
+	if IsKnownCatalogItemStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CatalogItemStatus value")
+}
 
 // CatalogType — The type of catalog feed. Determines the item schema and how the platform resolv
 type CatalogType = string
@@ -335,6 +881,32 @@ const (
 	CatalogTypeDestination CatalogType = "destination"
 	CatalogTypeApp CatalogType = "app"
 )
+
+// KnownCatalogTypeValues returns the current schema-defined values for CatalogType.
+func KnownCatalogTypeValues() []CatalogType {
+	return []CatalogType{CatalogTypeOffering, CatalogTypeProduct, CatalogTypeInventory, CatalogTypeStore, CatalogTypePromotion, CatalogTypeHotel, CatalogTypeFlight, CatalogTypeJob, CatalogTypeVehicle, CatalogTypeRealEstate, CatalogTypeEducation, CatalogTypeDestination, CatalogTypeApp}
+}
+
+// IsKnownCatalogType reports whether v is one of the current schema-defined CatalogType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCatalogType(v CatalogType) bool {
+	switch v {
+	case CatalogTypeOffering, CatalogTypeProduct, CatalogTypeInventory, CatalogTypeStore, CatalogTypePromotion, CatalogTypeHotel, CatalogTypeFlight, CatalogTypeJob, CatalogTypeVehicle, CatalogTypeRealEstate, CatalogTypeEducation, CatalogTypeDestination, CatalogTypeApp:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCatalogType returns s as CatalogType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCatalogType(s string) (CatalogType, error) {
+	v := CatalogType(s)
+	if IsKnownCatalogType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CatalogType value")
+}
 
 // Channels — Standardized advertising media channels describing how buyers allocate budget. C
 type Channels = string
@@ -361,6 +933,32 @@ const (
 	ChannelsSponsoredIntelligence Channels = "sponsored_intelligence"
 )
 
+// KnownChannelsValues returns the current schema-defined values for Channels.
+func KnownChannelsValues() []Channels {
+	return []Channels{ChannelsDisplay, ChannelsOlv, ChannelsSocial, ChannelsSearch, ChannelsCtv, ChannelsLinearTv, ChannelsRadio, ChannelsStreamingAudio, ChannelsPodcast, ChannelsDooh, ChannelsOoh, ChannelsPrint, ChannelsCinema, ChannelsEmail, ChannelsGaming, ChannelsRetailMedia, ChannelsInfluencer, ChannelsAffiliate, ChannelsProductPlacement, ChannelsSponsoredIntelligence}
+}
+
+// IsKnownChannels reports whether v is one of the current schema-defined Channels values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownChannels(v Channels) bool {
+	switch v {
+	case ChannelsDisplay, ChannelsOlv, ChannelsSocial, ChannelsSearch, ChannelsCtv, ChannelsLinearTv, ChannelsRadio, ChannelsStreamingAudio, ChannelsPodcast, ChannelsDooh, ChannelsOoh, ChannelsPrint, ChannelsCinema, ChannelsEmail, ChannelsGaming, ChannelsRetailMedia, ChannelsInfluencer, ChannelsAffiliate, ChannelsProductPlacement, ChannelsSponsoredIntelligence:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseChannels returns s as Channels when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseChannels(s string) (Channels, error) {
+	v := Channels(s)
+	if IsKnownChannels(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown Channels value")
+}
+
 // CloudStorageProtocol — Cloud storage protocols supported for offline file delivery
 type CloudStorageProtocol = string
 const (
@@ -369,6 +967,32 @@ const (
 	CloudStorageProtocolAzureBlob CloudStorageProtocol = "azure_blob"
 )
 
+// KnownCloudStorageProtocolValues returns the current schema-defined values for CloudStorageProtocol.
+func KnownCloudStorageProtocolValues() []CloudStorageProtocol {
+	return []CloudStorageProtocol{CloudStorageProtocolS3, CloudStorageProtocolGcs, CloudStorageProtocolAzureBlob}
+}
+
+// IsKnownCloudStorageProtocol reports whether v is one of the current schema-defined CloudStorageProtocol values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCloudStorageProtocol(v CloudStorageProtocol) bool {
+	switch v {
+	case CloudStorageProtocolS3, CloudStorageProtocolGcs, CloudStorageProtocolAzureBlob:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCloudStorageProtocol returns s as CloudStorageProtocol when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCloudStorageProtocol(s string) (CloudStorageProtocol, error) {
+	v := CloudStorageProtocol(s)
+	if IsKnownCloudStorageProtocol(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CloudStorageProtocol value")
+}
+
 // CoBrandingRequirement — Co-branding policy for creatives (retailer/publisher brand inclusion)
 type CoBrandingRequirement = string
 const (
@@ -376,6 +1000,32 @@ const (
 	CoBrandingRequirementOptional CoBrandingRequirement = "optional"
 	CoBrandingRequirementNone CoBrandingRequirement = "none"
 )
+
+// KnownCoBrandingRequirementValues returns the current schema-defined values for CoBrandingRequirement.
+func KnownCoBrandingRequirementValues() []CoBrandingRequirement {
+	return []CoBrandingRequirement{CoBrandingRequirementRequired, CoBrandingRequirementOptional, CoBrandingRequirementNone}
+}
+
+// IsKnownCoBrandingRequirement reports whether v is one of the current schema-defined CoBrandingRequirement values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCoBrandingRequirement(v CoBrandingRequirement) bool {
+	switch v {
+	case CoBrandingRequirementRequired, CoBrandingRequirementOptional, CoBrandingRequirementNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCoBrandingRequirement returns s as CoBrandingRequirement when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCoBrandingRequirement(s string) (CoBrandingRequirement, error) {
+	v := CoBrandingRequirement(s)
+	if IsKnownCoBrandingRequirement(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CoBrandingRequirement value")
+}
 
 // CollectionCadence — How frequently a collection releases new installments
 type CollectionCadence = string
@@ -388,6 +1038,32 @@ const (
 	CollectionCadenceIrregular CollectionCadence = "irregular"
 )
 
+// KnownCollectionCadenceValues returns the current schema-defined values for CollectionCadence.
+func KnownCollectionCadenceValues() []CollectionCadence {
+	return []CollectionCadence{CollectionCadenceDaily, CollectionCadenceWeekly, CollectionCadenceMonthly, CollectionCadenceSeasonal, CollectionCadenceEvent, CollectionCadenceIrregular}
+}
+
+// IsKnownCollectionCadence reports whether v is one of the current schema-defined CollectionCadence values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCollectionCadence(v CollectionCadence) bool {
+	switch v {
+	case CollectionCadenceDaily, CollectionCadenceWeekly, CollectionCadenceMonthly, CollectionCadenceSeasonal, CollectionCadenceEvent, CollectionCadenceIrregular:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCollectionCadence returns s as CollectionCadence when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCollectionCadence(s string) (CollectionCadence, error) {
+	v := CollectionCadence(s)
+	if IsKnownCollectionCadence(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CollectionCadence value")
+}
+
 // CollectionKind — What kind of content program a collection represents. Determines how installment
 type CollectionKind = string
 const (
@@ -396,6 +1072,32 @@ const (
 	CollectionKindEventSeries CollectionKind = "event_series"
 	CollectionKindRotation CollectionKind = "rotation"
 )
+
+// KnownCollectionKindValues returns the current schema-defined values for CollectionKind.
+func KnownCollectionKindValues() []CollectionKind {
+	return []CollectionKind{CollectionKindSeries, CollectionKindPublication, CollectionKindEventSeries, CollectionKindRotation}
+}
+
+// IsKnownCollectionKind reports whether v is one of the current schema-defined CollectionKind values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCollectionKind(v CollectionKind) bool {
+	switch v {
+	case CollectionKindSeries, CollectionKindPublication, CollectionKindEventSeries, CollectionKindRotation:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCollectionKind returns s as CollectionKind when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCollectionKind(s string) (CollectionKind, error) {
+	v := CollectionKind(s)
+	if IsKnownCollectionKind(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CollectionKind value")
+}
 
 // CollectionRelationship — How two collections are related. References are scoped to the same get_products
 type CollectionRelationship = string
@@ -407,6 +1109,32 @@ const (
 	CollectionRelationshipCrossover CollectionRelationship = "crossover"
 )
 
+// KnownCollectionRelationshipValues returns the current schema-defined values for CollectionRelationship.
+func KnownCollectionRelationshipValues() []CollectionRelationship {
+	return []CollectionRelationship{CollectionRelationshipSpinoff, CollectionRelationshipCompanion, CollectionRelationshipSequel, CollectionRelationshipPrequel, CollectionRelationshipCrossover}
+}
+
+// IsKnownCollectionRelationship reports whether v is one of the current schema-defined CollectionRelationship values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCollectionRelationship(v CollectionRelationship) bool {
+	switch v {
+	case CollectionRelationshipSpinoff, CollectionRelationshipCompanion, CollectionRelationshipSequel, CollectionRelationshipPrequel, CollectionRelationshipCrossover:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCollectionRelationship returns s as CollectionRelationship when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCollectionRelationship(s string) (CollectionRelationship, error) {
+	v := CollectionRelationship(s)
+	if IsKnownCollectionRelationship(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CollectionRelationship value")
+}
+
 // CollectionStatus — Lifecycle status of a collection
 type CollectionStatus = string
 const (
@@ -416,6 +1144,32 @@ const (
 	CollectionStatusUpcoming CollectionStatus = "upcoming"
 )
 
+// KnownCollectionStatusValues returns the current schema-defined values for CollectionStatus.
+func KnownCollectionStatusValues() []CollectionStatus {
+	return []CollectionStatus{CollectionStatusActive, CollectionStatusHiatus, CollectionStatusEnded, CollectionStatusUpcoming}
+}
+
+// IsKnownCollectionStatus reports whether v is one of the current schema-defined CollectionStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCollectionStatus(v CollectionStatus) bool {
+	switch v {
+	case CollectionStatusActive, CollectionStatusHiatus, CollectionStatusEnded, CollectionStatusUpcoming:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCollectionStatus returns s as CollectionStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCollectionStatus(s string) (CollectionStatus, error) {
+	v := CollectionStatus(s)
+	if IsKnownCollectionStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CollectionStatus value")
+}
+
 // ConsentBasis — Common GDPR lawful bases relevant to advertising. Covers the Article 6(1) bases
 type ConsentBasis = string
 const (
@@ -424,6 +1178,32 @@ const (
 	ConsentBasisContract ConsentBasis = "contract"
 	ConsentBasisLegalObligation ConsentBasis = "legal_obligation"
 )
+
+// KnownConsentBasisValues returns the current schema-defined values for ConsentBasis.
+func KnownConsentBasisValues() []ConsentBasis {
+	return []ConsentBasis{ConsentBasisConsent, ConsentBasisLegitimateInterest, ConsentBasisContract, ConsentBasisLegalObligation}
+}
+
+// IsKnownConsentBasis reports whether v is one of the current schema-defined ConsentBasis values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownConsentBasis(v ConsentBasis) bool {
+	switch v {
+	case ConsentBasisConsent, ConsentBasisLegitimateInterest, ConsentBasisContract, ConsentBasisLegalObligation:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseConsentBasis returns s as ConsentBasis when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseConsentBasis(s string) (ConsentBasis, error) {
+	v := ConsentBasis(s)
+	if IsKnownConsentBasis(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ConsentBasis value")
+}
 
 // ContentIDType — Identifier type used in content_ids on conversion events to match back to catalo
 type ContentIDType = string
@@ -442,6 +1222,32 @@ const (
 	ContentIDTypeAppID ContentIDType = "app_id"
 )
 
+// KnownContentIDTypeValues returns the current schema-defined values for ContentIDType.
+func KnownContentIDTypeValues() []ContentIDType {
+	return []ContentIDType{ContentIDTypeSku, ContentIDTypeGtin, ContentIDTypeOfferingID, ContentIDTypeJobID, ContentIDTypeHotelID, ContentIDTypeFlightID, ContentIDTypeVehicleID, ContentIDTypeListingID, ContentIDTypeStoreID, ContentIDTypeProgramID, ContentIDTypeDestinationID, ContentIDTypeAppID}
+}
+
+// IsKnownContentIDType reports whether v is one of the current schema-defined ContentIDType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownContentIDType(v ContentIDType) bool {
+	switch v {
+	case ContentIDTypeSku, ContentIDTypeGtin, ContentIDTypeOfferingID, ContentIDTypeJobID, ContentIDTypeHotelID, ContentIDTypeFlightID, ContentIDTypeVehicleID, ContentIDTypeListingID, ContentIDTypeStoreID, ContentIDTypeProgramID, ContentIDTypeDestinationID, ContentIDTypeAppID:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseContentIDType returns s as ContentIDType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseContentIDType(s string) (ContentIDType, error) {
+	v := ContentIDType(s)
+	if IsKnownContentIDType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ContentIDType value")
+}
+
 // ContentRatingSystem — Rating systems for content advisory classifications
 type ContentRatingSystem = string
 const (
@@ -458,6 +1264,32 @@ const (
 	ContentRatingSystemCustom ContentRatingSystem = "custom"
 )
 
+// KnownContentRatingSystemValues returns the current schema-defined values for ContentRatingSystem.
+func KnownContentRatingSystemValues() []ContentRatingSystem {
+	return []ContentRatingSystem{ContentRatingSystemTvParental, ContentRatingSystemMpaa, ContentRatingSystemPodcast, ContentRatingSystemEsrb, ContentRatingSystemBbfc, ContentRatingSystemFsk, ContentRatingSystemAcb, ContentRatingSystemChvrs, ContentRatingSystemCsa, ContentRatingSystemPegi, ContentRatingSystemCustom}
+}
+
+// IsKnownContentRatingSystem reports whether v is one of the current schema-defined ContentRatingSystem values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownContentRatingSystem(v ContentRatingSystem) bool {
+	switch v {
+	case ContentRatingSystemTvParental, ContentRatingSystemMpaa, ContentRatingSystemPodcast, ContentRatingSystemEsrb, ContentRatingSystemBbfc, ContentRatingSystemFsk, ContentRatingSystemAcb, ContentRatingSystemChvrs, ContentRatingSystemCsa, ContentRatingSystemPegi, ContentRatingSystemCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseContentRatingSystem returns s as ContentRatingSystem when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseContentRatingSystem(s string) (ContentRatingSystem, error) {
+	v := ContentRatingSystem(s)
+	if IsKnownContentRatingSystem(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ContentRatingSystem value")
+}
+
 // CreativeAction — Action taken on a creative during sync operation
 type CreativeAction = string
 const (
@@ -467,6 +1299,32 @@ const (
 	CreativeActionFailed CreativeAction = "failed"
 	CreativeActionDeleted CreativeAction = "deleted"
 )
+
+// KnownCreativeActionValues returns the current schema-defined values for CreativeAction.
+func KnownCreativeActionValues() []CreativeAction {
+	return []CreativeAction{CreativeActionCreated, CreativeActionUpdated, CreativeActionUnchanged, CreativeActionFailed, CreativeActionDeleted}
+}
+
+// IsKnownCreativeAction reports whether v is one of the current schema-defined CreativeAction values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeAction(v CreativeAction) bool {
+	switch v {
+	case CreativeActionCreated, CreativeActionUpdated, CreativeActionUnchanged, CreativeActionFailed, CreativeActionDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeAction returns s as CreativeAction when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeAction(s string) (CreativeAction, error) {
+	v := CreativeAction(s)
+	if IsKnownCreativeAction(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeAction value")
+}
 
 // CreativeAgentCapability — Capabilities supported by creative agents for format handling
 type CreativeAgentCapability = string
@@ -478,6 +1336,32 @@ const (
 	CreativeAgentCapabilityDelivery CreativeAgentCapability = "delivery"
 )
 
+// KnownCreativeAgentCapabilityValues returns the current schema-defined values for CreativeAgentCapability.
+func KnownCreativeAgentCapabilityValues() []CreativeAgentCapability {
+	return []CreativeAgentCapability{CreativeAgentCapabilityValidation, CreativeAgentCapabilityAssembly, CreativeAgentCapabilityGeneration, CreativeAgentCapabilityPreview, CreativeAgentCapabilityDelivery}
+}
+
+// IsKnownCreativeAgentCapability reports whether v is one of the current schema-defined CreativeAgentCapability values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeAgentCapability(v CreativeAgentCapability) bool {
+	switch v {
+	case CreativeAgentCapabilityValidation, CreativeAgentCapabilityAssembly, CreativeAgentCapabilityGeneration, CreativeAgentCapabilityPreview, CreativeAgentCapabilityDelivery:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeAgentCapability returns s as CreativeAgentCapability when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeAgentCapability(s string) (CreativeAgentCapability, error) {
+	v := CreativeAgentCapability(s)
+	if IsKnownCreativeAgentCapability(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeAgentCapability value")
+}
+
 // CreativeApprovalStatus — Approval state of a creative on a specific package
 type CreativeApprovalStatus = string
 const (
@@ -485,6 +1369,32 @@ const (
 	CreativeApprovalStatusApproved CreativeApprovalStatus = "approved"
 	CreativeApprovalStatusRejected CreativeApprovalStatus = "rejected"
 )
+
+// KnownCreativeApprovalStatusValues returns the current schema-defined values for CreativeApprovalStatus.
+func KnownCreativeApprovalStatusValues() []CreativeApprovalStatus {
+	return []CreativeApprovalStatus{CreativeApprovalStatusPendingReview, CreativeApprovalStatusApproved, CreativeApprovalStatusRejected}
+}
+
+// IsKnownCreativeApprovalStatus reports whether v is one of the current schema-defined CreativeApprovalStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeApprovalStatus(v CreativeApprovalStatus) bool {
+	switch v {
+	case CreativeApprovalStatusPendingReview, CreativeApprovalStatusApproved, CreativeApprovalStatusRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeApprovalStatus returns s as CreativeApprovalStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeApprovalStatus(s string) (CreativeApprovalStatus, error) {
+	v := CreativeApprovalStatus(s)
+	if IsKnownCreativeApprovalStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeApprovalStatus value")
+}
 
 // CreativeIdentifierType — Industry-standard identifier types for advertising creatives. These identifiers
 type CreativeIdentifierType = string
@@ -494,12 +1404,64 @@ const (
 	CreativeIdentifierTypeClearcastClock CreativeIdentifierType = "clearcast_clock"
 )
 
+// KnownCreativeIdentifierTypeValues returns the current schema-defined values for CreativeIdentifierType.
+func KnownCreativeIdentifierTypeValues() []CreativeIdentifierType {
+	return []CreativeIdentifierType{CreativeIdentifierTypeAdID, CreativeIdentifierTypeIsci, CreativeIdentifierTypeClearcastClock}
+}
+
+// IsKnownCreativeIdentifierType reports whether v is one of the current schema-defined CreativeIdentifierType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeIdentifierType(v CreativeIdentifierType) bool {
+	switch v {
+	case CreativeIdentifierTypeAdID, CreativeIdentifierTypeIsci, CreativeIdentifierTypeClearcastClock:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeIdentifierType returns s as CreativeIdentifierType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeIdentifierType(s string) (CreativeIdentifierType, error) {
+	v := CreativeIdentifierType(s)
+	if IsKnownCreativeIdentifierType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeIdentifierType value")
+}
+
 // CreativeQuality — Quality tier for creative generation, controlling the fidelity and cost tradeoff
 type CreativeQuality = string
 const (
 	CreativeQualityDraft CreativeQuality = "draft"
 	CreativeQualityProduction CreativeQuality = "production"
 )
+
+// KnownCreativeQualityValues returns the current schema-defined values for CreativeQuality.
+func KnownCreativeQualityValues() []CreativeQuality {
+	return []CreativeQuality{CreativeQualityDraft, CreativeQualityProduction}
+}
+
+// IsKnownCreativeQuality reports whether v is one of the current schema-defined CreativeQuality values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeQuality(v CreativeQuality) bool {
+	switch v {
+	case CreativeQualityDraft, CreativeQualityProduction:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeQuality returns s as CreativeQuality when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeQuality(s string) (CreativeQuality, error) {
+	v := CreativeQuality(s)
+	if IsKnownCreativeQuality(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeQuality value")
+}
 
 // CreativeSortField — Fields available for sorting creative library listings
 type CreativeSortField = string
@@ -511,6 +1473,32 @@ const (
 	CreativeSortFieldAssignmentCount CreativeSortField = "assignment_count"
 )
 
+// KnownCreativeSortFieldValues returns the current schema-defined values for CreativeSortField.
+func KnownCreativeSortFieldValues() []CreativeSortField {
+	return []CreativeSortField{CreativeSortFieldCreatedDate, CreativeSortFieldUpdatedDate, CreativeSortFieldName, CreativeSortFieldStatus, CreativeSortFieldAssignmentCount}
+}
+
+// IsKnownCreativeSortField reports whether v is one of the current schema-defined CreativeSortField values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeSortField(v CreativeSortField) bool {
+	switch v {
+	case CreativeSortFieldCreatedDate, CreativeSortFieldUpdatedDate, CreativeSortFieldName, CreativeSortFieldStatus, CreativeSortFieldAssignmentCount:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeSortField returns s as CreativeSortField when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeSortField(s string) (CreativeSortField, error) {
+	v := CreativeSortField(s)
+	if IsKnownCreativeSortField(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeSortField value")
+}
+
 // CreativeStatus — Lifecycle status of a creative asset in a creative library. See the Creative Pro
 type CreativeStatus = string
 const (
@@ -520,6 +1508,32 @@ const (
 	CreativeStatusRejected CreativeStatus = "rejected"
 	CreativeStatusArchived CreativeStatus = "archived"
 )
+
+// KnownCreativeStatusValues returns the current schema-defined values for CreativeStatus.
+func KnownCreativeStatusValues() []CreativeStatus {
+	return []CreativeStatus{CreativeStatusProcessing, CreativeStatusPendingReview, CreativeStatusApproved, CreativeStatusRejected, CreativeStatusArchived}
+}
+
+// IsKnownCreativeStatus reports whether v is one of the current schema-defined CreativeStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownCreativeStatus(v CreativeStatus) bool {
+	switch v {
+	case CreativeStatusProcessing, CreativeStatusPendingReview, CreativeStatusApproved, CreativeStatusRejected, CreativeStatusArchived:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseCreativeStatus returns s as CreativeStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseCreativeStatus(s string) (CreativeStatus, error) {
+	v := CreativeStatus(s)
+	if IsKnownCreativeStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown CreativeStatus value")
+}
 
 // DaastTrackingEvent — Tracking events for audio ads. Includes DAAST-applicable events from IAB VAST/DA
 type DaastTrackingEvent = string
@@ -549,12 +1563,64 @@ const (
 	DaastTrackingEventViewableImpression DaastTrackingEvent = "viewableImpression"
 )
 
+// KnownDaastTrackingEventValues returns the current schema-defined values for DaastTrackingEvent.
+func KnownDaastTrackingEventValues() []DaastTrackingEvent {
+	return []DaastTrackingEvent{DaastTrackingEventImpression, DaastTrackingEventCreativeView, DaastTrackingEventLoaded, DaastTrackingEventStart, DaastTrackingEventFirstQuartile, DaastTrackingEventMidpoint, DaastTrackingEventThirdQuartile, DaastTrackingEventComplete, DaastTrackingEventMute, DaastTrackingEventUnmute, DaastTrackingEventPause, DaastTrackingEventResume, DaastTrackingEventSkip, DaastTrackingEventProgress, DaastTrackingEventClickTracking, DaastTrackingEventCustomClick, DaastTrackingEventClose, DaastTrackingEventError, DaastTrackingEventViewable, DaastTrackingEventNotViewable, DaastTrackingEventViewUndetermined, DaastTrackingEventMeasurableImpression, DaastTrackingEventViewableImpression}
+}
+
+// IsKnownDaastTrackingEvent reports whether v is one of the current schema-defined DaastTrackingEvent values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDaastTrackingEvent(v DaastTrackingEvent) bool {
+	switch v {
+	case DaastTrackingEventImpression, DaastTrackingEventCreativeView, DaastTrackingEventLoaded, DaastTrackingEventStart, DaastTrackingEventFirstQuartile, DaastTrackingEventMidpoint, DaastTrackingEventThirdQuartile, DaastTrackingEventComplete, DaastTrackingEventMute, DaastTrackingEventUnmute, DaastTrackingEventPause, DaastTrackingEventResume, DaastTrackingEventSkip, DaastTrackingEventProgress, DaastTrackingEventClickTracking, DaastTrackingEventCustomClick, DaastTrackingEventClose, DaastTrackingEventError, DaastTrackingEventViewable, DaastTrackingEventNotViewable, DaastTrackingEventViewUndetermined, DaastTrackingEventMeasurableImpression, DaastTrackingEventViewableImpression:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDaastTrackingEvent returns s as DaastTrackingEvent when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDaastTrackingEvent(s string) (DaastTrackingEvent, error) {
+	v := DaastTrackingEvent(s)
+	if IsKnownDaastTrackingEvent(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DaastTrackingEvent value")
+}
+
 // DaastVersion — Supported DAAST (Digital Audio Ad Serving Template) specification versions
 type DaastVersion = string
 const (
 	DaastVersion10 DaastVersion = "1.0"
 	DaastVersion11 DaastVersion = "1.1"
 )
+
+// KnownDaastVersionValues returns the current schema-defined values for DaastVersion.
+func KnownDaastVersionValues() []DaastVersion {
+	return []DaastVersion{DaastVersion10, DaastVersion11}
+}
+
+// IsKnownDaastVersion reports whether v is one of the current schema-defined DaastVersion values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDaastVersion(v DaastVersion) bool {
+	switch v {
+	case DaastVersion10, DaastVersion11:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDaastVersion returns s as DaastVersion when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDaastVersion(s string) (DaastVersion, error) {
+	v := DaastVersion(s)
+	if IsKnownDaastVersion(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DaastVersion value")
+}
 
 // DayOfWeek — Days of the week for daypart targeting
 type DayOfWeek = string
@@ -568,6 +1634,32 @@ const (
 	DayOfWeekSunday DayOfWeek = "sunday"
 )
 
+// KnownDayOfWeekValues returns the current schema-defined values for DayOfWeek.
+func KnownDayOfWeekValues() []DayOfWeek {
+	return []DayOfWeek{DayOfWeekMonday, DayOfWeekTuesday, DayOfWeekWednesday, DayOfWeekThursday, DayOfWeekFriday, DayOfWeekSaturday, DayOfWeekSunday}
+}
+
+// IsKnownDayOfWeek reports whether v is one of the current schema-defined DayOfWeek values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDayOfWeek(v DayOfWeek) bool {
+	switch v {
+	case DayOfWeekMonday, DayOfWeekTuesday, DayOfWeekWednesday, DayOfWeekThursday, DayOfWeekFriday, DayOfWeekSaturday, DayOfWeekSunday:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDayOfWeek returns s as DayOfWeek when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDayOfWeek(s string) (DayOfWeek, error) {
+	v := DayOfWeek(s)
+	if IsKnownDayOfWeek(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DayOfWeek value")
+}
+
 // DelegationAuthority — Authority level granted to a delegated agent operating against a campaign plan.
 type DelegationAuthority = string
 const (
@@ -576,12 +1668,64 @@ const (
 	DelegationAuthorityProposeOnly DelegationAuthority = "propose_only"
 )
 
+// KnownDelegationAuthorityValues returns the current schema-defined values for DelegationAuthority.
+func KnownDelegationAuthorityValues() []DelegationAuthority {
+	return []DelegationAuthority{DelegationAuthorityFull, DelegationAuthorityExecuteOnly, DelegationAuthorityProposeOnly}
+}
+
+// IsKnownDelegationAuthority reports whether v is one of the current schema-defined DelegationAuthority values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDelegationAuthority(v DelegationAuthority) bool {
+	switch v {
+	case DelegationAuthorityFull, DelegationAuthorityExecuteOnly, DelegationAuthorityProposeOnly:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDelegationAuthority returns s as DelegationAuthority when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDelegationAuthority(s string) (DelegationAuthority, error) {
+	v := DelegationAuthority(s)
+	if IsKnownDelegationAuthority(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DelegationAuthority value")
+}
+
 // DeliveryType — Type of inventory delivery
 type DeliveryType = string
 const (
 	DeliveryTypeGuaranteed DeliveryType = "guaranteed"
 	DeliveryTypeNonGuaranteed DeliveryType = "non_guaranteed"
 )
+
+// KnownDeliveryTypeValues returns the current schema-defined values for DeliveryType.
+func KnownDeliveryTypeValues() []DeliveryType {
+	return []DeliveryType{DeliveryTypeGuaranteed, DeliveryTypeNonGuaranteed}
+}
+
+// IsKnownDeliveryType reports whether v is one of the current schema-defined DeliveryType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDeliveryType(v DeliveryType) bool {
+	switch v {
+	case DeliveryTypeGuaranteed, DeliveryTypeNonGuaranteed:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDeliveryType returns s as DeliveryType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDeliveryType(s string) (DeliveryType, error) {
+	v := DeliveryType(s)
+	if IsKnownDeliveryType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DeliveryType value")
+}
 
 // DemographicSystem — Audience measurement systems for demographic notation in GRP forecasts and prici
 type DemographicSystem = string
@@ -594,6 +1738,32 @@ const (
 	DemographicSystemCustom DemographicSystem = "custom"
 )
 
+// KnownDemographicSystemValues returns the current schema-defined values for DemographicSystem.
+func KnownDemographicSystemValues() []DemographicSystem {
+	return []DemographicSystem{DemographicSystemNielsen, DemographicSystemBarb, DemographicSystemAgf, DemographicSystemOztam, DemographicSystemMediametrie, DemographicSystemCustom}
+}
+
+// IsKnownDemographicSystem reports whether v is one of the current schema-defined DemographicSystem values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDemographicSystem(v DemographicSystem) bool {
+	switch v {
+	case DemographicSystemNielsen, DemographicSystemBarb, DemographicSystemAgf, DemographicSystemOztam, DemographicSystemMediametrie, DemographicSystemCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDemographicSystem returns s as DemographicSystem when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDemographicSystem(s string) (DemographicSystem, error) {
+	v := DemographicSystem(s)
+	if IsKnownDemographicSystem(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DemographicSystem value")
+}
+
 // DerivativeType — What kind of derivative content an installment represents relative to its source
 type DerivativeType = string
 const (
@@ -603,6 +1773,32 @@ const (
 	DerivativeTypeTrailer DerivativeType = "trailer"
 	DerivativeTypeBonus DerivativeType = "bonus"
 )
+
+// KnownDerivativeTypeValues returns the current schema-defined values for DerivativeType.
+func KnownDerivativeTypeValues() []DerivativeType {
+	return []DerivativeType{DerivativeTypeClip, DerivativeTypeHighlight, DerivativeTypeRecap, DerivativeTypeTrailer, DerivativeTypeBonus}
+}
+
+// IsKnownDerivativeType reports whether v is one of the current schema-defined DerivativeType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDerivativeType(v DerivativeType) bool {
+	switch v {
+	case DerivativeTypeClip, DerivativeTypeHighlight, DerivativeTypeRecap, DerivativeTypeTrailer, DerivativeTypeBonus:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDerivativeType returns s as DerivativeType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDerivativeType(s string) (DerivativeType, error) {
+	v := DerivativeType(s)
+	if IsKnownDerivativeType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DerivativeType value")
+}
 
 // DevicePlatform — Operating system platforms for device targeting. Browser values from Sec-CH-UA-P
 type DevicePlatform = string
@@ -621,6 +1817,32 @@ const (
 	DevicePlatformUnknown DevicePlatform = "unknown"
 )
 
+// KnownDevicePlatformValues returns the current schema-defined values for DevicePlatform.
+func KnownDevicePlatformValues() []DevicePlatform {
+	return []DevicePlatform{DevicePlatformIos, DevicePlatformAndroid, DevicePlatformWindows, DevicePlatformMacos, DevicePlatformLinux, DevicePlatformChromeos, DevicePlatformTvos, DevicePlatformTizen, DevicePlatformWebos, DevicePlatformFireOs, DevicePlatformRokuOs, DevicePlatformUnknown}
+}
+
+// IsKnownDevicePlatform reports whether v is one of the current schema-defined DevicePlatform values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDevicePlatform(v DevicePlatform) bool {
+	switch v {
+	case DevicePlatformIos, DevicePlatformAndroid, DevicePlatformWindows, DevicePlatformMacos, DevicePlatformLinux, DevicePlatformChromeos, DevicePlatformTvos, DevicePlatformTizen, DevicePlatformWebos, DevicePlatformFireOs, DevicePlatformRokuOs, DevicePlatformUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDevicePlatform returns s as DevicePlatform when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDevicePlatform(s string) (DevicePlatform, error) {
+	v := DevicePlatform(s)
+	if IsKnownDevicePlatform(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DevicePlatform value")
+}
+
 // DeviceType — Device form factor categories for targeting and reporting. Complements device-pl
 type DeviceType = string
 const (
@@ -631,6 +1853,32 @@ const (
 	DeviceTypeDooh DeviceType = "dooh"
 	DeviceTypeUnknown DeviceType = "unknown"
 )
+
+// KnownDeviceTypeValues returns the current schema-defined values for DeviceType.
+func KnownDeviceTypeValues() []DeviceType {
+	return []DeviceType{DeviceTypeDesktop, DeviceTypeMobile, DeviceTypeTablet, DeviceTypeCtv, DeviceTypeDooh, DeviceTypeUnknown}
+}
+
+// IsKnownDeviceType reports whether v is one of the current schema-defined DeviceType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDeviceType(v DeviceType) bool {
+	switch v {
+	case DeviceTypeDesktop, DeviceTypeMobile, DeviceTypeTablet, DeviceTypeCtv, DeviceTypeDooh, DeviceTypeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDeviceType returns s as DeviceType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDeviceType(s string) (DeviceType, error) {
+	v := DeviceType(s)
+	if IsKnownDeviceType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DeviceType value")
+}
 
 // DigitalSourceType — Classification of AI involvement in content creation, aligned with IPTC digitals
 type DigitalSourceType = string
@@ -646,6 +1894,32 @@ const (
 	DigitalSourceTypeDataDrivenMedia DigitalSourceType = "data_driven_media"
 )
 
+// KnownDigitalSourceTypeValues returns the current schema-defined values for DigitalSourceType.
+func KnownDigitalSourceTypeValues() []DigitalSourceType {
+	return []DigitalSourceType{DigitalSourceTypeDigitalCapture, DigitalSourceTypeDigitalCreation, DigitalSourceTypeTrainedAlgorithmicMedia, DigitalSourceTypeCompositeWithTrainedAlgorithmicMedia, DigitalSourceTypeAlgorithmicMedia, DigitalSourceTypeCompositeCapture, DigitalSourceTypeCompositeSynthetic, DigitalSourceTypeHumanEdits, DigitalSourceTypeDataDrivenMedia}
+}
+
+// IsKnownDigitalSourceType reports whether v is one of the current schema-defined DigitalSourceType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDigitalSourceType(v DigitalSourceType) bool {
+	switch v {
+	case DigitalSourceTypeDigitalCapture, DigitalSourceTypeDigitalCreation, DigitalSourceTypeTrainedAlgorithmicMedia, DigitalSourceTypeCompositeWithTrainedAlgorithmicMedia, DigitalSourceTypeAlgorithmicMedia, DigitalSourceTypeCompositeCapture, DigitalSourceTypeCompositeSynthetic, DigitalSourceTypeHumanEdits, DigitalSourceTypeDataDrivenMedia:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDigitalSourceType returns s as DigitalSourceType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDigitalSourceType(s string) (DigitalSourceType, error) {
+	v := DigitalSourceType(s)
+	if IsKnownDigitalSourceType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DigitalSourceType value")
+}
+
 // DimensionUnit — Units of measurement for creative format dimensions
 type DimensionUnit = string
 const (
@@ -657,6 +1931,32 @@ const (
 	DimensionUnitPt DimensionUnit = "pt"
 )
 
+// KnownDimensionUnitValues returns the current schema-defined values for DimensionUnit.
+func KnownDimensionUnitValues() []DimensionUnit {
+	return []DimensionUnit{DimensionUnitPx, DimensionUnitDp, DimensionUnitInches, DimensionUnitCm, DimensionUnitMm, DimensionUnitPt}
+}
+
+// IsKnownDimensionUnit reports whether v is one of the current schema-defined DimensionUnit values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDimensionUnit(v DimensionUnit) bool {
+	switch v {
+	case DimensionUnitPx, DimensionUnitDp, DimensionUnitInches, DimensionUnitCm, DimensionUnitMm, DimensionUnitPt:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDimensionUnit returns s as DimensionUnit when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDimensionUnit(s string) (DimensionUnit, error) {
+	v := DimensionUnit(s)
+	if IsKnownDimensionUnit(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DimensionUnit value")
+}
+
 // DisclosurePersistence — How long a disclosure must persist during content playback or display. Different
 type DisclosurePersistence = string
 const (
@@ -664,6 +1964,32 @@ const (
 	DisclosurePersistenceInitial DisclosurePersistence = "initial"
 	DisclosurePersistenceFlexible DisclosurePersistence = "flexible"
 )
+
+// KnownDisclosurePersistenceValues returns the current schema-defined values for DisclosurePersistence.
+func KnownDisclosurePersistenceValues() []DisclosurePersistence {
+	return []DisclosurePersistence{DisclosurePersistenceContinuous, DisclosurePersistenceInitial, DisclosurePersistenceFlexible}
+}
+
+// IsKnownDisclosurePersistence reports whether v is one of the current schema-defined DisclosurePersistence values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDisclosurePersistence(v DisclosurePersistence) bool {
+	switch v {
+	case DisclosurePersistenceContinuous, DisclosurePersistenceInitial, DisclosurePersistenceFlexible:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDisclosurePersistence returns s as DisclosurePersistence when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDisclosurePersistence(s string) (DisclosurePersistence, error) {
+	v := DisclosurePersistence(s)
+	if IsKnownDisclosurePersistence(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DisclosurePersistence value")
+}
 
 // DisclosurePosition — Where a required disclosure should appear within a creative. Used by creative br
 type DisclosurePosition = string
@@ -678,6 +2004,32 @@ const (
 	DisclosurePositionCompanion DisclosurePosition = "companion"
 )
 
+// KnownDisclosurePositionValues returns the current schema-defined values for DisclosurePosition.
+func KnownDisclosurePositionValues() []DisclosurePosition {
+	return []DisclosurePosition{DisclosurePositionProminent, DisclosurePositionFooter, DisclosurePositionAudio, DisclosurePositionSubtitle, DisclosurePositionOverlay, DisclosurePositionEndCard, DisclosurePositionPreRoll, DisclosurePositionCompanion}
+}
+
+// IsKnownDisclosurePosition reports whether v is one of the current schema-defined DisclosurePosition values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDisclosurePosition(v DisclosurePosition) bool {
+	switch v {
+	case DisclosurePositionProminent, DisclosurePositionFooter, DisclosurePositionAudio, DisclosurePositionSubtitle, DisclosurePositionOverlay, DisclosurePositionEndCard, DisclosurePositionPreRoll, DisclosurePositionCompanion:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDisclosurePosition returns s as DisclosurePosition when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDisclosurePosition(s string) (DisclosurePosition, error) {
+	v := DisclosurePosition(s)
+	if IsKnownDisclosurePosition(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DisclosurePosition value")
+}
+
 // DistanceUnit — Units of distance measurement for radius-based catchment areas.
 type DistanceUnit = string
 const (
@@ -685,6 +2037,32 @@ const (
 	DistanceUnitMi DistanceUnit = "mi"
 	DistanceUnitM DistanceUnit = "m"
 )
+
+// KnownDistanceUnitValues returns the current schema-defined values for DistanceUnit.
+func KnownDistanceUnitValues() []DistanceUnit {
+	return []DistanceUnit{DistanceUnitKm, DistanceUnitMi, DistanceUnitM}
+}
+
+// IsKnownDistanceUnit reports whether v is one of the current schema-defined DistanceUnit values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDistanceUnit(v DistanceUnit) bool {
+	switch v {
+	case DistanceUnitKm, DistanceUnitMi, DistanceUnitM:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDistanceUnit returns s as DistanceUnit when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDistanceUnit(s string) (DistanceUnit, error) {
+	v := DistanceUnit(s)
+	if IsKnownDistanceUnit(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DistanceUnit value")
+}
 
 // DistributionIdentifierType — Platform-specific identifier types for collection distribution. Maps a collectio
 type DistributionIdentifierType = string
@@ -711,6 +2089,32 @@ const (
 	DistributionIdentifierTypeDomain DistributionIdentifierType = "domain"
 	DistributionIdentifierTypeSubstackID DistributionIdentifierType = "substack_id"
 )
+
+// KnownDistributionIdentifierTypeValues returns the current schema-defined values for DistributionIdentifierType.
+func KnownDistributionIdentifierTypeValues() []DistributionIdentifierType {
+	return []DistributionIdentifierType{DistributionIdentifierTypeApplePodcastID, DistributionIdentifierTypeSpotifyCollectionID, DistributionIdentifierTypeRssURL, DistributionIdentifierTypePodcastGuid, DistributionIdentifierTypeAmazonMusicID, DistributionIdentifierTypeIheartID, DistributionIdentifierTypePodcastIndexID, DistributionIdentifierTypeYoutubeChannelID, DistributionIdentifierTypeYoutubePlaylistID, DistributionIdentifierTypeAmazonTitleID, DistributionIdentifierTypeRokuChannelID, DistributionIdentifierTypePlutoChannelID, DistributionIdentifierTypeTubiID, DistributionIdentifierTypePeacockID, DistributionIdentifierTypeTiktokID, DistributionIdentifierTypeTwitchChannel, DistributionIdentifierTypeImdbID, DistributionIdentifierTypeGracenoteID, DistributionIdentifierTypeEidrID, DistributionIdentifierTypeDomain, DistributionIdentifierTypeSubstackID}
+}
+
+// IsKnownDistributionIdentifierType reports whether v is one of the current schema-defined DistributionIdentifierType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownDistributionIdentifierType(v DistributionIdentifierType) bool {
+	switch v {
+	case DistributionIdentifierTypeApplePodcastID, DistributionIdentifierTypeSpotifyCollectionID, DistributionIdentifierTypeRssURL, DistributionIdentifierTypePodcastGuid, DistributionIdentifierTypeAmazonMusicID, DistributionIdentifierTypeIheartID, DistributionIdentifierTypePodcastIndexID, DistributionIdentifierTypeYoutubeChannelID, DistributionIdentifierTypeYoutubePlaylistID, DistributionIdentifierTypeAmazonTitleID, DistributionIdentifierTypeRokuChannelID, DistributionIdentifierTypePlutoChannelID, DistributionIdentifierTypeTubiID, DistributionIdentifierTypePeacockID, DistributionIdentifierTypeTiktokID, DistributionIdentifierTypeTwitchChannel, DistributionIdentifierTypeImdbID, DistributionIdentifierTypeGracenoteID, DistributionIdentifierTypeEidrID, DistributionIdentifierTypeDomain, DistributionIdentifierTypeSubstackID:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseDistributionIdentifierType returns s as DistributionIdentifierType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseDistributionIdentifierType(s string) (DistributionIdentifierType, error) {
+	v := DistributionIdentifierType(s)
+	if IsKnownDistributionIdentifierType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown DistributionIdentifierType value")
+}
 
 // ErrorCode — Standard error code vocabulary for AdCP. Codes are machine-readable so agents ca
 type ErrorCode = string
@@ -762,6 +2166,32 @@ const (
 	ErrorCodePERMISSIONDENIED ErrorCode = "PERMISSION_DENIED"
 )
 
+// KnownErrorCodeValues returns the current schema-defined values for ErrorCode.
+func KnownErrorCodeValues() []ErrorCode {
+	return []ErrorCode{ErrorCodeINVALIDREQUEST, ErrorCodeAUTHREQUIRED, ErrorCodeRATELIMITED, ErrorCodeSERVICEUNAVAILABLE, ErrorCodePOLICYVIOLATION, ErrorCodePRODUCTNOTFOUND, ErrorCodePRODUCTUNAVAILABLE, ErrorCodePROPOSALEXPIRED, ErrorCodeBUDGETTOOLOW, ErrorCodeCREATIVEREJECTED, ErrorCodeUNSUPPORTEDFEATURE, ErrorCodeAUDIENCETOOSMALL, ErrorCodeACCOUNTNOTFOUND, ErrorCodeACCOUNTSETUPREQUIRED, ErrorCodeACCOUNTAMBIGUOUS, ErrorCodeACCOUNTPAYMENTREQUIRED, ErrorCodeACCOUNTSUSPENDED, ErrorCodeCOMPLIANCEUNSATISFIED, ErrorCodeGOVERNANCEDENIED, ErrorCodeBUDGETEXHAUSTED, ErrorCodeBUDGETEXCEEDED, ErrorCodeCONFLICT, ErrorCodeIDEMPOTENCYCONFLICT, ErrorCodeIDEMPOTENCYEXPIRED, ErrorCodeCREATIVEDEADLINEEXCEEDED, ErrorCodeINVALIDSTATE, ErrorCodeMEDIABUYNOTFOUND, ErrorCodeNOTCANCELLABLE, ErrorCodePACKAGENOTFOUND, ErrorCodeCREATIVENOTFOUND, ErrorCodeSIGNALNOTFOUND, ErrorCodeSESSIONNOTFOUND, ErrorCodePLANNOTFOUND, ErrorCodeREFERENCENOTFOUND, ErrorCodeSESSIONTERMINATED, ErrorCodeVALIDATIONERROR, ErrorCodePRODUCTEXPIRED, ErrorCodePROPOSALNOTCOMMITTED, ErrorCodeIOREQUIRED, ErrorCodeTERMSREJECTED, ErrorCodeREQUOTEREQUIRED, ErrorCodeVERSIONUNSUPPORTED, ErrorCodeCAMPAIGNSUSPENDED, ErrorCodeGOVERNANCEUNAVAILABLE, ErrorCodePERMISSIONDENIED}
+}
+
+// IsKnownErrorCode reports whether v is one of the current schema-defined ErrorCode values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownErrorCode(v ErrorCode) bool {
+	switch v {
+	case ErrorCodeINVALIDREQUEST, ErrorCodeAUTHREQUIRED, ErrorCodeRATELIMITED, ErrorCodeSERVICEUNAVAILABLE, ErrorCodePOLICYVIOLATION, ErrorCodePRODUCTNOTFOUND, ErrorCodePRODUCTUNAVAILABLE, ErrorCodePROPOSALEXPIRED, ErrorCodeBUDGETTOOLOW, ErrorCodeCREATIVEREJECTED, ErrorCodeUNSUPPORTEDFEATURE, ErrorCodeAUDIENCETOOSMALL, ErrorCodeACCOUNTNOTFOUND, ErrorCodeACCOUNTSETUPREQUIRED, ErrorCodeACCOUNTAMBIGUOUS, ErrorCodeACCOUNTPAYMENTREQUIRED, ErrorCodeACCOUNTSUSPENDED, ErrorCodeCOMPLIANCEUNSATISFIED, ErrorCodeGOVERNANCEDENIED, ErrorCodeBUDGETEXHAUSTED, ErrorCodeBUDGETEXCEEDED, ErrorCodeCONFLICT, ErrorCodeIDEMPOTENCYCONFLICT, ErrorCodeIDEMPOTENCYEXPIRED, ErrorCodeCREATIVEDEADLINEEXCEEDED, ErrorCodeINVALIDSTATE, ErrorCodeMEDIABUYNOTFOUND, ErrorCodeNOTCANCELLABLE, ErrorCodePACKAGENOTFOUND, ErrorCodeCREATIVENOTFOUND, ErrorCodeSIGNALNOTFOUND, ErrorCodeSESSIONNOTFOUND, ErrorCodePLANNOTFOUND, ErrorCodeREFERENCENOTFOUND, ErrorCodeSESSIONTERMINATED, ErrorCodeVALIDATIONERROR, ErrorCodePRODUCTEXPIRED, ErrorCodePROPOSALNOTCOMMITTED, ErrorCodeIOREQUIRED, ErrorCodeTERMSREJECTED, ErrorCodeREQUOTEREQUIRED, ErrorCodeVERSIONUNSUPPORTED, ErrorCodeCAMPAIGNSUSPENDED, ErrorCodeGOVERNANCEUNAVAILABLE, ErrorCodePERMISSIONDENIED:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseErrorCode returns s as ErrorCode when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseErrorCode(s string) (ErrorCode, error) {
+	v := ErrorCode(s)
+	if IsKnownErrorCode(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ErrorCode value")
+}
+
 // EscalationSeverity — The severity level of a governance escalation.
 type EscalationSeverity = string
 const (
@@ -769,6 +2199,32 @@ const (
 	EscalationSeverityWarning EscalationSeverity = "warning"
 	EscalationSeverityCritical EscalationSeverity = "critical"
 )
+
+// KnownEscalationSeverityValues returns the current schema-defined values for EscalationSeverity.
+func KnownEscalationSeverityValues() []EscalationSeverity {
+	return []EscalationSeverity{EscalationSeverityInfo, EscalationSeverityWarning, EscalationSeverityCritical}
+}
+
+// IsKnownEscalationSeverity reports whether v is one of the current schema-defined EscalationSeverity values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownEscalationSeverity(v EscalationSeverity) bool {
+	switch v {
+	case EscalationSeverityInfo, EscalationSeverityWarning, EscalationSeverityCritical:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseEscalationSeverity returns s as EscalationSeverity when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseEscalationSeverity(s string) (EscalationSeverity, error) {
+	v := EscalationSeverity(s)
+	if IsKnownEscalationSeverity(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown EscalationSeverity value")
+}
 
 // EventType — Standard marketing event types for event logging, aligned with IAB ECAPI
 type EventType = string
@@ -803,6 +2259,32 @@ const (
 	EventTypeCustom EventType = "custom"
 )
 
+// KnownEventTypeValues returns the current schema-defined values for EventType.
+func KnownEventTypeValues() []EventType {
+	return []EventType{EventTypePageView, EventTypeViewContent, EventTypeSelectContent, EventTypeSelectItem, EventTypeSearch, EventTypeShare, EventTypeAddToCart, EventTypeRemoveFromCart, EventTypeViewedCart, EventTypeAddToWishlist, EventTypeInitiateCheckout, EventTypeAddPaymentInfo, EventTypePurchase, EventTypeRefund, EventTypeLead, EventTypeQualifyLead, EventTypeCloseConvertLead, EventTypeDisqualifyLead, EventTypeCompleteRegistration, EventTypeSubscribe, EventTypeStartTrial, EventTypeAppInstall, EventTypeAppLaunch, EventTypeContact, EventTypeSchedule, EventTypeDonate, EventTypeSubmitApplication, EventTypeCustom}
+}
+
+// IsKnownEventType reports whether v is one of the current schema-defined EventType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownEventType(v EventType) bool {
+	switch v {
+	case EventTypePageView, EventTypeViewContent, EventTypeSelectContent, EventTypeSelectItem, EventTypeSearch, EventTypeShare, EventTypeAddToCart, EventTypeRemoveFromCart, EventTypeViewedCart, EventTypeAddToWishlist, EventTypeInitiateCheckout, EventTypeAddPaymentInfo, EventTypePurchase, EventTypeRefund, EventTypeLead, EventTypeQualifyLead, EventTypeCloseConvertLead, EventTypeDisqualifyLead, EventTypeCompleteRegistration, EventTypeSubscribe, EventTypeStartTrial, EventTypeAppInstall, EventTypeAppLaunch, EventTypeContact, EventTypeSchedule, EventTypeDonate, EventTypeSubmitApplication, EventTypeCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseEventType returns s as EventType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseEventType(s string) (EventType, error) {
+	v := EventType(s)
+	if IsKnownEventType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown EventType value")
+}
+
 // Exclusivity — Whether a product offers exclusive access to its inventory
 type Exclusivity = string
 const (
@@ -810,6 +2292,32 @@ const (
 	ExclusivityCategory Exclusivity = "category"
 	ExclusivityExclusive Exclusivity = "exclusive"
 )
+
+// KnownExclusivityValues returns the current schema-defined values for Exclusivity.
+func KnownExclusivityValues() []Exclusivity {
+	return []Exclusivity{ExclusivityNone, ExclusivityCategory, ExclusivityExclusive}
+}
+
+// IsKnownExclusivity reports whether v is one of the current schema-defined Exclusivity values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownExclusivity(v Exclusivity) bool {
+	switch v {
+	case ExclusivityNone, ExclusivityCategory, ExclusivityExclusive:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseExclusivity returns s as Exclusivity when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseExclusivity(s string) (Exclusivity, error) {
+	v := Exclusivity(s)
+	if IsKnownExclusivity(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown Exclusivity value")
+}
 
 // FeatureCheckStatus — Per-feature evaluation outcome in content standards checks. For the two-outcome
 type FeatureCheckStatus = string
@@ -819,6 +2327,32 @@ const (
 	FeatureCheckStatusWarning FeatureCheckStatus = "warning"
 	FeatureCheckStatusUnevaluated FeatureCheckStatus = "unevaluated"
 )
+
+// KnownFeatureCheckStatusValues returns the current schema-defined values for FeatureCheckStatus.
+func KnownFeatureCheckStatusValues() []FeatureCheckStatus {
+	return []FeatureCheckStatus{FeatureCheckStatusPassed, FeatureCheckStatusFailed, FeatureCheckStatusWarning, FeatureCheckStatusUnevaluated}
+}
+
+// IsKnownFeatureCheckStatus reports whether v is one of the current schema-defined FeatureCheckStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFeatureCheckStatus(v FeatureCheckStatus) bool {
+	switch v {
+	case FeatureCheckStatusPassed, FeatureCheckStatusFailed, FeatureCheckStatusWarning, FeatureCheckStatusUnevaluated:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFeatureCheckStatus returns s as FeatureCheckStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFeatureCheckStatus(s string) (FeatureCheckStatus, error) {
+	v := FeatureCheckStatus(s)
+	if IsKnownFeatureCheckStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FeatureCheckStatus value")
+}
 
 // FeedFormat — Catalog feed formats. Determines how the platform parses items from an external
 type FeedFormat = string
@@ -830,6 +2364,32 @@ const (
 	FeedFormatCustom FeedFormat = "custom"
 )
 
+// KnownFeedFormatValues returns the current schema-defined values for FeedFormat.
+func KnownFeedFormatValues() []FeedFormat {
+	return []FeedFormat{FeedFormatGoogleMerchantCenter, FeedFormatFacebookCatalog, FeedFormatShopify, FeedFormatLinkedinJobs, FeedFormatCustom}
+}
+
+// IsKnownFeedFormat reports whether v is one of the current schema-defined FeedFormat values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFeedFormat(v FeedFormat) bool {
+	switch v {
+	case FeedFormatGoogleMerchantCenter, FeedFormatFacebookCatalog, FeedFormatShopify, FeedFormatLinkedinJobs, FeedFormatCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFeedFormat returns s as FeedFormat when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFeedFormat(s string) (FeedFormat, error) {
+	v := FeedFormat(s)
+	if IsKnownFeedFormat(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FeedFormat value")
+}
+
 // FeedbackSource — Source of performance feedback data
 type FeedbackSource = string
 const (
@@ -839,6 +2399,32 @@ const (
 	FeedbackSourceVerificationPartner FeedbackSource = "verification_partner"
 )
 
+// KnownFeedbackSourceValues returns the current schema-defined values for FeedbackSource.
+func KnownFeedbackSourceValues() []FeedbackSource {
+	return []FeedbackSource{FeedbackSourceBuyerAttribution, FeedbackSourceThirdPartyMeasurement, FeedbackSourcePlatformAnalytics, FeedbackSourceVerificationPartner}
+}
+
+// IsKnownFeedbackSource reports whether v is one of the current schema-defined FeedbackSource values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFeedbackSource(v FeedbackSource) bool {
+	switch v {
+	case FeedbackSourceBuyerAttribution, FeedbackSourceThirdPartyMeasurement, FeedbackSourcePlatformAnalytics, FeedbackSourceVerificationPartner:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFeedbackSource returns s as FeedbackSource when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFeedbackSource(s string) (FeedbackSource, error) {
+	v := FeedbackSource(s)
+	if IsKnownFeedbackSource(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FeedbackSource value")
+}
+
 // ForecastMethod — Method used to produce a delivery forecast
 type ForecastMethod = string
 const (
@@ -846,6 +2432,32 @@ const (
 	ForecastMethodModeled ForecastMethod = "modeled"
 	ForecastMethodGuaranteed ForecastMethod = "guaranteed"
 )
+
+// KnownForecastMethodValues returns the current schema-defined values for ForecastMethod.
+func KnownForecastMethodValues() []ForecastMethod {
+	return []ForecastMethod{ForecastMethodEstimate, ForecastMethodModeled, ForecastMethodGuaranteed}
+}
+
+// IsKnownForecastMethod reports whether v is one of the current schema-defined ForecastMethod values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownForecastMethod(v ForecastMethod) bool {
+	switch v {
+	case ForecastMethodEstimate, ForecastMethodModeled, ForecastMethodGuaranteed:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseForecastMethod returns s as ForecastMethod when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseForecastMethod(s string) (ForecastMethod, error) {
+	v := ForecastMethod(s)
+	if IsKnownForecastMethod(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ForecastMethod value")
+}
 
 // ForecastRangeUnit — Describes how to interpret the points array in a DeliveryForecast — what axis th
 type ForecastRangeUnit = string
@@ -859,6 +2471,32 @@ const (
 	ForecastRangeUnitConversions ForecastRangeUnit = "conversions"
 	ForecastRangeUnitPackage ForecastRangeUnit = "package"
 )
+
+// KnownForecastRangeUnitValues returns the current schema-defined values for ForecastRangeUnit.
+func KnownForecastRangeUnitValues() []ForecastRangeUnit {
+	return []ForecastRangeUnit{ForecastRangeUnitSpend, ForecastRangeUnitAvailability, ForecastRangeUnitReachFreq, ForecastRangeUnitWeekly, ForecastRangeUnitDaily, ForecastRangeUnitClicks, ForecastRangeUnitConversions, ForecastRangeUnitPackage}
+}
+
+// IsKnownForecastRangeUnit reports whether v is one of the current schema-defined ForecastRangeUnit values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownForecastRangeUnit(v ForecastRangeUnit) bool {
+	switch v {
+	case ForecastRangeUnitSpend, ForecastRangeUnitAvailability, ForecastRangeUnitReachFreq, ForecastRangeUnitWeekly, ForecastRangeUnitDaily, ForecastRangeUnitClicks, ForecastRangeUnitConversions, ForecastRangeUnitPackage:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseForecastRangeUnit returns s as ForecastRangeUnit when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseForecastRangeUnit(s string) (ForecastRangeUnit, error) {
+	v := ForecastRangeUnit(s)
+	if IsKnownForecastRangeUnit(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ForecastRangeUnit value")
+}
 
 // ForecastableMetric — Standard delivery and engagement metric names for forecasts. For outcome/convers
 type ForecastableMetric = string
@@ -881,12 +2519,64 @@ const (
 	ForecastableMetricPlays ForecastableMetric = "plays"
 )
 
+// KnownForecastableMetricValues returns the current schema-defined values for ForecastableMetric.
+func KnownForecastableMetricValues() []ForecastableMetric {
+	return []ForecastableMetric{ForecastableMetricAudienceSize, ForecastableMetricReach, ForecastableMetricFrequency, ForecastableMetricImpressions, ForecastableMetricClicks, ForecastableMetricSpend, ForecastableMetricViews, ForecastableMetricCompletedViews, ForecastableMetricGrps, ForecastableMetricEngagements, ForecastableMetricFollows, ForecastableMetricSaves, ForecastableMetricProfileVisits, ForecastableMetricMeasuredImpressions, ForecastableMetricDownloads, ForecastableMetricPlays}
+}
+
+// IsKnownForecastableMetric reports whether v is one of the current schema-defined ForecastableMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownForecastableMetric(v ForecastableMetric) bool {
+	switch v {
+	case ForecastableMetricAudienceSize, ForecastableMetricReach, ForecastableMetricFrequency, ForecastableMetricImpressions, ForecastableMetricClicks, ForecastableMetricSpend, ForecastableMetricViews, ForecastableMetricCompletedViews, ForecastableMetricGrps, ForecastableMetricEngagements, ForecastableMetricFollows, ForecastableMetricSaves, ForecastableMetricProfileVisits, ForecastableMetricMeasuredImpressions, ForecastableMetricDownloads, ForecastableMetricPlays:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseForecastableMetric returns s as ForecastableMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseForecastableMetric(s string) (ForecastableMetric, error) {
+	v := ForecastableMetric(s)
+	if IsKnownForecastableMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ForecastableMetric value")
+}
+
 // FormatIDParameter — Types of parameters that template formats accept in format_id objects to create
 type FormatIDParameter = string
 const (
 	FormatIDParameterDimensions FormatIDParameter = "dimensions"
 	FormatIDParameterDuration FormatIDParameter = "duration"
 )
+
+// KnownFormatIDParameterValues returns the current schema-defined values for FormatIDParameter.
+func KnownFormatIDParameterValues() []FormatIDParameter {
+	return []FormatIDParameter{FormatIDParameterDimensions, FormatIDParameterDuration}
+}
+
+// IsKnownFormatIDParameter reports whether v is one of the current schema-defined FormatIDParameter values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFormatIDParameter(v FormatIDParameter) bool {
+	switch v {
+	case FormatIDParameterDimensions, FormatIDParameterDuration:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFormatIDParameter returns s as FormatIDParameter when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFormatIDParameter(s string) (FormatIDParameter, error) {
+	v := FormatIDParameter(s)
+	if IsKnownFormatIDParameter(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FormatIDParameter value")
+}
 
 // FrameRateType — Whether the video uses a constant or variable frame rate. Broadcast and SSAI con
 type FrameRateType = string
@@ -895,11 +2585,63 @@ const (
 	FrameRateTypeVariable FrameRateType = "variable"
 )
 
+// KnownFrameRateTypeValues returns the current schema-defined values for FrameRateType.
+func KnownFrameRateTypeValues() []FrameRateType {
+	return []FrameRateType{FrameRateTypeConstant, FrameRateTypeVariable}
+}
+
+// IsKnownFrameRateType reports whether v is one of the current schema-defined FrameRateType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFrameRateType(v FrameRateType) bool {
+	switch v {
+	case FrameRateTypeConstant, FrameRateTypeVariable:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFrameRateType returns s as FrameRateType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFrameRateType(s string) (FrameRateType, error) {
+	v := FrameRateType(s)
+	if IsKnownFrameRateType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FrameRateType value")
+}
+
 // FrequencyCapScope — Scope for frequency cap application
 type FrequencyCapScope = string
 const (
 	FrequencyCapScopePackage FrequencyCapScope = "package"
 )
+
+// KnownFrequencyCapScopeValues returns the current schema-defined values for FrequencyCapScope.
+func KnownFrequencyCapScopeValues() []FrequencyCapScope {
+	return []FrequencyCapScope{FrequencyCapScopePackage}
+}
+
+// IsKnownFrequencyCapScope reports whether v is one of the current schema-defined FrequencyCapScope values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownFrequencyCapScope(v FrequencyCapScope) bool {
+	switch v {
+	case FrequencyCapScopePackage:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseFrequencyCapScope returns s as FrequencyCapScope when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseFrequencyCapScope(s string) (FrequencyCapScope, error) {
+	v := FrequencyCapScope(s)
+	if IsKnownFrequencyCapScope(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown FrequencyCapScope value")
+}
 
 // GenreTaxonomy — Taxonomy systems for genre classification. When declared, genre values should be
 type GenreTaxonomy = string
@@ -915,6 +2657,32 @@ const (
 	GenreTaxonomyCustom GenreTaxonomy = "custom"
 )
 
+// KnownGenreTaxonomyValues returns the current schema-defined values for GenreTaxonomy.
+func KnownGenreTaxonomyValues() []GenreTaxonomy {
+	return []GenreTaxonomy{GenreTaxonomyIabContent30, GenreTaxonomyIabContent22, GenreTaxonomyGracenote, GenreTaxonomyEidr, GenreTaxonomyAppleGenres, GenreTaxonomyGoogleGenres, GenreTaxonomyRoku, GenreTaxonomyAmazonGenres, GenreTaxonomyCustom}
+}
+
+// IsKnownGenreTaxonomy reports whether v is one of the current schema-defined GenreTaxonomy values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGenreTaxonomy(v GenreTaxonomy) bool {
+	switch v {
+	case GenreTaxonomyIabContent30, GenreTaxonomyIabContent22, GenreTaxonomyGracenote, GenreTaxonomyEidr, GenreTaxonomyAppleGenres, GenreTaxonomyGoogleGenres, GenreTaxonomyRoku, GenreTaxonomyAmazonGenres, GenreTaxonomyCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGenreTaxonomy returns s as GenreTaxonomy when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGenreTaxonomy(s string) (GenreTaxonomy, error) {
+	v := GenreTaxonomy(s)
+	if IsKnownGenreTaxonomy(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GenreTaxonomy value")
+}
+
 // GeoLevel — Geographic targeting granularity levels. Some levels (metro, postal_area) requir
 type GeoLevel = string
 const (
@@ -924,12 +2692,64 @@ const (
 	GeoLevelPostalArea GeoLevel = "postal_area"
 )
 
+// KnownGeoLevelValues returns the current schema-defined values for GeoLevel.
+func KnownGeoLevelValues() []GeoLevel {
+	return []GeoLevel{GeoLevelCountry, GeoLevelRegion, GeoLevelMetro, GeoLevelPostalArea}
+}
+
+// IsKnownGeoLevel reports whether v is one of the current schema-defined GeoLevel values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGeoLevel(v GeoLevel) bool {
+	switch v {
+	case GeoLevelCountry, GeoLevelRegion, GeoLevelMetro, GeoLevelPostalArea:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGeoLevel returns s as GeoLevel when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGeoLevel(s string) (GeoLevel, error) {
+	v := GeoLevel(s)
+	if IsKnownGeoLevel(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GeoLevel value")
+}
+
 // GopType — Group of Pictures structure. SSAI and broadcast require closed GOPs for clean sp
 type GopType = string
 const (
 	GopTypeClosed GopType = "closed"
 	GopTypeOpen GopType = "open"
 )
+
+// KnownGopTypeValues returns the current schema-defined values for GopType.
+func KnownGopTypeValues() []GopType {
+	return []GopType{GopTypeClosed, GopTypeOpen}
+}
+
+// IsKnownGopType reports whether v is one of the current schema-defined GopType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGopType(v GopType) bool {
+	switch v {
+	case GopTypeClosed, GopTypeOpen:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGopType returns s as GopType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGopType(s string) (GopType, error) {
+	v := GopType(s)
+	if IsKnownGopType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GopType value")
+}
 
 // GovernanceDecision — Outcome of a governance check_governance call. Distinct from creative approval s
 type GovernanceDecision = string
@@ -938,6 +2758,32 @@ const (
 	GovernanceDecisionDenied GovernanceDecision = "denied"
 	GovernanceDecisionConditions GovernanceDecision = "conditions"
 )
+
+// KnownGovernanceDecisionValues returns the current schema-defined values for GovernanceDecision.
+func KnownGovernanceDecisionValues() []GovernanceDecision {
+	return []GovernanceDecision{GovernanceDecisionApproved, GovernanceDecisionDenied, GovernanceDecisionConditions}
+}
+
+// IsKnownGovernanceDecision reports whether v is one of the current schema-defined GovernanceDecision values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGovernanceDecision(v GovernanceDecision) bool {
+	switch v {
+	case GovernanceDecisionApproved, GovernanceDecisionDenied, GovernanceDecisionConditions:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGovernanceDecision returns s as GovernanceDecision when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGovernanceDecision(s string) (GovernanceDecision, error) {
+	v := GovernanceDecision(s)
+	if IsKnownGovernanceDecision(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GovernanceDecision value")
+}
 
 // GovernanceDomain — Governance sub-domains that a registry policy applies to. Used to indicate which
 type GovernanceDomain = string
@@ -948,6 +2794,32 @@ const (
 	GovernanceDomainContentStandards GovernanceDomain = "content_standards"
 )
 
+// KnownGovernanceDomainValues returns the current schema-defined values for GovernanceDomain.
+func KnownGovernanceDomainValues() []GovernanceDomain {
+	return []GovernanceDomain{GovernanceDomainCampaign, GovernanceDomainProperty, GovernanceDomainCreative, GovernanceDomainContentStandards}
+}
+
+// IsKnownGovernanceDomain reports whether v is one of the current schema-defined GovernanceDomain values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGovernanceDomain(v GovernanceDomain) bool {
+	switch v {
+	case GovernanceDomainCampaign, GovernanceDomainProperty, GovernanceDomainCreative, GovernanceDomainContentStandards:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGovernanceDomain returns s as GovernanceDomain when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGovernanceDomain(s string) (GovernanceDomain, error) {
+	v := GovernanceDomain(s)
+	if IsKnownGovernanceDomain(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GovernanceDomain value")
+}
+
 // GovernanceMode — Operating mode for a governance agent. Controls whether findings block execution
 type GovernanceMode = string
 const (
@@ -955,6 +2827,32 @@ const (
 	GovernanceModeAdvisory GovernanceMode = "advisory"
 	GovernanceModeEnforce GovernanceMode = "enforce"
 )
+
+// KnownGovernanceModeValues returns the current schema-defined values for GovernanceMode.
+func KnownGovernanceModeValues() []GovernanceMode {
+	return []GovernanceMode{GovernanceModeAudit, GovernanceModeAdvisory, GovernanceModeEnforce}
+}
+
+// IsKnownGovernanceMode reports whether v is one of the current schema-defined GovernanceMode values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGovernanceMode(v GovernanceMode) bool {
+	switch v {
+	case GovernanceModeAudit, GovernanceModeAdvisory, GovernanceModeEnforce:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGovernanceMode returns s as GovernanceMode when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGovernanceMode(s string) (GovernanceMode, error) {
+	v := GovernanceMode(s)
+	if IsKnownGovernanceMode(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GovernanceMode value")
+}
 
 // GovernancePhase — The phase of the governed action's lifecycle that triggered the governance check
 type GovernancePhase = string
@@ -964,6 +2862,32 @@ const (
 	GovernancePhaseDelivery GovernancePhase = "delivery"
 )
 
+// KnownGovernancePhaseValues returns the current schema-defined values for GovernancePhase.
+func KnownGovernancePhaseValues() []GovernancePhase {
+	return []GovernancePhase{GovernancePhasePurchase, GovernancePhaseModification, GovernancePhaseDelivery}
+}
+
+// IsKnownGovernancePhase reports whether v is one of the current schema-defined GovernancePhase values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownGovernancePhase(v GovernancePhase) bool {
+	switch v {
+	case GovernancePhasePurchase, GovernancePhaseModification, GovernancePhaseDelivery:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGovernancePhase returns s as GovernancePhase when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseGovernancePhase(s string) (GovernancePhase, error) {
+	v := GovernancePhase(s)
+	if IsKnownGovernancePhase(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown GovernancePhase value")
+}
+
 // HistoryEntryType — Type of entry in task execution history
 type HistoryEntryType = string
 const (
@@ -971,12 +2895,64 @@ const (
 	HistoryEntryTypeResponse HistoryEntryType = "response"
 )
 
+// KnownHistoryEntryTypeValues returns the current schema-defined values for HistoryEntryType.
+func KnownHistoryEntryTypeValues() []HistoryEntryType {
+	return []HistoryEntryType{HistoryEntryTypeRequest, HistoryEntryTypeResponse}
+}
+
+// IsKnownHistoryEntryType reports whether v is one of the current schema-defined HistoryEntryType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownHistoryEntryType(v HistoryEntryType) bool {
+	switch v {
+	case HistoryEntryTypeRequest, HistoryEntryTypeResponse:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseHistoryEntryType returns s as HistoryEntryType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseHistoryEntryType(s string) (HistoryEntryType, error) {
+	v := HistoryEntryType(s)
+	if IsKnownHistoryEntryType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown HistoryEntryType value")
+}
+
 // HTTPMethod — HTTP methods supported for webhook requests
 type HTTPMethod = string
 const (
 	HTTPMethodGET HTTPMethod = "GET"
 	HTTPMethodPOST HTTPMethod = "POST"
 )
+
+// KnownHTTPMethodValues returns the current schema-defined values for HTTPMethod.
+func KnownHTTPMethodValues() []HTTPMethod {
+	return []HTTPMethod{HTTPMethodGET, HTTPMethodPOST}
+}
+
+// IsKnownHTTPMethod reports whether v is one of the current schema-defined HTTPMethod values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownHTTPMethod(v HTTPMethod) bool {
+	switch v {
+	case HTTPMethodGET, HTTPMethodPOST:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseHTTPMethod returns s as HTTPMethod when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseHTTPMethod(s string) (HTTPMethod, error) {
+	v := HTTPMethod(s)
+	if IsKnownHTTPMethod(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown HTTPMethod value")
+}
 
 // IdentifierTypes — Valid identifier types for property identification across different media types
 type IdentifierTypes = string
@@ -1004,6 +2980,32 @@ const (
 	IdentifierTypesFacilityID IdentifierTypes = "facility_id"
 )
 
+// KnownIdentifierTypesValues returns the current schema-defined values for IdentifierTypes.
+func KnownIdentifierTypesValues() []IdentifierTypes {
+	return []IdentifierTypes{IdentifierTypesDomain, IdentifierTypesSubdomain, IdentifierTypesNetworkID, IdentifierTypesIosBundle, IdentifierTypesAndroidPackage, IdentifierTypesAppleAppStoreID, IdentifierTypesGooglePlayID, IdentifierTypesRokuStoreID, IdentifierTypesFireTvAsin, IdentifierTypesSamsungAppID, IdentifierTypesAppleTvBundle, IdentifierTypesBundleID, IdentifierTypesVenueID, IdentifierTypesScreenID, IdentifierTypesOpenoohVenueType, IdentifierTypesRssURL, IdentifierTypesApplePodcastID, IdentifierTypesSpotifyCollectionID, IdentifierTypesPodcastGuid, IdentifierTypesStationID, IdentifierTypesFacilityID}
+}
+
+// IsKnownIdentifierTypes reports whether v is one of the current schema-defined IdentifierTypes values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownIdentifierTypes(v IdentifierTypes) bool {
+	switch v {
+	case IdentifierTypesDomain, IdentifierTypesSubdomain, IdentifierTypesNetworkID, IdentifierTypesIosBundle, IdentifierTypesAndroidPackage, IdentifierTypesAppleAppStoreID, IdentifierTypesGooglePlayID, IdentifierTypesRokuStoreID, IdentifierTypesFireTvAsin, IdentifierTypesSamsungAppID, IdentifierTypesAppleTvBundle, IdentifierTypesBundleID, IdentifierTypesVenueID, IdentifierTypesScreenID, IdentifierTypesOpenoohVenueType, IdentifierTypesRssURL, IdentifierTypesApplePodcastID, IdentifierTypesSpotifyCollectionID, IdentifierTypesPodcastGuid, IdentifierTypesStationID, IdentifierTypesFacilityID:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseIdentifierTypes returns s as IdentifierTypes when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseIdentifierTypes(s string) (IdentifierTypes, error) {
+	v := IdentifierTypes(s)
+	if IsKnownIdentifierTypes(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown IdentifierTypes value")
+}
+
 // InstallmentStatus — Lifecycle status of an installment
 type InstallmentStatus = string
 const (
@@ -1016,6 +3018,32 @@ const (
 	InstallmentStatusPublished InstallmentStatus = "published"
 )
 
+// KnownInstallmentStatusValues returns the current schema-defined values for InstallmentStatus.
+func KnownInstallmentStatusValues() []InstallmentStatus {
+	return []InstallmentStatus{InstallmentStatusScheduled, InstallmentStatusTentative, InstallmentStatusLive, InstallmentStatusPostponed, InstallmentStatusCancelled, InstallmentStatusAired, InstallmentStatusPublished}
+}
+
+// IsKnownInstallmentStatus reports whether v is one of the current schema-defined InstallmentStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownInstallmentStatus(v InstallmentStatus) bool {
+	switch v {
+	case InstallmentStatusScheduled, InstallmentStatusTentative, InstallmentStatusLive, InstallmentStatusPostponed, InstallmentStatusCancelled, InstallmentStatusAired, InstallmentStatusPublished:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseInstallmentStatus returns s as InstallmentStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseInstallmentStatus(s string) (InstallmentStatus, error) {
+	v := InstallmentStatus(s)
+	if IsKnownInstallmentStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown InstallmentStatus value")
+}
+
 // JavascriptModuleType — JavaScript module format types for creative assets
 type JavascriptModuleType = string
 const (
@@ -1023,6 +3051,32 @@ const (
 	JavascriptModuleTypeCommonjs JavascriptModuleType = "commonjs"
 	JavascriptModuleTypeScript JavascriptModuleType = "script"
 )
+
+// KnownJavascriptModuleTypeValues returns the current schema-defined values for JavascriptModuleType.
+func KnownJavascriptModuleTypeValues() []JavascriptModuleType {
+	return []JavascriptModuleType{JavascriptModuleTypeEsm, JavascriptModuleTypeCommonjs, JavascriptModuleTypeScript}
+}
+
+// IsKnownJavascriptModuleType reports whether v is one of the current schema-defined JavascriptModuleType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownJavascriptModuleType(v JavascriptModuleType) bool {
+	switch v {
+	case JavascriptModuleTypeEsm, JavascriptModuleTypeCommonjs, JavascriptModuleTypeScript:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseJavascriptModuleType returns s as JavascriptModuleType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseJavascriptModuleType(s string) (JavascriptModuleType, error) {
+	v := JavascriptModuleType(s)
+	if IsKnownJavascriptModuleType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown JavascriptModuleType value")
+}
 
 // LandingPageRequirement — Landing page policy for creative click-through destinations
 type LandingPageRequirement = string
@@ -1032,6 +3086,32 @@ const (
 	LandingPageRequirementMustIncludeRetailer LandingPageRequirement = "must_include_retailer"
 )
 
+// KnownLandingPageRequirementValues returns the current schema-defined values for LandingPageRequirement.
+func KnownLandingPageRequirementValues() []LandingPageRequirement {
+	return []LandingPageRequirement{LandingPageRequirementAny, LandingPageRequirementRetailerSiteOnly, LandingPageRequirementMustIncludeRetailer}
+}
+
+// IsKnownLandingPageRequirement reports whether v is one of the current schema-defined LandingPageRequirement values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownLandingPageRequirement(v LandingPageRequirement) bool {
+	switch v {
+	case LandingPageRequirementAny, LandingPageRequirementRetailerSiteOnly, LandingPageRequirementMustIncludeRetailer:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseLandingPageRequirement returns s as LandingPageRequirement when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseLandingPageRequirement(s string) (LandingPageRequirement, error) {
+	v := LandingPageRequirement(s)
+	if IsKnownLandingPageRequirement(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown LandingPageRequirement value")
+}
+
 // MakegoodRemedy — Remedy types available when a performance standard or billing measurement thresh
 type MakegoodRemedy = string
 const (
@@ -1040,12 +3120,64 @@ const (
 	MakegoodRemedyInvoiceAdjustment MakegoodRemedy = "invoice_adjustment"
 )
 
+// KnownMakegoodRemedyValues returns the current schema-defined values for MakegoodRemedy.
+func KnownMakegoodRemedyValues() []MakegoodRemedy {
+	return []MakegoodRemedy{MakegoodRemedyAdditionalDelivery, MakegoodRemedyCredit, MakegoodRemedyInvoiceAdjustment}
+}
+
+// IsKnownMakegoodRemedy reports whether v is one of the current schema-defined MakegoodRemedy values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMakegoodRemedy(v MakegoodRemedy) bool {
+	switch v {
+	case MakegoodRemedyAdditionalDelivery, MakegoodRemedyCredit, MakegoodRemedyInvoiceAdjustment:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMakegoodRemedy returns s as MakegoodRemedy when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMakegoodRemedy(s string) (MakegoodRemedy, error) {
+	v := MakegoodRemedy(s)
+	if IsKnownMakegoodRemedy(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MakegoodRemedy value")
+}
+
 // MarkdownFlavor — Markdown specification flavors supported for text assets
 type MarkdownFlavor = string
 const (
 	MarkdownFlavorCommonmark MarkdownFlavor = "commonmark"
 	MarkdownFlavorGfm MarkdownFlavor = "gfm"
 )
+
+// KnownMarkdownFlavorValues returns the current schema-defined values for MarkdownFlavor.
+func KnownMarkdownFlavorValues() []MarkdownFlavor {
+	return []MarkdownFlavor{MarkdownFlavorCommonmark, MarkdownFlavorGfm}
+}
+
+// IsKnownMarkdownFlavor reports whether v is one of the current schema-defined MarkdownFlavor values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMarkdownFlavor(v MarkdownFlavor) bool {
+	switch v {
+	case MarkdownFlavorCommonmark, MarkdownFlavorGfm:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMarkdownFlavor returns s as MarkdownFlavor when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMarkdownFlavor(s string) (MarkdownFlavor, error) {
+	v := MarkdownFlavor(s)
+	if IsKnownMarkdownFlavor(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MarkdownFlavor value")
+}
 
 // MatchIDType — Identifier types for audience match reporting. Combines hashed PII types (from a
 type MatchIDType = string
@@ -1061,6 +3193,32 @@ const (
 	MatchIDTypeOther MatchIDType = "other"
 )
 
+// KnownMatchIDTypeValues returns the current schema-defined values for MatchIDType.
+func KnownMatchIDTypeValues() []MatchIDType {
+	return []MatchIDType{MatchIDTypeHashedEmail, MatchIDTypeHashedPhone, MatchIDTypeRampid, MatchIDTypeId5, MatchIDTypeUid2, MatchIDTypeEuid, MatchIDTypePairid, MatchIDTypeMaid, MatchIDTypeOther}
+}
+
+// IsKnownMatchIDType reports whether v is one of the current schema-defined MatchIDType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMatchIDType(v MatchIDType) bool {
+	switch v {
+	case MatchIDTypeHashedEmail, MatchIDTypeHashedPhone, MatchIDTypeRampid, MatchIDTypeId5, MatchIDTypeUid2, MatchIDTypeEuid, MatchIDTypePairid, MatchIDTypeMaid, MatchIDTypeOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMatchIDType returns s as MatchIDType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMatchIDType(s string) (MatchIDType, error) {
+	v := MatchIDType(s)
+	if IsKnownMatchIDType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MatchIDType value")
+}
+
 // MatchType — Keyword targeting match type. broad: ads may serve on queries semantically relat
 type MatchType = string
 const (
@@ -1068,6 +3226,32 @@ const (
 	MatchTypePhrase MatchType = "phrase"
 	MatchTypeExact MatchType = "exact"
 )
+
+// KnownMatchTypeValues returns the current schema-defined values for MatchType.
+func KnownMatchTypeValues() []MatchType {
+	return []MatchType{MatchTypeBroad, MatchTypePhrase, MatchTypeExact}
+}
+
+// IsKnownMatchType reports whether v is one of the current schema-defined MatchType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMatchType(v MatchType) bool {
+	switch v {
+	case MatchTypeBroad, MatchTypePhrase, MatchTypeExact:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMatchType returns s as MatchType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMatchType(s string) (MatchType, error) {
+	v := MatchType(s)
+	if IsKnownMatchType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MatchType value")
+}
 
 // MediaBuyStatus — Status of a media buy.
 type MediaBuyStatus = string
@@ -1080,6 +3264,32 @@ const (
 	MediaBuyStatusRejected MediaBuyStatus = "rejected"
 	MediaBuyStatusCanceled MediaBuyStatus = "canceled"
 )
+
+// KnownMediaBuyStatusValues returns the current schema-defined values for MediaBuyStatus.
+func KnownMediaBuyStatusValues() []MediaBuyStatus {
+	return []MediaBuyStatus{MediaBuyStatusPendingCreatives, MediaBuyStatusPendingStart, MediaBuyStatusActive, MediaBuyStatusPaused, MediaBuyStatusCompleted, MediaBuyStatusRejected, MediaBuyStatusCanceled}
+}
+
+// IsKnownMediaBuyStatus reports whether v is one of the current schema-defined MediaBuyStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMediaBuyStatus(v MediaBuyStatus) bool {
+	switch v {
+	case MediaBuyStatusPendingCreatives, MediaBuyStatusPendingStart, MediaBuyStatusActive, MediaBuyStatusPaused, MediaBuyStatusCompleted, MediaBuyStatusRejected, MediaBuyStatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMediaBuyStatus returns s as MediaBuyStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMediaBuyStatus(s string) (MediaBuyStatus, error) {
+	v := MediaBuyStatus(s)
+	if IsKnownMediaBuyStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MediaBuyStatus value")
+}
 
 // MediaBuyValidAction — Actions the buyer can perform on a media buy
 type MediaBuyValidAction = string
@@ -1094,6 +3304,32 @@ const (
 	MediaBuyValidActionSyncCreatives MediaBuyValidAction = "sync_creatives"
 )
 
+// KnownMediaBuyValidActionValues returns the current schema-defined values for MediaBuyValidAction.
+func KnownMediaBuyValidActionValues() []MediaBuyValidAction {
+	return []MediaBuyValidAction{MediaBuyValidActionPause, MediaBuyValidActionResume, MediaBuyValidActionCancel, MediaBuyValidActionUpdateBudget, MediaBuyValidActionUpdateDates, MediaBuyValidActionUpdatePackages, MediaBuyValidActionAddPackages, MediaBuyValidActionSyncCreatives}
+}
+
+// IsKnownMediaBuyValidAction reports whether v is one of the current schema-defined MediaBuyValidAction values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMediaBuyValidAction(v MediaBuyValidAction) bool {
+	switch v {
+	case MediaBuyValidActionPause, MediaBuyValidActionResume, MediaBuyValidActionCancel, MediaBuyValidActionUpdateBudget, MediaBuyValidActionUpdateDates, MediaBuyValidActionUpdatePackages, MediaBuyValidActionAddPackages, MediaBuyValidActionSyncCreatives:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMediaBuyValidAction returns s as MediaBuyValidAction when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMediaBuyValidAction(s string) (MediaBuyValidAction, error) {
+	v := MediaBuyValidAction(s)
+	if IsKnownMediaBuyValidAction(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MediaBuyValidAction value")
+}
+
 // MetricType — Performance metric types for feedback and optimization
 type MetricType = string
 const (
@@ -1107,6 +3343,32 @@ const (
 	MetricTypeCostEfficiency MetricType = "cost_efficiency"
 )
 
+// KnownMetricTypeValues returns the current schema-defined values for MetricType.
+func KnownMetricTypeValues() []MetricType {
+	return []MetricType{MetricTypeOverallPerformance, MetricTypeConversionRate, MetricTypeBrandLift, MetricTypeClickThroughRate, MetricTypeCompletionRate, MetricTypeViewability, MetricTypeBrandSafety, MetricTypeCostEfficiency}
+}
+
+// IsKnownMetricType reports whether v is one of the current schema-defined MetricType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMetricType(v MetricType) bool {
+	switch v {
+	case MetricTypeOverallPerformance, MetricTypeConversionRate, MetricTypeBrandLift, MetricTypeClickThroughRate, MetricTypeCompletionRate, MetricTypeViewability, MetricTypeBrandSafety, MetricTypeCostEfficiency:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMetricType returns s as MetricType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMetricType(s string) (MetricType, error) {
+	v := MetricType(s)
+	if IsKnownMetricType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MetricType value")
+}
+
 // MetroSystem — Metro area classification systems for geographic targeting
 type MetroSystem = string
 const (
@@ -1117,12 +3379,64 @@ const (
 	MetroSystemCustom MetroSystem = "custom"
 )
 
+// KnownMetroSystemValues returns the current schema-defined values for MetroSystem.
+func KnownMetroSystemValues() []MetroSystem {
+	return []MetroSystem{MetroSystemNielsenDma, MetroSystemUkItl1, MetroSystemUkItl2, MetroSystemEurostatNuts2, MetroSystemCustom}
+}
+
+// IsKnownMetroSystem reports whether v is one of the current schema-defined MetroSystem values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMetroSystem(v MetroSystem) bool {
+	switch v {
+	case MetroSystemNielsenDma, MetroSystemUkItl1, MetroSystemUkItl2, MetroSystemEurostatNuts2, MetroSystemCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMetroSystem returns s as MetroSystem when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMetroSystem(s string) (MetroSystem, error) {
+	v := MetroSystem(s)
+	if IsKnownMetroSystem(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MetroSystem value")
+}
+
 // MoovAtomPosition — Position of the moov atom in an MP4 container. 'start' enables progressive downl
 type MoovAtomPosition = string
 const (
 	MoovAtomPositionStart MoovAtomPosition = "start"
 	MoovAtomPositionEnd MoovAtomPosition = "end"
 )
+
+// KnownMoovAtomPositionValues returns the current schema-defined values for MoovAtomPosition.
+func KnownMoovAtomPositionValues() []MoovAtomPosition {
+	return []MoovAtomPosition{MoovAtomPositionStart, MoovAtomPositionEnd}
+}
+
+// IsKnownMoovAtomPosition reports whether v is one of the current schema-defined MoovAtomPosition values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownMoovAtomPosition(v MoovAtomPosition) bool {
+	switch v {
+	case MoovAtomPositionStart, MoovAtomPositionEnd:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseMoovAtomPosition returns s as MoovAtomPosition when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseMoovAtomPosition(s string) (MoovAtomPosition, error) {
+	v := MoovAtomPosition(s)
+	if IsKnownMoovAtomPosition(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown MoovAtomPosition value")
+}
 
 // NotificationType — Type of delivery notification for media buy reporting
 type NotificationType = string
@@ -1133,6 +3447,32 @@ const (
 	NotificationTypeAdjusted NotificationType = "adjusted"
 )
 
+// KnownNotificationTypeValues returns the current schema-defined values for NotificationType.
+func KnownNotificationTypeValues() []NotificationType {
+	return []NotificationType{NotificationTypeScheduled, NotificationTypeFinal, NotificationTypeDelayed, NotificationTypeAdjusted}
+}
+
+// IsKnownNotificationType reports whether v is one of the current schema-defined NotificationType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownNotificationType(v NotificationType) bool {
+	switch v {
+	case NotificationTypeScheduled, NotificationTypeFinal, NotificationTypeDelayed, NotificationTypeAdjusted:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseNotificationType returns s as NotificationType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseNotificationType(s string) (NotificationType, error) {
+	v := NotificationType(s)
+	if IsKnownNotificationType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown NotificationType value")
+}
+
 // OutcomeType — The type of outcome reported to a campaign governance agent after a seller inter
 type OutcomeType = string
 const (
@@ -1141,6 +3481,32 @@ const (
 	OutcomeTypeDelivery OutcomeType = "delivery"
 )
 
+// KnownOutcomeTypeValues returns the current schema-defined values for OutcomeType.
+func KnownOutcomeTypeValues() []OutcomeType {
+	return []OutcomeType{OutcomeTypeCompleted, OutcomeTypeFailed, OutcomeTypeDelivery}
+}
+
+// IsKnownOutcomeType reports whether v is one of the current schema-defined OutcomeType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownOutcomeType(v OutcomeType) bool {
+	switch v {
+	case OutcomeTypeCompleted, OutcomeTypeFailed, OutcomeTypeDelivery:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseOutcomeType returns s as OutcomeType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseOutcomeType(s string) (OutcomeType, error) {
+	v := OutcomeType(s)
+	if IsKnownOutcomeType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown OutcomeType value")
+}
+
 // Pacing — Budget pacing strategy
 type Pacing = string
 const (
@@ -1148,6 +3514,32 @@ const (
 	PacingAsap Pacing = "asap"
 	PacingFrontLoaded Pacing = "front_loaded"
 )
+
+// KnownPacingValues returns the current schema-defined values for Pacing.
+func KnownPacingValues() []Pacing {
+	return []Pacing{PacingEven, PacingAsap, PacingFrontLoaded}
+}
+
+// IsKnownPacing reports whether v is one of the current schema-defined Pacing values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPacing(v Pacing) bool {
+	switch v {
+	case PacingEven, PacingAsap, PacingFrontLoaded:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePacing returns s as Pacing when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePacing(s string) (Pacing, error) {
+	v := Pacing(s)
+	if IsKnownPacing(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown Pacing value")
+}
 
 // PaymentTerms — Standard payment terms for AdCP accounts
 type PaymentTerms = string
@@ -1160,6 +3552,32 @@ const (
 	PaymentTermsPrepay PaymentTerms = "prepay"
 )
 
+// KnownPaymentTermsValues returns the current schema-defined values for PaymentTerms.
+func KnownPaymentTermsValues() []PaymentTerms {
+	return []PaymentTerms{PaymentTermsNet15, PaymentTermsNet30, PaymentTermsNet45, PaymentTermsNet60, PaymentTermsNet90, PaymentTermsPrepay}
+}
+
+// IsKnownPaymentTerms reports whether v is one of the current schema-defined PaymentTerms values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPaymentTerms(v PaymentTerms) bool {
+	switch v {
+	case PaymentTermsNet15, PaymentTermsNet30, PaymentTermsNet45, PaymentTermsNet60, PaymentTermsNet90, PaymentTermsPrepay:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePaymentTerms returns s as PaymentTerms when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePaymentTerms(s string) (PaymentTerms, error) {
+	v := PaymentTerms(s)
+	if IsKnownPaymentTerms(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PaymentTerms value")
+}
+
 // PerformanceStandardMetric — Performance metrics that support rate thresholds on media buys. Each metric spec
 type PerformanceStandardMetric = string
 const (
@@ -1170,12 +3588,64 @@ const (
 	PerformanceStandardMetricAttentionScore PerformanceStandardMetric = "attention_score"
 )
 
+// KnownPerformanceStandardMetricValues returns the current schema-defined values for PerformanceStandardMetric.
+func KnownPerformanceStandardMetricValues() []PerformanceStandardMetric {
+	return []PerformanceStandardMetric{PerformanceStandardMetricViewability, PerformanceStandardMetricIvt, PerformanceStandardMetricCompletionRate, PerformanceStandardMetricBrandSafety, PerformanceStandardMetricAttentionScore}
+}
+
+// IsKnownPerformanceStandardMetric reports whether v is one of the current schema-defined PerformanceStandardMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPerformanceStandardMetric(v PerformanceStandardMetric) bool {
+	switch v {
+	case PerformanceStandardMetricViewability, PerformanceStandardMetricIvt, PerformanceStandardMetricCompletionRate, PerformanceStandardMetricBrandSafety, PerformanceStandardMetricAttentionScore:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePerformanceStandardMetric returns s as PerformanceStandardMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePerformanceStandardMetric(s string) (PerformanceStandardMetric, error) {
+	v := PerformanceStandardMetric(s)
+	if IsKnownPerformanceStandardMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PerformanceStandardMetric value")
+}
+
 // PolicyCategory — The nature of the obligation a policy represents.
 type PolicyCategory = string
 const (
 	PolicyCategoryRegulation PolicyCategory = "regulation"
 	PolicyCategoryStandard PolicyCategory = "standard"
 )
+
+// KnownPolicyCategoryValues returns the current schema-defined values for PolicyCategory.
+func KnownPolicyCategoryValues() []PolicyCategory {
+	return []PolicyCategory{PolicyCategoryRegulation, PolicyCategoryStandard}
+}
+
+// IsKnownPolicyCategory reports whether v is one of the current schema-defined PolicyCategory values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPolicyCategory(v PolicyCategory) bool {
+	switch v {
+	case PolicyCategoryRegulation, PolicyCategoryStandard:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePolicyCategory returns s as PolicyCategory when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePolicyCategory(s string) (PolicyCategory, error) {
+	v := PolicyCategory(s)
+	if IsKnownPolicyCategory(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PolicyCategory value")
+}
 
 // PolicyEnforcement — How governance agents treat violations of a policy. Uses RFC 2119 keywords.
 type PolicyEnforcement = string
@@ -1184,6 +3654,32 @@ const (
 	PolicyEnforcementShould PolicyEnforcement = "should"
 	PolicyEnforcementMay PolicyEnforcement = "may"
 )
+
+// KnownPolicyEnforcementValues returns the current schema-defined values for PolicyEnforcement.
+func KnownPolicyEnforcementValues() []PolicyEnforcement {
+	return []PolicyEnforcement{PolicyEnforcementMust, PolicyEnforcementShould, PolicyEnforcementMay}
+}
+
+// IsKnownPolicyEnforcement reports whether v is one of the current schema-defined PolicyEnforcement values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPolicyEnforcement(v PolicyEnforcement) bool {
+	switch v {
+	case PolicyEnforcementMust, PolicyEnforcementShould, PolicyEnforcementMay:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePolicyEnforcement returns s as PolicyEnforcement when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePolicyEnforcement(s string) (PolicyEnforcement, error) {
+	v := PolicyEnforcement(s)
+	if IsKnownPolicyEnforcement(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PolicyEnforcement value")
+}
 
 // PostalSystem — Postal code systems for geographic targeting. System names encode country and pr
 type PostalSystem = string
@@ -1201,12 +3697,64 @@ const (
 	PostalSystemAtPlz PostalSystem = "at_plz"
 )
 
+// KnownPostalSystemValues returns the current schema-defined values for PostalSystem.
+func KnownPostalSystemValues() []PostalSystem {
+	return []PostalSystem{PostalSystemUsZip, PostalSystemUsZipPlusFour, PostalSystemGbOutward, PostalSystemGbFull, PostalSystemCaFsa, PostalSystemCaFull, PostalSystemDePlz, PostalSystemFrCodePostal, PostalSystemAuPostcode, PostalSystemChPlz, PostalSystemAtPlz}
+}
+
+// IsKnownPostalSystem reports whether v is one of the current schema-defined PostalSystem values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPostalSystem(v PostalSystem) bool {
+	switch v {
+	case PostalSystemUsZip, PostalSystemUsZipPlusFour, PostalSystemGbOutward, PostalSystemGbFull, PostalSystemCaFsa, PostalSystemCaFull, PostalSystemDePlz, PostalSystemFrCodePostal, PostalSystemAuPostcode, PostalSystemChPlz, PostalSystemAtPlz:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePostalSystem returns s as PostalSystem when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePostalSystem(s string) (PostalSystem, error) {
+	v := PostalSystem(s)
+	if IsKnownPostalSystem(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PostalSystem value")
+}
+
 // PreviewOutputFormat — Output format for creative previews
 type PreviewOutputFormat = string
 const (
 	PreviewOutputFormatURL PreviewOutputFormat = "url"
 	PreviewOutputFormatHTML PreviewOutputFormat = "html"
 )
+
+// KnownPreviewOutputFormatValues returns the current schema-defined values for PreviewOutputFormat.
+func KnownPreviewOutputFormatValues() []PreviewOutputFormat {
+	return []PreviewOutputFormat{PreviewOutputFormatURL, PreviewOutputFormatHTML}
+}
+
+// IsKnownPreviewOutputFormat reports whether v is one of the current schema-defined PreviewOutputFormat values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPreviewOutputFormat(v PreviewOutputFormat) bool {
+	switch v {
+	case PreviewOutputFormatURL, PreviewOutputFormatHTML:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePreviewOutputFormat returns s as PreviewOutputFormat when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePreviewOutputFormat(s string) (PreviewOutputFormat, error) {
+	v := PreviewOutputFormat(s)
+	if IsKnownPreviewOutputFormat(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PreviewOutputFormat value")
+}
 
 // PricingModel — Supported pricing models for advertising products
 type PricingModel = string
@@ -1222,6 +3770,32 @@ const (
 	PricingModelTime PricingModel = "time"
 )
 
+// KnownPricingModelValues returns the current schema-defined values for PricingModel.
+func KnownPricingModelValues() []PricingModel {
+	return []PricingModel{PricingModelCPM, PricingModelVcpm, PricingModelCPC, PricingModelCpcv, PricingModelCpv, PricingModelCpp, PricingModelCPA, PricingModelFlatRate, PricingModelTime}
+}
+
+// IsKnownPricingModel reports whether v is one of the current schema-defined PricingModel values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPricingModel(v PricingModel) bool {
+	switch v {
+	case PricingModelCPM, PricingModelVcpm, PricingModelCPC, PricingModelCpcv, PricingModelCpv, PricingModelCpp, PricingModelCPA, PricingModelFlatRate, PricingModelTime:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePricingModel returns s as PricingModel when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePricingModel(s string) (PricingModel, error) {
+	v := PricingModel(s)
+	if IsKnownPricingModel(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PricingModel value")
+}
+
 // ProductionQuality — Production quality tier for collection content. Maps to OpenRTB content.prodq: p
 type ProductionQuality = string
 const (
@@ -1229,6 +3803,32 @@ const (
 	ProductionQualityProsumer ProductionQuality = "prosumer"
 	ProductionQualityUgc ProductionQuality = "ugc"
 )
+
+// KnownProductionQualityValues returns the current schema-defined values for ProductionQuality.
+func KnownProductionQualityValues() []ProductionQuality {
+	return []ProductionQuality{ProductionQualityProfessional, ProductionQualityProsumer, ProductionQualityUgc}
+}
+
+// IsKnownProductionQuality reports whether v is one of the current schema-defined ProductionQuality values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownProductionQuality(v ProductionQuality) bool {
+	switch v {
+	case ProductionQualityProfessional, ProductionQualityProsumer, ProductionQualityUgc:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseProductionQuality returns s as ProductionQuality when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseProductionQuality(s string) (ProductionQuality, error) {
+	v := ProductionQuality(s)
+	if IsKnownProductionQuality(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ProductionQuality value")
+}
 
 // PropertyType — Types of addressable advertising properties with verifiable ownership. Property
 type PropertyType = string
@@ -1245,12 +3845,64 @@ const (
 	PropertyTypeAIAssistant PropertyType = "ai_assistant"
 )
 
+// KnownPropertyTypeValues returns the current schema-defined values for PropertyType.
+func KnownPropertyTypeValues() []PropertyType {
+	return []PropertyType{PropertyTypeWebsite, PropertyTypeMobileApp, PropertyTypeCtvApp, PropertyTypeDesktopApp, PropertyTypeDooh, PropertyTypePodcast, PropertyTypeRadio, PropertyTypeLinearTv, PropertyTypeStreamingAudio, PropertyTypeAIAssistant}
+}
+
+// IsKnownPropertyType reports whether v is one of the current schema-defined PropertyType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPropertyType(v PropertyType) bool {
+	switch v {
+	case PropertyTypeWebsite, PropertyTypeMobileApp, PropertyTypeCtvApp, PropertyTypeDesktopApp, PropertyTypeDooh, PropertyTypePodcast, PropertyTypeRadio, PropertyTypeLinearTv, PropertyTypeStreamingAudio, PropertyTypeAIAssistant:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePropertyType returns s as PropertyType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePropertyType(s string) (PropertyType, error) {
+	v := PropertyType(s)
+	if IsKnownPropertyType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PropertyType value")
+}
+
 // ProposalStatus — Lifecycle status of a proposal. Absent means the proposal is ready to buy (backw
 type ProposalStatus = string
 const (
 	ProposalStatusDraft ProposalStatus = "draft"
 	ProposalStatusCommitted ProposalStatus = "committed"
 )
+
+// KnownProposalStatusValues returns the current schema-defined values for ProposalStatus.
+func KnownProposalStatusValues() []ProposalStatus {
+	return []ProposalStatus{ProposalStatusDraft, ProposalStatusCommitted}
+}
+
+// IsKnownProposalStatus reports whether v is one of the current schema-defined ProposalStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownProposalStatus(v ProposalStatus) bool {
+	switch v {
+	case ProposalStatusDraft, ProposalStatusCommitted:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseProposalStatus returns s as ProposalStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseProposalStatus(s string) (ProposalStatus, error) {
+	v := ProposalStatus(s)
+	if IsKnownProposalStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ProposalStatus value")
+}
 
 // PublisherIdentifierTypes — Valid identifier types for publisher/legal entity identification
 type PublisherIdentifierTypes = string
@@ -1262,6 +3914,32 @@ const (
 	PublisherIdentifierTypesGln PublisherIdentifierTypes = "gln"
 )
 
+// KnownPublisherIdentifierTypesValues returns the current schema-defined values for PublisherIdentifierTypes.
+func KnownPublisherIdentifierTypesValues() []PublisherIdentifierTypes {
+	return []PublisherIdentifierTypes{PublisherIdentifierTypesTagID, PublisherIdentifierTypesDuns, PublisherIdentifierTypesLei, PublisherIdentifierTypesSellerID, PublisherIdentifierTypesGln}
+}
+
+// IsKnownPublisherIdentifierTypes reports whether v is one of the current schema-defined PublisherIdentifierTypes values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPublisherIdentifierTypes(v PublisherIdentifierTypes) bool {
+	switch v {
+	case PublisherIdentifierTypesTagID, PublisherIdentifierTypesDuns, PublisherIdentifierTypesLei, PublisherIdentifierTypesSellerID, PublisherIdentifierTypesGln:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePublisherIdentifierTypes returns s as PublisherIdentifierTypes when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePublisherIdentifierTypes(s string) (PublisherIdentifierTypes, error) {
+	v := PublisherIdentifierTypes(s)
+	if IsKnownPublisherIdentifierTypes(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PublisherIdentifierTypes value")
+}
+
 // PurchaseType — The type of financial commitment being governed.
 type PurchaseType = string
 const (
@@ -1270,6 +3948,32 @@ const (
 	PurchaseTypeSignalActivation PurchaseType = "signal_activation"
 	PurchaseTypeCreativeServices PurchaseType = "creative_services"
 )
+
+// KnownPurchaseTypeValues returns the current schema-defined values for PurchaseType.
+func KnownPurchaseTypeValues() []PurchaseType {
+	return []PurchaseType{PurchaseTypeMediaBuy, PurchaseTypeRightsLicense, PurchaseTypeSignalActivation, PurchaseTypeCreativeServices}
+}
+
+// IsKnownPurchaseType reports whether v is one of the current schema-defined PurchaseType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownPurchaseType(v PurchaseType) bool {
+	switch v {
+	case PurchaseTypeMediaBuy, PurchaseTypeRightsLicense, PurchaseTypeSignalActivation, PurchaseTypeCreativeServices:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParsePurchaseType returns s as PurchaseType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParsePurchaseType(s string) (PurchaseType, error) {
+	v := PurchaseType(s)
+	if IsKnownPurchaseType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown PurchaseType value")
+}
 
 // ReachUnit — Unit of measurement for reach and audience size metrics. Different channels and
 type ReachUnit = string
@@ -1282,6 +3986,32 @@ const (
 	ReachUnitCustom ReachUnit = "custom"
 )
 
+// KnownReachUnitValues returns the current schema-defined values for ReachUnit.
+func KnownReachUnitValues() []ReachUnit {
+	return []ReachUnit{ReachUnitIndividuals, ReachUnitHouseholds, ReachUnitDevices, ReachUnitAccounts, ReachUnitCookies, ReachUnitCustom}
+}
+
+// IsKnownReachUnit reports whether v is one of the current schema-defined ReachUnit values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownReachUnit(v ReachUnit) bool {
+	switch v {
+	case ReachUnitIndividuals, ReachUnitHouseholds, ReachUnitDevices, ReachUnitAccounts, ReachUnitCookies, ReachUnitCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseReachUnit returns s as ReachUnit when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseReachUnit(s string) (ReachUnit, error) {
+	v := ReachUnit(s)
+	if IsKnownReachUnit(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ReachUnit value")
+}
+
 // ReportingFrequency — Available frequencies for delivery reports and metrics updates
 type ReportingFrequency = string
 const (
@@ -1289,6 +4019,32 @@ const (
 	ReportingFrequencyDaily ReportingFrequency = "daily"
 	ReportingFrequencyMonthly ReportingFrequency = "monthly"
 )
+
+// KnownReportingFrequencyValues returns the current schema-defined values for ReportingFrequency.
+func KnownReportingFrequencyValues() []ReportingFrequency {
+	return []ReportingFrequency{ReportingFrequencyHourly, ReportingFrequencyDaily, ReportingFrequencyMonthly}
+}
+
+// IsKnownReportingFrequency reports whether v is one of the current schema-defined ReportingFrequency values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownReportingFrequency(v ReportingFrequency) bool {
+	switch v {
+	case ReportingFrequencyHourly, ReportingFrequencyDaily, ReportingFrequencyMonthly:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseReportingFrequency returns s as ReportingFrequency when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseReportingFrequency(s string) (ReportingFrequency, error) {
+	v := ReportingFrequency(s)
+	if IsKnownReportingFrequency(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ReportingFrequency value")
+}
 
 // ResponseType — What the publisher wants back from a TMP context match. Determines the richness
 type ResponseType = string
@@ -1298,6 +4054,32 @@ const (
 	ResponseTypeCreative ResponseType = "creative"
 	ResponseTypeDeal ResponseType = "deal"
 )
+
+// KnownResponseTypeValues returns the current schema-defined values for ResponseType.
+func KnownResponseTypeValues() []ResponseType {
+	return []ResponseType{ResponseTypeActivation, ResponseTypeCatalogItems, ResponseTypeCreative, ResponseTypeDeal}
+}
+
+// IsKnownResponseType reports whether v is one of the current schema-defined ResponseType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownResponseType(v ResponseType) bool {
+	switch v {
+	case ResponseTypeActivation, ResponseTypeCatalogItems, ResponseTypeCreative, ResponseTypeDeal:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseResponseType returns s as ResponseType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseResponseType(s string) (ResponseType, error) {
+	v := ResponseType(s)
+	if IsKnownResponseType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ResponseType value")
+}
 
 // RestrictedAttribute — Personal data categories that may be restricted from use in audience targeting.
 type RestrictedAttribute = string
@@ -1314,6 +4096,32 @@ const (
 	RestrictedAttributeFamilialStatus RestrictedAttribute = "familial_status"
 )
 
+// KnownRestrictedAttributeValues returns the current schema-defined values for RestrictedAttribute.
+func KnownRestrictedAttributeValues() []RestrictedAttribute {
+	return []RestrictedAttribute{RestrictedAttributeRacialEthnicOrigin, RestrictedAttributePoliticalOpinions, RestrictedAttributeReligiousBeliefs, RestrictedAttributeTradeUnionMembership, RestrictedAttributeHealthData, RestrictedAttributeSexLifeSexualOrientation, RestrictedAttributeGeneticData, RestrictedAttributeBiometricData, RestrictedAttributeAge, RestrictedAttributeFamilialStatus}
+}
+
+// IsKnownRestrictedAttribute reports whether v is one of the current schema-defined RestrictedAttribute values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownRestrictedAttribute(v RestrictedAttribute) bool {
+	switch v {
+	case RestrictedAttributeRacialEthnicOrigin, RestrictedAttributePoliticalOpinions, RestrictedAttributeReligiousBeliefs, RestrictedAttributeTradeUnionMembership, RestrictedAttributeHealthData, RestrictedAttributeSexLifeSexualOrientation, RestrictedAttributeGeneticData, RestrictedAttributeBiometricData, RestrictedAttributeAge, RestrictedAttributeFamilialStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseRestrictedAttribute returns s as RestrictedAttribute when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseRestrictedAttribute(s string) (RestrictedAttribute, error) {
+	v := RestrictedAttribute(s)
+	if IsKnownRestrictedAttribute(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown RestrictedAttribute value")
+}
+
 // RightType — Categories of intellectual property rights that can be licensed through the bran
 type RightType = string
 const (
@@ -1323,6 +4131,32 @@ const (
 	RightTypeMusic RightType = "music"
 	RightTypeStockMedia RightType = "stock_media"
 )
+
+// KnownRightTypeValues returns the current schema-defined values for RightType.
+func KnownRightTypeValues() []RightType {
+	return []RightType{RightTypeTalent, RightTypeCharacter, RightTypeBrandIP, RightTypeMusic, RightTypeStockMedia}
+}
+
+// IsKnownRightType reports whether v is one of the current schema-defined RightType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownRightType(v RightType) bool {
+	switch v {
+	case RightTypeTalent, RightTypeCharacter, RightTypeBrandIP, RightTypeMusic, RightTypeStockMedia:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseRightType returns s as RightType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseRightType(s string) (RightType, error) {
+	v := RightType(s)
+	if IsKnownRightType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown RightType value")
+}
 
 // RightUse — Types of rights usage that can be licensed through the brand protocol. Aligned w
 type RightUse = string
@@ -1341,6 +4175,32 @@ const (
 	RightUseAIGeneratedImage RightUse = "ai_generated_image"
 )
 
+// KnownRightUseValues returns the current schema-defined values for RightUse.
+func KnownRightUseValues() []RightUse {
+	return []RightUse{RightUseLikeness, RightUseVoice, RightUseName, RightUseEndorsement, RightUseMotionCapture, RightUseSignature, RightUseCatchphrase, RightUseSync, RightUseBackgroundMusic, RightUseEditorial, RightUseCommercial, RightUseAIGeneratedImage}
+}
+
+// IsKnownRightUse reports whether v is one of the current schema-defined RightUse values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownRightUse(v RightUse) bool {
+	switch v {
+	case RightUseLikeness, RightUseVoice, RightUseName, RightUseEndorsement, RightUseMotionCapture, RightUseSignature, RightUseCatchphrase, RightUseSync, RightUseBackgroundMusic, RightUseEditorial, RightUseCommercial, RightUseAIGeneratedImage:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseRightUse returns s as RightUse when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseRightUse(s string) (RightUse, error) {
+	v := RightUse(s)
+	if IsKnownRightUse(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown RightUse value")
+}
+
 // RightsBillingPeriod — Billing period for brand rights pricing
 type RightsBillingPeriod = string
 const (
@@ -1352,12 +4212,64 @@ const (
 	RightsBillingPeriodOneTime RightsBillingPeriod = "one_time"
 )
 
+// KnownRightsBillingPeriodValues returns the current schema-defined values for RightsBillingPeriod.
+func KnownRightsBillingPeriodValues() []RightsBillingPeriod {
+	return []RightsBillingPeriod{RightsBillingPeriodDaily, RightsBillingPeriodWeekly, RightsBillingPeriodMonthly, RightsBillingPeriodQuarterly, RightsBillingPeriodAnnual, RightsBillingPeriodOneTime}
+}
+
+// IsKnownRightsBillingPeriod reports whether v is one of the current schema-defined RightsBillingPeriod values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownRightsBillingPeriod(v RightsBillingPeriod) bool {
+	switch v {
+	case RightsBillingPeriodDaily, RightsBillingPeriodWeekly, RightsBillingPeriodMonthly, RightsBillingPeriodQuarterly, RightsBillingPeriodAnnual, RightsBillingPeriodOneTime:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseRightsBillingPeriod returns s as RightsBillingPeriod when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseRightsBillingPeriod(s string) (RightsBillingPeriod, error) {
+	v := RightsBillingPeriod(s)
+	if IsKnownRightsBillingPeriod(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown RightsBillingPeriod value")
+}
+
 // ScanType — Video scan method. Modern digital delivery requires progressive scan; interlaced
 type ScanType = string
 const (
 	ScanTypeProgressive ScanType = "progressive"
 	ScanTypeInterlaced ScanType = "interlaced"
 )
+
+// KnownScanTypeValues returns the current schema-defined values for ScanType.
+func KnownScanTypeValues() []ScanType {
+	return []ScanType{ScanTypeProgressive, ScanTypeInterlaced}
+}
+
+// IsKnownScanType reports whether v is one of the current schema-defined ScanType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownScanType(v ScanType) bool {
+	switch v {
+	case ScanTypeProgressive, ScanTypeInterlaced:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseScanType returns s as ScanType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseScanType(s string) (ScanType, error) {
+	v := ScanType(s)
+	if IsKnownScanType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ScanType value")
+}
 
 // SiSessionStatus — State of a Sponsored Intelligence session between a host and a brand agent
 type SiSessionStatus = string
@@ -1368,6 +4280,32 @@ const (
 	SiSessionStatusTerminated SiSessionStatus = "terminated"
 )
 
+// KnownSiSessionStatusValues returns the current schema-defined values for SiSessionStatus.
+func KnownSiSessionStatusValues() []SiSessionStatus {
+	return []SiSessionStatus{SiSessionStatusActive, SiSessionStatusPendingHandoff, SiSessionStatusComplete, SiSessionStatusTerminated}
+}
+
+// IsKnownSiSessionStatus reports whether v is one of the current schema-defined SiSessionStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSiSessionStatus(v SiSessionStatus) bool {
+	switch v {
+	case SiSessionStatusActive, SiSessionStatusPendingHandoff, SiSessionStatusComplete, SiSessionStatusTerminated:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSiSessionStatus returns s as SiSessionStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSiSessionStatus(s string) (SiSessionStatus, error) {
+	v := SiSessionStatus(s)
+	if IsKnownSiSessionStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SiSessionStatus value")
+}
+
 // SignalCatalogType — Types of signal catalogs available for audience targeting
 type SignalCatalogType = string
 const (
@@ -1376,12 +4314,64 @@ const (
 	SignalCatalogTypeOwned SignalCatalogType = "owned"
 )
 
+// KnownSignalCatalogTypeValues returns the current schema-defined values for SignalCatalogType.
+func KnownSignalCatalogTypeValues() []SignalCatalogType {
+	return []SignalCatalogType{SignalCatalogTypeMarketplace, SignalCatalogTypeCustom, SignalCatalogTypeOwned}
+}
+
+// IsKnownSignalCatalogType reports whether v is one of the current schema-defined SignalCatalogType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSignalCatalogType(v SignalCatalogType) bool {
+	switch v {
+	case SignalCatalogTypeMarketplace, SignalCatalogTypeCustom, SignalCatalogTypeOwned:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSignalCatalogType returns s as SignalCatalogType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSignalCatalogType(s string) (SignalCatalogType, error) {
+	v := SignalCatalogType(s)
+	if IsKnownSignalCatalogType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SignalCatalogType value")
+}
+
 // SignalSource — Source type for signal identifiers. Determines how the signal is referenced and
 type SignalSource = string
 const (
 	SignalSourceCatalog SignalSource = "catalog"
 	SignalSourceAgent SignalSource = "agent"
 )
+
+// KnownSignalSourceValues returns the current schema-defined values for SignalSource.
+func KnownSignalSourceValues() []SignalSource {
+	return []SignalSource{SignalSourceCatalog, SignalSourceAgent}
+}
+
+// IsKnownSignalSource reports whether v is one of the current schema-defined SignalSource values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSignalSource(v SignalSource) bool {
+	switch v {
+	case SignalSourceCatalog, SignalSourceAgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSignalSource returns s as SignalSource when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSignalSource(s string) (SignalSource, error) {
+	v := SignalSource(s)
+	if IsKnownSignalSource(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SignalSource value")
+}
 
 // SignalValueType — The data type of a signal's values, determining how it can be targeted
 type SignalValueType = string
@@ -1391,6 +4381,32 @@ const (
 	SignalValueTypeNumeric SignalValueType = "numeric"
 )
 
+// KnownSignalValueTypeValues returns the current schema-defined values for SignalValueType.
+func KnownSignalValueTypeValues() []SignalValueType {
+	return []SignalValueType{SignalValueTypeBinary, SignalValueTypeCategorical, SignalValueTypeNumeric}
+}
+
+// IsKnownSignalValueType reports whether v is one of the current schema-defined SignalValueType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSignalValueType(v SignalValueType) bool {
+	switch v {
+	case SignalValueTypeBinary, SignalValueTypeCategorical, SignalValueTypeNumeric:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSignalValueType returns s as SignalValueType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSignalValueType(s string) (SignalValueType, error) {
+	v := SignalValueType(s)
+	if IsKnownSignalValueType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SignalValueType value")
+}
+
 // SnapshotUnavailableReason — Machine-readable reason a delivery snapshot was requested but could not be retur
 type SnapshotUnavailableReason = string
 const (
@@ -1399,12 +4415,64 @@ const (
 	SnapshotUnavailableReasonSNAPSHOTPERMISSIONDENIED SnapshotUnavailableReason = "SNAPSHOT_PERMISSION_DENIED"
 )
 
+// KnownSnapshotUnavailableReasonValues returns the current schema-defined values for SnapshotUnavailableReason.
+func KnownSnapshotUnavailableReasonValues() []SnapshotUnavailableReason {
+	return []SnapshotUnavailableReason{SnapshotUnavailableReasonSNAPSHOTUNSUPPORTED, SnapshotUnavailableReasonSNAPSHOTTEMPORARILYUNAVAILABLE, SnapshotUnavailableReasonSNAPSHOTPERMISSIONDENIED}
+}
+
+// IsKnownSnapshotUnavailableReason reports whether v is one of the current schema-defined SnapshotUnavailableReason values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSnapshotUnavailableReason(v SnapshotUnavailableReason) bool {
+	switch v {
+	case SnapshotUnavailableReasonSNAPSHOTUNSUPPORTED, SnapshotUnavailableReasonSNAPSHOTTEMPORARILYUNAVAILABLE, SnapshotUnavailableReasonSNAPSHOTPERMISSIONDENIED:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSnapshotUnavailableReason returns s as SnapshotUnavailableReason when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSnapshotUnavailableReason(s string) (SnapshotUnavailableReason, error) {
+	v := SnapshotUnavailableReason(s)
+	if IsKnownSnapshotUnavailableReason(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SnapshotUnavailableReason value")
+}
+
 // SortDirection — Sort direction for list queries
 type SortDirection = string
 const (
 	SortDirectionAsc SortDirection = "asc"
 	SortDirectionDesc SortDirection = "desc"
 )
+
+// KnownSortDirectionValues returns the current schema-defined values for SortDirection.
+func KnownSortDirectionValues() []SortDirection {
+	return []SortDirection{SortDirectionAsc, SortDirectionDesc}
+}
+
+// IsKnownSortDirection reports whether v is one of the current schema-defined SortDirection values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSortDirection(v SortDirection) bool {
+	switch v {
+	case SortDirectionAsc, SortDirectionDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSortDirection returns s as SortDirection when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSortDirection(s string) (SortDirection, error) {
+	v := SortDirection(s)
+	if IsKnownSortDirection(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SortDirection value")
+}
 
 // SortMetric — Numeric delivery metrics available for sorting breakdown rows. Subset of deliver
 type SortMetric = string
@@ -1433,6 +4501,32 @@ const (
 	SortMetricCostPerClick SortMetric = "cost_per_click"
 )
 
+// KnownSortMetricValues returns the current schema-defined values for SortMetric.
+func KnownSortMetricValues() []SortMetric {
+	return []SortMetric{SortMetricImpressions, SortMetricSpend, SortMetricClicks, SortMetricCtr, SortMetricViews, SortMetricCompletedViews, SortMetricCompletionRate, SortMetricConversions, SortMetricConversionValue, SortMetricRoas, SortMetricCostPerAcquisition, SortMetricNewToBrandRate, SortMetricLeads, SortMetricGrps, SortMetricReach, SortMetricFrequency, SortMetricEngagements, SortMetricFollows, SortMetricSaves, SortMetricProfileVisits, SortMetricEngagementRate, SortMetricCostPerClick}
+}
+
+// IsKnownSortMetric reports whether v is one of the current schema-defined SortMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSortMetric(v SortMetric) bool {
+	switch v {
+	case SortMetricImpressions, SortMetricSpend, SortMetricClicks, SortMetricCtr, SortMetricViews, SortMetricCompletedViews, SortMetricCompletionRate, SortMetricConversions, SortMetricConversionValue, SortMetricRoas, SortMetricCostPerAcquisition, SortMetricNewToBrandRate, SortMetricLeads, SortMetricGrps, SortMetricReach, SortMetricFrequency, SortMetricEngagements, SortMetricFollows, SortMetricSaves, SortMetricProfileVisits, SortMetricEngagementRate, SortMetricCostPerClick:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSortMetric returns s as SortMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSortMetric(s string) (SortMetric, error) {
+	v := SortMetric(s)
+	if IsKnownSortMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SortMetric value")
+}
+
 // SpecialCategory — Category of special or event-anchored content
 type SpecialCategory = string
 const (
@@ -1449,6 +4543,32 @@ const (
 	SpecialCategoryReunion SpecialCategory = "reunion"
 	SpecialCategoryTribute SpecialCategory = "tribute"
 )
+
+// KnownSpecialCategoryValues returns the current schema-defined values for SpecialCategory.
+func KnownSpecialCategoryValues() []SpecialCategory {
+	return []SpecialCategory{SpecialCategoryAwards, SpecialCategoryChampionship, SpecialCategoryConcert, SpecialCategoryConference, SpecialCategoryElection, SpecialCategoryFestival, SpecialCategoryGala, SpecialCategoryHoliday, SpecialCategoryPremiere, SpecialCategoryProductLaunch, SpecialCategoryReunion, SpecialCategoryTribute}
+}
+
+// IsKnownSpecialCategory reports whether v is one of the current schema-defined SpecialCategory values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSpecialCategory(v SpecialCategory) bool {
+	switch v {
+	case SpecialCategoryAwards, SpecialCategoryChampionship, SpecialCategoryConcert, SpecialCategoryConference, SpecialCategoryElection, SpecialCategoryFestival, SpecialCategoryGala, SpecialCategoryHoliday, SpecialCategoryPremiere, SpecialCategoryProductLaunch, SpecialCategoryReunion, SpecialCategoryTribute:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSpecialCategory returns s as SpecialCategory when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSpecialCategory(s string) (SpecialCategory, error) {
+	v := SpecialCategory(s)
+	if IsKnownSpecialCategory(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown SpecialCategory value")
+}
 
 // Specialism — Specialized capability claims an agent can make. Each specialism maps to a compl
 type Specialism = string
@@ -1475,6 +4595,32 @@ const (
 	SpecialismSignedRequests Specialism = "signed-requests"
 )
 
+// KnownSpecialismValues returns the current schema-defined values for Specialism.
+func KnownSpecialismValues() []Specialism {
+	return []Specialism{SpecialismAudienceSync, SpecialismBrandRights, SpecialismCollectionLists, SpecialismContentStandards, SpecialismCreativeAdServer, SpecialismCreativeGenerative, SpecialismCreativeTemplate, SpecialismGovernanceAwareSeller, SpecialismGovernanceDeliveryMonitor, SpecialismGovernanceSpendAuthority, SpecialismPropertyLists, SpecialismSalesBroadcastTv, SpecialismSalesCatalogDriven, SpecialismSalesGuaranteed, SpecialismSalesNonGuaranteed, SpecialismSalesProposalMode, SpecialismSalesSocial, SpecialismSignalMarketplace, SpecialismSignalOwned, SpecialismSignedRequests}
+}
+
+// IsKnownSpecialism reports whether v is one of the current schema-defined Specialism values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownSpecialism(v Specialism) bool {
+	switch v {
+	case SpecialismAudienceSync, SpecialismBrandRights, SpecialismCollectionLists, SpecialismContentStandards, SpecialismCreativeAdServer, SpecialismCreativeGenerative, SpecialismCreativeTemplate, SpecialismGovernanceAwareSeller, SpecialismGovernanceDeliveryMonitor, SpecialismGovernanceSpendAuthority, SpecialismPropertyLists, SpecialismSalesBroadcastTv, SpecialismSalesCatalogDriven, SpecialismSalesGuaranteed, SpecialismSalesNonGuaranteed, SpecialismSalesProposalMode, SpecialismSalesSocial, SpecialismSignalMarketplace, SpecialismSignalOwned, SpecialismSignedRequests:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseSpecialism returns s as Specialism when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseSpecialism(s string) (Specialism, error) {
+	v := Specialism(s)
+	if IsKnownSpecialism(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown Specialism value")
+}
+
 // TalentRole — Role of a person associated with a collection or installment
 type TalentRole = string
 const (
@@ -1489,6 +4635,32 @@ const (
 	TalentRoleAnalyst TalentRole = "analyst"
 )
 
+// KnownTalentRoleValues returns the current schema-defined values for TalentRole.
+func KnownTalentRoleValues() []TalentRole {
+	return []TalentRole{TalentRoleHost, TalentRoleGuest, TalentRoleCreator, TalentRoleCast, TalentRoleNarrator, TalentRoleProducer, TalentRoleCorrespondent, TalentRoleCommentator, TalentRoleAnalyst}
+}
+
+// IsKnownTalentRole reports whether v is one of the current schema-defined TalentRole values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownTalentRole(v TalentRole) bool {
+	switch v {
+	case TalentRoleHost, TalentRoleGuest, TalentRoleCreator, TalentRoleCast, TalentRoleNarrator, TalentRoleProducer, TalentRoleCorrespondent, TalentRoleCommentator, TalentRoleAnalyst:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTalentRole returns s as TalentRole when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseTalentRole(s string) (TalentRole, error) {
+	v := TalentRole(s)
+	if IsKnownTalentRole(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown TalentRole value")
+}
+
 // TaskStatus — Standardized task status values based on A2A TaskState enum. Indicates the curre
 type TaskStatus = string
 const (
@@ -1502,6 +4674,32 @@ const (
 	TaskStatusAuthRequired TaskStatus = "auth-required"
 	TaskStatusUnknown TaskStatus = "unknown"
 )
+
+// KnownTaskStatusValues returns the current schema-defined values for TaskStatus.
+func KnownTaskStatusValues() []TaskStatus {
+	return []TaskStatus{TaskStatusSubmitted, TaskStatusWorking, TaskStatusInputRequired, TaskStatusCompleted, TaskStatusCanceled, TaskStatusFailed, TaskStatusRejected, TaskStatusAuthRequired, TaskStatusUnknown}
+}
+
+// IsKnownTaskStatus reports whether v is one of the current schema-defined TaskStatus values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownTaskStatus(v TaskStatus) bool {
+	switch v {
+	case TaskStatusSubmitted, TaskStatusWorking, TaskStatusInputRequired, TaskStatusCompleted, TaskStatusCanceled, TaskStatusFailed, TaskStatusRejected, TaskStatusAuthRequired, TaskStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTaskStatus returns s as TaskStatus when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseTaskStatus(s string) (TaskStatus, error) {
+	v := TaskStatus(s)
+	if IsKnownTaskStatus(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown TaskStatus value")
+}
 
 // TaskType — Valid AdCP task types across all domains. These represent the complete set of op
 type TaskType = string
@@ -1528,6 +4726,32 @@ const (
 	TaskTypeAcquireRights TaskType = "acquire_rights"
 )
 
+// KnownTaskTypeValues returns the current schema-defined values for TaskType.
+func KnownTaskTypeValues() []TaskType {
+	return []TaskType{TaskTypeCreateMediaBuy, TaskTypeUpdateMediaBuy, TaskTypeSyncCreatives, TaskTypeActivateSignal, TaskTypeGetSignals, TaskTypeCreatePropertyList, TaskTypeUpdatePropertyList, TaskTypeGetPropertyList, TaskTypeListPropertyLists, TaskTypeDeletePropertyList, TaskTypeSyncAccounts, TaskTypeGetAccountFinancials, TaskTypeGetCreativeDelivery, TaskTypeSyncEventSources, TaskTypeSyncAudiences, TaskTypeSyncCatalogs, TaskTypeLogEvent, TaskTypeGetBrandIdentity, TaskTypeGetRights, TaskTypeAcquireRights}
+}
+
+// IsKnownTaskType reports whether v is one of the current schema-defined TaskType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownTaskType(v TaskType) bool {
+	switch v {
+	case TaskTypeCreateMediaBuy, TaskTypeUpdateMediaBuy, TaskTypeSyncCreatives, TaskTypeActivateSignal, TaskTypeGetSignals, TaskTypeCreatePropertyList, TaskTypeUpdatePropertyList, TaskTypeGetPropertyList, TaskTypeListPropertyLists, TaskTypeDeletePropertyList, TaskTypeSyncAccounts, TaskTypeGetAccountFinancials, TaskTypeGetCreativeDelivery, TaskTypeSyncEventSources, TaskTypeSyncAudiences, TaskTypeSyncCatalogs, TaskTypeLogEvent, TaskTypeGetBrandIdentity, TaskTypeGetRights, TaskTypeAcquireRights:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTaskType returns s as TaskType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseTaskType(s string) (TaskType, error) {
+	v := TaskType(s)
+	if IsKnownTaskType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown TaskType value")
+}
+
 // TransportMode — Transportation modes for isochrone-based catchment area calculations. Determines
 type TransportMode = string
 const (
@@ -1537,12 +4761,64 @@ const (
 	TransportModePublicTransport TransportMode = "public_transport"
 )
 
+// KnownTransportModeValues returns the current schema-defined values for TransportMode.
+func KnownTransportModeValues() []TransportMode {
+	return []TransportMode{TransportModeWalking, TransportModeCycling, TransportModeDriving, TransportModePublicTransport}
+}
+
+// IsKnownTransportMode reports whether v is one of the current schema-defined TransportMode values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownTransportMode(v TransportMode) bool {
+	switch v {
+	case TransportModeWalking, TransportModeCycling, TransportModeDriving, TransportModePublicTransport:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTransportMode returns s as TransportMode when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseTransportMode(s string) (TransportMode, error) {
+	v := TransportMode(s)
+	if IsKnownTransportMode(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown TransportMode value")
+}
+
 // TravelTimeUnit — Time unit for isochrone (travel-time catchment) calculations.
 type TravelTimeUnit = string
 const (
 	TravelTimeUnitMin TravelTimeUnit = "min"
 	TravelTimeUnitHr TravelTimeUnit = "hr"
 )
+
+// KnownTravelTimeUnitValues returns the current schema-defined values for TravelTimeUnit.
+func KnownTravelTimeUnitValues() []TravelTimeUnit {
+	return []TravelTimeUnit{TravelTimeUnitMin, TravelTimeUnitHr}
+}
+
+// IsKnownTravelTimeUnit reports whether v is one of the current schema-defined TravelTimeUnit values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownTravelTimeUnit(v TravelTimeUnit) bool {
+	switch v {
+	case TravelTimeUnitMin, TravelTimeUnitHr:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseTravelTimeUnit returns s as TravelTimeUnit when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseTravelTimeUnit(s string) (TravelTimeUnit, error) {
+	v := TravelTimeUnit(s)
+	if IsKnownTravelTimeUnit(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown TravelTimeUnit value")
+}
 
 // UIDType — Type of user identifier. Used in audience sync, event logging, and TMP identity
 type UIDType = string
@@ -1558,6 +4834,32 @@ const (
 	UIDTypePublisherFirstParty UIDType = "publisher_first_party"
 	UIDTypeOther UIDType = "other"
 )
+
+// KnownUIDTypeValues returns the current schema-defined values for UIDType.
+func KnownUIDTypeValues() []UIDType {
+	return []UIDType{UIDTypeRampid, UIDTypeRampidDerived, UIDTypeId5, UIDTypeUid2, UIDTypeEuid, UIDTypePairid, UIDTypeMaid, UIDTypeHashedEmail, UIDTypePublisherFirstParty, UIDTypeOther}
+}
+
+// IsKnownUIDType reports whether v is one of the current schema-defined UIDType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownUIDType(v UIDType) bool {
+	switch v {
+	case UIDTypeRampid, UIDTypeRampidDerived, UIDTypeId5, UIDTypeUid2, UIDTypeEuid, UIDTypePairid, UIDTypeMaid, UIDTypeHashedEmail, UIDTypePublisherFirstParty, UIDTypeOther:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseUIDType returns s as UIDType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseUIDType(s string) (UIDType, error) {
+	v := UIDType(s)
+	if IsKnownUIDType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown UIDType value")
+}
 
 // UniversalMacro — Standardized macro placeholders for dynamic value substitution in creative track
 type UniversalMacro = string
@@ -1633,6 +4935,32 @@ const (
 	UniversalMacroAPPITEMID UniversalMacro = "APP_ITEM_ID"
 )
 
+// KnownUniversalMacroValues returns the current schema-defined values for UniversalMacro.
+func KnownUniversalMacroValues() []UniversalMacro {
+	return []UniversalMacro{UniversalMacroMEDIABUYID, UniversalMacroPACKAGEID, UniversalMacroCREATIVEID, UniversalMacroCACHEBUSTER, UniversalMacroTIMESTAMP, UniversalMacroCLICKURL, UniversalMacroGDPR, UniversalMacroGDPRCONSENT, UniversalMacroUSPRIVACY, UniversalMacroGPPSTRING, UniversalMacroGPPSID, UniversalMacroIPADDRESS, UniversalMacroLIMITADTRACKING, UniversalMacroDEVICETYPE, UniversalMacroOS, UniversalMacroOSVERSION, UniversalMacroDEVICEMAKE, UniversalMacroDEVICEMODEL, UniversalMacroUSERAGENT, UniversalMacroAPPBUNDLE, UniversalMacroAPPNAME, UniversalMacroCOUNTRY, UniversalMacroREGION, UniversalMacroCITY, UniversalMacroZIP, UniversalMacroDMA, UniversalMacroLAT, UniversalMacroLONG, UniversalMacroDEVICEID, UniversalMacroDEVICEIDTYPE, UniversalMacroDOMAIN, UniversalMacroPAGEURL, UniversalMacroREFERRER, UniversalMacroKEYWORDS, UniversalMacroPLACEMENTID, UniversalMacroFOLDPOSITION, UniversalMacroADWIDTH, UniversalMacroADHEIGHT, UniversalMacroVIDEOID, UniversalMacroVIDEOTITLE, UniversalMacroVIDEODURATION, UniversalMacroVIDEOCATEGORY, UniversalMacroCONTENTGENRE, UniversalMacroCONTENTRATING, UniversalMacroPLAYERWIDTH, UniversalMacroPLAYERHEIGHT, UniversalMacroPODPOSITION, UniversalMacroPODSIZE, UniversalMacroADBREAKID, UniversalMacroSTATIONID, UniversalMacroCOLLECTIONNAME, UniversalMacroINSTALLMENTID, UniversalMacroAUDIODURATION, UniversalMacroTMPX, UniversalMacroAXEM, UniversalMacroCATALOGID, UniversalMacroSKU, UniversalMacroGTIN, UniversalMacroOFFERINGID, UniversalMacroJOBID, UniversalMacroHOTELID, UniversalMacroFLIGHTID, UniversalMacroVEHICLEID, UniversalMacroLISTINGID, UniversalMacroSTOREID, UniversalMacroPROGRAMID, UniversalMacroDESTINATIONID, UniversalMacroCREATIVEVARIANTID, UniversalMacroAPPITEMID}
+}
+
+// IsKnownUniversalMacro reports whether v is one of the current schema-defined UniversalMacro values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownUniversalMacro(v UniversalMacro) bool {
+	switch v {
+	case UniversalMacroMEDIABUYID, UniversalMacroPACKAGEID, UniversalMacroCREATIVEID, UniversalMacroCACHEBUSTER, UniversalMacroTIMESTAMP, UniversalMacroCLICKURL, UniversalMacroGDPR, UniversalMacroGDPRCONSENT, UniversalMacroUSPRIVACY, UniversalMacroGPPSTRING, UniversalMacroGPPSID, UniversalMacroIPADDRESS, UniversalMacroLIMITADTRACKING, UniversalMacroDEVICETYPE, UniversalMacroOS, UniversalMacroOSVERSION, UniversalMacroDEVICEMAKE, UniversalMacroDEVICEMODEL, UniversalMacroUSERAGENT, UniversalMacroAPPBUNDLE, UniversalMacroAPPNAME, UniversalMacroCOUNTRY, UniversalMacroREGION, UniversalMacroCITY, UniversalMacroZIP, UniversalMacroDMA, UniversalMacroLAT, UniversalMacroLONG, UniversalMacroDEVICEID, UniversalMacroDEVICEIDTYPE, UniversalMacroDOMAIN, UniversalMacroPAGEURL, UniversalMacroREFERRER, UniversalMacroKEYWORDS, UniversalMacroPLACEMENTID, UniversalMacroFOLDPOSITION, UniversalMacroADWIDTH, UniversalMacroADHEIGHT, UniversalMacroVIDEOID, UniversalMacroVIDEOTITLE, UniversalMacroVIDEODURATION, UniversalMacroVIDEOCATEGORY, UniversalMacroCONTENTGENRE, UniversalMacroCONTENTRATING, UniversalMacroPLAYERWIDTH, UniversalMacroPLAYERHEIGHT, UniversalMacroPODPOSITION, UniversalMacroPODSIZE, UniversalMacroADBREAKID, UniversalMacroSTATIONID, UniversalMacroCOLLECTIONNAME, UniversalMacroINSTALLMENTID, UniversalMacroAUDIODURATION, UniversalMacroTMPX, UniversalMacroAXEM, UniversalMacroCATALOGID, UniversalMacroSKU, UniversalMacroGTIN, UniversalMacroOFFERINGID, UniversalMacroJOBID, UniversalMacroHOTELID, UniversalMacroFLIGHTID, UniversalMacroVEHICLEID, UniversalMacroLISTINGID, UniversalMacroSTOREID, UniversalMacroPROGRAMID, UniversalMacroDESTINATIONID, UniversalMacroCREATIVEVARIANTID, UniversalMacroAPPITEMID:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseUniversalMacro returns s as UniversalMacro when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseUniversalMacro(s string) (UniversalMacro, error) {
+	v := UniversalMacro(s)
+	if IsKnownUniversalMacro(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown UniversalMacro value")
+}
+
 // UpdateFrequency — Frequency of product catalog updates
 type UpdateFrequency = string
 const (
@@ -1642,6 +4970,32 @@ const (
 	UpdateFrequencyWeekly UpdateFrequency = "weekly"
 )
 
+// KnownUpdateFrequencyValues returns the current schema-defined values for UpdateFrequency.
+func KnownUpdateFrequencyValues() []UpdateFrequency {
+	return []UpdateFrequency{UpdateFrequencyRealtime, UpdateFrequencyHourly, UpdateFrequencyDaily, UpdateFrequencyWeekly}
+}
+
+// IsKnownUpdateFrequency reports whether v is one of the current schema-defined UpdateFrequency values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownUpdateFrequency(v UpdateFrequency) bool {
+	switch v {
+	case UpdateFrequencyRealtime, UpdateFrequencyHourly, UpdateFrequencyDaily, UpdateFrequencyWeekly:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseUpdateFrequency returns s as UpdateFrequency when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseUpdateFrequency(s string) (UpdateFrequency, error) {
+	v := UpdateFrequency(s)
+	if IsKnownUpdateFrequency(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown UpdateFrequency value")
+}
+
 // URLAssetType — Types of URL assets for tracking and click-through purposes
 type URLAssetType = string
 const (
@@ -1650,12 +5004,64 @@ const (
 	URLAssetTypeTrackerScript URLAssetType = "tracker_script"
 )
 
+// KnownURLAssetTypeValues returns the current schema-defined values for URLAssetType.
+func KnownURLAssetTypeValues() []URLAssetType {
+	return []URLAssetType{URLAssetTypeClickthrough, URLAssetTypeTrackerPixel, URLAssetTypeTrackerScript}
+}
+
+// IsKnownURLAssetType reports whether v is one of the current schema-defined URLAssetType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownURLAssetType(v URLAssetType) bool {
+	switch v {
+	case URLAssetTypeClickthrough, URLAssetTypeTrackerPixel, URLAssetTypeTrackerScript:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseURLAssetType returns s as URLAssetType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseURLAssetType(s string) (URLAssetType, error) {
+	v := URLAssetType(s)
+	if IsKnownURLAssetType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown URLAssetType value")
+}
+
 // ValidationMode — Creative validation strictness levels
 type ValidationMode = string
 const (
 	ValidationModeStrict ValidationMode = "strict"
 	ValidationModeLenient ValidationMode = "lenient"
 )
+
+// KnownValidationModeValues returns the current schema-defined values for ValidationMode.
+func KnownValidationModeValues() []ValidationMode {
+	return []ValidationMode{ValidationModeStrict, ValidationModeLenient}
+}
+
+// IsKnownValidationMode reports whether v is one of the current schema-defined ValidationMode values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownValidationMode(v ValidationMode) bool {
+	switch v {
+	case ValidationModeStrict, ValidationModeLenient:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseValidationMode returns s as ValidationMode when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseValidationMode(s string) (ValidationMode, error) {
+	v := ValidationMode(s)
+	if IsKnownValidationMode(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ValidationMode value")
+}
 
 // VastTrackingEvent — Tracking events for video ads. Includes IAB VAST 4.2 TrackingEvents, plus flatte
 type VastTrackingEvent = string
@@ -1694,6 +5100,32 @@ const (
 	VastTrackingEventViewableImpression VastTrackingEvent = "viewableImpression"
 )
 
+// KnownVastTrackingEventValues returns the current schema-defined values for VastTrackingEvent.
+func KnownVastTrackingEventValues() []VastTrackingEvent {
+	return []VastTrackingEvent{VastTrackingEventImpression, VastTrackingEventCreativeView, VastTrackingEventLoaded, VastTrackingEventStart, VastTrackingEventFirstQuartile, VastTrackingEventMidpoint, VastTrackingEventThirdQuartile, VastTrackingEventComplete, VastTrackingEventMute, VastTrackingEventUnmute, VastTrackingEventPause, VastTrackingEventResume, VastTrackingEventRewind, VastTrackingEventSkip, VastTrackingEventPlayerExpand, VastTrackingEventPlayerCollapse, VastTrackingEventFullscreen, VastTrackingEventExitFullscreen, VastTrackingEventProgress, VastTrackingEventNotUsed, VastTrackingEventOtherAdInteraction, VastTrackingEventInteractiveStart, VastTrackingEventClickTracking, VastTrackingEventCustomClick, VastTrackingEventClose, VastTrackingEventCloseLinear, VastTrackingEventError, VastTrackingEventViewable, VastTrackingEventNotViewable, VastTrackingEventViewUndetermined, VastTrackingEventMeasurableImpression, VastTrackingEventViewableImpression}
+}
+
+// IsKnownVastTrackingEvent reports whether v is one of the current schema-defined VastTrackingEvent values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownVastTrackingEvent(v VastTrackingEvent) bool {
+	switch v {
+	case VastTrackingEventImpression, VastTrackingEventCreativeView, VastTrackingEventLoaded, VastTrackingEventStart, VastTrackingEventFirstQuartile, VastTrackingEventMidpoint, VastTrackingEventThirdQuartile, VastTrackingEventComplete, VastTrackingEventMute, VastTrackingEventUnmute, VastTrackingEventPause, VastTrackingEventResume, VastTrackingEventRewind, VastTrackingEventSkip, VastTrackingEventPlayerExpand, VastTrackingEventPlayerCollapse, VastTrackingEventFullscreen, VastTrackingEventExitFullscreen, VastTrackingEventProgress, VastTrackingEventNotUsed, VastTrackingEventOtherAdInteraction, VastTrackingEventInteractiveStart, VastTrackingEventClickTracking, VastTrackingEventCustomClick, VastTrackingEventClose, VastTrackingEventCloseLinear, VastTrackingEventError, VastTrackingEventViewable, VastTrackingEventNotViewable, VastTrackingEventViewUndetermined, VastTrackingEventMeasurableImpression, VastTrackingEventViewableImpression:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseVastTrackingEvent returns s as VastTrackingEvent when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseVastTrackingEvent(s string) (VastTrackingEvent, error) {
+	v := VastTrackingEvent(s)
+	if IsKnownVastTrackingEvent(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown VastTrackingEvent value")
+}
+
 // VastVersion — Supported VAST (Video Ad Serving Template) specification versions
 type VastVersion = string
 const (
@@ -1704,12 +5136,64 @@ const (
 	VastVersion42 VastVersion = "4.2"
 )
 
+// KnownVastVersionValues returns the current schema-defined values for VastVersion.
+func KnownVastVersionValues() []VastVersion {
+	return []VastVersion{VastVersion20, VastVersion30, VastVersion40, VastVersion41, VastVersion42}
+}
+
+// IsKnownVastVersion reports whether v is one of the current schema-defined VastVersion values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownVastVersion(v VastVersion) bool {
+	switch v {
+	case VastVersion20, VastVersion30, VastVersion40, VastVersion41, VastVersion42:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseVastVersion returns s as VastVersion when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseVastVersion(s string) (VastVersion, error) {
+	v := VastVersion(s)
+	if IsKnownVastVersion(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown VastVersion value")
+}
+
 // ViewabilityStandard — Viewability measurement standard applied to determine whether an impression qual
 type ViewabilityStandard = string
 const (
 	ViewabilityStandardMrc ViewabilityStandard = "mrc"
 	ViewabilityStandardGroupm ViewabilityStandard = "groupm"
 )
+
+// KnownViewabilityStandardValues returns the current schema-defined values for ViewabilityStandard.
+func KnownViewabilityStandardValues() []ViewabilityStandard {
+	return []ViewabilityStandard{ViewabilityStandardMrc, ViewabilityStandardGroupm}
+}
+
+// IsKnownViewabilityStandard reports whether v is one of the current schema-defined ViewabilityStandard values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownViewabilityStandard(v ViewabilityStandard) bool {
+	switch v {
+	case ViewabilityStandardMrc, ViewabilityStandardGroupm:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseViewabilityStandard returns s as ViewabilityStandard when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseViewabilityStandard(s string) (ViewabilityStandard, error) {
+	v := ViewabilityStandard(s)
+	if IsKnownViewabilityStandard(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ViewabilityStandard value")
+}
 
 // WcagLevel — Web Content Accessibility Guidelines conformance level
 type WcagLevel = string
@@ -1718,6 +5202,32 @@ const (
 	WcagLevelAA WcagLevel = "AA"
 	WcagLevelAAA WcagLevel = "AAA"
 )
+
+// KnownWcagLevelValues returns the current schema-defined values for WcagLevel.
+func KnownWcagLevelValues() []WcagLevel {
+	return []WcagLevel{WcagLevelA, WcagLevelAA, WcagLevelAAA}
+}
+
+// IsKnownWcagLevel reports whether v is one of the current schema-defined WcagLevel values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownWcagLevel(v WcagLevel) bool {
+	switch v {
+	case WcagLevelA, WcagLevelAA, WcagLevelAAA:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseWcagLevel returns s as WcagLevel when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseWcagLevel(s string) (WcagLevel, error) {
+	v := WcagLevel(s)
+	if IsKnownWcagLevel(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown WcagLevel value")
+}
 
 // WebhookResponseType — Expected response content type from webhook endpoints
 type WebhookResponseType = string
@@ -1728,6 +5238,32 @@ const (
 	WebhookResponseTypeJavascript WebhookResponseType = "javascript"
 )
 
+// KnownWebhookResponseTypeValues returns the current schema-defined values for WebhookResponseType.
+func KnownWebhookResponseTypeValues() []WebhookResponseType {
+	return []WebhookResponseType{WebhookResponseTypeHTML, WebhookResponseTypeJSON, WebhookResponseTypeXML, WebhookResponseTypeJavascript}
+}
+
+// IsKnownWebhookResponseType reports whether v is one of the current schema-defined WebhookResponseType values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownWebhookResponseType(v WebhookResponseType) bool {
+	switch v {
+	case WebhookResponseTypeHTML, WebhookResponseTypeJSON, WebhookResponseTypeXML, WebhookResponseTypeJavascript:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseWebhookResponseType returns s as WebhookResponseType when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseWebhookResponseType(s string) (WebhookResponseType, error) {
+	v := WebhookResponseType(s)
+	if IsKnownWebhookResponseType(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown WebhookResponseType value")
+}
+
 // WebhookSecurityMethod — Security methods for authenticating webhook requests
 type WebhookSecurityMethod = string
 const (
@@ -1735,6 +5271,32 @@ const (
 	WebhookSecurityMethodAPIKey WebhookSecurityMethod = "api_key"
 	WebhookSecurityMethodNone WebhookSecurityMethod = "none"
 )
+
+// KnownWebhookSecurityMethodValues returns the current schema-defined values for WebhookSecurityMethod.
+func KnownWebhookSecurityMethodValues() []WebhookSecurityMethod {
+	return []WebhookSecurityMethod{WebhookSecurityMethodHmacSha256, WebhookSecurityMethodAPIKey, WebhookSecurityMethodNone}
+}
+
+// IsKnownWebhookSecurityMethod reports whether v is one of the current schema-defined WebhookSecurityMethod values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownWebhookSecurityMethod(v WebhookSecurityMethod) bool {
+	switch v {
+	case WebhookSecurityMethodHmacSha256, WebhookSecurityMethodAPIKey, WebhookSecurityMethodNone:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseWebhookSecurityMethod returns s as WebhookSecurityMethod when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseWebhookSecurityMethod(s string) (WebhookSecurityMethod, error) {
+	v := WebhookSecurityMethod(s)
+	if IsKnownWebhookSecurityMethod(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown WebhookSecurityMethod value")
+}
 
 // --- Union helper types ---
 
