@@ -5,9 +5,9 @@ import "encoding/json"
 // Request types for AdCP tools are generated from JSON schemas in types_gen.go
 // (e.g., GetProductsRequest, CreateMediaBuyRequest, SyncAccountsRequest).
 //
-// This file contains types the generator can't produce: EmptyInput (no schema),
-// PackageInput (needs typed business terms), and nested item types that are
-// inline objects in the schemas rather than $ref targets.
+// This file contains types the generator can't produce: EmptyInput (no schema)
+// and nested item types that are inline objects in the schemas rather than $ref
+// targets.
 
 // EmptyInput is the input type for tools that accept no parameters (e.g. get_adcp_capabilities).
 type EmptyInput struct{}
@@ -110,62 +110,6 @@ func isCreativeAssignmentField(key string) bool {
 	default:
 		return false
 	}
-}
-
-// PackageInput is a single package in a create_media_buy request.
-type PackageInput struct {
-	ProductID       string  `json:"product_id"`
-	PricingOptionID string  `json:"pricing_option_id,omitempty"`
-	Budget          float64 `json:"budget"`
-	BidPrice        float64 `json:"bid_price,omitempty"`
-	BuyerRef        string  `json:"buyer_ref,omitempty"`
-
-	// Business terms (buyer proposals, override product defaults)
-	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`
-	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`
-	TargetingOverlay     *Targeting            `json:"targeting_overlay,omitempty"`
-	CreativeAssignments  []CreativeAssignment  `json:"creative_assignments,omitempty"`
-
-	// Broadcast / scheduling
-	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"`
-	StartTime            string `json:"start_time,omitempty"`
-	EndTime              string `json:"end_time,omitempty"`
-}
-
-// UpdateMediaBuyRequest is the input for update_media_buy.
-type UpdateMediaBuyRequest struct {
-	AdcpMajorVersion       int              `json:"adcp_major_version,omitempty"`
-	IdempotencyKey         string           `json:"idempotency_key"`
-	Account                AccountReference `json:"account"`
-	MediaBuyID             string           `json:"media_buy_id"`
-	Revision               int              `json:"revision,omitempty"`
-	Paused                 *bool            `json:"paused,omitempty"`
-	Canceled               *bool            `json:"canceled,omitempty"`
-	CancellationReason     string           `json:"cancellation_reason,omitempty"`
-	StartTime              any              `json:"start_time,omitempty"`
-	EndTime                string           `json:"end_time,omitempty"`
-	Packages               []PackageUpdate  `json:"packages,omitempty"`
-	InvoiceRecipient       any              `json:"invoice_recipient,omitempty"`
-	NewPackages            []PackageInput   `json:"new_packages,omitempty"`
-	ReportingWebhook       any              `json:"reporting_webhook,omitempty"`
-	PushNotificationConfig any              `json:"push_notification_config,omitempty"`
-	Context                any              `json:"context,omitempty"`
-	Ext                    any              `json:"ext,omitempty"`
-}
-
-// PackageUpdate identifies a package and fields to update in update_media_buy.
-type PackageUpdate struct {
-	PackageID           string               `json:"package_id"`
-	Budget              float64              `json:"budget,omitempty"`
-	BidPrice            float64              `json:"bid_price,omitempty"`
-	Impressions         float64              `json:"impressions,omitempty"`
-	StartTime           string               `json:"start_time,omitempty"`
-	EndTime             string               `json:"end_time,omitempty"`
-	Paused              *bool                `json:"paused,omitempty"`
-	Canceled            *bool                `json:"canceled,omitempty"`
-	CancellationReason  string               `json:"cancellation_reason,omitempty"`
-	TargetingOverlay    *Targeting           `json:"targeting_overlay,omitempty"`
-	CreativeAssignments []CreativeAssignment `json:"creative_assignments,omitempty"`
 }
 
 // --- Nested item types (inline objects in schemas, no $ref) ---

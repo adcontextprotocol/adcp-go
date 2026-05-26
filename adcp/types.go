@@ -580,24 +580,6 @@ type ReportingPeriod struct {
 	End   string `json:"end"`
 }
 
-type MediaBuyDelivery struct {
-	MediaBuyID string            `json:"media_buy_id"`
-	Status     string            `json:"status"`
-	Totals     DeliveryTotals    `json:"totals"`
-	ByPackage  []PackageDelivery `json:"by_package"`
-}
-
-type PackageDelivery struct {
-	PackageID   string  `json:"package_id"`
-	Impressions float64 `json:"impressions,omitempty"`
-	// package-delivery composes delivery-metrics and requires spend at this level.
-	Spend        float64 `json:"spend"`
-	Clicks       float64 `json:"clicks,omitempty"`
-	PricingModel string  `json:"pricing_model,omitempty"`
-	Rate         float64 `json:"rate,omitempty"`
-	Currency     string  `json:"currency,omitempty"`
-}
-
 // MarshalJSON preserves the schema-required spend field even when it is zero.
 func (d DeliveryTotals) MarshalJSON() ([]byte, error) {
 	type deliveryTotals DeliveryTotals

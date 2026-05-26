@@ -1936,7 +1936,7 @@ type DeliveryTotals struct {
 	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
 	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
 	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit any `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
 	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
 	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
 	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
@@ -2074,6 +2074,188 @@ type CreativeBrief struct {
 	Compliance any `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
 }
 
+// --- Support schema types ---
+
+// PackageInput — Package configuration for media buy creation
+type PackageInput struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	ProductID string `json:"product_id"` // Product ID for this package
+	FormatIDs []FormatRef `json:"format_ids,omitempty"` // Array of format IDs that will be used for this package - must be supported by th
+	Budget float64 `json:"budget"` // Budget allocation for this package in the media buy's currency
+	Pacing string `json:"pacing,omitempty"`
+	PricingOptionID string `json:"pricing_option_id"` // ID of the selected pricing option from the product's pricing_options array
+	BidPrice float64 `json:"bid_price,omitempty"` // Bid price for auction-based pricing options. This is the exact bid/price to hono
+	Impressions float64 `json:"impressions,omitempty"` // Impression goal for this package
+	StartTime string `json:"start_time,omitempty"` // Flight start date/time for this package in ISO 8601 format. When omitted, the pa
+	EndTime string `json:"end_time,omitempty"` // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
+	Paused *bool `json:"paused,omitempty"` // Whether this package should be created in a paused state. Paused packages do not
+	Catalogs []Catalog `json:"catalogs,omitempty"` // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., on
+	OptimizationGoals []any `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
+	TargetingOverlay *Targeting `json:"targeting_overlay,omitempty"`
+	MeasurementTerms *MeasurementTerms `json:"measurement_terms,omitempty"` // Buyer's proposed billing measurement and makegood terms. Overrides product defau
+	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"` // Buyer's proposed performance standards for this package. Overrides product defau
+	CreativeAssignments []CreativeAssignment `json:"creative_assignments,omitempty"` // Assign existing library creatives to this package with optional weights and plac
+	Creatives []CreativeAsset `json:"creatives,omitempty"` // Upload new creative assets and assign to this package (creatives will be added t
+	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Overrides the media bu
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// PackageUpdate — Package update configuration for update_media_buy. Identifies package by package_id and specifies fi
+type PackageUpdate struct {
+	PackageID string `json:"package_id"` // Seller's ID of package to update
+	Budget float64 `json:"budget,omitempty"` // Updated budget allocation for this package in the currency specified by the pric
+	Pacing string `json:"pacing,omitempty"`
+	BidPrice float64 `json:"bid_price,omitempty"` // Updated bid price for auction-based pricing options. This is the exact bid/price
+	Impressions float64 `json:"impressions,omitempty"` // Updated impression goal for this package
+	StartTime string `json:"start_time,omitempty"` // Updated flight start date/time for this package in ISO 8601 format. Must fall wi
+	EndTime string `json:"end_time,omitempty"` // Updated flight end date/time for this package in ISO 8601 format. Must fall with
+	Paused *bool `json:"paused,omitempty"` // Pause/resume specific package (true = paused, false = active)
+	Canceled *bool `json:"canceled,omitempty"` // Cancel this specific package. Cancellation is irreversible — canceled packages s
+	CancellationReason string `json:"cancellation_reason,omitempty"` // Reason for canceling this package.
+	Catalogs []Catalog `json:"catalogs,omitempty"` // Replace the catalogs this package promotes. Uses replacement semantics — the pro
+	OptimizationGoals []any `json:"optimization_goals,omitempty"` // Replace all optimization goals for this package. Uses replacement semantics — om
+	TargetingOverlay *Targeting `json:"targeting_overlay,omitempty"` // Targeting overlay to apply to this package. Uses replacement semantics — the ful
+	KeywordTargetsAdd []KeywordTargetUpdate `json:"keyword_targets_add,omitempty"` // Keyword targets to add or update on this package. Upserts by (keyword, match_typ
+	KeywordTargetsRemove []KeywordTargetRef `json:"keyword_targets_remove,omitempty"` // Keyword targets to remove from this package. Removes matching (keyword, match_ty
+	NegativeKeywordsAdd []KeywordTargetRef `json:"negative_keywords_add,omitempty"` // Negative keywords to add to this package. Appends to the existing negative keywo
+	NegativeKeywordsRemove []KeywordTargetRef `json:"negative_keywords_remove,omitempty"` // Negative keywords to remove from this package. Removes matching keyword+match_ty
+	CreativeAssignments []CreativeAssignment `json:"creative_assignments,omitempty"` // Replace creative assignments for this package with optional weights and placemen
+	Creatives []CreativeAsset `json:"creatives,omitempty"` // Upload new creative assets and assign to this package (creatives will be added t
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// --- Inline schema types ---
+
+type KeywordTargetUpdate struct {
+	Keyword string `json:"keyword"` // The keyword to target
+	MatchType string `json:"match_type"`
+	BidPrice float64 `json:"bid_price,omitempty"` // Per-keyword bid price. Inherits currency and max_bid interpretation from the pac
+}
+
+type KeywordTargetRef struct {
+	Keyword string `json:"keyword"` // The keyword to stop targeting
+	MatchType string `json:"match_type"`
+}
+
+// DeliveryAggregatedTotals — Combined metrics across all returned media buys. Only included in API responses (get_media_buy_deliv
+type DeliveryAggregatedTotals struct {
+	Impressions float64 `json:"impressions"` // Total impressions delivered across all media buys
+	Spend float64 `json:"spend"` // Total amount spent across all media buys
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks across all media buys (if applicable)
+	CompletedViews float64 `json:"completed_views,omitempty"` // Total audio/video completions across all media buys (if applicable)
+	Views float64 `json:"views,omitempty"` // Total views across all media buys (if applicable)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions across all media buys (if applicable)
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total conversion value across all media buys (if applicable)
+	Roas float64 `json:"roas,omitempty"` // Aggregate return on ad spend across all media buys (total conversion_value / tot
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of total conversions across all media buys from first-time brand buyers
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Aggregate cost per conversion across all media buys (total spend / total convers
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Aggregate completion rate across all media buys (weighted by impressions, not a
+	Reach float64 `json:"reach,omitempty"` // Deduplicated reach across all media buys (if the seller can deduplicate across b
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for reach. Only present when all aggregated media buys use t
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit across all media buys (impressions / reach when
+	MediaBuyCount int `json:"media_buy_count"` // Number of media buys included in the response
+}
+
+type MediaBuyDeliveryTotals struct {
+	Impressions float64 `json:"impressions,omitempty"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []any `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	EffectiveRate float64 `json:"effective_rate,omitempty"` // Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm',
+}
+
+type MediaBuyDelivery struct {
+	MediaBuyID string `json:"media_buy_id"` // Seller's media buy identifier
+	Status string `json:"status"` // Current media buy status. Lifecycle states use the same taxonomy as media-buy-st
+	ExpectedAvailability string `json:"expected_availability,omitempty"` // When delayed data is expected to be available (only present when status is repor
+	IsAdjusted *bool `json:"is_adjusted,omitempty"` // Indicates this delivery contains updated data for a previously reported period.
+	PricingModel string `json:"pricing_model,omitempty"` // Pricing model used for this media buy
+	Totals MediaBuyDeliveryTotals `json:"totals"`
+	ByPackage []PackageDelivery `json:"by_package"` // Metrics broken down by package
+	DailyBreakdown []any `json:"daily_breakdown,omitempty"` // Day-by-day delivery
+}
+
+type PackageDelivery struct {
+	Impressions float64 `json:"impressions,omitempty"` // Impressions delivered
+	Spend float64 `json:"spend"` // Amount spent
+	Clicks float64 `json:"clicks,omitempty"` // Total clicks
+	Ctr float64 `json:"ctr,omitempty"` // Click-through rate (clicks/impressions)
+	Views float64 `json:"views,omitempty"` // Content engagements counted toward the billable view threshold. For video this i
+	CompletedViews float64 `json:"completed_views,omitempty"` // Video/audio completions. When the package has a completed_views optimization goa
+	CompletionRate float64 `json:"completion_rate,omitempty"` // Completion rate (completed_views/impressions)
+	Conversions float64 `json:"conversions,omitempty"` // Total conversions attributed to this delivery. When by_event_type is present, th
+	ConversionValue float64 `json:"conversion_value,omitempty"` // Total monetary value of attributed conversions (in the reporting currency)
+	Roas float64 `json:"roas,omitempty"` // Return on ad spend (conversion_value / spend)
+	CostPerAcquisition float64 `json:"cost_per_acquisition,omitempty"` // Cost per conversion (spend / conversions)
+	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+	Leads float64 `json:"leads,omitempty"` // Leads generated (convenience alias for by_event_type where event_type='lead')
+	ByEventType []any `json:"by_event_type,omitempty"` // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	Grps float64 `json:"grps,omitempty"` // Gross Rating Points delivered (for CPP)
+	Reach float64 `json:"reach,omitempty"` // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for the reach field. Aligns with the reach_unit declared on
+	Frequency float64 `json:"frequency,omitempty"` // Average frequency per reach unit (typically measured over campaign duration, but
+	QuartileData any `json:"quartile_data,omitempty"` // Audio/video quartile completion data
+	DoohMetrics any `json:"dooh_metrics,omitempty"` // DOOH-specific metrics (only included for DOOH campaigns)
+	Viewability any `json:"viewability,omitempty"` // Viewability metrics. Viewable rate should be calculated as viewable_impressions
+	Engagements float64 `json:"engagements,omitempty"` // Total engagements — direct interactions with the ad beyond viewing. Includes soc
+	Follows float64 `json:"follows,omitempty"` // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Saves float64 `json:"saves,omitempty"` // Saves, bookmarks, playlist adds, pins attributed to this delivery.
+	ProfileVisits float64 `json:"profile_visits,omitempty"` // Visits to the brand's in-platform page (profile, artist page, channel, or storef
+	EngagementRate float64 `json:"engagement_rate,omitempty"` // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	CostPerClick float64 `json:"cost_per_click,omitempty"` // Cost per click (spend / clicks)
+	ByActionSource []any `json:"by_action_source,omitempty"` // Conversion metrics broken down by action source (website, app, in_store, etc.).
+	PackageID string `json:"package_id"` // Seller's package identifier
+	PacingIndex float64 `json:"pacing_index,omitempty"` // Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)
+	PricingModel string `json:"pricing_model"` // The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how th
+	Rate float64 `json:"rate"` // The pricing rate for this package in the specified currency. For fixed-rate pric
+	Currency string `json:"currency"` // ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicat
+	DeliveryStatus string `json:"delivery_status,omitempty"` // System-reported operational state of this package. Reflects actual delivery stat
+	Paused *bool `json:"paused,omitempty"` // Whether this package is currently paused by the buyer
+	IsFinal *bool `json:"is_final,omitempty"` // Whether this delivery data is final for the reporting period. When false, the da
+	MeasurementWindow string `json:"measurement_window,omitempty"` // Which measurement window this data represents, referencing a window_id from the
+	SupersedesWindow string `json:"supersedes_window,omitempty"` // Which measurement window this data replaces. Present on window_update notificati
+	ByCatalogItem []any `json:"by_catalog_item,omitempty"` // Delivery by catalog item within this package. Available for catalog-driven packa
+	ByCreative []any `json:"by_creative,omitempty"` // Metrics broken down by creative within this package. Available when the seller s
+	ByKeyword []any `json:"by_keyword,omitempty"` // Metrics broken down by keyword within this package. One row per (keyword, match_
+	ByGeo []any `json:"by_geo,omitempty"` // Delivery by geographic area within this package. Available when the buyer reques
+	ByGeoTruncated *bool `json:"by_geo_truncated,omitempty"` // Whether by_geo was truncated due to the requested limit or a seller-imposed maxi
+	ByDeviceType []any `json:"by_device_type,omitempty"` // Delivery by device form factor within this package. Available when the buyer req
+	ByDeviceTypeTruncated *bool `json:"by_device_type_truncated,omitempty"` // Whether by_device_type was truncated. Sellers MUST return this flag whenever by_
+	ByDevicePlatform []any `json:"by_device_platform,omitempty"` // Delivery by operating system within this package. Available when the buyer reque
+	ByDevicePlatformTruncated *bool `json:"by_device_platform_truncated,omitempty"` // Whether by_device_platform was truncated. Sellers MUST return this flag whenever
+	ByAudience []any `json:"by_audience,omitempty"` // Delivery by audience segment within this package. Available when the buyer reque
+	ByAudienceTruncated *bool `json:"by_audience_truncated,omitempty"` // Whether by_audience was truncated. Sellers MUST return this flag whenever by_aud
+	ByPlacement []any `json:"by_placement,omitempty"` // Delivery by placement within this package. Available when the buyer requests pla
+	ByPlacementTruncated *bool `json:"by_placement_truncated,omitempty"` // Whether by_placement was truncated. Sellers MUST return this flag whenever by_pl
+	DailyBreakdown []any `json:"daily_breakdown,omitempty"` // Day-by-day delivery for this package. Only present when include_package_daily_br
+}
+
 // --- Tool request/response types ---
 
 // GetAdcpCapabilitiesRequest — Request payload for get_adcp_capabilities task. Protocol-level capability discovery that works acros
@@ -2178,7 +2360,7 @@ type GetProductsRequest struct {
 	Filters any `json:"filters,omitempty"`
 	PropertyList any `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided, the
 	Fields []string `json:"fields,omitempty"` // Specific product fields to include in the response. When omitted, all fields are
-	TimeBudget any `json:"time_budget,omitempty"` // Maximum time the buyer will commit to this request. The seller returns the best
+	TimeBudget Duration `json:"time_budget,omitempty"` // Maximum time the buyer will commit to this request. The seller returns the best
 	Pagination *PaginationRequest `json:"pagination,omitempty"`
 	Context any `json:"context,omitempty"`
 	RequiredPolicies []string `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in this
@@ -2215,7 +2397,7 @@ type CreateMediaBuyRequest struct {
 	IoAcceptance any `json:"io_acceptance,omitempty"` // Acceptance of an insertion order from a committed proposal. Required when the pr
 	PoNumber string `json:"po_number,omitempty"` // Purchase order number for tracking
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number. Primary financial reference for broadca
-	StartTime any `json:"start_time"`
+	StartTime string `json:"start_time"`
 	EndTime string `json:"end_time"` // Campaign end date/time in ISO 8601 format
 	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher wi
 	ReportingWebhook any `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery
@@ -2257,6 +2439,27 @@ type CreateMediaBuySubmitted struct {
 	TaskID string `json:"task_id"` // Task handle the buyer uses with tasks/get, and that the seller references on pus
 	Message string `json:"message,omitempty"` // Optional human-readable explanation of why the task is submitted — e.g., 'Awaiti
 	Errors []AdcpError `json:"errors,omitempty"` // Optional advisory errors accompanying the submitted envelope. Use only for non-b
+	Context any `json:"context,omitempty"`
+	Ext any `json:"ext,omitempty"`
+}
+
+// UpdateMediaBuyRequest — Request parameters for updating campaign and package settings
+type UpdateMediaBuyRequest struct {
+	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
+	Account AccountReference `json:"account"` // Account that owns this media buy. Pass a natural key (brand, operator, optional
+	MediaBuyID string `json:"media_buy_id"` // Seller's ID of the media buy to update
+	Revision int `json:"revision,omitempty"` // Expected current revision for optimistic concurrency. When provided, sellers MUS
+	Paused *bool `json:"paused,omitempty"` // Pause/resume the entire media buy (true = paused, false = active)
+	Canceled *bool `json:"canceled,omitempty"` // Cancel the entire media buy. Cancellation is irreversible — canceled media buys
+	CancellationReason string `json:"cancellation_reason,omitempty"` // Reason for cancellation. Sellers SHOULD store this and return it in subsequent g
+	StartTime string `json:"start_time,omitempty"`
+	EndTime string `json:"end_time,omitempty"` // New end date/time in ISO 8601 format
+	Packages []PackageUpdate `json:"packages,omitempty"` // Package-specific updates for existing packages
+	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Update who receives the invoice for this buy. When provided, the seller invoices
+	NewPackages []PackageInput `json:"new_packages,omitempty"` // New packages to add to this media buy. Uses the same schema as create_media_buy
+	ReportingWebhook any `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery. Updates the rep
+	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async update notifications. Publisher will se
+	IdempotencyKey string `json:"idempotency_key"` // Client-generated idempotency key for safe retries. If an update fails without a
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2306,11 +2509,11 @@ type GetMediaBuyDeliveryResponse struct {
 	UnavailableCount int `json:"unavailable_count,omitempty"` // Number of media buys with reporting_delayed or failed status (only present in we
 	SequenceNumber int `json:"sequence_number,omitempty"` // Sequential notification number (only present in webhook deliveries, starts at 1)
 	NextExpectedAt string `json:"next_expected_at,omitempty"` // ISO 8601 timestamp for next expected notification (only present in webhook deliv
-	ReportingPeriod any `json:"reporting_period"` // Date range for the report. All periods use UTC timezone.
+	ReportingPeriod ReportingPeriod `json:"reporting_period"` // Date range for the report. All periods use UTC timezone.
 	Currency string `json:"currency"` // ISO 4217 currency code
 	AttributionWindow *AttributionWindow `json:"attribution_window,omitempty"` // Attribution methodology and lookback windows used for conversion metrics in this
-	AggregatedTotals any `json:"aggregated_totals,omitempty"` // Combined metrics across all returned media buys. Only included in API responses
-	MediaBuyDeliveries []any `json:"media_buy_deliveries"` // Array of delivery data for media buys. When used in webhook notifications, may c
+	AggregatedTotals *DeliveryAggregatedTotals `json:"aggregated_totals,omitempty"` // Combined metrics across all returned media buys. Only included in API responses
+	MediaBuyDeliveries []MediaBuyDelivery `json:"media_buy_deliveries"` // Array of delivery data for media buys. When used in webhook notifications, may c
 	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors and warnings (e.g., missing delivery data, reporting platfo
 	Sandbox *bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
 	Context any `json:"context,omitempty"`
