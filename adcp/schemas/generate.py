@@ -1309,7 +1309,16 @@ def scalar_or_array_union_to_type(name, schema):
 \t\treturn fmt.Errorf("{name} must contain at least one value")
 \t}}
 '''
+    empty_constructor = '' if schema_accepts_empty_array(schema) else f'''\tif len(values) == 0 {{
+\t\treturn nil
+\t}}
+'''
     return f'''{doc}type {name} []{elem_type}
+
+func New{name}(values ...{elem_type}) *{name} {{
+{empty_constructor}\tv := {name}(values)
+\treturn &v
+}}
 
 func (v {name}) MarshalJSON() ([]byte, error) {{
 {reject_empty}\tif len(v) == 1 {{
