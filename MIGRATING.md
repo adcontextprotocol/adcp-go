@@ -159,6 +159,9 @@ be populated.
 | `PackageDelivery.ByAudience` | `[]adcp.PackageAudienceDelivery` |
 | `PackageDelivery.ByPlacement` | `[]adcp.PackagePlacementDelivery` |
 | `PackageDelivery.DailyBreakdown` | `[]adcp.PackageDailyBreakdown` |
+| `Package.OptimizationGoals` | `[]adcp.OptimizationGoal` |
+| `PackageInput.OptimizationGoals` | `[]adcp.OptimizationGoal` |
+| `PackageUpdate.OptimizationGoals` | `[]adcp.OptimizationGoal` |
 | `GetMediaBuysRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
@@ -271,6 +274,11 @@ feedback := adcp.ProvidePerformanceFeedbackRequest{
   exposes schema-backed package update fields such as `Pacing`, `Catalogs`,
   `OptimizationGoals`, keyword add/remove operations, `Creatives`, `Context`,
   and `Ext`.
+- `OptimizationGoals` fields now use `[]adcp.OptimizationGoal` instead of
+  `[]any`. Nested `event_sources`, `target_frequency`, and `attribution_window`
+  are typed; the nested `target` oneOf remains `any` until nested union
+  generation lands. `OptimizationGoal.Extra` preserves unknown top-level fields
+  when round-tripping newer goal variants through replacement-style updates.
 - `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
 - `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
   implemented by the generated schema variants. Return

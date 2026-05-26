@@ -375,6 +375,74 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "package input optimization goals",
+			value: PackageInput{
+				ProductID:       "prod-1",
+				PricingOptionID: "po-1",
+				Budget:          1000,
+				OptimizationGoals: []OptimizationGoal{{
+					Kind:      "metric",
+					Metric:    "reach",
+					ReachUnit: "household",
+					TargetFrequency: &OptimizationGoalTargetFrequency{
+						Min:    1,
+						Max:    3,
+						Window: Duration{Interval: 7, Unit: "days"},
+					},
+					Target:   map[string]any{"kind": "threshold_rate", "value": 0.7},
+					Priority: 1,
+				}},
+			},
+			want: []string{
+				`"optimization_goals":[{"kind":"metric","metric":"reach","priority":1,"reach_unit":"household","target":{"kind":"threshold_rate","value":0.7},"target_frequency":{"min":1,"max":3,"window":{"interval":7,"unit":"days"}}}]`,
+			},
+		},
+		{
+			name: "optimization goal preserves explicit zero value factor",
+			value: PackageInput{
+				ProductID:       "prod-1",
+				PricingOptionID: "po-1",
+				Budget:          1000,
+				OptimizationGoals: []OptimizationGoal{{
+					Kind: "event",
+					EventSources: []OptimizationGoalEventSource{{
+						EventSourceID: "pixel-1",
+						EventType:     "purchase",
+						ValueFactor:   Ptr(0.0),
+					}},
+				}},
+			},
+			want: []string{
+				`"value_factor":0`,
+			},
+		},
+		{
+			name: "package optimization goals typed",
+			value: Package{
+				PackageID: "pkg-1",
+				OptimizationGoals: []OptimizationGoal{{
+					Kind:   "metric",
+					Metric: "clicks",
+				}},
+			},
+			want: []string{
+				`"optimization_goals":[{"kind":"metric","metric":"clicks"}]`,
+			},
+		},
+		{
+			name: "package update optimization goals typed",
+			value: PackageUpdate{
+				PackageID: "pkg-1",
+				OptimizationGoals: []OptimizationGoal{{
+					Kind:   "metric",
+					Metric: "views",
+				}},
+			},
+			want: []string{
+				`"optimization_goals":[{"kind":"metric","metric":"views"}]`,
+			},
+		},
+		{
 			name: "creative agent refs",
 			value: ListCreativeFormatsResponse{
 				Formats: []CreativeFormat{},
@@ -499,6 +567,111 @@ func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"status_filter":[]}`), &deliveryReq); err == nil {
 		t.Fatal("unmarshal empty status filter succeeded, want error")
+	}
+}
+
+func TestGeneratedOptimizationGoalUnmarshalNestedShapes(t *testing.T) {
+	raw := []byte(`{
+		"optimization_goals": [{
+			"kind": "event",
+			"event_sources": [{
+				"event_source_id": "pixel-1",
+				"event_type": "purchase",
+				"value_field": "value",
+				"value_factor": 1.5
+			}],
+			"target": {"kind": "per_ad_spend", "value": 4},
+			"future_goal_field": {"keep": true},
+			"attribution_window": {
+				"post_click": {"interval": 7, "unit": "days"},
+				"post_view": {"interval": 1, "unit": "days"}
+			},
+			"priority": 1
+		}]
+	}`)
+	var req PackageInput
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal optimization goal: %v", err)
+	}
+	if len(req.OptimizationGoals) != 1 {
+		t.Fatalf("optimization_goals len = %d, want 1", len(req.OptimizationGoals))
+	}
+	goal := req.OptimizationGoals[0]
+	if goal.Kind != "event" || goal.Priority != 1 {
+		t.Fatalf("unexpected optimization goal: %#v", goal)
+	}
+	if len(goal.EventSources) != 1 || goal.EventSources[0].EventSourceID != "pixel-1" {
+		t.Fatalf("event_sources not typed: %#v", goal.EventSources)
+	}
+	if goal.EventSources[0].ValueFactor == nil || *goal.EventSources[0].ValueFactor != 1.5 {
+		t.Fatalf("value_factor did not preserve non-zero pointer value: %#v", goal.EventSources[0].ValueFactor)
+	}
+	if goal.AttributionWindow == nil || goal.AttributionWindow.PostClick.Interval != 7 || goal.AttributionWindow.PostView == nil {
+		t.Fatalf("attribution_window not typed: %#v", goal.AttributionWindow)
+	}
+	target, ok := goal.Target.(map[string]any)
+	if !ok || target["kind"] != "per_ad_spend" {
+		t.Fatalf("target oneOf should remain a raw map, got %#v", goal.Target)
+	}
+	extra, ok := goal.Extra["future_goal_field"].(map[string]any)
+	if !ok || extra["keep"] != true {
+		t.Fatalf("unknown top-level goal field was not preserved: %#v", goal.Extra)
+	}
+
+	roundTrip, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal optimization goal round trip: %v", err)
+	}
+	if !strings.Contains(string(roundTrip), `"future_goal_field":{"keep":true}`) {
+		t.Fatalf("round trip dropped unknown top-level goal field: %s", roundTrip)
+	}
+
+	collidingExtra, err := json.Marshal(OptimizationGoal{
+		Extra: map[string]any{
+			"priority":          99,
+			"future_goal_field": "ok",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal optimization goal with colliding extra: %v", err)
+	}
+	if strings.Contains(string(collidingExtra), `"priority":`) {
+		t.Fatalf("known typed field from Extra should not override zero typed value: %s", collidingExtra)
+	}
+	if !strings.Contains(string(collidingExtra), `"future_goal_field":"ok"`) {
+		t.Fatalf("non-colliding Extra field was not preserved: %s", collidingExtra)
+	}
+}
+
+func TestGeneratedOptimizationGoalUnmarshalMetricShape(t *testing.T) {
+	raw := []byte(`{
+		"kind": "metric",
+		"metric": "reach",
+		"reach_unit": "household",
+		"target_frequency": {
+			"min": 2,
+			"max": 5,
+			"window": {"interval": 7, "unit": "days"}
+		},
+		"target": {"kind": "threshold_rate", "value": 0.65},
+		"priority": 1
+	}`)
+	var goal OptimizationGoal
+	if err := json.Unmarshal(raw, &goal); err != nil {
+		t.Fatalf("unmarshal metric optimization goal: %v", err)
+	}
+	if goal.Kind != "metric" || goal.Metric != "reach" || goal.ReachUnit != "household" {
+		t.Fatalf("unexpected metric optimization goal fields: %#v", goal)
+	}
+	if goal.TargetFrequency == nil || goal.TargetFrequency.Min != 2 || goal.TargetFrequency.Max != 5 {
+		t.Fatalf("target_frequency not typed: %#v", goal.TargetFrequency)
+	}
+	if goal.TargetFrequency.Window.Interval != 7 || goal.TargetFrequency.Window.Unit != "days" {
+		t.Fatalf("target_frequency window not typed: %#v", goal.TargetFrequency.Window)
+	}
+	target, ok := goal.Target.(map[string]any)
+	if !ok || target["kind"] != "threshold_rate" {
+		t.Fatalf("target oneOf should remain a raw map, got %#v", goal.Target)
 	}
 }
 

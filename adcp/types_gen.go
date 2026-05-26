@@ -5613,7 +5613,7 @@ type Package struct {
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"` // Agreed performance standards for this package. When any entry specifies a vendor
 	CreativeAssignments []CreativeAssignment `json:"creative_assignments,omitempty"` // Creative assets assigned to this package
 	FormatIDsToProvide []FormatRef `json:"format_ids_to_provide,omitempty"` // Format IDs that creative assets will be provided for this package
-	OptimizationGoals []any `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
+	OptimizationGoals []OptimizationGoal `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
 	StartTime string `json:"start_time,omitempty"` // Flight start date/time for this package in ISO 8601 format. When omitted, the pa
 	EndTime string `json:"end_time,omitempty"` // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
 	Paused *bool `json:"paused,omitempty"` // Whether this package is paused by the buyer. Paused packages do not deliver impr
@@ -6092,7 +6092,7 @@ type PackageInput struct {
 	EndTime string `json:"end_time,omitempty"` // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
 	Paused *bool `json:"paused,omitempty"` // Whether this package should be created in a paused state. Paused packages do not
 	Catalogs []Catalog `json:"catalogs,omitempty"` // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., on
-	OptimizationGoals []any `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
+	OptimizationGoals []OptimizationGoal `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
 	TargetingOverlay *Targeting `json:"targeting_overlay,omitempty"`
 	MeasurementTerms *MeasurementTerms `json:"measurement_terms,omitempty"` // Buyer's proposed billing measurement and makegood terms. Overrides product defau
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"` // Buyer's proposed performance standards for this package. Overrides product defau
@@ -6116,7 +6116,7 @@ type PackageUpdate struct {
 	Canceled *bool `json:"canceled,omitempty"` // Cancel this specific package. Cancellation is irreversible — canceled packages s
 	CancellationReason string `json:"cancellation_reason,omitempty"` // Reason for canceling this package.
 	Catalogs []Catalog `json:"catalogs,omitempty"` // Replace the catalogs this package promotes. Uses replacement semantics — the pro
-	OptimizationGoals []any `json:"optimization_goals,omitempty"` // Replace all optimization goals for this package. Uses replacement semantics — om
+	OptimizationGoals []OptimizationGoal `json:"optimization_goals,omitempty"` // Replace all optimization goals for this package. Uses replacement semantics — om
 	TargetingOverlay *Targeting `json:"targeting_overlay,omitempty"` // Targeting overlay to apply to this package. Uses replacement semantics — the ful
 	KeywordTargetsAdd []KeywordTargetUpdate `json:"keyword_targets_add,omitempty"` // Keyword targets to add or update on this package. Upserts by (keyword, match_typ
 	KeywordTargetsRemove []KeywordTargetRef `json:"keyword_targets_remove,omitempty"` // Keyword targets to remove from this package. Removes matching (keyword, match_ty
@@ -6967,6 +6967,27 @@ type PackageDailyBreakdown struct {
 	ConversionValue float64 `json:"conversion_value,omitempty"` // Daily conversion value for this package
 	Roas float64 `json:"roas,omitempty"` // Daily return on ad spend (conversion_value / spend)
 	NewToBrandRate float64 `json:"new_to_brand_rate,omitempty"` // Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)
+}
+
+// OptimizationGoalTargetFrequency — Target frequency band for reach optimization. Only applicable when metric is 'reach'. Frames frequen
+type OptimizationGoalTargetFrequency struct {
+	Min int `json:"min,omitempty"` // Minimum frequency for an entity to be considered meaningfully reached within the
+	Max int `json:"max,omitempty"` // Frequency at which an entity is considered saturated within the window. Impressi
+	Window Duration `json:"window"` // Time window over which frequency is measured (e.g. {"interval": 7, "unit": "days
+}
+
+type OptimizationGoalEventSource struct {
+	EventSourceID string `json:"event_source_id"` // Event source to include (must be configured on this account via sync_event_sourc
+	EventType string `json:"event_type"` // Event type to include from this source (e.g., purchase, lead, app_install, refun
+	CustomEventName string `json:"custom_event_name,omitempty"` // Required when event_type is 'custom'. Platform-specific name for the custom even
+	ValueField string `json:"value_field,omitempty"` // Which field in the event's custom_data carries the monetary value. The seller mu
+	ValueFactor *float64 `json:"value_factor,omitempty"` // Multiplier the seller must apply to value_field before aggregation. Use -1 for r
+}
+
+// OptimizationGoalAttributionWindow — Attribution window for this optimization goal. Values must match an option declared in the seller's
+type OptimizationGoalAttributionWindow struct {
+	PostClick Duration `json:"post_click"` // Post-click attribution window. Conversions within this duration after a click ar
+	PostView *Duration `json:"post_view,omitempty"` // Post-view attribution window. Conversions within this duration after an ad impre
 }
 
 // --- Tool request/response types ---
