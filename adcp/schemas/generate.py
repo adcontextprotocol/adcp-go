@@ -1301,6 +1301,10 @@ def scalar_or_array_union_to_type(name, schema):
         raise ValueError(f'{name} is not a supported scalar-or-array union')
     desc = safe_comment(schema.get('description', ''), 100)
     doc = f'// {name} — {desc}\n' if desc else ''
+    doc += (
+        f'// {name} preserves unknown values for forward compatibility.\n'
+        '// It validates only scalar-or-array shape and array cardinality.\n'
+    )
     accepts_empty = schema_accepts_empty_array(schema)
     reject_empty = '' if accepts_empty else f'''\tif len(v) == 0 {{
 \t\treturn nil, fmt.Errorf("{name} must contain at least one value")
@@ -1314,6 +1318,7 @@ def scalar_or_array_union_to_type(name, schema):
 \t\treturn nil
 \t}}
 '''
+    # append to a zero-length literal keeps the no-arg constructor non-nil.
     constructor_value = f'append({name}{{}}, values...)' if accepts_empty else f'{name}(values)'
     if accepts_empty:
         constructor_doc = (

@@ -149,7 +149,7 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 			return fmt.Errorf("identities[%d].uid_type is required", i)
 		}
 		if _, ok := validUIDTypes[id.UIDType]; !ok {
-			return fmt.Errorf("identities[%d].uid_type %q is not a recognized TMP identity type", i, id.UIDType)
+			return fmt.Errorf("identities[%d].uid_type is not a recognized TMP identity type", i)
 		}
 	}
 	if req.Country != "" {

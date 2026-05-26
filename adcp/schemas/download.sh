@@ -49,6 +49,7 @@ PROTECTED=(
   download.sh
   check-freshness.sh
   generate.py
+  generate_test.py
   lint.py
 )
 

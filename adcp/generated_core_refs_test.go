@@ -482,6 +482,14 @@ func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 		t.Fatalf("array status filter decoded unexpected values: %#v", *deliveryReq.StatusFilter)
 	}
 
+	var forwardReq GetMediaBuysRequest
+	if err := json.Unmarshal([]byte(`{"status_filter":"future_status"}`), &forwardReq); err != nil {
+		t.Fatalf("unmarshal forward-compatible status filter: %v", err)
+	}
+	if forwardReq.StatusFilter == nil || len(*forwardReq.StatusFilter) != 1 || (*forwardReq.StatusFilter)[0] != MediaBuyStatus("future_status") {
+		t.Fatalf("forward-compatible status filter did not preserve unknown value: %#v", forwardReq.StatusFilter)
+	}
+
 	emptyFilter := MediaBuyStatusFilter{}
 	if _, err := json.Marshal(emptyFilter); err == nil {
 		t.Fatal("marshal empty status filter succeeded, want error")

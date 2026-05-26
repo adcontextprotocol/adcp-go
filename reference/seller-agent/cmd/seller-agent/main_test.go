@@ -206,6 +206,60 @@ func TestDoubleCancellation(t *testing.T) {
 	}
 }
 
+func TestUpdateMediaBuy_UnknownStatusRejectsStateChanges(t *testing.T) {
+	cases := []struct {
+		name  string
+		input func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest
+	}{
+		{
+			name: "cancel",
+			input: func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest {
+				canceled := true
+				return adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Canceled: &canceled}
+			},
+		},
+		{
+			name: "pause",
+			input: func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest {
+				paused := true
+				return adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Paused: &paused}
+			},
+		},
+		{
+			name: "package update",
+			input: func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest {
+				paused := true
+				return adcp.UpdateMediaBuyRequest{
+					MediaBuyID: buy.MediaBuyID,
+					Packages: []adcp.PackageUpdate{{
+						PackageID: buy.Packages[0].PackageID,
+						Paused:    &paused,
+					}},
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newTestBackend()
+			buy := mustCreateBuy(t, b, true)
+			buy.Status = "future_status"
+
+			result, _, err := b.updateMediaBuy(tc.input(buy))
+			if err != nil {
+				t.Fatalf("updateMediaBuy: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected error result for unknown status transition")
+			}
+			if buy.Status != "future_status" {
+				t.Fatalf("unknown status transition changed status to %s", buy.Status)
+			}
+		})
+	}
+}
+
 // --- list_creatives filtering ---
 
 func TestListCreatives_FilterByCreativeID(t *testing.T) {
@@ -579,5 +633,19 @@ func TestForceMediaBuyStatus_NotFound(t *testing.T) {
 	_, err := b.forceMediaBuyStatus("nonexistent-id", "active", "")
 	if err == nil {
 		t.Error("expected error for unknown media buy ID")
+	}
+}
+
+func TestValidActions_UnknownStatusFailsClosed(t *testing.T) {
+	if got := validActions("future_status"); len(got) != 0 {
+		t.Fatalf("unknown media buy status should expose no valid actions, got %#v", got)
+	}
+}
+
+func TestValidActions_PendingStartAllowsActiveBuyActions(t *testing.T) {
+	for _, action := range []string{"pause", "cancel", "sync_creatives", "update_packages"} {
+		if !hasValidAction("pending_start", action) {
+			t.Fatalf("pending_start should allow %s, got %#v", action, validActions("pending_start"))
+		}
 	}
 }
