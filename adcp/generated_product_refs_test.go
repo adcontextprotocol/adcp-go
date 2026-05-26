@@ -21,7 +21,12 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 			FormatIDs:   []FormatRef{{AgentURL: "https://seller.example/mcp", ID: "display_300x250"}},
 		}},
 		Forecast: &DeliveryForecast{
-			Points:   []any{map[string]any{"spend": 1000, "impressions": 100000}},
+			Points: []ForecastPoint{{
+				Budget: 1000,
+				Metrics: map[string]ForecastRange{
+					"impressions": {Mid: 100000},
+				},
+			}},
 			Method:   "historical",
 			Currency: "USD",
 		},
@@ -46,6 +51,10 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		MeasurementReadiness: &MeasurementReadiness{
 			Status:             "ready",
 			RequiredEventTypes: []string{"purchase"},
+			Issues: []DiagnosticIssue{{
+				Severity: "info",
+				Message:  "purchase events are active",
+			}},
 		},
 		Collections: []CollectionSelector{{
 			PublisherDomain: "example.com",
@@ -60,11 +69,11 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 	body := string(raw)
 	for _, want := range []string{
 		`"placements":[{"placement_id":"homepage","name":"Homepage"`,
-		`"forecast":{"points":[{"impressions":100000,"spend":1000}],"method":"historical","currency":"USD"}`,
+		`"forecast":{"points":[{"budget":1000,"metrics":{"impressions":{"mid":100000}}}],"method":"historical","currency":"USD"}`,
 		`"outcome_measurement":{"type":"brand_lift","attribution":"matched_market","reporting":"weekly"}`,
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
 		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
-		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"]}`,
+		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
 		`"collections":[{"publisher_domain":"example.com","collection_ids":["sports"]}]`,
 	} {
 		if !strings.Contains(body, want) {

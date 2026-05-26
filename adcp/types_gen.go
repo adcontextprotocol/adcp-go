@@ -1831,7 +1831,7 @@ type Placement struct {
 
 // DeliveryForecast — Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help b
 type DeliveryForecast struct {
-	Points []any `json:"points"` // Forecasted delivery data points. For spend curves (default), points at ascending
+	Points []ForecastPoint `json:"points"` // Forecasted delivery data points. For spend curves (default), points at ascending
 	ForecastRangeUnit string `json:"forecast_range_unit,omitempty"` // How to interpret the points array. 'spend' (default when omitted): points at asc
 	Method string `json:"method"` // Method used to produce this forecast
 	Currency string `json:"currency"` // ISO 4217 currency code for monetary values in this forecast (spend, budget)
@@ -1842,6 +1842,20 @@ type DeliveryForecast struct {
 	GeneratedAt string `json:"generated_at,omitempty"` // When this forecast was computed
 	ValidUntil string `json:"valid_until,omitempty"` // When this forecast expires. After this time, the forecast should be refreshed. F
 	Ext any `json:"ext,omitempty"`
+}
+
+// ForecastPoint — A forecast data point. When budget is present, the point pairs a spend level with expected delivery
+type ForecastPoint struct {
+	Label string `json:"label,omitempty"` // Human-readable name for this forecast point. Required when forecast_range_unit i
+	Budget float64 `json:"budget,omitempty"` // Budget amount for this forecast point. Required for spend curves; omit for avail
+	Metrics map[string]ForecastRange `json:"metrics"` // Forecasted metric values. Keys are forecastable-metric enum values for delivery/
+}
+
+// ForecastRange — A forecast value with optional confidence bounds. Either mid (point estimate) or both low and high (
+type ForecastRange struct {
+	Low float64 `json:"low,omitempty"` // Conservative (low-end) forecast value
+	Mid float64 `json:"mid,omitempty"` // Expected (most likely) forecast value
+	High float64 `json:"high,omitempty"` // Optimistic (high-end) forecast value
 }
 
 // OutcomeMeasurement — Business outcome measurement capabilities included with a product (e.g., incremental sales lift, bra
@@ -1861,13 +1875,21 @@ type ReportingCapabilities struct {
 	AvailableMetrics []string `json:"available_metrics"` // Metrics available in reporting. Impressions and spend are always implicitly incl
 	SupportsCreativeBreakdown *bool `json:"supports_creative_breakdown,omitempty"` // Whether this product supports creative-level metric breakdowns in delivery repor
 	SupportsKeywordBreakdown *bool `json:"supports_keyword_breakdown,omitempty"` // Whether this product supports keyword-level metric breakdowns in delivery report
-	SupportsGeoBreakdown any `json:"supports_geo_breakdown,omitempty"` // Geographic breakdown support for this product. Declares which geo levels and sys
+	SupportsGeoBreakdown *GeoBreakdownSupport `json:"supports_geo_breakdown,omitempty"` // Geographic breakdown support for this product. Declares which geo levels and sys
 	SupportsDeviceTypeBreakdown *bool `json:"supports_device_type_breakdown,omitempty"` // Whether this product supports device type breakdowns in delivery reporting (by_d
 	SupportsDevicePlatformBreakdown *bool `json:"supports_device_platform_breakdown,omitempty"` // Whether this product supports device platform breakdowns in delivery reporting (
 	SupportsAudienceBreakdown *bool `json:"supports_audience_breakdown,omitempty"` // Whether this product supports audience segment breakdowns in delivery reporting
 	SupportsPlacementBreakdown *bool `json:"supports_placement_breakdown,omitempty"` // Whether this product supports placement breakdowns in delivery reporting (by_pla
 	DateRangeSupport string `json:"date_range_support"` // Whether delivery data can be filtered to arbitrary date ranges. 'date_range' mea
 	MeasurementWindows []MeasurementWindow `json:"measurement_windows,omitempty"` // Measurement maturation stages available for this product. Used by any channel wh
+}
+
+// GeoBreakdownSupport — Declares which geographic levels and classification systems are available for by_geo reporting break
+type GeoBreakdownSupport struct {
+	Country *bool `json:"country,omitempty"` // Supports country-level geo breakdown (ISO 3166-1 alpha-2)
+	Region *bool `json:"region,omitempty"` // Supports region/state-level geo breakdown (ISO 3166-2)
+	Metro map[string]bool `json:"metro,omitempty"` // Metro area breakdown support. Keys are metro-system enum values; true means supp
+	PostalArea map[string]bool `json:"postal_area,omitempty"` // Postal area breakdown support. Keys are postal-system enum values; true means su
 }
 
 // CreativePolicy — Creative requirements and restrictions for a product
@@ -1883,8 +1905,14 @@ type MeasurementReadiness struct {
 	Status string `json:"status"` // Overall measurement readiness level for this product given the buyer's event set
 	RequiredEventTypes []string `json:"required_event_types,omitempty"` // Event types this product needs for effective optimization. Buyers should ensure
 	MissingEventTypes []string `json:"missing_event_types,omitempty"` // Event types this product requires that the buyer has not configured. Empty or ab
-	Issues []any `json:"issues,omitempty"` // Actionable issues preventing full measurement readiness. Sellers should limit to
+	Issues []DiagnosticIssue `json:"issues,omitempty"` // Actionable issues preventing full measurement readiness. Sellers should limit to
 	Notes string `json:"notes,omitempty"` // Seller explanation of the readiness assessment, recommendations for improvement,
+}
+
+// DiagnosticIssue — An actionable issue detected during a health or readiness assessment. Used by event source health an
+type DiagnosticIssue struct {
+	Severity string `json:"severity"` // 'error': blocks optimization until resolved. 'warning': optimization works but e
+	Message string `json:"message"` // Human/agent-readable description of the issue and how to resolve it.
 }
 
 // CollectionSelector — References collections declared in an adagents.json. Buyers resolve full collection objects by fetch
@@ -1978,7 +2006,7 @@ type CreativeAsset struct {
 type CreativeManifest struct {
 	FormatID FormatRef `json:"format_id"` // Always a structured object {agent_url, id} — never a plain string. Format identi
 	Assets map[string]any `json:"assets"` // Map of asset IDs to actual asset content. Each key MUST match an asset_id from t
-	Rights []any `json:"rights,omitempty"` // Rights constraints attached to this creative. Each entry represents constraints
+	Rights []RightsConstraint `json:"rights,omitempty"` // Rights constraints attached to this creative. Each entry represents constraints
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Cle
 	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
 	Ext any `json:"ext,omitempty"`
@@ -2179,8 +2207,15 @@ type CreativeBrief struct {
 	Audience string `json:"audience,omitempty"` // Target audience description for this campaign
 	Territory string `json:"territory,omitempty"` // Creative territory or positioning the campaign should occupy
 	Messaging any `json:"messaging,omitempty"` // Messaging framework for the campaign
-	ReferenceAssets []any `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
+	ReferenceAssets []ReferenceAsset `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
 	Compliance any `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
+}
+
+// ReferenceAsset — A reference asset that provides creative context. Carries visual materials (mood boards, product sho
+type ReferenceAsset struct {
+	URL string `json:"url"` // URL to the reference asset (image, video, or document)
+	Role string `json:"role"` // How the creative agent should use this asset. style_reference: match the visual
+	Description string `json:"description,omitempty"` // Human-readable description of the asset and how it should inform creative genera
 }
 
 // BusinessEntity — Structured business identity for B2B invoicing and contracts. Contains the legal, tax, and payment d
@@ -2254,6 +2289,22 @@ type ReportingWebhook struct {
 	Authentication any `json:"authentication"` // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
 	ReportingFrequency string `json:"reporting_frequency"` // Frequency for automated reporting delivery. Must be supported by all products in
 	RequestedMetrics []string `json:"requested_metrics,omitempty"` // Optional list of metrics to include in webhook notifications. If omitted, all av
+}
+
+// RightsConstraint — Rights metadata attached to a creative manifest. Each entry represents constraints from a single rig
+type RightsConstraint struct {
+	RightsID string `json:"rights_id"` // Rights grant identifier from the acquire_rights response
+	RightsAgent any `json:"rights_agent"` // The agent that granted these rights
+	ValidFrom string `json:"valid_from,omitempty"` // Start of the rights validity period
+	ValidUntil string `json:"valid_until,omitempty"` // End of the rights validity period. Creative should not be served after this time
+	Uses []string `json:"uses"` // Rights uses covered by this constraint
+	Countries []string `json:"countries,omitempty"` // Countries where this creative may be served under these rights (ISO 3166-1 alpha
+	ExcludedCountries []string `json:"excluded_countries,omitempty"` // Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the g
+	ImpressionCap int `json:"impression_cap,omitempty"` // Maximum total impressions allowed for the full validity period (valid_from to va
+	RightType string `json:"right_type,omitempty"` // Type of rights (talent, music, etc.). Helps identify constraints when a creative
+	ApprovalStatus string `json:"approval_status,omitempty"` // Approval status from the rights holder at manifest creation time (snapshot, not
+	VerificationURL string `json:"verification_url,omitempty"` // URL where downstream supply chain participants can verify this rights grant is a
+	Ext any `json:"ext,omitempty"`
 }
 
 // UserMatch — User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs, an
