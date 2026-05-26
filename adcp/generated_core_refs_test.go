@@ -333,6 +333,54 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "delivery reporting request options",
+			value: GetMediaBuyDeliveryRequest{
+				MediaBuyIDs: []string{"mb-1"},
+				AttributionWindow: &DeliveryAttributionWindow{
+					PostClick: Ptr(Duration{Interval: 7, Unit: "days"}),
+					PostView:  Ptr(Duration{Interval: 1, Unit: "days"}),
+					Model:     "last_touch",
+				},
+				ReportingDimensions: &DeliveryReportingDimensions{
+					Geo:        &DeliveryReportingGeoDimension{GeoLevel: "metro", System: "nielsen_dma", Limit: 10, SortBy: "spend"},
+					DeviceType: &DeliveryReportingDimension{SortBy: "impressions"},
+					Audience:   &DeliveryReportingDimension{Limit: 5},
+				},
+			},
+			want: []string{
+				`"attribution_window":{"post_click":{"interval":7,"unit":"days"},"post_view":{"interval":1,"unit":"days"},"model":"last_touch"}`,
+				`"reporting_dimensions":{"geo":{"geo_level":"metro","system":"nielsen_dma","limit":10,"sort_by":"spend"},"device_type":{"sort_by":"impressions"},"audience":{"limit":5}}`,
+			},
+		},
+		{
+			name: "creative agent refs",
+			value: ListCreativeFormatsResponse{
+				Formats: []CreativeFormat{},
+				CreativeAgents: []CreativeAgentRef{{
+					AgentURL:     "https://creative.example/mcp",
+					AgentName:    "Creative Agent",
+					Capabilities: []string{"generation", "preview"},
+				}},
+			},
+			want: []string{
+				`"creative_agents":[{"agent_url":"https://creative.example/mcp","agent_name":"Creative Agent","capabilities":["generation","preview"]}]`,
+			},
+		},
+		{
+			name: "build creative preview inputs",
+			value: BuildCreativeRequest{
+				IdempotencyKey: "idem-preview-123",
+				PreviewInputs: []BuildCreativePreviewInput{{
+					Name:               "mobile",
+					Macros:             map[string]string{"CITY": "Honolulu"},
+					ContextDescription: "Sunny morning",
+				}},
+			},
+			want: []string{
+				`"preview_inputs":[{"name":"mobile","macros":{"CITY":"Honolulu"},"context_description":"Sunny morning"}]`,
+			},
+		},
+		{
 			name: "media buy daily breakdown",
 			value: MediaBuyDelivery{
 				MediaBuyID:     "mb-1",

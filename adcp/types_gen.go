@@ -2792,6 +2792,48 @@ type ArtifactWebhookConfig struct {
 	SamplingRate *float64 `json:"sampling_rate,omitempty"` // Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sampl
 }
 
+// DeliveryAttributionWindow — Attribution window to apply for conversion metrics. When provided, the seller returns conversion dat
+type DeliveryAttributionWindow struct {
+	PostClick *Duration `json:"post_click,omitempty"` // Post-click attribution window to apply.
+	PostView *Duration `json:"post_view,omitempty"` // Post-view attribution window to apply.
+	Model string `json:"model,omitempty"` // Attribution model to use. When omitted, the seller applies their default model.
+}
+
+// DeliveryReportingDimensions — Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimensio
+type DeliveryReportingDimensions struct {
+	Geo *DeliveryReportingGeoDimension `json:"geo,omitempty"` // Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdow
+	DeviceType *DeliveryReportingDimension `json:"device_type,omitempty"` // Request device type breakdown.
+	DevicePlatform *DeliveryReportingDimension `json:"device_platform,omitempty"` // Request device platform breakdown.
+	Audience *DeliveryReportingDimension `json:"audience,omitempty"` // Request audience segment breakdown.
+	Placement *DeliveryReportingDimension `json:"placement,omitempty"` // Request placement breakdown.
+}
+
+// DeliveryReportingGeoDimension — Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdown for available leve
+type DeliveryReportingGeoDimension struct {
+	GeoLevel string `json:"geo_level"` // Geographic granularity level for the breakdown
+	System string `json:"system,omitempty"` // Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_
+	Limit int `json:"limit,omitempty"` // Maximum number of geo entries to return. Defaults to 25. When truncated, by_geo_
+	SortBy string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the sell
+}
+
+// DeliveryReportingDimension — Request device type breakdown.
+type DeliveryReportingDimension struct {
+	Limit int `json:"limit,omitempty"` // Maximum number of entries to return. When omitted, all entries are returned (the
+	SortBy string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the sell
+}
+
+type CreativeAgentRef struct {
+	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
+	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
+	Capabilities []string `json:"capabilities,omitempty"` // Capabilities this creative agent provides
+}
+
+type BuildCreativePreviewInput struct {
+	Name string `json:"name"` // Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evenin
+	Macros map[string]string `json:"macros,omitempty"` // Macro values to use for this preview variant
+	ContextDescription string `json:"context_description,omitempty"` // Natural language description of the context for AI-generated content
+}
+
 // CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can cont
 type CollectionRequestPagination struct {
 	MaxResults int `json:"max_results,omitempty"` // Maximum number of collections to return per page
@@ -3552,8 +3594,8 @@ type GetMediaBuyDeliveryRequest struct {
 	StartDate string `json:"start_date,omitempty"` // Start date for reporting period (YYYY-MM-DD). When omitted along with end_date,
 	EndDate string `json:"end_date,omitempty"` // End date for reporting period (YYYY-MM-DD). When omitted along with start_date,
 	IncludePackageDailyBreakdown *bool `json:"include_package_daily_breakdown,omitempty"` // When true, include daily_breakdown arrays within each package in by_package. Use
-	AttributionWindow any `json:"attribution_window,omitempty"` // Attribution window to apply for conversion metrics. When provided, the seller re
-	ReportingDimensions any `json:"reporting_dimensions,omitempty"` // Request dimensional breakdowns in delivery reporting. Each key enables a specifi
+	AttributionWindow *DeliveryAttributionWindow `json:"attribution_window,omitempty"` // Attribution window to apply for conversion metrics. When provided, the seller re
+	ReportingDimensions *DeliveryReportingDimensions `json:"reporting_dimensions,omitempty"` // Request dimensional breakdowns in delivery reporting. Each key enables a specifi
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -3600,7 +3642,7 @@ type ListCreativeFormatsRequest struct {
 // ListCreativeFormatsResponse — Response payload for list_creative_formats task
 type ListCreativeFormatsResponse struct {
 	Formats []CreativeFormat `json:"formats"` // Full format definitions for all formats this agent supports. Each format's autho
-	CreativeAgents []any `json:"creative_agents,omitempty"` // Optional: Creative agents that provide additional formats. Buyers can recursivel
+	CreativeAgents []CreativeAgentRef `json:"creative_agents,omitempty"` // Optional: Creative agents that provide additional formats. Buyers can recursivel
 	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors and warnings (e.g., format availability issues)
 	Pagination *PaginationResponse `json:"pagination,omitempty"`
 	Sandbox *bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
@@ -3694,7 +3736,7 @@ type BuildCreativeRequest struct {
 	Quality string `json:"quality,omitempty"` // Quality tier for generation. 'draft' produces fast, lower-fidelity output for it
 	ItemLimit int `json:"item_limit,omitempty"` // Maximum number of catalog items to use when generating. When a catalog asset con
 	IncludePreview *bool `json:"include_preview,omitempty"` // When true, requests the creative agent to include preview renders in the respons
-	PreviewInputs []any `json:"preview_inputs,omitempty"` // Input sets for preview generation when include_preview is true. Each input set d
+	PreviewInputs []BuildCreativePreviewInput `json:"preview_inputs,omitempty"` // Input sets for preview generation when include_preview is true. Each input set d
 	PreviewQuality string `json:"preview_quality,omitempty"` // Render quality for inline preview when include_preview is true. 'draft' produces
 	PreviewOutputFormat string `json:"preview_output_format,omitempty"` // Output format for preview renders when include_preview is true. 'url' returns pr
 	MacroValues map[string]string `json:"macro_values,omitempty"` // Macro values to pre-substitute into the output manifest's assets. Keys are unive

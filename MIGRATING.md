@@ -159,6 +159,17 @@ be populated.
 | `PackageDelivery.ByAudience` | `[]adcp.PackageAudienceDelivery` |
 | `PackageDelivery.ByPlacement` | `[]adcp.PackagePlacementDelivery` |
 | `PackageDelivery.DailyBreakdown` | `[]adcp.PackageDailyBreakdown` |
+| `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
+| `DeliveryAttributionWindow.PostClick` | `*adcp.Duration` |
+| `DeliveryAttributionWindow.PostView` | `*adcp.Duration` |
+| `GetMediaBuyDeliveryRequest.ReportingDimensions` | `*adcp.DeliveryReportingDimensions` |
+| `DeliveryReportingDimensions.Geo` | `*adcp.DeliveryReportingGeoDimension` |
+| `DeliveryReportingDimensions.DeviceType` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.DevicePlatform` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.Audience` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.Placement` | `*adcp.DeliveryReportingDimension` |
+| `ListCreativeFormatsResponse.CreativeAgents` | `[]adcp.CreativeAgentRef` |
+| `BuildCreativeRequest.PreviewInputs` | `[]adcp.BuildCreativePreviewInput` |
 | `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
 | `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
 | `RightsConstraint.RightsAgent` | `adcp.RightsAgentRef` |
