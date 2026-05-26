@@ -23,6 +23,7 @@ type CapabilitiesData struct {
 	ComplianceTesting     *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
 	Specialisms           []string                       `json:"specialisms,omitempty"`
 	ExtensionsSupported   []string                       `json:"extensions_supported,omitempty"`
+	ExperimentalFeatures  []string                       `json:"experimental_features,omitempty"`
 	LastUpdated           string                         `json:"last_updated,omitempty"`
 	Errors                []AdcpError                    `json:"errors,omitempty"`
 	Context               any                            `json:"context,omitempty"`
@@ -37,8 +38,9 @@ type ADCPVersion struct {
 // IdempotencyCaps declares the seller's replay window for idempotency_key.
 // Minimum 3600 (1h); recommended 86400 (24h); maximum 604800 (7d).
 type IdempotencyCaps struct {
-	Supported        bool `json:"supported"`
-	ReplayTTLSeconds int  `json:"replay_ttl_seconds"`
+	Supported         bool  `json:"supported"`
+	ReplayTTLSeconds  int   `json:"replay_ttl_seconds"`
+	AccountIDIsOpaque *bool `json:"account_id_is_opaque,omitempty"`
 }
 
 // AccountCapabilities describes how accounts are established and billed.
@@ -67,9 +69,10 @@ type MediaBuyCapabilities struct {
 
 // MediaBuyExecution describes technical execution capabilities for media buying.
 type MediaBuyExecution struct {
-	TrustedMatch  *TrustedMatchCaps  `json:"trusted_match,omitempty"`
-	CreativeSpecs *CreativeSpecsCaps `json:"creative_specs,omitempty"`
-	Targeting     *TargetingCaps     `json:"targeting,omitempty"`
+	TrustedMatch    *TrustedMatchCaps  `json:"trusted_match,omitempty"`
+	AxeIntegrations []string           `json:"axe_integrations,omitempty"`
+	CreativeSpecs   *CreativeSpecsCaps `json:"creative_specs,omitempty"`
+	Targeting       *TargetingCaps     `json:"targeting,omitempty"`
 }
 
 type TrustedMatchCaps struct {
@@ -207,8 +210,9 @@ type SignalsCapabilities struct {
 
 // GovernanceCapabilities is the governance protocol capability block.
 type GovernanceCapabilities struct {
-	PropertyFeatures []GovernanceFeature `json:"property_features,omitempty"`
-	CreativeFeatures []GovernanceFeature `json:"creative_features,omitempty"`
+	PropertyFeatures      []GovernanceFeature `json:"property_features,omitempty"`
+	CreativeFeatures      []GovernanceFeature `json:"creative_features,omitempty"`
+	AggregationWindowDays int                 `json:"aggregation_window_days,omitempty"`
 }
 
 // GovernanceFeature describes a score/rating/certification the agent provides.
