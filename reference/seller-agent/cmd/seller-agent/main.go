@@ -698,18 +698,26 @@ func decorateMediaBuy(buy *adcp.MediaBuyData) {
 }
 
 func validActions(status string) []string {
-	switch status {
-	case "canceled", "completed", "rejected", "failed":
+	switch adcp.MediaBuyStatus(status) {
+	case adcp.MediaBuyStatusCanceled, adcp.MediaBuyStatusCompleted, adcp.MediaBuyStatusRejected:
 		return []string{}
-	case "paused":
-		return []string{"resume", "cancel", "sync_creatives", "update_packages"}
-	case "pending_creatives":
-		return []string{"cancel", "sync_creatives", "update_packages"}
-	case "active", "pending_start":
-		return []string{"pause", "cancel", "sync_creatives", "update_packages"}
+	case adcp.MediaBuyStatusPaused:
+		return mediaBuyActions(adcp.MediaBuyValidActionResume, adcp.MediaBuyValidActionCancel, adcp.MediaBuyValidActionSyncCreatives, adcp.MediaBuyValidActionUpdatePackages)
+	case adcp.MediaBuyStatusPendingCreatives, adcp.MediaBuyStatusPendingStart:
+		return mediaBuyActions(adcp.MediaBuyValidActionCancel, adcp.MediaBuyValidActionSyncCreatives, adcp.MediaBuyValidActionUpdatePackages)
+	case adcp.MediaBuyStatusActive:
+		return mediaBuyActions(adcp.MediaBuyValidActionPause, adcp.MediaBuyValidActionCancel, adcp.MediaBuyValidActionSyncCreatives, adcp.MediaBuyValidActionUpdatePackages)
 	default:
 		return []string{}
 	}
+}
+
+func mediaBuyActions(actions ...adcp.MediaBuyValidAction) []string {
+	out := make([]string, len(actions))
+	for i, action := range actions {
+		out[i] = string(action)
+	}
+	return out
 }
 
 func hasValidAction(status, action string) bool {

@@ -642,10 +642,42 @@ func TestValidActions_UnknownStatusFailsClosed(t *testing.T) {
 	}
 }
 
-func TestValidActions_PendingStartAllowsActiveBuyActions(t *testing.T) {
-	for _, action := range []string{"pause", "cancel", "sync_creatives", "update_packages"} {
-		if !hasValidAction("pending_start", action) {
-			t.Fatalf("pending_start should allow %s, got %#v", action, validActions("pending_start"))
+func TestValidActions_CoversEveryKnownMediaBuyStatus(t *testing.T) {
+	expected := map[adcp.MediaBuyStatus][]string{
+		adcp.MediaBuyStatusPendingCreatives: {"cancel", "sync_creatives", "update_packages"},
+		adcp.MediaBuyStatusPendingStart:     {"cancel", "sync_creatives", "update_packages"},
+		adcp.MediaBuyStatusActive:           {"pause", "cancel", "sync_creatives", "update_packages"},
+		adcp.MediaBuyStatusPaused:           {"resume", "cancel", "sync_creatives", "update_packages"},
+		adcp.MediaBuyStatusCompleted:        {},
+		adcp.MediaBuyStatusRejected:         {},
+		adcp.MediaBuyStatusCanceled:         {},
+	}
+
+	for _, status := range adcp.KnownMediaBuyStatusValues() {
+		want, ok := expected[status]
+		if !ok {
+			t.Fatalf("validActions missing explicit expectation for known status %q", status)
+		}
+		got := validActions(string(status))
+		if !equalStringSlices(got, want) {
+			t.Fatalf("validActions(%q) = %#v, want %#v", status, got, want)
+		}
+		for _, action := range want {
+			if !hasValidAction(string(status), action) {
+				t.Fatalf("hasValidAction(%q, %q) = false; valid actions %#v", status, action, got)
+			}
 		}
 	}
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
