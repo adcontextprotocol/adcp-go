@@ -18,7 +18,6 @@ CI wiring:
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections import OrderedDict
@@ -32,6 +31,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import generate as gen  # noqa: E402
 
 ADCP_DIR = SCRIPT_DIR.parent
+SCHEMA_RESOLUTION_ERRORS = gen.SCHEMA_RESOLUTION_ERRORS
 GO_SOURCE_FILES = [
     ADCP_DIR / 'types.go',
     ADCP_DIR / 'inputs.go',
@@ -226,7 +226,7 @@ def _resolve_ref(ref):
         if fragment:
             return json_pointer_get(schema, fragment[1:])
         return schema
-    except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError):
+    except SCHEMA_RESOLUTION_ERRORS:
         return None
 
 
@@ -306,7 +306,7 @@ def validate_inline_schema_specs():
             continue
         try:
             schema = load_schema_spec(schema_spec)
-        except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError) as e:
+        except SCHEMA_RESOLUTION_ERRORS as e:
             reports.append({
                 'type': type_name,
                 'schema': schema_spec,
@@ -346,7 +346,14 @@ def diff_type(type_name, go_fields, schema_spec):
     schema_path = SCRIPT_DIR / path_part
     if not schema_path.exists():
         return {'type': type_name, 'error': f'schema not found: {schema_path}'}
-    schema = load_schema_spec(schema_spec)
+    try:
+        schema = load_schema_spec(schema_spec)
+    except SCHEMA_RESOLUTION_ERRORS as e:
+        return {
+            'type': type_name,
+            'schema': schema_spec,
+            'error': f'could not resolve schema pointer: {e}',
+        }
     if schema_is_oneof_only(schema):
         return None  # can't diff a pure oneOf with tag-level comparison
     schema_props = schema_property_set(schema)
@@ -472,6 +479,8 @@ def main():
             for r in reports:
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                if r.get('error'):
+                    print(f'    error: {r["error"]}')
                 if r.get('missing_in_go'):
                     print(f'    missing in Go:       {", ".join(r["missing_in_go"])}')
                 if r.get('extra_in_go'):
