@@ -44,8 +44,9 @@ func TestParseSpecKeysJSON(t *testing.T) {
 	require.NoError(t, err)
 	ec, ok := pub2.(*ecdsa.PublicKey)
 	assert.True(t, ok)
-	assert.NotNil(t, ec.X)
-	assert.NotNil(t, ec.Y)
+	ecdhPub, err := ec.ECDH()
+	require.NoError(t, err)
+	assert.NotEmpty(t, ecdhPub.Bytes())
 	assert.Equal(t, "request-signing", es.AdcpUse)
 
 	gov := jwks.Find("test-gov-2026")

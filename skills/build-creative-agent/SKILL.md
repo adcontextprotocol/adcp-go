@@ -45,7 +45,7 @@ Asset `item_type` must be `"individual"`.
 
 ```go
 adcp.AddTool(server, "list_creative_formats", "Available creative formats",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativeFormatsInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativeFormatsRequest) (*mcp.CallToolResult, any, error) {
         return adcp.CreativeFormatsResponse(formats, true)
     })
 ```
@@ -58,7 +58,7 @@ Input has `creatives[]` with `creative_id`, `format_id`, `name`, `assets`. Store
 
 ```go
 adcp.AddTool(server, "sync_creatives", "Accept and store creatives",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.SyncCreativesRequest) (*mcp.CallToolResult, any, error) {
         s.mu.Lock()
         defer s.mu.Unlock()
 
@@ -106,7 +106,7 @@ Each creative must include `created_date` and `updated_date` (ISO 8601).
 
 ```go
 adcp.AddTool(server, "list_creatives", "List creative library",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativesInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativesRequest) (*mcp.CallToolResult, any, error) {
         s.mu.RLock()
         defer s.mu.RUnlock()
 
@@ -145,18 +145,13 @@ The request can come as `creative_id` (lookup) or `creative_manifest` (render di
 
 ```go
 adcp.AddTool(server, "preview_creative", "Render a preview",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.PreviewCreativeInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.PreviewCreativeRequest) (*mcp.CallToolResult, any, error) {
         var creativeID, name string
         var w, h int
 
         if input.CreativeManifest != nil {
             // Render from manifest directly
-            if fid, ok := input.CreativeManifest["format_id"].(map[string]any); ok {
-                if id, ok := fid["id"].(string); ok {
-                    w, h = formatDimensions(id)
-                }
-            }
-            name, _ = input.CreativeManifest["name"].(string)
+            w, h = formatDimensions(input.CreativeManifest.FormatID.ID)
             creativeID = "preview-manifest"
         } else if input.CreativeID != "" {
             // Lookup from store
@@ -181,15 +176,18 @@ adcp.AddTool(server, "preview_creative", "Render a preview",
 
 ### 6. `build_creative`
 
-Handle both `creative_manifest` (direct build) and `creative_id` (store lookup). If neither is provided but `format_id` is, build a default manifest from the format.
+Handle both `creative_manifest` (direct build) and `creative_id` (store lookup). If neither is provided but `target_format_id` is, build a default manifest from the format.
 
 ```go
 adcp.AddTool(server, "build_creative", "Build serving tag",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.BuildCreativeInput) (*mcp.CallToolResult, any, error) {
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.BuildCreativeRequest) (*mcp.CallToolResult, any, error) {
         var manifest map[string]any
 
         if input.CreativeManifest != nil {
-            manifest = input.CreativeManifest
+            manifest = map[string]any{
+                "format_id": input.CreativeManifest.FormatID,
+                "assets": input.CreativeManifest.Assets,
+            }
         } else if input.CreativeID != "" {
             s.mu.RLock()
             c, ok := s.creatives[input.CreativeID]
@@ -200,12 +198,12 @@ adcp.AddTool(server, "build_creative", "Build serving tag",
                 })
             }
             manifest = map[string]any{"format_id": c.FormatID, "name": c.Name, "assets": c.Assets}
-        } else if input.FormatID != nil {
+        } else if input.TargetFormatID != nil {
             // Build default manifest from format
-            manifest = map[string]any{"format_id": input.FormatID, "name": "Built Creative"}
+            manifest = map[string]any{"format_id": input.TargetFormatID, "assets": map[string]any{}}
         } else {
             return adcp.Errorf("INVALID_INPUT", adcp.ErrorOptions{
-                Message: "creative_id, creative_manifest, or format_id required",
+                Message: "creative_id, creative_manifest, or target_format_id required",
             })
         }
 
@@ -308,6 +306,6 @@ npx @adcp/client storyboard run http://localhost:3001/mcp creative_lifecycle --j
 | `adcp.Result(data, summary)` | Generic response |
 | `adcp.Errorf(code, opts)` | Error response |
 
-Input types: `adcp.EmptyInput`, `adcp.ListCreativeFormatsInput`, `adcp.SyncCreativesInput`, `adcp.ListCreativesInput`, `adcp.PreviewCreativeInput`, `adcp.BuildCreativeInput`
+Input types: `adcp.EmptyInput`, `adcp.ListCreativeFormatsRequest`, `adcp.SyncCreativesRequest`, `adcp.ListCreativesRequest`, `adcp.PreviewCreativeRequest`, `adcp.BuildCreativeRequest`
 
 The skill contains everything you need.

@@ -119,7 +119,8 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result := h.service.Evaluate(ctx, &req)
+	serviceReq, decoded := h.buildServiceRequest(ctx, &req)
+	result := h.service.Evaluate(ctx, serviceReq)
 
 	// Fail closed on budget overrun: return the standard wire shape with an
 	// empty eligible-packages array, matching what callers see for any other
@@ -153,7 +154,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.tmpx != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()
-		if token, terr := h.tmpx.Seal(req.Identities); terr != nil {
+		if token, terr := h.tmpx.SealDecoded(ctx, decoded); terr != nil {
 			h.logger.Warn("tmpx generation failed, response will omit tmpx",
 				"request_id", req.RequestID, "error", terr)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomeError)
@@ -216,3 +217,35 @@ func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, st
 func (h *identityHandler) recordCompletion(ctx context.Context, start time.Time, status string) {
 	h.recorder.RequestCompleted(ctx, status, time.Since(start))
 }
+
+// buildServiceRequest prepares the IdentityMatchRequest that flows into
+// service.Evaluate, along with the decoded identity slice the TMPX seal
+// path will consume.
+//
+// When TMPX is enabled, the request's identities are decoded once via
+// h.tmpx.Decode (so LiveRamp-backed RampIDs hit the sidecar at most once
+// per request) and a shallow shadow request is built whose Identities
+// slice carries only the entries that successfully decoded, with
+// UserToken set to the decoded byte form — that way
+// identityhash.Hash(user_token) inside audience/fcap keys onto the
+// canonical decoded form, matching whatever the buyer-master populator
+// publishes downstream.
+//
+// When TMPX is disabled, no decode is performed and the original request
+// passes through unchanged — preserving legacy behavior for deployments
+// that don't ship TMPX tokens.
+//
+// The returned shadow shares backing storage for every IdentityMatchRequest
+// field except Identities; the caller must not append to those slices.
+// service.Evaluate is the only consumer and does its own value copy of
+// the request before mutating PackageIDs.
+func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.IdentityMatchRequest) (*tmproto.IdentityMatchRequest, []DecodedIdentity) {
+	if h.tmpx == nil {
+		return req, nil
+	}
+	decoded := h.tmpx.Decode(ctx, req.Identities)
+	shadow := *req
+	shadow.Identities = audienceEligibleIdentities(decoded)
+	return &shadow, decoded
+}
+

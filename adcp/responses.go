@@ -20,15 +20,107 @@ func ProductsResponse(data *ProductsData) (*mcp.CallToolResult, any, error) {
 	return buildResult(fmt.Sprintf("Found %d products", len(data.Products)), data), data, nil
 }
 
+// CreateMediaBuyResult is implemented by generated create_media_buy response variants.
+type CreateMediaBuyResult interface {
+	createMediaBuyResult()
+}
+
+func (*CreateMediaBuySuccess) createMediaBuyResult()   {}
+func (*CreateMediaBuyError) createMediaBuyResult()     {}
+func (*CreateMediaBuySubmitted) createMediaBuyResult() {}
+
 // MediaBuyResponse builds a create_media_buy response.
-func MediaBuyResponse(data *MediaBuyData) (*mcp.CallToolResult, any, error) {
+func MediaBuyResponse(data CreateMediaBuyResult) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "media buy response is required"})
+	}
+
+	switch v := data.(type) {
+	case *CreateMediaBuySuccess:
+		return createMediaBuySuccessResponse(v)
+	case *CreateMediaBuyError:
+		return createMediaBuyErrorResponse(v)
+	case *CreateMediaBuySubmitted:
+		return createMediaBuySubmittedResponse(v)
+	default:
+		return Errorf("INVALID_REQUEST", ErrorOptions{
+			Message:    "create_media_buy response must be a generated create_media_buy response variant",
+			Suggestion: "Return adcp.CreateMediaBuySuccess, adcp.CreateMediaBuyError, or adcp.CreateMediaBuySubmitted from Config.CreateMediaBuy.",
+		})
+	}
+}
+
+func createMediaBuySuccessResponse(data *CreateMediaBuySuccess) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "create media buy success response is required"})
+	}
 	return buildResult(fmt.Sprintf("Media buy %s created", data.MediaBuyID), data), data, nil
+}
+
+func createMediaBuyErrorResponse(data *CreateMediaBuyError) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "create media buy error response is required"})
+	}
+	result := buildResult("Media buy creation failed", data)
+	result.IsError = true
+	return result, data, nil
+}
+
+func createMediaBuySubmittedResponse(data *CreateMediaBuySubmitted) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "create media buy submitted response is required"})
+	}
+	if data.Status == "" {
+		data.Status = "submitted"
+	}
+	if data.Status != "submitted" {
+		return Errorf("INVALID_FIELD", ErrorOptions{
+			Message: "submitted media buy response status must be submitted",
+			Field:   "status",
+		})
+	}
+	if data.TaskID == "" {
+		return Errorf("MISSING_FIELD", ErrorOptions{
+			Message:    "submitted media buy response requires task_id",
+			Field:      "task_id",
+			Suggestion: "Set CreateMediaBuySubmitted.TaskID or use CreateMediaBuySubmittedResponse.",
+		})
+	}
+	return buildResult("Media buy submitted", data), data, nil
+}
+
+// CreateMediaBuySuccessResponse builds a synchronous create_media_buy success response.
+func CreateMediaBuySuccessResponse(data *CreateMediaBuySuccess) (*mcp.CallToolResult, any, error) {
+	return MediaBuyResponse(data)
+}
+
+// CreateMediaBuyErrorResponse builds a create_media_buy schema error-branch response.
+func CreateMediaBuyErrorResponse(data *CreateMediaBuyError) (*mcp.CallToolResult, any, error) {
+	return MediaBuyResponse(data)
+}
+
+// CreateMediaBuySubmittedResponse builds an async create_media_buy submitted response.
+func CreateMediaBuySubmittedResponse(taskID, message string) (*mcp.CallToolResult, any, error) {
+	return MediaBuyResponse(&CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: message})
 }
 
 // MediaBuysResponse builds a get_media_buys response.
 func MediaBuysResponse(mediaBuys []MediaBuyData, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"media_buys": mediaBuys, "sandbox": sandbox}
-	return buildResult(fmt.Sprintf("Found %d media buys", len(mediaBuys)), out), out, nil
+	if mediaBuys == nil {
+		mediaBuys = []MediaBuyData{}
+	}
+	return MediaBuysDataResponse(&GetMediaBuysResponse{MediaBuys: mediaBuys, Sandbox: Bool(sandbox)})
+}
+
+// MediaBuysDataResponse builds a get_media_buys response with the full envelope.
+func MediaBuysDataResponse(data *GetMediaBuysResponse) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "media buys response is required"})
+	}
+	if data.MediaBuys == nil {
+		data.MediaBuys = []MediaBuyData{}
+	}
+	return buildResult(fmt.Sprintf("Found %d media buys", len(data.MediaBuys)), data), data, nil
 }
 
 // DeliveryResponse builds a get_media_buy_delivery response.
@@ -213,4 +305,17 @@ func buildResult(summary string, data any) *mcp.CallToolResult {
 		},
 		StructuredContent: jsonRoundTrip(data),
 	}
+}
+
+func attachContext(result *mcp.CallToolResult, context any) *mcp.CallToolResult {
+	if result == nil || context == nil {
+		return result
+	}
+	obj, ok := jsonRoundTrip(result.StructuredContent).(map[string]any)
+	if !ok {
+		return result
+	}
+	obj["context"] = context
+	result.StructuredContent = obj
+	return result
 }

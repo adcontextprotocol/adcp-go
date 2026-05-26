@@ -91,6 +91,7 @@ type Config struct {
 
 	TMP             TMPConfig
 	TMPX            TMPXConfig
+	LiveRamp        LiveRampSidecarConfig
 	IdentityConfig  IdentityConfigSourceConfig
 	AudienceValkey  ValkeyBlock
 	FCapValkey      ValkeyBlock
@@ -111,12 +112,29 @@ type TMPConfig struct {
 // TMPXConfig drives TMPX response sealing. Disabled when EncryptJWKSURL is
 // empty.
 type TMPXConfig struct {
-	EncryptJWKSURL   string
-	EncryptJWKSTTL   time.Duration
-	Country          string
-	Priority         string
-	ReferenceStubAck bool
+	EncryptJWKSURL string
+	EncryptJWKSTTL time.Duration
+	Country        string
+	Priority       string
 }
+
+// LiveRampSidecarConfig optionally enables calls to the Scope3 LiveRamp
+// mapping sidecar for decoding RampID and RampID-derived identities into
+// the binary form TMPX expects.
+//
+// When URL is empty the sidecar is disabled: any RampID arriving on
+// /identity is silently dropped from the TMPX wire (other UID types are
+// unaffected). Timeout and DialTimeout default to 2s / 1s respectively
+// when zero. The sidecar is assumed to be reachable in the same network
+// trust boundary as the agent (matching rtdp) so no auth is sent.
+type LiveRampSidecarConfig struct {
+	URL         string
+	Timeout     time.Duration
+	DialTimeout time.Duration
+}
+
+// Enabled reports whether a LiveRamp sidecar URL was configured.
+func (c LiveRampSidecarConfig) Enabled() bool { return c.URL != "" }
 
 // IdentityConfigSourceConfig drives the Scope3 identity-config refresh
 // service.
@@ -137,6 +155,13 @@ type IdentityConfigSourceConfig struct {
 	RefreshInterval    time.Duration
 	StartMode          string
 	StartRetryDeadline time.Duration
+
+	// ExtraHeaders are added to every outbound config-source request on top
+	// of the headers the source manages itself (Authorization, Content-Type,
+	// Accept). Loaded from CONFIG_SOURCE_EXTRA_HEADERS as a JSON object of
+	// name→value pairs. Collisions with the managed headers are rejected by
+	// the source constructor.
+	ExtraHeaders map[string]string
 }
 
 // ValkeyBlock is the per-backend Valkey configuration. Use ToRedisStoreConfig
@@ -307,7 +332,11 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	stubAck, err := lookupBool("TMPX_REFERENCE_STUB_ACK", false)
+	lrTimeout, err := lookupDuration("LIVERAMP_SIDECAR_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	lrDialTimeout, err := lookupDuration("LIVERAMP_SIDECAR_DIAL_TIMEOUT", 0)
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -320,6 +349,10 @@ func LoadConfigFromEnv() (Config, error) {
 		errs = append(errs, err)
 	}
 	startRetryDeadline, err := lookupDuration("CONFIG_START_RETRY_DEADLINE", defaultStartRetryDeadline)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	extraHeaders, err := lookupStringMapJSON("CONFIG_SOURCE_EXTRA_HEADERS")
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -373,11 +406,15 @@ func LoadConfigFromEnv() (Config, error) {
 			AllowUnsigned:  allowUnsigned,
 		},
 		TMPX: TMPXConfig{
-			EncryptJWKSURL:   os.Getenv("TMPX_ENCRYPT_JWKS_URL"),
-			EncryptJWKSTTL:   jwksTTL,
-			Country:          os.Getenv("TMPX_COUNTRY"),
-			Priority:         os.Getenv("TMPX_PRIORITY"),
-			ReferenceStubAck: stubAck,
+			EncryptJWKSURL: os.Getenv("TMPX_ENCRYPT_JWKS_URL"),
+			EncryptJWKSTTL: jwksTTL,
+			Country:        os.Getenv("TMPX_COUNTRY"),
+			Priority:       os.Getenv("TMPX_PRIORITY"),
+		},
+		LiveRamp: LiveRampSidecarConfig{
+			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
+			Timeout:     lrTimeout,
+			DialTimeout: lrDialTimeout,
 		},
 		IdentityConfig: IdentityConfigSourceConfig{
 			URL:                os.Getenv("CONFIG_SOURCE_URL"),
@@ -386,6 +423,7 @@ func LoadConfigFromEnv() (Config, error) {
 			RefreshInterval:    refreshInterval,
 			StartMode:          lookupString("CONFIG_START_MODE", defaultStartMode),
 			StartRetryDeadline: startRetryDeadline,
+			ExtraHeaders:       extraHeaders,
 		},
 		AudienceValkey:  audienceBlock,
 		FCapValkey:      fcapBlock,
@@ -524,8 +562,16 @@ func (c Config) Validate() error {
 		if c.TMPX.Country == "" {
 			errs = append(errs, errors.New("TMPX_COUNTRY is required when any TMPX_* is set"))
 		}
-		if c.TMPX.EncryptJWKSURL != "" && !c.TMPX.ReferenceStubAck {
-			errs = append(errs, errors.New("TMPX_REFERENCE_STUB_ACK=true is required to enable TMPX with the reference SHA-512 stub encoder"))
+	}
+	if c.LiveRamp.URL != "" {
+		if !strings.HasPrefix(c.LiveRamp.URL, "http://") && !strings.HasPrefix(c.LiveRamp.URL, "https://") {
+			errs = append(errs, fmt.Errorf("LIVERAMP_SIDECAR_URL %q must use http:// or https://", c.LiveRamp.URL))
+		}
+		if c.LiveRamp.Timeout < 0 {
+			errs = append(errs, errors.New("LIVERAMP_SIDECAR_TIMEOUT must be non-negative"))
+		}
+		if c.LiveRamp.DialTimeout < 0 {
+			errs = append(errs, errors.New("LIVERAMP_SIDECAR_DIAL_TIMEOUT must be non-negative"))
 		}
 	}
 	if c.Metrics.Enabled {
@@ -655,6 +701,27 @@ func lookupIntList(name string, def []int) ([]int, error) {
 			return nil, fmt.Errorf("%s=%q has non-integer entry %q: %w", name, v, p, err)
 		}
 		out = append(out, n)
+	}
+	return out, nil
+}
+
+// lookupStringMapJSON parses an env var as a JSON object of string→string.
+// Returns nil (with nil error) when the variable is unset or empty. Rejects
+// any non-object payload and empty keys so configuration errors surface at
+// startup rather than at first refresh.
+func lookupStringMapJSON(name string) (map[string]string, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	if err := json.Unmarshal([]byte(v), &out); err != nil {
+		return nil, fmt.Errorf("%s is not a JSON object of string→string: %w", name, err)
+	}
+	for k := range out {
+		if strings.TrimSpace(k) == "" {
+			return nil, fmt.Errorf("%s contains an empty key", name)
+		}
 	}
 	return out, nil
 }

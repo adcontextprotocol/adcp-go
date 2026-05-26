@@ -73,8 +73,12 @@ adcp.AddTool(server, "tool_name", "Description",
 |---------|------|
 | `adcp.CapabilitiesResponse(data)` | `get_adcp_capabilities` |
 | `adcp.ProductsResponse(data)` | `get_products` |
-| `adcp.MediaBuyResponse(data)` | `create_media_buy` |
+| `adcp.MediaBuyResponse(*CreateMediaBuySuccess\|*CreateMediaBuyError\|*CreateMediaBuySubmitted)` | `create_media_buy` |
+| `adcp.CreateMediaBuySuccessResponse(data)` | synchronous `create_media_buy` |
+| `adcp.CreateMediaBuyErrorResponse(data)` | schema error branch for `create_media_buy` |
+| `adcp.CreateMediaBuySubmittedResponse(taskID, message)` | async `create_media_buy` |
 | `adcp.MediaBuysResponse(buys, sandbox)` | `get_media_buys` |
+| `adcp.MediaBuysDataResponse(data)` | `get_media_buys` with pagination/errors |
 | `adcp.DeliveryResponse(data)` | `get_media_buy_delivery` |
 | `adcp.SyncAccountsResponse(accounts, sandbox)` | `sync_accounts` |
 | `adcp.GovernanceResponse(accounts)` | `sync_governance` |
@@ -87,7 +91,7 @@ adcp.AddTool(server, "tool_name", "Description",
 | `adcp.ActivateSignalResponse(deployments, sandbox)` | `activate_signal` |
 | `adcp.SyncCatalogsResponse(catalogs, sandbox)` | `sync_catalogs` |
 | `adcp.SyncEventSourcesResponse(sources, sandbox)` | `sync_event_sources` |
-| `adcp.LogEventResponse(received, processed, sandbox)` | `log_event` |
+| `adcp.LogEventResponse(received, processed, matchQuality, sandbox)` | `log_event` |
 | `adcp.PerformanceFeedbackResponse(sandbox)` | `provide_performance_feedback` |
 | `adcp.Result(data, summary)` | Any tool (generic) |
 | `adcp.Errorf(code, opts)` | Error response |
@@ -106,6 +110,15 @@ adcp.AddTool(server, "tool_name", "Description",
 - [`adcp/types_gen.go`](adcp/types_gen.go) — types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) v3.0.0-rc.4 (latest dev snapshot)
 - [`adcp/governance_types.go`](adcp/governance_types.go) — hand-written `Plan` and related governance types (inline in sync_plans)
 - [`adcp/plan_validate.go`](adcp/plan_validate.go) — client-side enforcement of the budget `oneOf` and Annex III `if/then` invariants
+
+Media-buy seller helpers use the schema variants directly:
+`*CreateMediaBuySuccess`, `*CreateMediaBuyError`, or `*CreateMediaBuySubmitted`
+for `create_media_buy`, and `MediaBuyData` for items returned by
+`get_media_buys`. `MediaBuyData.Packages` is `[]PackageStatus`; create success
+packages remain `[]Package`.
+Use `adcp.Bool(true)` for optional boolean updates and `adcp.Float64(0)` when a
+creative assignment weight of zero is intentional. `CreativeAssignment.Extra`
+preserves seller-specific assignment fields allowed by the schema.
 
 ## Request signing (AdCP 3.0 optional, 4.0 required)
 

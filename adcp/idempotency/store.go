@@ -104,6 +104,7 @@ func (s *Store) TTL() time.Duration { return s.opts.TTL }
 // Use MergeCapability for a helper that wires it at the correct nesting.
 func (s *Store) Capability() map[string]any {
 	return map[string]any{
+		"supported":          true,
 		"replay_ttl_seconds": int64(s.opts.TTL.Seconds()),
 	}
 }

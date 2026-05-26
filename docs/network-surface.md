@@ -110,18 +110,18 @@ Exposure tracking uses encrypted TMPX tokens instead of a dedicated endpoint:
 | Count | 1 | Number of identity entries |
 | Entries | variable | `type_id (1 byte) + token (size from registry)` |
 
-**Reference identity-agent configuration:**
+**Identity-agent TMPX configuration:**
 
-| Flag / env var | Purpose |
+| Env var | Purpose |
 |---|---|
-| `--tmpx-encrypt-jwks-url` / `TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL` | Buyer's JWKS endpoint advertising the TMPX recipient (X25519, `adcp_use=tmpx-encrypt`, `alg=HPKE-DHKEM-X25519-HKDF-SHA256`). The agent polls this on `--tmpx-encrypt-jwks-ttl` and picks the entry with the newest `iat` for sealing. |
-| `--tmpx-encrypt-jwks-ttl` | JWKS poll interval (default 5 min — the spec's recommended cache TTL). |
-| `--tmpx-country` / `TMP_IDENTITY_TMPX_COUNTRY` | Country stamped into the TMPX plaintext header. |
-| `--tmpx-priority` / `TMP_IDENTITY_TMPX_PRIORITY` | Comma-separated UID type ordering used to truncate identities when the resolved set would exceed the 255-byte wire budget (e.g. `uid2,rampid,id5`). Without it, an over-budget set returns an error — the spec forbids arbitrary truncation. |
+| `TMPX_ENCRYPT_JWKS_URL` | Buyer's JWKS endpoint advertising the TMPX recipient (X25519, `adcp_use=tmpx-encrypt`, `alg=HPKE-DHKEM-X25519-HKDF-SHA256`). The agent polls this on `TMPX_ENCRYPT_JWKS_TTL` and picks the entry with the newest `iat` for sealing. |
+| `TMPX_ENCRYPT_JWKS_TTL` | JWKS poll interval (default 5 min — the spec's recommended cache TTL). |
+| `TMPX_COUNTRY` | Country stamped into the TMPX plaintext header. |
+| `TMPX_PRIORITY` | Comma-separated UID type ordering used to truncate identities when the resolved set would exceed the 255-byte wire budget (e.g. `maid,rampid,id5`). Without it, an over-budget set returns an error — the spec forbids arbitrary truncation. Entries whose UID type has no configured decoder are unreachable and flagged at startup. |
 
 When the URL and country are set, the agent generates a TMPX token alongside every identity-match response that has at least one eligible package. The agent reads the `kid` from the currently-active JWKS entry on each seal, so buyer-side key rotation propagates automatically within the TTL window. Identity tokens whose `uid_type` has no entry in the TMPX type-ID registry are skipped per the spec's forward-compatibility rule.
 
-**Reference-impl limitation:** the `string → binary token` conversion in the reference identity-agent is a SHA-512 truncation stub (`stubBinaryToken` in `cmd/identity-agent/main.go`). Real buyer deployments decode tokens per the source graph's encoding (UID2 base64, RampID Xi/XY format, MAID UUID parse, etc.). The reference output is **not** interoperable with a real buyer master — the agent refuses to start with TMPX configured unless `TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK=1` is set.
+**Decoder coverage:** MAID, HashedEmail, and ID5 have format-only decoders that need no external dependency. RampID and RampIDDerived are decoded via the LiveRamp sidecar when `LIVERAMP_SIDECAR_URL` is configured. UID types without a registered decoder are silently dropped from both the TMPX wire and the audience/fcap shadow request; the startup log enumerates which UID types are dropped.
 
 ## Pinhole Specification
 
@@ -218,14 +218,13 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_CONTEXT_REGISTRY_URL` | Context Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
 | `TMP_CONTEXT_ENDPOINT_URL` | Context Agent | Own registered endpoint URL (signed-binding check) | (none) |
 | `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent | Reject unsigned requests | `false` |
-| `TMP_IDENTITY_ADDR` | Identity Agent | Listen address | `:8082` |
-| `TMP_IDENTITY_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
-| `TMP_IDENTITY_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
-| `TMP_IDENTITY_REQUIRE_SIGNATURE` | Identity Agent | Reject unsigned requests | `false` |
-| `TMP_IDENTITY_TMPX_ENCRYPT_JWKS_URL` | Identity Agent | Buyer JWKS URL publishing the TMPX recipient key | (none) |
-| `TMP_IDENTITY_TMPX_COUNTRY` | Identity Agent | Country stamped into TMPX plaintext header | (none) |
-| `TMP_IDENTITY_TMPX_PRIORITY` | Identity Agent | Comma-separated UID type priority for budget-driven truncation | (none) |
-| `TMP_IDENTITY_TMPX_REFERENCE_STUB_ACK` | Identity Agent | Set to `1` to acknowledge the SHA-512 reference token stub | (none) |
+| `HTTP_PORT` | Identity Agent | Listen port | `8080` |
+| `TMP_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_OWN_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_ALLOW_UNSIGNED` | Identity Agent | Accept unsigned requests (dev only) | `false` |
+| `TMPX_ENCRYPT_JWKS_URL` | Identity Agent | Buyer JWKS URL publishing the TMPX recipient key | (none) |
+| `TMPX_COUNTRY` | Identity Agent | Country stamped into TMPX plaintext header | (none) |
+| `TMPX_PRIORITY` | Identity Agent | Comma-separated UID type priority for budget-driven truncation | (none) |
 
 All services also accept `--addr` and other flags. Flags take precedence over environment variables.
 

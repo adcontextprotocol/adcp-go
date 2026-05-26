@@ -61,7 +61,7 @@ func TestEndToEndDeliverToHTTPHandler(t *testing.T) {
 	ctx := context.Background()
 	res, err := Deliver(ctx, srv.URL+"/webhooks/mcp", p, signer, nil)
 	require.NoError(t, err)
-	res.Response.Body.Close()
+	closeResponseBody(t, res.Response)
 	require.Equal(t, http.StatusOK, res.Response.StatusCode)
 	require.Equal(t, int32(1), received.Load())
 	require.Equal(t, res.Body, receivedBody, "handler must observe the exact signed bytes")
@@ -71,7 +71,7 @@ func TestEndToEndDeliverToHTTPHandler(t *testing.T) {
 	// idempotency_key, Deliver mints a fresh signature, dedup fires.
 	res2, err := Deliver(ctx, srv.URL+"/webhooks/mcp", p, signer, nil)
 	require.NoError(t, err)
-	res2.Response.Body.Close()
+	closeResponseBody(t, res2.Response)
 	require.Equal(t, http.StatusOK, res2.Response.StatusCode)
 	require.Equal(t, int32(1), received.Load(), "dedup must suppress handler on retry")
 	assert.Equal(t, res.Body, res2.Body, "retries MUST resend byte-identical bodies")
@@ -107,11 +107,11 @@ func TestEndToEndConflictDifferentPayloadSameKey(t *testing.T) {
 	ctx := context.Background()
 	res1, err := Deliver(ctx, srv.URL+"/webhooks/mcp", p1, signer, nil)
 	require.NoError(t, err)
-	res1.Response.Body.Close()
+	closeResponseBody(t, res1.Response)
 	require.Equal(t, http.StatusOK, res1.Response.StatusCode)
 
 	res2, err := Deliver(ctx, srv.URL+"/webhooks/mcp", p2, signer, nil)
 	require.NoError(t, err)
-	res2.Response.Body.Close()
+	closeResponseBody(t, res2.Response)
 	assert.Equal(t, http.StatusConflict, res2.Response.StatusCode, "same key + different body MUST conflict")
 }

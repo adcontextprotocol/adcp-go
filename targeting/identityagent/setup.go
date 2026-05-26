@@ -19,6 +19,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig/scope3"
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -298,7 +299,12 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	}()
 
 	// Identity-config service (refreshed periodically).
-	source, err := scope3.New(cfg.IdentityConfig.URL, cfg.IdentityConfig.Token, scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout))
+	source, err := scope3.New(
+		cfg.IdentityConfig.URL,
+		cfg.IdentityConfig.Token,
+		scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout),
+		scope3.WithExtraHeaders(cfg.IdentityConfig.ExtraHeaders),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("init scope3 source: %w", err)
 	}
@@ -360,7 +366,26 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("keystore: %w", err)
 	}
 
-	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, logger, recorder)
+	// lrSidecar stays nil-typed as the interface so NewTMPXSealer's nil
+	// check works — assigning a typed-nil *liveramp.Client to an interface
+	// variable would make the interface compare != nil.
+	var lrSidecar LiveRampSidecar
+	if cfg.LiveRamp.Enabled() {
+		c, lrErr := liveramp.NewClient(liveramp.Config{
+			URL:         cfg.LiveRamp.URL,
+			Timeout:     cfg.LiveRamp.Timeout,
+			DialTimeout: cfg.LiveRamp.DialTimeout,
+		})
+		if lrErr != nil {
+			return nil, fmt.Errorf("liveramp client: %w", lrErr)
+		}
+		lrSidecar = c
+		logger.Info("LiveRamp sidecar enabled", "url", cfg.LiveRamp.URL)
+	} else {
+		logger.Info("LiveRamp sidecar disabled — RampID and RampID-derived identities will be ignored in TMPX tokens")
+	}
+
+	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, lrSidecar, logger, recorder)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}

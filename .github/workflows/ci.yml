@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  ADCP_SDK_VERSION: "7.11.0"
+
 jobs:
   test:
     name: Build & Test
@@ -31,6 +34,10 @@ jobs:
         working-directory: adcp/schemas
         run: ./download.sh
 
+      - name: Test schema generator
+        working-directory: adcp/schemas
+        run: python3 -m unittest discover -p '*_test.py'
+
       - name: Check adcp/types_gen.go is up to date
         run: |
           (cd adcp/schemas && python3 generate.py > ../types_gen.go)
@@ -40,6 +47,10 @@ jobs:
         working-directory: adcp/schemas
         run: python3 lint.py --strict
 
+      - name: Check generated any coverage
+        working-directory: adcp/schemas
+        run: python3 generate.py --coverage-max-unreviewed-any 45
+
       - name: Check generated code is up to date
         run: |
           go generate ./tmproto/...
@@ -48,12 +59,16 @@ jobs:
       - name: Test root module
         run: go test -race -count=1 ./...
 
+      - name: Test adcp module
+        working-directory: adcp
+        run: go test -race -count=1 ./...
+
       - name: Test context agent
         working-directory: reference/context-agent
         run: go test -race -count=1 ./...
 
-      - name: Test identity agent
-        working-directory: reference/identity-agent
+      - name: Test seller agent
+        working-directory: reference/seller-agent
         run: go test -race -count=1 ./...
 
       - name: Test e2e
@@ -88,9 +103,41 @@ jobs:
           working-directory: reference/context-agent
           args: ./...
 
-      - name: Run golangci-lint (identity agent)
+      - name: Run golangci-lint (seller agent)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.11
-          working-directory: reference/identity-agent
+          working-directory: reference/seller-agent
           args: ./...
+
+  storyboard:
+    name: Reference Seller Storyboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: "22"
+
+      - name: Run reference seller storyboard harness
+        env:
+          ADCP_PORT: "3003"
+          STORYBOARD_RESULT_PATH: storyboard-result-go.json
+          SELLER_LOG_PATH: storyboard-seller-go.log
+        run: ./scripts/ci/run_storyboard_reference_seller.sh
+
+      - name: Upload storyboard artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: go-reference-seller-storyboard
+          if-no-files-found: ignore
+          path: |
+            storyboard-result-go.json
+            storyboard-seller-go.log

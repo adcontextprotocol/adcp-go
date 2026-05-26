@@ -18,7 +18,6 @@ CI wiring:
 
 import argparse
 import json
-import os
 import re
 import sys
 from collections import OrderedDict
@@ -32,6 +31,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 import generate as gen  # noqa: E402
 
 ADCP_DIR = SCRIPT_DIR.parent
+SCHEMA_RESOLUTION_ERRORS = gen.SCHEMA_RESOLUTION_ERRORS
 GO_SOURCE_FILES = [
     ADCP_DIR / 'types.go',
     ADCP_DIR / 'inputs.go',
@@ -58,7 +58,7 @@ EXEMPT = {
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
     'TestControllerError',
     # inputs (agent-specific helpers, schemas are inline in request schemas)
-    'EmptyInput', 'PackageInput', 'AccountInput', 'GovernanceAccountInput',
+    'EmptyInput', 'AccountInput', 'GovernanceAccountInput',
     'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
     'CreativeFilters', 'SignalFilters',
     # response builders (funcs, not structs — KNOWN_TYPES collision guard)
@@ -76,22 +76,11 @@ EXEMPT = {
     'AccountResult', 'AccountSetup', 'CreativeResult', 'CatalogResult',
     'EventSourceResult', 'LogEventResult', 'GovernanceResult',
     'GovernanceAccount', 'GovernanceAgent', 'CreativeListItem',
-    'MediaBuyListItem', 'PackageDelivery', 'DeliveryTotals', 'DeliveryData',
-    'MediaBuyDelivery', 'ReportingPeriod', 'PreviewResult', 'Preview',
+    'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
+    'PackageStatus', 'PackageCreativeApproval', 'PackageSnapshot',
+    'SyncCreativeAssignment', 'DeliveryTotals', 'DeliveryData',
+    'ReportingPeriod', 'PreviewResult', 'Preview',
     'PreviewRender', 'BuildCreativeResult', 'ProductsData',
-    # capability blocks — generator doesn't own these yet
-    'CapabilitiesData', 'ADCPVersion', 'IdempotencyCaps', 'AccountCapabilities',
-    'MediaBuyCapabilities', 'MediaBuyExecution', 'TrustedMatchCaps',
-    'CreativeSpecsCaps', 'TargetingCaps', 'GeoMetrosCaps', 'GeoPostalAreasCaps',
-    'GeoProximityCaps', 'AgeRestrictionCaps', 'KeywordMatchCaps',
-    'AudienceTargetingCaps', 'MatchingLatencyRange', 'ConversionTrackingCaps',
-    'AttributionWindowOption', 'AttributionWindow', 'ContentStandardsCaps',
-    'PortfolioCaps', 'SignalsCapabilities', 'GovernanceCapabilities',
-    'GovernanceFeature', 'FeatureRange', 'SICapabilities', 'SIEndpoint',
-    'SITransport', 'BrandCapabilities', 'CreativeCapabilities',
-    'RequestSigningCapabilities', 'WebhookSigningCapabilities',
-    'ComplianceTestingCapabilities', 'IdentityCapabilities',
-    'IdentityKeyOrigins', 'IdentityCompromiseNotification',
     # collection response wrappers — responses with embedded payload
     'CreateCollectionListResponse', 'GetCollectionListResponse',
     'UpdateCollectionListResponse', 'DeleteCollectionListResponse',
@@ -117,28 +106,7 @@ EXEMPT = {
 # this table declares the pairing explicitly. Types with no standalone schema
 # file (nested shapes, dead code) belong in EXEMPT, not here — None entries
 # were removed because they never reach path resolution.
-EXPLICIT_SCHEMA = {
-    'Product': 'core/product.json',
-    'Package': 'core/package.json',
-    'MediaBuyData': 'core/media-buy.json',
-    'Targeting': 'core/targeting.json',
-    'FormatRef': 'core/format-id.json',
-    'PricingOption': 'core/pricing-option.json',
-    'Signal': 'core/signal-definition.json',
-    'SignalPricing': 'core/signal-pricing.json',
-    'Deployment': 'core/deployment.json',
-    'CreativeFormat': 'core/format.json',
-    'VendorPricingOption': 'core/vendor-pricing-option.json',
-    'MeasurementTerms': 'core/measurement-terms.json',
-    'MeasurementWindow': 'core/measurement-window.json',
-    'PerformanceStandard': 'core/performance-standard.json',
-    'Duration': 'core/duration.json',
-    'CancellationPolicy': 'core/cancellation-policy.json',
-    'CollectionListRef': 'core/collection-list-ref.json',
-    'CreativeConsumption': 'core/creative-consumption.json',
-    'IndustryIdentifier': 'core/industry-identifier.json',
-    'ContentRating': 'core/content-rating.json',
-}
+EXPLICIT_SCHEMA = gen.HAND_WRITTEN_SCHEMA_SPECS
 
 # STRUCT_RE assumes gofmt layout (closing `}` at column 0) and top-level
 # struct declarations only. Anonymous struct fields that close at column 0
@@ -180,6 +148,8 @@ def parse_go_structs():
             body = m.group(2)
             fields = []
             for fm in FIELD_LINE_RE.finditer(body):
+                if fm.group(3) == '-':
+                    continue
                 fields.append((
                     fm.group(1),
                     fm.group(2).strip(),
@@ -195,6 +165,31 @@ def load_schema(path):
         return json.load(f, object_pairs_hook=OrderedDict)
 
 
+def json_pointer_get(doc, pointer):
+    """Resolve a JSON Pointer fragment against a decoded JSON document."""
+    if pointer in ('', None):
+        return doc
+    if not pointer.startswith('/'):
+        raise ValueError(f'unsupported JSON pointer: {pointer}')
+    node = doc
+    for raw_part in pointer.split('/')[1:]:
+        part = raw_part.replace('~1', '/').replace('~0', '~')
+        if isinstance(node, list):
+            node = node[int(part)]
+        else:
+            node = node[part]
+    return node
+
+
+def load_schema_spec(spec):
+    """Load `path.json` or `path.json#/json/pointer` relative to schemas/."""
+    path_part, _, pointer = spec.partition('#')
+    schema = load_schema(SCRIPT_DIR / path_part)
+    if pointer:
+        return json_pointer_get(schema, pointer)
+    return schema
+
+
 def _resolve_ref(ref):
     """Load a schema referenced by $ref. Only supports local refs of the form
     /schemas/{version}/{path}.json — the only form actually used in-bundle.
@@ -202,18 +197,23 @@ def _resolve_ref(ref):
     ref could attempt."""
     if not isinstance(ref, str):
         return None
-    m = re.match(r'^/schemas/[^/]+/(.+\.json)$', ref)
+    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
     if not m:
         return None
-    path = (SCRIPT_DIR / m.group(1)).resolve()
+    rel = m.group(1)
+    fragment = m.group(2) or ''
+    path = (SCRIPT_DIR / rel).resolve()
     root = SCRIPT_DIR.resolve()
     if root != path and root not in path.parents:
         return None
     if not path.exists():
         return None
     try:
-        return load_schema(path)
-    except (OSError, json.JSONDecodeError):
+        schema = load_schema(path)
+        if fragment:
+            return json_pointer_get(schema, fragment[1:])
+        return schema
+    except SCHEMA_RESOLUTION_ERRORS:
         return None
 
 
@@ -225,6 +225,12 @@ def schema_property_set(schema, _visited=None):
     if _visited is None:
         _visited = set()
     props = set()
+    ref = schema.get('$ref')
+    if ref and ref not in _visited:
+        _visited.add(ref)
+        ref_schema = _resolve_ref(ref)
+        if ref_schema:
+            props.update(schema_property_set(ref_schema, _visited))
     if 'properties' in schema:
         props.update(schema['properties'].keys())
     for key in ('allOf', 'anyOf', 'oneOf'):
@@ -261,33 +267,126 @@ def schema_is_oneof_only(schema):
 
 def schema_required_set(schema):
     req = set(schema.get('required', []))
-    for key in ('allOf', 'anyOf'):
-        for branch in schema.get(key, []):
-            if isinstance(branch, dict):
-                req.update(branch.get('required', []))
+    for branch in schema.get('allOf', []):
+        if isinstance(branch, dict):
+            ref = branch.get('$ref')
+            if ref:
+                ref_schema = _resolve_ref(ref)
+                if ref_schema:
+                    req.update(schema_required_set(ref_schema))
+            req.update(branch.get('required', []))
     return req
 
 
-def resolve_schema_path(type_name):
-    """Return absolute path to the JSON schema for `type_name`, or None."""
+def validate_inline_schema_specs():
+    """Smoke-test generated inline schema pointers so pointer drift fails in CI."""
+    reports = []
+    for type_name, schema_spec in gen.INLINE_SCHEMA_TYPES.items():
+        path_part = schema_spec.split('#', 1)[0]
+        schema_path = SCRIPT_DIR / path_part
+        if not schema_path.exists():
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': f'schema not found: {schema_path}',
+            })
+            continue
+        try:
+            schema = load_schema_spec(schema_spec)
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': f'could not resolve schema pointer: {e}',
+            })
+            continue
+        if not schema_property_set(schema):
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': 'schema pointer resolved but declares no properties',
+            })
+    return reports
+
+
+def validate_union_schema_specs():
+    """Smoke-test generated union schema pointers and shared-helper equivalence."""
+    reports = []
+    for type_name, schema_specs in gen.UNION_SCHEMA_TYPES.items():
+        if isinstance(schema_specs, str):
+            schema_specs = (schema_specs,)
+        loaded = []
+        error_count = len(reports)
+        for schema_spec in schema_specs:
+            path_part = schema_spec.split('#', 1)[0]
+            schema_path = SCRIPT_DIR / path_part
+            if not schema_path.exists():
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'schema not found: {schema_path}',
+                })
+                continue
+            try:
+                loaded.append((schema_spec, load_schema_spec(schema_spec)))
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'could not resolve schema pointer: {e}',
+                })
+        if len(reports) != error_count or len(loaded) != len(schema_specs):
+            continue
+        elem_types = {gen.scalar_union_go_type(schema) for _, schema in loaded}
+        if len(elem_types) != 1 or None in elem_types:
+            reports.append({
+                'type': type_name,
+                'schema': ', '.join(schema_specs),
+                'error': 'schemas are not equivalent scalar-or-array unions',
+            })
+            continue
+        empty_constraints = {gen.schema_accepts_empty_array(schema) for _, schema in loaded}
+        if len(empty_constraints) != 1:
+            reports.append({
+                'type': type_name,
+                'schema': ', '.join(schema_specs),
+                'error': 'array minItems constraints differ',
+            })
+    return reports
+
+
+def resolve_schema_spec(type_name):
+    """Return schema spec for `type_name`, or None."""
     if type_name in EXPLICIT_SCHEMA:
-        return SCRIPT_DIR / EXPLICIT_SCHEMA[type_name]
+        return EXPLICIT_SCHEMA[type_name]
     # Otherwise, search the generate.py registries for a schema whose
     # filename-derived PascalCase matches.
-    candidates = gen.CORE_SCHEMAS + gen.TOOL_SCHEMAS + gen.WEBHOOK_SCHEMAS
+    candidates = (
+        gen.CORE_SCHEMAS + gen.SUPPORT_SCHEMAS +
+        gen.TOOL_SCHEMAS + gen.WEBHOOK_SCHEMAS
+    )
     for rel in candidates:
         stem = Path(rel).stem
         if gen.pascal_case(stem) == type_name:
-            return SCRIPT_DIR / rel
+            return rel
     return None
 
 
-def diff_type(type_name, go_fields, schema_path):
+def diff_type(type_name, go_fields, schema_spec):
     """Compare a hand-written Go struct against its JSON schema. Returns a dict
     describing the drift, or None if clean."""
+    path_part = schema_spec.split('#', 1)[0]
+    schema_path = SCRIPT_DIR / path_part
     if not schema_path.exists():
         return {'type': type_name, 'error': f'schema not found: {schema_path}'}
-    schema = load_schema(schema_path)
+    try:
+        schema = load_schema_spec(schema_spec)
+    except SCHEMA_RESOLUTION_ERRORS as e:
+        return {
+            'type': type_name,
+            'schema': schema_spec,
+            'error': f'could not resolve schema pointer: {e}',
+        }
     if schema_is_oneof_only(schema):
         return None  # can't diff a pure oneOf with tag-level comparison
     schema_props = schema_property_set(schema)
@@ -308,7 +407,7 @@ def diff_type(type_name, go_fields, schema_path):
         return None
     return {
         'type': type_name,
-        'schema': str(schema_path.relative_to(SCRIPT_DIR)),
+        'schema': schema_spec,
         'missing_in_go': missing,
         'extra_in_go': extra,
         'required_with_omitempty': sorted(set(required_with_omitempty)),
@@ -375,6 +474,8 @@ def main():
     _assert_exempt_subset_known(go_structs)
     reports = []
     no_schema = []
+    inline_schema_errors = validate_inline_schema_specs()
+    union_schema_errors = validate_union_schema_specs()
 
     for type_name in sorted(gen.KNOWN_TYPES):
         if type_name in EXEMPT:
@@ -383,12 +484,12 @@ def main():
             # Type listed in KNOWN_TYPES but not found in hand-written sources —
             # either a stale entry or defined in a file we don't scan.
             continue
-        schema_path = resolve_schema_path(type_name)
-        if schema_path is None:
+        schema_spec = resolve_schema_spec(type_name)
+        if schema_spec is None:
             # No schema correspondent — these are candidates for deletion.
             no_schema.append(type_name)
             continue
-        drift = diff_type(type_name, go_structs[type_name], schema_path)
+        drift = diff_type(type_name, go_structs[type_name], schema_spec)
         if drift:
             reports.append(drift)
 
@@ -396,14 +497,32 @@ def main():
         out = {
             'drift': reports,
             'no_schema_correspondent': no_schema,
+            'inline_schema_errors': inline_schema_errors,
+            'union_schema_errors': union_schema_errors,
         }
         print(json.dumps(out, indent=2))
     else:
+        if inline_schema_errors:
+            print(f'Inline schema pointer errors in {len(inline_schema_errors)} type(s):')
+            for r in inline_schema_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    error: {r["error"]}')
+            print()
+        if union_schema_errors:
+            print(f'Union schema pointer errors in {len(union_schema_errors)} type(s):')
+            for r in union_schema_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    error: {r["error"]}')
+            print()
         if reports:
             print(f'Schema drift detected in {len(reports)} type(s):')
             for r in reports:
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                if r.get('error'):
+                    print(f'    error: {r["error"]}')
                 if r.get('missing_in_go'):
                     print(f'    missing in Go:       {", ".join(r["missing_in_go"])}')
                 if r.get('extra_in_go'):
@@ -420,7 +539,9 @@ def main():
             for t in no_schema:
                 print(f'  - {t}')
 
-    has_problems = bool(reports) or (args.strict and bool(no_schema))
+    has_problems = bool(inline_schema_errors) or bool(union_schema_errors) or bool(reports) or (
+        args.strict and bool(no_schema)
+    )
     return 1 if (args.strict and has_problems) else 0
 
 

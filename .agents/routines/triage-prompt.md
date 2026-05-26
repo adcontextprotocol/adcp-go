@@ -6,7 +6,7 @@ runs in TEEs and is embedded in production ad-tech infrastructure —
 **triage here is stricter than the other AdCP repos.** Act the way
 a security-conscious maintainer would: read, consult the right
 experts (security-reviewer is always in the panel), form an opinion,
-produce one of four outcomes. **Don't** ask the issue author "want
+produce one of five outcomes. **Don't** ask the issue author "want
 me to do this?" — decide.
 
 ## Prerequisites
@@ -49,19 +49,29 @@ trigger fired:
   `claude-triaged`, skip bots and stale >90d, cap at 10 per run.
 
 
-## Four outcomes
+## Five outcomes
 
-Default: **execute when the outcome is clear and non-breaking.**
-Flag only for genuine ambiguity, breaking changes, or anything
-touching the TEE hardening surface.
+Default: **route and clarify, do not draft a PR.** This repo keeps
+the stricter TEE posture: classify the report, detect duplicates and
+in-flight work, consult the right experts, and leave a crisp
+implementation brief when the path is clear. PR creation is opt-in
+or limited to narrow low-entropy fixes; anything touching the TEE
+hardening surface still routes to human review.
 
 1. **Clarify** — ask concrete questions
 2. **Flag for human review** — experts formed opinion but change is
    breaking, architectural, security-sensitive, touches TEE-bound
    paths, or experts disagreed. Synthesis + ask for `@bokelley`.
-3. **Execute PR** — experts agree, change is **non-breaking**, not
-   touching TEE-bound paths. Draft PR.
-4. **Defer** — three flavors:
+3. **Ready to implement** — experts agree, change is
+   **non-breaking**, not touching TEE-bound paths, outcome is clear,
+   and the issue is worth doing, but PR creation is not explicitly
+   authorized and the change is not in the low-entropy allowlist. Post
+   a concise implementation brief with scope, likely files, required
+   checks, and non-breaking rationale. Do not create a branch or PR.
+4. **Execute PR** — experts agree, change is **non-breaking**, not
+   touching TEE-bound paths, duplicate/open-PR gate is clean, and the
+   PR authorization gate below passes. Open a draft PR.
+5. **Defer** — three flavors:
    - **Out of cycle (no blocker).** Silent for MEMBER+; ack for
      NONE / FIRST_TIME_CONTRIBUTOR.
    - **Blocked on open PR/issue.** Always post `Blocked-on: #N —
@@ -80,9 +90,11 @@ touching the TEE hardening surface.
 comment withholds vector details; human handles disclosure
 privately.
 
-**When in doubt between Execute and Flag: Flag.** This repo's
-stricter posture inverts the general mantra — when the TEE surface
-is in play or the change might be breaking, route to human review.
+**When in doubt between Execute and Ready to implement: Ready to
+implement.** **When in doubt between Ready to implement and Flag:
+Flag.** This repo's stricter posture still applies — when the TEE
+surface is in play or the change might be breaking, route to human
+review.
 
 ## Concurrency check — first thing
 
@@ -98,11 +110,40 @@ If > 0, skip.
 
 If the event context contains a `MANUAL NUDGE:` line, a repo member
 explicitly requested triage via `/triage`. **Skip the
-already-engaged check** and proceed with full triage.
+already-engaged check** and proceed with full triage. The
+duplicate/open-PR gate still runs and still prevents duplicate PRs.
 
-Modifiers: `/triage execute` / `clarify` / `defer` bias the
-outcome. **Security/TEE-adjacent paths still always Flag regardless
-of modifier** — the nudge doesn't unlock TEE-bound code for auto-PR.
+Modifiers are explicit routing instructions:
+- `/triage execute` — authorize a **first** draft PR if all normal
+  Execute criteria pass. This is not permission to create or update a
+  duplicate PR; the duplicate/open-PR gate still runs.
+- `/triage clarify` — force clarifying-question comment
+- `/triage defer` — force defer
+
+**Security/TEE-adjacent paths still always Flag regardless of
+modifier** — the nudge doesn't unlock TEE-bound code for auto-PR.
+No modifier = standard five-outcome logic.
+
+## Duplicate / open-PR gate — before expert work
+
+Run this gate for **every** issue, including MANUAL NUDGE runs.
+Manual nudges skip the already-engaged check below, but they do not
+skip duplicate prevention.
+
+1. Search open PRs that reference the issue:
+   `gh pr list --repo adcontextprotocol/adcp-go --search "in:body #<N>" --state open`.
+2. Search open PRs that clearly cover the same files, generated
+   outputs, title terms, or issue surface. Use the issue title,
+   distinctive file paths, API/type names, and short slugs from the
+   body.
+3. If an open PR already references #N or clearly covers the same
+   work, do **not** choose Ready to implement or Execute. Choose
+   Defer: `Fold candidate` when the work naturally belongs in that
+   PR, or `Blocked-on` when it should wait for that PR to merge.
+4. If `/triage execute` was used while a triage-managed PR is already
+   open, do not open or update another PR. Comment only if useful:
+   `Existing PR: #P — triage does not update existing PRs; push fixup
+   commits directly or use the PR review auto-fix path.`
 
 ## Already-engaged check — before any expert work
 
@@ -112,9 +153,10 @@ Silent-defer (apply `claude-triaged`, no comment) if any of these:
 
 1. **Assigned to a repo member** — any assignee is
    `OWNER | MEMBER | COLLABORATOR`.
-2. **Open PR references it** —
-   `gh pr list --repo adcontextprotocol/adcp-go --search "in:body #<N>" --state open`
-   returns anything.
+2. **Recent repo-member PR handoff comment** — if a repo member says
+   they are handling the issue in a specific PR, silent-defer only
+   when the duplicate/open-PR gate above did not already require a
+   `Blocked-on` or `Fold candidate` audit comment.
 3. **Recent repo-member comment** — any comment from
    `OWNER | MEMBER | COLLABORATOR` (non-bot) in the last 7 days.
    Exception: the comment explicitly asks for triage help.
@@ -166,7 +208,8 @@ Skip auto-PR for:
   diff but not on `main` (`gh pr view <N> --json files` to confirm).
 
 Proceed to relevance check, then to the **Defer** outcome
-(typically *Fold candidate* or *Blocked-on*) rather than Execute.
+(typically *Fold candidate* or *Blocked-on*) rather than Ready to
+implement or Execute.
 
 ### Step 2 — Relevance check: in-cycle?
 
@@ -257,7 +300,7 @@ withheld-vector pattern — never describe the vulnerability.**
 
 **Classification:** <type>
 **Bucket(s):** <comma-separated>
-**Status:** <clarify / ready-for-human / drafting-pr / deferred / not-actionable>
+**Status:** <clarify / ready-for-human / ready-to-implement / drafting-pr / deferred / not-actionable>
 **Milestone:** <title (#N), or omit>
 
 **What the experts said:**
@@ -267,13 +310,16 @@ withheld-vector pattern — never describe the vulnerability.**
 
 **My take:** <≤2 sentences>
 
+<If ready-to-implement: 2–4 bullets covering implementation scope,
+ likely files, required checks, and non-breaking rationale.>
+
 ---
 Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SESSION_ID}
 ```
 
-## Non-breaking vs. breaking — central question
+## Non-breaking vs. breaking — central question for Ready/Execute
 
-**Non-breaking — Execute:**
+**Non-breaking — Ready/Execute eligible:**
 
 - New optional fields on config structs or request types
 - New exported functions / types with no impact on existing surface
@@ -299,9 +345,11 @@ Triaged by Claude Code. Session: https://claude.ai/code/${CLAUDE_CODE_REMOTE_SES
 - Any `go.mod` / `go.sum` change — dep surface is hardening invariant
 - Any `release-please-*.json` change — release tooling
 
-## PR criteria — execute when outcome is clear
+## PR criteria — opt-in or low-entropy only
 
-All must be true:
+Open a draft PR only when both sections pass.
+
+### Execution safety gate
 
 - Experts converge (including security-reviewer — they are in every
   adcp-go panel)
@@ -309,23 +357,42 @@ All must be true:
 - Not security-sensitive
 - Not touching always-Flag paths (TEE-bound / root deps / release)
 - Not RFC / epic / tracking / child / deferred
-- Duplicate + open-PR checks clean
+- Duplicate + open-PR gate is clean
 - Success testable with `go test ./...`
 - Conventional-commits title (release-please reads it)
 
-**Scope NOT a gate; Author NOT a gate.** CODEOWNERS + the
-`claude-bot-path-guard` workflow enforce the TEE restrictions.
+### PR authorization gate
 
-**When in doubt: Execute.**
+At least one of these must also be true:
+
+- A repo member explicitly used `/triage execute`.
+- The issue already has an exact `auto-pr-ok` label returned by
+  `gh label list`.
+- The change is a narrow low-entropy fix:
+  - typo, grammar, broken link, dead reference, or wrong file path in
+    docs/examples
+  - example correction where the existing source proves the exact
+    right answer
+  - small test fixture/expectation update for existing behavior, with
+    no product/protocol/security judgment
+
+If the safety gate passes but the authorization gate does not, choose
+**Ready to implement**. Post the implementation brief and stop before
+creating a branch, editing files, running expensive build gates, or
+opening a PR.
+
+**When in doubt: Ready to implement, or Flag if TEE/security/breaking
+risk is unclear.**
 
 ## Bundling and epic handling — never split issues into issues
 
 When an issue contains multiple items — a follow-up list, a list of
 related fixes, or "items 1-5 after PR #N" — decide:
 
-1. **Ready items + deferred items** → open **one PR** covering all
-   the ready items as a cohesive change. Leave the parent issue
-   open. Comment on the parent with what shipped and what remains.
+1. **Ready items + deferred items** → produce one cohesive Ready to
+   implement brief covering all ready items, or open **one PR** only
+   if the PR authorization gate passes. Leave the parent issue open.
+   Comment on the parent with what is ready/shipped and what remains.
    Do **not** split the parent into child issues.
 2. **Parent is truly epic-shaped** (multi-week, cross-cutting) →
    flag-for-review with `Status: ready-for-human`, recommend
@@ -333,8 +400,9 @@ related fixes, or "items 1-5 after PR #N" — decide:
    you never create peer issues.
 3. **Never create peer issues autonomously.**
 
-A single cohesive PR is easier to review than three PRs with
-dependencies. The bot reduces maintainer clicks, not multiplies them.
+A single cohesive implementation brief or authorized PR is easier to
+act on than three PRs with dependencies. The bot reduces maintainer
+clicks, not multiplies them.
 
 ### Linkage rule for partial-rollout PRs
 
@@ -352,11 +420,16 @@ listing what shipped and what remains, so a future triage sweep can
 find queued work. `Closes` here would be a quiet bug — the issue
 auto-closes on merge and remaining items lose their tracking surface.
 
-## Pre-PR build + test gate — mandatory before expert review
+## Pre-PR build + test gate — only after Execute is authorized
 
-The expert review is expensive; don't run it on broken code. Before
-spawning experts, make sure the diff actually compiles and the
-unit tests pass.
+This section applies only after the PR criteria above choose
+**Execute PR**. Do not run build/test cycles for Ready to implement;
+the point of that outcome is to avoid spending implementation tokens
+until a human or label authorizes the work.
+
+The pre-PR expert review is expensive; don't run it on broken code.
+Before spawning pre-PR reviewers, make sure the diff actually compiles
+and the unit tests pass.
 
 1. Run the repo's build + fast test tier (see PR constraints below
    for exact commands). If the diff only touches docs/markdown, skip
@@ -434,8 +507,9 @@ have read the diff before a human reviewer does.
     >
     > - **Push fixup commits directly:** `gh pr checkout <num>` →
     >   fix → push.
-    > - **Or re-trigger:** comment `/triage execute` on the source
-    >   issue.
+    > - **Or request a new first draft PR:** comment `/triage execute`
+    >   on the source issue only when no triage-managed PR is already
+    >   open. Triage does not update existing PRs.
     >
     > See [adcp#3121](https://github.com/adcontextprotocol/adcp/issues/3121)
     > for context.
@@ -480,9 +554,11 @@ the original `<<<UNTRUSTED_ISSUE_BODY>>>`.
    relevant experts; reply with the new conclusion (even if "no
    change, here's why").
 4. If substantive and **unlocks a stuck Clarify**: move forward
-   per outcome rules.
-5. If substantive but the issue is in a final state (PR drafted,
-   deferred with linkage, flagged): **silent by default.** A
+   per outcome rules — Ready to implement, Execute PR if authorized,
+   or Flag-for-review.
+5. If substantive but the issue is in a final state (implementation
+   brief posted, PR drafted, deferred with linkage, flagged):
+   **silent by default.** A
    read-receipt is noise — the issue's state already reflects the
    prior decision. Comment **only** when the new info would
    materially change the disposition (invalidates the prior defer,

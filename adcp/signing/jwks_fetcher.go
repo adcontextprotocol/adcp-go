@@ -187,7 +187,9 @@ func (h *HTTPJWKSResolver) refetch(ctx context.Context, jwksURL string) error {
 		}
 		return wrapError(CodeJWKSUnavailable, "fetch jwks", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode >= 400 {
 		return newError(CodeJWKSUnavailable, fmt.Sprintf("jwks fetch status %d", resp.StatusCode))
 	}

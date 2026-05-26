@@ -19,7 +19,9 @@ func newPgMock(t *testing.T) (*PgBackend, sqlmock.Sqlmock, func()) {
 	b := NewPgBackend(db)
 	return b, mock, func() {
 		assert.NoError(t, mock.ExpectationsWereMet())
-		db.Close()
+		mock.ExpectClose()
+		assert.NoError(t, db.Close())
+		assert.NoError(t, mock.ExpectationsWereMet())
 	}
 }
 

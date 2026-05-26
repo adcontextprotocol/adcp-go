@@ -1,5 +1,308 @@
 # Migrating adcp-go
 
+## Next: schema-backed typed SDK fields
+
+This release tightens buyer, seller, and governance SDK surfaces around AdCP
+3.0.12 schemas. Most wire payloads are unchanged, but several public Go structs
+are more typed. Code that built these fields with `map[string]any` should move
+to the generated structs below.
+
+Optional object references are pointers: nil omits the field, and `&T{}` or
+`adcp.Ptr(T{})` emits it. Required fields inside the nested struct still need to
+be populated.
+
+- `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
+  Use nil when the field is absent and `adcp.Bool(true)` when requesting
+  cancellation. The AdCP schema constrains `canceled` to true; do not send
+  `adcp.Bool(false)` to mean resume. Use `Paused: adcp.Bool(false)` for resume.
+- `CreativeAssignments` is now `[]adcp.CreativeAssignment`. Use
+  `adcp.Float64(0)` for an explicit paused creative weight; omitted weight
+  still means equal rotation. Seller-specific assignment fields round-trip via
+  `CreativeAssignment.Extra`.
+- `PackageInput` is now generated from `media-buy/package-request.json`. The
+  non-protocol `BuyerRef` field is gone; use `Ext` for seller-specific
+  correlation metadata. The generated type also exposes schema fields that were
+  previously missing, including `FormatIDs`, `Pacing`, `Impressions`, `Paused`,
+  `Catalogs`, `OptimizationGoals`, `Creatives`, `Context`, and `Ext`.
+- `UpdateMediaBuyRequest` is now generated from
+  `media-buy/update-media-buy-request.json`. `StartTime` is a `string` instead
+  of `any`, matching the current schema's `start-timing` alias.
+- `CreateMediaBuyRequest.StartTime` is also now a `string` instead of `any`.
+  The schema's `start-timing` alias resolves to string in Go; `"asap"` remains
+  valid wire data.
+- `GetProductsRequest.PropertyList` is now `*adcp.PropertyListRef`, and
+  `GetProductsRequest.TimeBudget` is now `*adcp.Duration`. Use nil when these
+  filters are absent.
+- Schema-referenced core objects now use generated Go types instead of `any`:
+
+| Field | New Go type |
+| --- | --- |
+| `Account.BillingEntity` | `*adcp.BusinessEntity` |
+| `MediaBuyData.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuyRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuySuccess.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `UpdateMediaBuyRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CheckGovernanceRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuySuccess.PlannedDelivery` | `*adcp.PlannedDelivery` |
+| `CheckGovernanceRequest.PlannedDelivery` | `*adcp.PlannedDelivery` |
+| `CreateMediaBuyRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `UpdateMediaBuyRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncAccountsRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncCatalogsRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncCreativesRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `CreateMediaBuyRequest.ReportingWebhook` | `*adcp.ReportingWebhook` |
+| `UpdateMediaBuyRequest.ReportingWebhook` | `*adcp.ReportingWebhook` |
+| `GetProductsRequest.PropertyList` | `*adcp.PropertyListRef` |
+| `Targeting.PropertyList` | `*adcp.PropertyListRef` |
+| `GetProductsRequest.TimeBudget` | `*adcp.Duration` |
+| `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
+| `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
+| `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
+| `Event.UserMatch` | `*adcp.UserMatch` |
+| `Event.CustomData` | `*adcp.EventCustomData` |
+| `ProvidePerformanceFeedbackRequest.MeasurementPeriod` | `adcp.DatetimeRange` |
+| `BusinessEntity.Address` | `*adcp.BusinessAddress` |
+| `BusinessEntity.Contacts` | `[]adcp.BusinessContact` |
+| `BusinessEntity.Bank` | `*adcp.BankAccount` |
+| `PushNotificationConfig.Authentication` | `*adcp.LegacyWebhookAuthentication` |
+| `ReportingWebhook.Authentication` | `adcp.LegacyWebhookAuthentication` |
+| `CreateMediaBuyRequest.TotalBudget` | `*adcp.MediaBuyBudget` |
+| `CreateMediaBuyRequest.IoAcceptance` | `*adcp.IOAcceptance` |
+| `CreateMediaBuyRequest.ArtifactWebhook` | `*adcp.ArtifactWebhookConfig` |
+| `ArtifactWebhookConfig.Authentication` | `adcp.LegacyWebhookAuthentication` |
+| `GetAdcpCapabilitiesResponse.Adcp` | `adcp.ADCPVersion` |
+| `GetAdcpCapabilitiesResponse.Account` | `*adcp.AccountCapabilities` |
+| `GetAdcpCapabilitiesResponse.MediaBuy` | `*adcp.MediaBuyCapabilities` |
+| `GetAdcpCapabilitiesResponse.Signals` | `*adcp.SignalsCapabilities` |
+| `GetAdcpCapabilitiesResponse.Governance` | `*adcp.GovernanceCapabilities` |
+| `GetAdcpCapabilitiesResponse.SponsoredIntelligence` | `*adcp.SICapabilities` |
+| `GetAdcpCapabilitiesResponse.Brand` | `*adcp.BrandCapabilities` |
+| `GetAdcpCapabilitiesResponse.Creative` | `*adcp.CreativeCapabilities` |
+| `GetAdcpCapabilitiesResponse.RequestSigning` | `*adcp.RequestSigningCapabilities` |
+| `GetAdcpCapabilitiesResponse.WebhookSigning` | `*adcp.WebhookSigningCapabilities` |
+| `GetAdcpCapabilitiesResponse.Identity` | `*adcp.IdentityCapabilities` |
+| `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
+| `Product.Placements` | `[]adcp.Placement` |
+| `Product.DeliveryMeasurement` | `*adcp.ProductDeliveryMeasurement` |
+| `Product.ProductCard` | `*adcp.ProductCard` |
+| `Product.ProductCardDetailed` | `*adcp.ProductCardDetailed` |
+| `Product.CatalogMatch` | `*adcp.ProductCatalogMatch` |
+| `Product.Forecast` | `*adcp.DeliveryForecast` |
+| `DeliveryForecast.Points` | `[]adcp.ForecastPoint` |
+| `ForecastPoint.Metrics` | `map[string]adcp.ForecastRange` |
+| `Product.OutcomeMeasurement` | `*adcp.OutcomeMeasurement` |
+| `Product.ReportingCapabilities` | `adcp.ReportingCapabilities` |
+| `ReportingCapabilities.SupportsGeoBreakdown` | `*adcp.GeoBreakdownSupport` |
+| `Product.CreativePolicy` | `*adcp.CreativePolicy` |
+| `Product.MeasurementReadiness` | `*adcp.MeasurementReadiness` |
+| `MeasurementReadiness.Issues` | `[]adcp.DiagnosticIssue` |
+| `Product.MetricOptimization` | `*adcp.ProductMetricOptimization` |
+| `Product.ConversionTracking` | `*adcp.ProductConversionTracking` |
+| `Product.TrustedMatch` | `*adcp.ProductTrustedMatch` |
+| `ProductTrustedMatch.Providers` | `[]adcp.ProductTrustedMatchProvider` |
+| `Product.MaterialSubmission` | `*adcp.ProductMaterialSubmission` |
+| `Product.Collections` | `[]adcp.CollectionSelector` |
+| `Product.DataProviderSignals` | `[]adcp.DataProviderSignalSelector` |
+| `Product.Installments` | `[]adcp.Installment` |
+| `Installment.Special` | `*adcp.Special` |
+| `Installment.GuestTalent` | `[]adcp.Talent` |
+| `Installment.AdInventory` | `*adcp.AdInventoryConfig` |
+| `Installment.Deadlines` | `*adcp.InstallmentDeadlines` |
+| `InstallmentDeadlines.MaterialDeadlines` | `[]adcp.MaterialDeadline` |
+| `Installment.DerivativeOf` | `*adcp.InstallmentDerivative` |
+| `GetProductsResponse.Proposals` | `[]adcp.Proposal` |
+| `Proposal.Allocations` | `[]adcp.ProductAllocation` |
+| `Proposal.InsertionOrder` | `*adcp.InsertionOrder` |
+| `Proposal.TotalBudgetGuidance` | `*adcp.ProposalBudgetGuidance` |
+| `InsertionOrder.Terms` | `*adcp.InsertionOrderTerms` |
+| `InsertionOrderTerms.TotalBudget` | `*adcp.InsertionOrderBudget` |
+| `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
+| `PriceBreakdown.Adjustments` | `[]adcp.PriceAdjustment` |
+| `Package.Cancellation` | `*adcp.PackageCancellation` |
+| `CreativeFormat.Accessibility` | `*adcp.CreativeFormatAccessibility` |
+| `CreativeFormat.FormatCard` | `*adcp.CreativeFormatCard` |
+| `CreativeFormat.FormatCardDetailed` | `*adcp.CreativeFormatCardDetailed` |
+| `CreativeFormat.DisclosureCapabilities` | `[]adcp.CreativeFormatDisclosureCapability` |
+| `CreativeAsset.Inputs` | `[]adcp.CreativeAssetInput` |
+| `CreativeAsset.Provenance` | `*adcp.Provenance` |
+| `CreativeManifest.Provenance` | `*adcp.Provenance` |
+| `Provenance.AITool` | `*adcp.ProvenanceAITool` |
+| `Provenance.DeclaredBy` | `*adcp.ProvenanceDeclaredBy` |
+| `Provenance.C2PA` | `*adcp.ProvenanceC2PA` |
+| `Provenance.Disclosure` | `*adcp.ProvenanceDisclosure` |
+| `Provenance.Disclosure.Jurisdictions` | `[]adcp.ProvenanceDisclosureJurisdiction` |
+| `Provenance.Verification` | `[]adcp.ProvenanceVerification` |
+| `Signal.Range` | `*adcp.SignalRange` |
+| `Targeting.StoreCatchments` | `[]adcp.TargetingStoreCatchment` |
+| `DeliveryTotals.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
+| `DeliveryTotals.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `DeliveryTotals.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `DeliveryTotals.Viewability` | `*adcp.DeliveryViewability` |
+| `DeliveryTotals.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `MediaBuyDeliveryTotals.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
+| `MediaBuyDeliveryTotals.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `MediaBuyDeliveryTotals.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `MediaBuyDeliveryTotals.Viewability` | `*adcp.DeliveryViewability` |
+| `MediaBuyDeliveryTotals.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `PackageDelivery.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |
+| `PackageDelivery.QuartileData` | `*adcp.DeliveryQuartileData` |
+| `PackageDelivery.DoohMetrics` | `*adcp.DeliveryDOOHMetrics` |
+| `PackageDelivery.Viewability` | `*adcp.DeliveryViewability` |
+| `PackageDelivery.ByActionSource` | `[]adcp.DeliveryActionSourceMetrics` |
+| `MediaBuyDelivery.DailyBreakdown` | `[]adcp.MediaBuyDailyBreakdown` |
+| `PackageDelivery.ByCatalogItem` | `[]adcp.PackageCatalogItemDelivery` |
+| `PackageDelivery.ByCreative` | `[]adcp.PackageCreativeDelivery` |
+| `PackageDelivery.ByKeyword` | `[]adcp.PackageKeywordDelivery` |
+| `PackageDelivery.ByGeo` | `[]adcp.PackageGeoDelivery` |
+| `PackageDelivery.ByDeviceType` | `[]adcp.PackageDeviceTypeDelivery` |
+| `PackageDelivery.ByDevicePlatform` | `[]adcp.PackageDevicePlatformDelivery` |
+| `PackageDelivery.ByAudience` | `[]adcp.PackageAudienceDelivery` |
+| `PackageDelivery.ByPlacement` | `[]adcp.PackagePlacementDelivery` |
+| `PackageDelivery.DailyBreakdown` | `[]adcp.PackageDailyBreakdown` |
+| `GetMediaBuysRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
+| `GetMediaBuyDeliveryRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
+| `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
+| `DeliveryAttributionWindow.PostClick` | `*adcp.Duration` |
+| `DeliveryAttributionWindow.PostView` | `*adcp.Duration` |
+| `GetMediaBuyDeliveryRequest.ReportingDimensions` | `*adcp.DeliveryReportingDimensions` |
+| `DeliveryReportingDimensions.Geo` | `*adcp.DeliveryReportingGeoDimension` |
+| `DeliveryReportingDimensions.DeviceType` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.DevicePlatform` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.Audience` | `*adcp.DeliveryReportingDimension` |
+| `DeliveryReportingDimensions.Placement` | `*adcp.DeliveryReportingDimension` |
+| `ListCreativeFormatsResponse.CreativeAgents` | `[]adcp.CreativeAgentRef` |
+| `BuildCreativeRequest.PreviewInputs` | `[]adcp.BuildCreativePreviewInput` |
+| `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
+| `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
+| `RightsConstraint.RightsAgent` | `adcp.RightsAgentRef` |
+| `AudienceConstraints.Include` | `[]adcp.AudienceSelector` |
+| `AudienceConstraints.Exclude` | `[]adcp.AudienceSelector` |
+| `PlannedDelivery.AudienceTargeting` | `[]adcp.AudienceSelector` |
+| `GetSignalsRequest.Destinations` | `[]adcp.Destination` |
+| `Targeting.GeoMetros` / `GeoMetrosExclude` | `[]adcp.GeoMetroTarget` |
+| `Targeting.GeoPostalAreas` / `GeoPostalAreasExclude` | `[]adcp.GeoPostalAreaTarget` |
+| `Targeting.AgeRestriction` | `*adcp.AgeRestriction` |
+| `Targeting.KeywordTargets` | `[]adcp.KeywordTarget` |
+| `Targeting.NegativeKeywords` | `[]adcp.NegativeKeywordTarget` |
+| `Account.CreditLimit` | `*adcp.AccountCreditLimit` |
+| `Account.GovernanceAgents` | `[]adcp.AccountGovernanceAgent` |
+| `Account.ReportingBucket` | `*adcp.ReportingBucket` |
+| `GetCollectionListRequest.Pagination` | `*adcp.CollectionRequestPagination` |
+| `CollectionListChangedWebhook.ChangeSummary` | `*adcp.CollectionChangeSummary` |
+| `PropertyListChangedWebhook.ChangeSummary` | `*adcp.PropertyChangeSummary` |
+
+Buyer request migration example:
+
+```go
+req := adcp.CreateMediaBuyRequest{
+    InvoiceRecipient: adcp.Ptr(adcp.BusinessEntity{
+        LegalName: "Acme Corporation",
+        TaxID:     "12-3456789",
+    }),
+    PushNotificationConfig: adcp.Ptr(adcp.PushNotificationConfig{
+        URL: "https://buyer.example/webhooks/tasks",
+    }),
+    ReportingWebhook: adcp.Ptr(adcp.ReportingWebhook{
+        URL:                "https://buyer.example/webhooks/reports",
+        Authentication:     adcp.LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "0123456789abcdef0123456789abcdef"},
+        ReportingFrequency: "daily",
+    }),
+}
+```
+
+Product lookup and targeting migration example:
+
+```go
+req := adcp.GetProductsRequest{
+    PropertyList: adcp.Ptr(adcp.PropertyListRef{
+        AgentURL: "https://lists.example/mcp",
+        ListID:   "pl-123",
+    }),
+    TimeBudget: adcp.Ptr(adcp.Duration{Interval: 5, Unit: "minutes"}),
+}
+```
+
+Status filter migration example:
+
+```go
+req := adcp.GetMediaBuysRequest{
+    StatusFilter: adcp.Ptr(adcp.MediaBuyStatusFilter{
+        adcp.MediaBuyStatusActive,
+        adcp.MediaBuyStatusPaused,
+    }),
+}
+```
+
+Price adjustment migration example:
+
+```go
+breakdown := adcp.PriceBreakdown{
+    ListPrice: 20,
+    Adjustments: []adcp.PriceAdjustment{{
+        Kind:   "discount",
+        Name:   "volume",
+        Amount: 5,
+    }},
+}
+```
+
+Seller response and governance migration example:
+
+```go
+success := &adcp.CreateMediaBuySuccess{
+    MediaBuyID: "mb-123",
+    Packages:   []adcp.Package{pkg},
+    PlannedDelivery: adcp.Ptr(adcp.PlannedDelivery{
+        TotalBudget: 1000,
+        Currency:    "USD",
+    }),
+}
+
+feedback := adcp.ProvidePerformanceFeedbackRequest{
+    MeasurementPeriod: adcp.DatetimeRange{
+        Start: "2026-06-01T00:00:00Z",
+        End:   "2026-06-30T23:59:59Z",
+    },
+}
+```
+- `DeliveryTotals.ReachUnit` is now `string` instead of `any`, matching the
+  reach-unit enum's string wire form.
+- `PackageUpdate` is now generated from `media-buy/package-update.json`. It
+  exposes schema-backed package update fields such as `Pacing`, `Catalogs`,
+  `OptimizationGoals`, keyword add/remove operations, `Creatives`, `Context`,
+  and `Ext`.
+- `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
+- `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
+  implemented by the generated schema variants. Return
+  `*adcp.CreateMediaBuySuccess` for synchronous success,
+  `*adcp.CreateMediaBuySubmitted` for async submission, or
+  `*adcp.CreateMediaBuyError` when building the schema error branch directly.
+- `CreateMediaBuySubmitted` carries async `task_id` / `message` fields:
+  `return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: msg}, nil`.
+- `MediaBuyData` is now scoped to `get_media_buys` items. It carries fields such
+  as `currency`, `total_budget`, `start_time`, `end_time`, `history`, and
+  `valid_actions`, plus typed `invoice_recipient`, but not create-task fields
+  like `task_id` / `message`.
+- `MediaBuyData.Packages` is `[]adcp.PackageStatus` so `get_media_buys` can
+  include creative approvals, pending formats, and delivery snapshots.
+  `CreateMediaBuySuccess.Packages` remains `[]adcp.Package`.
+- `PackageDelivery` and `MediaBuyDelivery` are generated from the delivery
+  response inline schemas. Package-level metrics remain flat on
+  `PackageDelivery`, and `pricing_model`, `rate`, `currency`, and `spend` are
+  emitted as schema-required fields even when their Go values are zero.
+  `MediaBuyDelivery.Totals` is now `adcp.MediaBuyDeliveryTotals`, which includes
+  the schema-specific `effective_rate` field.
+- Delivery metric breakdowns use the same generated metric helper types across
+  `DeliveryTotals`, `MediaBuyDeliveryTotals`, package rows, and package
+  breakdown rows: `DeliveryEventTypeMetrics`, `DeliveryQuartileData`,
+  `DeliveryDOOHMetrics`, `DeliveryViewability`, and
+  `DeliveryActionSourceMetrics`.
+- `GetMediaBuyDeliveryResponse.ReportingPeriod`,
+  `GetMediaBuyDeliveryResponse.AggregatedTotals`, and
+  `GetMediaBuyDeliveryResponse.MediaBuyDeliveries` are now typed as
+  `adcp.ReportingPeriod`, `*adcp.DeliveryAggregatedTotals`, and
+  `[]adcp.MediaBuyDelivery` instead of `any` shapes.
+
 ## v3.0.0-rc.4 (governance / policy framework)
 
 rc.4 lands the AdCP governance plan schema with breaking changes. If you

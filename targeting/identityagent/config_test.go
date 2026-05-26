@@ -203,19 +203,10 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "TMPX_COUNTRY",
 		},
 		{
-			name: "tmpx without stub ack",
-			mutate: func(c *Config) {
-				c.TMPX.EncryptJWKSURL = "https://jwks.example"
-				c.TMPX.Country = "US"
-			},
-			wantErr: "TMPX_REFERENCE_STUB_ACK",
-		},
-		{
 			name: "tmpx full ok",
 			mutate: func(c *Config) {
 				c.TMPX.EncryptJWKSURL = "https://jwks.example"
 				c.TMPX.Country = "US"
-				c.TMPX.ReferenceStubAck = true
 			},
 		},
 		{
@@ -269,6 +260,42 @@ func TestConfigValidate(t *testing.T) {
 			require.Contains(t, err.Error(), tc.wantErr)
 		})
 	}
+}
+
+func TestLoadConfigFromEnv_ExtraHeaders(t *testing.T) {
+	// Minimal env required by LoadConfigFromEnv to produce a populated Config.
+	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
+	t.Setenv("CONFIG_SOURCE_TOKEN", "tok")
+
+	t.Run("unset yields nil map", func(t *testing.T) {
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.Nil(t, cfg.IdentityConfig.ExtraHeaders)
+	})
+
+	t.Run("valid JSON object is parsed", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_EXTRA_HEADERS", `{"X-Custom-A":"alpha","X-Custom-B":"beta"}`)
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{
+			"X-Custom-A": "alpha",
+			"X-Custom-B": "beta",
+		}, cfg.IdentityConfig.ExtraHeaders)
+	})
+
+	t.Run("invalid JSON surfaces as error", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_EXTRA_HEADERS", `not-json`)
+		_, err := LoadConfigFromEnv()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CONFIG_SOURCE_EXTRA_HEADERS")
+	})
+
+	t.Run("empty key surfaces as error", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_EXTRA_HEADERS", `{"":"value"}`)
+		_, err := LoadConfigFromEnv()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "empty key")
+	})
 }
 
 func TestIsValidPromName(t *testing.T) {

@@ -78,9 +78,12 @@ func TestSkillProductDefinitionsCompile(t *testing.T) {
 
 func extractGoBlocks(t *testing.T, path string) []string {
 	t.Helper()
+	// #nosec G304 -- test reads SKILL.md files discovered under the repository skills directory.
 	f, err := os.Open(path)
 	require.NoError(t, err, "open %s", path)
-	defer f.Close()
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
 
 	var blocks []string
 	var current strings.Builder
@@ -133,7 +136,7 @@ func checkBlockCompiles(t *testing.T, block string) {
 	source := blankifyImports(block)
 
 	dir := t.TempDir()
-	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644)
+	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0600)
 	require.NoError(t, err, "write")
 	writeGoMod(t, dir)
 
@@ -205,7 +208,7 @@ var _ = adcp.EmptyInput{}
 `
 
 	dir := t.TempDir()
-	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0644)
+	err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(source), 0600)
 	require.NoError(t, err, "write")
 	writeGoMod(t, dir)
 
@@ -236,12 +239,13 @@ func writeGoMod(t *testing.T, dir string) {
 		")\n\n" +
 		"replace github.com/adcontextprotocol/adcp-go/adcp => " + adcpDir + "\n"
 
-	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0644)
+	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0600)
 	require.NoError(t, err, "write go.mod")
 }
 
 func parseAdcpGoMod(t *testing.T, path string) (goVersion, mcpVersion string) {
 	t.Helper()
+	// #nosec G304 -- test reads the adcp module go.mod path built in this test.
 	data, err := os.ReadFile(path)
 	require.NoError(t, err, "read go.mod")
 	goVersion = "1.26.2" // fallback

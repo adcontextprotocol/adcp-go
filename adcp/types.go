@@ -1,6 +1,8 @@
 // Package adcp provides helpers for building AdCP MCP servers in Go.
 package adcp
 
+import "encoding/json"
+
 // CapabilitiesData is the typed get_adcp_capabilities response. Per the 3.0
 // schema, adcp (with idempotency) and supported_protocols are required; all
 // other blocks are optional and set only when the relevant protocol is
@@ -21,6 +23,7 @@ type CapabilitiesData struct {
 	ComplianceTesting     *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
 	Specialisms           []string                       `json:"specialisms,omitempty"`
 	ExtensionsSupported   []string                       `json:"extensions_supported,omitempty"`
+	ExperimentalFeatures  []string                       `json:"experimental_features,omitempty"`
 	LastUpdated           string                         `json:"last_updated,omitempty"`
 	Errors                []AdcpError                    `json:"errors,omitempty"`
 	Context               any                            `json:"context,omitempty"`
@@ -35,7 +38,9 @@ type ADCPVersion struct {
 // IdempotencyCaps declares the seller's replay window for idempotency_key.
 // Minimum 3600 (1h); recommended 86400 (24h); maximum 604800 (7d).
 type IdempotencyCaps struct {
-	ReplayTTLSeconds int `json:"replay_ttl_seconds"`
+	Supported         bool  `json:"supported"`
+	ReplayTTLSeconds  int   `json:"replay_ttl_seconds"`
+	AccountIDIsOpaque *bool `json:"account_id_is_opaque,omitempty"`
 }
 
 // AccountCapabilities describes how accounts are established and billed.
@@ -64,9 +69,10 @@ type MediaBuyCapabilities struct {
 
 // MediaBuyExecution describes technical execution capabilities for media buying.
 type MediaBuyExecution struct {
-	TrustedMatch  *TrustedMatchCaps  `json:"trusted_match,omitempty"`
-	CreativeSpecs *CreativeSpecsCaps `json:"creative_specs,omitempty"`
-	Targeting     *TargetingCaps     `json:"targeting,omitempty"`
+	TrustedMatch    *TrustedMatchCaps  `json:"trusted_match,omitempty"`
+	AxeIntegrations []string           `json:"axe_integrations,omitempty"`
+	CreativeSpecs   *CreativeSpecsCaps `json:"creative_specs,omitempty"`
+	Targeting       *TargetingCaps     `json:"targeting,omitempty"`
 }
 
 type TrustedMatchCaps struct {
@@ -103,17 +109,17 @@ type GeoMetrosCaps struct {
 }
 
 type GeoPostalAreasCaps struct {
-	USZip          *bool `json:"us_zip,omitempty"`
-	USZipPlusFour  *bool `json:"us_zip_plus_four,omitempty"`
-	GBOutward      *bool `json:"gb_outward,omitempty"`
-	GBFull         *bool `json:"gb_full,omitempty"`
-	CAFSA          *bool `json:"ca_fsa,omitempty"`
-	CAFull         *bool `json:"ca_full,omitempty"`
-	DEPLZ          *bool `json:"de_plz,omitempty"`
-	FRCodePostal   *bool `json:"fr_code_postal,omitempty"`
-	AUPostcode     *bool `json:"au_postcode,omitempty"`
-	CHPLZ          *bool `json:"ch_plz,omitempty"`
-	ATPLZ          *bool `json:"at_plz,omitempty"`
+	USZip         *bool `json:"us_zip,omitempty"`
+	USZipPlusFour *bool `json:"us_zip_plus_four,omitempty"`
+	GBOutward     *bool `json:"gb_outward,omitempty"`
+	GBFull        *bool `json:"gb_full,omitempty"`
+	CAFSA         *bool `json:"ca_fsa,omitempty"`
+	CAFull        *bool `json:"ca_full,omitempty"`
+	DEPLZ         *bool `json:"de_plz,omitempty"`
+	FRCodePostal  *bool `json:"fr_code_postal,omitempty"`
+	AUPostcode    *bool `json:"au_postcode,omitempty"`
+	CHPLZ         *bool `json:"ch_plz,omitempty"`
+	ATPLZ         *bool `json:"at_plz,omitempty"`
 }
 
 type GeoProximityCaps struct {
@@ -137,11 +143,11 @@ type KeywordMatchCaps struct {
 // AudienceTargetingCaps describes audience matching capabilities.
 // supported_identifier_types and minimum_audience_size are required when present.
 type AudienceTargetingCaps struct {
-	SupportedIdentifierTypes  []string              `json:"supported_identifier_types"`
-	SupportsPlatformCustomerID *bool                `json:"supports_platform_customer_id,omitempty"`
-	SupportedUIDTypes         []string              `json:"supported_uid_types,omitempty"`
-	MinimumAudienceSize       int                   `json:"minimum_audience_size"`
-	MatchingLatencyHours      *MatchingLatencyRange `json:"matching_latency_hours,omitempty"`
+	SupportedIdentifierTypes   []string              `json:"supported_identifier_types"`
+	SupportsPlatformCustomerID *bool                 `json:"supports_platform_customer_id,omitempty"`
+	SupportedUIDTypes          []string              `json:"supported_uid_types,omitempty"`
+	MinimumAudienceSize        int                   `json:"minimum_audience_size"`
+	MatchingLatencyHours       *MatchingLatencyRange `json:"matching_latency_hours,omitempty"`
 }
 
 type MatchingLatencyRange struct {
@@ -204,18 +210,19 @@ type SignalsCapabilities struct {
 
 // GovernanceCapabilities is the governance protocol capability block.
 type GovernanceCapabilities struct {
-	PropertyFeatures []GovernanceFeature `json:"property_features,omitempty"`
-	CreativeFeatures []GovernanceFeature `json:"creative_features,omitempty"`
+	PropertyFeatures      []GovernanceFeature `json:"property_features,omitempty"`
+	CreativeFeatures      []GovernanceFeature `json:"creative_features,omitempty"`
+	AggregationWindowDays int                 `json:"aggregation_window_days,omitempty"`
 }
 
 // GovernanceFeature describes a score/rating/certification the agent provides.
 type GovernanceFeature struct {
-	FeatureID      string           `json:"feature_id"`
-	Type           string           `json:"type"`
-	Range          *FeatureRange    `json:"range,omitempty"`
-	Categories     []string         `json:"categories,omitempty"`
-	Description    string           `json:"description,omitempty"`
-	MethodologyURL string           `json:"methodology_url,omitempty"`
+	FeatureID      string        `json:"feature_id"`
+	Type           string        `json:"type"`
+	Range          *FeatureRange `json:"range,omitempty"`
+	Categories     []string      `json:"categories,omitempty"`
+	Description    string        `json:"description,omitempty"`
+	MethodologyURL string        `json:"methodology_url,omitempty"`
 }
 
 type FeatureRange struct {
@@ -262,11 +269,11 @@ type CreativeCapabilities struct {
 
 // RequestSigningCapabilities declares RFC 9421 signing policy.
 type RequestSigningCapabilities struct {
-	Supported            bool     `json:"supported"`
-	CoversContentDigest  string   `json:"covers_content_digest,omitempty"`
-	RequiredFor          []string `json:"required_for,omitempty"`
-	WarnFor              []string `json:"warn_for,omitempty"`
-	SupportedFor         []string `json:"supported_for,omitempty"`
+	Supported           bool     `json:"supported"`
+	CoversContentDigest string   `json:"covers_content_digest,omitempty"`
+	RequiredFor         []string `json:"required_for,omitempty"`
+	WarnFor             []string `json:"warn_for,omitempty"`
+	SupportedFor        []string `json:"supported_for,omitempty"`
 }
 
 // WebhookSigningCapabilities declares RFC 9421 webhook-signature policy —
@@ -284,9 +291,9 @@ type WebhookSigningCapabilities struct {
 // compromise-response controls. All fields advisory in 3.x; receivers use
 // them to reason about blast radius and revocation latency at onboarding.
 type IdentityCapabilities struct {
-	PerPrincipalKeyIsolation bool                              `json:"per_principal_key_isolation,omitempty"`
-	KeyOrigins               *IdentityKeyOrigins               `json:"key_origins,omitempty"`
-	CompromiseNotification   *IdentityCompromiseNotification   `json:"compromise_notification,omitempty"`
+	PerPrincipalKeyIsolation bool                            `json:"per_principal_key_isolation,omitempty"`
+	KeyOrigins               *IdentityKeyOrigins             `json:"key_origins,omitempty"`
+	CompromiseNotification   *IdentityCompromiseNotification `json:"compromise_notification,omitempty"`
 }
 
 // IdentityKeyOrigins maps signing-key purpose → publishing origin so
@@ -333,9 +340,10 @@ type AccountReference struct {
 
 // PublisherPropertySelector is the flattened union of the three variants in
 // publisher-property-selector.json. SelectionType is the discriminator:
-//   "all":     set PublisherDomain only.
-//   "by_id":   set PublisherDomain + PropertyIDs.
-//   "by_tag":  set PublisherDomain + PropertyTags.
+//
+//	"all":     set PublisherDomain only.
+//	"by_id":   set PublisherDomain + PropertyIDs.
+//	"by_tag":  set PublisherDomain + PropertyTags.
 type PublisherPropertySelector struct {
 	PublisherDomain string   `json:"publisher_domain"`
 	SelectionType   string   `json:"selection_type"`
@@ -377,8 +385,10 @@ type GovernanceAgent struct {
 }
 
 type ProductsData struct {
-	Products []Product `json:"products"`
-	Sandbox  bool      `json:"sandbox,omitempty"`
+	Products          []Product        `json:"products"`
+	RefinementApplied []map[string]any `json:"refinement_applied,omitempty"`
+	Sandbox           bool             `json:"sandbox,omitempty"`
+	Context           any              `json:"context,omitempty"`
 }
 
 // PricingOption is the flattened union of all variants in pricing-option.json.
@@ -388,32 +398,33 @@ type ProductsData struct {
 // the discriminator; callers MUST only set fields that apply to their model.
 //
 // Fields by variant:
-//   cpm / vcpm / cpc / cpcv / cpv / cpp:
-//     FixedPrice (fixed) OR FloorPrice + PriceGuidance (auction); MaxBid for
-//     auction models to interpret bid_price as a ceiling.
-//   cpa:
-//     FixedPrice, EventSourceID, EventType (required); CustomEventName when
-//     EventType="custom"; EligibleAdjustments for adjustment filtering.
-//   flat_rate:
-//     FixedPrice (required).
-//   time:
-//     FixedPrice (required), Parameters for duration/unit specifics.
-//   All variants: PricingOptionID, Currency, MinSpendPerPackage, PriceBreakdown.
+//
+//	cpm / vcpm / cpc / cpcv / cpv / cpp:
+//	  FixedPrice (fixed) OR FloorPrice + PriceGuidance (auction); MaxBid for
+//	  auction models to interpret bid_price as a ceiling.
+//	cpa:
+//	  FixedPrice, EventSourceID, EventType (required); CustomEventName when
+//	  EventType="custom"; EligibleAdjustments for adjustment filtering.
+//	flat_rate:
+//	  FixedPrice (required).
+//	time:
+//	  FixedPrice (required), Parameters for duration/unit specifics.
+//	All variants: PricingOptionID, Currency, MinSpendPerPackage, PriceBreakdown.
 type PricingOption struct {
-	PricingOptionID     string  `json:"pricing_option_id"`
-	PricingModel        string  `json:"pricing_model"`
-	Currency            string  `json:"currency"`
-	FixedPrice          float64 `json:"fixed_price,omitempty"`
-	FloorPrice          float64 `json:"floor_price,omitempty"`
-	MinSpendPerPackage  float64 `json:"min_spend_per_package,omitempty"`
-	MaxBid              *bool   `json:"max_bid,omitempty"`
-	PriceGuidance       any     `json:"price_guidance,omitempty"`
-	PriceBreakdown      any     `json:"price_breakdown,omitempty"`
-	EventSourceID       string  `json:"event_source_id,omitempty"`
-	EventType           string  `json:"event_type,omitempty"`
-	CustomEventName     string  `json:"custom_event_name,omitempty"`
+	PricingOptionID     string   `json:"pricing_option_id"`
+	PricingModel        string   `json:"pricing_model"`
+	Currency            string   `json:"currency"`
+	FixedPrice          float64  `json:"fixed_price,omitempty"`
+	FloorPrice          float64  `json:"floor_price,omitempty"`
+	MinSpendPerPackage  float64  `json:"min_spend_per_package,omitempty"`
+	MaxBid              *bool    `json:"max_bid,omitempty"`
+	PriceGuidance       any      `json:"price_guidance,omitempty"`
+	PriceBreakdown      any      `json:"price_breakdown,omitempty"`
+	EventSourceID       string   `json:"event_source_id,omitempty"`
+	EventType           string   `json:"event_type,omitempty"`
+	CustomEventName     string   `json:"custom_event_name,omitempty"`
 	EligibleAdjustments []string `json:"eligible_adjustments,omitempty"`
-	Parameters          any     `json:"parameters,omitempty"`
+	Parameters          any      `json:"parameters,omitempty"`
 }
 
 type MediaBuyListItem struct {
@@ -423,9 +434,149 @@ type MediaBuyListItem struct {
 	Packages   []Package `json:"packages"`
 }
 
+// MediaBuyData is one item in a get_media_buys response.
+type MediaBuyData struct {
+	MediaBuyID       string                 `json:"media_buy_id"`
+	Account          *Account               `json:"account,omitempty"`
+	Status           string                 `json:"status"`
+	Currency         string                 `json:"currency"`
+	TotalBudget      float64                `json:"total_budget"`
+	StartTime        string                 `json:"start_time,omitempty"`
+	EndTime          string                 `json:"end_time,omitempty"`
+	InvoiceRecipient *BusinessEntity        `json:"invoice_recipient,omitempty"`
+	ConfirmedAt      string                 `json:"confirmed_at,omitempty"`
+	Cancellation     any                    `json:"cancellation,omitempty"`
+	CreativeDeadline string                 `json:"creative_deadline,omitempty"`
+	Revision         int                    `json:"revision,omitempty"`
+	CreatedAt        string                 `json:"created_at,omitempty"`
+	UpdatedAt        string                 `json:"updated_at,omitempty"`
+	ValidActions     []string               `json:"valid_actions,omitempty"`
+	History          []MediaBuyHistoryEntry `json:"history,omitempty"`
+	Packages         []PackageStatus        `json:"packages"`
+	Ext              any                    `json:"ext,omitempty"`
+}
+
+// MarshalJSON preserves an explicitly empty valid_actions array. In the protocol,
+// [] means no actions are available; omission means the seller did not say.
+func (d MediaBuyData) MarshalJSON() ([]byte, error) {
+	type mediaBuyData MediaBuyData
+	b, err := json.Marshal(mediaBuyData(d))
+	if err != nil {
+		return nil, err
+	}
+	if d.ValidActions == nil {
+		return b, nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	out["valid_actions"] = d.ValidActions
+	return json.Marshal(out)
+}
+
+// MediaBuyHistoryEntry is a get_media_buys revision history entry.
+type MediaBuyHistoryEntry struct {
+	Revision  int    `json:"revision"`
+	Timestamp string `json:"timestamp"`
+	Actor     string `json:"actor,omitempty"`
+	Action    string `json:"action"`
+	Summary   string `json:"summary,omitempty"`
+	PackageID string `json:"package_id,omitempty"`
+	Ext       any    `json:"ext,omitempty"`
+}
+
+// PackageStatus is a package row in get_media_buys. It embeds Package for
+// ergonomic construction from create/update state, but marshals only the fields
+// modeled by the get_media_buys response schema.
+type PackageStatus struct {
+	Package
+	Currency                  string                    `json:"currency,omitempty"`
+	CreativeApprovals         []PackageCreativeApproval `json:"creative_approvals,omitempty"`
+	FormatIDsPending          []FormatRef               `json:"format_ids_pending,omitempty"`
+	SnapshotUnavailableReason string                    `json:"snapshot_unavailable_reason,omitempty"`
+	Snapshot                  *PackageSnapshot          `json:"snapshot,omitempty"`
+}
+
+func (p PackageStatus) MarshalJSON() ([]byte, error) {
+	out := map[string]any{"package_id": p.PackageID}
+	if p.ProductID != "" {
+		out["product_id"] = p.ProductID
+	}
+	if p.Budget != 0 {
+		out["budget"] = p.Budget
+	}
+	if p.BidPrice != 0 {
+		out["bid_price"] = p.BidPrice
+	}
+	if p.Impressions != 0 {
+		out["impressions"] = p.Impressions
+	}
+	if p.Currency != "" {
+		out["currency"] = p.Currency
+	}
+	if p.StartTime != "" {
+		out["start_time"] = p.StartTime
+	}
+	if p.EndTime != "" {
+		out["end_time"] = p.EndTime
+	}
+	if p.Paused != nil {
+		out["paused"] = p.Paused
+	}
+	if p.Canceled != nil {
+		out["canceled"] = p.Canceled
+	}
+	if p.Cancellation != nil {
+		out["cancellation"] = p.Cancellation
+	}
+	if p.CreativeDeadline != "" {
+		out["creative_deadline"] = p.CreativeDeadline
+	}
+	if p.TargetingOverlay != nil {
+		out["targeting_overlay"] = p.TargetingOverlay
+	}
+	if p.Ext != nil {
+		out["ext"] = p.Ext
+	}
+	if len(p.CreativeApprovals) > 0 {
+		out["creative_approvals"] = p.CreativeApprovals
+	}
+	if len(p.FormatIDsPending) > 0 {
+		out["format_ids_pending"] = p.FormatIDsPending
+	}
+	if p.SnapshotUnavailableReason != "" {
+		out["snapshot_unavailable_reason"] = p.SnapshotUnavailableReason
+	}
+	if p.Snapshot != nil {
+		out["snapshot"] = p.Snapshot
+	}
+	return json.Marshal(out)
+}
+
+type PackageCreativeApproval struct {
+	CreativeID      string `json:"creative_id"`
+	ApprovalStatus  string `json:"approval_status"`
+	RejectionReason string `json:"rejection_reason,omitempty"`
+}
+
+type PackageSnapshot struct {
+	AsOf             string  `json:"as_of"`
+	StalenessSeconds int     `json:"staleness_seconds"`
+	Impressions      float64 `json:"impressions"`
+	Spend            float64 `json:"spend"`
+	Currency         string  `json:"currency,omitempty"`
+	Clicks           float64 `json:"clicks,omitempty"`
+	PacingIndex      float64 `json:"pacing_index,omitempty"`
+	DeliveryStatus   string  `json:"delivery_status,omitempty"`
+	Ext              any     `json:"ext,omitempty"`
+}
+
 type DeliveryData struct {
 	ReportingPeriod    ReportingPeriod    `json:"reporting_period"`
+	Currency           string             `json:"currency"`
 	MediaBuyDeliveries []MediaBuyDelivery `json:"media_buy_deliveries"`
+	Context            any                `json:"context,omitempty"`
 }
 
 type ReportingPeriod struct {
@@ -433,16 +584,19 @@ type ReportingPeriod struct {
 	End   string `json:"end"`
 }
 
-type MediaBuyDelivery struct {
-	MediaBuyID string            `json:"media_buy_id"`
-	Status     string            `json:"status"`
-	Totals     DeliveryTotals    `json:"totals"`
-	ByPackage  []PackageDelivery `json:"by_package"`
-}
-
-type PackageDelivery struct {
-	PackageID string         `json:"package_id"`
-	Totals    DeliveryTotals `json:"totals"`
+// MarshalJSON preserves the schema-required spend field even when it is zero.
+func (d DeliveryTotals) MarshalJSON() ([]byte, error) {
+	type deliveryTotals DeliveryTotals
+	b, err := json.Marshal(deliveryTotals(d))
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	out["spend"] = d.Spend
+	return json.Marshal(out)
 }
 
 // Render is a rendering variant inside a CreativeFormat. Wired into generated
@@ -518,8 +672,10 @@ type SignalPricing = VendorPricingOption
 
 // Deployment is the flattened union of deployment.json's oneOf variants.
 // Type is the discriminator:
-//   "platform": set Platform (required), AgentURL, Account, ActivationKey.
-//   "agent":    set AgentURL (required), ActivationKey.
+//
+//	"platform": set Platform (required), AgentURL, Account, ActivationKey.
+//	"agent":    set AgentURL (required), ActivationKey.
+//
 // All variants: IsLive, DeployedAt, EstimatedActivationDurationMinutes.
 // Do not mix variant-specific fields — schema validators accept it because
 // additionalProperties=true, but the result is semantically wrong.

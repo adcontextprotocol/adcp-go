@@ -8,6 +8,6 @@ COPY cmd/router/ cmd/router/
 WORKDIR /src/cmd/router
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /router .
 
-FROM scratch
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /router /router
 ENTRYPOINT ["/router"]
