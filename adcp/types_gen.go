@@ -1785,18 +1785,18 @@ type Product struct {
 	PublisherProperties []PublisherPropertySelector `json:"publisher_properties"` // Publisher properties covered by this product. Buyers fetch actual property defin
 	Channels []string `json:"channels,omitempty"` // Advertising channels this product is sold as. Products inherit from their proper
 	FormatIDs []FormatRef `json:"format_ids"` // Array of supported creative format IDs - structured format_id objects with agent
-	Placements []any `json:"placements,omitempty"` // Optional array of specific placements within this product. When provided, buyers
+	Placements []Placement `json:"placements,omitempty"` // Optional array of specific placements within this product. When provided, buyers
 	DeliveryType string `json:"delivery_type"`
 	Exclusivity string `json:"exclusivity,omitempty"` // Whether this product offers exclusive access to its inventory. Defaults to 'none
 	PricingOptions []PricingOption `json:"pricing_options"` // Available pricing models for this product
-	Forecast any `json:"forecast,omitempty"` // Forecasted delivery metrics for this product. Gives buyers an estimate of expect
-	OutcomeMeasurement any `json:"outcome_measurement,omitempty"`
+	Forecast *DeliveryForecast `json:"forecast,omitempty"` // Forecasted delivery metrics for this product. Gives buyers an estimate of expect
+	OutcomeMeasurement *OutcomeMeasurement `json:"outcome_measurement,omitempty"`
 	DeliveryMeasurement any `json:"delivery_measurement,omitempty"` // Measurement provider and methodology for delivery metrics. The buyer accepts the
 	MeasurementTerms *MeasurementTerms `json:"measurement_terms,omitempty"` // Seller's default billing measurement and makegood terms. Declares who counts the
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"` // Seller's default performance standards for this product: viewability, IVT, compl
 	CancellationPolicy *CancellationPolicy `json:"cancellation_policy,omitempty"` // Cancellation terms for this product. Declares the minimum notice period required
-	ReportingCapabilities any `json:"reporting_capabilities"`
-	CreativePolicy any `json:"creative_policy,omitempty"`
+	ReportingCapabilities ReportingCapabilities `json:"reporting_capabilities"`
+	CreativePolicy *CreativePolicy `json:"creative_policy,omitempty"`
 	IsCustom *bool `json:"is_custom,omitempty"` // Whether this is a custom product
 	PropertyTargetingAllowed *bool `json:"property_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its publisher_properties.
 	DataProviderSignals []any `json:"data_provider_signals,omitempty"` // Data provider signals available for this product. Buyers fetch signal definition
@@ -1804,20 +1804,93 @@ type Product struct {
 	CatalogTypes []string `json:"catalog_types,omitempty"` // Catalog types this product supports for catalog-driven campaigns. A sponsored pr
 	MetricOptimization any `json:"metric_optimization,omitempty"` // Metric optimization capabilities for this product. Presence indicates the produc
 	MaxOptimizationGoals int `json:"max_optimization_goals,omitempty"` // Maximum number of optimization_goals this product accepts on a package. When abs
-	MeasurementReadiness any `json:"measurement_readiness,omitempty"` // Assessment of whether the buyer's event source setup is sufficient for this prod
+	MeasurementReadiness *MeasurementReadiness `json:"measurement_readiness,omitempty"` // Assessment of whether the buyer's event source setup is sufficient for this prod
 	ConversionTracking any `json:"conversion_tracking,omitempty"` // Conversion event tracking for this product. Presence indicates the product suppo
 	CatalogMatch any `json:"catalog_match,omitempty"` // When the buyer provides a catalog on get_products, indicates which catalog items
 	BriefRelevance string `json:"brief_relevance,omitempty"` // Explanation of why this product matches the brief (only included when brief is p
 	ExpiresAt string `json:"expires_at,omitempty"` // Expiration timestamp. After this time, the product may no longer be available fo
 	ProductCard any `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
 	ProductCardDetailed any `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
-	Collections []any `json:"collections,omitempty"` // Collections available in this product. Each entry references collections declare
+	Collections []CollectionSelector `json:"collections,omitempty"` // Collections available in this product. Each entry references collections declare
 	CollectionTargetingAllowed *bool `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false (de
 	Installments []any `json:"installments,omitempty"` // Specific installments included in this product. Each installment references its
 	EnforcedPolicies []string `json:"enforced_policies,omitempty"` // Registry policy IDs the seller enforces for this product. Enforcement level come
 	TrustedMatch any `json:"trusted_match,omitempty"` // Trusted Match Protocol capabilities for this product. When present, the product
 	MaterialSubmission any `json:"material_submission,omitempty"` // Instructions for submitting physical creative materials (print, static OOH, cine
 	Ext any `json:"ext,omitempty"`
+}
+
+// Placement — Represents a specific ad placement within a product's inventory. When the publisher declares a place
+type Placement struct {
+	PlacementID string `json:"placement_id"` // Unique identifier for the placement within the product
+	Name string `json:"name"` // Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar
+	Description string `json:"description,omitempty"` // Detailed description of where and how the placement appears
+	Tags []string `json:"tags,omitempty"` // Optional tags for grouping placements within a product (e.g., 'homepage', 'nativ
+	FormatIDs []FormatRef `json:"format_ids,omitempty"` // Format IDs supported by this specific placement. Can include: (1) concrete forma
+}
+
+// DeliveryForecast — Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help b
+type DeliveryForecast struct {
+	Points []any `json:"points"` // Forecasted delivery data points. For spend curves (default), points at ascending
+	ForecastRangeUnit string `json:"forecast_range_unit,omitempty"` // How to interpret the points array. 'spend' (default when omitted): points at asc
+	Method string `json:"method"` // Method used to produce this forecast
+	Currency string `json:"currency"` // ISO 4217 currency code for monetary values in this forecast (spend, budget)
+	DemographicSystem string `json:"demographic_system,omitempty"` // Measurement system for the demographic field. Ensures buyer and seller agree on
+	Demographic string `json:"demographic,omitempty"` // Target demographic code within the specified demographic_system. For Nielsen: P1
+	MeasurementSource string `json:"measurement_source,omitempty"` // Third-party measurement provider whose data was used to produce this forecast. D
+	ReachUnit string `json:"reach_unit,omitempty"` // Unit of measurement for reach and audience_size metrics in this forecast. Requir
+	GeneratedAt string `json:"generated_at,omitempty"` // When this forecast was computed
+	ValidUntil string `json:"valid_until,omitempty"` // When this forecast expires. After this time, the forecast should be refreshed. F
+	Ext any `json:"ext,omitempty"`
+}
+
+// OutcomeMeasurement — Business outcome measurement capabilities included with a product (e.g., incremental sales lift, bra
+type OutcomeMeasurement struct {
+	Type string `json:"type"` // Type of measurement
+	Attribution string `json:"attribution"` // Attribution methodology
+	Window *Duration `json:"window,omitempty"` // Attribution window as a structured duration (e.g., {"interval": 30, "unit": "day
+	Reporting string `json:"reporting"` // Reporting frequency and format
+}
+
+// ReportingCapabilities — Reporting capabilities available for a product
+type ReportingCapabilities struct {
+	AvailableReportingFrequencies []string `json:"available_reporting_frequencies"` // Supported reporting frequency options
+	ExpectedDelayMinutes int `json:"expected_delay_minutes"` // Expected delay in minutes before reporting data becomes available (e.g., 240 for
+	Timezone string `json:"timezone"` // Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g., 'America/New_Y
+	SupportsWebhooks bool `json:"supports_webhooks"` // Whether this product supports webhook-based reporting notifications
+	AvailableMetrics []string `json:"available_metrics"` // Metrics available in reporting. Impressions and spend are always implicitly incl
+	SupportsCreativeBreakdown *bool `json:"supports_creative_breakdown,omitempty"` // Whether this product supports creative-level metric breakdowns in delivery repor
+	SupportsKeywordBreakdown *bool `json:"supports_keyword_breakdown,omitempty"` // Whether this product supports keyword-level metric breakdowns in delivery report
+	SupportsGeoBreakdown any `json:"supports_geo_breakdown,omitempty"` // Geographic breakdown support for this product. Declares which geo levels and sys
+	SupportsDeviceTypeBreakdown *bool `json:"supports_device_type_breakdown,omitempty"` // Whether this product supports device type breakdowns in delivery reporting (by_d
+	SupportsDevicePlatformBreakdown *bool `json:"supports_device_platform_breakdown,omitempty"` // Whether this product supports device platform breakdowns in delivery reporting (
+	SupportsAudienceBreakdown *bool `json:"supports_audience_breakdown,omitempty"` // Whether this product supports audience segment breakdowns in delivery reporting
+	SupportsPlacementBreakdown *bool `json:"supports_placement_breakdown,omitempty"` // Whether this product supports placement breakdowns in delivery reporting (by_pla
+	DateRangeSupport string `json:"date_range_support"` // Whether delivery data can be filtered to arbitrary date ranges. 'date_range' mea
+	MeasurementWindows []MeasurementWindow `json:"measurement_windows,omitempty"` // Measurement maturation stages available for this product. Used by any channel wh
+}
+
+// CreativePolicy — Creative requirements and restrictions for a product
+type CreativePolicy struct {
+	CoBranding string `json:"co_branding"` // Co-branding requirement
+	LandingPage string `json:"landing_page"` // Landing page requirements
+	TemplatesAvailable bool `json:"templates_available"` // Whether creative templates are provided
+	ProvenanceRequired *bool `json:"provenance_required,omitempty"` // Whether creatives must include provenance metadata. When true, the seller requir
+}
+
+// MeasurementReadiness — Per-product assessment of whether the buyer's event source setup is sufficient for the product's opt
+type MeasurementReadiness struct {
+	Status string `json:"status"` // Overall measurement readiness level for this product given the buyer's event set
+	RequiredEventTypes []string `json:"required_event_types,omitempty"` // Event types this product needs for effective optimization. Buyers should ensure
+	MissingEventTypes []string `json:"missing_event_types,omitempty"` // Event types this product requires that the buyer has not configured. Empty or ab
+	Issues []any `json:"issues,omitempty"` // Actionable issues preventing full measurement readiness. Sellers should limit to
+	Notes string `json:"notes,omitempty"` // Seller explanation of the readiness assessment, recommendations for improvement,
+}
+
+// CollectionSelector — References collections declared in an adagents.json. Buyers resolve full collection objects by fetch
+type CollectionSelector struct {
+	PublisherDomain string `json:"publisher_domain"` // Domain where the adagents.json declaring these collections is hosted (e.g., 'mrb
+	CollectionIDs []string `json:"collection_ids"` // Collection IDs from the adagents.json collections array. Each ID must match a co
 }
 
 // Package — A specific product within a media buy (line item)
@@ -1828,7 +1901,7 @@ type Package struct {
 	Pacing string `json:"pacing,omitempty"`
 	PricingOptionID string `json:"pricing_option_id,omitempty"` // ID of the selected pricing option from the product's pricing_options array
 	BidPrice float64 `json:"bid_price,omitempty"` // Bid price for auction-based pricing. This is the exact bid/price to honor unless
-	PriceBreakdown any `json:"price_breakdown,omitempty"` // Breakdown of the effective price for this package. On fixed-price packages, echo
+	PriceBreakdown *PriceBreakdown `json:"price_breakdown,omitempty"` // Breakdown of the effective price for this package. On fixed-price packages, echo
 	Impressions float64 `json:"impressions,omitempty"` // Impression goal for this package
 	Catalogs []Catalog `json:"catalogs,omitempty"` // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., on
 	FormatIDs []FormatRef `json:"format_ids,omitempty"` // Format IDs active for this package. Echoed from the create_media_buy request; om
@@ -1847,6 +1920,12 @@ type Package struct {
 	CreativeDeadline string `json:"creative_deadline,omitempty"` // ISO 8601 timestamp for creative upload or change deadline for this package. Afte
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
+}
+
+// PriceBreakdown — Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjust
+type PriceBreakdown struct {
+	ListPrice float64 `json:"list_price"` // Rate card or base price before any adjustments. The starting point from which fi
+	Adjustments []any `json:"adjustments"` // Ordered list of price adjustments. Fee and discount adjustments walk list_price
 }
 
 // CreativeFormat — Represents a creative format with its requirements

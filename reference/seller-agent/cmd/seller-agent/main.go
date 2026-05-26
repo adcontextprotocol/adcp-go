@@ -84,14 +84,14 @@ func newProduct(id, name, description, deliveryType string, channels []string, f
 	}
 }
 
-func reportingCapabilities() map[string]any {
-	return map[string]any{
-		"available_reporting_frequencies": []string{"daily"},
-		"expected_delay_minutes":          60,
-		"timezone":                        "UTC",
-		"supports_webhooks":               false,
-		"available_metrics":               []string{"impressions", "spend", "clicks"},
-		"date_range_support":              "date_range",
+func reportingCapabilities() adcp.ReportingCapabilities {
+	return adcp.ReportingCapabilities{
+		AvailableReportingFrequencies: []string{"daily"},
+		ExpectedDelayMinutes:          60,
+		Timezone:                      "UTC",
+		SupportsWebhooks:              false,
+		AvailableMetrics:              []string{"impressions", "spend", "clicks"},
+		DateRangeSupport:              "date_range",
 	}
 }
 
