@@ -16,13 +16,22 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 		InvoiceRecipient: &BusinessEntity{
 			LegalName: "Acme Corporation",
 			TaxID:     "12-3456789",
+			Address: &BusinessAddress{
+				Street:     "1 Market St",
+				City:       "San Francisco",
+				PostalCode: "94105",
+				Country:    "US",
+			},
+			Contacts: []BusinessContact{{Role: "billing", Email: "ap@example.com"}},
+			Bank:     &BankAccount{AccountHolder: "Acme Corporation", AccountNumber: "1234"},
 		},
 		PushNotificationConfig: &PushNotificationConfig{
-			URL: "https://buyer.example/webhooks/tasks",
+			URL:            "https://buyer.example/webhooks/tasks",
+			Authentication: &LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "0123456789abcdef0123456789abcdef"},
 		},
 		ReportingWebhook: &ReportingWebhook{
 			URL:                "https://buyer.example/webhooks/reporting",
-			Authentication:     map[string]any{"schemes": []any{"Bearer"}, "credentials": "0123456789abcdef0123456789abcdef"},
+			Authentication:     LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "fedcba9876543210fedcba9876543210"},
 			ReportingFrequency: "daily",
 		},
 	}
@@ -33,8 +42,10 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 	}
 	body := string(raw)
 	for _, want := range []string{
-		`"invoice_recipient":{"legal_name":"Acme Corporation","tax_id":"12-3456789"}`,
-		`"push_notification_config":{"url":"https://buyer.example/webhooks/tasks"}`,
+		`"address":{"street":"1 Market St","city":"San Francisco","postal_code":"94105","country":"US"}`,
+		`"contacts":[{"role":"billing","email":"ap@example.com"}]`,
+		`"bank":{"account_holder":"Acme Corporation","account_number":"1234"}`,
+		`"push_notification_config":{"url":"https://buyer.example/webhooks/tasks","authentication":{"schemes":["Bearer"],"credentials":"0123456789abcdef0123456789abcdef"}}`,
 		`"reporting_webhook":{"url":"https://buyer.example/webhooks/reporting"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -80,11 +91,17 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				DaypartTargets: []DaypartTarget{{Days: []string{"mon", "tue"}, StartHour: 9, EndHour: 17}},
 				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: "user", Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
 				PropertyList:   Ptr(PropertyListRef{AgentURL: "https://lists.example/mcp", ListID: "pl-456"}),
+				GeoMetros:      []GeoMetroTarget{{System: "nielsen_dma", Values: []string{"501"}}},
+				AgeRestriction: Ptr(AgeRestriction{Min: 21}),
+				KeywordTargets: []KeywordTarget{{Keyword: "running shoes", MatchType: "phrase"}},
 			},
 			want: []string{
 				`"daypart_targets":[{"days":["mon","tue"],"start_hour":9,"end_hour":17}]`,
 				`"frequency_cap":{"max_impressions":3,"per":"user","window":{"interval":7,"unit":"days"}}`,
 				`"property_list":{"agent_url":"https://lists.example/mcp","list_id":"pl-456"}`,
+				`"geo_metros":[{"system":"nielsen_dma","values":["501"]}]`,
+				`"age_restriction":{"min":21}`,
+				`"keyword_targets":[{"keyword":"running shoes","match_type":"phrase"}]`,
 			},
 		},
 		{
@@ -112,6 +129,40 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			want: []string{
 				`"user_match":{"hashed_email":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}`,
 				`"custom_data":{"value":42,"currency":"USD"}`,
+			},
+		},
+		{
+			name: "signal range",
+			value: Signal{
+				ID:        "affinity_score",
+				Name:      "Affinity Score",
+				ValueType: "numeric",
+				Range:     Ptr(SignalRange{Min: 0, Max: 100, Unit: "score"}),
+			},
+			want: []string{
+				`"range":{"min":0,"max":100,"unit":"score"}`,
+			},
+		},
+		{
+			name: "delivery quartiles",
+			value: DeliveryTotals{
+				QuartileData: Ptr(DeliveryQuartileData{Q1Views: 10, Q4Views: 4}),
+			},
+			want: []string{
+				`"quartile_data":{"q1_views":10,"q4_views":4}`,
+			},
+		},
+		{
+			name: "proposal total budget",
+			value: CreateMediaBuyRequest{
+				IdempotencyKey: "idem-budget",
+				Account:        AccountReference{AccountID: "acct-1"},
+				ProposalID:     "proposal-1",
+				TotalBudget:    Ptr(MediaBuyBudget{Amount: 10000, Currency: "USD"}),
+				Brand:          BrandReference{Domain: "brand.example"},
+			},
+			want: []string{
+				`"total_budget":{"amount":10000,"currency":"USD"}`,
 			},
 		},
 		{

@@ -75,7 +75,7 @@ func TestCreateMediaBuy_ScrubsWriteOnlyInvoiceRecipientBank(t *testing.T) {
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
 		InvoiceRecipient: &adcp.BusinessEntity{
 			LegalName: "Acme Corporation",
-			Bank:      map[string]any{"account_number": "123456789"},
+			Bank:      &adcp.BankAccount{AccountHolder: "Acme Corporation", AccountNumber: "123456789"},
 		},
 		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
 	})

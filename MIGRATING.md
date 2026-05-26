@@ -61,6 +61,12 @@ be populated.
 | `Event.UserMatch` | `*adcp.UserMatch` |
 | `Event.CustomData` | `*adcp.EventCustomData` |
 | `ProvidePerformanceFeedbackRequest.MeasurementPeriod` | `adcp.DatetimeRange` |
+| `BusinessEntity.Address` | `*adcp.BusinessAddress` |
+| `BusinessEntity.Contacts` | `[]adcp.BusinessContact` |
+| `BusinessEntity.Bank` | `*adcp.BankAccount` |
+| `PushNotificationConfig.Authentication` | `*adcp.LegacyWebhookAuthentication` |
+| `ReportingWebhook.Authentication` | `adcp.LegacyWebhookAuthentication` |
+| `CreateMediaBuyRequest.TotalBudget` | `*adcp.MediaBuyBudget` |
 | `GetAdcpCapabilitiesResponse.Adcp` | `adcp.ADCPVersion` |
 | `GetAdcpCapabilitiesResponse.Account` | `*adcp.AccountCapabilities` |
 | `GetAdcpCapabilitiesResponse.MediaBuy` | `*adcp.MediaBuyCapabilities` |
@@ -74,6 +80,8 @@ be populated.
 | `GetAdcpCapabilitiesResponse.Identity` | `*adcp.IdentityCapabilities` |
 | `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
 | `Product.Placements` | `[]adcp.Placement` |
+| `Product.DeliveryMeasurement` | `*adcp.ProductDeliveryMeasurement` |
+| `Product.CatalogMatch` | `*adcp.ProductCatalogMatch` |
 | `Product.Forecast` | `*adcp.DeliveryForecast` |
 | `DeliveryForecast.Points` | `[]adcp.ForecastPoint` |
 | `ForecastPoint.Metrics` | `map[string]adcp.ForecastRange` |
@@ -86,12 +94,28 @@ be populated.
 | `Product.Collections` | `[]adcp.CollectionSelector` |
 | `Product.DataProviderSignals` | `[]adcp.DataProviderSignalSelector` |
 | `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
+| `Package.Cancellation` | `*adcp.PackageCancellation` |
+| `CreativeFormat.Accessibility` | `*adcp.CreativeFormatAccessibility` |
+| `Signal.Range` | `*adcp.SignalRange` |
+| `DeliveryTotals.QuartileData` | `*adcp.DeliveryQuartileData` |
 | `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
 | `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
+| `RightsConstraint.RightsAgent` | `adcp.RightsAgentRef` |
 | `AudienceConstraints.Include` | `[]adcp.AudienceSelector` |
 | `AudienceConstraints.Exclude` | `[]adcp.AudienceSelector` |
 | `PlannedDelivery.AudienceTargeting` | `[]adcp.AudienceSelector` |
 | `GetSignalsRequest.Destinations` | `[]adcp.Destination` |
+| `Targeting.GeoMetros` / `GeoMetrosExclude` | `[]adcp.GeoMetroTarget` |
+| `Targeting.GeoPostalAreas` / `GeoPostalAreasExclude` | `[]adcp.GeoPostalAreaTarget` |
+| `Targeting.AgeRestriction` | `*adcp.AgeRestriction` |
+| `Targeting.KeywordTargets` | `[]adcp.KeywordTarget` |
+| `Targeting.NegativeKeywords` | `[]adcp.NegativeKeywordTarget` |
+| `Account.CreditLimit` | `*adcp.AccountCreditLimit` |
+| `Account.GovernanceAgents` | `[]adcp.AccountGovernanceAgent` |
+| `Account.ReportingBucket` | `*adcp.ReportingBucket` |
+| `GetCollectionListRequest.Pagination` | `*adcp.CollectionRequestPagination` |
+| `CollectionListChangedWebhook.ChangeSummary` | `*adcp.CollectionChangeSummary` |
+| `PropertyListChangedWebhook.ChangeSummary` | `*adcp.PropertyChangeSummary` |
 
 Buyer request migration example:
 
@@ -106,6 +130,7 @@ req := adcp.CreateMediaBuyRequest{
     }),
     ReportingWebhook: adcp.Ptr(adcp.ReportingWebhook{
         URL:                "https://buyer.example/webhooks/reports",
+        Authentication:     adcp.LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "0123456789abcdef0123456789abcdef"},
         ReportingFrequency: "daily",
     }),
 }
