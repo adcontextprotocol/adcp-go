@@ -5,7 +5,7 @@ description: Use when building an AdCP generative seller in Go — an AI ad netw
 
 # Build a Generative Seller Agent (Go)
 
-> **Status: Not yet validated against storyboard runner.** If validation fails, check the common mistakes table first, then file an issue.
+> **Status: Validated against storyboard runner.** If validation fails, check the common mistakes table first, then file an issue.
 
 ## Overview
 
@@ -16,7 +16,7 @@ A generative seller does everything a standard seller does (products, media buys
 Ask the user — don't guess.
 
 1. **What kind of platform?** AI ad network, generative DSP, retail media with creative generation.
-2. **Products and pricing.** Each product needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties (empty array OK), format_ids. Use lowercase pricing models.
+2. **Products and pricing.** Each product needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties, format_ids, and reporting_capabilities. Use lowercase pricing models.
 3. **Generative formats.** What does the platform generate? Each generative format needs a `brief` asset slot. Standard formats need traditional asset slots (image, video).
 4. **Approval workflow.** Instant (`status: "active"`) or async (`status: "submitted"`). Async transitions SHOULD emit signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/`. Buyer polling is the legacy fallback only.
 
@@ -88,7 +88,7 @@ adcp.AddTool(server, "sync_governance", "Register governance agents",
 
 ### 4. `get_products`
 
-Products MUST include `description`, `publisher_properties`, and `format_ids`:
+Products MUST include `description`, `publisher_properties`, `format_ids`, and `reporting_capabilities`:
 
 ```go
 var products = []adcp.Product{
@@ -96,12 +96,20 @@ var products = []adcp.Product{
         ProductID: "ai-display", Name: "AI-Generated Display",
         Description: "AI-generated display ads from creative briefs",
         Channels: []string{"display"}, DeliveryType: "non_guaranteed",
+        PublisherProperties: []adcp.PublisherPropertySelector{
+            {PublisherDomain: "example.com", SelectionType: "all"},
+        },
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "ai-display-floor", PricingModel: "cpm", FloorPrice: 8.00, Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{
             {AgentURL: agentURL, ID: "display_300x250_generative"},
             {AgentURL: agentURL, ID: "display_300x250"},
+        },
+        ReportingCapabilities: map[string]any{
+            "available_metrics": []string{"impressions", "spend", "clicks"},
+            "available_reporting_frequencies": []string{"daily"},
+            "timezone": "UTC",
         },
     },
 }
@@ -301,7 +309,7 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_generative_s
 | Only generative formats | Must also accept standard IAB formats |
 | Same status for brief and standard | Generative → `"pending_review"`, standard → `"approved"` |
 | Products missing `description` | Required field |
-| Missing `publisher_properties`/`format_ids` | Required fields |
+| Missing `publisher_properties`, `format_ids`, or `reporting_capabilities` | Required fields |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `get_delivery` returns `null` for empty arrays | Use `make([]T, 0)` |
 | `get_delivery` returns `null` for empty deliveries | Use `adcp.DeliveryResponse` |
