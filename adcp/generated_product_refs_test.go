@@ -60,10 +60,31 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 				Message:  "purchase events are active",
 			}},
 		},
+		MetricOptimization: &ProductMetricOptimization{
+			SupportedMetrics: []string{"clicks", "reach"},
+			SupportedTargets: []string{"cost_per"},
+		},
+		ConversionTracking: &ProductConversionTracking{
+			ActionSources:    []string{"website"},
+			SupportedTargets: []string{"cost_per"},
+			PlatformManaged:  Ptr(true),
+		},
 		CatalogMatch: &ProductCatalogMatch{
 			MatchedIDs:     []string{"sku-1"},
 			MatchedCount:   1,
 			SubmittedCount: 10,
+		},
+		TrustedMatch: &ProductTrustedMatch{
+			ContextMatch:  true,
+			ResponseTypes: []string{"activation"},
+			Providers: []ProductTrustedMatchProvider{{
+				AgentURL:     "https://tmp.example/mcp",
+				ContextMatch: Ptr(true),
+			}},
+		},
+		MaterialSubmission: &ProductMaterialSubmission{
+			URL:          "https://seller.example/materials",
+			Instructions: "Upload print-ready PDF.",
 		},
 		DataProviderSignals: []DataProviderSignalSelector{{
 			DataProviderDomain: "signals.example",
@@ -89,7 +110,11 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
 		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
 		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
+		`"metric_optimization":{"supported_metrics":["clicks","reach"],"supported_targets":["cost_per"]}`,
+		`"conversion_tracking":{"action_sources":["website"],"supported_targets":["cost_per"],"platform_managed":true}`,
 		`"catalog_match":{"matched_ids":["sku-1"],"matched_count":1,"submitted_count":10}`,
+		`"trusted_match":{"context_match":true,"response_types":["activation"],"providers":[{"agent_url":"https://tmp.example/mcp","context_match":true}]}`,
+		`"material_submission":{"url":"https://seller.example/materials","instructions":"Upload print-ready PDF."}`,
 		`"data_provider_signals":[{"data_provider_domain":"signals.example","selection_type":"signal_ids","signal_ids":["auto_intenders"]}]`,
 		`"collections":[{"publisher_domain":"example.com","collection_ids":["sports"]}]`,
 	} {
@@ -137,7 +162,7 @@ func TestGeneratedPackagePriceBreakdown(t *testing.T) {
 		PackageID: "pkg-1",
 		PriceBreakdown: &PriceBreakdown{
 			ListPrice:   20,
-			Adjustments: []any{map[string]any{"type": "discount", "amount": 5}},
+			Adjustments: []PriceAdjustment{{Kind: "discount", Name: "volume", Amount: 5}},
 		},
 		Canceled: Ptr(canceled),
 		Cancellation: &PackageCancellation{
@@ -151,7 +176,7 @@ func TestGeneratedPackagePriceBreakdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal package: %v", err)
 	}
-	if !strings.Contains(string(raw), `"price_breakdown":{"list_price":20,"adjustments":[{"amount":5,"type":"discount"}]}`) {
+	if !strings.Contains(string(raw), `"price_breakdown":{"list_price":20,"adjustments":[{"kind":"discount","name":"volume","amount":5}]}`) {
 		t.Fatalf("price breakdown did not marshal as typed field: %s", raw)
 	}
 	if !strings.Contains(string(raw), `"cancellation":{"canceled_at":"2026-06-01T00:00:00Z","canceled_by":"buyer","reason":"budget_cut"}`) {

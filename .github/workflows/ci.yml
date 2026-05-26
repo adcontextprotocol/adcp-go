@@ -45,7 +45,7 @@ jobs:
 
       - name: Check generated any coverage
         working-directory: adcp/schemas
-        run: python3 generate.py --coverage-max-unreviewed-any 91
+        run: python3 generate.py --coverage-max-unreviewed-any 61
 
       - name: Check generated code is up to date
         run: |
@@ -53,6 +53,10 @@ jobs:
           git diff --exit-code tmproto/types_gen.go
 
       - name: Test root module
+        run: go test -race -count=1 ./...
+
+      - name: Test adcp module
+        working-directory: adcp
         run: go test -race -count=1 ./...
 
       - name: Test context agent
