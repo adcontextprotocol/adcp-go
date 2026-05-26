@@ -1960,7 +1960,7 @@ type Account struct {
 	Brand *BrandReference `json:"brand,omitempty"` // Brand reference identifying the advertiser
 	Operator string `json:"operator,omitempty"` // Domain of the entity operating this account. When the brand operates directly, t
 	Billing string `json:"billing,omitempty"` // Who is invoiced on this account. See billing_entity for the invoiced party's bus
-	BillingEntity any `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the lega
+	BillingEntity *BusinessEntity `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the lega
 	RateCard string `json:"rate_card,omitempty"` // Identifier for the rate card applied to this account
 	PaymentTerms string `json:"payment_terms,omitempty"` // Payment terms agreed for this account. Binding for all invoices when the account
 	CreditLimit any `json:"credit_limit,omitempty"` // Maximum outstanding balance allowed
@@ -1982,13 +1982,13 @@ type Targeting struct {
 	GeoMetrosExclude []any `json:"geo_metros_exclude,omitempty"` // Exclude specific metro areas from delivery. Each entry specifies the classificat
 	GeoPostalAreas []any `json:"geo_postal_areas,omitempty"` // Restrict delivery to specific postal areas. Each entry specifies the postal syst
 	GeoPostalAreasExclude []any `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
-	DaypartTargets []any `json:"daypart_targets,omitempty"` // Restrict delivery to specific time windows. Each entry specifies days of week an
+	DaypartTargets []DaypartTarget `json:"daypart_targets,omitempty"` // Restrict delivery to specific time windows. Each entry specifies days of week an
 	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for targe
 	AxeExcludeSegment string `json:"axe_exclude_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targ
 	AudienceInclude []string `json:"audience_include,omitempty"` // Restrict delivery to members of these first-party CRM audiences. Only users pres
 	AudienceExclude []string `json:"audience_exclude,omitempty"` // Suppress delivery to members of these first-party CRM audiences. Matched users a
-	FrequencyCap any `json:"frequency_cap,omitempty"`
-	PropertyList any `json:"property_list,omitempty"` // Reference to a property list for targeting specific properties within this produ
+	FrequencyCap *FrequencyCap `json:"frequency_cap,omitempty"`
+	PropertyList *PropertyListRef `json:"property_list,omitempty"` // Reference to a property list for targeting specific properties within this produ
 	CollectionList *CollectionListRef `json:"collection_list,omitempty"` // Reference to a collection list for including specific collections (programs, sho
 	CollectionListExclude *CollectionListRef `json:"collection_list_exclude,omitempty"` // Reference to a collection list for excluding specific collections (programs, sho
 	AgeRestriction any `json:"age_restriction,omitempty"` // Age restriction for compliance. Use for legal requirements (alcohol, gambling),
@@ -2031,7 +2031,22 @@ type Catalog struct {
 	Query string `json:"query,omitempty"` // Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'a
 	ConversionEvents []string `json:"conversion_events,omitempty"` // Event types that represent conversions for items in this catalog. Declares what
 	ContentIDType string `json:"content_id_type,omitempty"` // Identifier type that the event's content_ids field should be matched against for
-	FeedFieldMappings []any `json:"feed_field_mappings,omitempty"` // Declarative normalization rules for external feeds. Maps non-standard feed field
+	FeedFieldMappings []CatalogFieldMapping `json:"feed_field_mappings,omitempty"` // Declarative normalization rules for external feeds. Maps non-standard feed field
+}
+
+// CatalogFieldMapping — Declares how a field in an external feed maps to the AdCP catalog item schema. Used in sync_catalogs
+type CatalogFieldMapping struct {
+	FeedField string `json:"feed_field,omitempty"` // Field name in the external feed record. Omit when injecting a static literal val
+	CatalogField string `json:"catalog_field,omitempty"` // Target field on the catalog item schema, using dot notation for nested fields (e
+	AssetGroupID string `json:"asset_group_id,omitempty"` // Places the feed field value (a URL) into a typed asset pool on the catalog item'
+	Value any `json:"value,omitempty"` // Static literal value to inject into catalog_field for every item, regardless of
+	Transform string `json:"transform,omitempty"` // Named transform to apply to the feed field value before writing to the catalog s
+	Format string `json:"format,omitempty"` // For transform 'date': the input date format string (e.g., 'YYYYMMDD', 'MM/DD/YYY
+	Timezone string `json:"timezone,omitempty"` // For transform 'date': the timezone of the input value. IANA timezone identifier
+	By float64 `json:"by,omitempty"` // For transform 'divide': the divisor to apply (e.g., 100 to convert integer cents
+	Separator string `json:"separator,omitempty"` // For transform 'split': the separator character or string to split on. Defaults t
+	Default any `json:"default,omitempty"` // Fallback value to use when feed_field is absent, null, or empty. Applied after a
+	Ext any `json:"ext,omitempty"`
 }
 
 // Event — A marketing event (conversion, engagement, or custom) for attribution and optimization
@@ -2039,11 +2054,26 @@ type Event struct {
 	EventID string `json:"event_id"` // Unique identifier for deduplication (scoped to event_type + event_source_id)
 	EventType string `json:"event_type"` // Standard event type
 	EventTime string `json:"event_time"` // ISO 8601 timestamp when the event occurred
-	UserMatch any `json:"user_match,omitempty"` // User identifiers for attribution matching
-	CustomData any `json:"custom_data,omitempty"` // Event-specific data (value, currency, items, etc.)
+	UserMatch *UserMatch `json:"user_match,omitempty"` // User identifiers for attribution matching
+	CustomData *EventCustomData `json:"custom_data,omitempty"` // Event-specific data (value, currency, items, etc.)
 	ActionSource string `json:"action_source,omitempty"` // Where the event originated
 	EventSourceURL string `json:"event_source_url,omitempty"` // URL where the event occurred (required when action_source is 'website')
 	CustomEventName string `json:"custom_event_name,omitempty"` // Name for custom events (used when event_type is 'custom')
+	Ext any `json:"ext,omitempty"`
+}
+
+// EventCustomData — Event-specific data for attribution and reporting
+type EventCustomData struct {
+	Value float64 `json:"value,omitempty"` // Monetary value of the event (should be accompanied by currency)
+	Currency string `json:"currency,omitempty"` // ISO 4217 currency code
+	OrderID string `json:"order_id,omitempty"` // Unique order or transaction identifier
+	ContentIDs []string `json:"content_ids,omitempty"` // Item identifiers for catalog attribution. Values are matched against catalog ite
+	ContentType string `json:"content_type,omitempty"` // Category of content associated with the event (e.g., 'product', 'job', 'hotel').
+	ContentName string `json:"content_name,omitempty"` // Name of the product or content
+	ContentCategory string `json:"content_category,omitempty"` // Category of the product or content
+	NumItems int `json:"num_items,omitempty"` // Number of items in the event
+	SearchString string `json:"search_string,omitempty"` // Search query for search events
+	Contents []any `json:"contents,omitempty"` // Per-item details for e-commerce events
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -2072,6 +2102,91 @@ type CreativeBrief struct {
 	Messaging any `json:"messaging,omitempty"` // Messaging framework for the campaign
 	ReferenceAssets []any `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
 	Compliance any `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
+}
+
+// BusinessEntity — Structured business identity for B2B invoicing and contracts. Contains the legal, tax, and payment d
+type BusinessEntity struct {
+	LegalName string `json:"legal_name"` // Registered legal name of the business entity
+	VatID string `json:"vat_id,omitempty"` // VAT identification number (e.g., DE123456789 for Germany, FR12345678901 for Fran
+	TaxID string `json:"tax_id,omitempty"` // Tax identification number for jurisdictions that do not use VAT (e.g., US EIN)
+	RegistrationNumber string `json:"registration_number,omitempty"` // Company registration number (e.g., HRB 12345 for German Handelsregister)
+	Address any `json:"address,omitempty"` // Postal address for invoicing and legal correspondence
+	Contacts []any `json:"contacts,omitempty"` // Contacts for billing, legal, and operational matters. Contains personal data sub
+	Bank any `json:"bank,omitempty"` // Bank account details for payment processing. Write-only: included in requests to
+	Ext any `json:"ext,omitempty"`
+}
+
+// DatetimeRange — A datetime range with inclusive start and end timestamps (ISO 8601 with timezone). Used for measurem
+type DatetimeRange struct {
+	Start string `json:"start"` // Start timestamp (inclusive), ISO 8601
+	End string `json:"end"` // End timestamp (inclusive), ISO 8601
+}
+
+// DaypartTarget — A time window for daypart targeting. Specifies days of week and an hour range. start_hour is inclusi
+type DaypartTarget struct {
+	Days []string `json:"days"` // Days of week this window applies to. Use multiple days for compact targeting (e.
+	StartHour int `json:"start_hour"` // Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6
+	EndHour int `json:"end_hour"` // End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must
+	Label string `json:"label,omitempty"` // Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime
+}
+
+// FrequencyCap — Frequency capping settings for package-level application. Two types of frequency control can be used
+type FrequencyCap struct {
+	Suppress *Duration `json:"suppress,omitempty"` // Cooldown period between consecutive exposures to the same entity. Prevents back-
+	SuppressMinutes float64 `json:"suppress_minutes,omitempty"` // Deprecated — use suppress instead. Cooldown period in minutes between consecutiv
+	MaxImpressions int `json:"max_impressions,omitempty"` // Maximum number of impressions per entity per window. For duration windows, imple
+	Per string `json:"per,omitempty"` // Entity granularity for impression counting. Required when max_impressions is set
+	Window *Duration `json:"window,omitempty"` // Time window for the max_impressions cap (e.g. {"interval": 7, "unit": "days"} or
+}
+
+// PlannedDelivery — The seller's interpreted delivery parameters for a media buy. Represents what the seller will actual
+type PlannedDelivery struct {
+	Geo any `json:"geo,omitempty"` // Geographic targeting the seller will apply.
+	Channels []string `json:"channels,omitempty"` // Channels the seller will deliver on.
+	StartTime string `json:"start_time,omitempty"` // Actual flight start the seller will use.
+	EndTime string `json:"end_time,omitempty"` // Actual flight end the seller will use.
+	FrequencyCap *FrequencyCap `json:"frequency_cap,omitempty"` // Frequency cap the seller will apply.
+	AudienceSummary string `json:"audience_summary,omitempty"` // Human-readable summary of the audience the seller will target.
+	AudienceTargeting []any `json:"audience_targeting,omitempty"` // Structured audience targeting the seller will activate. Each entry is either a s
+	TotalBudget float64 `json:"total_budget,omitempty"` // Total budget the seller will deliver against.
+	Currency string `json:"currency,omitempty"` // ISO 4217 currency code for the budget.
+	EnforcedPolicies []string `json:"enforced_policies,omitempty"` // Registry policy IDs the seller will enforce for this delivery.
+	Ext any `json:"ext,omitempty"`
+}
+
+// PropertyListRef — Reference to an externally managed property list. Enables passing large property sets (50,000+) with
+type PropertyListRef struct {
+	AgentURL string `json:"agent_url"` // URL of the agent managing the property list
+	ListID string `json:"list_id"` // Identifier for the property list within the agent
+	AuthToken string `json:"auth_token,omitempty"` // JWT or other authorization token for accessing the list. Optional if the list is
+}
+
+// PushNotificationConfig — Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfi
+type PushNotificationConfig struct {
+	URL string `json:"url"` // Webhook endpoint URL for task status notifications
+	Token string `json:"token,omitempty"` // Optional client-provided token for webhook validation. Echoed back in webhook pa
+	Authentication any `json:"authentication,omitempty"` // Legacy authentication configuration (A2A-compatible). Opts the seller into Beare
+}
+
+// ReportingWebhook — Webhook configuration for automated reporting delivery. Configures where and how campaign performanc
+type ReportingWebhook struct {
+	URL string `json:"url"` // Webhook endpoint URL for reporting notifications
+	Token string `json:"token,omitempty"` // Optional client-provided token for webhook validation. Echoed back in webhook pa
+	Authentication any `json:"authentication"` // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
+	ReportingFrequency string `json:"reporting_frequency"` // Frequency for automated reporting delivery. Must be supported by all products in
+	RequestedMetrics []string `json:"requested_metrics,omitempty"` // Optional list of metrics to include in webhook notifications. If omitted, all av
+}
+
+// UserMatch — User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs, an
+type UserMatch struct {
+	UIDs []any `json:"uids,omitempty"` // Universal ID values for user matching
+	HashedEmail string `json:"hashed_email,omitempty"` // SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before ha
+	HashedPhone string `json:"hashed_phone,omitempty"` // SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must nor
+	ClickID string `json:"click_id,omitempty"` // Platform click identifier (fbclid, gclid, ttclid, ScCid, etc.)
+	ClickIDType string `json:"click_id_type,omitempty"` // Type of click identifier (e.g. fbclid, gclid, ttclid, msclkid, ScCid)
+	ClientIP string `json:"client_ip,omitempty"` // Client IP address for probabilistic matching
+	ClientUserAgent string `json:"client_user_agent,omitempty"` // Client user agent string for probabilistic matching
+	Ext any `json:"ext,omitempty"`
 }
 
 // --- Support schema types ---
@@ -2297,7 +2412,7 @@ type SyncAccountsRequest struct {
 	Accounts []AccountInput `json:"accounts"` // Advertiser accounts to sync
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, accounts previously synced by this agent but not included in this req
 	DryRun *bool `json:"dry_run,omitempty"` // When true, preview what would change without applying. Returns what would be cre
-	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Webhook for async notifications when account status changes (e.g., pending_appro
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Webhook for async notifications when account status changes (e.g., pending_appro
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2358,9 +2473,9 @@ type GetProductsRequest struct {
 	Account *AccountReference `json:"account,omitempty"` // Account for product lookup. Returns products with pricing specific to this accou
 	PreferredDeliveryTypes []string `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike filters.delivery_typ
 	Filters any `json:"filters,omitempty"`
-	PropertyList any `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided, the
+	PropertyList *PropertyListRef `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided, the
 	Fields []string `json:"fields,omitempty"` // Specific product fields to include in the response. When omitted, all fields are
-	TimeBudget Duration `json:"time_budget,omitempty"` // Maximum time the buyer will commit to this request. The seller returns the best
+	TimeBudget *Duration `json:"time_budget,omitempty"` // Maximum time the buyer will commit to this request. The seller returns the best
 	Pagination *PaginationRequest `json:"pagination,omitempty"`
 	Context any `json:"context,omitempty"`
 	RequiredPolicies []string `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in this
@@ -2393,14 +2508,14 @@ type CreateMediaBuyRequest struct {
 	Packages []PackageInput `json:"packages,omitempty"` // Array of package configurations. Required when not using proposal_id. When execu
 	Brand BrandReference `json:"brand"` // Brand reference for this media buy. Resolved to full brand identity at execution
 	AdvertiserIndustry string `json:"advertiser_industry,omitempty"` // Industry classification for this specific campaign. A brand may operate across m
-	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Override the account's default billing entity for this specific buy. When provid
+	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Override the account's default billing entity for this specific buy. When provid
 	IoAcceptance any `json:"io_acceptance,omitempty"` // Acceptance of an insertion order from a committed proposal. Required when the pr
 	PoNumber string `json:"po_number,omitempty"` // Purchase order number for tracking
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number. Primary financial reference for broadca
 	StartTime string `json:"start_time"`
 	EndTime string `json:"end_time"` // Campaign end date/time in ISO 8601 format
-	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher wi
-	ReportingWebhook any `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher wi
+	ReportingWebhook *ReportingWebhook `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery
 	ArtifactWebhook any `json:"artifact_webhook,omitempty"` // Optional webhook configuration for content artifact delivery. Used by governance
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
@@ -2413,14 +2528,14 @@ type CreateMediaBuyResponse = any
 type CreateMediaBuySuccess struct {
 	MediaBuyID string `json:"media_buy_id"` // Seller's unique identifier for the created media buy
 	Account *Account `json:"account,omitempty"` // Account billed for this media buy. Includes advertiser, billing proxy (if any),
-	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Per-buy invoice recipient, echoed from the request when provided. Confirms the s
+	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Per-buy invoice recipient, echoed from the request when provided. Confirms the s
 	Status string `json:"status,omitempty"` // Initial media buy status. Either 'pending_creatives' (awaiting creative assets),
 	ConfirmedAt string `json:"confirmed_at,omitempty"` // ISO 8601 timestamp when this media buy was confirmed by the seller. A successful
 	CreativeDeadline string `json:"creative_deadline,omitempty"` // ISO 8601 timestamp for creative upload deadline
 	Revision int `json:"revision,omitempty"` // Initial revision number for this media buy. Use in subsequent update_media_buy r
 	ValidActions []string `json:"valid_actions,omitempty"` // Actions the buyer can perform on this media buy after creation. Saves a round-tr
 	Packages []Package `json:"packages"` // Array of created packages with complete state information
-	PlannedDelivery any `json:"planned_delivery,omitempty"` // The seller's interpreted delivery parameters. Describes what the seller will act
+	PlannedDelivery *PlannedDelivery `json:"planned_delivery,omitempty"` // The seller's interpreted delivery parameters. Describes what the seller will act
 	Sandbox *bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
@@ -2455,10 +2570,10 @@ type UpdateMediaBuyRequest struct {
 	StartTime string `json:"start_time,omitempty"`
 	EndTime string `json:"end_time,omitempty"` // New end date/time in ISO 8601 format
 	Packages []PackageUpdate `json:"packages,omitempty"` // Package-specific updates for existing packages
-	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Update who receives the invoice for this buy. When provided, the seller invoices
+	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Update who receives the invoice for this buy. When provided, the seller invoices
 	NewPackages []PackageInput `json:"new_packages,omitempty"` // New packages to add to this media buy. Uses the same schema as create_media_buy
-	ReportingWebhook any `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery. Updates the rep
-	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async update notifications. Publisher will se
+	ReportingWebhook *ReportingWebhook `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery. Updates the rep
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async update notifications. Publisher will se
 	IdempotencyKey string `json:"idempotency_key"` // Client-generated idempotency key for safe retries. If an update fails without a
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
@@ -2562,7 +2677,7 @@ type SyncCatalogsRequest struct {
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, buyer-managed catalogs on the account not included in this sync will
 	DryRun *bool `json:"dry_run,omitempty"` // When true, preview changes without applying them. Returns what would be created/
 	ValidationMode string `json:"validation_mode,omitempty"` // Validation strictness. 'strict' fails entire sync on any validation error. 'leni
-	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. Publisher will send
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. Publisher will send
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2594,7 +2709,7 @@ type ProvidePerformanceFeedbackRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	MediaBuyID string `json:"media_buy_id"` // Seller's media buy identifier
 	IdempotencyKey string `json:"idempotency_key"` // Client-generated unique key for this request. Prevents duplicate feedback submis
-	MeasurementPeriod any `json:"measurement_period"` // Time period for performance measurement
+	MeasurementPeriod DatetimeRange `json:"measurement_period"` // Time period for performance measurement
 	PerformanceIndex float64 `json:"performance_index"` // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expec
 	PackageID string `json:"package_id,omitempty"` // Specific package within the media buy (if feedback is package-specific)
 	CreativeID string `json:"creative_id,omitempty"` // Specific creative asset (if feedback is creative-specific)
@@ -2658,7 +2773,7 @@ type SyncCreativesRequest struct {
 	DeleteMissing *bool `json:"delete_missing,omitempty"` // When true, creatives not included in this sync will be archived. Use with cautio
 	DryRun *bool `json:"dry_run,omitempty"` // When true, preview changes without applying them. Returns what would be created/
 	ValidationMode string `json:"validation_mode,omitempty"` // Validation strictness. 'strict' fails entire sync on any validation error. 'leni
-	PushNotificationConfig any `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. The agent will send
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. The agent will send
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
@@ -2829,10 +2944,10 @@ type CheckGovernanceRequest struct {
 	Payload map[string]any `json:"payload,omitempty"` // The full tool arguments as they would be sent to the seller. Present on intent c
 	GovernanceContext string `json:"governance_context,omitempty"` // Governance context token from a prior check_governance response. Pass this on su
 	Phase string `json:"phase,omitempty"` // The phase of the governed action's lifecycle. 'purchase': initial commitment (cr
-	PlannedDelivery any `json:"planned_delivery,omitempty"` // What the seller will actually deliver. Present on execution checks.
+	PlannedDelivery *PlannedDelivery `json:"planned_delivery,omitempty"` // What the seller will actually deliver. Present on execution checks.
 	DeliveryMetrics any `json:"delivery_metrics,omitempty"` // Actual delivery performance data. MUST be present for 'delivery' phase. The gove
 	ModificationSummary string `json:"modification_summary,omitempty"` // Human-readable summary of what changed. SHOULD be present for 'modification' pha
-	InvoiceRecipient any `json:"invoice_recipient,omitempty"` // Invoice recipient from the purchase request. MUST be present when the tool paylo
+	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Invoice recipient from the purchase request. MUST be present when the tool paylo
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }

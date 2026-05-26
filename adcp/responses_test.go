@@ -13,7 +13,7 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 		Status:          "active",
 		Packages:        []Package{{PackageID: "pkg-1"}},
 		ValidActions:    []string{"pause", "cancel"},
-		PlannedDelivery: map[string]any{"impressions": 1000},
+		PlannedDelivery: &PlannedDelivery{TotalBudget: 1000},
 		Ext:             map[string]any{"status": "wrong"},
 	})
 	require.NoError(t, err)
@@ -22,7 +22,7 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "active", wire["status"])
 	assert.Equal(t, []any{"pause", "cancel"}, wire["valid_actions"])
-	assert.Equal(t, map[string]any{"impressions": float64(1000)}, wire["planned_delivery"])
+	assert.Equal(t, map[string]any{"total_budget": float64(1000)}, wire["planned_delivery"])
 	assert.Equal(t, map[string]any{"status": "wrong"}, wire["ext"])
 	assert.IsType(t, &CreateMediaBuySuccess{}, out)
 }
@@ -100,6 +100,9 @@ func TestMediaBuysDataResponseIncludesPackageStatusFields(t *testing.T) {
 			Status:      "active",
 			Currency:    "USD",
 			TotalBudget: 100,
+			InvoiceRecipient: &BusinessEntity{
+				LegalName: "Acme Corporation",
+			},
 			Packages: []PackageStatus{{
 				Package: Package{
 					PackageID:           "pkg-1",
@@ -130,6 +133,7 @@ func TestMediaBuysDataResponseIncludesPackageStatusFields(t *testing.T) {
 	require.Len(t, buys, 1)
 	buy, ok := buys[0].(map[string]any)
 	require.True(t, ok)
+	assert.Equal(t, map[string]any{"legal_name": "Acme Corporation"}, buy["invoice_recipient"])
 	packages, ok := buy["packages"].([]any)
 	require.True(t, ok)
 	require.Len(t, packages, 1)

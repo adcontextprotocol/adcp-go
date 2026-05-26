@@ -70,6 +70,43 @@ func TestCreateMediaBuy_IDsAreSequential(t *testing.T) {
 	}
 }
 
+func TestCreateMediaBuy_ScrubsWriteOnlyInvoiceRecipientBank(t *testing.T) {
+	b := newTestBackend()
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		InvoiceRecipient: &adcp.BusinessEntity{
+			LegalName: "Acme Corporation",
+			Bank:      map[string]any{"account_number": "123456789"},
+		},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+	if buy.InvoiceRecipient == nil {
+		t.Fatal("expected invoice recipient")
+	}
+	if buy.InvoiceRecipient.Bank != nil {
+		t.Fatalf("write-only bank details should not be stored: %#v", buy.InvoiceRecipient.Bank)
+	}
+
+	response := mediaBuyCreateSuccess(buy)
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal create success: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal create success: %v", err)
+	}
+	recipient, ok := wire["invoice_recipient"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected invoice_recipient object, got %#v", wire["invoice_recipient"])
+	}
+	if _, ok := recipient["bank"]; ok {
+		t.Fatalf("write-only bank details should not be echoed: %s", raw)
+	}
+}
+
 // --- pending_creatives → active state transitions ---
 
 func TestPendingCreativesToActive_ViaSyncCreatives(t *testing.T) {

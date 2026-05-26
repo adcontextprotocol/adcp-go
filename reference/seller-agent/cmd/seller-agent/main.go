@@ -97,6 +97,17 @@ func reportingCapabilities() map[string]any {
 
 func boolPtr(v bool) *bool { return &v }
 
+// responseBusinessEntity removes write-only payment fields before storing or
+// echoing business entities in seller responses.
+func responseBusinessEntity(in *adcp.BusinessEntity) *adcp.BusinessEntity {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	out.Bank = nil
+	return &out
+}
+
 // --- Your backend state (replace with your real DB / ad server client) ---
 
 type backend struct {
@@ -213,6 +224,9 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 			buy.Status = "active"
 		}
 		decorateMediaBuy(buy)
+	}
+	if input.InvoiceRecipient != nil {
+		buy.InvoiceRecipient = responseBusinessEntity(input.InvoiceRecipient)
 	}
 
 	packageIndex := make(map[string]int, len(buy.Packages))
@@ -342,7 +356,17 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 		status = "active"
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	buy := &adcp.MediaBuyData{MediaBuyID: id, Status: status, TotalBudget: totalBudget, Packages: pkgs, ConfirmedAt: now, CreatedAt: now, UpdatedAt: now, Revision: 1}
+	buy := &adcp.MediaBuyData{
+		MediaBuyID:       id,
+		Status:           status,
+		TotalBudget:      totalBudget,
+		InvoiceRecipient: responseBusinessEntity(input.InvoiceRecipient),
+		Packages:         pkgs,
+		ConfirmedAt:      now,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Revision:         1,
+	}
 	decorateMediaBuy(buy)
 	b.mediaBuys[id] = buy
 	for _, pkg := range pkgs {
@@ -632,7 +656,7 @@ func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
 	return &adcp.CreateMediaBuySuccess{
 		MediaBuyID:       buy.MediaBuyID,
 		Account:          buy.Account,
-		InvoiceRecipient: buy.InvoiceRecipient,
+		InvoiceRecipient: responseBusinessEntity(buy.InvoiceRecipient),
 		Status:           buy.Status,
 		ConfirmedAt:      buy.ConfirmedAt,
 		CreativeDeadline: buy.CreativeDeadline,
@@ -655,6 +679,7 @@ func packagesForCreateSuccess(statuses []adcp.PackageStatus) []adcp.Package {
 func decorateMediaBuy(buy *adcp.MediaBuyData) {
 	buy.Currency = "USD"
 	buy.ValidActions = validActions(buy.Status)
+	buy.InvoiceRecipient = responseBusinessEntity(buy.InvoiceRecipient)
 	// Response envelope fields are typed; do not smuggle them through ext.
 	buy.Ext = nil
 }
