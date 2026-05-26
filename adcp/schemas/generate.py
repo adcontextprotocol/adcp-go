@@ -1104,15 +1104,36 @@ def main(argv=None):
         action='store_true',
         help='emit human-readable report of generated any fallbacks instead of Go code',
     )
+    parser.add_argument(
+        '--coverage-max-unreviewed-any',
+        type=int,
+        metavar='N',
+        help='fail if generated unreviewed any fallbacks exceed N',
+    )
     args = parser.parse_args(argv)
 
-    if args.coverage_json or args.coverage_summary:
+    if (
+        args.coverage_json or
+        args.coverage_summary or
+        args.coverage_max_unreviewed_any is not None
+    ):
         _reset_will_generate_cache()
         report = any_coverage_report()
         if args.coverage_json:
             print(json.dumps(report, indent=2))
         else:
             print_any_coverage_summary(report)
+        if (
+            args.coverage_max_unreviewed_any is not None and
+            report['unreviewed_any'] > args.coverage_max_unreviewed_any
+        ):
+            print(
+                'Generated unreviewed any fallbacks exceed baseline: '
+                f'{report["unreviewed_any"]} > '
+                f'{args.coverage_max_unreviewed_any}',
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     generate()
