@@ -301,6 +301,62 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/get-media-buy-delivery-response.json"
         "#/properties/media_buy_deliveries/items/properties/by_package/items",
     ),
+    (
+        "ProductDeliveryMeasurement",
+        "core/product.json#/properties/delivery_measurement",
+    ),
+    (
+        "ProductCatalogMatch",
+        "core/product.json#/properties/catalog_match",
+    ),
+    (
+        "AccountCreditLimit",
+        "core/account.json#/properties/credit_limit",
+    ),
+    (
+        "AccountGovernanceAgent",
+        "core/account.json#/properties/governance_agents/items",
+    ),
+    (
+        "ReportingBucket",
+        "core/account.json#/properties/reporting_bucket",
+    ),
+    (
+        "GeoMetroTarget",
+        "core/targeting.json#/properties/geo_metros/items",
+    ),
+    (
+        "GeoPostalAreaTarget",
+        "core/targeting.json#/properties/geo_postal_areas/items",
+    ),
+    (
+        "AgeRestriction",
+        "core/targeting.json#/properties/age_restriction",
+    ),
+    (
+        "KeywordTarget",
+        "core/targeting.json#/properties/keyword_targets/items",
+    ),
+    (
+        "NegativeKeywordTarget",
+        "core/targeting.json#/properties/negative_keywords/items",
+    ),
+    (
+        "BusinessAddress",
+        "core/business-entity.json#/properties/address",
+    ),
+    (
+        "BusinessContact",
+        "core/business-entity.json#/properties/contacts/items",
+    ),
+    (
+        "BankAccount",
+        "core/business-entity.json#/properties/bank",
+    ),
+    (
+        "LegacyWebhookAuthentication",
+        "core/push-notification-config.json#/properties/authentication",
+    ),
 ])
 
 # Hand-written types that should be drift-checked against a schema path or JSON
@@ -413,6 +469,23 @@ INLINE_TYPE_HINTS = {
     ('GetMediaBuyDeliveryResponse', 'reporting_period'): 'ReportingPeriod',
     ('GetMediaBuyDeliveryResponse', 'aggregated_totals'): '*DeliveryAggregatedTotals',
     ('GetMediaBuyDeliveryResponse', 'media_buy_deliveries'): 'MediaBuyDelivery',
+    ('Product', 'delivery_measurement'): '*ProductDeliveryMeasurement',
+    ('Product', 'catalog_match'): '*ProductCatalogMatch',
+    ('Account', 'credit_limit'): '*AccountCreditLimit',
+    ('Account', 'governance_agents'): 'AccountGovernanceAgent',
+    ('Account', 'reporting_bucket'): '*ReportingBucket',
+    ('Targeting', 'geo_metros'): 'GeoMetroTarget',
+    ('Targeting', 'geo_metros_exclude'): 'GeoMetroTarget',
+    ('Targeting', 'geo_postal_areas'): 'GeoPostalAreaTarget',
+    ('Targeting', 'geo_postal_areas_exclude'): 'GeoPostalAreaTarget',
+    ('Targeting', 'age_restriction'): '*AgeRestriction',
+    ('Targeting', 'keyword_targets'): 'KeywordTarget',
+    ('Targeting', 'negative_keywords'): 'NegativeKeywordTarget',
+    ('BusinessEntity', 'address'): '*BusinessAddress',
+    ('BusinessEntity', 'contacts'): 'BusinessContact',
+    ('BusinessEntity', 'bank'): '*BankAccount',
+    ('PushNotificationConfig', 'authentication'): '*LegacyWebhookAuthentication',
+    ('ReportingWebhook', 'authentication'): 'LegacyWebhookAuthentication',
     ('GetAdcpCapabilitiesResponse', 'adcp'): 'ADCPVersion',
     ('GetAdcpCapabilitiesResponse', 'account'): 'AccountCapabilities',
     ('GetAdcpCapabilitiesResponse', 'media_buy'): 'MediaBuyCapabilities',
