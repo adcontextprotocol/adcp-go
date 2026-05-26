@@ -1,4 +1,5 @@
 import subprocess
+import shutil
 import tempfile
 import textwrap
 import unittest
@@ -133,6 +134,7 @@ class UnionHelperGenerationTest(unittest.TestCase):
         self.assertIn("v := append(TestUnion{}, values...)", src)
         self.assertNotIn("if len(values) == 0", src)
 
+    @unittest.skipUnless(shutil.which("go"), "go command not found")
     def test_empty_accepting_constructor_marshal_runtime(self):
         generated = generate.scalar_or_array_union_to_type("TestUnion", scalar_or_array_schema(min_items=0))
         source = textwrap.dedent(f"""
@@ -162,7 +164,7 @@ class UnionHelperGenerationTest(unittest.TestCase):
         """)
         with tempfile.TemporaryDirectory() as tmp:
             with open(f"{tmp}/go.mod", "w") as f:
-                f.write("module uniontest\n\ngo 1.25\n")
+                f.write("module uniontest\n\ngo 1.22\n")
             with open(f"{tmp}/union_test.go", "w") as f:
                 f.write(source)
             subprocess.run(["go", "test", "."], cwd=tmp, check=True)

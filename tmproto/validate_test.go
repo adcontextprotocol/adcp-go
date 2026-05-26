@@ -22,6 +22,7 @@ func TestValidateIdentityRequest(t *testing.T) {
 		name    string
 		mutate  func(*IdentityMatchRequest)
 		wantErr string
+		wantNot string
 	}{
 		{name: "ok", mutate: func(*IdentityMatchRequest) {}},
 		{
@@ -66,7 +67,8 @@ func TestValidateIdentityRequest(t *testing.T) {
 			mutate: func(r *IdentityMatchRequest) {
 				r.Identities = []IdentityToken{{UserToken: "tok", UIDType: UIDType("made_up")}}
 			},
-			wantErr: "uid_type \"made_up\" is not a recognized TMP identity type",
+			wantErr: "uid_type is not a recognized TMP identity type",
+			wantNot: "made_up",
 		},
 		{
 			name: "every spec uid_type accepted",
@@ -89,6 +91,9 @@ func TestValidateIdentityRequest(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErr)
+			if tc.wantNot != "" {
+				assert.NotContains(t, err.Error(), tc.wantNot)
+			}
 		})
 	}
 }

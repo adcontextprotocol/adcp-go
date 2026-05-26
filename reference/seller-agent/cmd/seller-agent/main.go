@@ -209,6 +209,9 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		if buy.Status == "canceled" {
 			return errorResult("NOT_CANCELLABLE", "Media buy is already canceled.", input.Context)
 		}
+		if !hasValidAction(buy.Status, "cancel") {
+			return errorResult("INVALID_TRANSITION", "Media buy cannot be changed from its current status.", input.Context)
+		}
 		buy.Status = "canceled"
 		now := time.Now().UTC().Format(time.RFC3339)
 		buy.Cancellation = map[string]any{"reason": input.CancellationReason, "canceled_by": "buyer", "canceled_at": now}
@@ -218,6 +221,13 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		return updateMediaBuyResult(buy, packagesForCreateSuccess(buy.Packages), input.Context)
 	}
 	if input.Paused != nil {
+		action := "resume"
+		if *input.Paused {
+			action = "pause"
+		}
+		if !hasValidAction(buy.Status, action) {
+			return errorResult("INVALID_TRANSITION", "Media buy cannot be changed from its current status.", input.Context)
+		}
 		if *input.Paused {
 			buy.Status = "paused"
 		} else {
@@ -227,6 +237,9 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	}
 	if input.InvoiceRecipient != nil {
 		buy.InvoiceRecipient = responseBusinessEntity(input.InvoiceRecipient)
+	}
+	if len(input.Packages) > 0 && !hasValidAction(buy.Status, "update_packages") {
+		return errorResult("INVALID_TRANSITION", "Media buy cannot be changed from its current status.", input.Context)
 	}
 
 	packageIndex := make(map[string]int, len(buy.Packages))
@@ -692,9 +705,20 @@ func validActions(status string) []string {
 		return []string{"resume", "cancel", "sync_creatives", "update_packages"}
 	case "pending_creatives":
 		return []string{"cancel", "sync_creatives", "update_packages"}
-	default:
+	case "active", "pending_start":
 		return []string{"pause", "cancel", "sync_creatives", "update_packages"}
+	default:
+		return []string{}
 	}
+}
+
+func hasValidAction(status, action string) bool {
+	for _, valid := range validActions(status) {
+		if valid == action {
+			return true
+		}
+	}
+	return false
 }
 
 func errorResult(code, message string, context any) (*mcp.CallToolResult, any, error) {

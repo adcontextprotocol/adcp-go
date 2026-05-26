@@ -1739,6 +1739,8 @@ const (
 // --- Union helper types ---
 
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
+// MediaBuyStatusFilter preserves unknown values for forward compatibility.
+// It validates only scalar-or-array shape and array cardinality.
 type MediaBuyStatusFilter []MediaBuyStatus
 
 // NewMediaBuyStatusFilter returns a pointer to a MediaBuyStatusFilter containing values.
