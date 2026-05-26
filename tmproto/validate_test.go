@@ -98,6 +98,13 @@ func TestValidateIdentityRequest(t *testing.T) {
 	}
 }
 
+func TestSafeRequestIDForEcho(t *testing.T) {
+	assert.Equal(t, "req-1", SafeRequestIDForEcho("req-1"))
+	assert.Empty(t, SafeRequestIDForEcho(""))
+	assert.Empty(t, SafeRequestIDForEcho("bad/id"))
+	assert.Empty(t, SafeRequestIDForEcho(strings.Repeat("a", MaxIDLength+1)))
+}
+
 func TestValidateIdentityRequest_AllValidUIDTypes(t *testing.T) {
 	types := []UIDType{
 		UIDTypeRampID, UIDTypeRampIDDerived, UIDTypeID5, UIDTypeUID2,

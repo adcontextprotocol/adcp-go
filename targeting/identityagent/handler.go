@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -101,7 +100,8 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := tmproto.ValidateIdentityRequest(&req); err != nil {
-		h.writeError(w, req.RequestID, http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, err.Error())
+		h.logValidationFailure(r, req.RequestID, err)
+		h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
 		h.recordCompletion(ctx, start, "bad_request")
 		return
 	}
@@ -111,9 +111,9 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// names VERSION_UNSUPPORTED here, but the error.json schema's
 			// `code` enum does not include it. Use invalid_request — the
 			// closest valid code — until the spec is internally
-			// consistent. The message preserves diagnostic detail.
-			h.writeError(w, req.RequestID, http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest,
-				fmt.Sprintf("adcp_major_version %d is not supported", req.AdcpMajorVersion))
+			// consistent.
+			h.logValidationFailure(r, req.RequestID, errors.New("adcp_major_version is not supported"))
+			h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
 			h.recordCompletion(ctx, start, "bad_request")
 			return
 		}
@@ -214,6 +214,16 @@ func (h *identityHandler) writeError(w http.ResponseWriter, requestID string, st
 	_, _ = w.Write(body)
 }
 
+func (h *identityHandler) logValidationFailure(r *http.Request, requestID string, err error) {
+	attrs := []any{"method", r.Method, "path", r.URL.Path, "error", err}
+	if safeID := tmproto.SafeRequestIDForEcho(requestID); safeID != "" {
+		attrs = append(attrs, "request_id", safeID)
+	} else if requestID != "" {
+		attrs = append(attrs, "request_id_valid", false)
+	}
+	h.logger.Warn("invalid identity-match request", attrs...)
+}
+
 func (h *identityHandler) recordCompletion(ctx context.Context, start time.Time, status string) {
 	h.recorder.RequestCompleted(ctx, status, time.Since(start))
 }
@@ -248,4 +258,3 @@ func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.
 	shadow.Identities = audienceEligibleIdentities(decoded)
 	return &shadow, decoded
 }
-

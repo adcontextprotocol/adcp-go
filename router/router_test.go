@@ -193,6 +193,104 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	assert.Equal(t, "pkg-1", resp.Offers[0].PackageID)
 }
 
+func TestRouterContextMatch_ValidationErrorIsGenericAndLogged(t *testing.T) {
+	var logs bytes.Buffer
+	router := testRouter(nil)
+	router.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+	reqBody := `{
+		"type": "context_match_request",
+		"request_id": "ctx-invalid",
+		"property_id": "bad:property",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"package_ids": ["pkg-1"]
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
+	router.HandleContextMatch(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, tmproto.ErrorCodeInvalidRequest, resp.Code)
+	assert.Equal(t, "ctx-invalid", resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, resp.Message, "property_id")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "invalid context-match request")
+	assert.Contains(t, logText, `"method":"POST"`)
+	assert.Contains(t, logText, `"path":"/tmp/context"`)
+	assert.Contains(t, logText, "ctx-invalid")
+	assert.Contains(t, logText, "property_id contains invalid characters")
+}
+
+func TestRouterIdentityMatch_InvalidRequestIDIsNotEchoed(t *testing.T) {
+	var logs bytes.Buffer
+	router := testRouter(nil)
+	router.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+	reqBody := `{
+		"type": "identity_match_request",
+		"request_id": "bad/id",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
+		"package_ids": ["pkg-1"]
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/identity", strings.NewReader(reqBody))
+	router.HandleIdentityMatch(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, w.Body.String(), "bad/id")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "invalid identity-match request")
+	assert.Contains(t, logText, `"method":"POST"`)
+	assert.Contains(t, logText, `"path":"/tmp/identity"`)
+	assert.Contains(t, logText, `"request_id_valid":false`)
+	assert.NotContains(t, logText, "bad/id")
+}
+
+func TestRouterContextMatch_LongRequestIDIsNotEchoed(t *testing.T) {
+	var logs bytes.Buffer
+	router := testRouter(nil)
+	router.logger = slog.New(slog.NewJSONHandler(&logs, nil))
+
+	longID := strings.Repeat("a", tmproto.MaxIDLength+1)
+	body, err := json.Marshal(tmproto.ContextMatchRequest{
+		Type:         tmproto.TypeContextMatchRequest,
+		RequestID:    longID,
+		PropertyID:   "pub-test",
+		PropertyType: tmproto.PropertyTypeWebsite,
+		PlacementID:  "sidebar",
+		PackageIDs:   []string{"pkg-1"},
+	})
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", bytes.NewReader(body))
+	router.HandleContextMatch(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Empty(t, resp.RequestID)
+	assert.Equal(t, "invalid request", resp.Message)
+	assert.NotContains(t, w.Body.String(), longID)
+
+	logText := logs.String()
+	assert.Contains(t, logText, `"request_id_valid":false`)
+	assert.NotContains(t, logText, longID)
+}
+
 func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	var receivedBody []byte
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
