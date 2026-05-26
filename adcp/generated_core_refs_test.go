@@ -502,6 +502,37 @@ func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 	}
 }
 
+func TestGeneratedEnumHelpers(t *testing.T) {
+	values := KnownMediaBuyStatusValues()
+	known := map[MediaBuyStatus]bool{}
+	for _, value := range values {
+		known[value] = true
+	}
+	for _, want := range []MediaBuyStatus{MediaBuyStatusActive, MediaBuyStatusPaused, MediaBuyStatusCanceled} {
+		if !known[want] {
+			t.Fatalf("KnownMediaBuyStatusValues missing %q from %#v", want, values)
+		}
+		if !IsKnownMediaBuyStatus(want) {
+			t.Fatalf("%q media buy status should be known", want)
+		}
+	}
+	if IsKnownMediaBuyStatus(MediaBuyStatus("future_status")) {
+		t.Fatal("future media buy status should not be known")
+	}
+	parsed, err := ParseMediaBuyStatus("paused")
+	if err != nil {
+		t.Fatalf("ParseMediaBuyStatus paused: %v", err)
+	}
+	if parsed != MediaBuyStatusPaused {
+		t.Fatalf("ParseMediaBuyStatus parsed %q, want %q", parsed, MediaBuyStatusPaused)
+	}
+	if _, err := ParseMediaBuyStatus("future_status"); err == nil {
+		t.Fatal("ParseMediaBuyStatus future_status succeeded, want error")
+	} else if strings.Contains(err.Error(), "future_status") {
+		t.Fatalf("ParseMediaBuyStatus error echoed rejected value: %q", err.Error())
+	}
+}
+
 func TestGeneratedOptionalAllOfRefsOmitWhenNil(t *testing.T) {
 	req := GetProductsRequest{}
 	raw, err := json.Marshal(req)

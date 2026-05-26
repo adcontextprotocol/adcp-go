@@ -120,6 +120,11 @@ Use `adcp.Bool(true)` for optional boolean updates and `adcp.Float64(0)` when a
 creative assignment weight of zero is intentional. `CreativeAssignment.Extra`
 preserves seller-specific assignment fields allowed by the schema.
 
+Generated enum aliases decode unknown wire values for forward compatibility.
+When handler logic needs strict current-schema validation, use the generated
+helpers: `KnownMediaBuyStatusValues()`, `IsKnownMediaBuyStatus(status)`, and
+`ParseMediaBuyStatus(raw)`.
+
 ## Request signing (AdCP 3.0 optional, 4.0 required)
 
 `adcp/signing` implements the AdCP RFC 9421 request-signing profile — optional in 3.0, required for spend-committing operations in 4.0. The package is self-validating against the spec's [conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/): all 8 positive + 20 negative vectors pass, and signed Ed25519 signatures match the committed positive-vector bytes.
