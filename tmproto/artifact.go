@@ -280,7 +280,7 @@ func (a AssetAccess) MarshalJSON() ([]byte, error) {
 	case AssetAccessMethodSignedURL:
 		// No extra fields: credentials embedded in URL.
 	default:
-		return nil, fmt.Errorf("AssetAccess: unknown method %q", a.Method)
+		return nil, fmt.Errorf("AssetAccess: unknown method")
 	}
 	return json.Marshal(m)
 }
@@ -307,7 +307,7 @@ func (a *AssetAccess) UnmarshalJSON(data []byte) error {
 	case "":
 		return fmt.Errorf("asset_access: missing method")
 	default:
-		return fmt.Errorf("asset_access: unknown method %q", raw.Method)
+		return fmt.Errorf("asset_access: unknown method")
 	}
 	return nil
 }

@@ -113,7 +113,15 @@ func TestAssetAccess_Unmarshal_RejectsUnknownMethod(t *testing.T) {
 	var a AssetAccess
 	err := json.Unmarshal([]byte(`{"method":"quantum_key","token":"x"}`), &a)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `unknown method "quantum_key"`)
+	assert.Contains(t, err.Error(), "unknown method")
+	assert.NotContains(t, err.Error(), "quantum_key")
+}
+
+func TestAssetAccess_Marshal_RejectsUnknownMethodWithoutEcho(t *testing.T) {
+	_, err := json.Marshal(AssetAccess{Method: "quantum_key"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown method")
+	assert.NotContains(t, err.Error(), "quantum_key")
 }
 
 func TestAssetAccess_Unmarshal_RejectsMissingMethod(t *testing.T) {
@@ -191,17 +199,18 @@ func TestContextSignals_Validate(t *testing.T) {
 		name    string
 		sig     ContextSignals
 		wantErr string
+		wantNot string
 	}{
-		{"empty", ContextSignals{}, ""},
-		{"valid", ContextSignals{Sentiment: "neutral", Language: "en"}, ""},
-		{"bad sentiment", ContextSignals{Sentiment: "postive"}, "sentiment"},
-		{"bad language pattern", ContextSignals{Language: "EN"}, "language"},
-		{"summary too long", ContextSignals{Summary: strings.Repeat("x", MaxSummaryLength+1)}, "summary"},
-		{"too many topics", ContextSignals{Topics: make([]string, MaxTopics+1)}, "topics"},
-		{"embedding without model", ContextSignals{Embedding: "x", EmbeddingDims: 256}, "set together"},
-		{"embedding dims too small", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 1}, "outside"},
-		{"embedding dims too large", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 9999}, "outside"},
-		{"valid embedding", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 256}, ""},
+		{"empty", ContextSignals{}, "", ""},
+		{"valid", ContextSignals{Sentiment: "neutral", Language: "en"}, "", ""},
+		{"bad sentiment", ContextSignals{Sentiment: "postive"}, "sentiment", "postive"},
+		{"bad language pattern", ContextSignals{Language: "EN"}, "language", "EN"},
+		{"summary too long", ContextSignals{Summary: strings.Repeat("x", MaxSummaryLength+1)}, "summary", ""},
+		{"too many topics", ContextSignals{Topics: make([]string, MaxTopics+1)}, "topics", ""},
+		{"embedding without model", ContextSignals{Embedding: "x", EmbeddingDims: 256}, "set together", ""},
+		{"embedding dims too small", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 1}, "outside", ""},
+		{"embedding dims too large", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 9999}, "outside", ""},
+		{"valid embedding", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 256}, "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -211,6 +220,9 @@ func TestContextSignals_Validate(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
+				if tc.wantNot != "" {
+					assert.NotContains(t, err.Error(), tc.wantNot)
+				}
 			}
 		})
 	}
@@ -221,10 +233,11 @@ func TestArtifactRef_Validate(t *testing.T) {
 		name    string
 		ref     ArtifactRef
 		wantErr string
+		wantNot string
 	}{
-		{"valid url", ArtifactRef{Type: ArtifactRefTypeURL, Value: "https://x"}, ""},
-		{"missing value", ArtifactRef{Type: ArtifactRefTypeURL}, "value"},
-		{"unknown type", ArtifactRef{Type: "starlink", Value: "x"}, "type"},
+		{"valid url", ArtifactRef{Type: ArtifactRefTypeURL, Value: "https://x"}, "", ""},
+		{"missing value", ArtifactRef{Type: ArtifactRefTypeURL}, "value", ""},
+		{"unknown type", ArtifactRef{Type: "starlink", Value: "x"}, "type", "starlink"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,6 +247,9 @@ func TestArtifactRef_Validate(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
+				if tc.wantNot != "" {
+					assert.NotContains(t, err.Error(), tc.wantNot)
+				}
 			}
 		})
 	}
@@ -244,16 +260,17 @@ func TestAssetAccess_Validate(t *testing.T) {
 		name    string
 		a       AssetAccess
 		wantErr string
+		wantNot string
 	}{
-		{"bearer ok", NewBearerTokenAccess("tok"), ""},
-		{"bearer missing token", AssetAccess{Method: AssetAccessMethodBearerToken}, "token required"},
-		{"sa ok gcp", NewServiceAccountAccess("gcp", nil), ""},
-		{"sa ok aws", NewServiceAccountAccess("aws", nil), ""},
-		{"sa missing provider", AssetAccess{Method: AssetAccessMethodServiceAccount}, "provider required"},
-		{"sa bad provider", AssetAccess{Method: AssetAccessMethodServiceAccount, Provider: "azure"}, "provider"},
-		{"signed ok", NewSignedURLAccess(), ""},
-		{"missing method", AssetAccess{}, "method: required"},
-		{"unknown method", AssetAccess{Method: "unknown"}, "method"},
+		{"bearer ok", NewBearerTokenAccess("tok"), "", ""},
+		{"bearer missing token", AssetAccess{Method: AssetAccessMethodBearerToken}, "token required", ""},
+		{"sa ok gcp", NewServiceAccountAccess("gcp", nil), "", ""},
+		{"sa ok aws", NewServiceAccountAccess("aws", nil), "", ""},
+		{"sa missing provider", AssetAccess{Method: AssetAccessMethodServiceAccount}, "provider required", ""},
+		{"sa bad provider", AssetAccess{Method: AssetAccessMethodServiceAccount, Provider: "azure"}, "provider", "azure"},
+		{"signed ok", NewSignedURLAccess(), "", ""},
+		{"missing method", AssetAccess{}, "method: required", ""},
+		{"unknown method", AssetAccess{Method: "unknown"}, "method", "unknown"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -263,6 +280,9 @@ func TestAssetAccess_Validate(t *testing.T) {
 			} else {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErr)
+				if tc.wantNot != "" {
+					assert.NotContains(t, err.Error(), tc.wantNot)
+				}
 			}
 		})
 	}
