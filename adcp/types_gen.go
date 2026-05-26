@@ -1804,7 +1804,7 @@ type Product struct {
 	PricingOptions []PricingOption `json:"pricing_options"` // Available pricing models for this product
 	Forecast *DeliveryForecast `json:"forecast,omitempty"` // Forecasted delivery metrics for this product. Gives buyers an estimate of expect
 	OutcomeMeasurement *OutcomeMeasurement `json:"outcome_measurement,omitempty"`
-	DeliveryMeasurement any `json:"delivery_measurement,omitempty"` // Measurement provider and methodology for delivery metrics. The buyer accepts the
+	DeliveryMeasurement *ProductDeliveryMeasurement `json:"delivery_measurement,omitempty"` // Measurement provider and methodology for delivery metrics. The buyer accepts the
 	MeasurementTerms *MeasurementTerms `json:"measurement_terms,omitempty"` // Seller's default billing measurement and makegood terms. Declares who counts the
 	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"` // Seller's default performance standards for this product: viewability, IVT, compl
 	CancellationPolicy *CancellationPolicy `json:"cancellation_policy,omitempty"` // Cancellation terms for this product. Declares the minimum notice period required
@@ -1819,7 +1819,7 @@ type Product struct {
 	MaxOptimizationGoals int `json:"max_optimization_goals,omitempty"` // Maximum number of optimization_goals this product accepts on a package. When abs
 	MeasurementReadiness *MeasurementReadiness `json:"measurement_readiness,omitempty"` // Assessment of whether the buyer's event source setup is sufficient for this prod
 	ConversionTracking any `json:"conversion_tracking,omitempty"` // Conversion event tracking for this product. Presence indicates the product suppo
-	CatalogMatch any `json:"catalog_match,omitempty"` // When the buyer provides a catalog on get_products, indicates which catalog items
+	CatalogMatch *ProductCatalogMatch `json:"catalog_match,omitempty"` // When the buyer provides a catalog on get_products, indicates which catalog items
 	BriefRelevance string `json:"brief_relevance,omitempty"` // Explanation of why this product matches the brief (only included when brief is p
 	ExpiresAt string `json:"expires_at,omitempty"` // Expiration timestamp. After this time, the product may no longer be available fo
 	ProductCard any `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
@@ -2099,11 +2099,11 @@ type Account struct {
 	BillingEntity *BusinessEntity `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the lega
 	RateCard string `json:"rate_card,omitempty"` // Identifier for the rate card applied to this account
 	PaymentTerms string `json:"payment_terms,omitempty"` // Payment terms agreed for this account. Binding for all invoices when the account
-	CreditLimit any `json:"credit_limit,omitempty"` // Maximum outstanding balance allowed
+	CreditLimit *AccountCreditLimit `json:"credit_limit,omitempty"` // Maximum outstanding balance allowed
 	Setup any `json:"setup,omitempty"` // Present when status is 'pending_approval'. Contains next steps for completing ac
 	AccountScope string `json:"account_scope,omitempty"`
-	GovernanceAgents []any `json:"governance_agents,omitempty"` // Governance agent endpoints registered on this account. Authentication credential
-	ReportingBucket any `json:"reporting_bucket,omitempty"` // Cloud storage bucket where the seller delivers offline reporting files for this
+	GovernanceAgents []AccountGovernanceAgent `json:"governance_agents,omitempty"` // Governance agent endpoints registered on this account. Authentication credential
+	ReportingBucket *ReportingBucket `json:"reporting_bucket,omitempty"` // Cloud storage bucket where the seller delivers offline reporting files for this
 	Sandbox *bool `json:"sandbox,omitempty"` // When true, this is a sandbox account — no real platform calls, no real spend. Fo
 	Ext any `json:"ext,omitempty"`
 }
@@ -2114,10 +2114,10 @@ type Targeting struct {
 	GeoCountriesExclude []string `json:"geo_countries_exclude,omitempty"` // Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US',
 	GeoRegions []string `json:"geo_regions,omitempty"` // Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g.
 	GeoRegionsExclude []string `json:"geo_regions_exclude,omitempty"` // Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g
-	GeoMetros []any `json:"geo_metros,omitempty"` // Restrict delivery to specific metro areas. Each entry specifies the classificati
-	GeoMetrosExclude []any `json:"geo_metros_exclude,omitempty"` // Exclude specific metro areas from delivery. Each entry specifies the classificat
-	GeoPostalAreas []any `json:"geo_postal_areas,omitempty"` // Restrict delivery to specific postal areas. Each entry specifies the postal syst
-	GeoPostalAreasExclude []any `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
+	GeoMetros []GeoMetroTarget `json:"geo_metros,omitempty"` // Restrict delivery to specific metro areas. Each entry specifies the classificati
+	GeoMetrosExclude []GeoMetroTarget `json:"geo_metros_exclude,omitempty"` // Exclude specific metro areas from delivery. Each entry specifies the classificat
+	GeoPostalAreas []GeoPostalAreaTarget `json:"geo_postal_areas,omitempty"` // Restrict delivery to specific postal areas. Each entry specifies the postal syst
+	GeoPostalAreasExclude []GeoPostalAreaTarget `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
 	DaypartTargets []DaypartTarget `json:"daypart_targets,omitempty"` // Restrict delivery to specific time windows. Each entry specifies days of week an
 	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for targe
 	AxeExcludeSegment string `json:"axe_exclude_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targ
@@ -2127,15 +2127,15 @@ type Targeting struct {
 	PropertyList *PropertyListRef `json:"property_list,omitempty"` // Reference to a property list for targeting specific properties within this produ
 	CollectionList *CollectionListRef `json:"collection_list,omitempty"` // Reference to a collection list for including specific collections (programs, sho
 	CollectionListExclude *CollectionListRef `json:"collection_list_exclude,omitempty"` // Reference to a collection list for excluding specific collections (programs, sho
-	AgeRestriction any `json:"age_restriction,omitempty"` // Age restriction for compliance. Use for legal requirements (alcohol, gambling),
+	AgeRestriction *AgeRestriction `json:"age_restriction,omitempty"` // Age restriction for compliance. Use for legal requirements (alcohol, gambling),
 	DevicePlatform []string `json:"device_platform,omitempty"` // Restrict to specific platforms. Use for technical compatibility (app only works
 	DeviceType []string `json:"device_type,omitempty"` // Restrict to specific device form factors. Use for campaigns targeting hardware c
 	DeviceTypeExclude []string `json:"device_type_exclude,omitempty"` // Exclude specific device form factors from delivery (e.g., exclude CTV for app-in
 	StoreCatchments []any `json:"store_catchments,omitempty"` // Target users within store catchment areas from a synced store catalog. Each entr
 	GeoProximity []any `json:"geo_proximity,omitempty"` // Target users within travel time, distance, or a custom boundary around arbitrary
 	Language []string `json:"language,omitempty"` // Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en
-	KeywordTargets []any `json:"keyword_targets,omitempty"` // Keyword targeting for search and retail media platforms. Restricts delivery to q
-	NegativeKeywords []any `json:"negative_keywords,omitempty"` // Keywords to exclude from delivery. Queries matching these keywords will not trig
+	KeywordTargets []KeywordTarget `json:"keyword_targets,omitempty"` // Keyword targeting for search and retail media platforms. Restricts delivery to q
+	NegativeKeywords []NegativeKeywordTarget `json:"negative_keywords,omitempty"` // Keywords to exclude from delivery. Queries matching these keywords will not trig
 }
 
 // PaginationResponse — Standard cursor-based pagination metadata for list responses
@@ -2253,9 +2253,9 @@ type BusinessEntity struct {
 	VatID string `json:"vat_id,omitempty"` // VAT identification number (e.g., DE123456789 for Germany, FR12345678901 for Fran
 	TaxID string `json:"tax_id,omitempty"` // Tax identification number for jurisdictions that do not use VAT (e.g., US EIN)
 	RegistrationNumber string `json:"registration_number,omitempty"` // Company registration number (e.g., HRB 12345 for German Handelsregister)
-	Address any `json:"address,omitempty"` // Postal address for invoicing and legal correspondence
-	Contacts []any `json:"contacts,omitempty"` // Contacts for billing, legal, and operational matters. Contains personal data sub
-	Bank any `json:"bank,omitempty"` // Bank account details for payment processing. Write-only: included in requests to
+	Address *BusinessAddress `json:"address,omitempty"` // Postal address for invoicing and legal correspondence
+	Contacts []BusinessContact `json:"contacts,omitempty"` // Contacts for billing, legal, and operational matters. Contains personal data sub
+	Bank *BankAccount `json:"bank,omitempty"` // Bank account details for payment processing. Write-only: included in requests to
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -2308,14 +2308,14 @@ type PropertyListRef struct {
 type PushNotificationConfig struct {
 	URL string `json:"url"` // Webhook endpoint URL for task status notifications
 	Token string `json:"token,omitempty"` // Optional client-provided token for webhook validation. Echoed back in webhook pa
-	Authentication any `json:"authentication,omitempty"` // Legacy authentication configuration (A2A-compatible). Opts the seller into Beare
+	Authentication *LegacyWebhookAuthentication `json:"authentication,omitempty"` // Legacy authentication configuration (A2A-compatible). Opts the seller into Beare
 }
 
 // ReportingWebhook — Webhook configuration for automated reporting delivery. Configures where and how campaign performanc
 type ReportingWebhook struct {
 	URL string `json:"url"` // Webhook endpoint URL for reporting notifications
 	Token string `json:"token,omitempty"` // Optional client-provided token for webhook validation. Echoed back in webhook pa
-	Authentication any `json:"authentication"` // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
+	Authentication LegacyWebhookAuthentication `json:"authentication"` // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
 	ReportingFrequency string `json:"reporting_frequency"` // Frequency for automated reporting delivery. Must be supported by all products in
 	RequestedMetrics []string `json:"requested_metrics,omitempty"` // Optional list of metrics to include in webhook notifications. If omitted, all av
 }
@@ -2528,6 +2528,102 @@ type PackageDelivery struct {
 	ByPlacement []any `json:"by_placement,omitempty"` // Delivery by placement within this package. Available when the buyer requests pla
 	ByPlacementTruncated *bool `json:"by_placement_truncated,omitempty"` // Whether by_placement was truncated. Sellers MUST return this flag whenever by_pl
 	DailyBreakdown []any `json:"daily_breakdown,omitempty"` // Day-by-day delivery for this package. Only present when include_package_daily_br
+}
+
+// ProductDeliveryMeasurement — Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider a
+type ProductDeliveryMeasurement struct {
+	Provider string `json:"provider"` // Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS
+	Notes string `json:"notes,omitempty"` // Additional details about measurement methodology in plain language (e.g., 'MRC-a
+}
+
+// ProductCatalogMatch — When the buyer provides a catalog on get_products, indicates which catalog items are eligible for th
+type ProductCatalogMatch struct {
+	MatchedGtins []string `json:"matched_gtins,omitempty"` // GTINs from the buyer's catalog that are eligible on this product's inventory. St
+	MatchedIDs []string `json:"matched_ids,omitempty"` // Item IDs from the buyer's catalog that matched this product's inventory. The ID
+	MatchedCount int `json:"matched_count,omitempty"` // Number of catalog items that matched this product's inventory.
+	SubmittedCount int `json:"submitted_count"` // Total catalog items evaluated from the buyer's catalog.
+}
+
+// AccountCreditLimit — Maximum outstanding balance allowed
+type AccountCreditLimit struct {
+	Amount float64 `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+type AccountGovernanceAgent struct {
+	URL string `json:"url"` // Governance agent endpoint URL. Must use HTTPS.
+	Categories []string `json:"categories,omitempty"` // Governance categories this agent handles (e.g., ['budget_authority', 'strategic_
+}
+
+// ReportingBucket — Cloud storage bucket where the seller delivers offline reporting files for this account. Seller prov
+type ReportingBucket struct {
+	Protocol string `json:"protocol"` // Cloud storage protocol
+	Bucket string `json:"bucket"` // Bucket or container name
+	Prefix string `json:"prefix,omitempty"` // Path prefix within the bucket. Seller appends date-based partitioning beneath th
+	Region string `json:"region,omitempty"` // Cloud region for the bucket
+	Format string `json:"format,omitempty"` // File format for delivered files. Parquet, Avro, and ORC use internal compression
+	Compression string `json:"compression,omitempty"` // Compression applied to delivered files
+	FileRetentionDays int `json:"file_retention_days"` // How long reporting files are retained in the bucket before deletion. Buyers must
+	SetupInstructions string `json:"setup_instructions,omitempty"` // URL to documentation for configuring buyer read access to this bucket (IAM role,
+}
+
+type GeoMetroTarget struct {
+	System string `json:"system"` // Metro area classification system (e.g., 'nielsen_dma', 'uk_itl2')
+	Values []string `json:"values"` // Metro codes within the system (e.g., ['501', '602'] for Nielsen DMAs)
+}
+
+type GeoPostalAreaTarget struct {
+	System string `json:"system"` // Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country a
+	Values []string `json:"values"` // Postal codes within the system (e.g., ['10001', '10002'] for us_zip)
+}
+
+// AgeRestriction — Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeti
+type AgeRestriction struct {
+	Min int `json:"min"` // Minimum age required
+	VerificationRequired *bool `json:"verification_required,omitempty"` // Whether verified age (not inferred) is required for compliance
+	AcceptedMethods []string `json:"accepted_methods,omitempty"` // Accepted verification methods. If omitted, any method the platform supports is a
+}
+
+type KeywordTarget struct {
+	Keyword string `json:"keyword"` // The keyword to target
+	MatchType string `json:"match_type"`
+	BidPrice float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
+}
+
+type NegativeKeywordTarget struct {
+	Keyword string `json:"keyword"` // The keyword to exclude
+	MatchType string `json:"match_type"`
+}
+
+// BusinessAddress — Postal address for invoicing and legal correspondence
+type BusinessAddress struct {
+	Street string `json:"street"` // Street address including building number
+	City string `json:"city"`
+	PostalCode string `json:"postal_code"`
+	Region string `json:"region,omitempty"` // State, province, or region
+	Country string `json:"country"` // ISO 3166-1 alpha-2 country code
+}
+
+type BusinessContact struct {
+	Role string `json:"role"` // Contact's functional role in the business relationship
+	Name string `json:"name,omitempty"` // Full name of the contact
+	Email string `json:"email,omitempty"`
+	Phone string `json:"phone,omitempty"`
+}
+
+// BankAccount — Bank account details for payment processing. Write-only: included in requests to provide payment coo
+type BankAccount struct {
+	AccountHolder string `json:"account_holder"` // Name on the bank account
+	Iban string `json:"iban,omitempty"` // International Bank Account Number (SEPA markets)
+	Bic string `json:"bic,omitempty"` // Bank Identifier Code / SWIFT code (SEPA markets)
+	RoutingNumber string `json:"routing_number,omitempty"` // Bank routing number for non-SEPA markets (e.g., US ABA routing number, Canadian
+	AccountNumber string `json:"account_number,omitempty"` // Bank account number for non-SEPA markets
+}
+
+// LegacyWebhookAuthentication — Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 sig
+type LegacyWebhookAuthentication struct {
+	Schemes []string `json:"schemes"` // Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['
+	Credentials string `json:"credentials"` // Credentials for the legacy scheme. For Bearer: token sent in Authorization heade
 }
 
 // --- Tool request/response types ---
