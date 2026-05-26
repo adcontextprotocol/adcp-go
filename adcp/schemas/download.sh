@@ -15,6 +15,9 @@
 # Trust model:
 #   - Released versions (e.g. 3.1.0): signature verification is required.
 #     cosign must be on PATH; fails closed if sidecars or cosign are missing.
+#     CI may set ADCP_TRUST_PINNED_BUNDLE=1 only when VERSION and
+#     .bundle-sha256 are unchanged from main, keeping routine PR tests
+#     deterministic while schema-pin updates still require live Sigstore checks.
 #   - latest (dev snapshot): unsigned by design. Verified by SHA-256 only.
 #
 # Set ADCP_STRICT_VERIFY=1 to require signatures for latest too (useful if
@@ -39,6 +42,21 @@ COSIGN_IDENTITY='^https://github\.com/adcontextprotocol/adcp/\.github/workflows/
 COSIGN_ISSUER='https://token.actions.githubusercontent.com'
 
 STRICT="${ADCP_STRICT_VERIFY:-0}"
+TRUST_PINNED_BUNDLE="${ADCP_TRUST_PINNED_BUNDLE:-0}"
+COSIGN_VERIFY_ATTEMPTS="${ADCP_COSIGN_VERIFY_ATTEMPTS:-3}"
+
+if ! [[ "$TRUST_PINNED_BUNDLE" =~ ^[01]$ ]]; then
+  echo "invalid ADCP_TRUST_PINNED_BUNDLE: '$TRUST_PINNED_BUNDLE' (expected 0 or 1)" >&2
+  exit 1
+fi
+if ! [[ "$COSIGN_VERIFY_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "invalid ADCP_COSIGN_VERIFY_ATTEMPTS: '$COSIGN_VERIFY_ATTEMPTS' (expected positive integer)" >&2
+  exit 1
+fi
+if [ "$COSIGN_VERIFY_ATTEMPTS" -gt 10 ]; then
+  echo "invalid ADCP_COSIGN_VERIFY_ATTEMPTS: '$COSIGN_VERIFY_ATTEMPTS' (maximum 10)" >&2
+  exit 1
+fi
 
 # Files in $SCRIPT_DIR that sit alongside the schema tree and must survive
 # the rsync --delete. Add to this list when introducing new sibling files.
@@ -82,6 +100,23 @@ if [ "$EXPECTED" != "$ACTUAL" ]; then
   exit 1
 fi
 
+SKIP_LIVE_SIGSTORE=0
+if [ "$TRUST_PINNED_BUNDLE" = "1" ] && [ "$VERSION" != "latest" ]; then
+  PINNED_HASH=""
+  if [ -f "$SCRIPT_DIR/.bundle-sha256" ]; then
+    PINNED_HASH=$(tr -d '[:space:]' < "$SCRIPT_DIR/.bundle-sha256")
+  fi
+  if ! [[ "$PINNED_HASH" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "ADCP_TRUST_PINNED_BUNDLE=1 requires a valid committed .bundle-sha256" >&2
+    exit 1
+  fi
+  if [ "$PINNED_HASH" != "$ACTUAL" ]; then
+    echo "pinned bundle hash mismatch: expected committed $PINNED_HASH, got $ACTUAL" >&2
+    exit 1
+  fi
+  SKIP_LIVE_SIGSTORE=1
+fi
+
 # Signature verification. Released versions must be signed; latest is unsigned
 # by design (rebuilt continuously — signatures would go stale immediately).
 SIG_REQUIRED=1
@@ -89,36 +124,57 @@ if [ "$VERSION" = "latest" ] && [ "$STRICT" != "1" ]; then
   SIG_REQUIRED=0
 fi
 
-SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
-[ "$SIG_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.sig"
-CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
-[ "$CRT_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.crt"
-
-if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
-  # A CDN returning 200 with an HTML error body would otherwise produce an
-  # opaque cosign unmarshal error. Fail fast with a clear message.
-  if ! grep -q "BEGIN CERTIFICATE" "$WORK/bundle.tgz.crt"; then
-    echo "signature certificate for $VERSION is not a PEM certificate (CDN misbehaving?)" >&2
-    exit 1
-  fi
-  if ! command -v cosign >/dev/null 2>&1; then
-    echo "cosign not installed but signature sidecars are available for $VERSION" >&2
-    echo "install cosign (https://docs.sigstore.dev/system_config/installation/) to verify" >&2
-    exit 1
-  fi
-  cosign verify-blob \
-    --signature "$WORK/bundle.tgz.sig" \
-    --certificate "$WORK/bundle.tgz.crt" \
-    --certificate-identity-regexp "$COSIGN_IDENTITY" \
-    --certificate-oidc-issuer "$COSIGN_ISSUER" \
-    "$WORK/bundle.tgz"
-  echo "Sigstore verification passed."
+if [ "$SKIP_LIVE_SIGSTORE" = "1" ]; then
+  echo "Pinned bundle hash matches committed .bundle-sha256; skipping live Sigstore verification."
 else
-  if [ "$SIG_REQUIRED" = "1" ]; then
-    echo "no signature sidecars for $VERSION — released bundles must be signed" >&2
-    exit 1
+  SIG_CODE=$(curl -sSL -o "$WORK/bundle.tgz.sig" -w "%{http_code}" "$BASE/$VERSION.tgz.sig" || echo 000)
+  [ "$SIG_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.sig"
+  CRT_CODE=$(curl -sSL -o "$WORK/bundle.tgz.crt" -w "%{http_code}" "$BASE/$VERSION.tgz.crt" || echo 000)
+  [ "$CRT_CODE" = "200" ] || rm -f "$WORK/bundle.tgz.crt"
+
+  if [ "$SIG_CODE" = "200" ] && [ "$CRT_CODE" = "200" ]; then
+    # A CDN returning 200 with an HTML error body would otherwise produce an
+    # opaque cosign unmarshal error. Fail fast with a clear message.
+    if ! grep -q "BEGIN CERTIFICATE" "$WORK/bundle.tgz.crt"; then
+      echo "signature certificate for $VERSION is not a PEM certificate (CDN misbehaving?)" >&2
+      exit 1
+    fi
+    if ! command -v cosign >/dev/null 2>&1; then
+      echo "cosign not installed but signature sidecars are available for $VERSION" >&2
+      echo "install cosign (https://docs.sigstore.dev/system_config/installation/) to verify" >&2
+      exit 1
+    fi
+    # Retries cover transparency-log lookups only; every attempt uses the same
+    # artifact bytes, signature, certificate, and pinned identity policy.
+    verified=0
+    for attempt in $(seq 1 "$COSIGN_VERIFY_ATTEMPTS"); do
+      if cosign verify-blob \
+        --signature "$WORK/bundle.tgz.sig" \
+        --certificate "$WORK/bundle.tgz.crt" \
+        --certificate-identity-regexp "$COSIGN_IDENTITY" \
+        --certificate-oidc-issuer "$COSIGN_ISSUER" \
+        "$WORK/bundle.tgz"; then
+        verified=1
+        break
+      fi
+      if [ "$attempt" -lt "$COSIGN_VERIFY_ATTEMPTS" ]; then
+        sleep_for=$((attempt * 5))
+        echo "Sigstore verification failed for $VERSION; retrying in ${sleep_for}s ($attempt/$COSIGN_VERIFY_ATTEMPTS)" >&2
+        sleep "$sleep_for"
+      fi
+    done
+    if [ "$verified" != "1" ]; then
+      echo "Sigstore verification failed for $VERSION after $COSIGN_VERIFY_ATTEMPTS attempt(s)" >&2
+      exit 1
+    fi
+    echo "Sigstore verification passed."
+  else
+    if [ "$SIG_REQUIRED" = "1" ]; then
+      echo "no signature sidecars for $VERSION — released bundles must be signed" >&2
+      exit 1
+    fi
+    echo "No signature sidecars for $VERSION — checksum-only trust (dev snapshot)."
   fi
-  echo "No signature sidecars for $VERSION — checksum-only trust (dev snapshot)."
 fi
 
 # Reject archive entries that would escape the extraction directory before
