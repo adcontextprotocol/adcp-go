@@ -27,11 +27,35 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
+      - name: Decide schema bundle trust mode
+        id: schema-bundle
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$BEFORE_SHA" ] && ! [[ "$BEFORE_SHA" =~ ^0+$ ]]; then
+            git fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+            base_ref="$BEFORE_SHA"
+          else
+            git fetch --no-tags --depth=1 origin main
+            base_ref="FETCH_HEAD"
+          fi
+
+          if git diff --quiet "$base_ref" -- adcp/schemas/VERSION adcp/schemas/.bundle-sha256; then
+            echo "trust-pinned-bundle=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "Schema bundle pin changed; live Sigstore verification will run."
+            echo "trust-pinned-bundle=0" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          cosign-release: v3.0.6
 
       - name: Download upstream schemas
         working-directory: adcp/schemas
+        env:
+          ADCP_TRUST_PINNED_BUNDLE: ${{ steps.schema-bundle.outputs.trust-pinned-bundle }}
         run: ./download.sh
 
       - name: Test schema generator
