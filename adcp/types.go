@@ -439,7 +439,7 @@ type MediaBuyData struct {
 	TotalBudget      float64                `json:"total_budget"`
 	StartTime        string                 `json:"start_time,omitempty"`
 	EndTime          string                 `json:"end_time,omitempty"`
-	InvoiceRecipient any                    `json:"invoice_recipient,omitempty"`
+	InvoiceRecipient *BusinessEntity        `json:"invoice_recipient,omitempty"`
 	ConfirmedAt      string                 `json:"confirmed_at,omitempty"`
 	Cancellation     any                    `json:"cancellation,omitempty"`
 	CreativeDeadline string                 `json:"creative_deadline,omitempty"`

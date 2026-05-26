@@ -22,6 +22,11 @@ func Float64(v float64) *float64 {
 	return &v
 }
 
+// Ptr returns a pointer to v for optional typed fields.
+func Ptr[T any](v T) *T {
+	return &v
+}
+
 // CreativeAssignment assigns an existing creative to a package.
 type CreativeAssignment struct {
 	CreativeID   string         `json:"creative_id"`

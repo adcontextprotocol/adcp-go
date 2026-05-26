@@ -1,9 +1,15 @@
 # Migrating adcp-go
 
-## Next: typed seller media-buy helpers
+## Next: schema-backed typed SDK fields
 
-This release tightens the Go seller SDK around AdCP 3.0.12 media-buy shapes.
-Most wire payloads are unchanged, but several public Go structs are more typed.
+This release tightens buyer, seller, and governance SDK surfaces around AdCP
+3.0.12 schemas. Most wire payloads are unchanged, but several public Go structs
+are more typed. Code that built these fields with `map[string]any` should move
+to the generated structs below.
+
+Optional object references are pointers: nil omits the field, and `&T{}` or
+`adcp.Ptr(T{})` emits it. Required fields inside the nested struct still need to
+be populated.
 
 - `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
@@ -24,9 +30,87 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
 - `CreateMediaBuyRequest.StartTime` is also now a `string` instead of `any`.
   The schema's `start-timing` alias resolves to string in Go; `"asap"` remains
   valid wire data.
-- `GetProductsRequest.TimeBudget` is now `adcp.Duration` instead of `any`.
-  Use `adcp.Duration{Interval: 5, Unit: "minutes"}` or another schema-valid
-  unit.
+- `GetProductsRequest.PropertyList` is now `*adcp.PropertyListRef`, and
+  `GetProductsRequest.TimeBudget` is now `*adcp.Duration`. Use nil when these
+  filters are absent.
+- Schema-referenced core objects now use generated Go types instead of `any`:
+
+| Field | New Go type |
+| --- | --- |
+| `Account.BillingEntity` | `*adcp.BusinessEntity` |
+| `MediaBuyData.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuyRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuySuccess.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `UpdateMediaBuyRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CheckGovernanceRequest.InvoiceRecipient` | `*adcp.BusinessEntity` |
+| `CreateMediaBuySuccess.PlannedDelivery` | `*adcp.PlannedDelivery` |
+| `CheckGovernanceRequest.PlannedDelivery` | `*adcp.PlannedDelivery` |
+| `CreateMediaBuyRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `UpdateMediaBuyRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncAccountsRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncCatalogsRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `SyncCreativesRequest.PushNotificationConfig` | `*adcp.PushNotificationConfig` |
+| `CreateMediaBuyRequest.ReportingWebhook` | `*adcp.ReportingWebhook` |
+| `UpdateMediaBuyRequest.ReportingWebhook` | `*adcp.ReportingWebhook` |
+| `GetProductsRequest.PropertyList` | `*adcp.PropertyListRef` |
+| `Targeting.PropertyList` | `*adcp.PropertyListRef` |
+| `GetProductsRequest.TimeBudget` | `*adcp.Duration` |
+| `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
+| `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
+| `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
+| `Event.UserMatch` | `*adcp.UserMatch` |
+| `Event.CustomData` | `*adcp.EventCustomData` |
+| `ProvidePerformanceFeedbackRequest.MeasurementPeriod` | `adcp.DatetimeRange` |
+
+Buyer request migration example:
+
+```go
+req := adcp.CreateMediaBuyRequest{
+    InvoiceRecipient: adcp.Ptr(adcp.BusinessEntity{
+        LegalName: "Acme Corporation",
+        TaxID:     "12-3456789",
+    }),
+    PushNotificationConfig: adcp.Ptr(adcp.PushNotificationConfig{
+        URL: "https://buyer.example/webhooks/tasks",
+    }),
+    ReportingWebhook: adcp.Ptr(adcp.ReportingWebhook{
+        URL:                "https://buyer.example/webhooks/reports",
+        ReportingFrequency: "daily",
+    }),
+}
+```
+
+Product lookup and targeting migration example:
+
+```go
+req := adcp.GetProductsRequest{
+    PropertyList: adcp.Ptr(adcp.PropertyListRef{
+        AgentURL: "https://lists.example/mcp",
+        ListID:   "pl-123",
+    }),
+    TimeBudget: adcp.Ptr(adcp.Duration{Interval: 5, Unit: "minutes"}),
+}
+```
+
+Seller response and governance migration example:
+
+```go
+success := &adcp.CreateMediaBuySuccess{
+    MediaBuyID: "mb-123",
+    Packages:   []adcp.Package{pkg},
+    PlannedDelivery: adcp.Ptr(adcp.PlannedDelivery{
+        TotalBudget: 1000,
+        Currency:    "USD",
+    }),
+}
+
+feedback := adcp.ProvidePerformanceFeedbackRequest{
+    MeasurementPeriod: adcp.DatetimeRange{
+        Start: "2026-06-01T00:00:00Z",
+        End:   "2026-06-30T23:59:59Z",
+    },
+}
+```
 - `DeliveryTotals.ReachUnit` is now `string` instead of `any`, matching the
   reach-unit enum's string wire form.
 - `PackageUpdate` is now generated from `media-buy/package-update.json`. It
@@ -43,7 +127,8 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
   `return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: msg}, nil`.
 - `MediaBuyData` is now scoped to `get_media_buys` items. It carries fields such
   as `currency`, `total_budget`, `start_time`, `end_time`, `history`, and
-  `valid_actions`, but not create-task fields like `task_id` / `message`.
+  `valid_actions`, plus typed `invoice_recipient`, but not create-task fields
+  like `task_id` / `message`.
 - `MediaBuyData.Packages` is `[]adcp.PackageStatus` so `get_media_buys` can
   include creative approvals, pending formats, and delivery snapshots.
   `CreateMediaBuySuccess.Packages` remains `[]adcp.Package`.

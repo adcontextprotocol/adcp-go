@@ -27,6 +27,12 @@ func TestCreativeAssignmentWeightZeroAndExtraRoundTrip(t *testing.T) {
 	assert.Equal(t, "x", wire["vendor_hint"])
 }
 
+func TestPtr(t *testing.T) {
+	duration := Ptr(Duration{Interval: 5, Unit: "minutes"})
+	require.NotNil(t, duration)
+	assert.Equal(t, Duration{Interval: 5, Unit: "minutes"}, *duration)
+}
+
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {
 	out, err := json.Marshal(CreativeAssignment{
 		CreativeID: "cr-typed",

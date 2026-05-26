@@ -219,16 +219,27 @@ CORE_SCHEMAS = [
     "core/pagination-response.json",
     "core/pagination-request.json",
     "core/catalog.json",
+    "core/catalog-field-mapping.json",
     "core/event.json",
+    "core/event-custom-data.json",
     "core/performance-feedback.json",
     "core/creative-brief.json",
+    "core/business-entity.json",
     "core/cancellation-policy.json",
     "core/collection-list-ref.json",
     "core/creative-consumption.json",
+    "core/datetime-range.json",
+    "core/daypart-target.json",
+    "core/frequency-cap.json",
     "core/industry-identifier.json",
     "core/measurement-terms.json",
     "core/measurement-window.json",
+    "core/planned-delivery.json",
     "core/performance-standard.json",
+    "core/property-list-ref.json",
+    "core/push-notification-config.json",
+    "core/reporting-webhook.json",
+    "core/user-match.json",
     "core/vendor-pricing-option.json",
     "core/content-rating.json",
     "core/duration.json",
@@ -648,6 +659,15 @@ def contains_dynamic_any(go_type):
     return is_any_type(go_type) or 'AdcpError' in go_type
 
 
+def should_pointer_optional_type(go_type):
+    """True when an optional zero-value field needs a pointer to omit cleanly."""
+    if go_type.startswith('*') or go_type.startswith('[]') or go_type.startswith('map['):
+        return False
+    if go_type in ('string', 'int', 'float64', 'bool', 'any', 'AdcpError'):
+        return False
+    return True
+
+
 def field_go_type_info(type_name, json_name, prop, required_set):
     """Return the generated field type and fallback reason for a struct field."""
     hint_key = (type_name, json_name)
@@ -664,7 +684,7 @@ def field_go_type_info(type_name, json_name, prop, required_set):
     is_required = json_name in required_set
     if not is_required and go_type == 'bool':
         go_type = '*bool'
-    elif not is_required and '$ref' in prop and go_type not in ('string', 'any', 'AdcpError') and not go_type.startswith('[]') and not go_type.startswith('map['):
+    elif not is_required and should_pointer_optional_type(go_type):
         go_type = f'*{go_type}'
     return go_type, reason
 
