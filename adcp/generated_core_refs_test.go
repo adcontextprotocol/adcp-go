@@ -184,13 +184,23 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
 				Name:     "Display",
+				FormatCard: &CreativeFormatCard{
+					FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "format_card_standard"},
+					Manifest: map[string]any{"title": "Display"},
+				},
+				FormatCardDetailed: &CreativeFormatCardDetailed{
+					FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "format_card_detailed"},
+					Manifest: map[string]any{"sections": []any{"assets"}},
+				},
 				DisclosureCapabilities: []CreativeFormatDisclosureCapability{{
 					Position:    "overlay_top_left",
 					Persistence: []string{"initial", "persistent"},
 				}},
 			},
 			want: []string{
+				`"format_card":{"format_id":{"agent_url":"https://seller.example/mcp","id":"format_card_standard"},"manifest":{"title":"Display"}}`,
 				`"disclosure_capabilities":[{"position":"overlay_top_left","persistence":["initial","persistent"]}]`,
+				`"format_card_detailed":{"format_id":{"agent_url":"https://seller.example/mcp","id":"format_card_detailed"},"manifest":{"sections":["assets"]}}`,
 			},
 		},
 		{
@@ -205,9 +215,32 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 					Macros:             map[string]string{"CITY": "Honolulu"},
 					ContextDescription: "Warm-weather retail offer",
 				}},
+				Provenance: &Provenance{
+					DigitalSourceType: "trained_algorithmic_media",
+					AITool:            &ProvenanceAITool{Name: "Creative model", Provider: "Seller"},
+					DeclaredBy:        &ProvenanceDeclaredBy{Role: "platform", AgentURL: "https://seller.example/mcp"},
+					C2PA:              &ProvenanceC2PA{ManifestURL: "https://seller.example/c2pa/creative-1"},
+					Disclosure: &ProvenanceDisclosure{
+						Required: true,
+						Jurisdictions: []ProvenanceDisclosureJurisdiction{{
+							Country:    "US",
+							Regulation: "ca_sb_942",
+							RenderGuidance: &ProvenanceDisclosureRenderGuidance{
+								Persistence:   "initial",
+								MinDurationMs: 3000,
+								Positions:     []string{"overlay_top_left"},
+							},
+						}},
+					},
+					Verification: []ProvenanceVerification{{VerifiedBy: "Verifier", Result: "ai_generated", Confidence: 0.95}},
+				},
 			},
 			want: []string{
 				`"inputs":[{"name":"default","macros":{"CITY":"Honolulu"},"context_description":"Warm-weather retail offer"}]`,
+				`"provenance":{"digital_source_type":"trained_algorithmic_media","ai_tool":{"name":"Creative model","provider":"Seller"}`,
+				`"c2pa":{"manifest_url":"https://seller.example/c2pa/creative-1"}`,
+				`"disclosure":{"required":true,"jurisdictions":[{"country":"US","regulation":"ca_sb_942","render_guidance":{"persistence":"initial","min_duration_ms":3000,"positions":["overlay_top_left"]}}]}`,
+				`"verification":[{"verified_by":"Verifier","result":"ai_generated","confidence":0.95}]`,
 			},
 		},
 		{
