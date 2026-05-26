@@ -75,12 +75,18 @@ be populated.
 | `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
 | `Product.Placements` | `[]adcp.Placement` |
 | `Product.Forecast` | `*adcp.DeliveryForecast` |
+| `DeliveryForecast.Points` | `[]adcp.ForecastPoint` |
+| `ForecastPoint.Metrics` | `map[string]adcp.ForecastRange` |
 | `Product.OutcomeMeasurement` | `*adcp.OutcomeMeasurement` |
 | `Product.ReportingCapabilities` | `adcp.ReportingCapabilities` |
+| `ReportingCapabilities.SupportsGeoBreakdown` | `*adcp.GeoBreakdownSupport` |
 | `Product.CreativePolicy` | `*adcp.CreativePolicy` |
 | `Product.MeasurementReadiness` | `*adcp.MeasurementReadiness` |
+| `MeasurementReadiness.Issues` | `[]adcp.DiagnosticIssue` |
 | `Product.Collections` | `[]adcp.CollectionSelector` |
 | `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
+| `CreativeBrief.ReferenceAssets` | `[]adcp.ReferenceAsset` |
+| `CreativeManifest.Rights` | `[]adcp.RightsConstraint` |
 
 Buyer request migration example:
 
