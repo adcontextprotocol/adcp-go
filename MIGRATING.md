@@ -81,6 +81,8 @@ be populated.
 | `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
 | `Product.Placements` | `[]adcp.Placement` |
 | `Product.DeliveryMeasurement` | `*adcp.ProductDeliveryMeasurement` |
+| `Product.ProductCard` | `*adcp.ProductCard` |
+| `Product.ProductCardDetailed` | `*adcp.ProductCardDetailed` |
 | `Product.CatalogMatch` | `*adcp.ProductCatalogMatch` |
 | `Product.Forecast` | `*adcp.DeliveryForecast` |
 | `DeliveryForecast.Points` | `[]adcp.ForecastPoint` |
@@ -102,8 +104,18 @@ be populated.
 | `PriceBreakdown.Adjustments` | `[]adcp.PriceAdjustment` |
 | `Package.Cancellation` | `*adcp.PackageCancellation` |
 | `CreativeFormat.Accessibility` | `*adcp.CreativeFormatAccessibility` |
+| `CreativeFormat.FormatCard` | `*adcp.CreativeFormatCard` |
+| `CreativeFormat.FormatCardDetailed` | `*adcp.CreativeFormatCardDetailed` |
 | `CreativeFormat.DisclosureCapabilities` | `[]adcp.CreativeFormatDisclosureCapability` |
 | `CreativeAsset.Inputs` | `[]adcp.CreativeAssetInput` |
+| `CreativeAsset.Provenance` | `*adcp.Provenance` |
+| `CreativeManifest.Provenance` | `*adcp.Provenance` |
+| `Provenance.AITool` | `*adcp.ProvenanceAITool` |
+| `Provenance.DeclaredBy` | `*adcp.ProvenanceDeclaredBy` |
+| `Provenance.C2PA` | `*adcp.ProvenanceC2PA` |
+| `Provenance.Disclosure` | `*adcp.ProvenanceDisclosure` |
+| `Provenance.Disclosure.Jurisdictions` | `[]adcp.ProvenanceDisclosureJurisdiction` |
+| `Provenance.Verification` | `[]adcp.ProvenanceVerification` |
 | `Signal.Range` | `*adcp.SignalRange` |
 | `Targeting.StoreCatchments` | `[]adcp.TargetingStoreCatchment` |
 | `DeliveryTotals.ByEventType` | `[]adcp.DeliveryEventTypeMetrics` |

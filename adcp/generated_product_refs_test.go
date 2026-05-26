@@ -39,6 +39,14 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 			Provider: "MRC-accredited display measurement",
 			Notes:    "50% in-view for 1s",
 		},
+		ProductCard: &ProductCard{
+			FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "product_card_standard"},
+			Manifest: map[string]any{"headline": "Premium Display"},
+		},
+		ProductCardDetailed: &ProductCardDetailed{
+			FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "product_card_detailed"},
+			Manifest: map[string]any{"sections": []any{"overview"}},
+		},
 		ReportingCapabilities: ReportingCapabilities{
 			AvailableReportingFrequencies: []string{"daily"},
 			ExpectedDelayMinutes:          60,
@@ -107,6 +115,8 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		`"forecast":{"points":[{"budget":1000,"metrics":{"impressions":{"mid":100000}}}],"method":"historical","currency":"USD"}`,
 		`"outcome_measurement":{"type":"brand_lift","attribution":"matched_market","reporting":"weekly"}`,
 		`"delivery_measurement":{"provider":"MRC-accredited display measurement","notes":"50% in-view for 1s"}`,
+		`"product_card":{"format_id":{"agent_url":"https://seller.example/mcp","id":"product_card_standard"},"manifest":{"headline":"Premium Display"}}`,
+		`"product_card_detailed":{"format_id":{"agent_url":"https://seller.example/mcp","id":"product_card_detailed"},"manifest":{"sections":["overview"]}}`,
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
 		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
 		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,

@@ -137,7 +137,7 @@ const (
 	AdvertiserIndustryTechnology AdvertiserIndustry = "technology"
 	AdvertiserIndustryTechnologySoftware AdvertiserIndustry = "technology.software"
 	AdvertiserIndustryTechnologyHardware AdvertiserIndustry = "technology.hardware"
-	AdvertiserIndustryTechnologyAiMl AdvertiserIndustry = "technology.ai_ml"
+	AdvertiserIndustryTechnologyAIMl AdvertiserIndustry = "technology.ai_ml"
 	AdvertiserIndustryTelecom AdvertiserIndustry = "telecom"
 	AdvertiserIndustryTelecomMobileCarriers AdvertiserIndustry = "telecom.mobile_carriers"
 	AdvertiserIndustryTelecomInternetProviders AdvertiserIndustry = "telecom.internet_providers"
@@ -1237,7 +1237,7 @@ const (
 	PropertyTypeRadio PropertyType = "radio"
 	PropertyTypeLinearTv PropertyType = "linear_tv"
 	PropertyTypeStreamingAudio PropertyType = "streaming_audio"
-	PropertyTypeAiAssistant PropertyType = "ai_assistant"
+	PropertyTypeAIAssistant PropertyType = "ai_assistant"
 )
 
 // ProposalStatus — Lifecycle status of a proposal. Absent means the proposal is ready to buy (backw
@@ -1333,7 +1333,7 @@ const (
 	RightUseBackgroundMusic RightUse = "background_music"
 	RightUseEditorial RightUse = "editorial"
 	RightUseCommercial RightUse = "commercial"
-	RightUseAiGeneratedImage RightUse = "ai_generated_image"
+	RightUseAIGeneratedImage RightUse = "ai_generated_image"
 )
 
 // RightsBillingPeriod — Billing period for brand rights pricing
@@ -1822,8 +1822,8 @@ type Product struct {
 	CatalogMatch *ProductCatalogMatch `json:"catalog_match,omitempty"` // When the buyer provides a catalog on get_products, indicates which catalog items
 	BriefRelevance string `json:"brief_relevance,omitempty"` // Explanation of why this product matches the brief (only included when brief is p
 	ExpiresAt string `json:"expires_at,omitempty"` // Expiration timestamp. After this time, the product may no longer be available fo
-	ProductCard any `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
-	ProductCardDetailed any `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
+	ProductCard *ProductCard `json:"product_card,omitempty"` // Optional standard visual card (300x400px) for displaying this product in user in
+	ProductCardDetailed *ProductCardDetailed `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
 	Collections []CollectionSelector `json:"collections,omitempty"` // Collections available in this product. Each entry references collections declare
 	CollectionTargetingAllowed *bool `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false (de
 	Installments []any `json:"installments,omitempty"` // Specific installments included in this product. Each installment references its
@@ -1990,11 +1990,11 @@ type CreativeFormat struct {
 	SupportedMacros []any `json:"supported_macros,omitempty"` // List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUST
 	InputFormatIDs []FormatRef `json:"input_format_ids,omitempty"` // Array of format IDs this format accepts as input creative manifests. When presen
 	OutputFormatIDs []FormatRef `json:"output_format_ids,omitempty"` // Array of format IDs that this format can produce as output. When present, indica
-	FormatCard any `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
+	FormatCard *CreativeFormatCard `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
 	Accessibility *CreativeFormatAccessibility `json:"accessibility,omitempty"` // Accessibility posture of this format. Declares the WCAG conformance level that c
 	SupportedDisclosurePositions []string `json:"supported_disclosure_positions,omitempty"` // Disclosure positions this format can render. Buyers use this to determine whethe
 	DisclosureCapabilities []CreativeFormatDisclosureCapability `json:"disclosure_capabilities,omitempty"` // Structured disclosure capabilities per position with persistence modes. Declares
-	FormatCardDetailed any `json:"format_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich form
+	FormatCardDetailed *CreativeFormatCardDetailed `json:"format_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich form
 	ReportedMetrics []string `json:"reported_metrics,omitempty"` // Metrics this format can produce in delivery reporting. Buyers receive the inters
 	PricingOptions []VendorPricingOption `json:"pricing_options,omitempty"` // Pricing options for this format. Used by transformation and generation agents th
 }
@@ -2020,7 +2020,7 @@ type CreativeAsset struct {
 	Weight float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
 	PlacementIDs []string `json:"placement_ids,omitempty"` // Optional array of placement IDs where this creative should run when uploading vi
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast cl
-	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
+	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
 }
 
 // CreativeManifest — Complete specification of a creative: format_id + assets. Everything the creative needs — images, te
@@ -2029,7 +2029,21 @@ type CreativeManifest struct {
 	Assets map[string]any `json:"assets"` // Map of asset IDs to actual asset content. Each key MUST match an asset_id from t
 	Rights []RightsConstraint `json:"rights,omitempty"` // Rights constraints attached to this creative. Each entry represents constraints
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Cle
-	Provenance any `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
+	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative manifest. Serves as the default provenance
+	Ext any `json:"ext,omitempty"`
+}
+
+// Provenance — Declares how content was produced, whether AI was involved, and what disclosure obligations apply. A
+type Provenance struct {
+	DigitalSourceType string `json:"digital_source_type,omitempty"` // IPTC-aligned classification of AI involvement in producing this content
+	AITool *ProvenanceAITool `json:"ai_tool,omitempty"` // AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI me
+	HumanOversight string `json:"human_oversight,omitempty"` // Level of human involvement in the AI-assisted creation process
+	DeclaredBy *ProvenanceDeclaredBy `json:"declared_by,omitempty"` // Party declaring this provenance. Identifies who attached the provenance claim, e
+	DeclaredAt string `json:"declared_at,omitempty"` // When this provenance claim was made (ISO 8601). Distinct from created_time, whic
+	CreatedTime string `json:"created_time,omitempty"` // When this content was created or generated (ISO 8601)
+	C2PA *ProvenanceC2PA `json:"c2pa,omitempty"` // C2PA Content Credentials reference. Links to the cryptographic provenance manife
+	Disclosure *ProvenanceDisclosure `json:"disclosure,omitempty"` // Regulatory disclosure requirements for this content. Indicates whether AI disclo
+	Verification []ProvenanceVerification `json:"verification,omitempty"` // Third-party verification or detection results for this content. Multiple service
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -2685,6 +2699,78 @@ type PropertyChangeSummary struct {
 type RightsAgentRef struct {
 	URL string `json:"url"` // MCP endpoint URL of the rights agent
 	ID string `json:"id"` // Agent identifier
+}
+
+// ProductCard — Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be ren
+type ProductCard struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the card layout (typically product_card_standard)
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the card, structure defined by the format
+}
+
+// ProductCardDetailed — Optional detailed card with carousel and full specifications. Provides rich product presentation sim
+type ProductCardDetailed struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the detailed card layout (typically product_card_detail
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the detailed card, structure defined by the format
+}
+
+// CreativeFormatCard — Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rend
+type CreativeFormatCard struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the card layout (typically format_card_standard)
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the card, structure defined by the format
+}
+
+// CreativeFormatCardDetailed — Optional detailed card with carousel and full specifications. Provides rich format documentation sim
+type CreativeFormatCardDetailed struct {
+	FormatID FormatRef `json:"format_id"` // Creative format defining the detailed card layout (typically format_card_detaile
+	Manifest map[string]any `json:"manifest"` // Asset manifest for rendering the detailed card, structure defined by the format
+}
+
+// ProvenanceAITool — AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2
+type ProvenanceAITool struct {
+	Name string `json:"name"` // Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')
+	Version string `json:"version,omitempty"` // Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For g
+	Provider string `json:"provider,omitempty"` // Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google'
+}
+
+// ProvenanceDeclaredBy — Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving pa
+type ProvenanceDeclaredBy struct {
+	AgentURL string `json:"agent_url,omitempty"` // URL of the agent or service that declared this provenance
+	Role string `json:"role"` // Role of the declaring party in the supply chain
+}
+
+// ProvenanceC2PA — C2PA Content Credentials reference. Links to the cryptographic provenance manifest for this content.
+type ProvenanceC2PA struct {
+	ManifestURL string `json:"manifest_url"` // URL to the C2PA manifest store for this content
+}
+
+// ProvenanceDisclosure — Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and
+type ProvenanceDisclosure struct {
+	Required bool `json:"required"` // Whether AI disclosure is required for this content based on applicable regulatio
+	Jurisdictions []ProvenanceDisclosureJurisdiction `json:"jurisdictions,omitempty"` // Jurisdictions where disclosure obligations apply
+}
+
+type ProvenanceDisclosureJurisdiction struct {
+	Country string `json:"country"` // ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')
+	Region string `json:"region,omitempty"` // Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)
+	Regulation string `json:"regulation"` // Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synth
+	LabelText string `json:"label_text,omitempty"` // Required disclosure label text for this jurisdiction, in the local language
+	RenderGuidance *ProvenanceDisclosureRenderGuidance `json:"render_guidance,omitempty"` // How the disclosure should be rendered for this jurisdiction. Expresses the decla
+}
+
+// ProvenanceDisclosureRenderGuidance — How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent
+type ProvenanceDisclosureRenderGuidance struct {
+	Persistence string `json:"persistence,omitempty"` // How long the disclosure must persist during content playback or display
+	MinDurationMs int `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds for initial persistence. Recommended wh
+	Positions []string `json:"positions,omitempty"` // Preferred disclosure positions in priority order. The first position a format su
+	Ext any `json:"ext,omitempty"`
+}
+
+type ProvenanceVerification struct {
+	VerifiedBy string `json:"verified_by"` // Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Real
+	VerifiedTime string `json:"verified_time,omitempty"` // When the verification was performed (ISO 8601)
+	Result string `json:"result"` // Verification outcome
+	Confidence float64 `json:"confidence,omitempty"` // Confidence score of the verification result (0.0 to 1.0)
+	DetailsURL string `json:"details_url,omitempty"` // URL to the full verification report
 }
 
 // ProductMetricOptimization — Metric optimization capabilities for this product. Presence indicates the product supports optimizat

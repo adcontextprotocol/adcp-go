@@ -217,6 +217,7 @@ CORE_SCHEMAS = [
     "core/format-id.json",
     "core/creative-asset.json",
     "core/creative-manifest.json",
+    "core/provenance.json",
     "core/deployment.json",
     "core/destination.json",
     "core/activation-key.json",
@@ -392,6 +393,51 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     (
         "RightsAgentRef",
         "core/rights-constraint.json#/properties/rights_agent",
+    ),
+    (
+        "ProductCard",
+        "core/product.json#/properties/product_card",
+    ),
+    (
+        "ProductCardDetailed",
+        "core/product.json#/properties/product_card_detailed",
+    ),
+    (
+        "CreativeFormatCard",
+        "core/format.json#/properties/format_card",
+    ),
+    (
+        "CreativeFormatCardDetailed",
+        "core/format.json#/properties/format_card_detailed",
+    ),
+    (
+        "ProvenanceAITool",
+        "core/provenance.json#/properties/ai_tool",
+    ),
+    (
+        "ProvenanceDeclaredBy",
+        "core/provenance.json#/properties/declared_by",
+    ),
+    (
+        "ProvenanceC2PA",
+        "core/provenance.json#/properties/c2pa",
+    ),
+    (
+        "ProvenanceDisclosure",
+        "core/provenance.json#/properties/disclosure",
+    ),
+    (
+        "ProvenanceDisclosureJurisdiction",
+        "core/provenance.json#/properties/disclosure/properties/jurisdictions/items",
+    ),
+    (
+        "ProvenanceDisclosureRenderGuidance",
+        "core/provenance.json#/properties/disclosure/properties/jurisdictions/items"
+        "/properties/render_guidance",
+    ),
+    (
+        "ProvenanceVerification",
+        "core/provenance.json#/properties/verification/items",
     ),
     (
         "ProductMetricOptimization",
@@ -648,6 +694,19 @@ INLINE_TYPE_HINTS = {
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
+    ('Product', 'product_card'): '*ProductCard',
+    ('Product', 'product_card_detailed'): '*ProductCardDetailed',
+    ('CreativeFormat', 'format_card'): '*CreativeFormatCard',
+    ('CreativeFormat', 'format_card_detailed'): '*CreativeFormatCardDetailed',
+    ('CreativeAsset', 'provenance'): '*Provenance',
+    ('CreativeManifest', 'provenance'): '*Provenance',
+    ('Provenance', 'ai_tool'): '*ProvenanceAITool',
+    ('Provenance', 'declared_by'): '*ProvenanceDeclaredBy',
+    ('Provenance', 'c2pa'): '*ProvenanceC2PA',
+    ('Provenance', 'disclosure'): '*ProvenanceDisclosure',
+    ('Provenance', 'verification'): 'ProvenanceVerification',
+    ('ProvenanceDisclosure', 'jurisdictions'): 'ProvenanceDisclosureJurisdiction',
+    ('ProvenanceDisclosureJurisdiction', 'render_guidance'): '*ProvenanceDisclosureRenderGuidance',
     ('Product', 'metric_optimization'): '*ProductMetricOptimization',
     ('Product', 'conversion_tracking'): '*ProductConversionTracking',
     ('Product', 'trusted_match'): '*ProductTrustedMatch',
@@ -729,6 +788,10 @@ INTENTIONAL_ANY_FIELDS = {
     ('CreativeFormat', 'delivery'): 'delivery specs are format-specific',
     ('CreativeAsset', 'assets'): 'asset payload shape depends on asset type',
     ('CreativeManifest', 'assets'): 'asset payload shape depends on asset type',
+    ('ProductCard', 'manifest'): 'visual card manifest shape is format-defined',
+    ('ProductCardDetailed', 'manifest'): 'visual card manifest shape is format-defined',
+    ('CreativeFormatCard', 'manifest'): 'visual card manifest shape is format-defined',
+    ('CreativeFormatCardDetailed', 'manifest'): 'visual card manifest shape is format-defined',
     ('LogEventRequest', 'events'): 'event payloads are seller/buyer-defined',
     ('Catalog', 'items'): 'inline catalog item schema depends on catalog type',
     ('SimulationSuccess', 'simulated'): 'test-controller simulation payload is scenario-specific',
@@ -869,7 +932,7 @@ def pascal_case(s):
     'ids' -> 'IDs'), which matters for Go idioms like FormatIDs, PropertyIDs."""
     parts = re.split(r'[-_]', s)
     result = []
-    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'mcp'}
+    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'mcp', 'ai', 'c2pa'}
     for p in parts:
         lp = p.lower()
         if lp in acronyms:
