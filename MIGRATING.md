@@ -13,6 +13,18 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
   `adcp.Float64(0)` for an explicit paused creative weight; omitted weight
   still means equal rotation. Seller-specific assignment fields round-trip via
   `CreativeAssignment.Extra`.
+- `PackageInput` is now generated from `media-buy/package-request.json`. The
+  non-protocol `BuyerRef` field is gone; use `Ext` for seller-specific
+  correlation metadata. The generated type also exposes schema fields that were
+  previously missing, including `FormatIDs`, `Pacing`, `Impressions`, `Paused`,
+  `Catalogs`, `OptimizationGoals`, `Creatives`, `Context`, and `Ext`.
+- `UpdateMediaBuyRequest` is now generated from
+  `media-buy/update-media-buy-request.json`. `StartTime` is a `string` instead
+  of `any`, matching the current schema's `start-timing` alias.
+- `PackageUpdate` is now generated from `media-buy/package-update.json`. It
+  exposes schema-backed package update fields such as `Pacing`, `Catalogs`,
+  `OptimizationGoals`, keyword add/remove operations, `Creatives`, `Context`,
+  and `Ext`.
 - `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
 - `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
   implemented by the generated schema variants. Return
@@ -27,9 +39,12 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
 - `MediaBuyData.Packages` is `[]adcp.PackageStatus` so `get_media_buys` can
   include creative approvals, pending formats, and delivery snapshots.
   `CreateMediaBuySuccess.Packages` remains `[]adcp.Package`.
-- `PackageDelivery` is flat. Read package-level delivery metrics directly from
-  `PackageDelivery.Impressions`, `Spend`, and `Clicks`; `Spend` remains present
-  on the wire even when zero.
+- `PackageDelivery` and `MediaBuyDelivery` are generated from the delivery
+  response inline schemas. Package-level metrics remain flat on
+  `PackageDelivery`, and `pricing_model`, `rate`, `currency`, and `spend` are
+  emitted as schema-required fields even when their Go values are zero.
+  `MediaBuyDelivery.Totals` is now `adcp.MediaBuyDeliveryTotals`, which includes
+  the schema-specific `effective_rate` field.
 
 ## v3.0.0-rc.4 (governance / policy framework)
 

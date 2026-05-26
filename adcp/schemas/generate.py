@@ -33,8 +33,7 @@ KNOWN_TYPES = {
     'GovernanceAgent', 'ProductsData',
     'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
     'PackageStatus', 'PackageCreativeApproval', 'PackageSnapshot',
-    'DeliveryData', 'ReportingPeriod', 'MediaBuyDelivery',
-    'PackageDelivery',
+    'DeliveryData', 'ReportingPeriod',
     'Render', 'AssetSlot', 'CreativeResult', 'CreativeListItem', 'PreviewResult',
     'Preview', 'PreviewRender', 'BuildCreativeResult', 'SignalID',
     'SignalPricing', 'ActivationKey', 'CatalogResult',
@@ -43,7 +42,7 @@ KNOWN_TYPES = {
     # the union into a single struct with all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
     # From inputs.go (hand-written types that need custom Go code)
-    'EmptyInput', 'PackageInput',
+    'EmptyInput',
     'AccountInput', 'GovernanceAccountInput',
     'CreativeInput', 'SyncCreativeAssignment',
     'CatalogInput', 'EventSourceInput', 'DestinationInput',
@@ -113,6 +112,7 @@ TOOL_SCHEMAS = [
     "media-buy/get-products-response.json",
     "media-buy/create-media-buy-request.json",
     "media-buy/create-media-buy-response.json",
+    "media-buy/update-media-buy-request.json",
     "media-buy/get-media-buys-request.json",
     "media-buy/get-media-buys-response.json",
     "media-buy/get-media-buy-delivery-request.json",
@@ -224,6 +224,73 @@ CORE_SCHEMAS = [
     "core/duration.json",
 ]
 
+# Schemas that are not standalone tool requests/responses, but are important
+# SDK input shapes referenced by tool schemas.
+SUPPORT_SCHEMAS = [
+    "media-buy/package-request.json",
+    "media-buy/package-update.json",
+]
+
+# Named types generated from inline JSON Schema pointers. This is the first step
+# toward making the Go SDK generator own composed/nested shapes instead of
+# relying on hand-written approximations.
+INLINE_SCHEMA_TYPES = OrderedDict([
+    (
+        "KeywordTargetUpdate",
+        "media-buy/package-update.json#/properties/keyword_targets_add/items",
+    ),
+    (
+        "KeywordTargetRef",
+        "media-buy/package-update.json#/properties/keyword_targets_remove/items",
+    ),
+    (
+        "DeliveryAggregatedTotals",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/aggregated_totals",
+    ),
+    (
+        "MediaBuyDeliveryTotals",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/totals",
+    ),
+    (
+        "MediaBuyDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items",
+    ),
+    (
+        "PackageDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items",
+    ),
+])
+
+# Hand-written types that should be drift-checked against a schema path or JSON
+# pointer. lint.py imports this table; keep it here so generator/lint ownership
+# lives in one place.
+HAND_WRITTEN_SCHEMA_SPECS = {
+    'Product': 'core/product.json',
+    'Package': 'core/package.json',
+    'CreativeAssignment': 'core/creative-assignment.json',
+    'Targeting': 'core/targeting.json',
+    'FormatRef': 'core/format-id.json',
+    'PricingOption': 'core/pricing-option.json',
+    'Signal': 'core/signal-definition.json',
+    'SignalPricing': 'core/signal-pricing.json',
+    'Deployment': 'core/deployment.json',
+    'CreativeFormat': 'core/format.json',
+    'VendorPricingOption': 'core/vendor-pricing-option.json',
+    'MeasurementTerms': 'core/measurement-terms.json',
+    'MeasurementWindow': 'core/measurement-window.json',
+    'PerformanceStandard': 'core/performance-standard.json',
+    'Duration': 'core/duration.json',
+    'CancellationPolicy': 'core/cancellation-policy.json',
+    'CollectionListRef': 'core/collection-list-ref.json',
+    'CreativeConsumption': 'core/creative-consumption.json',
+    'IndustryIdentifier': 'core/industry-identifier.json',
+    'ContentRating': 'core/content-rating.json',
+}
+
 # Map schema-derived Go names to the preferred Go name. Applied both when
 # resolving $ref targets and when emitting core/tool schema structs, so a
 # schema named brand-ref.json emits as `type BrandReference struct` and every
@@ -263,6 +330,15 @@ INLINE_TYPE_HINTS = {
     ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
     ('SyncPlansRequest', 'plans'): 'Plan',
+    ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',
+    ('PackageUpdate', 'keyword_targets_remove'): 'KeywordTargetRef',
+    ('PackageUpdate', 'negative_keywords_add'): 'KeywordTargetRef',
+    ('PackageUpdate', 'negative_keywords_remove'): 'KeywordTargetRef',
+    ('MediaBuyDelivery', 'totals'): 'MediaBuyDeliveryTotals',
+    ('MediaBuyDelivery', 'by_package'): 'PackageDelivery',
+    ('GetMediaBuyDeliveryResponse', 'reporting_period'): 'ReportingPeriod',
+    ('GetMediaBuyDeliveryResponse', 'aggregated_totals'): '*DeliveryAggregatedTotals',
+    ('GetMediaBuyDeliveryResponse', 'media_buy_deliveries'): 'MediaBuyDelivery',
     # format.json: renders[] and assets[] are oneOf items. Map to hand-written
     # Render/AssetSlot so reference-agent code can keep using typed literals.
     ('CreativeFormat', 'renders'): 'Render',
@@ -283,6 +359,91 @@ def load_schema(path):
     with open(path) as f:
         # Use object_pairs_hook to preserve key order
         return json.load(f, object_pairs_hook=OrderedDict)
+
+def json_pointer_get(doc, pointer):
+    """Resolve a JSON Pointer fragment against a decoded JSON document."""
+    if pointer in ('', None):
+        return doc
+    if not pointer.startswith('/'):
+        raise ValueError(f'unsupported JSON pointer: {pointer}')
+    node = doc
+    for raw_part in pointer.split('/')[1:]:
+        part = raw_part.replace('~1', '/').replace('~0', '~')
+        if isinstance(node, list):
+            node = node[int(part)]
+        else:
+            node = node[part]
+    return node
+
+def load_schema_spec(spec):
+    """Load `path.json` or `path.json#/json/pointer` relative to schemas/."""
+    path_part, _, pointer = spec.partition('#')
+    schema = load_schema(path_part)
+    if pointer:
+        return json_pointer_get(schema, pointer)
+    return schema
+
+def resolve_ref_schema(ref):
+    """Load a schema referenced by $ref. Supports bundled refs of the form
+    /schemas/{version}/{path}.json and optional JSON Pointer fragments."""
+    if not isinstance(ref, str):
+        return None
+    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
+    if not m:
+        return None
+    spec = m.group(1) + (m.group(2) or '')
+    path_part = spec.split('#', 1)[0]
+    path = Path(path_part).resolve()
+    root = Path.cwd().resolve()
+    if root != path and root not in path.parents:
+        return None
+    if not path.exists():
+        return None
+    try:
+        return load_schema_spec(spec)
+    except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError):
+        return None
+
+def schema_properties(schema, _visited=None):
+    """Return an ordered union of properties declared directly, through $ref,
+    or through composition. allOf is flattened for generated Go structs."""
+    if _visited is None:
+        _visited = set()
+    props = OrderedDict()
+    if not isinstance(schema, dict):
+        return props
+    ref = schema.get('$ref')
+    if ref and ref not in _visited:
+        _visited.add(ref)
+        ref_schema = resolve_ref_schema(ref)
+        if ref_schema:
+            props.update(schema_properties(ref_schema, _visited))
+    for key in ('allOf', 'anyOf', 'oneOf'):
+        for branch in schema.get(key, []):
+            props.update(schema_properties(branch, _visited))
+    for json_name, prop in schema.get('properties', {}).items():
+        props[json_name] = prop
+    return props
+
+def schema_required_names(schema, _visited=None):
+    """Return fields required by the schema. For generation, allOf-required
+    fields are required; anyOf/oneOf branch requirements are intentionally not
+    merged because only one branch applies."""
+    if _visited is None:
+        _visited = set()
+    required = set()
+    if not isinstance(schema, dict):
+        return required
+    ref = schema.get('$ref')
+    if ref and ref not in _visited:
+        _visited.add(ref)
+        ref_schema = resolve_ref_schema(ref)
+        if ref_schema:
+            required.update(schema_required_names(ref_schema, _visited))
+    required.update(schema.get('required', []))
+    for branch in schema.get('allOf', []):
+        required.update(schema_required_names(branch, _visited))
+    return required
 
 def ref_to_go_name(ref):
     """Convert a $ref path to a Go type name.
@@ -338,7 +499,7 @@ def _will_generate_set():
     if _WILL_GENERATE_CACHE is not None:
         return _WILL_GENERATE_CACHE
     names = set()
-    for rel in CORE_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
+    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
         if not os.path.exists(rel):
             continue
         try:
@@ -348,6 +509,13 @@ def _will_generate_set():
         if schema.get('type') == 'object' and 'properties' in schema:
             stem = Path(rel).stem
             name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
+            names.add(name)
+    for name, spec in INLINE_SCHEMA_TYPES.items():
+        try:
+            schema = load_schema_spec(spec)
+        except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError):
+            continue
+        if schema_properties(schema):
             names.add(name)
     _WILL_GENERATE_CACHE = names
     return names
@@ -364,11 +532,19 @@ def resolve_go_type(prop, required=False):
             return 'AdcpError'
         # Apply aliases for schema names that don't match Go type names
         name = REF_ALIASES.get(name, name)
+        if name in ('string', 'int', 'float64', 'bool', 'any'):
+            return name
         # Resolve if the type is hand-written (KNOWN_TYPES) or will be
         # emitted from one of the registered schema lists in this run.
         if name in KNOWN_TYPES or name in _will_generate_set():
             return name
         return 'any'  # Unknown $ref target — avoid undefined type errors
+
+    if 'allOf' in prop:
+        branches = prop.get('allOf', [])
+        if len(branches) == 1 and isinstance(branches[0], dict):
+            return resolve_go_type(branches[0], required)
+        return 'any'
 
     typ = prop.get('type', '')
 
@@ -405,8 +581,8 @@ def resolve_go_type(prop, required=False):
 
 def schema_to_struct(name, schema):
     """Convert a JSON schema to a Go struct definition string."""
-    props = schema.get('properties', {})
-    required_set = set(schema.get('required', []))
+    props = schema_properties(schema)
+    required_set = schema_required_names(schema)
 
     fields = []
     for json_name, prop in props.items():
@@ -532,6 +708,37 @@ def generate():
             continue
         generated.add(name)
         if schema.get('type') == 'object' and 'properties' in schema:
+            print(schema_to_struct(name, schema))
+
+    # Generate support/helper schema types.
+    print('// --- Support schema types ---')
+    print()
+    for path in SUPPORT_SCHEMAS:
+        if not os.path.exists(path):
+            print(f'// Skipped {path} (not found)', file=sys.stderr)
+            continue
+        schema = load_schema(path)
+        name = REF_ALIASES.get(pascal_case(Path(path).stem),
+                               pascal_case(Path(path).stem))
+        if name in generated:
+            continue
+        generated.add(name)
+        if schema_properties(schema):
+            print(schema_to_struct(name, schema))
+
+    # Generate named inline schema-pointer types.
+    print('// --- Inline schema types ---')
+    print()
+    for name, spec in INLINE_SCHEMA_TYPES.items():
+        if name in generated:
+            continue
+        generated.add(name)
+        try:
+            schema = load_schema_spec(spec)
+        except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError) as e:
+            print(f'// Skipped {name} ({spec}: {e})', file=sys.stderr)
+            continue
+        if schema_properties(schema):
             print(schema_to_struct(name, schema))
 
     # Generate tool request/response types

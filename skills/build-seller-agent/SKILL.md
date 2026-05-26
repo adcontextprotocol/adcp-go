@@ -260,7 +260,7 @@ func main() {
                     for _, pkg := range buy.Packages {
                         pkgDel = append(pkgDel, adcp.PackageDelivery{PackageID: pkg.PackageID, Spend: 0, PricingModel: "cpm", Rate: 0, Currency: "USD"})
                     }
-                    deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.DeliveryTotals{}, ByPackage: pkgDel})
+                    deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.MediaBuyDeliveryTotals{}, ByPackage: pkgDel})
                 }
                 return &adcp.DeliveryData{
                     ReportingPeriod: adcp.ReportingPeriod{Start: now.Add(-24 * time.Hour).Format(time.RFC3339), End: now.Format(time.RFC3339)},
