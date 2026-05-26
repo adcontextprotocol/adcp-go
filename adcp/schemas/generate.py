@@ -9,6 +9,7 @@ adcontextprotocol/adcp/static/schemas/source/) and generates Go structs
 with proper json tags matching the wire format.
 """
 
+import argparse
 import json
 import re
 import sys
@@ -355,6 +356,25 @@ INLINE_TYPE_HINTS = {
     ('GetMediaBuysResponse', 'media_buys'): 'MediaBuyData',
 }
 
+# Initial allowlist for generated `any` fallbacks that are intentional protocol
+# escape hatches rather than generator gaps. The coverage report still includes
+# them, but marks them as allowed so CI can later fail only on unreviewed `any`.
+INTENTIONAL_ANY_FIELD_NAMES = {
+    'context',
+    'ext',
+}
+
+INTENTIONAL_ANY_FIELDS = {
+    ('CreativeFormat', 'delivery'): 'delivery specs are format-specific',
+    ('CreativeAsset', 'assets'): 'asset payload shape depends on asset type',
+    ('CreativeManifest', 'assets'): 'asset payload shape depends on asset type',
+    ('LogEventRequest', 'events'): 'event payloads are seller/buyer-defined',
+    ('Catalog', 'items'): 'inline catalog item schema depends on catalog type',
+    ('SimulationSuccess', 'simulated'): 'test-controller simulation payload is scenario-specific',
+    ('SimulationSuccess', 'cumulative'): 'test-controller cumulative state is scenario-specific',
+    ('CheckGovernanceRequest', 'payload'): 'governance can evaluate different protocol payloads',
+}
+
 # Enum schemas
 ENUM_DIR = "enums"
 
@@ -541,64 +561,112 @@ def _will_generate_set():
     _WILL_GENERATE_CACHE = names
     return names
 
-def resolve_go_type(prop, required=False):
-    """Resolve a JSON schema property to a Go type string."""
+def resolve_go_type_info(prop, required=False):
+    """Resolve a JSON schema property to a Go type string and fallback reason.
+
+    The reason is None when the type is fully represented. When the generated Go
+    type contains `any`, the reason explains why the generator fell back.
+    """
     if '$ref' in prop:
         ref = prop['$ref']
         if is_enum_ref(ref):
-            return 'string'  # Enums are strings in Go
+            return 'string', None  # Enums are strings in Go
         name = ref_to_go_name(ref)
         # Error conflicts with the Error function in errors.go
         if name == 'Error':
-            return 'AdcpError'
+            return 'AdcpError', 'adcp_error_alias'
         # Apply aliases for schema names that don't match Go type names
         name = REF_ALIASES.get(name, name)
         if name in ('string', 'int', 'float64', 'bool', 'any'):
-            return name
+            reason = 'ref_alias_any' if name == 'any' else None
+            return name, reason
         # Resolve if the type is hand-written (KNOWN_TYPES) or will be
         # emitted from one of the registered schema lists in this run.
         if name in KNOWN_TYPES or name in _will_generate_set():
-            return name
-        return 'any'  # Unknown $ref target — avoid undefined type errors
+            return name, None
+        return 'any', f'unknown_ref:{ref}'  # Avoid undefined type errors
 
     if 'allOf' in prop:
         branches = prop.get('allOf', [])
         if len(branches) == 1 and isinstance(branches[0], dict):
-            return resolve_go_type(branches[0], required)
-        return 'any'
+            return resolve_go_type_info(branches[0], required)
+        return 'any', 'unsupported_allOf'
 
     typ = prop.get('type', '')
 
     if typ == 'string':
-        return 'string'
+        return 'string', None
     elif typ == 'integer':
-        return 'int'
+        return 'int', None
     elif typ == 'number':
-        return 'float64'
+        return 'float64', None
     elif typ == 'boolean':
-        return 'bool'
+        return 'bool', None
     elif typ == 'array':
         items = prop.get('items', {})
         if isinstance(items, dict):
-            item_type = resolve_go_type(items)
-            return f'[]{item_type}'
-        return '[]any'
+            item_type, reason = resolve_go_type_info(items)
+            return f'[]{item_type}', f'array_item:{reason}' if reason else None
+        return '[]any', 'array_missing_items'
     elif typ == 'object':
         # Check for additionalProperties (map type)
         addl = prop.get('additionalProperties')
         if isinstance(addl, dict) and addl:
-            val_type = resolve_go_type(addl)
-            return f'map[string]{val_type}'
+            val_type, reason = resolve_go_type_info(addl)
+            return f'map[string]{val_type}', f'map_value:{reason}' if reason else None
         # Check if it has properties (structured object)
         if 'properties' in prop:
-            return 'any'  # Inline objects become any — we'd need named types for these
-        return 'map[string]any'
+            return 'any', 'inline_object'
+        return 'map[string]any', 'freeform_object'
     elif 'oneOf' in prop or 'anyOf' in prop:
-        return 'any'  # Union types
+        return 'any', 'union'
     elif 'const' in prop:
-        return 'string'
+        return 'string', None
     else:
-        return 'any'
+        return 'any', 'unspecified_schema_type'
+
+
+def resolve_go_type(prop, required=False):
+    """Resolve a JSON schema property to a Go type string."""
+    go_type, _ = resolve_go_type_info(prop, required)
+    return go_type
+
+
+def is_any_type(go_type):
+    """True if a generated type string includes Go's dynamic `any`."""
+    return (
+        go_type == 'any' or
+        go_type == '[]any' or
+        go_type == 'map[string]any' or
+        go_type.endswith(']any') or
+        '[]any' in go_type
+    )
+
+
+def contains_dynamic_any(go_type):
+    """True if a generated type uses any directly or through an alias."""
+    return is_any_type(go_type) or 'AdcpError' in go_type
+
+
+def field_go_type_info(type_name, json_name, prop, required_set):
+    """Return the generated field type and fallback reason for a struct field."""
+    hint_key = (type_name, json_name)
+    if hint_key in INLINE_TYPE_HINTS:
+        hint_type = INLINE_TYPE_HINTS[hint_key]
+        if prop.get('type', '') == 'array':
+            go_type = f'[]{hint_type}'
+        else:
+            go_type = hint_type
+        reason = 'inline_type_hint' if contains_dynamic_any(go_type) else None
+    else:
+        go_type, reason = resolve_go_type_info(prop, json_name in required_set)
+
+    is_required = json_name in required_set
+    if not is_required and go_type == 'bool':
+        go_type = '*bool'
+    elif not is_required and '$ref' in prop and go_type not in ('string', 'any', 'AdcpError') and not go_type.startswith('[]') and not go_type.startswith('map['):
+        go_type = f'*{go_type}'
+    return go_type, reason
 
 def schema_to_struct(name, schema):
     """Convert a JSON schema to a Go struct definition string."""
@@ -612,26 +680,8 @@ def schema_to_struct(name, schema):
 
         go_name = pascal_case(json_name)
 
-        # Check inline array hints before default resolution
-        hint_key = (name, json_name)
-        if hint_key in INLINE_TYPE_HINTS:
-            hint_type = INLINE_TYPE_HINTS[hint_key]
-            prop_type = prop.get('type', '')
-            if prop_type == 'array':
-                go_type = f'[]{hint_type}'
-            else:
-                go_type = hint_type
-        else:
-            go_type = resolve_go_type(prop, json_name in required_set)
-
+        go_type, _ = field_go_type_info(name, json_name, prop, required_set)
         is_required = json_name in required_set
-
-        # Use pointer for optional booleans (need to distinguish absent from false)
-        # and optional struct references (need to distinguish absent from zero value)
-        if not is_required and go_type == 'bool':
-            go_type = '*bool'
-        elif not is_required and '$ref' in prop and go_type not in ('string', 'any', 'AdcpError') and not go_type.startswith('[]') and not go_type.startswith('map['):
-            go_type = f'*{go_type}'
 
         omit = 'omitempty' if not is_required else ''
         tag = f'`json:"{json_name}'
@@ -681,6 +731,195 @@ def generate_enums():
         lines.append('')
 
     return '\n'.join(lines)
+
+
+def generated_schema_entries():
+    """Yield generated schema entries in the same ownership order as generate()."""
+    generated = set(KNOWN_TYPES)
+
+    for section, paths in (
+        ('core', CORE_SCHEMAS),
+        ('support', SUPPORT_SCHEMAS),
+    ):
+        for path in paths:
+            if not schema_exists(path):
+                continue
+            schema = load_schema(path)
+            name = REF_ALIASES.get(pascal_case(Path(path).stem),
+                                   pascal_case(Path(path).stem))
+            if name in generated:
+                continue
+            generated.add(name)
+            if schema_properties(schema):
+                yield {
+                    'section': section,
+                    'name': name,
+                    'schema': path,
+                    'schema_obj': schema,
+                    'kind': 'struct',
+                }
+
+    for name, spec in INLINE_SCHEMA_TYPES.items():
+        if name in generated:
+            continue
+        generated.add(name)
+        try:
+            schema = load_schema_spec(spec)
+        except SCHEMA_RESOLUTION_ERRORS:
+            continue
+        if schema_properties(schema):
+            yield {
+                'section': 'inline',
+                'name': name,
+                'schema': spec,
+                'schema_obj': schema,
+                'kind': 'struct',
+            }
+
+    for section, paths in (
+        ('tool', TOOL_SCHEMAS),
+        ('webhook', WEBHOOK_SCHEMAS),
+    ):
+        for path in paths:
+            if not schema_exists(path):
+                continue
+            schema = load_schema(path)
+            name = pascal_case(Path(path).stem)
+            if name in generated:
+                continue
+            generated.add(name)
+
+            if section == 'tool' and 'oneOf' in schema:
+                yield {
+                    'section': section,
+                    'name': name,
+                    'schema': path,
+                    'schema_obj': schema,
+                    'kind': 'alias_any',
+                }
+                for idx, variant in enumerate(schema['oneOf']):
+                    vname = variant.get('title', '')
+                    if vname and vname not in generated and 'properties' in variant:
+                        generated.add(vname)
+                        yield {
+                            'section': section,
+                            'name': vname,
+                            'schema': f'{path}#/oneOf/{idx}',
+                            'variant': vname,
+                            'schema_obj': variant,
+                            'kind': 'struct',
+                        }
+                continue
+
+            if schema.get('type') == 'object' and 'properties' in schema:
+                yield {
+                    'section': section,
+                    'name': name,
+                    'schema': path,
+                    'schema_obj': schema,
+                    'kind': 'struct',
+                }
+
+
+def any_allowance(type_name, json_name, go_type, reason):
+    """Return an allowlist explanation for intentional `any`, or None."""
+    if json_name in INTENTIONAL_ANY_FIELD_NAMES:
+        return f'intentional {json_name} escape hatch'
+    if (type_name, json_name) in INTENTIONAL_ANY_FIELDS:
+        return INTENTIONAL_ANY_FIELDS[(type_name, json_name)]
+    if 'AdcpError' in go_type:
+        return 'AdCP error payload is intentionally open'
+    return None
+
+
+def any_coverage_report():
+    """Return a structured report of generated `any` fallbacks."""
+    records = []
+    for entry in generated_schema_entries():
+        if entry['kind'] == 'alias_any':
+            records.append({
+                'type': entry['name'],
+                'section': entry['section'],
+                'schema': entry['schema'],
+                'field': None,
+                'json': None,
+                'go_type': 'any',
+                'reason': 'top_level_oneOf_alias',
+                'allowed': False,
+                'allowance': None,
+            })
+            continue
+
+        schema = entry['schema_obj']
+        props = schema_properties(schema)
+        required_set = schema_required_names(schema)
+        for json_name, prop in props.items():
+            if not isinstance(prop, dict):
+                continue
+            go_type, reason = field_go_type_info(
+                entry['name'], json_name, prop, required_set,
+            )
+            if not contains_dynamic_any(go_type):
+                continue
+            allowance = any_allowance(entry['name'], json_name, go_type, reason)
+            records.append({
+                'type': entry['name'],
+                'section': entry['section'],
+                'schema': entry['schema'],
+                'variant': entry.get('variant'),
+                'field': pascal_case(json_name),
+                'json': json_name,
+                'go_type': go_type,
+                'reason': reason or 'unknown',
+                'allowed': allowance is not None,
+                'allowance': allowance,
+            })
+
+    by_reason = {}
+    by_section = {}
+    for record in records:
+        by_reason[record['reason']] = by_reason.get(record['reason'], 0) + 1
+        by_section[record['section']] = by_section.get(record['section'], 0) + 1
+
+    return {
+        'total_any': len(records),
+        'allowed_any': sum(1 for r in records if r['allowed']),
+        'unreviewed_any': sum(1 for r in records if not r['allowed']),
+        'by_reason': dict(sorted(by_reason.items())),
+        'by_section': dict(sorted(by_section.items())),
+        'records': records,
+    }
+
+
+def print_any_coverage_summary(report):
+    print(
+        'Generated any coverage: '
+        f'{report["total_any"]} total, '
+        f'{report["allowed_any"]} allowed, '
+        f'{report["unreviewed_any"]} unreviewed'
+    )
+    print()
+    print('By reason:')
+    for reason, count in report['by_reason'].items():
+        print(f'  {reason}: {count}')
+    print()
+    print('Unreviewed generated any fields:')
+    for record in report['records']:
+        if record['allowed']:
+            continue
+        if record['field']:
+            print(
+                f'  {record["type"]}.{record["field"]} '
+                f'({record["json"]}) -> {record["go_type"]} '
+                f'[{record["reason"]}] '
+                f'{record["schema"]}'
+            )
+        else:
+            print(
+                f'  {record["type"]} -> {record["go_type"]} '
+                f'[{record["reason"]}] '
+                f'{record["schema"]}'
+            )
 
 def generate():
     """Main generation function."""
@@ -833,5 +1072,32 @@ def generate():
             print(f'func (p *{name}) IdempotencyKeyPtr() *string {{ return &p.IdempotencyKey }}')
         print()
 
-if __name__ == '__main__':
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--coverage-json',
+        action='store_true',
+        help='emit JSON report of generated any fallbacks instead of Go code',
+    )
+    parser.add_argument(
+        '--coverage-summary',
+        action='store_true',
+        help='emit human-readable report of generated any fallbacks instead of Go code',
+    )
+    args = parser.parse_args(argv)
+
+    if args.coverage_json or args.coverage_summary:
+        _reset_will_generate_cache()
+        report = any_coverage_report()
+        if args.coverage_json:
+            print(json.dumps(report, indent=2))
+        else:
+            print_any_coverage_summary(report)
+        return 0
+
     generate()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
