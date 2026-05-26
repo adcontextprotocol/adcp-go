@@ -87,10 +87,13 @@ var products = []adcp.Product{
             {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: 0.50, Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "product-card"}},
-        ReportingCapabilities: map[string]any{
-            "available_metrics": []string{"impressions", "spend", "clicks", "conversions"},
-            "available_reporting_frequencies": []string{"daily"},
-            "timezone": "UTC",
+        ReportingCapabilities: adcp.ReportingCapabilities{
+            AvailableMetrics: []string{"impressions", "spend", "clicks", "conversions"},
+            AvailableReportingFrequencies: []string{"daily"},
+            ExpectedDelayMinutes: 60,
+            Timezone: "UTC",
+            SupportsWebhooks: false,
+            DateRangeSupport: "date_range",
         },
     },
 }

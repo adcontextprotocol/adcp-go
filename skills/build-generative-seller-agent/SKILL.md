@@ -106,10 +106,13 @@ var products = []adcp.Product{
             {AgentURL: agentURL, ID: "display_300x250_generative"},
             {AgentURL: agentURL, ID: "display_300x250"},
         },
-        ReportingCapabilities: map[string]any{
-            "available_metrics": []string{"impressions", "spend", "clicks"},
-            "available_reporting_frequencies": []string{"daily"},
-            "timezone": "UTC",
+        ReportingCapabilities: adcp.ReportingCapabilities{
+            AvailableMetrics: []string{"impressions", "spend", "clicks"},
+            AvailableReportingFrequencies: []string{"daily"},
+            ExpectedDelayMinutes: 60,
+            Timezone: "UTC",
+            SupportsWebhooks: false,
+            DateRangeSupport: "date_range",
         },
     },
 }

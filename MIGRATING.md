@@ -73,6 +73,14 @@ be populated.
 | `GetAdcpCapabilitiesResponse.WebhookSigning` | `*adcp.WebhookSigningCapabilities` |
 | `GetAdcpCapabilitiesResponse.Identity` | `*adcp.IdentityCapabilities` |
 | `GetAdcpCapabilitiesResponse.ComplianceTesting` | `*adcp.ComplianceTestingCapabilities` |
+| `Product.Placements` | `[]adcp.Placement` |
+| `Product.Forecast` | `*adcp.DeliveryForecast` |
+| `Product.OutcomeMeasurement` | `*adcp.OutcomeMeasurement` |
+| `Product.ReportingCapabilities` | `adcp.ReportingCapabilities` |
+| `Product.CreativePolicy` | `*adcp.CreativePolicy` |
+| `Product.MeasurementReadiness` | `*adcp.MeasurementReadiness` |
+| `Product.Collections` | `[]adcp.CollectionSelector` |
+| `Package.PriceBreakdown` | `*adcp.PriceBreakdown` |
 
 Buyer request migration example:
 
