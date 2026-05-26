@@ -613,6 +613,19 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
 ])
 
+# Named helper types generated for simple union schemas. These cover the common
+# protocol shape "single scalar or array of the same scalar" without falling
+# back to `any`.
+UNION_SCHEMA_TYPES = OrderedDict([
+    (
+        "MediaBuyStatusFilter",
+        (
+            "media-buy/get-media-buys-request.json#/properties/status_filter",
+            "media-buy/get-media-buy-delivery-request.json#/properties/status_filter",
+        ),
+    ),
+])
+
 # Hand-written types that should be drift-checked against a schema path or JSON
 # pointer. lint.py imports this table; keep it here so generator/lint ownership
 # lives in one place.
@@ -764,6 +777,8 @@ INLINE_TYPE_HINTS = {
     ('DeliveryReportingGeoDimension', 'system'): 'string',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
+    ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
+    ('GetMediaBuyDeliveryRequest', 'status_filter'): '*MediaBuyStatusFilter',
     ('GetCollectionListRequest', 'pagination'): '*CollectionRequestPagination',
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
@@ -946,6 +961,52 @@ def resolve_ref_schema(ref):
         print(f'// Warning: skipped ref {ref}: {e}', file=sys.stderr)
         return None
 
+def scalar_union_go_type(schema):
+    """Return the element Go type for `scalar or []scalar` unions.
+
+    This intentionally covers only the narrow wire shape used by status_filter:
+    one branch is a string/enum scalar and the other is an array of that same
+    scalar. More complex oneOf schemas need a discriminator-aware strategy.
+    """
+    if not isinstance(schema, dict):
+        return None
+    branches = schema.get('oneOf') or schema.get('anyOf') or []
+    if len(branches) != 2:
+        return None
+
+    def branch_scalar_type(branch):
+        if not isinstance(branch, dict):
+            return None
+        if '$ref' in branch and is_enum_ref(branch['$ref']):
+            return ref_to_go_name(branch['$ref'])
+        if branch.get('type') == 'string':
+            return 'string'
+        return None
+
+    scalar_type = None
+    array_item_type = None
+    for branch in branches:
+        current = branch_scalar_type(branch)
+        if current:
+            scalar_type = current
+            continue
+        if isinstance(branch, dict) and branch.get('type') == 'array':
+            array_item_type = branch_scalar_type(branch.get('items', {}))
+
+    if scalar_type and array_item_type and scalar_type == array_item_type:
+        return scalar_type
+    return None
+
+def schema_accepts_empty_array(schema):
+    """Report whether a scalar-or-array union permits an empty array branch."""
+    if not isinstance(schema, dict):
+        return True
+    branches = schema.get('oneOf') or schema.get('anyOf') or []
+    for branch in branches:
+        if isinstance(branch, dict) and branch.get('type') == 'array':
+            return int(branch.get('minItems', 0)) == 0
+    return True
+
 def schema_properties(schema, _visited=None):
     """Return an ordered union of properties declared directly, through $ref,
     or through composition. allOf is flattened for generated Go structs."""
@@ -1082,6 +1143,8 @@ def _will_generate_set():
             continue
         if schema_properties(schema):
             names.add(name)
+    for name in supported_union_schemas(skip_names=KNOWN_TYPES):
+        names.add(name)
     _WILL_GENERATE_CACHE = names
     return names
 
@@ -1230,6 +1293,77 @@ def schema_to_struct(name, schema):
     desc = safe_comment(schema.get('description', ''), 100)
     doc = f'// {name} — {desc}\n' if desc else ''
     return f'{doc}type {name} struct {{\n' + '\n'.join(fields) + '\n}\n'
+
+def scalar_or_array_union_to_type(name, schema):
+    """Generate a Go helper for a `scalar or []scalar` JSON union."""
+    elem_type = scalar_union_go_type(schema)
+    if not elem_type:
+        raise ValueError(f'{name} is not a supported scalar-or-array union')
+    desc = safe_comment(schema.get('description', ''), 100)
+    doc = f'// {name} — {desc}\n' if desc else ''
+    reject_empty = '' if schema_accepts_empty_array(schema) else f'''\tif len(v) == 0 {{
+\t\treturn nil, fmt.Errorf("{name} must contain at least one value")
+\t}}
+'''
+    reject_empty_unmarshal = '' if schema_accepts_empty_array(schema) else f'''\tif len(many) == 0 {{
+\t\treturn fmt.Errorf("{name} must contain at least one value")
+\t}}
+'''
+    return f'''{doc}type {name} []{elem_type}
+
+func (v {name}) MarshalJSON() ([]byte, error) {{
+{reject_empty}\tif len(v) == 1 {{
+\t\treturn json.Marshal(v[0])
+\t}}
+\treturn json.Marshal([]{elem_type}(v))
+}}
+
+func (v *{name}) UnmarshalJSON(data []byte) error {{
+\tif string(data) == "null" {{
+\t\treturn fmt.Errorf("{name} cannot be null")
+\t}}
+\tvar single {elem_type}
+\tif err := json.Unmarshal(data, &single); err == nil {{
+\t\t*v = {name}{{single}}
+\t\treturn nil
+\t}}
+\tvar many []{elem_type}
+\tif err := json.Unmarshal(data, &many); err != nil {{
+\t\treturn err
+\t}}
+\t{reject_empty_unmarshal.strip()}
+\t*v = {name}(many)
+\treturn nil
+}}
+'''
+
+def supported_union_schemas(skip_names=None):
+    """Return configured union helper schemas that this generator can emit."""
+    skip_names = set(skip_names or ())
+    schemas = OrderedDict()
+    for name, specs in UNION_SCHEMA_TYPES.items():
+        if name in skip_names:
+            continue
+        if isinstance(specs, str):
+            specs = (specs,)
+        primary_schema = None
+        try:
+            loaded = [(spec, load_schema_spec(spec)) for spec in specs]
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            raise ValueError(f'{name} has an invalid union schema pointer: {e}') from e
+        elem_types = {scalar_union_go_type(schema) for _, schema in loaded}
+        if len(elem_types) != 1 or None in elem_types:
+            raise ValueError(f'{name} union schemas are not equivalent scalar-or-array unions')
+        if len({schema_accepts_empty_array(schema) for _, schema in loaded}) != 1:
+            raise ValueError(f'{name} union array constraints differ')
+        for spec, schema in loaded:
+            description = schema.get('description', '')
+            # Prefer the shortest shared helper doc when one field description
+            # includes request-specific defaults that do not apply everywhere.
+            if primary_schema is None or len(description) < len(primary_schema.get('description', '')):
+                primary_schema = schema
+        schemas[name] = primary_schema
+    return schemas
 
 def generate_enums():
     """Generate Go string constants for all enum schemas."""
@@ -1471,6 +1605,13 @@ def generate():
     print()
     print('package adcp')
     print()
+    union_schemas = supported_union_schemas(skip_names=KNOWN_TYPES)
+    if union_schemas:
+        print('import (')
+        print('\t"encoding/json"')
+        print('\t"fmt"')
+        print(')')
+        print()
 
     # Type aliases for $ref targets not in our core generation list
     print('// Type aliases for $ref targets from schemas not directly generated.')
@@ -1486,6 +1627,15 @@ def generate():
 
     # Use KNOWN_TYPES as the skip set — single source of truth
     generated = set(KNOWN_TYPES)
+
+    # Generate narrow union helper types.
+    print('// --- Union helper types ---')
+    print()
+    for name, schema in union_schemas.items():
+        if name in generated:
+            continue
+        generated.add(name)
+        print(scalar_or_array_union_to_type(name, schema))
 
     # Generate core types
     print('// --- Core types ---')
@@ -1631,6 +1781,7 @@ def main(argv=None):
         args.coverage_max_unreviewed_any is not None
     ):
         _reset_will_generate_cache()
+        supported_union_schemas(skip_names=KNOWN_TYPES)
         report = any_coverage_report()
         if args.coverage_json:
             print(json.dumps(report, indent=2))

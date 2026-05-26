@@ -309,6 +309,52 @@ def validate_inline_schema_specs():
     return reports
 
 
+def validate_union_schema_specs():
+    """Smoke-test generated union schema pointers and shared-helper equivalence."""
+    reports = []
+    for type_name, schema_specs in gen.UNION_SCHEMA_TYPES.items():
+        if isinstance(schema_specs, str):
+            schema_specs = (schema_specs,)
+        loaded = []
+        error_count = len(reports)
+        for schema_spec in schema_specs:
+            path_part = schema_spec.split('#', 1)[0]
+            schema_path = SCRIPT_DIR / path_part
+            if not schema_path.exists():
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'schema not found: {schema_path}',
+                })
+                continue
+            try:
+                loaded.append((schema_spec, load_schema_spec(schema_spec)))
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'could not resolve schema pointer: {e}',
+                })
+        if len(reports) != error_count or len(loaded) != len(schema_specs):
+            continue
+        elem_types = {gen.scalar_union_go_type(schema) for _, schema in loaded}
+        if len(elem_types) != 1 or None in elem_types:
+            reports.append({
+                'type': type_name,
+                'schema': ', '.join(schema_specs),
+                'error': 'schemas are not equivalent scalar-or-array unions',
+            })
+            continue
+        empty_constraints = {gen.schema_accepts_empty_array(schema) for _, schema in loaded}
+        if len(empty_constraints) != 1:
+            reports.append({
+                'type': type_name,
+                'schema': ', '.join(schema_specs),
+                'error': 'array minItems constraints differ',
+            })
+    return reports
+
+
 def resolve_schema_spec(type_name):
     """Return schema spec for `type_name`, or None."""
     if type_name in EXPLICIT_SCHEMA:
@@ -429,6 +475,7 @@ def main():
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
+    union_schema_errors = validate_union_schema_specs()
 
     for type_name in sorted(gen.KNOWN_TYPES):
         if type_name in EXEMPT:
@@ -451,12 +498,20 @@ def main():
             'drift': reports,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
+            'union_schema_errors': union_schema_errors,
         }
         print(json.dumps(out, indent=2))
     else:
         if inline_schema_errors:
             print(f'Inline schema pointer errors in {len(inline_schema_errors)} type(s):')
             for r in inline_schema_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    error: {r["error"]}')
+            print()
+        if union_schema_errors:
+            print(f'Union schema pointer errors in {len(union_schema_errors)} type(s):')
+            for r in union_schema_errors:
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
@@ -484,7 +539,7 @@ def main():
             for t in no_schema:
                 print(f'  - {t}')
 
-    has_problems = bool(inline_schema_errors) or bool(reports) or (
+    has_problems = bool(inline_schema_errors) or bool(union_schema_errors) or bool(reports) or (
         args.strict and bool(no_schema)
     )
     return 1 if (args.strict and has_problems) else 0
