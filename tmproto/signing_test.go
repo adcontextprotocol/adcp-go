@@ -294,9 +294,13 @@ func TestVerifyRevokedKeyRejected(t *testing.T) {
 func TestVerifyMalformedSignatureRejected(t *testing.T) {
 	_, ks := newTestSigner(t)
 	req := &ContextMatchRequest{RequestID: "r", PropertyRID: "p", PlacementID: "pl"}
-	err := VerifyContextMatch(req, "https://x", "!!!not-base64!!!", "test-key-1", ks, time.Now())
+	leakySignature := "!!!not-base64!!!"
+	err := VerifyContextMatch(req, "https://x", leakySignature, "test-key-1", ks, time.Now())
 	if !errors.Is(err, ErrSignatureMalformed) {
 		t.Fatalf("expected ErrSignatureMalformed, got %v", err)
+	}
+	if strings.Contains(err.Error(), leakySignature) || strings.Contains(err.Error(), "illegal base64") || strings.Contains(err.Error(), "byte") {
+		t.Fatalf("malformed signature error leaked decoder details: %v", err)
 	}
 }
 
