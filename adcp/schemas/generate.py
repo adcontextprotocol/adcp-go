@@ -10,11 +10,20 @@ with proper json tags matching the wire format.
 """
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 from collections import OrderedDict
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+SCHEMA_RESOLUTION_ERRORS = (
+    OSError,
+    json.JSONDecodeError,
+    KeyError,
+    ValueError,
+    IndexError,
+    TypeError,
+)
 
 # Types that exist in hand-written files or will be generated.
 # $ref targets not in this set get replaced with `any`.
@@ -314,10 +323,10 @@ REF_ALIASES = {
     'DestinationInput': 'DestinationInput',
 }
 
-# Inline array item type hints: when a schema has an array property whose items
-# are inline objects or oneOfs (no $ref to a named schema file), map
-# (struct_name, field) -> Go item type. Keeps generated structs referencing
-# hand-written or otherwise-known types instead of falling back to `any`.
+# Inline array/item type hints: when a schema has an inline object or oneOf with
+# no named $ref, map (struct_name, field) -> Go type. Non-array hints may include
+# a leading `*` for optional inline object fields; array fields wrap the hinted
+# item type as `[]{hint}`, so pointer hints on arrays produce `[]*T`.
 INLINE_TYPE_HINTS = {
     ('SyncAccountsRequest', 'accounts'): 'AccountInput',
     ('SyncGovernanceRequest', 'accounts'): 'GovernanceAccountInput',
@@ -356,9 +365,18 @@ def safe_comment(text, max_len=80):
 
 def load_schema(path):
     """Load a JSON schema file, preserving property order."""
+    path = Path(path)
+    if not path.is_absolute():
+        path = SCRIPT_DIR / path
     with open(path) as f:
         # Use object_pairs_hook to preserve key order
         return json.load(f, object_pairs_hook=OrderedDict)
+
+def schema_exists(path):
+    path = Path(path)
+    if not path.is_absolute():
+        path = SCRIPT_DIR / path
+    return path.exists()
 
 def json_pointer_get(doc, pointer):
     """Resolve a JSON Pointer fragment against a decoded JSON document."""
@@ -393,15 +411,16 @@ def resolve_ref_schema(ref):
         return None
     spec = m.group(1) + (m.group(2) or '')
     path_part = spec.split('#', 1)[0]
-    path = Path(path_part).resolve()
-    root = Path.cwd().resolve()
+    path = (SCRIPT_DIR / path_part).resolve()
+    root = SCRIPT_DIR.resolve()
     if root != path and root not in path.parents:
         return None
     if not path.exists():
         return None
     try:
         return load_schema_spec(spec)
-    except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError):
+    except SCHEMA_RESOLUTION_ERRORS as e:
+        print(f'// Warning: skipped ref {ref}: {e}', file=sys.stderr)
         return None
 
 def schema_properties(schema, _visited=None):
@@ -482,9 +501,9 @@ _WILL_GENERATE_CACHE = None
 
 def _reset_will_generate_cache():
     """Clear the cache so the next `_will_generate_set()` call rebuilds from
-    current CORE_SCHEMAS/TOOL_SCHEMAS/WEBHOOK_SCHEMAS + current cwd. Called at
-    the top of `generate()` to guarantee correctness when the module is used
-    across multiple runs (e.g. imported by lint.py then invoked standalone)."""
+    current CORE_SCHEMAS/TOOL_SCHEMAS/WEBHOOK_SCHEMAS. Called at the top of
+    `generate()` to guarantee correctness when the module is used across
+    multiple runs (e.g. imported by lint.py then invoked standalone)."""
     global _WILL_GENERATE_CACHE
     _WILL_GENERATE_CACHE = None
 
@@ -500,11 +519,12 @@ def _will_generate_set():
         return _WILL_GENERATE_CACHE
     names = set()
     for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
-        if not os.path.exists(rel):
+        if not schema_exists(rel):
             continue
         try:
             schema = load_schema(rel)
-        except (OSError, json.JSONDecodeError):
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            print(f'// Warning: skipped schema {rel}: {e}', file=sys.stderr)
             continue
         if schema.get('type') == 'object' and 'properties' in schema:
             stem = Path(rel).stem
@@ -513,7 +533,8 @@ def _will_generate_set():
     for name, spec in INLINE_SCHEMA_TYPES.items():
         try:
             schema = load_schema_spec(spec)
-        except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError):
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            print(f'// Warning: skipped {name} ({spec}: {e})', file=sys.stderr)
             continue
         if schema_properties(schema):
             names.add(name)
@@ -630,7 +651,7 @@ def schema_to_struct(name, schema):
 def generate_enums():
     """Generate Go string constants for all enum schemas."""
     lines = []
-    enum_dir = Path(ENUM_DIR)
+    enum_dir = SCRIPT_DIR / ENUM_DIR
     if not enum_dir.exists():
         return ''
 
@@ -667,7 +688,7 @@ def generate():
     # Read pinned version
     version = "unknown"
     try:
-        with open('VERSION') as f:
+        with open(SCRIPT_DIR / 'VERSION') as f:
             version = f.read().strip()
     except FileNotFoundError:
         pass
@@ -698,7 +719,7 @@ def generate():
     print('// --- Core types ---')
     print()
     for path in CORE_SCHEMAS:
-        if not os.path.exists(path):
+        if not schema_exists(path):
             print(f'// Skipped {path} (not found)', file=sys.stderr)
             continue
         schema = load_schema(path)
@@ -714,7 +735,7 @@ def generate():
     print('// --- Support schema types ---')
     print()
     for path in SUPPORT_SCHEMAS:
-        if not os.path.exists(path):
+        if not schema_exists(path):
             print(f'// Skipped {path} (not found)', file=sys.stderr)
             continue
         schema = load_schema(path)
@@ -735,7 +756,7 @@ def generate():
         generated.add(name)
         try:
             schema = load_schema_spec(spec)
-        except (OSError, json.JSONDecodeError, KeyError, ValueError, IndexError) as e:
+        except SCHEMA_RESOLUTION_ERRORS as e:
             print(f'// Skipped {name} ({spec}: {e})', file=sys.stderr)
             continue
         if schema_properties(schema):
@@ -745,7 +766,7 @@ def generate():
     print('// --- Tool request/response types ---')
     print()
     for path in TOOL_SCHEMAS:
-        if not os.path.exists(path):
+        if not schema_exists(path):
             print(f'// Skipped {path} (not found)', file=sys.stderr)
             continue
         schema = load_schema(path)
@@ -784,7 +805,7 @@ def generate():
     print()
     webhook_type_names = []
     for path in WEBHOOK_SCHEMAS:
-        if not os.path.exists(path):
+        if not schema_exists(path):
             print(f'// Skipped {path} (not found)', file=sys.stderr)
             continue
         schema = load_schema(path)

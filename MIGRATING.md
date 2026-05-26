@@ -21,6 +21,14 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
 - `UpdateMediaBuyRequest` is now generated from
   `media-buy/update-media-buy-request.json`. `StartTime` is a `string` instead
   of `any`, matching the current schema's `start-timing` alias.
+- `CreateMediaBuyRequest.StartTime` is also now a `string` instead of `any`.
+  The schema's `start-timing` alias resolves to string in Go; `"asap"` remains
+  valid wire data.
+- `GetProductsRequest.TimeBudget` is now `adcp.Duration` instead of `any`.
+  Use `adcp.Duration{Interval: 5, Unit: "minutes"}` or another schema-valid
+  unit.
+- `DeliveryTotals.ReachUnit` is now `string` instead of `any`, matching the
+  reach-unit enum's string wire form.
 - `PackageUpdate` is now generated from `media-buy/package-update.json`. It
   exposes schema-backed package update fields such as `Pacing`, `Catalogs`,
   `OptimizationGoals`, keyword add/remove operations, `Creatives`, `Context`,
@@ -45,6 +53,11 @@ Most wire payloads are unchanged, but several public Go structs are more typed.
   emitted as schema-required fields even when their Go values are zero.
   `MediaBuyDelivery.Totals` is now `adcp.MediaBuyDeliveryTotals`, which includes
   the schema-specific `effective_rate` field.
+- `GetMediaBuyDeliveryResponse.ReportingPeriod`,
+  `GetMediaBuyDeliveryResponse.AggregatedTotals`, and
+  `GetMediaBuyDeliveryResponse.MediaBuyDeliveries` are now typed as
+  `adcp.ReportingPeriod`, `*adcp.DeliveryAggregatedTotals`, and
+  `[]adcp.MediaBuyDelivery` instead of `any` shapes.
 
 ## v3.0.0-rc.4 (governance / policy framework)
 
