@@ -91,7 +91,7 @@ adcp.AddTool(server, "tool_name", "Description",
 | `adcp.ActivateSignalResponse(deployments, sandbox)` | `activate_signal` |
 | `adcp.SyncCatalogsResponse(catalogs, sandbox)` | `sync_catalogs` |
 | `adcp.SyncEventSourcesResponse(sources, sandbox)` | `sync_event_sources` |
-| `adcp.LogEventResponse(received, processed, sandbox)` | `log_event` |
+| `adcp.LogEventResponse(received, processed, matchQuality, sandbox)` | `log_event` |
 | `adcp.PerformanceFeedbackResponse(sandbox)` | `provide_performance_feedback` |
 | `adcp.Result(data, summary)` | Any tool (generic) |
 | `adcp.Errorf(code, opts)` | Error response |

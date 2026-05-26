@@ -22,7 +22,7 @@ Ask the user — don't guess.
 
 1. **What kind of seller?** Premium publisher (guaranteed, fixed pricing) / SSP (non-guaranteed, auction) / Retail media (both)
 2. **Guaranteed or non-guaranteed?** `delivery_type: "guaranteed"` vs `"non_guaranteed"`. Many sellers support both.
-3. **Products and pricing.** Each product needs: product_id, name, description, channels (array of channel enums), delivery_type, pricing_options, format_ids. publisher_properties is optional; if present, it's a list of `PublisherPropertySelector` entries each pointing at a publisher_domain.
+3. **Products and pricing.** Each product needs: product_id, name, description, publisher_properties, channels (array of channel enums), delivery_type, pricing_options, format_ids, and reporting_capabilities. Use `PublisherPropertySelector` entries pointing at publisher_domain values.
 4. **Approval workflow.** Instant create returns a media buy such as `status: "active"` or `status: "pending_creatives"`. Async create returns the submitted task envelope (`status: "submitted"`, `task_id`, optional `message`) and later exposes the confirmed buy via `get_media_buys` or signed webhooks to `push_notification_config.url` — see `skills/build-webhook-publisher/` for the emission pattern.
 5. **Creative management.** Standard (`list_creative_formats` + `sync_creatives`) or none.
 
@@ -65,10 +65,18 @@ var products = []adcp.Product{
         ProductID: "premium-display", Name: "Premium Display",
         Description: "High-impact display placements.",
         Channels: []string{"display"}, DeliveryType: "guaranteed",
+        PublisherProperties: []adcp.PublisherPropertySelector{
+            {PublisherDomain: "example.com", SelectionType: "all"},
+        },
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}},
+        ReportingCapabilities: map[string]any{
+            "available_metrics": []string{"impressions", "spend", "clicks"},
+            "available_reporting_frequencies": []string{"daily"},
+            "timezone": "UTC",
+        },
     },
 }
 
@@ -407,7 +415,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 |---------|-----|
 | Missing `IdempotencyReplayTTL` on `adcp.Config` | Required — set to `24*time.Hour`. Panics at startup if unset or outside 1h–7d. |
 | Missing `Description` on products | Required by schema validation |
-| Missing `format_ids` on products | Required field — use an empty `[]adcp.FormatRef{}` if none. `publisher_properties` is optional; omit it rather than sending an empty array. |
+| Missing `publisher_properties`, `format_ids`, or `reporting_capabilities` on products | Required fields. Use at least one publisher selector, supported format, and reporting capability block. |
 | `sync_governance` response key `results` | Must be `accounts` |
 | `sync_creatives` status `"accepted"` | Use `"approved"` — valid: processing, pending_review, approved, rejected, archived |
 | Empty slices serialize as `null` | Use `make([]T, 0)` not `var x []T` |

@@ -151,12 +151,7 @@ adcp.AddTool(server, "preview_creative", "Render a preview",
 
         if input.CreativeManifest != nil {
             // Render from manifest directly
-            if fid, ok := input.CreativeManifest["format_id"].(map[string]any); ok {
-                if id, ok := fid["id"].(string); ok {
-                    w, h = formatDimensions(id)
-                }
-            }
-            name, _ = input.CreativeManifest["name"].(string)
+            w, h = formatDimensions(input.CreativeManifest.FormatID.ID)
             creativeID = "preview-manifest"
         } else if input.CreativeID != "" {
             // Lookup from store
@@ -181,7 +176,7 @@ adcp.AddTool(server, "preview_creative", "Render a preview",
 
 ### 6. `build_creative`
 
-Handle both `creative_manifest` (direct build) and `creative_id` (store lookup). If neither is provided but `format_id` is, build a default manifest from the format.
+Handle both `creative_manifest` (direct build) and `creative_id` (store lookup). If neither is provided but `target_format_id` is, build a default manifest from the format.
 
 ```go
 adcp.AddTool(server, "build_creative", "Build serving tag",
@@ -189,7 +184,10 @@ adcp.AddTool(server, "build_creative", "Build serving tag",
         var manifest map[string]any
 
         if input.CreativeManifest != nil {
-            manifest = input.CreativeManifest
+            manifest = map[string]any{
+                "format_id": input.CreativeManifest.FormatID,
+                "assets": input.CreativeManifest.Assets,
+            }
         } else if input.CreativeID != "" {
             s.mu.RLock()
             c, ok := s.creatives[input.CreativeID]
@@ -200,12 +198,12 @@ adcp.AddTool(server, "build_creative", "Build serving tag",
                 })
             }
             manifest = map[string]any{"format_id": c.FormatID, "name": c.Name, "assets": c.Assets}
-        } else if input.FormatID != nil {
+        } else if input.TargetFormatID != nil {
             // Build default manifest from format
-            manifest = map[string]any{"format_id": input.FormatID, "name": "Built Creative"}
+            manifest = map[string]any{"format_id": input.TargetFormatID, "assets": map[string]any{}}
         } else {
             return adcp.Errorf("INVALID_INPUT", adcp.ErrorOptions{
-                Message: "creative_id, creative_manifest, or format_id required",
+                Message: "creative_id, creative_manifest, or target_format_id required",
             })
         }
 

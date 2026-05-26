@@ -5,7 +5,7 @@ description: Use when building an AdCP retail media network agent in Go — sell
 
 # Build a Retail Media Agent (Go)
 
-> **Status: Not yet validated against storyboard runner.** If validation fails, check the common mistakes table first, then file an issue.
+> **Status: Validated against storyboard runner.** If validation fails, check the common mistakes table first, then file an issue.
 
 ## Overview
 
@@ -13,7 +13,7 @@ A retail media agent sells advertising on a retailer's properties. It extends th
 
 ## Before Writing Code
 
-1. **Products.** Each needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties, format_ids. Use lowercase pricing models.
+1. **Products.** Each needs: product_id, name, description (required), channel, delivery_type, pricing_options, publisher_properties, format_ids, and reporting_capabilities. Use lowercase pricing models.
 2. **Catalogs.** What product feeds? How connected to ad rendering?
 3. **Events.** What conversion events? Purchase, add_to_cart, page_view?
 4. **Approval workflow.** Instant or async. Async SHOULD emit signed webhooks when the buyer supplies `push_notification_config` — see `skills/build-webhook-publisher/` for the emission pattern.
@@ -80,10 +80,18 @@ var products = []adcp.Product{
         ProductID: "sponsored-product", Name: "Sponsored Product",
         Description: "Promoted product listings in search results",
         Channels: []string{"retail_media"}, DeliveryType: "non_guaranteed",
+        PublisherProperties: []adcp.PublisherPropertySelector{
+            {PublisherDomain: "shop.example", SelectionType: "all"},
+        },
         PricingOptions: []adcp.PricingOption{
             {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: 0.50, Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "product-card"}},
+        ReportingCapabilities: map[string]any{
+            "available_metrics": []string{"impressions", "spend", "clicks", "conversions"},
+            "available_reporting_frequencies": []string{"daily"},
+            "timezone": "UTC",
+        },
     },
 }
 
@@ -295,7 +303,7 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_catalog_crea
 | Using `mcp.AddTool` directly | Use `adcp.AddTool` |
 | Missing `conversion_tracking` in supported_protocols | Storyboard rejects catalog/event tools without it |
 | Products missing `description` | Required field |
-| Missing `publisher_properties`/`format_ids` | Required fields |
+| Missing `publisher_properties`, `format_ids`, or `reporting_capabilities` | Required fields |
 | `sync_catalogs` missing `item_count` | Required field |
 | `log_event` missing `events_received` | Required counter |
 | `log_event` missing `match_quality` | Include match quality score (0.0-1.0) via `adcp.LogEventResponse` |
@@ -327,7 +335,7 @@ npx @adcp/client storyboard run http://localhost:3001/mcp media_buy_catalog_crea
 | `adcp.SyncCreativesResponse(creatives, sandbox)` | Sync creatives |
 | `adcp.SyncCatalogsResponse(catalogs, sandbox)` | Sync catalogs |
 | `adcp.SyncEventSourcesResponse(sources, sandbox)` | Event sources |
-| `adcp.LogEventResponse(received, processed, sandbox)` | Log events |
+| `adcp.LogEventResponse(received, processed, matchQuality, sandbox)` | Log events |
 | `adcp.PerformanceFeedbackResponse(sandbox)` | Performance feedback |
 | `adcp.Result(data, summary)` | Generic response |
 | `adcp.Errorf(code, opts)` | Error response |
