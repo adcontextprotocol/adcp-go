@@ -2774,6 +2774,24 @@ type MediaBuyBudget struct {
 	Currency string `json:"currency"` // ISO 4217 currency code
 }
 
+// IOAcceptance — Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_o
+type IOAcceptance struct {
+	IoID string `json:"io_id"` // The io_id from the proposal's insertion_order being accepted
+	AcceptedAt string `json:"accepted_at"` // ISO 8601 timestamp when the IO was accepted
+	Signatory string `json:"signatory"` // Who accepted the IO — agent identifier or human name
+	SignatureID string `json:"signature_id,omitempty"` // Reference to the electronic signature from the signing service, when signing_url
+}
+
+// ArtifactWebhookConfig — Optional webhook configuration for content artifact delivery. Used by governance agents to validate
+type ArtifactWebhookConfig struct {
+	URL string `json:"url"` // Webhook endpoint URL for artifact delivery
+	Token string `json:"token,omitempty"` // Optional client-provided token for webhook validation. Echoed back in webhook pa
+	Authentication LegacyWebhookAuthentication `json:"authentication"` // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
+	DeliveryMode string `json:"delivery_mode"` // How artifacts are delivered. 'realtime' pushes artifacts as impressions occur. '
+	BatchFrequency string `json:"batch_frequency,omitempty"` // For batched delivery, how often to push artifacts. Required when delivery_mode i
+	SamplingRate *float64 `json:"sampling_rate,omitempty"` // Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sampl
+}
+
 // CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can cont
 type CollectionRequestPagination struct {
 	MaxResults int `json:"max_results,omitempty"` // Maximum number of collections to return per page
@@ -3432,14 +3450,14 @@ type CreateMediaBuyRequest struct {
 	Brand BrandReference `json:"brand"` // Brand reference for this media buy. Resolved to full brand identity at execution
 	AdvertiserIndustry string `json:"advertiser_industry,omitempty"` // Industry classification for this specific campaign. A brand may operate across m
 	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Override the account's default billing entity for this specific buy. When provid
-	IoAcceptance any `json:"io_acceptance,omitempty"` // Acceptance of an insertion order from a committed proposal. Required when the pr
+	IoAcceptance *IOAcceptance `json:"io_acceptance,omitempty"` // Acceptance of an insertion order from a committed proposal. Required when the pr
 	PoNumber string `json:"po_number,omitempty"` // Purchase order number for tracking
 	AgencyEstimateNumber string `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number. Primary financial reference for broadca
 	StartTime string `json:"start_time"`
 	EndTime string `json:"end_time"` // Campaign end date/time in ISO 8601 format
 	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher wi
 	ReportingWebhook *ReportingWebhook `json:"reporting_webhook,omitempty"` // Optional webhook configuration for automated reporting delivery
-	ArtifactWebhook any `json:"artifact_webhook,omitempty"` // Optional webhook configuration for content artifact delivery. Used by governance
+	ArtifactWebhook *ArtifactWebhookConfig `json:"artifact_webhook,omitempty"` // Optional webhook configuration for content artifact delivery. Used by governance
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }
