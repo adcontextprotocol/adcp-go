@@ -34,6 +34,10 @@ jobs:
         working-directory: adcp/schemas
         run: ./download.sh
 
+      - name: Test schema generator
+        working-directory: adcp/schemas
+        run: python3 -m unittest discover -p '*_test.py'
+
       - name: Check adcp/types_gen.go is up to date
         run: |
           (cd adcp/schemas && python3 generate.py > ../types_gen.go)
