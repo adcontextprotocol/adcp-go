@@ -67,6 +67,9 @@ be populated.
 | `PushNotificationConfig.Authentication` | `*adcp.LegacyWebhookAuthentication` |
 | `ReportingWebhook.Authentication` | `adcp.LegacyWebhookAuthentication` |
 | `CreateMediaBuyRequest.TotalBudget` | `*adcp.MediaBuyBudget` |
+| `CreateMediaBuyRequest.IoAcceptance` | `*adcp.IOAcceptance` |
+| `CreateMediaBuyRequest.ArtifactWebhook` | `*adcp.ArtifactWebhookConfig` |
+| `ArtifactWebhookConfig.Authentication` | `adcp.LegacyWebhookAuthentication` |
 | `GetAdcpCapabilitiesResponse.Adcp` | `adcp.ADCPVersion` |
 | `GetAdcpCapabilitiesResponse.Account` | `*adcp.AccountCapabilities` |
 | `GetAdcpCapabilitiesResponse.MediaBuy` | `*adcp.MediaBuyCapabilities` |

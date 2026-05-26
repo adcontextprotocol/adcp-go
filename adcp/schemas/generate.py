@@ -388,6 +388,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/create-media-buy-request.json#/properties/total_budget",
     ),
     (
+        "IOAcceptance",
+        "media-buy/create-media-buy-request.json#/properties/io_acceptance",
+    ),
+    (
+        "ArtifactWebhookConfig",
+        "media-buy/create-media-buy-request.json#/properties/artifact_webhook",
+    ),
+    (
         "CollectionRequestPagination",
         "collection/get-collection-list-request.json#/properties/pagination",
     ),
@@ -716,6 +724,10 @@ INLINE_TYPE_HINTS = {
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
+    ('CreateMediaBuyRequest', 'io_acceptance'): '*IOAcceptance',
+    ('CreateMediaBuyRequest', 'artifact_webhook'): '*ArtifactWebhookConfig',
+    ('ArtifactWebhookConfig', 'authentication'): 'LegacyWebhookAuthentication',
+    ('ArtifactWebhookConfig', 'sampling_rate'): '*float64',
     ('GetCollectionListRequest', 'pagination'): '*CollectionRequestPagination',
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',

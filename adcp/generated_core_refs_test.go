@@ -34,6 +34,19 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 			Authentication:     LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "fedcba9876543210fedcba9876543210"},
 			ReportingFrequency: "daily",
 		},
+		IoAcceptance: &IOAcceptance{
+			IoID:        "io-1",
+			AcceptedAt:  "2026-05-26T15:00:00Z",
+			Signatory:   "agent:buyer.example",
+			SignatureID: "sig-1",
+		},
+		ArtifactWebhook: &ArtifactWebhookConfig{
+			URL:            "https://buyer.example/webhooks/artifacts",
+			Authentication: LegacyWebhookAuthentication{Schemes: []string{"HMAC-SHA256"}, Credentials: "abcdef0123456789abcdef0123456789"},
+			DeliveryMode:   "batched",
+			BatchFrequency: "hourly",
+			SamplingRate:   Ptr(0.0),
+		},
 	}
 
 	raw, err := json.Marshal(req)
@@ -47,6 +60,8 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 		`"bank":{"account_holder":"Acme Corporation","account_number":"1234"}`,
 		`"push_notification_config":{"url":"https://buyer.example/webhooks/tasks","authentication":{"schemes":["Bearer"],"credentials":"0123456789abcdef0123456789abcdef"}}`,
 		`"reporting_webhook":{"url":"https://buyer.example/webhooks/reporting"`,
+		`"io_acceptance":{"io_id":"io-1","accepted_at":"2026-05-26T15:00:00Z","signatory":"agent:buyer.example","signature_id":"sig-1"}`,
+		`"artifact_webhook":{"url":"https://buyer.example/webhooks/artifacts","authentication":{"schemes":["HMAC-SHA256"],"credentials":"abcdef0123456789abcdef0123456789"},"delivery_mode":"batched","batch_frequency":"hourly","sampling_rate":0}`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("marshaled request missing %s:\n%s", want, body)
@@ -65,6 +80,12 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 	}
 	if decoded.ReportingWebhook == nil || decoded.ReportingWebhook.ReportingFrequency != "daily" {
 		t.Fatalf("reporting webhook did not round-trip: %#v", decoded.ReportingWebhook)
+	}
+	if decoded.IoAcceptance == nil || decoded.IoAcceptance.IoID != "io-1" {
+		t.Fatalf("io acceptance did not round-trip: %#v", decoded.IoAcceptance)
+	}
+	if decoded.ArtifactWebhook == nil || decoded.ArtifactWebhook.DeliveryMode != "batched" {
+		t.Fatalf("artifact webhook did not round-trip: %#v", decoded.ArtifactWebhook)
 	}
 }
 
