@@ -45,7 +45,7 @@ jobs:
 
       - name: Check generated any coverage
         working-directory: adcp/schemas
-        run: python3 generate.py --coverage-max-unreviewed-any 102
+        run: python3 generate.py --coverage-max-unreviewed-any 91
 
       - name: Check generated code is up to date
         run: |

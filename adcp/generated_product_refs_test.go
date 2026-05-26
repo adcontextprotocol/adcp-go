@@ -132,11 +132,18 @@ func TestGeneratedOneOfRefsMarshalFlattenedFields(t *testing.T) {
 }
 
 func TestGeneratedPackagePriceBreakdown(t *testing.T) {
+	canceled := true
 	pkg := Package{
 		PackageID: "pkg-1",
 		PriceBreakdown: &PriceBreakdown{
 			ListPrice:   20,
 			Adjustments: []any{map[string]any{"type": "discount", "amount": 5}},
+		},
+		Canceled: Ptr(canceled),
+		Cancellation: &PackageCancellation{
+			CanceledAt: "2026-06-01T00:00:00Z",
+			CanceledBy: "buyer",
+			Reason:     "budget_cut",
 		},
 	}
 
@@ -146,5 +153,8 @@ func TestGeneratedPackagePriceBreakdown(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"price_breakdown":{"list_price":20,"adjustments":[{"amount":5,"type":"discount"}]}`) {
 		t.Fatalf("price breakdown did not marshal as typed field: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"cancellation":{"canceled_at":"2026-06-01T00:00:00Z","canceled_by":"buyer","reason":"budget_cut"}`) {
+		t.Fatalf("package cancellation did not marshal as typed field: %s", raw)
 	}
 }
