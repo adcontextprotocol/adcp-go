@@ -92,6 +92,11 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: "user", Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
 				PropertyList:   Ptr(PropertyListRef{AgentURL: "https://lists.example/mcp", ListID: "pl-456"}),
 				GeoMetros:      []GeoMetroTarget{{System: "nielsen_dma", Values: []string{"501"}}},
+				StoreCatchments: []TargetingStoreCatchment{{
+					CatalogID:    "stores",
+					StoreIDs:     []string{"store-1"},
+					CatchmentIDs: []string{"drive"},
+				}},
 				AgeRestriction: Ptr(AgeRestriction{Min: 21}),
 				KeywordTargets: []KeywordTarget{{Keyword: "running shoes", MatchType: "phrase"}},
 			},
@@ -100,6 +105,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				`"frequency_cap":{"max_impressions":3,"per":"user","window":{"interval":7,"unit":"days"}}`,
 				`"property_list":{"agent_url":"https://lists.example/mcp","list_id":"pl-456"}`,
 				`"geo_metros":[{"system":"nielsen_dma","values":["501"]}]`,
+				`"store_catchments":[{"catalog_id":"stores","store_ids":["store-1"],"catchment_ids":["drive"]}]`,
 				`"age_restriction":{"min":21}`,
 				`"keyword_targets":[{"keyword":"running shoes","match_type":"phrase"}]`,
 			},
@@ -144,12 +150,20 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "delivery quartiles",
+			name: "delivery metrics",
 			value: DeliveryTotals{
-				QuartileData: Ptr(DeliveryQuartileData{Q1Views: 10, Q4Views: 4}),
+				QuartileData:   Ptr(DeliveryQuartileData{Q1Views: 10, Q4Views: 4}),
+				ByEventType:    []DeliveryEventTypeMetrics{{EventType: "purchase", Count: 2, Value: 42}},
+				ByActionSource: []DeliveryActionSourceMetrics{{ActionSource: "website", Count: 2}},
+				DoohMetrics:    Ptr(DeliveryDOOHMetrics{LoopPlays: 5, VenueBreakdown: []DeliveryDOOHVenueBreakdown{{VenueID: "venue-1", Impressions: 100}}}),
+				Viewability:    Ptr(DeliveryViewability{MeasurableImpressions: 100, ViewableImpressions: 80, ViewableRate: 0.8, Standard: "mrc"}),
 			},
 			want: []string{
 				`"quartile_data":{"q1_views":10,"q4_views":4}`,
+				`"by_event_type":[{"count":2,"event_type":"purchase","value":42}]`,
+				`"dooh_metrics":{"loop_plays":5,"venue_breakdown":[{"impressions":100,"venue_id":"venue-1"}]}`,
+				`"viewability":{"measurable_impressions":100,"standard":"mrc","viewable_impressions":80,"viewable_rate":0.8}`,
+				`"by_action_source":[{"action_source":"website","count":2}]`,
 			},
 		},
 		{
@@ -163,6 +177,76 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 			want: []string{
 				`"total_budget":{"amount":10000,"currency":"USD"}`,
+			},
+		},
+		{
+			name: "creative format disclosures",
+			value: CreativeFormat{
+				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
+				Name:     "Display",
+				DisclosureCapabilities: []CreativeFormatDisclosureCapability{{
+					Position:    "overlay_top_left",
+					Persistence: []string{"initial", "persistent"},
+				}},
+			},
+			want: []string{
+				`"disclosure_capabilities":[{"position":"overlay_top_left","persistence":["initial","persistent"]}]`,
+			},
+		},
+		{
+			name: "creative asset inputs",
+			value: CreativeAsset{
+				CreativeID: "creative-1",
+				Name:       "Creative",
+				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "gen_display"},
+				Assets:     map[string]any{"headline": "Sale"},
+				Inputs: []CreativeAssetInput{{
+					Name:               "default",
+					Macros:             map[string]string{"CITY": "Honolulu"},
+					ContextDescription: "Warm-weather retail offer",
+				}},
+			},
+			want: []string{
+				`"inputs":[{"name":"default","macros":{"CITY":"Honolulu"},"context_description":"Warm-weather retail offer"}]`,
+			},
+		},
+		{
+			name: "delivery package breakdowns",
+			value: PackageDelivery{
+				PackageID:    "pkg-1",
+				Spend:        10,
+				PricingModel: "cpm",
+				Rate:         5,
+				Currency:     "USD",
+				ByCatalogItem: []PackageCatalogItemDelivery{{
+					ContentID:     "sku-1",
+					ContentIDType: "sku",
+					Impressions:   100,
+					Spend:         10,
+				}},
+				ByCreative: []PackageCreativeDelivery{{
+					CreativeID:   "creative-1",
+					Impressions:  100,
+					Spend:        10,
+					QuartileData: Ptr(DeliveryQuartileData{Q4Views: 9}),
+				}},
+				DailyBreakdown: []PackageDailyBreakdown{{Date: "2026-06-01", Impressions: 100, Spend: 10}},
+			},
+			want: []string{
+				`"by_catalog_item":[{"impressions":100,"spend":10,"content_id":"sku-1","content_id_type":"sku"}]`,
+				`"by_creative":[{"impressions":100,"spend":10,"quartile_data":{"q4_views":9},"creative_id":"creative-1"}]`,
+				`"daily_breakdown":[{"date":"2026-06-01","impressions":100,"spend":10}]`,
+			},
+		},
+		{
+			name: "media buy daily breakdown",
+			value: MediaBuyDelivery{
+				MediaBuyID:     "mb-1",
+				Totals:         MediaBuyDeliveryTotals{Impressions: 100, Spend: 10},
+				DailyBreakdown: []MediaBuyDailyBreakdown{{Date: "2026-06-01", Impressions: 100, Spend: 10}},
+			},
+			want: []string{
+				`"daily_breakdown":[{"date":"2026-06-01","impressions":100,"spend":10}]`,
 			},
 		},
 		{

@@ -393,6 +393,121 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "RightsAgentRef",
         "core/rights-constraint.json#/properties/rights_agent",
     ),
+    (
+        "ProductMetricOptimization",
+        "core/product.json#/properties/metric_optimization",
+    ),
+    (
+        "ProductConversionTracking",
+        "core/product.json#/properties/conversion_tracking",
+    ),
+    (
+        "ProductTrustedMatch",
+        "core/product.json#/properties/trusted_match",
+    ),
+    (
+        "ProductTrustedMatchProvider",
+        "core/product.json#/properties/trusted_match/properties/providers/items",
+    ),
+    (
+        "ProductMaterialSubmission",
+        "core/product.json#/properties/material_submission",
+    ),
+    (
+        "PriceAdjustment",
+        "pricing-options/price-breakdown.json#/properties/adjustments/items",
+    ),
+    (
+        "CreativeFormatDisclosureCapability",
+        "core/format.json#/properties/disclosure_capabilities/items",
+    ),
+    (
+        "CreativeAssetInput",
+        "core/creative-asset.json#/properties/inputs/items",
+    ),
+    (
+        "TargetingStoreCatchment",
+        "core/targeting.json#/properties/store_catchments/items",
+    ),
+    (
+        "DeliveryEventTypeMetrics",
+        "core/delivery-metrics.json#/properties/by_event_type/items",
+    ),
+    (
+        "DeliveryDOOHMetrics",
+        "core/delivery-metrics.json#/properties/dooh_metrics",
+    ),
+    (
+        "DeliveryDOOHVenueBreakdown",
+        "core/delivery-metrics.json#/properties/dooh_metrics/properties/venue_breakdown/items",
+    ),
+    (
+        "DeliveryViewability",
+        "core/delivery-metrics.json#/properties/viewability",
+    ),
+    (
+        "DeliveryActionSourceMetrics",
+        "core/delivery-metrics.json#/properties/by_action_source/items",
+    ),
+    (
+        "MediaBuyDailyBreakdown",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/daily_breakdown/items",
+    ),
+    (
+        "PackageCatalogItemDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_catalog_item/items",
+    ),
+    (
+        "PackageCreativeDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_creative/items",
+    ),
+    (
+        "PackageKeywordDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_keyword/items",
+    ),
+    (
+        "PackageGeoDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_geo/items",
+    ),
+    (
+        "PackageDeviceTypeDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_device_type/items",
+    ),
+    (
+        "PackageDevicePlatformDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_device_platform/items",
+    ),
+    (
+        "PackageAudienceDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_audience/items",
+    ),
+    (
+        "PackagePlacementDelivery",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/by_placement/items",
+    ),
+    (
+        "PackageDailyBreakdown",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/by_package/items"
+        "/allOf/1/properties/daily_breakdown/items",
+    ),
 ])
 
 # Hand-written types that should be drift-checked against a schema path or JSON
@@ -533,6 +648,38 @@ INLINE_TYPE_HINTS = {
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
+    ('Product', 'metric_optimization'): '*ProductMetricOptimization',
+    ('Product', 'conversion_tracking'): '*ProductConversionTracking',
+    ('Product', 'trusted_match'): '*ProductTrustedMatch',
+    ('Product', 'material_submission'): '*ProductMaterialSubmission',
+    ('ProductTrustedMatch', 'providers'): 'ProductTrustedMatchProvider',
+    ('PriceBreakdown', 'adjustments'): 'PriceAdjustment',
+    ('CreativeFormat', 'disclosure_capabilities'): 'CreativeFormatDisclosureCapability',
+    ('CreativeAsset', 'inputs'): 'CreativeAssetInput',
+    ('Targeting', 'store_catchments'): 'TargetingStoreCatchment',
+    ('DeliveryTotals', 'by_event_type'): 'DeliveryEventTypeMetrics',
+    ('DeliveryTotals', 'dooh_metrics'): '*DeliveryDOOHMetrics',
+    ('DeliveryTotals', 'viewability'): '*DeliveryViewability',
+    ('DeliveryTotals', 'by_action_source'): 'DeliveryActionSourceMetrics',
+    ('DeliveryDOOHMetrics', 'venue_breakdown'): 'DeliveryDOOHVenueBreakdown',
+    ('MediaBuyDeliveryTotals', 'by_event_type'): 'DeliveryEventTypeMetrics',
+    ('MediaBuyDeliveryTotals', 'dooh_metrics'): '*DeliveryDOOHMetrics',
+    ('MediaBuyDeliveryTotals', 'viewability'): '*DeliveryViewability',
+    ('MediaBuyDeliveryTotals', 'by_action_source'): 'DeliveryActionSourceMetrics',
+    ('MediaBuyDelivery', 'daily_breakdown'): 'MediaBuyDailyBreakdown',
+    ('PackageDelivery', 'by_event_type'): 'DeliveryEventTypeMetrics',
+    ('PackageDelivery', 'dooh_metrics'): '*DeliveryDOOHMetrics',
+    ('PackageDelivery', 'viewability'): '*DeliveryViewability',
+    ('PackageDelivery', 'by_action_source'): 'DeliveryActionSourceMetrics',
+    ('PackageDelivery', 'by_catalog_item'): 'PackageCatalogItemDelivery',
+    ('PackageDelivery', 'by_creative'): 'PackageCreativeDelivery',
+    ('PackageDelivery', 'by_keyword'): 'PackageKeywordDelivery',
+    ('PackageDelivery', 'by_geo'): 'PackageGeoDelivery',
+    ('PackageDelivery', 'by_device_type'): 'PackageDeviceTypeDelivery',
+    ('PackageDelivery', 'by_device_platform'): 'PackageDevicePlatformDelivery',
+    ('PackageDelivery', 'by_audience'): 'PackageAudienceDelivery',
+    ('PackageDelivery', 'by_placement'): 'PackagePlacementDelivery',
+    ('PackageDelivery', 'daily_breakdown'): 'PackageDailyBreakdown',
     ('GetAdcpCapabilitiesResponse', 'adcp'): 'ADCPVersion',
     ('GetAdcpCapabilitiesResponse', 'account'): 'AccountCapabilities',
     ('GetAdcpCapabilitiesResponse', 'media_buy'): 'MediaBuyCapabilities',
@@ -551,6 +698,24 @@ INLINE_TYPE_HINTS = {
     ('CreativeFormat', 'assets'): 'AssetSlot',
     ('GetMediaBuysResponse', 'media_buys'): 'MediaBuyData',
 }
+
+for _delivery_metric_type in (
+    'PackageCatalogItemDelivery',
+    'PackageCreativeDelivery',
+    'PackageKeywordDelivery',
+    'PackageGeoDelivery',
+    'PackageDeviceTypeDelivery',
+    'PackageDevicePlatformDelivery',
+    'PackageAudienceDelivery',
+    'PackagePlacementDelivery',
+):
+    INLINE_TYPE_HINTS.update({
+        (_delivery_metric_type, 'by_event_type'): 'DeliveryEventTypeMetrics',
+        (_delivery_metric_type, 'quartile_data'): '*DeliveryQuartileData',
+        (_delivery_metric_type, 'dooh_metrics'): '*DeliveryDOOHMetrics',
+        (_delivery_metric_type, 'viewability'): '*DeliveryViewability',
+        (_delivery_metric_type, 'by_action_source'): 'DeliveryActionSourceMetrics',
+    })
 
 # Initial allowlist for generated `any` fallbacks that are intentional protocol
 # escape hatches rather than generator gaps. The coverage report still includes
