@@ -180,6 +180,46 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "get products proposals",
+			value: GetProductsResponse{
+				Products: []Product{},
+				Proposals: []Proposal{{
+					ProposalID:     "proposal-1",
+					Name:           "Balanced launch plan",
+					ProposalStatus: "committed",
+					Allocations: []ProductAllocation{{
+						ProductID:            "premium-display",
+						AllocationPercentage: 60,
+						PricingOptionID:      "pd-cpm",
+						DaypartTargets:       []DaypartTarget{{Days: []string{"mon"}, StartHour: 9, EndHour: 17}},
+					}},
+					InsertionOrder: &InsertionOrder{
+						IoID: "io-1",
+						Terms: &InsertionOrderTerms{
+							Advertiser:  "Acme",
+							Publisher:   "Example Publisher",
+							TotalBudget: Ptr(InsertionOrderBudget{Amount: 10000, Currency: "USD"}),
+							FlightStart: "2026-06-01T00:00:00Z",
+							FlightEnd:   "2026-06-30T00:00:00Z",
+						},
+						RequiresSignature: true,
+					},
+					TotalBudgetGuidance: &ProposalBudgetGuidance{
+						Min:         5000,
+						Recommended: 10000,
+						Currency:    "USD",
+					},
+				}},
+			},
+			want: []string{
+				`"proposals":[{"proposal_id":"proposal-1","name":"Balanced launch plan","allocations":[{"product_id":"premium-display","allocation_percentage":60,"pricing_option_id":"pd-cpm"`,
+				`"daypart_targets":[{"days":["mon"],"start_hour":9,"end_hour":17}]`,
+				`"insertion_order":{"io_id":"io-1","terms":{"advertiser":"Acme","publisher":"Example Publisher","total_budget":{"amount":10000,"currency":"USD"}`,
+				`"requires_signature":true}`,
+				`"total_budget_guidance":{"min":5000,"recommended":10000,"currency":"USD"}`,
+			},
+		},
+		{
 			name: "creative format disclosures",
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},

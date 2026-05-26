@@ -202,6 +202,9 @@ CORE_SCHEMAS = [
     "core/delivery-forecast.json",
     "core/forecast-point.json",
     "core/forecast-range.json",
+    "core/proposal.json",
+    "core/product-allocation.json",
+    "core/insertion-order.json",
     "core/outcome-measurement.json",
     "core/reporting-capabilities.json",
     "core/geo-breakdown-support.json",
@@ -260,6 +263,12 @@ CORE_SCHEMAS = [
     "core/user-match.json",
     "core/vendor-pricing-option.json",
     "core/content-rating.json",
+    "core/installment.json",
+    "core/special.json",
+    "core/talent.json",
+    "core/ad-inventory-config.json",
+    "core/installment-deadlines.json",
+    "core/material-deadline.json",
     "core/duration.json",
 ]
 
@@ -438,6 +447,22 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     (
         "ProvenanceVerification",
         "core/provenance.json#/properties/verification/items",
+    ),
+    (
+        "ProposalBudgetGuidance",
+        "core/proposal.json#/properties/total_budget_guidance",
+    ),
+    (
+        "InsertionOrderTerms",
+        "core/insertion-order.json#/properties/terms",
+    ),
+    (
+        "InsertionOrderBudget",
+        "core/insertion-order.json#/properties/terms/properties/total_budget",
+    ),
+    (
+        "InstallmentDerivative",
+        "core/installment.json#/properties/derivative_of",
     ),
     (
         "ProductMetricOptimization",
@@ -657,6 +682,7 @@ INLINE_TYPE_HINTS = {
     ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
     ('SyncPlansRequest', 'plans'): 'Plan',
+    ('GetProductsResponse', 'proposals'): 'Proposal',
     ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',
     ('PackageUpdate', 'keyword_targets_remove'): 'KeywordTargetRef',
     ('PackageUpdate', 'negative_keywords_add'): 'KeywordTargetRef',
@@ -707,6 +733,11 @@ INLINE_TYPE_HINTS = {
     ('Provenance', 'verification'): 'ProvenanceVerification',
     ('ProvenanceDisclosure', 'jurisdictions'): 'ProvenanceDisclosureJurisdiction',
     ('ProvenanceDisclosureJurisdiction', 'render_guidance'): '*ProvenanceDisclosureRenderGuidance',
+    ('Product', 'installments'): 'Installment',
+    ('Proposal', 'total_budget_guidance'): '*ProposalBudgetGuidance',
+    ('InsertionOrder', 'terms'): '*InsertionOrderTerms',
+    ('InsertionOrderTerms', 'total_budget'): '*InsertionOrderBudget',
+    ('Installment', 'derivative_of'): '*InstallmentDerivative',
     ('Product', 'metric_optimization'): '*ProductMetricOptimization',
     ('Product', 'conversion_tracking'): '*ProductConversionTracking',
     ('Product', 'trusted_match'): '*ProductTrustedMatch',

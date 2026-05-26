@@ -1826,7 +1826,7 @@ type Product struct {
 	ProductCardDetailed *ProductCardDetailed `json:"product_card_detailed,omitempty"` // Optional detailed card with carousel and full specifications. Provides rich prod
 	Collections []CollectionSelector `json:"collections,omitempty"` // Collections available in this product. Each entry references collections declare
 	CollectionTargetingAllowed *bool `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false (de
-	Installments []any `json:"installments,omitempty"` // Specific installments included in this product. Each installment references its
+	Installments []Installment `json:"installments,omitempty"` // Specific installments included in this product. Each installment references its
 	EnforcedPolicies []string `json:"enforced_policies,omitempty"` // Registry policy IDs the seller enforces for this product. Enforcement level come
 	TrustedMatch *ProductTrustedMatch `json:"trusted_match,omitempty"` // Trusted Match Protocol capabilities for this product. When present, the product
 	MaterialSubmission *ProductMaterialSubmission `json:"material_submission,omitempty"` // Instructions for submitting physical creative materials (print, static OOH, cine
@@ -1877,6 +1877,45 @@ type ForecastRange struct {
 	Low float64 `json:"low,omitempty"` // Conservative (low-end) forecast value
 	Mid float64 `json:"mid,omitempty"` // Expected (most likely) forecast value
 	High float64 `json:"high,omitempty"` // Optimistic (high-end) forecast value
+}
+
+// Proposal — A proposed media plan with budget allocations across products. Represents the publisher's strategic
+type Proposal struct {
+	ProposalID string `json:"proposal_id"` // Unique identifier for this proposal. Used to execute it via create_media_buy.
+	Name string `json:"name"` // Human-readable name for this media plan proposal
+	Description string `json:"description,omitempty"` // Explanation of the proposal strategy and what it achieves
+	Allocations []ProductAllocation `json:"allocations"` // Budget allocations across products. Allocation percentages MUST sum to 100. Publ
+	ProposalStatus string `json:"proposal_status,omitempty"` // Lifecycle status of this proposal. When absent, the proposal is ready to buy (ba
+	ExpiresAt string `json:"expires_at,omitempty"` // When this proposal expires and can no longer be executed. For draft proposals, i
+	InsertionOrder *InsertionOrder `json:"insertion_order,omitempty"` // Formal insertion order attached to a committed proposal. Present when the seller
+	TotalBudgetGuidance *ProposalBudgetGuidance `json:"total_budget_guidance,omitempty"` // Optional budget guidance for this proposal
+	BriefAlignment string `json:"brief_alignment,omitempty"` // Explanation of how this proposal aligns with the campaign brief
+	Forecast *DeliveryForecast `json:"forecast,omitempty"` // Aggregate forecasted delivery metrics for the entire proposal. When both proposa
+	Ext any `json:"ext,omitempty"`
+}
+
+// ProductAllocation — A budget allocation for a specific product within a proposal. Percentages across all allocations in
+type ProductAllocation struct {
+	ProductID string `json:"product_id"` // ID of the product (must reference a product in the products array)
+	AllocationPercentage float64 `json:"allocation_percentage"` // Percentage of total budget allocated to this product (0-100)
+	PricingOptionID string `json:"pricing_option_id,omitempty"` // Recommended pricing option ID from the product's pricing_options array
+	Rationale string `json:"rationale,omitempty"` // Explanation of why this product and allocation are recommended
+	Sequence int `json:"sequence,omitempty"` // Optional ordering hint for multi-line-item plans (1-based)
+	Tags []string `json:"tags,omitempty"` // Categorical tags for this allocation (e.g., 'desktop', 'german', 'mobile') - use
+	StartTime string `json:"start_time,omitempty"` // Recommended flight start date/time for this allocation in ISO 8601 format. Allow
+	EndTime string `json:"end_time,omitempty"` // Recommended flight end date/time for this allocation in ISO 8601 format. Allows
+	DaypartTargets []DaypartTarget `json:"daypart_targets,omitempty"` // Recommended time windows for this allocation in spot-plan proposals.
+	Forecast *DeliveryForecast `json:"forecast,omitempty"` // Forecasted delivery metrics for this allocation
+	Ext any `json:"ext,omitempty"`
+}
+
+// InsertionOrder — A signing wrapper attached to a committed proposal. The IO does not introduce new deal terms — all n
+type InsertionOrder struct {
+	IoID string `json:"io_id"` // Unique identifier for this insertion order. Referenced by io_acceptance on creat
+	Terms *InsertionOrderTerms `json:"terms,omitempty"` // Summary fields echoed from the committed proposal for agent verification. Buyer
+	TermsURL string `json:"terms_url,omitempty"` // URL to a human-readable document containing the full insertion order terms
+	SigningURL string `json:"signing_url,omitempty"` // URL to an electronic signing service (e.g., DocuSign) for human signature workfl
+	RequiresSignature bool `json:"requires_signature"` // Whether the buyer must accept this IO before creating a media buy. When true, cr
 }
 
 // OutcomeMeasurement — Business outcome measurement capabilities included with a product (e.g., incremental sales lift, bra
@@ -2362,6 +2401,66 @@ type UserMatch struct {
 	Ext any `json:"ext,omitempty"`
 }
 
+// Installment — A single bookable unit within a collection — one episode, issue, event, or rotation period. The pare
+type Installment struct {
+	InstallmentID string `json:"installment_id"` // Unique identifier for this installment within the collection
+	CollectionID string `json:"collection_id,omitempty"` // Parent collection reference. Required when the product spans multiple collection
+	Name string `json:"name,omitempty"` // Installment title
+	Season string `json:"season,omitempty"` // Season identifier (e.g., '1', '2024', 'spring_2026')
+	InstallmentNumber string `json:"installment_number,omitempty"` // Installment number within the season (e.g., '3', '47')
+	ScheduledAt string `json:"scheduled_at,omitempty"` // When the installment airs or publishes (ISO 8601)
+	Status string `json:"status,omitempty"` // Lifecycle status of the installment
+	DurationSeconds int `json:"duration_seconds,omitempty"` // Expected duration of the installment in seconds
+	FlexibleEnd *bool `json:"flexible_end,omitempty"` // Whether the end time is approximate (live events, sports)
+	ValidUntil string `json:"valid_until,omitempty"` // When this installment data expires and should be re-queried. Agents should re-qu
+	ContentRating *ContentRating `json:"content_rating,omitempty"` // Installment-specific content rating. Overrides the collection's baseline content
+	Topics []string `json:"topics,omitempty"` // Content topics for this installment. Uses the same taxonomy as the collection's
+	Special *Special `json:"special,omitempty"` // Installment-specific event context. When present, this installment is anchored t
+	GuestTalent []Talent `json:"guest_talent,omitempty"` // Installment-specific guests and talent. Additive to the collection's recurring t
+	AdInventory *AdInventoryConfig `json:"ad_inventory,omitempty"` // Break-based ad inventory for this installment. For non-break formats (host reads
+	Deadlines *InstallmentDeadlines `json:"deadlines,omitempty"` // Booking, cancellation, and material submission deadlines for this installment. P
+	DerivativeOf *InstallmentDerivative `json:"derivative_of,omitempty"` // When this installment is a clip, highlight, or recap derived from a full install
+	Ext any `json:"ext,omitempty"`
+}
+
+// Special — Event-anchored content tied to a real-world event or occasion. When present on a collection, indicat
+type Special struct {
+	Name string `json:"name"` // Name of the event (e.g., 'Olympics 2028', 'Super Bowl LXI')
+	Category string `json:"category,omitempty"` // Category of the event
+	Starts string `json:"starts,omitempty"` // When the event starts (ISO 8601)
+	Ends string `json:"ends,omitempty"` // When the event ends (ISO 8601). Omit for single-day events.
+}
+
+// Talent — A person associated with a collection or installment, with an optional link to their brand.json iden
+type Talent struct {
+	Role string `json:"role"` // Role of this person on the collection or installment
+	Name string `json:"name"` // Person's name as credited on the collection
+	BrandURL string `json:"brand_url,omitempty"` // URL to this person's brand.json entry. Enables buyer agents to evaluate the tale
+}
+
+// AdInventoryConfig — Break-based ad inventory configuration for an installment. Describes the ad breaks available within
+type AdInventoryConfig struct {
+	ExpectedBreaks int `json:"expected_breaks"` // Number of planned ad breaks in the installment
+	TotalAdSeconds int `json:"total_ad_seconds,omitempty"` // Total seconds of ad time across all breaks
+	MaxAdDurationSeconds int `json:"max_ad_duration_seconds,omitempty"` // Maximum duration in seconds for a single ad within a break. Buyers need this to
+	UnplannedBreaks *bool `json:"unplanned_breaks,omitempty"` // Whether ad breaks are dynamic and driven by live conditions (sports timeouts, el
+	SupportedFormats []string `json:"supported_formats,omitempty"` // Ad format types supported in breaks (e.g., 'video', 'audio', 'display')
+}
+
+// InstallmentDeadlines — Deadlines associated with a bookable installment. Applies to any channel where inventory is tied to
+type InstallmentDeadlines struct {
+	BookingDeadline string `json:"booking_deadline,omitempty"` // Last date/time to book a placement in this installment (ISO 8601). After this po
+	CancellationDeadline string `json:"cancellation_deadline,omitempty"` // Last date/time to cancel without penalty (ISO 8601). Cancellations after this po
+	MaterialDeadlines []MaterialDeadline `json:"material_deadlines,omitempty"` // Stages for creative material submission. Items MUST be in chronological order by
+}
+
+// MaterialDeadline — A deadline for creative material submission. Sellers declare stages to distinguish draft materials (
+type MaterialDeadline struct {
+	Stage string `json:"stage"` // Submission stage identifier. Use 'draft' for materials that need seller processi
+	DueAt string `json:"due_at"` // When materials for this stage are due (ISO 8601)
+	Label string `json:"label,omitempty"` // What the seller needs at this stage (e.g., 'Talking points and brand guidelines'
+}
+
 // --- Support schema types ---
 
 // PackageInput — Package configuration for media buy creation
@@ -2771,6 +2870,36 @@ type ProvenanceVerification struct {
 	Result string `json:"result"` // Verification outcome
 	Confidence float64 `json:"confidence,omitempty"` // Confidence score of the verification result (0.0 to 1.0)
 	DetailsURL string `json:"details_url,omitempty"` // URL to the full verification report
+}
+
+// ProposalBudgetGuidance — Optional budget guidance for this proposal
+type ProposalBudgetGuidance struct {
+	Min float64 `json:"min,omitempty"` // Minimum recommended budget
+	Recommended float64 `json:"recommended,omitempty"` // Recommended budget for optimal performance
+	Max float64 `json:"max,omitempty"` // Maximum budget before diminishing returns
+	Currency string `json:"currency,omitempty"` // ISO 4217 currency code
+}
+
+// InsertionOrderTerms — Summary fields echoed from the committed proposal for agent verification. Buyer agents use these to
+type InsertionOrderTerms struct {
+	Advertiser string `json:"advertiser,omitempty"` // Advertiser name or identifier
+	Publisher string `json:"publisher,omitempty"` // Publisher name or identifier
+	TotalBudget *InsertionOrderBudget `json:"total_budget,omitempty"` // Total committed budget
+	FlightStart string `json:"flight_start,omitempty"` // Campaign start date
+	FlightEnd string `json:"flight_end,omitempty"` // Campaign end date
+	PaymentTerms string `json:"payment_terms,omitempty"` // Payment terms
+}
+
+// InsertionOrderBudget — Total committed budget
+type InsertionOrderBudget struct {
+	Amount float64 `json:"amount"`
+	Currency string `json:"currency"` // ISO 4217 currency code
+}
+
+// InstallmentDerivative — When this installment is a clip, highlight, or recap derived from a full installment. The source ins
+type InstallmentDerivative struct {
+	InstallmentID string `json:"installment_id"` // The source installment this content is derived from
+	Type string `json:"type"` // What kind of derivative content this is
 }
 
 // ProductMetricOptimization — Metric optimization capabilities for this product. Presence indicates the product supports optimizat
@@ -3279,7 +3408,7 @@ type GetProductsRequest struct {
 // GetProductsResponse — Response payload for get_products task
 type GetProductsResponse struct {
 	Products []Product `json:"products"` // Array of matching products
-	Proposals []any `json:"proposals,omitempty"` // Optional array of proposed media plans with budget allocations across products.
+	Proposals []Proposal `json:"proposals,omitempty"` // Optional array of proposed media plans with budget allocations across products.
 	Errors []AdcpError `json:"errors,omitempty"` // Task-specific errors and warnings (e.g., product filtering issues)
 	PropertyListApplied *bool `json:"property_list_applied,omitempty"` // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the ag
 	CatalogApplied *bool `json:"catalog_applied,omitempty"` // Whether the seller filtered results based on the provided catalog. True if the s

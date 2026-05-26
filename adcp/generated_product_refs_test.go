@@ -103,6 +103,45 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 			PublisherDomain: "example.com",
 			CollectionIDs:   []string{"sports"},
 		}},
+		Installments: []Installment{{
+			InstallmentID:   "ep-1",
+			CollectionID:    "sports",
+			Name:            "Finals Preview",
+			ScheduledAt:     "2026-06-15T20:00:00Z",
+			Status:          "scheduled",
+			DurationSeconds: 1800,
+			FlexibleEnd:     Ptr(false),
+			ContentRating:   &ContentRating{System: "tvpg", Rating: "TV-G"},
+			Topics:          []string{"basketball", "playoffs"},
+			Special: &Special{
+				Name:     "Championship Week",
+				Category: "sports",
+				Starts:   "2026-06-14T00:00:00Z",
+			},
+			GuestTalent: []Talent{{
+				Role: "host",
+				Name: "Avery Smith",
+			}},
+			AdInventory: &AdInventoryConfig{
+				ExpectedBreaks:       3,
+				TotalAdSeconds:       360,
+				MaxAdDurationSeconds: 30,
+				UnplannedBreaks:      Ptr(false),
+				SupportedFormats:     []string{"video"},
+			},
+			Deadlines: &InstallmentDeadlines{
+				BookingDeadline: "2026-06-10T00:00:00Z",
+				MaterialDeadlines: []MaterialDeadline{{
+					Stage: "final",
+					DueAt: "2026-06-12T00:00:00Z",
+					Label: "Approved video creative",
+				}},
+			},
+			DerivativeOf: &InstallmentDerivative{
+				InstallmentID: "ep-0",
+				Type:          "recap",
+			},
+		}},
 	}
 
 	raw, err := json.Marshal(product)
@@ -127,6 +166,12 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		`"material_submission":{"url":"https://seller.example/materials","instructions":"Upload print-ready PDF."}`,
 		`"data_provider_signals":[{"data_provider_domain":"signals.example","selection_type":"signal_ids","signal_ids":["auto_intenders"]}]`,
 		`"collections":[{"publisher_domain":"example.com","collection_ids":["sports"]}]`,
+		`"installments":[{"installment_id":"ep-1","collection_id":"sports","name":"Finals Preview","scheduled_at":"2026-06-15T20:00:00Z","status":"scheduled","duration_seconds":1800,"flexible_end":false`,
+		`"special":{"name":"Championship Week","category":"sports","starts":"2026-06-14T00:00:00Z"}`,
+		`"guest_talent":[{"role":"host","name":"Avery Smith"}]`,
+		`"ad_inventory":{"expected_breaks":3,"total_ad_seconds":360,"max_ad_duration_seconds":30,"unplanned_breaks":false,"supported_formats":["video"]}`,
+		`"deadlines":{"booking_deadline":"2026-06-10T00:00:00Z","material_deadlines":[{"stage":"final","due_at":"2026-06-12T00:00:00Z","label":"Approved video creative"}]}`,
+		`"derivative_of":{"installment_id":"ep-0","type":"recap"}`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("marshaled product missing %s:\n%s", want, body)
