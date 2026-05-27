@@ -294,7 +294,7 @@ class EnumGenerationTest(unittest.TestCase):
         generate.load_schema_spec = load_schema_spec
 
         with self.assertRaisesRegex(ValueError, "duplicate enum type MediaBuyStatus"):
-            generate.generate_enums()
+            generate.generate_enums(_seen={"MediaBuyStatus": "enums/media-buy-status.json"})
 
     def test_generate_enums_requires_inline_enum_values(self):
         generate.INLINE_ENUM_TYPES = OrderedDict([
@@ -360,6 +360,72 @@ class EnumGenerationTest(unittest.TestCase):
         generate.load_schema_spec = load_schema_spec
 
         with self.assertRaisesRegex(ValueError, "matched multiple oneOf branches"):
+            generate.generate_enums()
+
+    def test_generate_enums_rejects_unmatched_inline_kind(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "event"},
+                            "value": {"enum": ["wrong"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"INLINE_ENUM_TYPES\['TestInlineEnum'\].*did not match a oneOf branch",
+        ):
+            generate.generate_enums()
+
+    def test_generate_enums_does_not_match_single_value_enum_discriminator(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"enum": ["metric"]},
+                            "value": {"enum": ["x"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"INLINE_ENUM_TYPES\['TestInlineEnum'\].*did not match a oneOf branch",
+        ):
             generate.generate_enums()
 
     @unittest.skipUnless(shutil.which("go"), "go command not found")
