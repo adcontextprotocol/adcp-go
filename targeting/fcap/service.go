@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityhash"
 )
 
 const (

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityhash"
 )
 
 // audienceMember is a single-pair helper around IsMemberBatch.

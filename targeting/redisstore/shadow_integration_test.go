@@ -18,7 +18,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/clusterslot"
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityhash"
 )
 
 // startValkeyShards spins up n independent Valkey 9 containers and
