@@ -6,7 +6,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/identityhash"
+	"github.com/adcontextprotocol/adcp-go/targeting/identityhash"
 )
 
 // userKeyPrefix is the constant prefix for user-keyed audience hashes.
