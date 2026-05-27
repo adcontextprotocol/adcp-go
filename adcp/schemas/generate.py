@@ -964,6 +964,20 @@ def safe_comment(text, max_len=80):
     prevent code injection via schema descriptions."""
     return text.replace('\n', ' ').replace('\r', '')[:max_len].rstrip() if text else ''
 
+def deprecated_comment(prop):
+    """Return the Go deprecation notice for a deprecated schema property."""
+    if not prop.get('deprecated'):
+        return ''
+    desc = prop.get('description', '').replace('\n', ' ').replace('\r', '').strip()
+    desc = re.sub(r'^\s*deprecated\s*:\s*', '', desc, flags=re.IGNORECASE)
+    first_sentence = re.match(r'(.+?\.)(?:\s|$)', desc)
+    if first_sentence:
+        desc = first_sentence.group(1)
+    desc = safe_comment(desc, 120)
+    if desc:
+        return f'Deprecated: {desc}'
+    return 'Deprecated: This field is deprecated.'
+
 def load_schema(path):
     """Load a JSON schema file, preserving property order."""
     path = Path(path)
@@ -1351,6 +1365,9 @@ def schema_to_struct(name, schema):
         desc = safe_comment(prop.get('description', ''), 80)
         comment = f' // {desc}' if desc else ''
 
+        deprecated = deprecated_comment(prop)
+        if deprecated:
+            fields.append(f'\t// {deprecated}')
         fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
     desc = safe_comment(schema.get('description', ''), 100)
