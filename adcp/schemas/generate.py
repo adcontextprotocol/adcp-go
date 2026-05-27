@@ -634,7 +634,11 @@ INLINE_SCHEMA_TYPES = OrderedDict([
 INLINE_ENUM_TYPES = OrderedDict([
     (
         "OptimizationMetric",
-        "core/optimization-goal.json#/oneOf/0/properties/metric",
+        {
+            "schema": "core/optimization-goal.json",
+            "one_of_kind": "metric",
+            "property": "metric",
+        },
     ),
 ])
 
@@ -1506,15 +1510,48 @@ def enum_to_type(name, desc, values):
 
     return '\n'.join(lines)
 
+def inline_enum_origin(spec):
+    if isinstance(spec, str):
+        return spec
+    schema = spec.get('schema')
+    kind = spec.get('one_of_kind')
+    prop = spec.get('property')
+    return f'{schema} oneOf kind={kind} property={prop}'
+
+def load_inline_enum_schema(spec):
+    if isinstance(spec, str):
+        return load_schema_spec(spec)
+
+    schema_spec = spec.get('schema')
+    kind = spec.get('one_of_kind')
+    prop = spec.get('property')
+    if not schema_spec or not kind or not prop:
+        raise ValueError(f'invalid inline enum config: {spec!r}')
+
+    schema = load_schema_spec(schema_spec)
+    matches = []
+    for branch in schema.get('oneOf', []):
+        props = branch.get('properties', {})
+        kind_schema = props.get('kind', {})
+        if kind_schema.get('const') == kind:
+            matches.append(props.get(prop, {}))
+
+    origin = inline_enum_origin(spec)
+    if not matches:
+        raise ValueError(f'{origin} did not match a oneOf branch')
+    if len(matches) > 1:
+        raise ValueError(f'{origin} matched multiple oneOf branches')
+    return matches[0]
+
 def generate_enums():
     """Generate Go string constants for all enum schemas."""
     lines = []
     seen = {}
 
-    def append_enum(name, schema, origin, required=False):
+    def append_enum(name, schema, origin, error_if_empty=False):
         values = schema.get('enum', [])
         if not values:
-            if required:
+            if error_if_empty:
                 raise ValueError(f'{origin} no longer defines enum values for {name}')
             return
         if name in seen:
@@ -1533,8 +1570,9 @@ def generate_enums():
             append_enum(name, schema, str(f.relative_to(SCRIPT_DIR)))
 
     for name, spec in INLINE_ENUM_TYPES.items():
-        schema = load_schema_spec(spec)
-        append_enum(name, schema, spec, required=True)
+        schema = load_inline_enum_schema(spec)
+        origin = inline_enum_origin(spec)
+        append_enum(name, schema, origin, error_if_empty=True)
 
     return '\n'.join(lines)
 

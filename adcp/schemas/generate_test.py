@@ -218,39 +218,148 @@ class EnumGenerationTest(unittest.TestCase):
             generate.enum_members("TestStatus", ["active", 1])
 
     def test_generate_enums_includes_inline_optimization_metric_helpers(self):
-        schema = generate.load_schema_spec(
-            "core/optimization-goal.json#/oneOf/0/properties/metric"
-        )
         src = generate.generate_enums()
 
         self.assertIn("type OptimizationMetric = string", src)
+        self.assertIn('OptimizationMetricClicks OptimizationMetric = "clicks"', src)
         self.assertIn("func KnownOptimizationMetricValues() []OptimizationMetric", src)
         self.assertIn("func IsKnownOptimizationMetric(v OptimizationMetric) bool", src)
+        schema = generate.load_inline_enum_schema(generate.INLINE_ENUM_TYPES["OptimizationMetric"])
         for value in schema["enum"]:
             const_name = "OptimizationMetric" + generate.pascal_case(value)
             self.assertIn(f'{const_name} OptimizationMetric = "{value}"', src)
+
+    def test_generate_enums_resolves_inline_enum_by_kind(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "event"},
+                            "value": {"enum": ["wrong"]},
+                        },
+                    },
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["right"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        src = generate.generate_enums()
+        self.assertIn('TestInlineEnumRight TestInlineEnum = "right"', src)
+        self.assertNotIn("TestInlineEnumWrong", src)
 
     def test_generate_enums_rejects_duplicate_inline_enum_name(self):
         generate.INLINE_ENUM_TYPES = OrderedDict([
             (
                 "MediaBuyStatus",
-                "core/optimization-goal.json#/oneOf/0/properties/metric",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
             ),
         ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["x"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
 
         with self.assertRaisesRegex(ValueError, "duplicate enum type MediaBuyStatus"):
             generate.generate_enums()
 
     def test_generate_enums_requires_inline_enum_values(self):
-        generate.INLINE_ENUM_TYPES = OrderedDict([("TestInlineEnum", "test.json#/properties/value")])
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
 
         def load_schema_spec(spec):
-            self.assertEqual("test.json#/properties/value", spec)
-            return {"type": "string"}
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"type": "string"},
+                        },
+                    },
+                ],
+            }
 
         generate.load_schema_spec = load_schema_spec
 
         with self.assertRaisesRegex(ValueError, "no longer defines enum values"):
+            generate.generate_enums()
+
+    def test_generate_enums_rejects_duplicate_inline_kind_matches(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["first"]},
+                        },
+                    },
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["second"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(ValueError, "matched multiple oneOf branches"):
             generate.generate_enums()
 
     @unittest.skipUnless(shutil.which("go"), "go command not found")
