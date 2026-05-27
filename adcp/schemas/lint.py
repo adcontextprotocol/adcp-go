@@ -99,6 +99,9 @@ EXEMPT = {
     # PublisherPropertySelector is a hand-flattened oneOf; publisher-property-
     # selector.json is a oneOf of three variants and has no top-level properties.
     'PublisherPropertySelector',
+    # OptimizationGoal is hand-flattened from a oneOf and preserves unknown
+    # top-level keys for replacement-update round trips.
+    'OptimizationGoal',
 }
 
 # Map hand-written Go type name → schema path (relative to schemas/).

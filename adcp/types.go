@@ -432,6 +432,112 @@ type PricingOption struct {
 	Parameters          any      `json:"parameters,omitempty"`
 }
 
+// OptimizationGoal is a flattened representation of the optimization-goal
+// oneOf. Target remains the nested raw oneOf payload, while Extra preserves
+// schema-allowed future fields so read-modify-write callers do not strip
+// unknown goal metadata on replacement updates. Extra keys that collide with
+// typed fields are ignored when marshaling; set the typed field instead.
+type OptimizationGoal struct {
+	Kind                string                             `json:"kind,omitempty"`
+	Metric              string                             `json:"metric,omitempty"`
+	ReachUnit           string                             `json:"reach_unit,omitempty"`
+	TargetFrequency     *OptimizationGoalTargetFrequency   `json:"target_frequency,omitempty"`
+	ViewDurationSeconds float64                            `json:"view_duration_seconds,omitempty"`
+	Target              any                                `json:"target,omitempty"`
+	Priority            int                                `json:"priority,omitempty"`
+	EventSources        []OptimizationGoalEventSource      `json:"event_sources,omitempty"`
+	AttributionWindow   *OptimizationGoalAttributionWindow `json:"attribution_window,omitempty"`
+	Extra               map[string]any                     `json:"-"`
+}
+
+func (g OptimizationGoal) MarshalJSON() ([]byte, error) {
+	out := make(map[string]any, len(g.Extra))
+	for k, v := range g.Extra {
+		if isOptimizationGoalTypedJSONField(k) {
+			continue
+		}
+		out[k] = v
+	}
+	if g.Kind != "" {
+		out["kind"] = g.Kind
+	}
+	if g.Metric != "" {
+		out["metric"] = g.Metric
+	}
+	if g.ReachUnit != "" {
+		out["reach_unit"] = g.ReachUnit
+	}
+	if g.TargetFrequency != nil {
+		out["target_frequency"] = g.TargetFrequency
+	}
+	if g.ViewDurationSeconds != 0 {
+		out["view_duration_seconds"] = g.ViewDurationSeconds
+	}
+	if g.Target != nil {
+		out["target"] = g.Target
+	}
+	if g.Priority != 0 {
+		out["priority"] = g.Priority
+	}
+	if len(g.EventSources) > 0 {
+		out["event_sources"] = g.EventSources
+	}
+	if g.AttributionWindow != nil {
+		out["attribution_window"] = g.AttributionWindow
+	}
+	return json.Marshal(out)
+}
+
+func isOptimizationGoalTypedJSONField(key string) bool {
+	switch key {
+	case "kind",
+		"metric",
+		"reach_unit",
+		"target_frequency",
+		"view_duration_seconds",
+		"target",
+		"priority",
+		"event_sources",
+		"attribution_window":
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *OptimizationGoal) UnmarshalJSON(data []byte) error {
+	type alias OptimizationGoal
+	var typed alias
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for key := range raw {
+		if isOptimizationGoalTypedJSONField(key) {
+			delete(raw, key)
+		}
+	}
+
+	*g = OptimizationGoal(typed)
+	if len(raw) == 0 {
+		g.Extra = nil
+		return nil
+	}
+	g.Extra = make(map[string]any, len(raw))
+	for k, v := range raw {
+		var value any
+		if err := json.Unmarshal(v, &value); err != nil {
+			return err
+		}
+		g.Extra[k] = value
+	}
+	return nil
+}
+
 type MediaBuyListItem struct {
 	MediaBuyID string    `json:"media_buy_id"`
 	Status     string    `json:"status"`

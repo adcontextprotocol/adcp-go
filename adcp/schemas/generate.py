@@ -51,6 +51,7 @@ KNOWN_TYPES = {
     # oneOf schemas — generator produces `type X = any`; hand-writing flattens
     # the union into a single struct with all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
+    'OptimizationGoal',
     # From inputs.go (hand-written types that need custom Go code)
     'EmptyInput',
     'AccountInput', 'GovernanceAccountInput',
@@ -213,6 +214,7 @@ CORE_SCHEMAS = [
     "core/diagnostic-issue.json",
     "core/collection-selector.json",
     "core/package.json",
+    "core/optimization-goal.json",
     "pricing-options/price-breakdown.json",
     "core/media-buy.json",
     "core/pricing-option.json",
@@ -611,6 +613,18 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "#/properties/media_buy_deliveries/items/properties/by_package/items"
         "/allOf/1/properties/daily_breakdown/items",
     ),
+    (
+        "OptimizationGoalTargetFrequency",
+        "core/optimization-goal.json#/oneOf/0/properties/target_frequency",
+    ),
+    (
+        "OptimizationGoalEventSource",
+        "core/optimization-goal.json#/oneOf/1/properties/event_sources/items",
+    ),
+    (
+        "OptimizationGoalAttributionWindow",
+        "core/optimization-goal.json#/oneOf/1/properties/attribution_window",
+    ),
 ])
 
 # Named helper types generated for simple union schemas. These cover the common
@@ -850,6 +864,10 @@ INLINE_TYPE_HINTS = {
     ('CreativeFormat', 'renders'): 'Render',
     ('CreativeFormat', 'assets'): 'AssetSlot',
     ('GetMediaBuysResponse', 'media_buys'): 'MediaBuyData',
+    ('Package', 'optimization_goals'): 'OptimizationGoal',
+    ('PackageInput', 'optimization_goals'): 'OptimizationGoal',
+    ('PackageUpdate', 'optimization_goals'): 'OptimizationGoal',
+    ('OptimizationGoalEventSource', 'value_factor'): '*float64',
 }
 
 for _delivery_metric_type in (
