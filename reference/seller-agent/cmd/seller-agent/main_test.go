@@ -523,8 +523,8 @@ func TestCustomScenario_SeedPricingOption(t *testing.T) {
 	for _, opt := range p.PricingOptions {
 		if opt.PricingOptionID == "custom-cpm-5" {
 			found = true
-			if opt.FixedPrice != 5.0 {
-				t.Errorf("want fixed_price 5.0, got %.2f", opt.FixedPrice)
+			if opt.FixedPrice == nil || *opt.FixedPrice != 5.0 {
+				t.Errorf("want fixed_price 5.0, got %v", opt.FixedPrice)
 			}
 		}
 	}

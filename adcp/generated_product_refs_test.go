@@ -14,7 +14,7 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		PublisherProperties: []PublisherPropertySelector{{PublisherDomain: "example.com", SelectionType: "all"}},
 		FormatIDs:           []FormatRef{{AgentURL: "https://seller.example/mcp", ID: "display_300x250"}},
 		DeliveryType:        "guaranteed",
-		PricingOptions:      []PricingOption{{PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: 15, Currency: "USD"}},
+		PricingOptions:      []PricingOption{{PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: Ptr(15.0), Currency: "USD"}},
 		Placements: []Placement{{
 			PlacementID: "homepage",
 			Name:        "Homepage",
@@ -22,7 +22,7 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		}},
 		Forecast: &DeliveryForecast{
 			Points: []ForecastPoint{{
-				Budget: 1000,
+				Budget: Ptr(1000.0),
 				Metrics: map[string]ForecastRange{
 					"impressions": {Mid: 100000},
 				},
@@ -176,6 +176,156 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("marshaled product missing %s:\n%s", want, body)
 		}
+	}
+}
+
+func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
+	cases := []struct {
+		name  string
+		v     any
+		want  []string
+		deny  []string
+		check func(t *testing.T, raw []byte)
+	}{
+		{
+			name: "pricing option nil fixed price",
+			v:    PricingOption{PricingOptionID: "auction", PricingModel: "cpm", Currency: "USD"},
+			deny: []string{`"fixed_price"`},
+		},
+		{
+			name: "pricing option zero fixed price",
+			v:    PricingOption{PricingOptionID: "fixed-zero", PricingModel: "cpm", Currency: "USD", FixedPrice: Ptr(0.0)},
+			want: []string{`"fixed_price":0`},
+			check: func(t *testing.T, raw []byte) {
+				var got PricingOption
+				requireJSONRoundTrip(t, raw, &got)
+				if got.FixedPrice == nil || *got.FixedPrice != 0 {
+					t.Fatalf("fixed_price = %v, want pointer to 0", got.FixedPrice)
+				}
+			},
+		},
+		{
+			name: "forecast point nil budget",
+			v:    ForecastPoint{Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
+			deny: []string{`"budget"`},
+		},
+		{
+			name: "forecast point zero budget",
+			v:    ForecastPoint{Budget: Ptr(0.0), Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
+			want: []string{`"budget":0`},
+			check: func(t *testing.T, raw []byte) {
+				var got ForecastPoint
+				requireJSONRoundTrip(t, raw, &got)
+				if got.Budget == nil || *got.Budget != 0 {
+					t.Fatalf("budget = %v, want pointer to 0", got.Budget)
+				}
+			},
+		},
+		{
+			name: "audience selector nil bounds",
+			v: AudienceSelector{
+				Type:      "signal",
+				SignalID:  &SignalID{AgentURL: "https://signals.example/mcp", ID: "score"},
+				ValueType: "numeric",
+			},
+			deny: []string{`"min_value"`, `"max_value"`},
+		},
+		{
+			name: "audience selector zero bounds",
+			v: AudienceSelector{
+				Type:      "signal",
+				SignalID:  &SignalID{AgentURL: "https://signals.example/mcp", ID: "score"},
+				ValueType: "numeric",
+				MinValue:  Ptr(0.0),
+				MaxValue:  Ptr(0.0),
+			},
+			want: []string{`"min_value":0`, `"max_value":0`},
+			check: func(t *testing.T, raw []byte) {
+				var got AudienceSelector
+				requireJSONRoundTrip(t, raw, &got)
+				if got.MinValue == nil || *got.MinValue != 0 {
+					t.Fatalf("min_value = %v, want pointer to 0", got.MinValue)
+				}
+				if got.MaxValue == nil || *got.MaxValue != 0 {
+					t.Fatalf("max_value = %v, want pointer to 0", got.MaxValue)
+				}
+			},
+		},
+		{
+			name: "creative asset nil weight",
+			v: CreativeAsset{
+				CreativeID: "creative-1",
+				Name:       "Creative",
+				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
+				Assets:     map[string]any{"image": "asset-1"},
+			},
+			deny: []string{`"weight"`},
+		},
+		{
+			name: "creative asset zero weight",
+			v: CreativeAsset{
+				CreativeID: "creative-1",
+				Name:       "Creative",
+				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
+				Assets:     map[string]any{"image": "asset-1"},
+				Weight:     Ptr(0.0),
+			},
+			want: []string{`"weight":0`},
+			check: func(t *testing.T, raw []byte) {
+				var got CreativeAsset
+				requireJSONRoundTrip(t, raw, &got)
+				if got.Weight == nil || *got.Weight != 0 {
+					t.Fatalf("weight = %v, want pointer to 0", got.Weight)
+				}
+			},
+		},
+		{
+			name: "keyword target nil bid price",
+			v:    KeywordTarget{Keyword: "running shoes", MatchType: "phrase"},
+			deny: []string{`"bid_price"`},
+		},
+		{
+			name: "keyword target zero bid price",
+			v:    KeywordTarget{Keyword: "running shoes", MatchType: "phrase", BidPrice: Ptr(0.0)},
+			want: []string{`"bid_price":0`},
+			check: func(t *testing.T, raw []byte) {
+				var got KeywordTarget
+				requireJSONRoundTrip(t, raw, &got)
+				if got.BidPrice == nil || *got.BidPrice != 0 {
+					t.Fatalf("bid_price = %v, want pointer to 0", got.BidPrice)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(tc.v)
+			if err != nil {
+				t.Fatalf("marshal: %v", err)
+			}
+			body := string(raw)
+			for _, want := range tc.want {
+				if !strings.Contains(body, want) {
+					t.Fatalf("marshaled payload missing %s:\n%s", want, body)
+				}
+			}
+			for _, deny := range tc.deny {
+				if strings.Contains(body, deny) {
+					t.Fatalf("marshaled payload unexpectedly contained %s:\n%s", deny, body)
+				}
+			}
+			if tc.check != nil {
+				tc.check(t, raw)
+			}
+		})
+	}
+}
+
+func requireJSONRoundTrip(t *testing.T, raw []byte, v any) {
+	t.Helper()
+	if err := json.Unmarshal(raw, v); err != nil {
+		t.Fatalf("unmarshal %s: %v", raw, err)
 	}
 }
 

@@ -878,6 +878,11 @@ INLINE_TYPE_HINTS = {
     # and explicit 0 zeroes this event source. view_duration_seconds has
     # exclusiveMinimum: 0, so explicit 0 is invalid and the hand-written
     # OptimizationGoal field intentionally stays float64.
+    ('CreativeAsset', 'weight'): '*float64',
+    ('KeywordTarget', 'bid_price'): '*float64',
+    ('AudienceSelector', 'min_value'): '*float64',
+    ('AudienceSelector', 'max_value'): '*float64',
+    ('ForecastPoint', 'budget'): '*float64',
     ('OptimizationGoalEventSource', 'value_factor'): '*float64',
 }
 

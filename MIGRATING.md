@@ -11,6 +11,12 @@ Optional object references are pointers: nil omits the field, and `&T{}` or
 `adcp.Ptr(T{})` emits it. Required fields inside the nested struct still need to
 be populated.
 
+- Optional numeric fields where explicit zero is meaningful are now pointers:
+  `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
+  `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
+  `CreativeAsset.Weight`, and `KeywordTarget.BidPrice`. Use nil to omit the
+  field, and `adcp.Ptr(0.0)` when the wire payload must include an explicit
+  zero.
 - `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
   cancellation. The AdCP schema constrains `canceled` to true; do not send

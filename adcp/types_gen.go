@@ -5399,8 +5399,8 @@ type AudienceSelector struct {
 	ValueType string `json:"value_type,omitempty"` // Discriminator for numeric signals
 	Value *bool `json:"value,omitempty"` // Whether to include (true) or exclude (false) users matching this signal
 	Values []string `json:"values,omitempty"` // Values to target. Users with any of these values will be included.
-	MinValue float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
-	MaxValue float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
+	MinValue *float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
+	MaxValue *float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
 	Description string `json:"description,omitempty"` // Natural language description of the audience (e.g., 'likely EV buyers', 'high ne
 	Category string `json:"category,omitempty"` // Optional grouping hint for the governance agent (e.g., 'demographic', 'behaviora
 }
@@ -5483,7 +5483,7 @@ type DeliveryForecast struct {
 // ForecastPoint — A forecast data point. When budget is present, the point pairs a spend level with expected delivery
 type ForecastPoint struct {
 	Label string `json:"label,omitempty"` // Human-readable name for this forecast point. Required when forecast_range_unit i
-	Budget float64 `json:"budget,omitempty"` // Budget amount for this forecast point. Required for spend curves; omit for avail
+	Budget *float64 `json:"budget,omitempty"` // Budget amount for this forecast point. Required for spend curves; omit for avail
 	Metrics map[string]ForecastRange `json:"metrics"` // Forecasted metric values. Keys are forecastable-metric enum values for delivery/
 }
 
@@ -5671,7 +5671,7 @@ type CreativeAsset struct {
 	Inputs []CreativeAssetInput `json:"inputs,omitempty"` // Preview contexts for generative formats - defines what scenarios to generate pre
 	Tags []string `json:"tags,omitempty"` // User-defined tags for organization and searchability
 	Status string `json:"status,omitempty"` // For generative creatives: set to 'approved' to finalize, 'rejected' to request r
-	Weight float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
+	Weight *float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
 	PlacementIDs []string `json:"placement_ids,omitempty"` // Optional array of placement IDs where this creative should run when uploading vi
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast cl
 	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
@@ -6315,7 +6315,7 @@ type AgeRestriction struct {
 type KeywordTarget struct {
 	Keyword string `json:"keyword"` // The keyword to target
 	MatchType string `json:"match_type"`
-	BidPrice float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
+	BidPrice *float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
 }
 
 type NegativeKeywordTarget struct {

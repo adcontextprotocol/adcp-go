@@ -325,5 +325,59 @@ class OptimizationGoalSchemaTest(unittest.TestCase):
         self.assertEqual("float64", view_duration_type)
 
 
+class OptionalNumericPolicyTest(unittest.TestCase):
+    def assert_field_type(self, schema_path, type_name, json_name, want):
+        schema = generate.load_schema(schema_path)
+        prop = generate.schema_properties(schema)[json_name]
+        required_set = generate.schema_required_names(schema)
+
+        go_type, _ = generate.field_go_type_info(
+            type_name,
+            json_name,
+            prop,
+            required_set,
+        )
+
+        self.assertEqual(want, go_type)
+
+    def test_zero_valid_optional_numeric_fields_use_pointers(self):
+        self.assert_field_type(
+            "core/creative-asset.json",
+            "CreativeAsset",
+            "weight",
+            "*float64",
+        )
+        targeting = generate.load_schema("core/targeting.json")
+        keyword_target = generate.json_pointer_get(
+            targeting,
+            "/properties/keyword_targets/items",
+        )
+        bid_price_type, _ = generate.field_go_type_info(
+            "KeywordTarget",
+            "bid_price",
+            keyword_target["properties"]["bid_price"],
+            set(keyword_target.get("required", [])),
+        )
+        self.assertEqual("*float64", bid_price_type)
+        self.assert_field_type(
+            "core/audience-selector.json",
+            "AudienceSelector",
+            "min_value",
+            "*float64",
+        )
+        self.assert_field_type(
+            "core/audience-selector.json",
+            "AudienceSelector",
+            "max_value",
+            "*float64",
+        )
+        self.assert_field_type(
+            "core/forecast-point.json",
+            "ForecastPoint",
+            "budget",
+            "*float64",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

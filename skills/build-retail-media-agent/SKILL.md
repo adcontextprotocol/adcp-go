@@ -84,7 +84,7 @@ var products = []adcp.Product{
             {PublisherDomain: "shop.example", SelectionType: "all"},
         },
         PricingOptions: []adcp.PricingOption{
-            {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: 0.50, Currency: "USD"},
+            {PricingOptionID: "sp-cpc", PricingModel: "cpc", FixedPrice: adcp.Ptr(0.50), Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "product-card"}},
         ReportingCapabilities: adcp.ReportingCapabilities{
