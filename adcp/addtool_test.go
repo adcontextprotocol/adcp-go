@@ -3,7 +3,6 @@ package adcp
 import (
 	"encoding/json"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -142,19 +141,123 @@ func TestPermissiveSchemaVsDefaultSchema(t *testing.T) {
 func TestPermissiveSchemaPreservesOptimizationGoalTarget(t *testing.T) {
 	schema := permissiveSchemaFor[PackageInput]()
 
-	b, err := json.Marshal(schema)
-	require.NoError(t, err, "failed to marshal package input schema")
-	body := string(b)
+	goalSchema := findOptimizationGoalSchema(t, schema)
+	assertOptimizationGoalBranches(t, goalSchema)
+}
 
-	assert.Contains(t, body, `"optimization_goals"`, "expected optimization_goals in schema")
-	assert.Contains(t, body, `"target"`, "expected optimization goal target in schema")
-	for _, want := range []string{
-		`"const":"cost_per"`,
-		`"const":"threshold_rate"`,
-		`"const":"per_ad_spend"`,
-		`"const":"maximize_value"`,
-	} {
-		assert.Contains(t, body, want, "expected target variant %s in schema", want)
+func TestPermissiveSchemaForOptimizationGoalUsesProtocolBranches(t *testing.T) {
+	schema := permissiveSchemaFor[OptimizationGoal]()
+
+	assertOptimizationGoalBranches(t, schema)
+}
+
+func assertOptimizationGoalBranches(t *testing.T, goalSchema *jsonschema.Schema) {
+	t.Helper()
+
+	require.Len(t, goalSchema.OneOf, 2, "expected metric and event optimization goal branches")
+
+	metricBranch := optimizationGoalBranchByKind(t, goalSchema, "metric")
+	assert.Nil(t, metricBranch.AdditionalProperties, "metric branch should remain permissive")
+	assert.NotContains(t, metricBranch.Required, "target", "metric target should remain optional")
+	metricTarget := metricBranch.Properties["target"]
+	require.NotNil(t, metricTarget, "expected metric target schema")
+	assertTargetKinds(t, metricTarget, "cost_per", "threshold_rate")
+
+	eventBranch := optimizationGoalBranchByKind(t, goalSchema, "event")
+	assert.Nil(t, eventBranch.AdditionalProperties, "event branch should remain permissive")
+	assert.NotContains(t, eventBranch.Required, "target", "event target should remain optional")
+	eventTarget := eventBranch.Properties["target"]
+	require.NotNil(t, eventTarget, "expected event target schema")
+	assertTargetKinds(t, eventTarget, "cost_per", "per_ad_spend", "maximize_value")
+}
+
+func findOptimizationGoalSchema(t *testing.T, schema *jsonschema.Schema) *jsonschema.Schema {
+	t.Helper()
+	seen := map[*jsonschema.Schema]bool{}
+	var walk func(*jsonschema.Schema) *jsonschema.Schema
+	walk = func(s *jsonschema.Schema) *jsonschema.Schema {
+		if s == nil || seen[s] {
+			return nil
+		}
+		seen[s] = true
+		if len(s.OneOf) == 2 {
+			if branchHasKind(s.OneOf[0], "metric") && branchHasKind(s.OneOf[1], "event") {
+				return s
+			}
+			if branchHasKind(s.OneOf[0], "event") && branchHasKind(s.OneOf[1], "metric") {
+				return s
+			}
+		}
+		for _, prop := range s.Properties {
+			if found := walk(prop); found != nil {
+				return found
+			}
+		}
+		if found := walk(s.Items); found != nil {
+			return found
+		}
+		for _, sub := range s.OneOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, sub := range s.AnyOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, sub := range s.AllOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, def := range s.Defs {
+			if found := walk(def); found != nil {
+				return found
+			}
+		}
+		return nil
 	}
-	assert.True(t, strings.Count(body, `"const":"threshold_rate"`) >= 1, "expected threshold_rate target variant")
+	found := walk(schema)
+	require.NotNil(t, found, "expected optimization goal schema")
+	return found
+}
+
+func optimizationGoalBranchByKind(t *testing.T, schema *jsonschema.Schema, kind string) *jsonschema.Schema {
+	t.Helper()
+	for _, branch := range schema.OneOf {
+		if branchHasKind(branch, kind) {
+			return branch
+		}
+	}
+	t.Fatalf("expected optimization goal branch kind %q", kind)
+	return nil
+}
+
+func branchHasKind(schema *jsonschema.Schema, kind string) bool {
+	if schema == nil || schema.Properties == nil {
+		return false
+	}
+	kindSchema := schema.Properties["kind"]
+	if kindSchema == nil || kindSchema.Const == nil {
+		return false
+	}
+	value, ok := (*kindSchema.Const).(string)
+	return ok && value == kind
+}
+
+func assertTargetKinds(t *testing.T, schema *jsonschema.Schema, kinds ...string) {
+	t.Helper()
+	require.Len(t, schema.OneOf, len(kinds), "target branch count")
+	for _, want := range kinds {
+		found := false
+		for _, branch := range schema.OneOf {
+			assert.Nil(t, branch.AdditionalProperties, "target branch should remain permissive")
+			if branchHasKind(branch, want) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "expected target kind %q", want)
+	}
 }
