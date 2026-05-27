@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/adcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func newTestBackend() *backend {
@@ -255,6 +256,51 @@ func TestUpdateMediaBuy_UnknownStatusRejectsStateChanges(t *testing.T) {
 			}
 			if buy.Status != "future_status" {
 				t.Fatalf("unknown status transition changed status to %s", buy.Status)
+			}
+		})
+	}
+}
+
+func TestUpdateMediaBuy_UnsupportedActionsReturnInvalidAction(t *testing.T) {
+	cases := []struct {
+		name  string
+		input func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest
+	}{
+		{
+			name: "update dates",
+			input: func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest {
+				return adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, StartTime: "2026-06-01T00:00:00Z"}
+			},
+		},
+		{
+			name: "add packages",
+			input: func(buy *adcp.MediaBuyData) adcp.UpdateMediaBuyRequest {
+				return adcp.UpdateMediaBuyRequest{
+					MediaBuyID: buy.MediaBuyID,
+					NewPackages: []adcp.PackageInput{{
+						ProductID:       "premium-display",
+						PricingOptionID: "pd-cpm-15",
+						Budget:          500,
+					}},
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newTestBackend()
+			buy := mustCreateBuy(t, b, true)
+
+			result, _, err := b.updateMediaBuy(tc.input(buy))
+			if err != nil {
+				t.Fatalf("updateMediaBuy: %v", err)
+			}
+			if !result.IsError {
+				t.Fatal("expected error result for unsupported action")
+			}
+			if got := resultErrorCode(t, result); got != "INVALID_ACTION" {
+				t.Fatalf("want INVALID_ACTION, got %q", got)
 			}
 		})
 	}
@@ -670,6 +716,46 @@ func TestValidActions_CoversEveryKnownMediaBuyStatus(t *testing.T) {
 	}
 }
 
+func TestValidActions_CoversEveryKnownMediaBuyValidAction(t *testing.T) {
+	type expectation struct {
+		supported bool
+		reason    string
+	}
+	expected := map[adcp.MediaBuyValidAction]expectation{
+		adcp.MediaBuyValidActionPause:          {supported: true, reason: "active buys can pause"},
+		adcp.MediaBuyValidActionResume:         {supported: true, reason: "paused buys can resume"},
+		adcp.MediaBuyValidActionCancel:         {supported: true, reason: "non-terminal buys can cancel"},
+		adcp.MediaBuyValidActionUpdatePackages: {supported: true, reason: "package creative/targeting updates are implemented"},
+		adcp.MediaBuyValidActionSyncCreatives:  {supported: true, reason: "creative assignment flow is implemented"},
+		adcp.MediaBuyValidActionUpdateBudget:   {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
+		adcp.MediaBuyValidActionUpdateDates:    {reason: "unsupported: no date-update path in the reference implementation"},
+		adcp.MediaBuyValidActionAddPackages:    {reason: "unsupported: no post-create package-add path in the reference implementation"},
+	}
+
+	exposed := map[adcp.MediaBuyValidAction]bool{}
+	for _, status := range adcp.KnownMediaBuyStatusValues() {
+		for _, action := range validActions(string(status)) {
+			exposed[adcp.MediaBuyValidAction(action)] = true
+		}
+	}
+
+	for _, action := range adcp.KnownMediaBuyValidActionValues() {
+		want, ok := expected[action]
+		if !ok {
+			t.Fatalf("validActions missing explicit expectation for known action %q", action)
+		}
+		if want.reason == "" {
+			t.Fatalf("validActions expectation for action %q must document support rationale", action)
+		}
+		if want.supported && !exposed[action] {
+			t.Fatalf("supported action %q is not exposed by any status", action)
+		}
+		if !want.supported && exposed[action] {
+			t.Fatalf("unsupported action %q is exposed by validActions", action)
+		}
+	}
+}
+
 func equalStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -680,4 +766,22 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+func resultErrorCode(t *testing.T, result *mcp.CallToolResult) string {
+	t.Helper()
+
+	b, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatalf("marshal result: %v", err)
+	}
+	var wire struct {
+		ADCPError struct {
+			Code string `json:"code"`
+		} `json:"adcp_error"`
+	}
+	if err := json.Unmarshal(b, &wire); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	return wire.ADCPError.Code
 }

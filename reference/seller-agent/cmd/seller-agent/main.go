@@ -238,6 +238,12 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	if input.InvoiceRecipient != nil {
 		buy.InvoiceRecipient = responseBusinessEntity(input.InvoiceRecipient)
 	}
+	if (input.StartTime != "" || input.EndTime != "") && !hasValidAction(buy.Status, "update_dates") {
+		return errorResult("INVALID_ACTION", "Date updates are not supported by this reference seller.", input.Context)
+	}
+	if len(input.NewPackages) > 0 && !hasValidAction(buy.Status, "add_packages") {
+		return errorResult("INVALID_ACTION", "Package additions are not supported by this reference seller.", input.Context)
+	}
 	if len(input.Packages) > 0 && !hasValidAction(buy.Status, "update_packages") {
 		return errorResult("INVALID_TRANSITION", "Media buy cannot be changed from its current status.", input.Context)
 	}
