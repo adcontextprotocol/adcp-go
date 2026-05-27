@@ -183,6 +183,14 @@ class UnionHelperGenerationTest(unittest.TestCase):
 
 
 class EnumGenerationTest(unittest.TestCase):
+    def setUp(self):
+        self.original_inline_enum_types = generate.INLINE_ENUM_TYPES
+        self.original_load_schema_spec = generate.load_schema_spec
+
+    def tearDown(self):
+        generate.INLINE_ENUM_TYPES = self.original_inline_enum_types
+        generate.load_schema_spec = self.original_load_schema_spec
+
     def test_enum_helpers_are_opt_in_and_do_not_echo_rejected_value(self):
         src = generate.enum_to_type("TestStatus", "Test enum", ["active", "pending-start"])
 
@@ -208,6 +216,42 @@ class EnumGenerationTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             generate.enum_members("TestStatus", ["active", 1])
+
+    def test_generate_enums_includes_inline_optimization_metric_helpers(self):
+        schema = generate.load_schema_spec(
+            "core/optimization-goal.json#/oneOf/0/properties/metric"
+        )
+        src = generate.generate_enums()
+
+        self.assertIn("type OptimizationMetric = string", src)
+        self.assertIn("func KnownOptimizationMetricValues() []OptimizationMetric", src)
+        self.assertIn("func IsKnownOptimizationMetric(v OptimizationMetric) bool", src)
+        for value in schema["enum"]:
+            const_name = "OptimizationMetric" + generate.pascal_case(value)
+            self.assertIn(f'{const_name} OptimizationMetric = "{value}"', src)
+
+    def test_generate_enums_rejects_duplicate_inline_enum_name(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "MediaBuyStatus",
+                "core/optimization-goal.json#/oneOf/0/properties/metric",
+            ),
+        ])
+
+        with self.assertRaisesRegex(ValueError, "duplicate enum type MediaBuyStatus"):
+            generate.generate_enums()
+
+    def test_generate_enums_requires_inline_enum_values(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([("TestInlineEnum", "test.json#/properties/value")])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json#/properties/value", spec)
+            return {"type": "string"}
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(ValueError, "no longer defines enum values"):
+            generate.generate_enums()
 
     @unittest.skipUnless(shutil.which("go"), "go command not found")
     def test_enum_helpers_runtime(self):
