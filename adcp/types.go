@@ -405,16 +405,21 @@ type ProductsData struct {
 // Fields by variant:
 //
 //	cpm / vcpm / cpc / cpcv / cpv / cpp:
-//	  FixedPrice (fixed) OR FloorPrice + PriceGuidance (auction); MaxBid for
-//	  auction models to interpret bid_price as a ceiling.
+//	  FixedPrice present for fixed-price models OR FloorPrice + PriceGuidance
+//	  for auction models; MaxBid for auction models to interpret bid_price as
+//	  a ceiling.
 //	cpa:
-//	  FixedPrice, EventSourceID, EventType (required); CustomEventName when
+//	  FixedPrice present, EventSourceID, EventType; CustomEventName when
 //	  EventType="custom"; EligibleAdjustments for adjustment filtering.
 //	flat_rate:
-//	  FixedPrice (required).
+//	  FixedPrice present.
 //	time:
-//	  FixedPrice (required), Parameters for duration/unit specifics.
+//	  FixedPrice present, Parameters for duration/unit specifics.
 //	All variants: PricingOptionID, Currency, MinSpendPerPackage, PriceBreakdown.
+//
+// FixedPrice is a pointer because the schema oneOf requires field presence for
+// fixed-price variants. Go represents that presence with non-nil; use Float64(0)
+// if an explicit zero fixed price is intentional.
 type PricingOption struct {
 	PricingOptionID     string   `json:"pricing_option_id"`
 	PricingModel        string   `json:"pricing_model"`
