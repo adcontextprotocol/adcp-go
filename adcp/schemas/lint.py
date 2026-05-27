@@ -377,6 +377,12 @@ OPTIONAL_NUMERIC_OMISSION_HINTS = (
 )
 
 OPTIONAL_NUMERIC_SCALAR_OK = {
+    # Prefer changing optional numeric fields to *int/*float64 when omission and
+    # explicit zero have different wire semantics, especially request fields
+    # with defaults or schema descriptions that say "if omitted" / "when
+    # provided". Add a waiver only after confirming zero is invalid or
+    # semantically identical to omission, and include the protocol rationale in
+    # the reason string.
     # (type_name, json_name): reason
 }
 
