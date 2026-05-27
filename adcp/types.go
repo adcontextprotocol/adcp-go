@@ -419,7 +419,7 @@ type PricingOption struct {
 	PricingOptionID     string   `json:"pricing_option_id"`
 	PricingModel        string   `json:"pricing_model"`
 	Currency            string   `json:"currency"`
-	FixedPrice          float64  `json:"fixed_price,omitempty"`
+	FixedPrice          *float64 `json:"fixed_price,omitempty"`
 	FloorPrice          float64  `json:"floor_price,omitempty"`
 	MinSpendPerPackage  float64  `json:"min_spend_per_package,omitempty"`
 	MaxBid              *bool    `json:"max_bid,omitempty"`
