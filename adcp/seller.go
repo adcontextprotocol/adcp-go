@@ -108,6 +108,7 @@ func Register(server *mcp.Server, cfg Config) {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
+				stampCreateMediaBuyResult(buy, sandbox, input.Context)
 				result, out, err := MediaBuyResponse(buy)
 				return attachContext(result, input.Context), out, err
 			})
@@ -401,6 +402,20 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		return nil, result
 	}
 	return acct, nil
+}
+
+func stampCreateMediaBuyResult(result CreateMediaBuyResult, sandbox bool, context any) {
+	switch v := result.(type) {
+	case *CreateMediaBuySuccess:
+		if v.Sandbox == nil {
+			v.Sandbox = Bool(sandbox)
+		}
+		v.Context = context
+	case *CreateMediaBuySubmitted:
+		v.Context = context
+	case *CreateMediaBuyError:
+		v.Context = context
+	}
 }
 
 // detectProtocols returns supported_protocols values inferred from the

@@ -261,6 +261,72 @@ func TestRegisteredHandlersAttachContext(t *testing.T) {
 	}
 }
 
+func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
+	ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
+	args := map[string]any{"context": ctxValue}
+
+	t.Run("success stamps sandbox and context", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			Sandbox: true,
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+				return &CreateMediaBuySuccess{
+					MediaBuyID: "mb-1",
+					Packages:   []Package{},
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.Equal(t, ctxValue, wire["context"])
+		assert.Equal(t, true, wire["sandbox"])
+	})
+
+	t.Run("success preserves explicit sandbox", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			Sandbox: true,
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+				return &CreateMediaBuySuccess{
+					MediaBuyID: "mb-1",
+					Packages:   []Package{},
+					Sandbox:    Bool(false),
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.Equal(t, ctxValue, wire["context"])
+		assert.Equal(t, false, wire["sandbox"])
+	})
+
+	t.Run("submitted stamps context", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+				return &CreateMediaBuySubmitted{
+					TaskID: "task-1",
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.Equal(t, ctxValue, wire["context"])
+		assert.Equal(t, "submitted", wire["status"])
+	})
+
+	t.Run("schema error stamps context", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+				return &CreateMediaBuyError{
+					Errors: []AdcpError{{"code": "INVALID_REQUEST", "message": "bad request"}},
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.True(t, result.IsError)
+		assert.Equal(t, ctxValue, wire["context"])
+	})
+}
+
 func baseTestConfig(cfg Config) Config {
 	cfg.IdempotencyReplayTTL = 24 * time.Hour
 	if cfg.Capabilities == nil {
