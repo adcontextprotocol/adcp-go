@@ -256,14 +256,16 @@ class EnumGenerationTest(unittest.TestCase):
 
 
 class OptimizationGoalSchemaTest(unittest.TestCase):
+    def setUp(self):
+        self.schema = generate.load_schema("core/optimization-goal.json")
+
     def test_cost_per_target_branches_stay_structurally_equivalent(self):
-        schema = generate.load_schema("core/optimization-goal.json")
         metric_cost_per = generate.json_pointer_get(
-            schema,
+            self.schema,
             "/oneOf/0/properties/target/oneOf/0",
         )
         event_cost_per = generate.json_pointer_get(
-            schema,
+            self.schema,
             "/oneOf/1/properties/target/oneOf/0",
         )
 
@@ -271,6 +273,28 @@ class OptimizationGoalSchemaTest(unittest.TestCase):
             without_descriptions(metric_cost_per),
             without_descriptions(event_cost_per),
         )
+
+    def test_optional_numeric_policy_for_optimization_goal_fields(self):
+        event_source = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/1/properties/event_sources/items",
+        )
+        value_factor_type, _ = generate.field_go_type_info(
+            "OptimizationGoalEventSource",
+            "value_factor",
+            event_source["properties"]["value_factor"],
+            set(event_source.get("required", [])),
+        )
+        self.assertEqual("*float64", value_factor_type)
+
+        metric_goal = generate.json_pointer_get(self.schema, "/oneOf/0")
+        view_duration_type, _ = generate.field_go_type_info(
+            "OptimizationGoal",
+            "view_duration_seconds",
+            metric_goal["properties"]["view_duration_seconds"],
+            set(metric_goal.get("required", [])),
+        )
+        self.assertEqual("float64", view_duration_type)
 
 
 if __name__ == "__main__":
