@@ -319,6 +319,9 @@ when constructing goals directly in Go.
   `*adcp.CreateMediaBuyError` when building the schema error branch directly.
 - `CreateMediaBuySubmitted` carries async `task_id` / `message` fields:
   `return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: msg}, nil`.
+- `Config.GetMediaBuys` now returns `*adcp.GetMediaBuysResponse` instead of
+  `[]adcp.MediaBuyData`. Read pagination, context, and error envelope fields
+  from the response struct; extract items via `response.MediaBuys`.
 - `MediaBuyData` is now scoped to `get_media_buys` items. It carries fields such
   as `currency`, `total_budget`, `start_time`, `end_time`, `history`, and
   `valid_actions`, plus typed `invoice_recipient`, but not create-task fields
