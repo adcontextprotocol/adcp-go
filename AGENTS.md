@@ -51,6 +51,7 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `adcp/schemas/generate.py` | JSON-schema-to-Go-struct generator. `KNOWN_TYPES` set (top of file) lists types it skips so they can be hand-written. |
 | `adcp/schemas/lint.py` | Drift linter — diffs every `KNOWN_TYPES` entry against its schema. CI fails on drift. |
 | `adcp/testcontroller.go` | `RegisterTestController` — comply_test_controller for storyboard testing. |
+| `docs/sdk-typing-policy.md` | Decision rules for schema-faithful Go protocol types, optional scalar pointers, enums, `ext`, and generator ownership. |
 | `skills/` | SKILL.md files for coding agents. SDK-local (`build-*`) authored here; protocol-managed (`adcp-*`, `call-adcp-agent`) synced by `adcp/schemas/download.sh` from the published bundle — do not hand-edit. CODEOWNERS-gated. See `skills/README.md`. |
 
 ### Adding a new AdCP type
