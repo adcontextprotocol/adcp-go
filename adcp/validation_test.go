@@ -1,6 +1,13 @@
 package adcp
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+type customOptimizationGoalTarget struct{}
+
+func (customOptimizationGoalTarget) isOptimizationGoalTarget() {}
 
 func hasValidationIssue(issues []ValidationIssue, field, code string) bool {
 	for _, issue := range issues {
@@ -174,6 +181,18 @@ func TestValidateOptimizationGoal_TargetRules(t *testing.T) {
 	if issues := futureTarget.Validate(WithStrictEnums()); !hasValidationIssue(issues, "target.kind", "UNKNOWN_VARIANT") {
 		t.Fatalf("Validate missing strict raw target issue: %#v", issues)
 	}
+
+	customTarget := OptimizationGoal{
+		Kind:   "metric",
+		Metric: "clicks",
+		Target: customOptimizationGoalTarget{},
+	}
+	if issues := customTarget.Validate(); hasValidationIssue(issues, "target.kind", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate reported strict custom target issue without WithStrictEnums: %#v", issues)
+	}
+	if issues := customTarget.Validate(WithStrictEnums()); !hasValidationIssue(issues, "target.kind", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate missing strict custom target issue: %#v", issues)
+	}
 }
 
 func TestValidateOptimizationGoal_DurationRules(t *testing.T) {
@@ -195,5 +214,124 @@ func TestValidateOptimizationGoal_DurationRules(t *testing.T) {
 	issues = goal.Validate(WithStrictEnums())
 	if !hasValidationIssue(issues, "target_frequency.window.unit", "UNKNOWN_ENUM_VALUE") {
 		t.Fatalf("Validate missing duration unit enum issue: %#v", issues)
+	}
+}
+
+func TestValidateOptimizationGoal_PointerTargets(t *testing.T) {
+	tests := []struct {
+		name         string
+		goalKind     string
+		eventSources []OptimizationGoalEventSource
+		target       OptimizationGoalTarget
+		field        string
+		code         string
+	}{
+		{
+			name:     "cost per requires positive value",
+			goalKind: "metric",
+			target:   &OptimizationGoalCostPerTarget{},
+			field:    "target.value",
+			code:     "INVALID_VALUE",
+		},
+		{
+			name:     "threshold rate rejected for event",
+			goalKind: "event",
+			eventSources: []OptimizationGoalEventSource{{
+				EventSourceID: "pixel-1",
+				EventType:     "purchase",
+			}},
+			target: &OptimizationGoalThresholdRateTarget{Value: 1},
+			field:  "target.kind",
+			code:   "UNSUPPORTED_TARGET_KIND",
+		},
+		{
+			name:     "per ad spend rejected for metric",
+			goalKind: "metric",
+			target:   &OptimizationGoalPerAdSpendTarget{Value: 1},
+			field:    "target.kind",
+			code:     "UNSUPPORTED_TARGET_KIND",
+		},
+		{
+			name:     "maximize value rejected for metric",
+			goalKind: "metric",
+			target:   &OptimizationGoalMaximizeValueTarget{},
+			field:    "target.kind",
+			code:     "UNSUPPORTED_TARGET_KIND",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			goal := OptimizationGoal{
+				Kind:         tt.goalKind,
+				Metric:       "clicks",
+				EventSources: tt.eventSources,
+				Target:       tt.target,
+			}
+			issues := goal.Validate()
+			if !hasValidationIssue(issues, tt.field, tt.code) {
+				t.Fatalf("Validate missing issue %s/%s in %#v", tt.field, tt.code, issues)
+			}
+		})
+	}
+}
+
+func TestValidateOptimizationGoal_UnmarshaledPointerTarget(t *testing.T) {
+	var goal OptimizationGoal
+	if err := json.Unmarshal([]byte(`{
+		"kind": "event",
+		"event_sources": [{"event_source_id": "pixel-1", "event_type": "purchase"}],
+		"target": {"kind": "per_ad_spend", "value": 4}
+	}`), &goal); err != nil {
+		t.Fatalf("json.Unmarshal optimization goal: %v", err)
+	}
+	if _, ok := goal.Target.(*OptimizationGoalPerAdSpendTarget); !ok {
+		t.Fatalf("target should decode as *OptimizationGoalPerAdSpendTarget, got %#v", goal.Target)
+	}
+	if issues := goal.Validate(); !hasValidationIssue(issues, "event_sources", "REQUIRED_FIELD") {
+		t.Fatalf("Validate missing value_field requirement for decoded target: %#v", issues)
+	}
+
+	goal.EventSources[0].ValueField = "value"
+	if issues := goal.Validate(); len(issues) != 0 {
+		t.Fatalf("Validate issues after value_field = %#v, want none", issues)
+	}
+}
+
+func TestValidateOptimizationGoal_NumericRules(t *testing.T) {
+	goal := OptimizationGoal{
+		Kind:                "metric",
+		Metric:              "views",
+		Priority:            -1,
+		ViewDurationSeconds: -1,
+		TargetFrequency: &OptimizationGoalTargetFrequency{
+			Window: Duration{Interval: 7, Unit: "days"},
+		},
+	}
+
+	issues := goal.Validate()
+	for _, want := range []struct {
+		field string
+		code  string
+	}{
+		{"priority", "INVALID_VALUE"},
+		{"view_duration_seconds", "INVALID_VALUE"},
+		{"target_frequency", "REQUIRED_FIELD"},
+	} {
+		if !hasValidationIssue(issues, want.field, want.code) {
+			t.Fatalf("Validate missing issue %s/%s in %#v", want.field, want.code, issues)
+		}
+	}
+
+	goal.TargetFrequency.Min = -1
+	issues = goal.Validate()
+	if !hasValidationIssue(issues, "target_frequency.min", "INVALID_VALUE") {
+		t.Fatalf("Validate missing target_frequency.min issue: %#v", issues)
+	}
+
+	goal.TargetFrequency.Min = 1
+	goal.TargetFrequency.Max = -1
+	issues = goal.Validate()
+	if !hasValidationIssue(issues, "target_frequency.max", "INVALID_VALUE") {
+		t.Fatalf("Validate missing target_frequency.max issue: %#v", issues)
 	}
 }

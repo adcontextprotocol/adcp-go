@@ -86,14 +86,14 @@ func validateMetricOptimizationGoal(g OptimizationGoal, cfg validationConfig) []
 
 	if g.Metric == "" {
 		issues = appendRequired(issues, "metric")
-	} else if cfg.strictEnums && !IsKnownOptimizationMetric(OptimizationMetric(g.Metric)) {
+	} else if cfg.strictEnums && !IsKnownOptimizationMetric(g.Metric) {
 		issues = appendUnknownEnum(issues, "metric")
 	}
 
 	if g.Metric == "reach" {
 		if g.ReachUnit == "" {
 			issues = appendRequired(issues, "reach_unit")
-		} else if cfg.strictEnums && !IsKnownReachUnit(ReachUnit(g.ReachUnit)) {
+		} else if cfg.strictEnums && !IsKnownReachUnit(g.ReachUnit) {
 			issues = appendUnknownEnum(issues, "reach_unit")
 		}
 	}
@@ -104,7 +104,7 @@ func validateMetricOptimizationGoal(g OptimizationGoal, cfg validationConfig) []
 		issues = append(issues, ValidationIssue{
 			Field:   "view_duration_seconds",
 			Code:    "INVALID_VALUE",
-			Message: "view_duration_seconds must be greater than 0 when set",
+			Message: "view_duration_seconds must not be negative",
 		})
 	}
 	if !isNilOptimizationGoalTarget(g.Target) {
@@ -150,21 +150,21 @@ func (f *OptimizationGoalTargetFrequency) validate(path string, cfg validationCo
 		issues = append(issues, ValidationIssue{
 			Field:   path,
 			Code:    "REQUIRED_FIELD",
-			Message: "min or max is required",
+			Message: "min or max must be set to a positive value",
 		})
 	}
 	if f.Min < 0 {
 		issues = append(issues, ValidationIssue{
 			Field:   path + ".min",
 			Code:    "INVALID_VALUE",
-			Message: "min must be at least 1 when set",
+			Message: "min must be greater than 0 when set",
 		})
 	}
 	if f.Max < 0 {
 		issues = append(issues, ValidationIssue{
 			Field:   path + ".max",
 			Code:    "INVALID_VALUE",
-			Message: "max must be at least 1 when set",
+			Message: "max must be greater than 0 when set",
 		})
 	}
 	if f.Min > 0 && f.Max > 0 && f.Max < f.Min {
@@ -188,7 +188,7 @@ func (s OptimizationGoalEventSource) validate(path string, cfg validationConfig)
 	if s.EventType == "" {
 		issues = appendRequired(issues, path+".event_type")
 	} else {
-		if cfg.strictEnums && !IsKnownEventType(EventType(s.EventType)) {
+		if cfg.strictEnums && !IsKnownEventType(s.EventType) {
 			issues = appendUnknownEnum(issues, path+".event_type")
 		}
 		if s.EventType == "custom" && s.CustomEventName == "" {
@@ -280,6 +280,10 @@ func validateOptimizationGoalTarget(target OptimizationGoalTarget, goalKind, pat
 		issues = append(issues, validateRawOptimizationGoalTarget(t, path, cfg)...)
 	case OptimizationGoalRawTarget:
 		issues = append(issues, validateRawOptimizationGoalTarget(&t, path, cfg)...)
+	default:
+		if cfg.strictEnums {
+			issues = appendUnknownVariant(issues, path+".kind")
+		}
 	}
 
 	return issues
@@ -314,6 +318,9 @@ func validatePositiveTargetValue(value float64, path string) []ValidationIssue {
 }
 
 func optimizationTargetNeedsValueField(target OptimizationGoalTarget) bool {
+	// The schema describes per_ad_spend/maximize_value as value-based goals. The
+	// value_field requirement is an SDK invariant derived from those descriptions,
+	// not a complete JSON Schema validation pass.
 	switch target.(type) {
 	case *OptimizationGoalPerAdSpendTarget, OptimizationGoalPerAdSpendTarget,
 		*OptimizationGoalMaximizeValueTarget, OptimizationGoalMaximizeValueTarget:
