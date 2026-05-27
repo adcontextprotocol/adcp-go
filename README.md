@@ -131,6 +131,10 @@ acceptance. Validation is opt-in and intentionally narrower than full JSON
 Schema validation: it catches required fields and schema invariants the Go type
 cannot express, but keeps unknown enum and oneOf variant values
 forward-compatible unless `adcp.WithStrictEnums()` is supplied.
+For value-based event targets such as `per_ad_spend` and `maximize_value`, the
+validator also requires at least one event source `value_field`; that is an SDK
+invariant derived from the schema descriptions, not a general-purpose JSON
+Schema validation pass.
 
 ```go
 goal := adcp.OptimizationGoal{
