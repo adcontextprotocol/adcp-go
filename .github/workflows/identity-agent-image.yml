@@ -103,6 +103,9 @@ jobs:
       - name: Install cosign
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign versioning=semver
+          cosign-release: v3.0.6
 
       - name: Sign image (keyless OIDC)
         # Signs every pushed tag against the build's content digest, so all
