@@ -578,6 +578,8 @@ func (b *backend) simulateBudgetSpend(p adcp.SimulateBudgetParams) (*adcp.Simula
 	}
 	total := mediaBuyBudget(buy)
 	spend := total * p.SpendPercentage
+	// Budget-spend simulation advances financial pacing only; use
+	// simulateDelivery when impressions or clicks should move too.
 	for _, pkg := range buy.Packages {
 		if total == 0 {
 			continue
