@@ -69,7 +69,7 @@ var products = []adcp.Product{
             {PublisherDomain: "example.com", SelectionType: "all"},
         },
         PricingOptions: []adcp.PricingOption{
-            {PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"},
+            {PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: adcp.Ptr(15.00), Currency: "USD"},
         },
         FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "banner-300x250"}},
         ReportingCapabilities: adcp.ReportingCapabilities{
@@ -383,7 +383,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
     Description: "Primetime 30-second broadcast spots.",
     Channels: []string{"broadcast"}, DeliveryType: "guaranteed",
     PricingOptions: []adcp.PricingOption{
-        {PricingOptionID: "unit-30s", PricingModel: "unit", FixedPrice: 5000, Currency: "USD"},
+        {PricingOptionID: "unit-30s", PricingModel: "unit", FixedPrice: adcp.Ptr(5000.0), Currency: "USD"},
     },
     FormatIDs: []adcp.FormatRef{{AgentURL: agentURL, ID: "broadcast-30s"}},
     CancellationPolicy: &adcp.CancellationPolicy{

@@ -11,6 +11,12 @@ Optional object references are pointers: nil omits the field, and `&T{}` or
 `adcp.Ptr(T{})` emits it. Required fields inside the nested struct still need to
 be populated.
 
+- Optional numeric fields where explicit zero is meaningful are now pointers:
+  `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
+  `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
+  `CreativeAsset.Weight`, and `KeywordTarget.BidPrice`. Use nil to omit the
+  field, and `adcp.Ptr(0.0)` when the wire payload must include an explicit
+  zero.
 - `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
   cancellation. The AdCP schema constrains `canceled` to true; do not send
@@ -162,6 +168,7 @@ be populated.
 | `Package.OptimizationGoals` | `[]adcp.OptimizationGoal` |
 | `PackageInput.OptimizationGoals` | `[]adcp.OptimizationGoal` |
 | `PackageUpdate.OptimizationGoals` | `[]adcp.OptimizationGoal` |
+| `OptimizationGoal.Target` | `adcp.OptimizationGoalTarget` |
 | `GetMediaBuysRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
@@ -276,9 +283,34 @@ feedback := adcp.ProvidePerformanceFeedbackRequest{
   and `Ext`.
 - `OptimizationGoals` fields now use `[]adcp.OptimizationGoal` instead of
   `[]any`. Nested `event_sources`, `target_frequency`, and `attribution_window`
-  are typed; the nested `target` oneOf remains `any` until nested union
-  generation lands. `OptimizationGoal.Extra` preserves unknown top-level fields
-  when round-tripping newer goal variants through replacement-style updates.
+  are typed, and the nested `target` oneOf is now the
+  `adcp.OptimizationGoalTarget` interface. Use concrete target variants such as
+  `adcp.OptimizationGoalCostPerTarget`,
+  `adcp.OptimizationGoalThresholdRateTarget`,
+  `adcp.OptimizationGoalPerAdSpendTarget`, and
+  `adcp.OptimizationGoalMaximizeValueTarget`. Unknown future target variants
+  round-trip through `adcp.OptimizationGoalRawTarget`.
+  `OptimizationGoal.Extra` preserves unknown top-level fields when
+  round-tripping newer goal variants through replacement-style updates.
+
+```go
+goal := adcp.OptimizationGoal{
+  Kind:   "metric",
+  Metric: "reach",
+  Target: adcp.OptimizationGoalThresholdRateTarget{Value: 0.7},
+}
+
+switch target := goal.Target.(type) {
+case *adcp.OptimizationGoalThresholdRateTarget:
+  _ = target.Value
+case adcp.OptimizationGoalThresholdRateTarget:
+  _ = target.Value
+}
+```
+
+JSON unmarshal always produces the pointer form; the value form is what you get
+when constructing goals directly in Go.
+
 - `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
 - `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
   implemented by the generated schema variants. Return
@@ -287,6 +319,9 @@ feedback := adcp.ProvidePerformanceFeedbackRequest{
   `*adcp.CreateMediaBuyError` when building the schema error branch directly.
 - `CreateMediaBuySubmitted` carries async `task_id` / `message` fields:
   `return &adcp.CreateMediaBuySubmitted{Status: "submitted", TaskID: taskID, Message: msg}, nil`.
+- `Config.GetMediaBuys` now returns `*adcp.GetMediaBuysResponse` instead of
+  `[]adcp.MediaBuyData`. Read pagination, context, and error envelope fields
+  from the response struct; extract items via `response.MediaBuys`.
 - `MediaBuyData` is now scoped to `get_media_buys` items. It carries fields such
   as `currency`, `total_budget`, `start_time`, `end_time`, `history`, and
   `valid_actions`, plus typed `invoice_recipient`, but not create-task fields

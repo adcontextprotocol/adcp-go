@@ -389,7 +389,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 						Max:    3,
 						Window: Duration{Interval: 7, Unit: "days"},
 					},
-					Target:   map[string]any{"kind": "threshold_rate", "value": 0.7},
+					Target:   OptimizationGoalThresholdRateTarget{Value: 0.7},
 					Priority: 1,
 				}},
 			},
@@ -580,7 +580,7 @@ func TestGeneratedOptimizationGoalUnmarshalNestedShapes(t *testing.T) {
 				"value_field": "value",
 				"value_factor": 1.5
 			}],
-			"target": {"kind": "per_ad_spend", "value": 4},
+			"target": {"kind": "per_ad_spend", "value": 4, "future_target_field": "ok"},
 			"future_goal_field": {"keep": true},
 			"attribution_window": {
 				"post_click": {"interval": 7, "unit": "days"},
@@ -609,9 +609,12 @@ func TestGeneratedOptimizationGoalUnmarshalNestedShapes(t *testing.T) {
 	if goal.AttributionWindow == nil || goal.AttributionWindow.PostClick.Interval != 7 || goal.AttributionWindow.PostView == nil {
 		t.Fatalf("attribution_window not typed: %#v", goal.AttributionWindow)
 	}
-	target, ok := goal.Target.(map[string]any)
-	if !ok || target["kind"] != "per_ad_spend" {
-		t.Fatalf("target oneOf should remain a raw map, got %#v", goal.Target)
+	target, ok := goal.Target.(*OptimizationGoalPerAdSpendTarget)
+	if !ok || target.Kind != "per_ad_spend" || target.Value != 4 {
+		t.Fatalf("target oneOf should decode as per_ad_spend, got %#v", goal.Target)
+	}
+	if target.Extra["future_target_field"] != "ok" {
+		t.Fatalf("target extra field was not preserved: %#v", target.Extra)
 	}
 	extra, ok := goal.Extra["future_goal_field"].(map[string]any)
 	if !ok || extra["keep"] != true {
@@ -624,6 +627,9 @@ func TestGeneratedOptimizationGoalUnmarshalNestedShapes(t *testing.T) {
 	}
 	if !strings.Contains(string(roundTrip), `"future_goal_field":{"keep":true}`) {
 		t.Fatalf("round trip dropped unknown top-level goal field: %s", roundTrip)
+	}
+	if !strings.Contains(string(roundTrip), `"target":{"future_target_field":"ok","kind":"per_ad_spend","value":4}`) {
+		t.Fatalf("round trip dropped unknown target field: %s", roundTrip)
 	}
 
 	collidingExtra, err := json.Marshal(OptimizationGoal{
@@ -669,9 +675,135 @@ func TestGeneratedOptimizationGoalUnmarshalMetricShape(t *testing.T) {
 	if goal.TargetFrequency.Window.Interval != 7 || goal.TargetFrequency.Window.Unit != "days" {
 		t.Fatalf("target_frequency window not typed: %#v", goal.TargetFrequency.Window)
 	}
-	target, ok := goal.Target.(map[string]any)
-	if !ok || target["kind"] != "threshold_rate" {
-		t.Fatalf("target oneOf should remain a raw map, got %#v", goal.Target)
+	target, ok := goal.Target.(*OptimizationGoalThresholdRateTarget)
+	if !ok || target.Kind != "threshold_rate" || target.Value != 0.65 {
+		t.Fatalf("target oneOf should decode as threshold_rate, got %#v", goal.Target)
+	}
+}
+
+func TestGeneratedOptimizationGoalTargetVariants(t *testing.T) {
+	cases := []struct {
+		name  string
+		value OptimizationGoalTarget
+		want  string
+	}{
+		{
+			name:  "cost per",
+			value: OptimizationGoalCostPerTarget{Value: 2.5},
+			want:  `{"kind":"cost_per","value":2.5}`,
+		},
+		{
+			name:  "threshold rate",
+			value: OptimizationGoalThresholdRateTarget{Value: 0.25},
+			want:  `{"kind":"threshold_rate","value":0.25}`,
+		},
+		{
+			name:  "per ad spend",
+			value: OptimizationGoalPerAdSpendTarget{Value: 4},
+			want:  `{"kind":"per_ad_spend","value":4}`,
+		},
+		{
+			name:  "maximize value",
+			value: OptimizationGoalMaximizeValueTarget{},
+			want:  `{"kind":"maximize_value"}`,
+		},
+		{
+			name: "maximize value drops colliding value extra",
+			value: OptimizationGoalMaximizeValueTarget{
+				Extra: map[string]any{
+					"value":               99,
+					"future_target_field": "ok",
+				},
+			},
+			want: `{"future_target_field":"ok","kind":"maximize_value"}`,
+		},
+		{
+			name: "target extra",
+			value: OptimizationGoalThresholdRateTarget{
+				Value: 0.5,
+				Extra: map[string]any{
+					"future_target_field": "ok",
+					"kind":                "wrong",
+					"value":               99,
+				},
+			},
+			want: `{"future_target_field":"ok","kind":"threshold_rate","value":0.5}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(tc.value)
+			if err != nil {
+				t.Fatalf("marshal target: %v", err)
+			}
+			if string(raw) != tc.want {
+				t.Fatalf("target JSON = %s, want %s", raw, tc.want)
+			}
+		})
+	}
+
+	var unknown OptimizationGoal
+	if err := json.Unmarshal([]byte(`{
+		"kind": "event",
+		"event_sources": [{"event_source_id": "pixel-1", "event_type": "purchase"}],
+		"target": {"kind": "future_target", "future_target_field": true}
+	}`), &unknown); err != nil {
+		t.Fatalf("unmarshal unknown target: %v", err)
+	}
+	rawTarget, ok := unknown.Target.(*OptimizationGoalRawTarget)
+	if !ok || rawTarget.Kind != "future_target" {
+		t.Fatalf("unknown target did not decode as raw target: %#v", unknown.Target)
+	}
+	if rawTarget.Extra["future_target_field"] != true {
+		t.Fatalf("raw target extra not preserved: %#v", rawTarget.Extra)
+	}
+	roundTrip, err := json.Marshal(unknown)
+	if err != nil {
+		t.Fatalf("marshal unknown target: %v", err)
+	}
+	if !strings.Contains(string(roundTrip), `"target":{"future_target_field":true,"kind":"future_target"}`) {
+		t.Fatalf("unknown target did not round-trip: %s", roundTrip)
+	}
+
+	var nilCostPer *OptimizationGoalCostPerTarget
+	withoutTarget, err := json.Marshal(OptimizationGoal{
+		Kind:   "metric",
+		Metric: "clicks",
+		Target: nilCostPer,
+	})
+	if err != nil {
+		t.Fatalf("marshal typed nil target: %v", err)
+	}
+	if strings.Contains(string(withoutTarget), `"target"`) {
+		t.Fatalf("typed nil target should omit target: %s", withoutTarget)
+	}
+}
+
+func TestGeneratedOptimizationGoalCostPerTargetSharedAcrossGoalKinds(t *testing.T) {
+	raw := []byte(`{
+		"optimization_goals": [
+			{"kind": "metric", "metric": "clicks", "target": {"kind": "cost_per", "value": 1.25}},
+			{
+				"kind": "event",
+				"event_sources": [{"event_source_id": "pixel-1", "event_type": "purchase"}],
+				"target": {"kind": "cost_per", "value": 8.5}
+			}
+		]
+	}`)
+	var req PackageInput
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal cost_per targets: %v", err)
+	}
+	if len(req.OptimizationGoals) != 2 {
+		t.Fatalf("optimization_goals len = %d, want 2", len(req.OptimizationGoals))
+	}
+	metricTarget, ok := req.OptimizationGoals[0].Target.(*OptimizationGoalCostPerTarget)
+	if !ok || metricTarget.Value != 1.25 {
+		t.Fatalf("metric cost_per target = %#v", req.OptimizationGoals[0].Target)
+	}
+	eventTarget, ok := req.OptimizationGoals[1].Target.(*OptimizationGoalCostPerTarget)
+	if !ok || eventTarget.Value != 8.5 {
+		t.Fatalf("event cost_per target = %#v", req.OptimizationGoals[1].Target)
 	}
 }
 

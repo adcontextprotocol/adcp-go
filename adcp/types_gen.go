@@ -5298,6 +5298,48 @@ func ParseWebhookSecurityMethod(s string) (WebhookSecurityMethod, error) {
 	return "", fmt.Errorf("unknown WebhookSecurityMethod value")
 }
 
+// OptimizationMetric — Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swi
+type OptimizationMetric = string
+const (
+	OptimizationMetricClicks OptimizationMetric = "clicks"
+	OptimizationMetricViews OptimizationMetric = "views"
+	OptimizationMetricCompletedViews OptimizationMetric = "completed_views"
+	OptimizationMetricViewedSeconds OptimizationMetric = "viewed_seconds"
+	OptimizationMetricAttentionSeconds OptimizationMetric = "attention_seconds"
+	OptimizationMetricAttentionScore OptimizationMetric = "attention_score"
+	OptimizationMetricEngagements OptimizationMetric = "engagements"
+	OptimizationMetricFollows OptimizationMetric = "follows"
+	OptimizationMetricSaves OptimizationMetric = "saves"
+	OptimizationMetricProfileVisits OptimizationMetric = "profile_visits"
+	OptimizationMetricReach OptimizationMetric = "reach"
+)
+
+// KnownOptimizationMetricValues returns the current schema-defined values for OptimizationMetric.
+func KnownOptimizationMetricValues() []OptimizationMetric {
+	return []OptimizationMetric{OptimizationMetricClicks, OptimizationMetricViews, OptimizationMetricCompletedViews, OptimizationMetricViewedSeconds, OptimizationMetricAttentionSeconds, OptimizationMetricAttentionScore, OptimizationMetricEngagements, OptimizationMetricFollows, OptimizationMetricSaves, OptimizationMetricProfileVisits, OptimizationMetricReach}
+}
+
+// IsKnownOptimizationMetric reports whether v is one of the current schema-defined OptimizationMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownOptimizationMetric(v OptimizationMetric) bool {
+	switch v {
+	case OptimizationMetricClicks, OptimizationMetricViews, OptimizationMetricCompletedViews, OptimizationMetricViewedSeconds, OptimizationMetricAttentionSeconds, OptimizationMetricAttentionScore, OptimizationMetricEngagements, OptimizationMetricFollows, OptimizationMetricSaves, OptimizationMetricProfileVisits, OptimizationMetricReach:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseOptimizationMetric returns s as OptimizationMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseOptimizationMetric(s string) (OptimizationMetric, error) {
+	v := OptimizationMetric(s)
+	if IsKnownOptimizationMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown OptimizationMetric value")
+}
+
 // --- Union helper types ---
 
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
@@ -5399,8 +5441,8 @@ type AudienceSelector struct {
 	ValueType string `json:"value_type,omitempty"` // Discriminator for numeric signals
 	Value *bool `json:"value,omitempty"` // Whether to include (true) or exclude (false) users matching this signal
 	Values []string `json:"values,omitempty"` // Values to target. Users with any of these values will be included.
-	MinValue float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
-	MaxValue float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
+	MinValue *float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
+	MaxValue *float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
 	Description string `json:"description,omitempty"` // Natural language description of the audience (e.g., 'likely EV buyers', 'high ne
 	Category string `json:"category,omitempty"` // Optional grouping hint for the governance agent (e.g., 'demographic', 'behaviora
 }
@@ -5483,7 +5525,7 @@ type DeliveryForecast struct {
 // ForecastPoint — A forecast data point. When budget is present, the point pairs a spend level with expected delivery
 type ForecastPoint struct {
 	Label string `json:"label,omitempty"` // Human-readable name for this forecast point. Required when forecast_range_unit i
-	Budget float64 `json:"budget,omitempty"` // Budget amount for this forecast point. Required for spend curves; omit for avail
+	Budget *float64 `json:"budget,omitempty"` // Budget amount for this forecast point. Required for spend curves; omit for avail
 	Metrics map[string]ForecastRange `json:"metrics"` // Forecasted metric values. Keys are forecastable-metric enum values for delivery/
 }
 
@@ -5671,7 +5713,7 @@ type CreativeAsset struct {
 	Inputs []CreativeAssetInput `json:"inputs,omitempty"` // Preview contexts for generative formats - defines what scenarios to generate pre
 	Tags []string `json:"tags,omitempty"` // User-defined tags for organization and searchability
 	Status string `json:"status,omitempty"` // For generative creatives: set to 'approved' to finalize, 'rejected' to request r
-	Weight float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
+	Weight *float64 `json:"weight,omitempty"` // Optional delivery weight for creative rotation when uploading via create_media_b
 	PlacementIDs []string `json:"placement_ids,omitempty"` // Optional array of placement IDs where this creative should run when uploading vi
 	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast cl
 	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this creative. Serves as the default provenance for all
@@ -5787,7 +5829,9 @@ type Targeting struct {
 	GeoPostalAreas []GeoPostalAreaTarget `json:"geo_postal_areas,omitempty"` // Restrict delivery to specific postal areas. Each entry specifies the postal syst
 	GeoPostalAreasExclude []GeoPostalAreaTarget `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
 	DaypartTargets []DaypartTarget `json:"daypart_targets,omitempty"` // Restrict delivery to specific time windows. Each entry specifies days of week an
+	// Deprecated: Use TMP provider fields instead.
 	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for targe
+	// Deprecated: Use TMP provider fields instead.
 	AxeExcludeSegment string `json:"axe_exclude_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targ
 	AudienceInclude []string `json:"audience_include,omitempty"` // Restrict delivery to members of these first-party CRM audiences. Only users pres
 	AudienceExclude []string `json:"audience_exclude,omitempty"` // Suppress delivery to members of these first-party CRM audiences. Matched users a
@@ -6315,7 +6359,7 @@ type AgeRestriction struct {
 type KeywordTarget struct {
 	Keyword string `json:"keyword"` // The keyword to target
 	MatchType string `json:"match_type"`
-	BidPrice float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
+	BidPrice *float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
 }
 
 type NegativeKeywordTarget struct {
@@ -7441,6 +7485,7 @@ type GetSignalsRequest struct {
 	Destinations []Destination `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When omitted,
 	Countries []string `json:"countries,omitempty"` // Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, n
 	Filters *SignalFilters `json:"filters,omitempty"`
+	// Deprecated: Use pagination.max_results instead.
 	MaxResults int `json:"max_results,omitempty"` // DEPRECATED: Use pagination.max_results instead. When both fields are present, ag
 	Pagination *PaginationRequest `json:"pagination,omitempty"` // Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pa
 	Context any `json:"context,omitempty"`

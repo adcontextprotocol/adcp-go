@@ -159,7 +159,13 @@ func TestIdentityHandlerUnsupportedMajorVersionIsGenericAndLogged(t *testing.T) 
 	assert.Contains(t, logText, "invalid identity-match request")
 	assert.Contains(t, logText, `"request_id":"id-version"`)
 	assert.Contains(t, logText, "adcp_major_version is not supported")
-	assert.NotContains(t, logText, "999")
+
+	var logEntry map[string]any
+	require.NoError(t, json.Unmarshal(logs.Bytes(), &logEntry))
+	logErr, ok := logEntry["error"].(string)
+	require.True(t, ok)
+	assert.Equal(t, "adcp_major_version is not supported", logErr)
+	assert.NotContains(t, logErr, "999")
 }
 
 // TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged covers the

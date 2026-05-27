@@ -37,10 +37,10 @@ func sellerAgentURL() string {
 
 func baseProducts() map[string]*adcp.Product {
 	items := []adcp.Product{
-		newProduct("premium-display", "Premium Display", "High-impact display placements across our premium publisher network.", "guaranteed", []string{"display"}, []adcp.FormatRef{{AgentURL: agentURL, ID: "display_300x250"}}, []adcp.PricingOption{{PricingOptionID: "pd-cpm-15", PricingModel: "cpm", FixedPrice: 15.00, Currency: "USD"}}),
+		newProduct("premium-display", "Premium Display", "High-impact display placements across our premium publisher network.", "guaranteed", []string{"display"}, []adcp.FormatRef{{AgentURL: agentURL, ID: "display_300x250"}}, []adcp.PricingOption{{PricingOptionID: "pd-cpm-15", PricingModel: "cpm", FixedPrice: adcp.Ptr(15.00), Currency: "USD"}}),
 		newProduct("video-preroll", "Video Pre-Roll", "15 and 30 second pre-roll video ads.", "non_guaranteed", []string{"video"}, []adcp.FormatRef{{AgentURL: agentURL, ID: "video_30s"}, {AgentURL: agentURL, ID: "video-15s"}}, []adcp.PricingOption{
-			{PricingOptionID: "vp-cpm-25", PricingModel: "cpm", FixedPrice: 25.00, Currency: "USD"},
-			{PricingOptionID: "vp-cpcv-05", PricingModel: "cpcv", FixedPrice: 0.05, Currency: "USD"},
+			{PricingOptionID: "vp-cpm-25", PricingModel: "cpm", FixedPrice: adcp.Ptr(25.00), Currency: "USD"},
+			{PricingOptionID: "vp-cpcv-05", PricingModel: "cpcv", FixedPrice: adcp.Ptr(0.05), Currency: "USD"},
 		}),
 	}
 
@@ -168,7 +168,7 @@ func (b *backend) seedProduct(productID string, fixture map[string]any) {
 			}
 		}
 	}
-	product := newProduct(productID, productID, "Seeded storyboard product.", deliveryType, channels, formatIDs, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", FixedPrice: 10, Currency: "USD"}})
+	product := newProduct(productID, productID, "Seeded storyboard product.", deliveryType, channels, formatIDs, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", FixedPrice: adcp.Ptr(10.0), Currency: "USD"}})
 	b.products[productID] = &product
 }
 
@@ -194,7 +194,7 @@ func (b *backend) seedPricingOption(productID, pricingOptionID string, fixture m
 	if v, ok := fixture["fixed_price"].(float64); ok {
 		fixedPrice = v
 	}
-	product.PricingOptions = append(product.PricingOptions, adcp.PricingOption{PricingOptionID: pricingOptionID, PricingModel: model, Currency: currency, FixedPrice: fixedPrice})
+	product.PricingOptions = append(product.PricingOptions, adcp.PricingOption{PricingOptionID: pricingOptionID, PricingModel: model, Currency: currency, FixedPrice: adcp.Ptr(fixedPrice)})
 }
 
 func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
@@ -237,6 +237,12 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	}
 	if input.InvoiceRecipient != nil {
 		buy.InvoiceRecipient = responseBusinessEntity(input.InvoiceRecipient)
+	}
+	if (input.StartTime != "" || input.EndTime != "") && !hasValidAction(buy.Status, "update_dates") {
+		return errorResult("INVALID_ACTION", "Date updates are not supported by this reference seller.", input.Context)
+	}
+	if len(input.NewPackages) > 0 && !hasValidAction(buy.Status, "add_packages") {
+		return errorResult("INVALID_ACTION", "Package additions are not supported by this reference seller.", input.Context)
 	}
 	if len(input.Packages) > 0 && !hasValidAction(buy.Status, "update_packages") {
 		return errorResult("INVALID_TRANSITION", "Media buy cannot be changed from its current status.", input.Context)
@@ -578,6 +584,8 @@ func (b *backend) simulateBudgetSpend(p adcp.SimulateBudgetParams) (*adcp.Simula
 	}
 	total := mediaBuyBudget(buy)
 	spend := total * p.SpendPercentage
+	// Budget-spend simulation advances financial pacing only; use
+	// simulateDelivery when impressions or clicks should move too.
 	for _, pkg := range buy.Packages {
 		if total == 0 {
 			continue

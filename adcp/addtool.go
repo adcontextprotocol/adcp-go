@@ -94,10 +94,15 @@ func allowAdditionalProperties(s *jsonschema.Schema) {
 		}
 	}
 
+	if isOptimizationGoalSchema(s) {
+		applyOptimizationGoalSchemaOverride(s)
+	}
+
 	// Remove properties that serialize to `true` (the accept-anything schema
 	// generated for `any`/`interface{}` fields). These cause validation errors
 	// in some schema validators. The field is still accepted because
-	// additionalProperties is not restricted.
+	// additionalProperties is not restricted. Known typed interfaces get schema
+	// overrides so tool discovery does not lose protocol fields.
 	for name, prop := range s.Properties {
 		if isTrueSchema(prop) {
 			delete(s.Properties, name)
@@ -144,6 +149,103 @@ func isTrueSchema(s *jsonschema.Schema) bool {
 		return false
 	}
 	return string(b) == "true"
+}
+
+func isOptimizationGoalSchema(s *jsonschema.Schema) bool {
+	if s == nil || s.Type != "object" || s.Properties == nil || len(s.OneOf) > 0 {
+		return false
+	}
+	if _, ok := s.Properties["kind"]; !ok {
+		return false
+	}
+	_, hasMetric := s.Properties["metric"]
+	_, hasEventSources := s.Properties["event_sources"]
+	_, hasTarget := s.Properties["target"]
+	return hasTarget && hasMetric && hasEventSources
+}
+
+// applyOptimizationGoalSchemaOverride replaces the flattened Go type schema
+// with the protocol's metric/event branches. Branches deliberately omit
+// additionalProperties so tool inputs remain forward-compatible with Extra.
+func applyOptimizationGoalSchemaOverride(s *jsonschema.Schema) {
+	props := s.Properties
+	s.Type = ""
+	s.Properties = nil
+	s.Required = nil
+	s.PropertyOrder = nil
+	s.OneOf = []*jsonschema.Schema{
+		optimizationGoalBranchJSONSchema("metric", map[string]*jsonschema.Schema{
+			"metric":                props["metric"],
+			"reach_unit":            props["reach_unit"],
+			"target_frequency":      props["target_frequency"],
+			"view_duration_seconds": props["view_duration_seconds"],
+			"target":                optimizationGoalMetricTargetJSONSchema(),
+			"priority":              props["priority"],
+		}, []string{"kind", "metric"}),
+		optimizationGoalBranchJSONSchema("event", map[string]*jsonschema.Schema{
+			"event_sources":      props["event_sources"],
+			"target":             optimizationGoalEventTargetJSONSchema(),
+			"attribution_window": props["attribution_window"],
+			"priority":           props["priority"],
+		}, []string{"kind", "event_sources"}),
+	}
+}
+
+func optimizationGoalMetricTargetJSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{OneOf: []*jsonschema.Schema{
+		optimizationGoalTargetVariantSchema("cost_per", true, "Target cost per unit of the metric or conversion event."),
+		optimizationGoalTargetVariantSchema("threshold_rate", true, "Minimum per-impression rate for the metric."),
+	}}
+}
+
+func optimizationGoalEventTargetJSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{OneOf: []*jsonschema.Schema{
+		optimizationGoalTargetVariantSchema("cost_per", true, "Target cost per unit of the metric or conversion event."),
+		optimizationGoalTargetVariantSchema("per_ad_spend", true, "Target return per unit of ad spend."),
+		optimizationGoalTargetVariantSchema("maximize_value", false, "Maximize total conversion value within budget."),
+	}}
+}
+
+func optimizationGoalBranchJSONSchema(kind string, properties map[string]*jsonschema.Schema, required []string) *jsonschema.Schema {
+	kindValue := any(kind)
+	branchProperties := make(map[string]*jsonschema.Schema, len(properties)+1)
+	for name, prop := range properties {
+		if prop != nil {
+			branchProperties[name] = prop
+		}
+	}
+	branchProperties["kind"] = &jsonschema.Schema{
+		Type:  "string",
+		Const: &kindValue,
+	}
+	return &jsonschema.Schema{
+		Type:       "object",
+		Properties: branchProperties,
+		Required:   required,
+	}
+}
+
+func optimizationGoalTargetVariantSchema(kind string, withValue bool, description string) *jsonschema.Schema {
+	kindValue := any(kind)
+	properties := map[string]*jsonschema.Schema{
+		"kind": {
+			Type:  "string",
+			Const: &kindValue,
+		},
+	}
+	required := []string{"kind"}
+	if withValue {
+		properties["value"] = &jsonschema.Schema{
+			Type: "number",
+		}
+		required = append(required, "value")
+	}
+	return &jsonschema.Schema{
+		Type:        "object",
+		Description: description,
+		Properties:  properties,
+		Required:    required,
+	}
 }
 
 // jsonRoundTrip marshals a value to JSON and back, ensuring struct tags

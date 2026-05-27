@@ -8,6 +8,18 @@ from collections import OrderedDict
 import generate
 
 
+def without_descriptions(value):
+    if isinstance(value, dict):
+        return {
+            key: without_descriptions(item)
+            for key, item in value.items()
+            if key != "description"
+        }
+    if isinstance(value, list):
+        return [without_descriptions(item) for item in value]
+    return value
+
+
 def scalar_or_array_schema(min_items=1, description="Test union"):
     return {
         "description": description,
@@ -171,6 +183,14 @@ class UnionHelperGenerationTest(unittest.TestCase):
 
 
 class EnumGenerationTest(unittest.TestCase):
+    def setUp(self):
+        self.original_inline_enum_types = generate.INLINE_ENUM_TYPES
+        self.original_load_schema_spec = generate.load_schema_spec
+
+    def tearDown(self):
+        generate.INLINE_ENUM_TYPES = self.original_inline_enum_types
+        generate.load_schema_spec = self.original_load_schema_spec
+
     def test_enum_helpers_are_opt_in_and_do_not_echo_rejected_value(self):
         src = generate.enum_to_type("TestStatus", "Test enum", ["active", "pending-start"])
 
@@ -196,6 +216,217 @@ class EnumGenerationTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             generate.enum_members("TestStatus", ["active", 1])
+
+    def test_generate_enums_includes_inline_optimization_metric_helpers(self):
+        src = generate.generate_enums()
+
+        self.assertIn("type OptimizationMetric = string", src)
+        self.assertIn('OptimizationMetricClicks OptimizationMetric = "clicks"', src)
+        self.assertIn("func KnownOptimizationMetricValues() []OptimizationMetric", src)
+        self.assertIn("func IsKnownOptimizationMetric(v OptimizationMetric) bool", src)
+        schema = generate.load_inline_enum_schema(generate.INLINE_ENUM_TYPES["OptimizationMetric"])
+        for value in schema["enum"]:
+            const_name = "OptimizationMetric" + generate.pascal_case(value)
+            self.assertIn(f'{const_name} OptimizationMetric = "{value}"', src)
+
+    def test_generate_enums_resolves_inline_enum_by_kind(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "event"},
+                            "value": {"enum": ["wrong"]},
+                        },
+                    },
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["right"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        src = generate.generate_enums()
+        self.assertIn('TestInlineEnumRight TestInlineEnum = "right"', src)
+        self.assertNotIn("TestInlineEnumWrong", src)
+
+    def test_generate_enums_rejects_duplicate_inline_enum_name(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "MediaBuyStatus",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["x"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(ValueError, "duplicate enum type MediaBuyStatus"):
+            generate.generate_enums(_seen={"MediaBuyStatus": "enums/media-buy-status.json"})
+
+    def test_generate_enums_requires_inline_enum_values(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"type": "string"},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(ValueError, "no longer defines enum values"):
+            generate.generate_enums()
+
+    def test_generate_enums_rejects_duplicate_inline_kind_matches(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["first"]},
+                        },
+                    },
+                    {
+                        "properties": {
+                            "kind": {"const": "metric"},
+                            "value": {"enum": ["second"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(ValueError, "matched multiple oneOf branches"):
+            generate.generate_enums()
+
+    def test_generate_enums_rejects_unmatched_inline_kind(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"const": "event"},
+                            "value": {"enum": ["wrong"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"INLINE_ENUM_TYPES\['TestInlineEnum'\].*did not match a oneOf branch",
+        ):
+            generate.generate_enums()
+
+    def test_generate_enums_does_not_match_single_value_enum_discriminator(self):
+        generate.INLINE_ENUM_TYPES = OrderedDict([
+            (
+                "TestInlineEnum",
+                {
+                    "schema": "test.json",
+                    "one_of_kind": "metric",
+                    "property": "value",
+                },
+            ),
+        ])
+
+        def load_schema_spec(spec):
+            self.assertEqual("test.json", spec)
+            return {
+                "oneOf": [
+                    {
+                        "properties": {
+                            "kind": {"enum": ["metric"]},
+                            "value": {"enum": ["x"]},
+                        },
+                    },
+                ],
+            }
+
+        generate.load_schema_spec = load_schema_spec
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"INLINE_ENUM_TYPES\['TestInlineEnum'\].*did not match a oneOf branch",
+        ):
+            generate.generate_enums()
 
     @unittest.skipUnless(shutil.which("go"), "go command not found")
     def test_enum_helpers_runtime(self):
@@ -241,6 +472,181 @@ class EnumGenerationTest(unittest.TestCase):
             with open(f"{tmp}/enum_test.go", "w") as f:
                 f.write(source)
             subprocess.run(["go", "test", "."], cwd=tmp, check=True)
+
+
+class StructGenerationTest(unittest.TestCase):
+    def test_deprecated_property_emits_go_deprecation_comment(self):
+        schema = {
+            "type": "object",
+            "properties": OrderedDict(
+                [
+                    (
+                        "status",
+                        {
+                            "type": "string",
+                            "description": "Deprecated: Use media_buy_status instead.",
+                            "deprecated": True,
+                        },
+                    )
+                ]
+            ),
+        }
+
+        got = generate.schema_to_struct("CreateMediaBuySuccess", schema)
+
+        self.assertIn(
+            "\t// Deprecated: Use media_buy_status instead.\n"
+            "\tStatus string `json:\"status,omitempty\"` // Deprecated: Use media_buy_status instead.",
+            got,
+        )
+
+    def test_deprecated_property_without_description_emits_fallback_comment(self):
+        schema = {
+            "type": "object",
+            "properties": OrderedDict(
+                [
+                    (
+                        "legacy_id",
+                        {
+                            "type": "string",
+                            "deprecated": True,
+                        },
+                    )
+                ]
+            ),
+        }
+
+        got = generate.schema_to_struct("DeprecatedFallback", schema)
+
+        self.assertIn(
+            "\t// Deprecated: This field is deprecated.\n"
+            "\tLegacyID string `json:\"legacy_id,omitempty\"`",
+            got,
+        )
+
+
+class OptimizationGoalSchemaTest(unittest.TestCase):
+    def setUp(self):
+        self.schema = generate.load_schema("core/optimization-goal.json")
+
+    def test_cost_per_target_branches_stay_structurally_equivalent(self):
+        metric_cost_per = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/0/properties/target/oneOf/0",
+        )
+        event_cost_per = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/1/properties/target/oneOf/0",
+        )
+
+        self.assertEqual(
+            without_descriptions(metric_cost_per),
+            without_descriptions(event_cost_per),
+        )
+
+    def test_target_branches_allow_additive_fields(self):
+        metric_target = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/0/properties/target",
+        )
+        event_target = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/1/properties/target",
+        )
+        self.assertEqual(2, len(metric_target["oneOf"]))
+        self.assertEqual(3, len(event_target["oneOf"]))
+
+        target_branch_pointers = [
+            "/oneOf/0/properties/target/oneOf/0",
+            "/oneOf/0/properties/target/oneOf/1",
+            "/oneOf/1/properties/target/oneOf/0",
+            "/oneOf/1/properties/target/oneOf/1",
+            "/oneOf/1/properties/target/oneOf/2",
+        ]
+        for pointer in target_branch_pointers:
+            with self.subTest(pointer=pointer):
+                target_branch = generate.json_pointer_get(self.schema, pointer)
+                self.assertIs(
+                    True,
+                    target_branch.get("additionalProperties"),
+                    f"{pointer} must allow additive fields while the Go target variant preserves Extra",
+                )
+
+    def test_optional_numeric_policy_for_optimization_goal_fields(self):
+        event_source = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/1/properties/event_sources/items",
+        )
+        value_factor_type, _ = generate.field_go_type_info(
+            "OptimizationGoalEventSource",
+            "value_factor",
+            event_source["properties"]["value_factor"],
+            set(event_source.get("required", [])),
+        )
+        self.assertEqual("*float64", value_factor_type)
+
+        metric_goal = generate.json_pointer_get(self.schema, "/oneOf/0")
+        view_duration_type, _ = generate.field_go_type_info(
+            "OptimizationGoal",
+            "view_duration_seconds",
+            metric_goal["properties"]["view_duration_seconds"],
+            set(metric_goal.get("required", [])),
+        )
+        self.assertEqual("float64", view_duration_type)
+
+
+class OptionalNumericPolicyTest(unittest.TestCase):
+    def assert_field_type(self, schema_path, type_name, json_name, want):
+        schema = generate.load_schema(schema_path)
+        prop = generate.schema_properties(schema)[json_name]
+        required_set = generate.schema_required_names(schema)
+
+        go_type, _ = generate.field_go_type_info(
+            type_name,
+            json_name,
+            prop,
+            required_set,
+        )
+
+        self.assertEqual(want, go_type)
+
+    def test_zero_valid_optional_numeric_fields_use_pointers(self):
+        self.assert_field_type(
+            "core/creative-asset.json",
+            "CreativeAsset",
+            "weight",
+            "*float64",
+        )
+        targeting = generate.load_schema("core/targeting.json")
+        keyword_target = generate.json_pointer_get(
+            targeting,
+            "/properties/keyword_targets/items",
+        )
+        bid_price_type, _ = generate.field_go_type_info(
+            "KeywordTarget",
+            "bid_price",
+            keyword_target["properties"]["bid_price"],
+            set(keyword_target.get("required", [])),
+        )
+        self.assertEqual("*float64", bid_price_type)
+        self.assert_field_type(
+            "core/audience-selector.json",
+            "AudienceSelector",
+            "min_value",
+            "*float64",
+        )
+        self.assert_field_type(
+            "core/audience-selector.json",
+            "AudienceSelector",
+            "max_value",
+            "*float64",
+        )
+        self.assert_field_type(
+            "core/forecast-point.json",
+            "ForecastPoint",
+            "budget",
+            "*float64",
+        )
 
 
 if __name__ == "__main__":

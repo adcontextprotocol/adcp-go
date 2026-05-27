@@ -52,6 +52,8 @@ KNOWN_TYPES = {
     # the union into a single struct with all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
     'OptimizationGoal',
+    'OptimizationGoalCostPerTarget', 'OptimizationGoalThresholdRateTarget',
+    'OptimizationGoalPerAdSpendTarget', 'OptimizationGoalMaximizeValueTarget',
     # From inputs.go (hand-written types that need custom Go code)
     'EmptyInput',
     'AccountInput', 'GovernanceAccountInput',
@@ -627,6 +629,35 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
 ])
 
+# Shared inline helper types are generated from one schema pointer but reused by
+# INLINE_TYPE_HINTS for sibling schema pointers. lint.py verifies these siblings
+# keep the same property set before we keep reusing a single Go type.
+SHARED_INLINE_OVERRIDES = {
+    "DeliveryReportingDimension": [
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/device_type",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/device_platform",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/audience",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/placement",
+    ],
+}
+
+# Named enum helpers generated from inline JSON Schema pointers. These cover
+# important SDK validation values that are not standalone enum schema files.
+INLINE_ENUM_TYPES = OrderedDict([
+    (
+        "OptimizationMetric",
+        {
+            "schema": "core/optimization-goal.json",
+            "one_of_kind": "metric",
+            "property": "metric",
+        },
+    ),
+])
+
 # Named helper types generated for simple union schemas. These cover the common
 # protocol shape "single scalar or array of the same scalar" without falling
 # back to `any`.
@@ -700,6 +731,10 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'IdentityKeyOrigins': 'protocol/get-adcp-capabilities-response.json#/properties/identity/properties/key_origins',
     'IdentityCompromiseNotification': 'protocol/get-adcp-capabilities-response.json#/properties/identity/properties/compromise_notification',
     'ComplianceTestingCapabilities': 'protocol/get-adcp-capabilities-response.json#/properties/compliance_testing',
+    'OptimizationGoalCostPerTarget': 'core/optimization-goal.json#/oneOf/0/properties/target/oneOf/0',
+    'OptimizationGoalThresholdRateTarget': 'core/optimization-goal.json#/oneOf/0/properties/target/oneOf/1',
+    'OptimizationGoalPerAdSpendTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/1',
+    'OptimizationGoalMaximizeValueTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/2',
 }
 
 # Map schema-derived Go names to the preferred Go name. Applied both when
@@ -867,6 +902,16 @@ INLINE_TYPE_HINTS = {
     ('Package', 'optimization_goals'): 'OptimizationGoal',
     ('PackageInput', 'optimization_goals'): 'OptimizationGoal',
     ('PackageUpdate', 'optimization_goals'): 'OptimizationGoal',
+    # Optional numeric policy: use a pointer only when omission and explicit
+    # zero are both valid and semantically distinct. value_factor defaults to 1
+    # and explicit 0 zeroes this event source. view_duration_seconds has
+    # exclusiveMinimum: 0, so explicit 0 is invalid and the hand-written
+    # OptimizationGoal field intentionally stays float64.
+    ('CreativeAsset', 'weight'): '*float64',
+    ('KeywordTarget', 'bid_price'): '*float64',
+    ('AudienceSelector', 'min_value'): '*float64',
+    ('AudienceSelector', 'max_value'): '*float64',
+    ('ForecastPoint', 'budget'): '*float64',
     ('OptimizationGoalEventSource', 'value_factor'): '*float64',
 }
 
@@ -918,6 +963,20 @@ def safe_comment(text, max_len=80):
     """Sanitize text for embedding in a Go // comment. Strips newlines to
     prevent code injection via schema descriptions."""
     return text.replace('\n', ' ').replace('\r', '')[:max_len].rstrip() if text else ''
+
+def deprecated_comment(prop):
+    """Return the Go deprecation notice for a deprecated schema property."""
+    if not prop.get('deprecated'):
+        return ''
+    desc = prop.get('description', '').replace('\n', ' ').replace('\r', '').strip()
+    desc = re.sub(r'^\s*deprecated\s*:\s*', '', desc, flags=re.IGNORECASE)
+    first_sentence = re.match(r'(.+?\.)(?:\s|$)', desc)
+    if first_sentence:
+        desc = first_sentence.group(1)
+    desc = safe_comment(desc, 120)
+    if desc:
+        return f'Deprecated: {desc}'
+    return 'Deprecated: This field is deprecated.'
 
 def load_schema(path):
     """Load a JSON schema file, preserving property order."""
@@ -1306,6 +1365,9 @@ def schema_to_struct(name, schema):
         desc = safe_comment(prop.get('description', ''), 80)
         comment = f' // {desc}' if desc else ''
 
+        deprecated = deprecated_comment(prop)
+        if deprecated:
+            fields.append(f'\t// {deprecated}')
         fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
     desc = safe_comment(schema.get('description', ''), 100)
@@ -1481,24 +1543,73 @@ def enum_to_type(name, desc, values):
 
     return '\n'.join(lines)
 
-def generate_enums():
+def inline_enum_origin(spec):
+    schema = spec.get('schema')
+    kind = spec.get('one_of_kind')
+    prop = spec.get('property')
+    return f'{schema} oneOf kind={kind} property={prop}'
+
+def load_inline_enum_schema(spec):
+    schema_spec = spec.get('schema')
+    kind = spec.get('one_of_kind')
+    prop = spec.get('property')
+    if not schema_spec or not kind or not prop:
+        raise ValueError(f'invalid inline enum config: {spec!r}')
+
+    schema = load_schema_spec(schema_spec)
+    matches = []
+    for branch in schema.get('oneOf', []):
+        props = branch.get('properties', {})
+        kind_schema = props.get('kind', {})
+        # The resolver intentionally requires exactly one const discriminator
+        # match. If upstream splits a kind into sub-variants, add a more precise
+        # selector instead of picking one branch implicitly.
+        # Single-value enum discriminators are also not accepted here; they fail
+        # with a no-match build error until the config shape explicitly supports
+        # that selector form.
+        if kind_schema.get('const') == kind:
+            matches.append(props.get(prop, {}))
+
+    origin = inline_enum_origin(spec)
+    if not matches:
+        raise ValueError(f'{origin} did not match a oneOf branch')
+    if len(matches) > 1:
+        raise ValueError(f'{origin} matched multiple oneOf branches')
+    return matches[0]
+
+def generate_enums(_seen=None):
     """Generate Go string constants for all enum schemas."""
     lines = []
-    enum_dir = SCRIPT_DIR / ENUM_DIR
-    if not enum_dir.exists():
-        return ''
+    seen = dict(_seen or {})
 
-    for f in sorted(enum_dir.iterdir()):
-        if not f.suffix == '.json':
-            continue
-        schema = load_schema(f)
-        name = pascal_case(f.stem)
+    def append_enum(name, schema, origin, error_if_empty=False):
         values = schema.get('enum', [])
         if not values:
-            continue
-
+            if error_if_empty:
+                raise ValueError(f'{origin} no longer defines enum values for {name}')
+            return
+        if name in seen:
+            raise ValueError(f'duplicate enum type {name}: {seen[name]} and {origin}')
+        seen[name] = origin
         desc = schema.get('description', '')
         lines.append(enum_to_type(name, desc, values))
+
+    enum_dir = SCRIPT_DIR / ENUM_DIR
+    if enum_dir.exists():
+        for f in sorted(enum_dir.iterdir()):
+            if not f.suffix == '.json':
+                continue
+            schema = load_schema(f)
+            name = pascal_case(f.stem)
+            append_enum(name, schema, str(f.relative_to(SCRIPT_DIR)))
+
+    for name, spec in INLINE_ENUM_TYPES.items():
+        try:
+            schema = load_inline_enum_schema(spec)
+        except ValueError as e:
+            raise ValueError(f'INLINE_ENUM_TYPES[{name!r}]: {e}') from e
+        origin = inline_enum_origin(spec)
+        append_enum(name, schema, origin, error_if_empty=True)
 
     return '\n'.join(lines)
 

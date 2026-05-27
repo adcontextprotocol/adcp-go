@@ -312,6 +312,50 @@ def validate_inline_schema_specs():
     return reports
 
 
+def validate_shared_inline_overrides():
+    """Verify shared inline helper types still match each reused schema shape."""
+    reports = []
+    for type_name, schema_specs in gen.SHARED_INLINE_OVERRIDES.items():
+        loaded = []
+        error_count = len(reports)
+        for schema_spec in schema_specs:
+            path_part = schema_spec.split('#', 1)[0]
+            schema_path = SCRIPT_DIR / path_part
+            if not schema_path.exists():
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'schema not found: {schema_path}',
+                })
+                continue
+            try:
+                schema = load_schema_spec(schema_spec)
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'could not resolve schema pointer: {e}',
+                })
+                continue
+            loaded.append((schema_spec, schema_property_set(schema)))
+        if len(reports) != error_count or len(loaded) != len(schema_specs):
+            continue
+
+        anchor_spec, anchor_props = loaded[0]
+        for schema_spec, props in loaded[1:]:
+            if props == anchor_props:
+                continue
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'anchor_schema': anchor_spec,
+                'missing': sorted(anchor_props - props),
+                'extra': sorted(props - anchor_props),
+                'error': 'shared inline override schema properties differ',
+            })
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -355,6 +399,149 @@ def validate_union_schema_specs():
                 'schema': ', '.join(schema_specs),
                 'error': 'array minItems constraints differ',
             })
+    return reports
+
+
+OPTIONAL_NUMERIC_OMISSION_HINTS = (
+    'default:',
+    'defaults to',
+    'default is',
+    'if omitted',
+    'omit for',
+    'omit to',
+    'when omitted',
+    'if present',
+    'when present',
+    'when provided',
+    'if provided',
+    'required when',
+    'populated when',
+    'when specified',
+    'optional override',
+)
+
+OPTIONAL_NUMERIC_SCALAR_OK = {
+    # Prefer changing optional numeric fields to *int/*float64 when omission and
+    # explicit zero have different wire semantics, especially request fields
+    # with defaults or schema descriptions that say "if omitted" / "when
+    # provided". Add a waiver only after confirming zero is invalid or
+    # semantically identical to omission, and include the protocol rationale in
+    # the reason string.
+    # (type_name, json_name): reason
+}
+
+
+def numeric_zero_invalid(prop):
+    """Return True when schema constraints reject an explicit numeric zero."""
+    minimum = prop.get('minimum')
+    if minimum is not None:
+        try:
+            if float(minimum) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+
+    exclusive_minimum = prop.get('exclusiveMinimum')
+    if exclusive_minimum is True:
+        try:
+            return float(prop.get('minimum', 0)) >= 0
+        except (TypeError, ValueError):
+            return True
+    if (
+        exclusive_minimum is not False and
+        isinstance(exclusive_minimum, (int, float))
+    ):
+        if float(exclusive_minimum) >= 0:
+            return True
+
+    enum = prop.get('enum')
+    if enum is not None and 0 not in enum and 0.0 not in enum:
+        return True
+
+    return False
+
+
+def numeric_omission_is_semantically_distinct(prop):
+    """Heuristic for optional numerics where omission means more than zero."""
+    if 'default' in prop:
+        try:
+            return float(prop['default']) != 0
+        except (TypeError, ValueError):
+            return True
+
+    description = (prop.get('description') or '').lower()
+    return any(hint in description for hint in OPTIONAL_NUMERIC_OMISSION_HINTS)
+
+
+def optional_numeric_pointer_candidate(json_name, prop, required_set):
+    if json_name in required_set:
+        return False
+    if prop.get('type') not in ('integer', 'number'):
+        return False
+    return (
+        not numeric_zero_invalid(prop) and
+        numeric_omission_is_semantically_distinct(prop)
+    )
+
+
+def optional_numeric_pointer_reports(go_structs):
+    """Find optional numeric fields that need pointers to preserve omission."""
+    reports = []
+
+    for entry in gen.generated_schema_entries():
+        if entry['kind'] != 'struct':
+            continue
+        props = gen.schema_properties(entry['schema_obj'])
+        required_set = gen.schema_required_names(entry['schema_obj'])
+        for json_name, prop in props.items():
+            if not isinstance(prop, dict):
+                continue
+            if not optional_numeric_pointer_candidate(json_name, prop, required_set):
+                continue
+            go_type, _ = gen.field_go_type_info(
+                entry['name'], json_name, prop, required_set,
+            )
+            if go_type in ('int', 'float64') and (
+                entry['name'], json_name,
+            ) not in OPTIONAL_NUMERIC_SCALAR_OK:
+                reports.append({
+                    'owner': 'generated',
+                    'type': entry['name'],
+                    'schema': entry['schema'],
+                    'json': json_name,
+                    'go_type': go_type,
+                    'description': prop.get('description', ''),
+                })
+
+    for type_name, go_fields in sorted(go_structs.items()):
+        schema_spec = resolve_schema_spec(type_name)
+        if schema_spec is None:
+            continue
+        try:
+            schema = load_schema_spec(schema_spec)
+        except SCHEMA_RESOLUTION_ERRORS:
+            continue
+        props = gen.schema_properties(schema)
+        required_set = gen.schema_required_names(schema)
+        fields_by_json = {tag: go_type for _, go_type, tag, _ in go_fields}
+        for json_name, prop in props.items():
+            if not isinstance(prop, dict):
+                continue
+            if not optional_numeric_pointer_candidate(json_name, prop, required_set):
+                continue
+            go_type = fields_by_json.get(json_name)
+            if go_type in ('int', 'float64') and (
+                type_name, json_name,
+            ) not in OPTIONAL_NUMERIC_SCALAR_OK:
+                reports.append({
+                    'owner': 'hand-written',
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'json': json_name,
+                    'go_type': go_type,
+                    'description': prop.get('description', ''),
+                })
+
     return reports
 
 
@@ -478,7 +665,9 @@ def main():
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
+    shared_inline_errors = validate_shared_inline_overrides()
     union_schema_errors = validate_union_schema_specs()
+    optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
 
     for type_name in sorted(gen.KNOWN_TYPES):
         if type_name in EXEMPT:
@@ -501,7 +690,9 @@ def main():
             'drift': reports,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
+            'shared_inline_errors': shared_inline_errors,
             'union_schema_errors': union_schema_errors,
+            'optional_numeric_pointer': optional_numeric_reports,
         }
         print(json.dumps(out, indent=2))
     else:
@@ -512,12 +703,36 @@ def main():
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
             print()
+        if shared_inline_errors:
+            print(f'Shared inline override errors in {len(shared_inline_errors)} type(s):')
+            for r in shared_inline_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    anchor: {r.get("anchor_schema", "?")}')
+                print(f'    error:  {r["error"]}')
+                if r.get('missing'):
+                    print(f'    missing: {", ".join(r["missing"])}')
+                if r.get('extra'):
+                    print(f'    extra:   {", ".join(r["extra"])}')
+            print()
         if union_schema_errors:
             print(f'Union schema pointer errors in {len(union_schema_errors)} type(s):')
             for r in union_schema_errors:
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
+            print()
+        if optional_numeric_reports:
+            print(
+                'Optional numeric pointer issues in '
+                f'{len(optional_numeric_reports)} field(s):'
+            )
+            for r in optional_numeric_reports:
+                print()
+                print(f'  {r["type"]}.{r["json"]}  ({r["schema"]})')
+                print(f'    owner:   {r["owner"]}')
+                print(f'    Go type: {r["go_type"]}')
+                print('    fix:     use *int/*float64 or add an OPTIONAL_NUMERIC_SCALAR_OK waiver')
             print()
         if reports:
             print(f'Schema drift detected in {len(reports)} type(s):')
@@ -542,8 +757,13 @@ def main():
             for t in no_schema:
                 print(f'  - {t}')
 
-    has_problems = bool(inline_schema_errors) or bool(union_schema_errors) or bool(reports) or (
-        args.strict and bool(no_schema)
+    has_problems = (
+        bool(inline_schema_errors)
+        or bool(shared_inline_errors)
+        or bool(union_schema_errors)
+        or bool(reports)
+        or bool(optional_numeric_reports)
+        or (args.strict and bool(no_schema))
     )
     return 1 if (args.strict and has_problems) else 0
 

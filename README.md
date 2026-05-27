@@ -125,6 +125,34 @@ When handler logic needs strict current-schema validation, use the generated
 helpers: `KnownMediaBuyStatusValues()`, `IsKnownMediaBuyStatus(status)`, and
 `ParseMediaBuyStatus(raw)`.
 
+For typed structs whose schema-required fields cannot be represented by Go's
+zero values, use the SDK validators before request submission or handler-side
+acceptance. Validation is opt-in and intentionally narrower than full JSON
+Schema validation: it catches required fields and schema invariants the Go type
+cannot express, but keeps unknown enum and oneOf variant values
+forward-compatible unless `adcp.WithStrictEnums()` is supplied.
+Flattened oneOf types are validated by active branch: event-only fields such as
+`attribution_window` are checked on event goals and ignored on metric goals.
+For value-based event targets such as `per_ad_spend` and `maximize_value`, the
+validator also requires at least one event source `value_field`; that is an SDK
+invariant derived from the schema descriptions, not a general-purpose JSON
+Schema validation pass.
+
+```go
+goal := adcp.OptimizationGoal{
+    Kind:   "event",
+    Target: adcp.OptimizationGoalCostPerTarget{Value: 10},
+    EventSources: []adcp.OptimizationGoalEventSource{{
+        EventSourceID: "pixel-1",
+        EventType:     "purchase",
+    }},
+}
+
+if issues := goal.Validate(); len(issues) > 0 {
+    // Map issue.Code and issue.Field to your request error handling.
+}
+```
+
 ## Request signing (AdCP 3.0 optional, 4.0 required)
 
 `adcp/signing` implements the AdCP RFC 9421 request-signing profile — optional in 3.0, required for spend-committing operations in 4.0. The package is self-validating against the spec's [conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/): all 8 positive + 20 negative vectors pass, and signed Ed25519 signatures match the committed positive-vector bytes.
