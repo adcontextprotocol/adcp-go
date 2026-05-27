@@ -52,6 +52,8 @@ KNOWN_TYPES = {
     # the union into a single struct with all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
     'OptimizationGoal',
+    'OptimizationGoalCostPerTarget', 'OptimizationGoalThresholdRateTarget',
+    'OptimizationGoalPerAdSpendTarget', 'OptimizationGoalMaximizeValueTarget',
     # From inputs.go (hand-written types that need custom Go code)
     'EmptyInput',
     'AccountInput', 'GovernanceAccountInput',
@@ -700,6 +702,10 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'IdentityKeyOrigins': 'protocol/get-adcp-capabilities-response.json#/properties/identity/properties/key_origins',
     'IdentityCompromiseNotification': 'protocol/get-adcp-capabilities-response.json#/properties/identity/properties/compromise_notification',
     'ComplianceTestingCapabilities': 'protocol/get-adcp-capabilities-response.json#/properties/compliance_testing',
+    'OptimizationGoalCostPerTarget': 'core/optimization-goal.json#/oneOf/0/properties/target/oneOf/0',
+    'OptimizationGoalThresholdRateTarget': 'core/optimization-goal.json#/oneOf/0/properties/target/oneOf/1',
+    'OptimizationGoalPerAdSpendTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/1',
+    'OptimizationGoalMaximizeValueTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/2',
 }
 
 # Map schema-derived Go names to the preferred Go name. Applied both when

@@ -433,17 +433,17 @@ type PricingOption struct {
 }
 
 // OptimizationGoal is a flattened representation of the optimization-goal
-// oneOf. Target remains the nested raw oneOf payload, while Extra preserves
-// schema-allowed future fields so read-modify-write callers do not strip
-// unknown goal metadata on replacement updates. Extra keys that collide with
-// typed fields are ignored when marshaling; set the typed field instead.
+// oneOf. Extra preserves schema-allowed future fields so read-modify-write
+// callers do not strip unknown goal metadata on replacement updates. Extra keys
+// that collide with typed fields are ignored when marshaling; set the typed
+// field instead.
 type OptimizationGoal struct {
 	Kind                string                             `json:"kind,omitempty"`
 	Metric              string                             `json:"metric,omitempty"`
 	ReachUnit           string                             `json:"reach_unit,omitempty"`
 	TargetFrequency     *OptimizationGoalTargetFrequency   `json:"target_frequency,omitempty"`
 	ViewDurationSeconds float64                            `json:"view_duration_seconds,omitempty"`
-	Target              any                                `json:"target,omitempty"`
+	Target              OptimizationGoalTarget             `json:"target,omitempty"`
 	Priority            int                                `json:"priority,omitempty"`
 	EventSources        []OptimizationGoalEventSource      `json:"event_sources,omitempty"`
 	AttributionWindow   *OptimizationGoalAttributionWindow `json:"attribution_window,omitempty"`
@@ -473,7 +473,7 @@ func (g OptimizationGoal) MarshalJSON() ([]byte, error) {
 	if g.ViewDurationSeconds != 0 {
 		out["view_duration_seconds"] = g.ViewDurationSeconds
 	}
-	if g.Target != nil {
+	if !isNilOptimizationGoalTarget(g.Target) {
 		out["target"] = g.Target
 	}
 	if g.Priority != 0 {
@@ -506,8 +506,17 @@ func isOptimizationGoalTypedJSONField(key string) bool {
 }
 
 func (g *OptimizationGoal) UnmarshalJSON(data []byte) error {
-	type alias OptimizationGoal
-	var typed alias
+	var typed struct {
+		Kind                string                             `json:"kind,omitempty"`
+		Metric              string                             `json:"metric,omitempty"`
+		ReachUnit           string                             `json:"reach_unit,omitempty"`
+		TargetFrequency     *OptimizationGoalTargetFrequency   `json:"target_frequency,omitempty"`
+		ViewDurationSeconds float64                            `json:"view_duration_seconds,omitempty"`
+		Target              json.RawMessage                    `json:"target,omitempty"`
+		Priority            int                                `json:"priority,omitempty"`
+		EventSources        []OptimizationGoalEventSource      `json:"event_sources,omitempty"`
+		AttributionWindow   *OptimizationGoalAttributionWindow `json:"attribution_window,omitempty"`
+	}
 	if err := json.Unmarshal(data, &typed); err != nil {
 		return err
 	}
@@ -522,7 +531,26 @@ func (g *OptimizationGoal) UnmarshalJSON(data []byte) error {
 		}
 	}
 
-	*g = OptimizationGoal(typed)
+	var target OptimizationGoalTarget
+	if len(typed.Target) > 0 && string(typed.Target) != "null" {
+		var err error
+		target, err = unmarshalOptimizationGoalTarget(typed.Target)
+		if err != nil {
+			return err
+		}
+	}
+
+	*g = OptimizationGoal{
+		Kind:                typed.Kind,
+		Metric:              typed.Metric,
+		ReachUnit:           typed.ReachUnit,
+		TargetFrequency:     typed.TargetFrequency,
+		ViewDurationSeconds: typed.ViewDurationSeconds,
+		Target:              target,
+		Priority:            typed.Priority,
+		EventSources:        typed.EventSources,
+		AttributionWindow:   typed.AttributionWindow,
+	}
 	if len(raw) == 0 {
 		g.Extra = nil
 		return nil
@@ -536,6 +564,275 @@ func (g *OptimizationGoal) UnmarshalJSON(data []byte) error {
 		g.Extra[k] = value
 	}
 	return nil
+}
+
+// OptimizationGoalTarget is a typed optimization-goal target variant.
+// Unknown future target objects decode as *OptimizationGoalRawTarget.
+// Go types do not enforce which target kinds are legal for metric vs event
+// goals; sellers should still validate the full OptimizationGoal against the
+// schema and their product capabilities.
+type OptimizationGoalTarget interface {
+	isOptimizationGoalTarget()
+}
+
+// OptimizationGoalCostPerTarget is a target cost per unit of the metric or
+// conversion event. MarshalJSON emits kind=cost_per.
+type OptimizationGoalCostPerTarget struct {
+	Kind  string         `json:"kind"`
+	Value float64        `json:"value"`
+	Extra map[string]any `json:"-"`
+}
+
+func (OptimizationGoalCostPerTarget) isOptimizationGoalTarget() {}
+
+func (t OptimizationGoalCostPerTarget) MarshalJSON() ([]byte, error) {
+	return marshalOptimizationGoalTarget("cost_per", t.Value, true, t.Extra)
+}
+
+func (t *OptimizationGoalCostPerTarget) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Kind  string  `json:"kind"`
+		Value float64 `json:"value"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	t.Kind = typed.Kind
+	t.Value = typed.Value
+	extra, err := unmarshalOptimizationGoalTargetExtra(data, "kind", "value")
+	if err != nil {
+		return err
+	}
+	t.Extra = extra
+	return nil
+}
+
+// OptimizationGoalThresholdRateTarget is a minimum per-impression target rate.
+// MarshalJSON emits kind=threshold_rate.
+type OptimizationGoalThresholdRateTarget struct {
+	Kind  string         `json:"kind"`
+	Value float64        `json:"value"`
+	Extra map[string]any `json:"-"`
+}
+
+func (OptimizationGoalThresholdRateTarget) isOptimizationGoalTarget() {}
+
+func (t OptimizationGoalThresholdRateTarget) MarshalJSON() ([]byte, error) {
+	return marshalOptimizationGoalTarget("threshold_rate", t.Value, true, t.Extra)
+}
+
+func (t *OptimizationGoalThresholdRateTarget) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Kind  string  `json:"kind"`
+		Value float64 `json:"value"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	t.Kind = typed.Kind
+	t.Value = typed.Value
+	extra, err := unmarshalOptimizationGoalTargetExtra(data, "kind", "value")
+	if err != nil {
+		return err
+	}
+	t.Extra = extra
+	return nil
+}
+
+// OptimizationGoalPerAdSpendTarget is a return per unit of ad spend target.
+// MarshalJSON emits kind=per_ad_spend.
+type OptimizationGoalPerAdSpendTarget struct {
+	Kind  string         `json:"kind"`
+	Value float64        `json:"value"`
+	Extra map[string]any `json:"-"`
+}
+
+func (OptimizationGoalPerAdSpendTarget) isOptimizationGoalTarget() {}
+
+func (t OptimizationGoalPerAdSpendTarget) MarshalJSON() ([]byte, error) {
+	return marshalOptimizationGoalTarget("per_ad_spend", t.Value, true, t.Extra)
+}
+
+func (t *OptimizationGoalPerAdSpendTarget) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Kind  string  `json:"kind"`
+		Value float64 `json:"value"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	t.Kind = typed.Kind
+	t.Value = typed.Value
+	extra, err := unmarshalOptimizationGoalTargetExtra(data, "kind", "value")
+	if err != nil {
+		return err
+	}
+	t.Extra = extra
+	return nil
+}
+
+// OptimizationGoalMaximizeValueTarget maximizes total conversion value within
+// budget. MarshalJSON emits kind=maximize_value.
+type OptimizationGoalMaximizeValueTarget struct {
+	Kind  string         `json:"kind"`
+	Extra map[string]any `json:"-"`
+}
+
+func (OptimizationGoalMaximizeValueTarget) isOptimizationGoalTarget() {}
+
+func (t OptimizationGoalMaximizeValueTarget) MarshalJSON() ([]byte, error) {
+	return marshalOptimizationGoalTarget("maximize_value", 0, false, t.Extra)
+}
+
+func (t *OptimizationGoalMaximizeValueTarget) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	t.Kind = typed.Kind
+	extra, err := unmarshalOptimizationGoalTargetExtra(data, "kind")
+	if err != nil {
+		return err
+	}
+	t.Extra = extra
+	return nil
+}
+
+// OptimizationGoalRawTarget preserves unknown future target variants.
+type OptimizationGoalRawTarget struct {
+	Kind  string         `json:"kind,omitempty"`
+	Extra map[string]any `json:"-"`
+}
+
+func (OptimizationGoalRawTarget) isOptimizationGoalTarget() {}
+
+func (t OptimizationGoalRawTarget) MarshalJSON() ([]byte, error) {
+	out := make(map[string]any, len(t.Extra))
+	for k, v := range t.Extra {
+		if k == "kind" {
+			continue
+		}
+		out[k] = v
+	}
+	if t.Kind != "" {
+		out["kind"] = t.Kind
+	}
+	return json.Marshal(out)
+}
+
+func (t *OptimizationGoalRawTarget) UnmarshalJSON(data []byte) error {
+	var typed struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return err
+	}
+	t.Kind = typed.Kind
+	extra, err := unmarshalOptimizationGoalTargetExtra(data, "kind")
+	if err != nil {
+		return err
+	}
+	t.Extra = extra
+	return nil
+}
+
+func unmarshalOptimizationGoalTarget(data []byte) (OptimizationGoalTarget, error) {
+	var typed struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(data, &typed); err != nil {
+		return nil, err
+	}
+	switch typed.Kind {
+	case "cost_per":
+		var target OptimizationGoalCostPerTarget
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
+		return &target, nil
+	case "threshold_rate":
+		var target OptimizationGoalThresholdRateTarget
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
+		return &target, nil
+	case "per_ad_spend":
+		var target OptimizationGoalPerAdSpendTarget
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
+		return &target, nil
+	case "maximize_value":
+		var target OptimizationGoalMaximizeValueTarget
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
+		return &target, nil
+	default:
+		var target OptimizationGoalRawTarget
+		if err := json.Unmarshal(data, &target); err != nil {
+			return nil, err
+		}
+		return &target, nil
+	}
+}
+
+func marshalOptimizationGoalTarget(kind string, value float64, includeValue bool, extra map[string]any) ([]byte, error) {
+	out := make(map[string]any, len(extra))
+	for k, v := range extra {
+		if k == "kind" || k == "value" {
+			continue
+		}
+		out[k] = v
+	}
+	out["kind"] = kind
+	if includeValue {
+		out["value"] = value
+	}
+	return json.Marshal(out)
+}
+
+func isNilOptimizationGoalTarget(target OptimizationGoalTarget) bool {
+	switch t := target.(type) {
+	case nil:
+		return true
+	case *OptimizationGoalCostPerTarget:
+		return t == nil
+	case *OptimizationGoalThresholdRateTarget:
+		return t == nil
+	case *OptimizationGoalPerAdSpendTarget:
+		return t == nil
+	case *OptimizationGoalMaximizeValueTarget:
+		return t == nil
+	case *OptimizationGoalRawTarget:
+		return t == nil
+	default:
+		return false
+	}
+}
+
+func unmarshalOptimizationGoalTargetExtra(data []byte, typedKeys ...string) (map[string]any, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, err
+	}
+	for _, key := range typedKeys {
+		delete(raw, key)
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	extra := make(map[string]any, len(raw))
+	for k, v := range raw {
+		var value any
+		if err := json.Unmarshal(v, &value); err != nil {
+			return nil, err
+		}
+		extra[k] = value
+	}
+	return extra, nil
 }
 
 type MediaBuyListItem struct {

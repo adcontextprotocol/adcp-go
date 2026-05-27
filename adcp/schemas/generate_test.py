@@ -8,6 +8,18 @@ from collections import OrderedDict
 import generate
 
 
+def without_descriptions(value):
+    if isinstance(value, dict):
+        return {
+            key: without_descriptions(item)
+            for key, item in value.items()
+            if key != "description"
+        }
+    if isinstance(value, list):
+        return [without_descriptions(item) for item in value]
+    return value
+
+
 def scalar_or_array_schema(min_items=1, description="Test union"):
     return {
         "description": description,
@@ -241,6 +253,24 @@ class EnumGenerationTest(unittest.TestCase):
             with open(f"{tmp}/enum_test.go", "w") as f:
                 f.write(source)
             subprocess.run(["go", "test", "."], cwd=tmp, check=True)
+
+
+class OptimizationGoalSchemaTest(unittest.TestCase):
+    def test_cost_per_target_branches_stay_structurally_equivalent(self):
+        schema = generate.load_schema("core/optimization-goal.json")
+        metric_cost_per = generate.json_pointer_get(
+            schema,
+            "/oneOf/0/properties/target/oneOf/0",
+        )
+        event_cost_per = generate.json_pointer_get(
+            schema,
+            "/oneOf/1/properties/target/oneOf/0",
+        )
+
+        self.assertEqual(
+            without_descriptions(metric_cost_per),
+            without_descriptions(event_cost_per),
+        )
 
 
 if __name__ == "__main__":
