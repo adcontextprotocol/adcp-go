@@ -5298,6 +5298,48 @@ func ParseWebhookSecurityMethod(s string) (WebhookSecurityMethod, error) {
 	return "", fmt.Errorf("unknown WebhookSecurityMethod value")
 }
 
+// OptimizationMetric — Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swi
+type OptimizationMetric = string
+const (
+	OptimizationMetricClicks OptimizationMetric = "clicks"
+	OptimizationMetricViews OptimizationMetric = "views"
+	OptimizationMetricCompletedViews OptimizationMetric = "completed_views"
+	OptimizationMetricViewedSeconds OptimizationMetric = "viewed_seconds"
+	OptimizationMetricAttentionSeconds OptimizationMetric = "attention_seconds"
+	OptimizationMetricAttentionScore OptimizationMetric = "attention_score"
+	OptimizationMetricEngagements OptimizationMetric = "engagements"
+	OptimizationMetricFollows OptimizationMetric = "follows"
+	OptimizationMetricSaves OptimizationMetric = "saves"
+	OptimizationMetricProfileVisits OptimizationMetric = "profile_visits"
+	OptimizationMetricReach OptimizationMetric = "reach"
+)
+
+// KnownOptimizationMetricValues returns the current schema-defined values for OptimizationMetric.
+func KnownOptimizationMetricValues() []OptimizationMetric {
+	return []OptimizationMetric{OptimizationMetricClicks, OptimizationMetricViews, OptimizationMetricCompletedViews, OptimizationMetricViewedSeconds, OptimizationMetricAttentionSeconds, OptimizationMetricAttentionScore, OptimizationMetricEngagements, OptimizationMetricFollows, OptimizationMetricSaves, OptimizationMetricProfileVisits, OptimizationMetricReach}
+}
+
+// IsKnownOptimizationMetric reports whether v is one of the current schema-defined OptimizationMetric values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownOptimizationMetric(v OptimizationMetric) bool {
+	switch v {
+	case OptimizationMetricClicks, OptimizationMetricViews, OptimizationMetricCompletedViews, OptimizationMetricViewedSeconds, OptimizationMetricAttentionSeconds, OptimizationMetricAttentionScore, OptimizationMetricEngagements, OptimizationMetricFollows, OptimizationMetricSaves, OptimizationMetricProfileVisits, OptimizationMetricReach:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseOptimizationMetric returns s as OptimizationMetric when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseOptimizationMetric(s string) (OptimizationMetric, error) {
+	v := OptimizationMetric(s)
+	if IsKnownOptimizationMetric(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown OptimizationMetric value")
+}
+
 // --- Union helper types ---
 
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses

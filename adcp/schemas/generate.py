@@ -629,6 +629,15 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
 ])
 
+# Named enum helpers generated from inline JSON Schema pointers. These cover
+# important SDK validation values that are not standalone enum schema files.
+INLINE_ENUM_TYPES = OrderedDict([
+    (
+        "OptimizationMetric",
+        "core/optimization-goal.json#/oneOf/0/properties/metric",
+    ),
+])
+
 # Named helper types generated for simple union schemas. These cover the common
 # protocol shape "single scalar or array of the same scalar" without falling
 # back to `any`.
@@ -1500,21 +1509,32 @@ def enum_to_type(name, desc, values):
 def generate_enums():
     """Generate Go string constants for all enum schemas."""
     lines = []
-    enum_dir = SCRIPT_DIR / ENUM_DIR
-    if not enum_dir.exists():
-        return ''
+    seen = {}
 
-    for f in sorted(enum_dir.iterdir()):
-        if not f.suffix == '.json':
-            continue
-        schema = load_schema(f)
-        name = pascal_case(f.stem)
+    def append_enum(name, schema, origin, required=False):
         values = schema.get('enum', [])
         if not values:
-            continue
-
+            if required:
+                raise ValueError(f'{origin} no longer defines enum values for {name}')
+            return
+        if name in seen:
+            raise ValueError(f'duplicate enum type {name}: {seen[name]} and {origin}')
+        seen[name] = origin
         desc = schema.get('description', '')
         lines.append(enum_to_type(name, desc, values))
+
+    enum_dir = SCRIPT_DIR / ENUM_DIR
+    if enum_dir.exists():
+        for f in sorted(enum_dir.iterdir()):
+            if not f.suffix == '.json':
+                continue
+            schema = load_schema(f)
+            name = pascal_case(f.stem)
+            append_enum(name, schema, str(f.relative_to(SCRIPT_DIR)))
+
+    for name, spec in INLINE_ENUM_TYPES.items():
+        schema = load_schema_spec(spec)
+        append_enum(name, schema, spec, required=True)
 
     return '\n'.join(lines)
 

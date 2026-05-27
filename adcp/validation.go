@@ -86,7 +86,7 @@ func validateMetricOptimizationGoal(g OptimizationGoal, cfg validationConfig) []
 
 	if g.Metric == "" {
 		issues = appendRequired(issues, "metric")
-	} else if cfg.strictEnums && !isKnownOptimizationMetric(g.Metric) {
+	} else if cfg.strictEnums && !IsKnownOptimizationMetric(OptimizationMetric(g.Metric)) {
 		issues = appendUnknownEnum(issues, "metric")
 	}
 
@@ -362,25 +362,6 @@ func appendUnknownVariant(issues []ValidationIssue, field string) []ValidationIs
 		Code:    "UNKNOWN_VARIANT",
 		Message: "value is not a current schema variant",
 	})
-}
-
-func isKnownOptimizationMetric(v string) bool {
-	switch v {
-	case "clicks",
-		"views",
-		"completed_views",
-		"viewed_seconds",
-		"attention_seconds",
-		"attention_score",
-		"engagements",
-		"follows",
-		"saves",
-		"profile_visits",
-		"reach":
-		return true
-	default:
-		return false
-	}
 }
 
 func isKnownDurationUnit(v string) bool {
