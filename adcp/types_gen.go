@@ -5829,7 +5829,9 @@ type Targeting struct {
 	GeoPostalAreas []GeoPostalAreaTarget `json:"geo_postal_areas,omitempty"` // Restrict delivery to specific postal areas. Each entry specifies the postal syst
 	GeoPostalAreasExclude []GeoPostalAreaTarget `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
 	DaypartTargets []DaypartTarget `json:"daypart_targets,omitempty"` // Restrict delivery to specific time windows. Each entry specifies days of week an
+	// Deprecated: Use TMP provider fields instead.
 	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for targe
+	// Deprecated: Use TMP provider fields instead.
 	AxeExcludeSegment string `json:"axe_exclude_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targ
 	AudienceInclude []string `json:"audience_include,omitempty"` // Restrict delivery to members of these first-party CRM audiences. Only users pres
 	AudienceExclude []string `json:"audience_exclude,omitempty"` // Suppress delivery to members of these first-party CRM audiences. Matched users a
@@ -7483,6 +7485,7 @@ type GetSignalsRequest struct {
 	Destinations []Destination `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When omitted,
 	Countries []string `json:"countries,omitempty"` // Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, n
 	Filters *SignalFilters `json:"filters,omitempty"`
+	// Deprecated: Use pagination.max_results instead.
 	MaxResults int `json:"max_results,omitempty"` // DEPRECATED: Use pagination.max_results instead. When both fields are present, ag
 	Pagination *PaginationRequest `json:"pagination,omitempty"` // Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pa
 	Context any `json:"context,omitempty"`

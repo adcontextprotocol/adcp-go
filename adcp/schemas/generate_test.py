@@ -474,6 +474,57 @@ class EnumGenerationTest(unittest.TestCase):
             subprocess.run(["go", "test", "."], cwd=tmp, check=True)
 
 
+class StructGenerationTest(unittest.TestCase):
+    def test_deprecated_property_emits_go_deprecation_comment(self):
+        schema = {
+            "type": "object",
+            "properties": OrderedDict(
+                [
+                    (
+                        "status",
+                        {
+                            "type": "string",
+                            "description": "Deprecated: Use media_buy_status instead.",
+                            "deprecated": True,
+                        },
+                    )
+                ]
+            ),
+        }
+
+        got = generate.schema_to_struct("CreateMediaBuySuccess", schema)
+
+        self.assertIn(
+            "\t// Deprecated: Use media_buy_status instead.\n"
+            "\tStatus string `json:\"status,omitempty\"` // Deprecated: Use media_buy_status instead.",
+            got,
+        )
+
+    def test_deprecated_property_without_description_emits_fallback_comment(self):
+        schema = {
+            "type": "object",
+            "properties": OrderedDict(
+                [
+                    (
+                        "legacy_id",
+                        {
+                            "type": "string",
+                            "deprecated": True,
+                        },
+                    )
+                ]
+            ),
+        }
+
+        got = generate.schema_to_struct("DeprecatedFallback", schema)
+
+        self.assertIn(
+            "\t// Deprecated: This field is deprecated.\n"
+            "\tLegacyID string `json:\"legacy_id,omitempty\"`",
+            got,
+        )
+
+
 class OptimizationGoalSchemaTest(unittest.TestCase):
     def setUp(self):
         self.schema = generate.load_schema("core/optimization-goal.json")
