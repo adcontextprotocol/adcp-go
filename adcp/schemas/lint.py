@@ -384,6 +384,12 @@ OPTIONAL_NUMERIC_SCALAR_OK = {
     # semantically identical to omission, and include the protocol rationale in
     # the reason string.
     # (type_name, json_name): reason
+    ('PricingOption', 'floor_price'): (
+        'zero and omission both mean no auction floor has been declared'
+    ),
+    ('PricingOption', 'min_spend_per_package'): (
+        'zero and omission both mean no minimum spend requirement has been declared'
+    ),
 }
 
 

@@ -420,6 +420,8 @@ type ProductsData struct {
 // FixedPrice is a pointer because the schema oneOf requires field presence for
 // fixed-price variants. Go represents that presence with non-nil; use Float64(0)
 // if an explicit zero fixed price is intentional.
+// FloorPrice and MinSpendPerPackage are scalar thresholds because zero and
+// omission both mean no threshold has been declared.
 type PricingOption struct {
 	PricingOptionID     string   `json:"pricing_option_id"`
 	PricingModel        string   `json:"pricing_model"`
