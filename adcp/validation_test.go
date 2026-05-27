@@ -80,6 +80,33 @@ func TestValidateOptimizationGoal_RequiredFields(t *testing.T) {
 	}
 }
 
+func TestValidateOptimizationGoal_BranchSpecificFields(t *testing.T) {
+	invalidAttributionWindow := &OptimizationGoalAttributionWindow{}
+	event := OptimizationGoal{
+		Kind: "event",
+		EventSources: []OptimizationGoalEventSource{{
+			EventSourceID: "pixel-1",
+			EventType:     "purchase",
+		}},
+		AttributionWindow: invalidAttributionWindow,
+	}
+	eventIssues := event.Validate()
+	if !hasValidationIssue(eventIssues, "attribution_window.post_click.interval", "REQUIRED_FIELD") {
+		t.Fatalf("Validate missing event attribution_window issue: %#v", eventIssues)
+	}
+
+	metric := OptimizationGoal{
+		Kind:              "metric",
+		Metric:            "clicks",
+		AttributionWindow: invalidAttributionWindow,
+	}
+	metricIssues := metric.Validate()
+	if hasValidationIssue(metricIssues, "attribution_window.post_click.interval", "REQUIRED_FIELD") ||
+		hasValidationIssue(metricIssues, "attribution_window.post_click.unit", "REQUIRED_FIELD") {
+		t.Fatalf("Validate should ignore event-only attribution_window on metric goal: %#v", metricIssues)
+	}
+}
+
 func TestValidateOptimizationGoal_TargetFrequencyRequiredWindow(t *testing.T) {
 	goal := OptimizationGoal{
 		Kind:      "metric",
