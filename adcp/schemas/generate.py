@@ -629,6 +629,22 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
 ])
 
+# Shared inline helper types are generated from one schema pointer but reused by
+# INLINE_TYPE_HINTS for sibling schema pointers. lint.py verifies these siblings
+# keep the same property set before we keep reusing a single Go type.
+SHARED_INLINE_OVERRIDES = {
+    "DeliveryReportingDimension": [
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/device_type",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/device_platform",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/audience",
+        "media-buy/get-media-buy-delivery-request.json"
+        "#/properties/reporting_dimensions/properties/placement",
+    ],
+}
+
 # Named enum helpers generated from inline JSON Schema pointers. These cover
 # important SDK validation values that are not standalone enum schema files.
 INLINE_ENUM_TYPES = OrderedDict([

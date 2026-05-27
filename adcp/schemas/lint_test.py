@@ -3,6 +3,36 @@ import unittest
 import lint
 
 
+class SharedInlineOverrideLintTest(unittest.TestCase):
+    def test_shared_inline_override_reports_property_drift(self):
+        original_overrides = lint.gen.SHARED_INLINE_OVERRIDES
+        original_load_schema_spec = lint.load_schema_spec
+        try:
+            lint.gen.SHARED_INLINE_OVERRIDES = {
+                "SharedShape": [
+                    "core/product.json#/properties/a",
+                    "core/product.json#/properties/b",
+                ],
+            }
+
+            def load_schema_spec(spec):
+                if spec.endswith("/a"):
+                    return {"properties": {"enabled": {}}}
+                return {"properties": {"enabled": {}, "limit": {}}}
+
+            lint.load_schema_spec = load_schema_spec
+
+            reports = lint.validate_shared_inline_overrides()
+        finally:
+            lint.gen.SHARED_INLINE_OVERRIDES = original_overrides
+            lint.load_schema_spec = original_load_schema_spec
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("SharedShape", reports[0]["type"])
+        self.assertEqual(["limit"], reports[0]["extra"])
+        self.assertEqual([], reports[0]["missing"])
+
+
 class OptionalNumericPointerLintTest(unittest.TestCase):
     def test_zero_invalid_honors_numeric_bounds(self):
         self.assertFalse(lint.numeric_zero_invalid({"type": "number", "minimum": 0}))

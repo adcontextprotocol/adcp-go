@@ -312,6 +312,50 @@ def validate_inline_schema_specs():
     return reports
 
 
+def validate_shared_inline_overrides():
+    """Verify shared inline helper types still match each reused schema shape."""
+    reports = []
+    for type_name, schema_specs in gen.SHARED_INLINE_OVERRIDES.items():
+        loaded = []
+        error_count = len(reports)
+        for schema_spec in schema_specs:
+            path_part = schema_spec.split('#', 1)[0]
+            schema_path = SCRIPT_DIR / path_part
+            if not schema_path.exists():
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'schema not found: {schema_path}',
+                })
+                continue
+            try:
+                schema = load_schema_spec(schema_spec)
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'could not resolve schema pointer: {e}',
+                })
+                continue
+            loaded.append((schema_spec, schema_property_set(schema)))
+        if len(reports) != error_count or len(loaded) != len(schema_specs):
+            continue
+
+        anchor_spec, anchor_props = loaded[0]
+        for schema_spec, props in loaded[1:]:
+            if props == anchor_props:
+                continue
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'anchor_schema': anchor_spec,
+                'missing': sorted(anchor_props - props),
+                'extra': sorted(props - anchor_props),
+                'error': 'shared inline override schema properties differ',
+            })
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -621,6 +665,7 @@ def main():
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
+    shared_inline_errors = validate_shared_inline_overrides()
     union_schema_errors = validate_union_schema_specs()
     optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
 
@@ -645,6 +690,7 @@ def main():
             'drift': reports,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
+            'shared_inline_errors': shared_inline_errors,
             'union_schema_errors': union_schema_errors,
             'optional_numeric_pointer': optional_numeric_reports,
         }
@@ -656,6 +702,18 @@ def main():
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
+            print()
+        if shared_inline_errors:
+            print(f'Shared inline override errors in {len(shared_inline_errors)} type(s):')
+            for r in shared_inline_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    anchor: {r.get("anchor_schema", "?")}')
+                print(f'    error:  {r["error"]}')
+                if r.get('missing'):
+                    print(f'    missing: {", ".join(r["missing"])}')
+                if r.get('extra'):
+                    print(f'    extra:   {", ".join(r["extra"])}')
             print()
         if union_schema_errors:
             print(f'Union schema pointer errors in {len(union_schema_errors)} type(s):')
@@ -699,10 +757,13 @@ def main():
             for t in no_schema:
                 print(f'  - {t}')
 
-    has_problems = bool(inline_schema_errors) or bool(union_schema_errors) or bool(reports) or (
-        bool(optional_numeric_reports)
-    ) or (
-        args.strict and bool(no_schema)
+    has_problems = (
+        bool(inline_schema_errors)
+        or bool(shared_inline_errors)
+        or bool(union_schema_errors)
+        or bool(reports)
+        or bool(optional_numeric_reports)
+        or (args.strict and bool(no_schema))
     )
     return 1 if (args.strict and has_problems) else 0
 
