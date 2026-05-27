@@ -59,6 +59,12 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 2. If you need a hand-written struct (methods, oneOf flattening, inline response item): add the struct to `adcp/types.go`, add its name to `KNOWN_TYPES` in `adcp/schemas/generate.py`, and regenerate. If the schema is a oneOf that you're flattening into one struct, also add the name to `EXEMPT` in `adcp/schemas/lint.py` so drift-check skips it. The `KNOWN_TYPES` comment block documents the criteria in more detail.
 3. Run `cd adcp/schemas && python3 lint.py` locally — it prints missing/extra fields and remediation guidance. CI runs it with `--strict`.
 
+### Updating the schema bundle
+
+1. Run `cd adcp/schemas && ./download.sh <version>`. Released versions require `cosign` on `PATH` and live Sigstore verification; see the `adcp/schemas/download.sh` header for the trust model.
+2. Regenerate Go types with `python3 generate.py > ../types_gen.go`.
+3. Ensure the PR diff includes both `adcp/schemas/VERSION` and `adcp/schemas/.bundle-sha256`. CI only enables the pinned-bundle shortcut when both files are unchanged from `main`; otherwise, it requires live Sigstore verification. When the files are unchanged, CI sets `ADCP_TRUST_PINNED_BUNDLE=1` and skips live Sigstore verification only after the downloaded bundle hash matches the committed `.bundle-sha256`.
+
 ## PR review (Argus)
 
 Every non-draft, non-dependabot PR is reviewed by Argus, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO IPR GitHub App. Workflow lives at `.github/workflows/ai-review.yml`; the reviewer prompt — MUST-FIX gates, expert-triage rules — is at `.github/ai-review/expert-adcp-reviewer.md`. Both files are forked from `adcontextprotocol/adcp`; upstream drift is surfaced weekly by `sync-argus-upstream-check.yml`, which opens an issue listing new upstream commits to reconcile by hand. The fork-point SHAs are pinned in `.github/ai-review/UPSTREAM_FORK_POINT` — bump them in the porting PR.
