@@ -94,6 +94,10 @@ func allowAdditionalProperties(s *jsonschema.Schema) {
 		}
 	}
 
+	if isOptimizationGoalSchema(s) {
+		applyOptimizationGoalSchemaOverride(s)
+	}
+
 	// Remove properties that serialize to `true` (the accept-anything schema
 	// generated for `any`/`interface{}` fields). These cause validation errors
 	// in some schema validators. The field is still accepted because
@@ -101,10 +105,6 @@ func allowAdditionalProperties(s *jsonschema.Schema) {
 	// overrides so tool discovery does not lose protocol fields.
 	for name, prop := range s.Properties {
 		if isTrueSchema(prop) {
-			if name == "target" && isOptimizationGoalSchema(s) {
-				s.Properties[name] = optimizationGoalTargetJSONSchema()
-				continue
-			}
 			delete(s.Properties, name)
 			// Also remove from required if present
 			s.Required = slices.DeleteFunc(s.Required, func(s string) bool { return s == name })
@@ -152,7 +152,7 @@ func isTrueSchema(s *jsonschema.Schema) bool {
 }
 
 func isOptimizationGoalSchema(s *jsonschema.Schema) bool {
-	if s == nil || s.Type != "object" || s.Properties == nil {
+	if s == nil || s.Type != "object" || s.Properties == nil || len(s.OneOf) > 0 {
 		return false
 	}
 	if _, ok := s.Properties["kind"]; !ok {
@@ -161,16 +161,68 @@ func isOptimizationGoalSchema(s *jsonschema.Schema) bool {
 	_, hasMetric := s.Properties["metric"]
 	_, hasEventSources := s.Properties["event_sources"]
 	_, hasTarget := s.Properties["target"]
-	return hasTarget && (hasMetric || hasEventSources)
+	return hasTarget && hasMetric && hasEventSources
 }
 
-func optimizationGoalTargetJSONSchema() *jsonschema.Schema {
+// applyOptimizationGoalSchemaOverride replaces the flattened Go type schema
+// with the protocol's metric/event branches. Branches deliberately omit
+// additionalProperties so tool inputs remain forward-compatible with Extra.
+func applyOptimizationGoalSchemaOverride(s *jsonschema.Schema) {
+	props := s.Properties
+	s.Type = ""
+	s.Properties = nil
+	s.Required = nil
+	s.PropertyOrder = nil
+	s.OneOf = []*jsonschema.Schema{
+		optimizationGoalBranchJSONSchema("metric", map[string]*jsonschema.Schema{
+			"metric":                props["metric"],
+			"reach_unit":            props["reach_unit"],
+			"target_frequency":      props["target_frequency"],
+			"view_duration_seconds": props["view_duration_seconds"],
+			"target":                optimizationGoalMetricTargetJSONSchema(),
+			"priority":              props["priority"],
+		}, []string{"kind", "metric"}),
+		optimizationGoalBranchJSONSchema("event", map[string]*jsonschema.Schema{
+			"event_sources":      props["event_sources"],
+			"target":             optimizationGoalEventTargetJSONSchema(),
+			"attribution_window": props["attribution_window"],
+			"priority":           props["priority"],
+		}, []string{"kind", "event_sources"}),
+	}
+}
+
+func optimizationGoalMetricTargetJSONSchema() *jsonschema.Schema {
 	return &jsonschema.Schema{OneOf: []*jsonschema.Schema{
 		optimizationGoalTargetVariantSchema("cost_per", true, "Target cost per unit of the metric or conversion event."),
 		optimizationGoalTargetVariantSchema("threshold_rate", true, "Minimum per-impression rate for the metric."),
+	}}
+}
+
+func optimizationGoalEventTargetJSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{OneOf: []*jsonschema.Schema{
+		optimizationGoalTargetVariantSchema("cost_per", true, "Target cost per unit of the metric or conversion event."),
 		optimizationGoalTargetVariantSchema("per_ad_spend", true, "Target return per unit of ad spend."),
 		optimizationGoalTargetVariantSchema("maximize_value", false, "Maximize total conversion value within budget."),
 	}}
+}
+
+func optimizationGoalBranchJSONSchema(kind string, properties map[string]*jsonschema.Schema, required []string) *jsonschema.Schema {
+	kindValue := any(kind)
+	branchProperties := make(map[string]*jsonschema.Schema, len(properties)+1)
+	for name, prop := range properties {
+		if prop != nil {
+			branchProperties[name] = prop
+		}
+	}
+	branchProperties["kind"] = &jsonschema.Schema{
+		Type:  "string",
+		Const: &kindValue,
+	}
+	return &jsonschema.Schema{
+		Type:       "object",
+		Properties: branchProperties,
+		Required:   required,
+	}
 }
 
 func optimizationGoalTargetVariantSchema(kind string, withValue bool, description string) *jsonschema.Schema {
