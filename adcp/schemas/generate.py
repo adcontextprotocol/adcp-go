@@ -873,6 +873,11 @@ INLINE_TYPE_HINTS = {
     ('Package', 'optimization_goals'): 'OptimizationGoal',
     ('PackageInput', 'optimization_goals'): 'OptimizationGoal',
     ('PackageUpdate', 'optimization_goals'): 'OptimizationGoal',
+    # Optional numeric policy: use a pointer only when omission and explicit
+    # zero are both valid and semantically distinct. value_factor defaults to 1
+    # and explicit 0 zeroes this event source. view_duration_seconds has
+    # exclusiveMinimum: 0, so explicit 0 is invalid and the hand-written
+    # OptimizationGoal field intentionally stays float64.
     ('OptimizationGoalEventSource', 'value_factor'): '*float64',
 }
 
