@@ -3,9 +3,11 @@ package adcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,9 +112,11 @@ func TestDetectProtocolsEmitsOnlySchemaEnum(t *testing.T) {
 		"sponsored_intelligence": true, "creative": true, "brand": true,
 	}
 	got := detectProtocols(Config{
-		GetProducts:          func(context.Context, any, *GetProductsRequest) (*ProductsData, error) { return nil, nil },
-		GetSignals:           func(context.Context, *GetSignalsRequest) ([]Signal, error) { return nil, nil },
-		CreateCollectionList: func(context.Context, *CreateCollectionListRequest) (*CreateCollectionListResult, error) { return nil, nil },
+		GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) { return nil, nil },
+		GetSignals:  func(context.Context, *GetSignalsRequest) ([]Signal, error) { return nil, nil },
+		CreateCollectionList: func(context.Context, *CreateCollectionListRequest) (*CreateCollectionListResult, error) {
+			return nil, nil
+		},
 	})
 	for _, p := range got {
 		assert.Truef(t, valid[p], "detectProtocols returned %q which is not in the 3.0 supported_protocols enum", p)
@@ -149,4 +153,150 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	require.True(t, ok)
 	models, _ := mb["supported_pricing_models"].([]any)
 	assert.Equal(t, []any{"cpm"}, models)
+}
+
+func TestAttachContext(t *testing.T) {
+	t.Run("nil result", func(t *testing.T) {
+		assert.Nil(t, attachContext(nil, map[string]any{"trace_id": "ctx-1"}))
+	})
+
+	t.Run("nil context", func(t *testing.T) {
+		result := buildResult("ok", map[string]any{"status": "ok"})
+
+		got := attachContext(result, nil)
+
+		require.Same(t, result, got)
+		assert.NotContains(t, structuredContentMap(t, got), "context")
+	})
+
+	t.Run("adds context", func(t *testing.T) {
+		ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
+		result := buildResult("ok", map[string]any{"status": "ok"})
+
+		got := attachContext(result, ctxValue)
+
+		require.Same(t, result, got)
+		assert.Equal(t, ctxValue, structuredContentMap(t, got)["context"])
+	})
+}
+
+func TestRegisteredHandlersAttachContext(t *testing.T) {
+	ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
+	args := map[string]any{"context": ctxValue}
+
+	tests := []struct {
+		name string
+		tool string
+		args map[string]any
+		cfg  Config
+	}{
+		{
+			name: "media buy success",
+			tool: "get_products",
+			args: map[string]any{"buying_mode": "brief", "context": ctxValue},
+			cfg: baseTestConfig(Config{
+				GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
+					return &ProductsData{Products: []Product{}}, nil
+				},
+			}),
+		},
+		{
+			name: "media buy error",
+			tool: "get_products",
+			args: map[string]any{"buying_mode": "brief", "context": ctxValue},
+			cfg: baseTestConfig(Config{
+				GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
+					return nil, errors.New("boom")
+				},
+			}),
+		},
+		{
+			name: "signals success",
+			tool: "get_signals",
+			args: args,
+			cfg: baseTestConfig(Config{
+				GetSignals: func(context.Context, *GetSignalsRequest) ([]Signal, error) {
+					return []Signal{}, nil
+				},
+			}),
+		},
+		{
+			name: "signals error",
+			tool: "get_signals",
+			args: args,
+			cfg: baseTestConfig(Config{
+				GetSignals: func(context.Context, *GetSignalsRequest) ([]Signal, error) {
+					return nil, errors.New("boom")
+				},
+			}),
+		},
+		{
+			name: "collection success",
+			tool: "list_collection_lists",
+			args: args,
+			cfg: baseTestConfig(Config{
+				ListCollectionLists: func(context.Context, *ListCollectionListsRequest) (*ListCollectionListsResult, error) {
+					return &ListCollectionListsResult{Lists: []CollectionList{}}, nil
+				},
+			}),
+		},
+		{
+			name: "collection error",
+			tool: "list_collection_lists",
+			args: args,
+			cfg: baseTestConfig(Config{
+				ListCollectionLists: func(context.Context, *ListCollectionListsRequest) (*ListCollectionListsResult, error) {
+					return nil, errors.New("boom")
+				},
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := callRegisteredTool(t, tt.cfg, tt.tool, tt.args)
+
+			assert.Equal(t, ctxValue, structuredContentMap(t, result)["context"])
+		})
+	}
+}
+
+func baseTestConfig(cfg Config) Config {
+	cfg.IdempotencyReplayTTL = 24 * time.Hour
+	if cfg.Capabilities == nil {
+		cfg.Capabilities = &CapabilitiesData{SupportedProtocols: []string{"media_buy"}}
+	}
+	return cfg
+}
+
+func callRegisteredTool(t *testing.T, cfg Config, name string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0.0.1"}, nil)
+	Register(server, cfg)
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer serverSession.Close()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "seller-test-client", Version: "v0.0.1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer clientSession.Close()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	return result
+}
+
+func structuredContentMap(t *testing.T, result *mcp.CallToolResult) map[string]any {
+	t.Helper()
+
+	require.NotNil(t, result)
+	m, ok := jsonRoundTrip(result.StructuredContent).(map[string]any)
+	require.Truef(t, ok, "expected structured content map, got %T", result.StructuredContent)
+	return m
 }
