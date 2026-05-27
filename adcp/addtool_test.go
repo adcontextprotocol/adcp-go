@@ -3,6 +3,7 @@ package adcp
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -136,4 +137,24 @@ func TestPermissiveSchemaVsDefaultSchema(t *testing.T) {
 	// Our permissive schema should NOT
 	permissive := permissiveSchemaFor[testInput]()
 	assert.Nil(t, permissive.AdditionalProperties, "expected permissive schema to have nil additionalProperties")
+}
+
+func TestPermissiveSchemaPreservesOptimizationGoalTarget(t *testing.T) {
+	schema := permissiveSchemaFor[PackageInput]()
+
+	b, err := json.Marshal(schema)
+	require.NoError(t, err, "failed to marshal package input schema")
+	body := string(b)
+
+	assert.Contains(t, body, `"optimization_goals"`, "expected optimization_goals in schema")
+	assert.Contains(t, body, `"target"`, "expected optimization goal target in schema")
+	for _, want := range []string{
+		`"const":"cost_per"`,
+		`"const":"threshold_rate"`,
+		`"const":"per_ad_spend"`,
+		`"const":"maximize_value"`,
+	} {
+		assert.Contains(t, body, want, "expected target variant %s in schema", want)
+	}
+	assert.True(t, strings.Count(body, `"const":"threshold_rate"`) >= 1, "expected threshold_rate target variant")
 }

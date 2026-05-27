@@ -162,6 +162,7 @@ be populated.
 | `Package.OptimizationGoals` | `[]adcp.OptimizationGoal` |
 | `PackageInput.OptimizationGoals` | `[]adcp.OptimizationGoal` |
 | `PackageUpdate.OptimizationGoals` | `[]adcp.OptimizationGoal` |
+| `OptimizationGoal.Target` | `adcp.OptimizationGoalTarget` |
 | `GetMediaBuysRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.StatusFilter` | `*adcp.MediaBuyStatusFilter` |
 | `GetMediaBuyDeliveryRequest.AttributionWindow` | `*adcp.DeliveryAttributionWindow` |
@@ -276,9 +277,34 @@ feedback := adcp.ProvidePerformanceFeedbackRequest{
   and `Ext`.
 - `OptimizationGoals` fields now use `[]adcp.OptimizationGoal` instead of
   `[]any`. Nested `event_sources`, `target_frequency`, and `attribution_window`
-  are typed; the nested `target` oneOf remains `any` until nested union
-  generation lands. `OptimizationGoal.Extra` preserves unknown top-level fields
-  when round-tripping newer goal variants through replacement-style updates.
+  are typed, and the nested `target` oneOf is now the
+  `adcp.OptimizationGoalTarget` interface. Use concrete target variants such as
+  `adcp.OptimizationGoalCostPerTarget`,
+  `adcp.OptimizationGoalThresholdRateTarget`,
+  `adcp.OptimizationGoalPerAdSpendTarget`, and
+  `adcp.OptimizationGoalMaximizeValueTarget`. Unknown future target variants
+  round-trip through `adcp.OptimizationGoalRawTarget`.
+  `OptimizationGoal.Extra` preserves unknown top-level fields when
+  round-tripping newer goal variants through replacement-style updates.
+
+```go
+goal := adcp.OptimizationGoal{
+  Kind:   "metric",
+  Metric: "reach",
+  Target: adcp.OptimizationGoalThresholdRateTarget{Value: 0.7},
+}
+
+switch target := goal.Target.(type) {
+case *adcp.OptimizationGoalThresholdRateTarget:
+  _ = target.Value
+case adcp.OptimizationGoalThresholdRateTarget:
+  _ = target.Value
+}
+```
+
+JSON unmarshal always produces the pointer form; the value form is what you get
+when constructing goals directly in Go.
+
 - `SyncCreativesRequest.Assignments` is now `[]adcp.SyncCreativeAssignment`.
 - `Config.CreateMediaBuy` now returns `adcp.CreateMediaBuyResult`, which is
   implemented by the generated schema variants. Return
