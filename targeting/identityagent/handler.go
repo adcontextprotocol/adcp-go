@@ -23,6 +23,7 @@ import (
 type identityHandler struct {
 	service                    *Service
 	tmpx                       *TMPXSealer
+	canonicalizer              *IdentityCanonicalizer
 	requestTimeout             time.Duration
 	requestBodyLimit           int64
 	responseTTL                time.Duration
@@ -33,8 +34,17 @@ type identityHandler struct {
 
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
 type IdentityHandlerConfig struct {
-	Service          *Service
-	TMPXSealer       *TMPXSealer
+	Service    *Service
+	TMPXSealer *TMPXSealer
+	// Canonicalizer decodes inbound IdentityToken.UserToken strings into
+	// the canonical lowercase-hex key form audience/fcap services lookup
+	// on. Construct via NewIdentityCanonicalizer (typically alongside
+	// TMPXSealer) so the per-request decode pass runs once and feeds
+	// both the shadow request and the TMPX seal step. Nil disables
+	// canonicalization — the inbound request is forwarded to
+	// service.Evaluate unmodified, preserving the legacy "publisher wire
+	// string is the key" behavior.
+	Canonicalizer    *IdentityCanonicalizer
 	RequestTimeout   time.Duration
 	RequestBodyLimit int64
 	ResponseTTL      time.Duration
@@ -65,6 +75,7 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	return &identityHandler{
 		service:                    cfg.Service,
 		tmpx:                       cfg.TMPXSealer,
+		canonicalizer:              cfg.Canonicalizer,
 		requestTimeout:             cfg.RequestTimeout,
 		requestBodyLimit:           cfg.RequestBodyLimit,
 		responseTTL:                cfg.ResponseTTL,
@@ -154,7 +165,21 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.tmpx != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()
-		if token, terr := h.tmpx.SealDecoded(ctx, decoded); terr != nil {
+		// When a canonicalizer ran, decoded already holds the per-request
+		// decode pass and we pass it through to keep the LiveRamp sidecar
+		// at one call per request. When canonicalization is opted-out
+		// (decoded is nil) the sealer falls back to its own decode pass
+		// — Seal(=Decode+SealDecoded) covers that explicitly.
+		var (
+			token string
+			terr  error
+		)
+		if decoded != nil {
+			token, terr = h.tmpx.SealDecoded(ctx, decoded)
+		} else {
+			token, terr = h.tmpx.Seal(ctx, req.Identities)
+		}
+		if terr != nil {
 			h.logger.Warn("tmpx generation failed, response will omit tmpx",
 				"request_id", req.RequestID, "error", terr)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomeError)
@@ -232,28 +257,34 @@ func (h *identityHandler) recordCompletion(ctx context.Context, start time.Time,
 // service.Evaluate, along with the decoded identity slice the TMPX seal
 // path will consume.
 //
-// When TMPX is enabled, the request's identities are decoded once via
-// h.tmpx.Decode (so LiveRamp-backed RampIDs hit the sidecar at most once
-// per request) and a shallow shadow request is built whose Identities
-// slice carries only the entries that successfully decoded, with
-// UserToken set to the decoded byte form — that way
-// identityhash.Hash(user_token) inside audience/fcap keys onto the
-// canonical decoded form, matching whatever the buyer-master populator
-// publishes downstream.
+// When a canonicalizer is configured the request's identities are decoded
+// once (so LiveRamp-backed RampIDs hit the sidecar at most once per
+// request) and a shallow shadow request is built whose Identities slice
+// carries only the entries that successfully decoded, with UserToken set
+// to the canonical lowercase-hex form of the decoded bytes — that way
+// identityhash.Hash(user_token) inside audience/fcap keys onto the same
+// shape ExposureLog.user_token publishes downstream, which is the
+// keying convention downstream marker writers and buyer-master readers
+// honor. The same decoded slice flows through to TMPXSealer.SealDecoded
+// when TMPX is enabled, so the decode pass runs exactly once per request
+// regardless of whether one or both of canonicalization and sealing are
+// active.
 //
-// When TMPX is disabled, no decode is performed and the original request
-// passes through unchanged — preserving legacy behavior for deployments
-// that don't ship TMPX tokens.
+// When no canonicalizer is configured no decode is performed and the
+// original request passes through unchanged — preserving legacy behavior
+// for deployments that have opted out of canonicalization. (Production
+// wires a canonicalizer in by default; this branch is the explicit
+// opt-out and the test-fixture default.)
 //
 // The returned shadow shares backing storage for every IdentityMatchRequest
 // field except Identities; the caller must not append to those slices.
 // service.Evaluate is the only consumer and does its own value copy of
 // the request before mutating PackageIDs.
 func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.IdentityMatchRequest) (*tmproto.IdentityMatchRequest, []DecodedIdentity) {
-	if h.tmpx == nil {
+	if h.canonicalizer == nil {
 		return req, nil
 	}
-	decoded := h.tmpx.Decode(ctx, req.Identities)
+	decoded := h.canonicalizer.Decode(ctx, req.Identities)
 	shadow := *req
 	shadow.Identities = audienceEligibleIdentities(decoded)
 	return &shadow, decoded

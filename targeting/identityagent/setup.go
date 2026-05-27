@@ -61,6 +61,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	identityHandler := NewIdentityHandler(IdentityHandlerConfig{
 		Service:                    bundle.service,
 		TMPXSealer:                 bundle.tmpx,
+		Canonicalizer:              bundle.canonicalizer,
 		RequestTimeout:             cfg.RequestTimeout,
 		RequestBodyLimit:           int64(cfg.RequestBodyLimitBytes),
 		ResponseTTL:                cfg.ResponseTTL,
@@ -259,6 +260,7 @@ type bundle struct {
 	fcapCloser       interface{ Close() error }
 	keystore         tmproto.KeyStore
 	tmpx             *TMPXSealer
+	canonicalizer    *IdentityCanonicalizer
 	cancelBackground context.CancelFunc
 }
 
@@ -390,6 +392,14 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}
 
+	// The canonicalizer is constructed independently of TMPX configuration:
+	// even deployments that never emit a TMPX token need audience/fcap
+	// lookups keyed on the canonical decoded form so they see the same
+	// shape ExposureLog.user_token publishes downstream. The same
+	// LiveRamp sidecar (when configured) backs RampID decoding here as in
+	// the sealer.
+	canonicalizer := NewIdentityCanonicalizer(lrSidecar, logger, recorder)
+
 	return &bundle{
 		service:          svc,
 		configSvc:        configSvc,
@@ -398,6 +408,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		fcapCloser:       fcapCloser,
 		keystore:         keystore,
 		tmpx:             tmpx,
+		canonicalizer:    canonicalizer,
 		cancelBackground: cancelBg,
 	}, nil
 }

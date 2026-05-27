@@ -168,11 +168,14 @@ func TestIdentityHandlerUnsupportedMajorVersionIsGenericAndLogged(t *testing.T) 
 	assert.NotContains(t, logErr, "999")
 }
 
-// TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged covers the
-// legacy code path: when the handler has no sealer, the request flows to
-// service.Evaluate exactly as received — no decode, no shadow.
-func TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged(t *testing.T) {
-	h := &identityHandler{tmpx: nil}
+// TestBuildServiceRequest_NoCanonicalizer_PassesThroughUnchanged covers the
+// legacy code path: when the handler has neither a canonicalizer nor a
+// sealer, the request flows to service.Evaluate exactly as received — no
+// decode, no shadow. This is the opt-out behavior for deployments that
+// explicitly want the publisher-supplied wire string as the audience/fcap
+// lookup key.
+func TestBuildServiceRequest_NoCanonicalizer_PassesThroughUnchanged(t *testing.T) {
+	h := &identityHandler{tmpx: nil, canonicalizer: nil}
 	req := &tmproto.IdentityMatchRequest{
 		RequestID: "req-1",
 		Identities: []tmproto.IdentityToken{
@@ -180,25 +183,67 @@ func TestBuildServiceRequest_TMPXDisabled_PassesThroughUnchanged(t *testing.T) {
 		},
 	}
 	got, decoded := h.buildServiceRequest(t.Context(), req)
-	assert.Same(t, req, got, "TMPX-off must pass through the original request pointer")
-	assert.Nil(t, decoded, "TMPX-off must not produce a decoded slice")
+	assert.Same(t, req, got, "missing canonicalizer must pass through the original request pointer")
+	assert.Nil(t, decoded, "missing canonicalizer must not produce a decoded slice")
 }
 
-// TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalForm
-// pins the shadow-request contract: when TMPX is enabled, the request
-// that flows into service.Evaluate carries audience/fcap-eligible
-// identities only, and their UserToken is the canonical lowercase-hex
-// form of the decoded bytes — matching ExposureLog.user_token per its
-// proto spec, which is the keying convention downstream marker writers
-// and buyer-master readers honor.
-//
-// MAID and HashedEmail have decoders → survive with canonical hex in
-// UserToken.
-// UID2 has no registered decoder → dropped at decode time.
-// UIDTypeOther has no TMPX mapping → dropped entirely.
-func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalForm(t *testing.T) {
-	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
-	h := &identityHandler{tmpx: cfg}
+// TestBuildServiceRequest_CanonicalizerOnly_TMPXOff is the bug-fix
+// regression test: a deployment with the canonicalizer wired in but TMPX
+// sealing disabled (no JWKS, no recipient) must still see audience/fcap
+// keyed on the canonical lowercase-hex form of the decoded bytes — not
+// on the publisher-supplied wire string. Otherwise TMPX-on and TMPX-off
+// deployments key the same logical user differently and downstream
+// marker-writer lookups diverge.
+func TestBuildServiceRequest_CanonicalizerOnly_TMPXOff(t *testing.T) {
+	h := &identityHandler{
+		tmpx:          nil,
+		canonicalizer: testCanonicalizer(t),
+	}
+
+	maidUUID := validUserTokenFor(tmproto.UIDTypeMAID)
+	hashedEmail := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	req := &tmproto.IdentityMatchRequest{
+		RequestID: "req-off",
+		Identities: []tmproto.IdentityToken{
+			{UIDType: tmproto.UIDTypeMAID, UserToken: maidUUID},
+			{UIDType: tmproto.UIDTypeHashedEmail, UserToken: hashedEmail},
+			{UIDType: tmproto.UIDTypeUID2, UserToken: fixtureToken("uid2-no-decoder")},
+			{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},
+		},
+	}
+
+	shadow, decoded := h.buildServiceRequest(t.Context(), req)
+
+	require.NotSame(t, req, shadow, "canonicalizer-on must produce a new shadow request even with TMPX off")
+	require.Len(t, shadow.Identities, 2,
+		"only MAID and HashedEmail have decoders; UID2 (no decoder) and UIDTypeOther (no mapping) are dropped")
+
+	// The audience/fcap keys must be the canonical lowercase-hex form of
+	// the decoded bytes — identical to the form TMPX-on deployments
+	// would produce. Before the fix this test would have observed the
+	// raw publisher-supplied strings instead.
+	wantMAIDHex := "550e8400e29b41d4a716446655440000"
+	wantHashedEmailHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	assert.Equal(t, tmproto.UIDTypeMAID, shadow.Identities[0].UIDType)
+	assert.Equal(t, wantMAIDHex, shadow.Identities[0].UserToken,
+		"TMPX-off deployments must still key audience/fcap on the canonical lowercase-hex form")
+	assert.Equal(t, tmproto.UIDTypeHashedEmail, shadow.Identities[1].UIDType)
+	assert.Equal(t, wantHashedEmailHex, shadow.Identities[1].UserToken)
+
+	require.Len(t, decoded, 4, "positional correspondence is preserved; dropped entries have nil Bytes")
+}
+
+// TestBuildServiceRequest_CanonicalizerAndTMPXOn_SharedDecodePass pins the
+// shadow-request contract for the TMPX-on path: the request that flows
+// into service.Evaluate carries audience/fcap-eligible identities with
+// UserToken set to the canonical lowercase-hex form, and the same
+// decoded slice is returned for the TMPX seal step so LiveRamp-backed
+// RampIDs make at most one sidecar call per request.
+func TestBuildServiceRequest_CanonicalizerAndTMPXOn_SharedDecodePass(t *testing.T) {
+	h := &identityHandler{
+		tmpx:          &TMPXSealer{decoders: defaultTestDecoders(t)},
+		canonicalizer: testCanonicalizer(t),
+	}
 
 	maidUUID := validUserTokenFor(tmproto.UIDTypeMAID)
 	hashedEmail := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -214,17 +259,11 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalF
 
 	shadow, decoded := h.buildServiceRequest(t.Context(), req)
 
-	require.NotSame(t, req, shadow, "TMPX-on must produce a new shadow request")
+	require.NotSame(t, req, shadow, "canonicalizer-on must produce a new shadow request")
 	require.NotEqual(t, &req.Identities, &shadow.Identities, "shadow must have its own Identities slice")
 	assert.Equal(t, req.RequestID, shadow.RequestID, "non-Identities fields must survive the shadow copy")
 
-	// Two identities survive (MAID, HashedEmail). UID2 lacks a decoder
-	// and unmapped UIDTypeOther are filtered out.
 	require.Len(t, shadow.Identities, 2)
-
-	// The canonical key form is the lowercase-hex of the decoded bytes:
-	// MAID's dashed UUID collapses to its 32-char hex, and HashedEmail's
-	// hex input round-trips through decode→hex unchanged.
 	wantMAIDHex := "550e8400e29b41d4a716446655440000"
 	wantHashedEmailHex := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	assert.Equal(t, tmproto.UIDTypeMAID, shadow.Identities[0].UIDType)
@@ -232,16 +271,24 @@ func TestBuildServiceRequest_TMPXEnabled_ShadowsAudienceIdentitiesWithCanonicalF
 		"audience/fcap must see UserToken in the canonical lowercase-hex form so identityhash.Hash "+
 			"keys match the form ExposureLog.user_token publishes downstream")
 	assert.Equal(t, tmproto.UIDTypeHashedEmail, shadow.Identities[1].UIDType)
-	assert.Equal(t, wantHashedEmailHex, shadow.Identities[1].UserToken,
-		"HashedEmail UserToken must be the lowercase-hex of the SHA-256 input")
+	assert.Equal(t, wantHashedEmailHex, shadow.Identities[1].UserToken)
 
 	// The full decoded slice (including the dropped UID2/Other entries)
 	// flows separately to the TMPX seal path. Length matches the input
 	// so positional correspondence is preserved; dropped entries have
 	// nil/empty Bytes.
 	require.Len(t, decoded, 4)
-	assert.NotEmpty(t, decoded[0].Bytes, "MAID must be decoded for TMPX too")
-	assert.NotEmpty(t, decoded[1].Bytes, "HashedEmail must be decoded for TMPX too")
+	assert.NotEmpty(t, decoded[0].Bytes, "MAID must be decoded once and shared with TMPX")
+	assert.NotEmpty(t, decoded[1].Bytes, "HashedEmail must be decoded once and shared with TMPX")
 	assert.Empty(t, decoded[2].Bytes, "UID2 has no decoder and must be dropped at decode")
 	assert.Empty(t, decoded[3].Bytes, "UIDTypeOther has no TMPX mapping and must be dropped at decode")
+}
+
+// testCanonicalizer constructs an IdentityCanonicalizer wired to the same
+// fake LiveRamp client the TMPXSealer test decoders use, so the
+// MAID/HashedEmail/ID5 format decoders and the RampID decoders match
+// what production would produce.
+func testCanonicalizer(t *testing.T) *IdentityCanonicalizer {
+	t.Helper()
+	return &IdentityCanonicalizer{decoders: defaultTestDecoders(t)}
 }
