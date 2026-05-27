@@ -274,6 +274,34 @@ class OptimizationGoalSchemaTest(unittest.TestCase):
             without_descriptions(event_cost_per),
         )
 
+    def test_target_branches_allow_additive_fields(self):
+        metric_target = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/0/properties/target",
+        )
+        event_target = generate.json_pointer_get(
+            self.schema,
+            "/oneOf/1/properties/target",
+        )
+        self.assertEqual(2, len(metric_target["oneOf"]))
+        self.assertEqual(3, len(event_target["oneOf"]))
+
+        target_branch_pointers = [
+            "/oneOf/0/properties/target/oneOf/0",
+            "/oneOf/0/properties/target/oneOf/1",
+            "/oneOf/1/properties/target/oneOf/0",
+            "/oneOf/1/properties/target/oneOf/1",
+            "/oneOf/1/properties/target/oneOf/2",
+        ]
+        for pointer in target_branch_pointers:
+            with self.subTest(pointer=pointer):
+                target_branch = generate.json_pointer_get(self.schema, pointer)
+                self.assertIs(
+                    True,
+                    target_branch.get("additionalProperties"),
+                    f"{pointer} must allow additive fields while the Go target variant preserves Extra",
+                )
+
     def test_optional_numeric_policy_for_optimization_goal_fields(self):
         event_source = generate.json_pointer_get(
             self.schema,
