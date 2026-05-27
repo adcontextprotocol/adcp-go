@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/tmpxdecoders"
+	"github.com/adcontextprotocol/adcp-go/targeting/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -234,9 +234,9 @@ func TestAudienceEligibleIdentities_FiltersDropped(t *testing.T) {
 	got := audienceEligibleIdentities(decoded)
 	require.Len(t, got, 2, "must keep only non-empty entries")
 	assert.Equal(t, tmproto.UIDTypeMAID, got[0].UIDType)
-	assert.Equal(t, string([]byte{0x01, 0x02, 0x03}), got[0].UserToken)
+	assert.Equal(t, "010203", got[0].UserToken, "MAID UserToken is the canonical lowercase-hex form")
 	assert.Equal(t, tmproto.UIDTypeHashedEmail, got[1].UIDType)
-	assert.Equal(t, string([]byte{0xff, 0xee}), got[1].UserToken)
+	assert.Equal(t, "ffee", got[1].UserToken, "HashedEmail UserToken is the canonical lowercase-hex form")
 }
 
 func TestDecode_RecordsDropsByReason(t *testing.T) {
