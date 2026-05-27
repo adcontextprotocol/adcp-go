@@ -69,6 +69,7 @@ PROTECTED=(
   generate.py
   generate_test.py
   lint.py
+  lint_test.py
 )
 
 VERSION="${1:-$(cat "$VERSION_FILE" | tr -d '[:space:]')}"
