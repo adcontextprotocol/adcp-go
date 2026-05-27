@@ -44,14 +44,18 @@ func newValidationConfig(opts []ValidationOption) validationConfig {
 // ValidateOptimizationGoal checks required fields and current-schema invariants
 // that Go zero values cannot express. It is intentionally not a full JSON
 // Schema validator: unknown enum values are allowed unless WithStrictEnums is
-// supplied, and product/account capability checks still belong to the seller.
+// supplied, branch-specific fields are validated only for the active kind, and
+// product/account capability checks still belong to the seller.
 func ValidateOptimizationGoal(goal OptimizationGoal, opts ...ValidationOption) []ValidationIssue {
 	return goal.Validate(opts...)
 }
 
 // Validate checks required fields and current-schema invariants that Go zero
 // values cannot express. Call it before submitting package requests or updates
-// that include optimization_goals.
+// that include optimization_goals. OptimizationGoal is a flattened Go
+// representation of the schema oneOf, so branch-specific fields are validated
+// only for the active kind. For example, AttributionWindow is validated for
+// event goals but ignored for metric goals.
 func (g OptimizationGoal) Validate(opts ...ValidationOption) []ValidationIssue {
 	cfg := newValidationConfig(opts)
 	var issues []ValidationIssue
