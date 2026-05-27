@@ -1511,17 +1511,12 @@ def enum_to_type(name, desc, values):
     return '\n'.join(lines)
 
 def inline_enum_origin(spec):
-    if isinstance(spec, str):
-        return spec
     schema = spec.get('schema')
     kind = spec.get('one_of_kind')
     prop = spec.get('property')
     return f'{schema} oneOf kind={kind} property={prop}'
 
 def load_inline_enum_schema(spec):
-    if isinstance(spec, str):
-        return load_schema_spec(spec)
-
     schema_spec = spec.get('schema')
     kind = spec.get('one_of_kind')
     prop = spec.get('property')
@@ -1533,6 +1528,12 @@ def load_inline_enum_schema(spec):
     for branch in schema.get('oneOf', []):
         props = branch.get('properties', {})
         kind_schema = props.get('kind', {})
+        # The resolver intentionally requires exactly one const discriminator
+        # match. If upstream splits a kind into sub-variants, add a more precise
+        # selector instead of picking one branch implicitly.
+        # Single-value enum discriminators are also not accepted here; they fail
+        # with a no-match build error until the config shape explicitly supports
+        # that selector form.
         if kind_schema.get('const') == kind:
             matches.append(props.get(prop, {}))
 
@@ -1543,10 +1544,10 @@ def load_inline_enum_schema(spec):
         raise ValueError(f'{origin} matched multiple oneOf branches')
     return matches[0]
 
-def generate_enums():
+def generate_enums(_seen=None):
     """Generate Go string constants for all enum schemas."""
     lines = []
-    seen = {}
+    seen = dict(_seen or {})
 
     def append_enum(name, schema, origin, error_if_empty=False):
         values = schema.get('enum', [])
@@ -1570,7 +1571,10 @@ def generate_enums():
             append_enum(name, schema, str(f.relative_to(SCRIPT_DIR)))
 
     for name, spec in INLINE_ENUM_TYPES.items():
-        schema = load_inline_enum_schema(spec)
+        try:
+            schema = load_inline_enum_schema(spec)
+        except ValueError as e:
+            raise ValueError(f'INLINE_ENUM_TYPES[{name!r}]: {e}') from e
         origin = inline_enum_origin(spec)
         append_enum(name, schema, origin, error_if_empty=True)
 
