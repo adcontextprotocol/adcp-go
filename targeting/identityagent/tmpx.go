@@ -318,47 +318,15 @@ func joinUIDs(s []tmproto.UIDType) string {
 // Dropped identities have Bytes == nil in the returned slice; downstream
 // stages (SealDecoded, audience/fcap lookups) skip them silently.
 //
-// The handler calls Decode once per request and shares the result so
-// LiveRamp-backed RampIDs make at most one sidecar call per request even
-// when both TMPX and audience need them.
+// In production the per-request decode pass is owned by the canonicalizer
+// (see IdentityCanonicalizer.Decode); the handler hands SealDecoded the
+// already-decoded slice so LiveRamp-backed RampIDs make at most one
+// sidecar call per request. This method remains so callers (including the
+// Seal convenience wrapper and the reference / test code) that already
+// hold a *TMPXSealer can still decode against the sealer's own registry
+// without taking a dependency on IdentityCanonicalizer.
 func (s *TMPXSealer) Decode(ctx context.Context, ids []tmproto.IdentityToken) []DecodedIdentity {
-	out := make([]DecodedIdentity, len(ids))
-	for i, id := range ids {
-		out[i].UIDType = id.UIDType
-		typeID, ok := uidToTmpxTypeID[id.UIDType]
-		if !ok {
-			s.recordDrop(ctx, TmpxDropUnmapped, id.UIDType)
-			continue
-		}
-		decoder, ok := s.decoders[id.UIDType]
-		if !ok {
-			s.recordDrop(ctx, TmpxDropNoDecoder, id.UIDType)
-			continue
-		}
-		bin, err := decoder.Decode(ctx, id.UserToken)
-		if err != nil {
-			if errors.Is(err, ErrDropIdentity) {
-				s.recordDrop(ctx, TmpxDropDecoderDrop, id.UIDType)
-				continue
-			}
-			s.recordDrop(ctx, TmpxDropDecoderError, id.UIDType)
-			s.log().Warn("tmpx decoder error — dropping identity",
-				"uid_type", id.UIDType,
-				"error", err)
-			continue
-		}
-		wantSize, _ := tmproto.TmpxTokenSize(typeID)
-		if len(bin) != wantSize {
-			s.recordDrop(ctx, TmpxDropSizeMismatch, id.UIDType)
-			s.log().Warn("tmpx decoder returned wrong byte length — dropping identity",
-				"uid_type", id.UIDType,
-				"got", len(bin),
-				"want", wantSize)
-			continue
-		}
-		out[i].Bytes = bin
-	}
-	return out
+	return decodeIdentities(ctx, ids, s.decoders, s.log(), s.recordDrop)
 }
 
 // Seal is a convenience that runs Decode and then SealDecoded. Callers
