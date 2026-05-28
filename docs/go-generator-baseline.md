@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 40
+python3 generate.py --coverage-max-unreviewed-any 38
 ```
 
-The generator currently reports 200 generated dynamic `any` uses:
+The generator currently reports 198 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 160 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 40 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 38 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 40
+python3 generate.py --coverage-max-unreviewed-any 38
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -53,10 +53,8 @@ the new dynamic shape is reviewed in the same PR.
 | `CatalogFieldMapping.Value` | `value` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `CatalogFieldMapping.Default` | `default` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `EventCustomData.Contents` | `contents` | `[]any` | `array_item:inline_object` | `core/event-custom-data.json` |
-| `PerformanceFeedback.MeasurementPeriod` | `measurement_period` | `any` | `inline_object` | `core/performance-feedback.json` |
 | `CreativeBrief.Messaging` | `messaging` | `any` | `inline_object` | `core/creative-brief.json` |
 | `CreativeBrief.Compliance` | `compliance` | `any` | `inline_object` | `core/creative-brief.json` |
-| `PlannedDelivery.Geo` | `geo` | `any` | `inline_object` | `core/planned-delivery.json` |
 | `UserMatch.UIDs` | `uids` | `[]any` | `array_item:inline_object` | `core/user-match.json` |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
 | `SyncGovernanceSuccess.Accounts` | `accounts` | `[]any` | `array_item:inline_object` | `account/sync-governance-response.json#/oneOf/0` |
@@ -90,16 +88,14 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 28 unreviewed fallbacks are direct inline
+This is the largest generator gap: 26 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
 
-Start here for the first reduction pass. Good candidates are low-risk leaf
-objects:
-
-- `PerformanceFeedback.MeasurementPeriod`
-- `PlannedDelivery.Geo`
+The first reduction passes typed low-risk leaf objects. Continue with inline
+objects that have stable, schema-owned property sets before moving into arrays
+of inline objects.
 
 ### Top-Level Unions
 
