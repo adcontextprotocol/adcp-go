@@ -166,3 +166,7 @@ Common reason codes:
 Intentional escape hatches are listed in `INTENTIONAL_ANY_FIELD_NAMES` and
 `INTENTIONAL_ANY_FIELDS` in `adcp/schemas/generate.py`. Add to those lists only
 when the dynamic shape is intentionally part of the protocol surface.
+
+The checked-in baseline is `docs/go-generator-baseline.md`. Update that file
+whenever the unreviewed `any` count changes or a fallback moves from unreviewed
+to intentional.
