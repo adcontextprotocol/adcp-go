@@ -5810,7 +5810,7 @@ type Account struct {
 	RateCard string `json:"rate_card,omitempty"` // Identifier for the rate card applied to this account
 	PaymentTerms string `json:"payment_terms,omitempty"` // Payment terms agreed for this account. Binding for all invoices when the account
 	CreditLimit *AccountCreditLimit `json:"credit_limit,omitempty"` // Maximum outstanding balance allowed
-	Setup any `json:"setup,omitempty"` // Present when status is 'pending_approval'. Contains next steps for completing ac
+	Setup *AccountSetup `json:"setup,omitempty"` // Present when status is 'pending_approval'. Contains next steps for completing ac
 	AccountScope string `json:"account_scope,omitempty"`
 	GovernanceAgents []AccountGovernanceAgent `json:"governance_agents,omitempty"` // Governance agent endpoints registered on this account. Authentication credential
 	ReportingBucket *ReportingBucket `json:"reporting_bucket,omitempty"` // Cloud storage bucket where the seller delivers offline reporting files for this
@@ -5947,7 +5947,7 @@ type CreativeBrief struct {
 	Tone string `json:"tone,omitempty"` // Desired tone for this campaign, modulating the brand's base tone (e.g., 'playful
 	Audience string `json:"audience,omitempty"` // Target audience description for this campaign
 	Territory string `json:"territory,omitempty"` // Creative territory or positioning the campaign should occupy
-	Messaging any `json:"messaging,omitempty"` // Messaging framework for the campaign
+	Messaging *CreativeBriefMessaging `json:"messaging,omitempty"` // Messaging framework for the campaign
 	ReferenceAssets []ReferenceAsset `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
 	Compliance any `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
 }
@@ -7051,6 +7051,14 @@ type ArtifactWebhookPagination struct {
 type PlannedDeliveryGeo struct {
 	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 country codes where ads will deliver.
 	Regions []string `json:"regions,omitempty"` // ISO 3166-2 subdivision codes where ads will deliver.
+}
+
+// CreativeBriefMessaging — Messaging framework for the campaign
+type CreativeBriefMessaging struct {
+	Headline string `json:"headline,omitempty"` // Primary headline
+	Tagline string `json:"tagline,omitempty"` // Supporting tagline or sub-headline
+	Cta string `json:"cta,omitempty"` // Call-to-action text
+	KeyMessages []string `json:"key_messages,omitempty"` // Key messages to communicate in priority order
 }
 
 // --- Tool request/response types ---

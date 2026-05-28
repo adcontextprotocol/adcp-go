@@ -369,8 +369,9 @@ type AccountResult struct {
 }
 
 type AccountSetup struct {
-	URL     string `json:"url,omitempty"`
-	Message string `json:"message,omitempty"`
+	URL       string `json:"url,omitempty"`
+	Message   string `json:"message,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
 }
 
 type GovernanceResult struct {
