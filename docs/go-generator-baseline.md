@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 42
+python3 generate.py --coverage-max-unreviewed-any 40
 ```
 
-The generator currently reports 202 generated dynamic `any` uses:
+The generator currently reports 200 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 160 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 42 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 40 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 42
+python3 generate.py --coverage-max-unreviewed-any 40
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -66,7 +66,6 @@ the new dynamic shape is reviewed in the same PR.
 | `GetProductsResponse.Incomplete` | `incomplete` | `[]any` | `array_item:inline_object` | `media-buy/get-products-response.json` |
 | `CreateMediaBuyResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/create-media-buy-response.json` |
 | `ProvidePerformanceFeedbackResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/provide-performance-feedback-response.json` |
-| `ListCreativesRequest.Sort` | `sort` | `any` | `inline_object` | `creative/list-creatives-request.json` |
 | `PreviewCreativeRequest.Inputs` | `inputs` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
 | `PreviewCreativeRequest.Requests` | `requests` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
 | `GetSignalsResponse.Signals` | `signals` | `[]any` | `array_item:inline_object` | `signals/get-signals-response.json` |
@@ -86,13 +85,12 @@ the new dynamic shape is reviewed in the same PR.
 | `GetPlanAuditLogsResponse.Plans` | `plans` | `[]any` | `array_item:inline_object` | `governance/get-plan-audit-logs-response.json` |
 | `MCPWebhookPayload.Result` | `result` | `any` | `unknown_ref:/schemas/3.0.12/core/async-response-data.json` | `core/mcp-webhook-payload.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
-| `ArtifactWebhookPayload.Pagination` | `pagination` | `any` | `inline_object` | `content-standards/artifact-webhook-payload.json` |
 
 ## Work Queues
 
 ### Inline Object Generation
 
-This is the largest generator gap: 30 unreviewed fallbacks are direct inline
+This is the largest generator gap: 28 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
@@ -100,10 +98,8 @@ detection across generated names.
 Start here for the first reduction pass. Good candidates are low-risk leaf
 objects:
 
-- `ListCreativesRequest.Sort`
 - `PerformanceFeedback.MeasurementPeriod`
 - `PlannedDelivery.Geo`
-- `ArtifactWebhookPayload.Pagination`
 
 ### Top-Level Unions
 

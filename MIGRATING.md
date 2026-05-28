@@ -11,6 +11,10 @@ Optional object references are pointers: nil omits the field, and `&T{}` or
 `adcp.Ptr(T{})` emits it. Required fields inside the nested struct still need to
 be populated.
 
+- Two inline object fields that previously used `any` are now typed:
+  `ListCreativesRequest.Sort` is `*adcp.ListCreativesSort`, and
+  `ArtifactWebhookPayload.Pagination` is `*adcp.ArtifactWebhookPagination`.
+  Use nil to omit them.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,

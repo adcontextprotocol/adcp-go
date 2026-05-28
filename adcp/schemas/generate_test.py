@@ -691,6 +691,66 @@ class OptionalNumericPolicyTest(unittest.TestCase):
         self.assertEqual("*float64", bid_price_type)
 
 
+class InlineObjectGenerationTest(unittest.TestCase):
+    def assert_field_type(self, schema_path, type_name, json_name, want):
+        schema = generate.load_schema(schema_path)
+        prop = generate.schema_properties(schema)[json_name]
+        required_set = generate.schema_required_names(schema)
+
+        go_type, reason = generate.field_go_type_info(
+            type_name,
+            json_name,
+            prop,
+            required_set,
+        )
+
+        self.assertEqual(want, go_type)
+        self.assertIsNone(reason)
+
+    def test_low_risk_inline_objects_are_typed(self):
+        self.assert_field_type(
+            "creative/list-creatives-request.json",
+            "ListCreativesRequest",
+            "sort",
+            "*ListCreativesSort",
+        )
+        self.assert_field_type(
+            "content-standards/artifact-webhook-payload.json",
+            "ArtifactWebhookPayload",
+            "pagination",
+            "*ArtifactWebhookPagination",
+        )
+
+    def test_inline_object_structs_are_generated_from_schema_pointers(self):
+        sort_schema = generate.load_schema_spec(
+            "creative/list-creatives-request.json#/properties/sort",
+        )
+        sort_generated = generate.schema_to_struct("ListCreativesSort", sort_schema)
+        self.assertIn("Field string `json:\"field,omitempty\"`", sort_generated)
+        self.assertIn("Direction string `json:\"direction,omitempty\"`", sort_generated)
+
+        pagination_schema = generate.load_schema_spec(
+            "content-standards/artifact-webhook-payload.json#/properties/pagination",
+        )
+        pagination_generated = generate.schema_to_struct(
+            "ArtifactWebhookPagination",
+            pagination_schema,
+        )
+        self.assertIn("TotalArtifacts int `json:\"total_artifacts,omitempty\"`", pagination_generated)
+        self.assertIn("BatchNumber int `json:\"batch_number,omitempty\"`", pagination_generated)
+        self.assertIn("TotalBatches int `json:\"total_batches,omitempty\"`", pagination_generated)
+
+    def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
+        records = [
+            (record["type"], record["json"])
+            for record in generate.any_coverage_report()["records"]
+            if not record["allowed"]
+        ]
+
+        self.assertNotIn(("ListCreativesRequest", "sort"), records)
+        self.assertNotIn(("ArtifactWebhookPayload", "pagination"), records)
+
+
 class PackageSchemaOwnershipTest(unittest.TestCase):
     def assert_generated_struct_fields(self, schema_path, type_name, expected_fields):
         schema = generate.load_schema(schema_path)

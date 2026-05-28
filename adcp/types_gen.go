@@ -7034,6 +7034,19 @@ type OptimizationGoalAttributionWindow struct {
 	PostView *Duration `json:"post_view,omitempty"` // Post-view attribution window. Conversions within this duration after an ad impre
 }
 
+// ListCreativesSort — Sorting parameters
+type ListCreativesSort struct {
+	Field string `json:"field,omitempty"` // Field to sort by
+	Direction string `json:"direction,omitempty"` // Sort direction
+}
+
+// ArtifactWebhookPagination — Pagination info when batching large artifact sets
+type ArtifactWebhookPagination struct {
+	TotalArtifacts int `json:"total_artifacts,omitempty"` // Total artifacts in the delivery period
+	BatchNumber int `json:"batch_number,omitempty"` // Current batch number (1-indexed)
+	TotalBatches int `json:"total_batches,omitempty"` // Total batches for this delivery period
+}
+
 // --- Tool request/response types ---
 
 // GetAdcpCapabilitiesRequest — Request payload for get_adcp_capabilities task. Protocol-level capability discovery that works acros
@@ -7445,7 +7458,7 @@ type SyncCreativesRequest struct {
 type ListCreativesRequest struct {
 	AdcpMajorVersion int `json:"adcp_major_version,omitempty"` // The AdCP major version the buyer's payloads conform to. Sellers validate against
 	Filters *CreativeFilters `json:"filters,omitempty"`
-	Sort any `json:"sort,omitempty"` // Sorting parameters
+	Sort *ListCreativesSort `json:"sort,omitempty"` // Sorting parameters
 	Pagination *PaginationRequest `json:"pagination,omitempty"`
 	IncludeAssignments *bool `json:"include_assignments,omitempty"` // Include package assignment information in response
 	IncludeSnapshot *bool `json:"include_snapshot,omitempty"` // Include a lightweight delivery snapshot per creative (lifetime impressions and l
@@ -7791,7 +7804,7 @@ type ArtifactWebhookPayload struct {
 	BatchID string `json:"batch_id"` // Unique identifier for this batch of artifacts. Use for deduplication and acknowl
 	Timestamp string `json:"timestamp"` // When this batch was generated (ISO 8601)
 	Artifacts []any `json:"artifacts"` // Content artifacts from delivered impressions
-	Pagination any `json:"pagination,omitempty"` // Pagination info when batching large artifact sets
+	Pagination *ArtifactWebhookPagination `json:"pagination,omitempty"` // Pagination info when batching large artifact sets
 	Ext any `json:"ext,omitempty"`
 }
 

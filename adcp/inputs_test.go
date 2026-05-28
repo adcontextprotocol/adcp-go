@@ -209,6 +209,42 @@ func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
 	assert.NotContains(t, wire, "bid_price")
 }
 
+func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
+	out, err := json.Marshal(ListCreativesRequest{
+		Sort: &ListCreativesSort{
+			Field:     CreativeSortFieldName,
+			Direction: SortDirectionAsc,
+		},
+	})
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"field":     "name",
+		"direction": "asc",
+	}, wire["sort"])
+
+	out, err = json.Marshal(ArtifactWebhookPayload{
+		IdempotencyKey: "idem-1",
+		MediaBuyID:     "mb-1",
+		BatchID:        "batch-1",
+		Timestamp:      "2026-05-28T00:00:00Z",
+		Pagination: &ArtifactWebhookPagination{
+			TotalArtifacts: 25,
+			BatchNumber:    1,
+			TotalBatches:   3,
+		},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"total_artifacts": float64(25),
+		"batch_number":    float64(1),
+		"total_batches":   float64(3),
+	}, wire["pagination"])
+}
+
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {
 	out, err := json.Marshal(CreativeAssignment{
 		CreativeID: "cr-typed",
