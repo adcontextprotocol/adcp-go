@@ -661,6 +661,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/policy-category-definition.json"
         "#/properties/regulatory_frameworks/items",
     ),
+    (
+        "UserMatchUID",
+        "core/user-match.json#/properties/uids/items",
+    ),
 ])
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -854,6 +858,7 @@ INLINE_TYPE_HINTS = {
     ('ReportingWebhook', 'authentication'): 'LegacyWebhookAuthentication',
     ('Package', 'cancellation'): '*PackageCancellation',
     ('CreativeFormat', 'accessibility'): '*CreativeFormatAccessibility',
+    ('CreativeFormat', 'supported_macros'): 'string',
     ('Signal', 'range'): '*SignalRange',
     ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
@@ -863,6 +868,7 @@ INLINE_TYPE_HINTS = {
     ('CreativeBriefCompliance', 'required_disclosures'): 'CreativeBriefDisclosure',
     ('EventCustomData', 'contents'): 'EventContentItem',
     ('PolicyCategoryDefinition', 'regulatory_frameworks'): 'PolicyRegulatoryFramework',
+    ('UserMatch', 'uids'): 'UserMatchUID',
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',

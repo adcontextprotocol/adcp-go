@@ -762,6 +762,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "regulatory_frameworks",
             "[]PolicyRegulatoryFramework",
         )
+        self.assert_field_type(
+            "core/format.json",
+            "CreativeFormat",
+            "supported_macros",
+            "[]string",
+        )
+        self.assert_field_type(
+            "core/user-match.json",
+            "UserMatch",
+            "uids",
+            "[]UserMatchUID",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -855,6 +867,13 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Summary string `json:\"summary\"`", framework_generated)
         self.assertIn("PolicyIDs []string `json:\"policy_ids,omitempty\"`", framework_generated)
 
+        uid_schema = generate.load_schema_spec(
+            "core/user-match.json#/properties/uids/items",
+        )
+        uid_generated = generate.schema_to_struct("UserMatchUID", uid_schema)
+        self.assertIn("Type string `json:\"type\"`", uid_generated)
+        self.assertIn("Value string `json:\"value\"`", uid_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -871,6 +890,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("CreativeBrief", "compliance"), records)
         self.assertNotIn(("EventCustomData", "contents"), records)
         self.assertNotIn(("PolicyCategoryDefinition", "regulatory_frameworks"), records)
+        self.assertNotIn(("CreativeFormat", "supported_macros"), records)
+        self.assertNotIn(("UserMatch", "uids"), records)
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):
