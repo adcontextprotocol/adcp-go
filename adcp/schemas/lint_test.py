@@ -1,6 +1,14 @@
 import unittest
+from unittest import mock
 
 import lint
+
+
+ACCOUNT_SETUP_SCHEMA_SPECS = lint.gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS["AccountSetup"]
+ACCOUNT_SETUP_SCHEMA_PATHS_EXIST = all(
+    (lint.SCRIPT_DIR / spec.split("#", 1)[0]).exists()
+    for spec in ACCOUNT_SETUP_SCHEMA_SPECS
+)
 
 
 class SharedInlineOverrideLintTest(unittest.TestCase):
@@ -31,6 +39,40 @@ class SharedInlineOverrideLintTest(unittest.TestCase):
         self.assertEqual("SharedShape", reports[0]["type"])
         self.assertEqual(["limit"], reports[0]["extra"])
         self.assertEqual([], reports[0]["missing"])
+
+
+class HandWrittenInlineSchemaLintTest(unittest.TestCase):
+    @unittest.skipUnless(ACCOUNT_SETUP_SCHEMA_PATHS_EXIST, "account setup schemas are not present")
+    def test_current_account_setup_shape_is_drift_checked(self):
+        reports = lint.validate_hand_written_inline_schema_specs(lint.parse_go_structs())
+
+        self.assertEqual([], [r for r in reports if r["type"] == "AccountSetup"])
+
+    def test_hand_written_inline_schema_reports_required_omitempty(self):
+        schema_spec = "missing/schema.json#/properties/setup"
+        specs = {
+            "InlineShape": [schema_spec],
+        }
+        schema = {
+            "properties": {
+                "message": {"type": "string"},
+            },
+            "required": ["message"],
+        }
+
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "HAND_WRITTEN_INLINE_SCHEMA_SPECS", specs),
+            mock.patch.object(lint, "load_schema_spec", return_value=schema) as load_schema_spec,
+        ):
+            reports = lint.validate_hand_written_inline_schema_specs({
+                "InlineShape": [("Message", "string", "message", True)],
+            })
+
+        load_schema_spec.assert_called_once_with(schema_spec)
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual(["message"], reports[0]["required_with_omitempty"])
 
 
 class OptionalNumericPointerLintTest(unittest.TestCase):

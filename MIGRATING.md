@@ -24,6 +24,8 @@ be populated.
 - Two additional inline object fields that previously used `any` are now typed:
   `Account.Setup` is `*adcp.AccountSetup`, and `CreativeBrief.Messaging` is
   `*adcp.CreativeBriefMessaging`. `AccountSetup` now includes `ExpiresAt`.
+- `AccountSetup.Message` now always marshals when `AccountSetup` is present,
+  matching the schema-required `message` field.
 - `CreativeBriefMessaging.CTA` uses Go acronym casing for the `cta` JSON field.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
