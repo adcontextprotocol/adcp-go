@@ -1107,6 +1107,8 @@ INTENTIONAL_ANY_FIELDS = {
     ('CreativeFormatCardDetailed', 'manifest'): 'visual card manifest shape is format-defined',
     ('LogEventRequest', 'events'): 'event payloads are seller/buyer-defined',
     ('Catalog', 'items'): 'inline catalog item schema depends on catalog type',
+    ('CatalogFieldMapping', 'value'): 'catalog static literal values can be strings, numbers, booleans, arrays, or objects',
+    ('CatalogFieldMapping', 'default'): 'catalog fallback literal values can be strings, numbers, booleans, arrays, or objects',
     ('ProductFilterGeometry', 'coordinates'): 'GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon',
     ('GeoProximityGeometry', 'coordinates'): 'GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon',
     ('SimulationSuccess', 'simulated'): 'test-controller simulation payload is scenario-specific',

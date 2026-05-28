@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 29
+python3 generate.py --coverage-max-unreviewed-any 27
 ```
 
 The generator currently reports 192 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 163 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 29 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 165 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 27 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 29
+python3 generate.py --coverage-max-unreviewed-any 27
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -46,8 +46,6 @@ the new dynamic shape is reviewed in the same PR.
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
 | `PolicyEntry.Exemplars` | `exemplars` | `any` | `inline_object` | `governance/policy-entry.json` |
-| `CatalogFieldMapping.Value` | `value` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
-| `CatalogFieldMapping.Default` | `default` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
 | `SyncGovernanceSuccess.Accounts` | `accounts` | `[]any` | `array_item:inline_object` | `account/sync-governance-response.json#/oneOf/0` |
 | `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
@@ -113,10 +111,8 @@ classify them as intentional open payloads with a specific allowlist reason.
 
 ### Schema Clarification
 
-Three fallbacks come from schemas without enough type information:
+One fallback comes from a schema without enough type information:
 
-- `CatalogFieldMapping.Value`
-- `CatalogFieldMapping.Default`
 - `ControllerError.CurrentState`
 
 These should usually be fixed in the protocol schema. A Go-only type override is
