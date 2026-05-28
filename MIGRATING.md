@@ -32,6 +32,9 @@ be populated.
   `EventCustomData.Contents` is `[]adcp.EventContentItem`, and
   `PolicyCategoryDefinition.RegulatoryFrameworks` is
   `[]adcp.PolicyRegulatoryFramework`.
+- Two more generated fields that previously used `any` are now typed:
+  `CreativeFormat.SupportedMacros` is `[]string`, and `UserMatch.UIDs` is
+  `[]adcp.UserMatchUID`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,

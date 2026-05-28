@@ -5683,7 +5683,7 @@ type CreativeFormat struct {
 	Renders []Render `json:"renders,omitempty"` // Specification of rendered pieces for this format. Most formats produce a single
 	Assets []AssetSlot `json:"assets,omitempty"` // Array of all assets supported for this format. Each asset is identified by its a
 	Delivery map[string]any `json:"delivery,omitempty"` // Delivery method specifications (e.g., hosted, VAST, third-party tags)
-	SupportedMacros []any `json:"supported_macros,omitempty"` // List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUST
+	SupportedMacros []string `json:"supported_macros,omitempty"` // List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUST
 	InputFormatIDs []FormatRef `json:"input_format_ids,omitempty"` // Array of format IDs this format accepts as input creative manifests. When presen
 	OutputFormatIDs []FormatRef `json:"output_format_ids,omitempty"` // Array of format IDs that this format can produce as output. When present, indica
 	FormatCard *CreativeFormatCard `json:"format_card,omitempty"` // Optional standard visual card (300x400px) for displaying this format in user int
@@ -6050,7 +6050,7 @@ type RightsConstraint struct {
 
 // UserMatch — User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs, an
 type UserMatch struct {
-	UIDs []any `json:"uids,omitempty"` // Universal ID values for user matching
+	UIDs []UserMatchUID `json:"uids,omitempty"` // Universal ID values for user matching
 	HashedEmail string `json:"hashed_email,omitempty"` // SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before ha
 	HashedPhone string `json:"hashed_phone,omitempty"` // SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must nor
 	ClickID string `json:"click_id,omitempty"` // Platform click identifier (fbclid, gclid, ttclid, ScCid, etc.)
@@ -7089,6 +7089,11 @@ type PolicyRegulatoryFramework struct {
 	Jurisdictions []string `json:"jurisdictions,omitempty"` // ISO 3166-1 alpha-2 codes where this framework applies.
 	Summary string `json:"summary"` // Brief summary of what the framework requires or prohibits.
 	PolicyIDs []string `json:"policy_ids,omitempty"` // Registry policy IDs that implement this framework.
+}
+
+type UserMatchUID struct {
+	Type string `json:"type"` // Universal ID type
+	Value string `json:"value"` // Universal ID value
 }
 
 // --- Tool request/response types ---
