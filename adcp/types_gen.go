@@ -6130,8 +6130,8 @@ type PackageInput struct {
 	Budget float64 `json:"budget"` // Budget allocation for this package in the media buy's currency
 	Pacing string `json:"pacing,omitempty"`
 	PricingOptionID string `json:"pricing_option_id"` // ID of the selected pricing option from the product's pricing_options array
-	BidPrice float64 `json:"bid_price,omitempty"` // Bid price for auction-based pricing options. This is the exact bid/price to hono
-	Impressions float64 `json:"impressions,omitempty"` // Impression goal for this package
+	BidPrice *float64 `json:"bid_price,omitempty"` // Bid price for auction-based pricing options. This is the exact bid/price to hono
+	Impressions *float64 `json:"impressions,omitempty"` // Impression goal for this package
 	StartTime string `json:"start_time,omitempty"` // Flight start date/time for this package in ISO 8601 format. When omitted, the pa
 	EndTime string `json:"end_time,omitempty"` // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
 	Paused *bool `json:"paused,omitempty"` // Whether this package should be created in a paused state. Paused packages do not
@@ -6150,10 +6150,10 @@ type PackageInput struct {
 // PackageUpdate — Package update configuration for update_media_buy. Identifies package by package_id and specifies fi
 type PackageUpdate struct {
 	PackageID string `json:"package_id"` // Seller's ID of package to update
-	Budget float64 `json:"budget,omitempty"` // Updated budget allocation for this package in the currency specified by the pric
+	Budget *float64 `json:"budget,omitempty"` // Updated budget allocation for this package in the currency specified by the pric
 	Pacing string `json:"pacing,omitempty"`
-	BidPrice float64 `json:"bid_price,omitempty"` // Updated bid price for auction-based pricing options. This is the exact bid/price
-	Impressions float64 `json:"impressions,omitempty"` // Updated impression goal for this package
+	BidPrice *float64 `json:"bid_price,omitempty"` // Updated bid price for auction-based pricing options. This is the exact bid/price
+	Impressions *float64 `json:"impressions,omitempty"` // Updated impression goal for this package
 	StartTime string `json:"start_time,omitempty"` // Updated flight start date/time for this package in ISO 8601 format. Must fall wi
 	EndTime string `json:"end_time,omitempty"` // Updated flight end date/time for this package in ISO 8601 format. Must fall with
 	Paused *bool `json:"paused,omitempty"` // Pause/resume specific package (true = paused, false = active)
@@ -6177,7 +6177,7 @@ type PackageUpdate struct {
 type KeywordTargetUpdate struct {
 	Keyword string `json:"keyword"` // The keyword to target
 	MatchType string `json:"match_type"`
-	BidPrice float64 `json:"bid_price,omitempty"` // Per-keyword bid price. Inherits currency and max_bid interpretation from the pac
+	BidPrice *float64 `json:"bid_price,omitempty"` // Per-keyword bid price. Inherits currency and max_bid interpretation from the pac
 }
 
 type KeywordTargetRef struct {
