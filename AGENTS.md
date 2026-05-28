@@ -4,6 +4,10 @@
 
 adcp-go is the Go SDK and reference implementation for the Ad Context Protocol (AdCP) Trusted Match Protocol (TMP). It provides a router, targeting engine, and reference agents for real-time ad package activation with structural privacy guarantees.
 
+## PR title hygiene
+
+Use concrete PR titles that describe the change. Do not prefix titles with the tool or model that authored the PR, such as `[codex]`, `[claude]`, `[cursor]`, or similar ownership tags. Put authoring-tool context in the PR body or labels when it matters, not in the review-facing title.
+
 ## Production hardening is a first-class priority
 
 This project is designed to run in trusted execution environments (TEEs) and be embedded into existing ad tech infrastructure (e.g., Prebid Server). Every change should consider:
