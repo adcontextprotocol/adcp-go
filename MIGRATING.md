@@ -42,6 +42,10 @@ be populated.
   `map[string]bool`, matching the schema's open feature-flag bag. GeoJSON
   coordinates remain `[]any` because Polygon and MultiPolygon coordinate arrays
   have different nesting shapes.
+- `Targeting.GeoProximity` is now `[]adcp.GeoProximityTarget` instead of
+  `[]any`. Latitude and longitude are `*float64` so explicit zero coordinates
+  still marshal. `GeoProximityGeometry.Coordinates` remains `[]any` for the
+  same GeoJSON Polygon/MultiPolygon nesting reason.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -103,6 +107,7 @@ be populated.
 | `ProductFilters.RequiredFeatures` | `map[string]bool` |
 | `ProductFilters.SignalTargeting` | `[]adcp.SignalTargeting` |
 | `ProductFilters.GeoProximity` | `[]adcp.ProductFilterGeoProximity` |
+| `Targeting.GeoProximity` | `[]adcp.GeoProximityTarget` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 30
+python3 generate.py --coverage-max-unreviewed-any 29
 ```
 
-The generator currently reports 191 generated dynamic `any` uses:
+The generator currently reports 192 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 161 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 30 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 163 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 29 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 30
+python3 generate.py --coverage-max-unreviewed-any 29
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -46,7 +46,6 @@ the new dynamic shape is reviewed in the same PR.
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
 | `PolicyEntry.Exemplars` | `exemplars` | `any` | `inline_object` | `governance/policy-entry.json` |
-| `Targeting.GeoProximity` | `geo_proximity` | `[]any` | `array_item:inline_object` | `core/targeting.json` |
 | `CatalogFieldMapping.Value` | `value` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `CatalogFieldMapping.Default` | `default` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |

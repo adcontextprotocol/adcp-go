@@ -805,6 +805,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "[]ProductFilterGeoProximity",
         )
         self.assert_field_type(
+            "core/targeting.json",
+            "Targeting",
+            "geo_proximity",
+            "[]GeoProximityTarget",
+        )
+        self.assert_field_type(
             "core/signal-targeting.json",
             "SignalTargeting",
             "min_value",
@@ -974,6 +980,38 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Type string `json:\"type\"`", geometry_generated)
         self.assertIn("Coordinates []any `json:\"coordinates\"`", geometry_generated)
 
+        targeting_proximity_schema = generate.load_schema_spec(
+            "core/targeting.json#/properties/geo_proximity/items",
+        )
+        targeting_proximity_generated = generate.schema_to_struct(
+            "GeoProximityTarget",
+            targeting_proximity_schema,
+        )
+        self.assertIn("Lat *float64 `json:\"lat,omitempty\"`", targeting_proximity_generated)
+        self.assertIn("Lng *float64 `json:\"lng,omitempty\"`", targeting_proximity_generated)
+        self.assertIn(
+            "TravelTime *GeoProximityTravelTime `json:\"travel_time,omitempty\"`",
+            targeting_proximity_generated,
+        )
+        self.assertIn(
+            "Geometry *GeoProximityGeometry `json:\"geometry,omitempty\"`",
+            targeting_proximity_generated,
+        )
+        self.assertIn("Ext any `json:\"ext,omitempty\"`", targeting_proximity_generated)
+
+        targeting_geometry_schema = generate.load_schema_spec(
+            "core/targeting.json#/properties/geo_proximity/items/properties/geometry",
+        )
+        targeting_geometry_generated = generate.schema_to_struct(
+            "GeoProximityGeometry",
+            targeting_geometry_schema,
+        )
+        self.assertIn("Type string `json:\"type\"`", targeting_geometry_generated)
+        self.assertIn(
+            "Coordinates []any `json:\"coordinates\"`",
+            targeting_geometry_generated,
+        )
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -995,6 +1033,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("GetProductsRequest", "filters"), records)
         self.assertNotIn(("ProductFilters", "required_features"), records)
         self.assertNotIn(("ProductFilters", "signal_targeting"), records)
+        self.assertNotIn(("Targeting", "geo_proximity"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])
@@ -1004,6 +1043,14 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn(
             (
                 "ProductFilterGeometry",
+                "coordinates",
+                "GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "GeoProximityGeometry",
                 "coordinates",
                 "GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon",
             ),
