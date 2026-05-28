@@ -627,6 +627,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "OptimizationGoalAttributionWindow",
         "core/optimization-goal.json#/oneOf/1/properties/attribution_window",
     ),
+    (
+        "ListCreativesSort",
+        "creative/list-creatives-request.json#/properties/sort",
+    ),
+    (
+        "ArtifactWebhookPagination",
+        "content-standards/artifact-webhook-payload.json#/properties/pagination",
+    ),
 ])
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -775,6 +783,7 @@ INLINE_TYPE_HINTS = {
     ('LogEventRequest', 'events'): 'map[string]any',
     ('ActivateSignalRequest', 'destinations'): 'DestinationInput',
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
+    ('ListCreativesRequest', 'sort'): '*ListCreativesSort',
     ('SyncPlansRequest', 'plans'): 'Plan',
     ('GetProductsResponse', 'proposals'): 'Proposal',
     ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',
@@ -831,6 +840,7 @@ INLINE_TYPE_HINTS = {
     ('GetCollectionListRequest', 'pagination'): '*CollectionRequestPagination',
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
+    ('ArtifactWebhookPayload', 'pagination'): '*ArtifactWebhookPagination',
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
     ('Product', 'product_card'): '*ProductCard',
     ('Product', 'product_card_detailed'): '*ProductCardDetailed',
