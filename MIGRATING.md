@@ -27,6 +27,11 @@ be populated.
 - `AccountSetup.Message` now always marshals when `AccountSetup` is present,
   matching the schema-required `message` field.
 - `CreativeBriefMessaging.CTA` uses Go acronym casing for the `cta` JSON field.
+- Three additional inline object fields that previously used `any` are now
+  typed: `CreativeBrief.Compliance` is `*adcp.CreativeBriefCompliance`,
+  `EventCustomData.Contents` is `[]adcp.EventContentItem`, and
+  `PolicyCategoryDefinition.RegulatoryFrameworks` is
+  `[]adcp.PolicyRegulatoryFramework`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,

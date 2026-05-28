@@ -744,6 +744,24 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "messaging",
             "*CreativeBriefMessaging",
         )
+        self.assert_field_type(
+            "core/creative-brief.json",
+            "CreativeBrief",
+            "compliance",
+            "*CreativeBriefCompliance",
+        )
+        self.assert_field_type(
+            "core/event-custom-data.json",
+            "EventCustomData",
+            "contents",
+            "[]EventContentItem",
+        )
+        self.assert_field_type(
+            "governance/policy-category-definition.json",
+            "PolicyCategoryDefinition",
+            "regulatory_frameworks",
+            "[]PolicyRegulatoryFramework",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -783,6 +801,60 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("CTA string `json:\"cta,omitempty\"`", messaging_generated)
         self.assertIn("KeyMessages []string `json:\"key_messages,omitempty\"`", messaging_generated)
 
+        compliance_schema = generate.load_schema_spec(
+            "core/creative-brief.json#/properties/compliance",
+        )
+        compliance_generated = generate.schema_to_struct(
+            "CreativeBriefCompliance",
+            compliance_schema,
+        )
+        self.assertIn(
+            "RequiredDisclosures []CreativeBriefDisclosure `json:\"required_disclosures,omitempty\"`",
+            compliance_generated,
+        )
+        self.assertIn(
+            "ProhibitedClaims []string `json:\"prohibited_claims,omitempty\"`",
+            compliance_generated,
+        )
+
+        disclosure_schema = generate.load_schema_spec(
+            "core/creative-brief.json#/properties/compliance"
+            "/properties/required_disclosures/items",
+        )
+        disclosure_generated = generate.schema_to_struct(
+            "CreativeBriefDisclosure",
+            disclosure_schema,
+        )
+        self.assertIn("Text string `json:\"text\"`", disclosure_generated)
+        self.assertIn(
+            "Jurisdictions []string `json:\"jurisdictions,omitempty\"`",
+            disclosure_generated,
+        )
+        self.assertIn("Persistence string `json:\"persistence,omitempty\"`", disclosure_generated)
+
+        event_item_schema = generate.load_schema_spec(
+            "core/event-custom-data.json#/properties/contents/items",
+        )
+        event_item_generated = generate.schema_to_struct(
+            "EventContentItem",
+            event_item_schema,
+        )
+        self.assertIn("ID string `json:\"id\"`", event_item_generated)
+        self.assertIn("Quantity int `json:\"quantity,omitempty\"`", event_item_generated)
+        self.assertIn("Price float64 `json:\"price,omitempty\"`", event_item_generated)
+
+        framework_schema = generate.load_schema_spec(
+            "governance/policy-category-definition.json"
+            "#/properties/regulatory_frameworks/items",
+        )
+        framework_generated = generate.schema_to_struct(
+            "PolicyRegulatoryFramework",
+            framework_schema,
+        )
+        self.assertIn("Name string `json:\"name\"`", framework_generated)
+        self.assertIn("Summary string `json:\"summary\"`", framework_generated)
+        self.assertIn("PolicyIDs []string `json:\"policy_ids,omitempty\"`", framework_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -796,6 +868,9 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("PlannedDelivery", "geo"), records)
         self.assertNotIn(("Account", "setup"), records)
         self.assertNotIn(("CreativeBrief", "messaging"), records)
+        self.assertNotIn(("CreativeBrief", "compliance"), records)
+        self.assertNotIn(("EventCustomData", "contents"), records)
+        self.assertNotIn(("PolicyCategoryDefinition", "regulatory_frameworks"), records)
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):

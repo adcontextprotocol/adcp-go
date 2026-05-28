@@ -5420,7 +5420,7 @@ type PolicyCategoryDefinition struct {
 	CategoryID string `json:"category_id"` // Unique identifier for this category. Used in plan.policy_categories, signal-defi
 	Name string `json:"name"` // Human-readable name (e.g., 'Children-Directed Content').
 	Description string `json:"description"` // What this category covers. Defines the boundary — what campaigns or data fall un
-	RegulatoryFrameworks []any `json:"regulatory_frameworks,omitempty"` // Key regulations and standards grouped under this category. Governance agents use
+	RegulatoryFrameworks []PolicyRegulatoryFramework `json:"regulatory_frameworks,omitempty"` // Key regulations and standards grouped under this category. Governance agents use
 	RestrictedAttributes []string `json:"restricted_attributes,omitempty"` // Restricted attribute categories that regulations in this category prohibit for t
 	RequiresHumanReview *bool `json:"requires_human_review,omitempty"` // When true, any plan declaring this category MUST set plan.human_review_required
 	Industries []string `json:"industries,omitempty"` // Industries where this category commonly applies (e.g., 'pharmaceutical' for age_
@@ -5921,7 +5921,7 @@ type EventCustomData struct {
 	ContentCategory string `json:"content_category,omitempty"` // Category of the product or content
 	NumItems int `json:"num_items,omitempty"` // Number of items in the event
 	SearchString string `json:"search_string,omitempty"` // Search query for search events
-	Contents []any `json:"contents,omitempty"` // Per-item details for e-commerce events
+	Contents []EventContentItem `json:"contents,omitempty"` // Per-item details for e-commerce events
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -5949,7 +5949,7 @@ type CreativeBrief struct {
 	Territory string `json:"territory,omitempty"` // Creative territory or positioning the campaign should occupy
 	Messaging *CreativeBriefMessaging `json:"messaging,omitempty"` // Messaging framework for the campaign
 	ReferenceAssets []ReferenceAsset `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
-	Compliance any `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
+	Compliance *CreativeBriefCompliance `json:"compliance,omitempty"` // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
 }
 
 // ReferenceAsset — A reference asset that provides creative context. Carries visual materials (mood boards, product sho
@@ -7059,6 +7059,36 @@ type CreativeBriefMessaging struct {
 	Tagline string `json:"tagline,omitempty"` // Supporting tagline or sub-headline
 	CTA string `json:"cta,omitempty"` // Call-to-action text
 	KeyMessages []string `json:"key_messages,omitempty"` // Key messages to communicate in priority order
+}
+
+// CreativeBriefCompliance — Regulatory and legal compliance requirements for this campaign. Campaign-specific, regional, and pro
+type CreativeBriefCompliance struct {
+	RequiredDisclosures []CreativeBriefDisclosure `json:"required_disclosures,omitempty"` // Disclosures that must appear in creatives for this campaign. Each disclosure spe
+	ProhibitedClaims []string `json:"prohibited_claims,omitempty"` // Claims that must not appear in creatives for this campaign. Creative agents shou
+}
+
+type CreativeBriefDisclosure struct {
+	Text string `json:"text"` // The disclosure text that must appear in the creative
+	Position string `json:"position,omitempty"` // Where the disclosure should appear within the creative. prominent: clearly visib
+	Jurisdictions []string `json:"jurisdictions,omitempty"` // Jurisdictions where this disclosure is required. ISO 3166-1 alpha-2 country code
+	Regulation string `json:"regulation,omitempty"` // The regulation or legal authority requiring this disclosure (e.g., 'SEC Rule 156
+	MinDurationMs int `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds. For video/audio disclosures, how long
+	Language string `json:"language,omitempty"` // Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA', '
+	Persistence string `json:"persistence,omitempty"` // How long the disclosure must persist during content playback or display. When om
+}
+
+type EventContentItem struct {
+	ID string `json:"id"` // Product or content identifier
+	Quantity int `json:"quantity,omitempty"` // Quantity of this item
+	Price float64 `json:"price,omitempty"` // Price per unit of this item
+	Brand string `json:"brand,omitempty"` // Brand name of this item
+}
+
+type PolicyRegulatoryFramework struct {
+	Name string `json:"name"` // Name of the regulation or standard (e.g., 'US COPPA').
+	Jurisdictions []string `json:"jurisdictions,omitempty"` // ISO 3166-1 alpha-2 codes where this framework applies.
+	Summary string `json:"summary"` // Brief summary of what the framework requires or prohibits.
+	PolicyIDs []string `json:"policy_ids,omitempty"` // Registry policy IDs that implement this framework.
 }
 
 // --- Tool request/response types ---
