@@ -643,6 +643,24 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "CreativeBriefMessaging",
         "core/creative-brief.json#/properties/messaging",
     ),
+    (
+        "CreativeBriefCompliance",
+        "core/creative-brief.json#/properties/compliance",
+    ),
+    (
+        "CreativeBriefDisclosure",
+        "core/creative-brief.json#/properties/compliance"
+        "/properties/required_disclosures/items",
+    ),
+    (
+        "EventContentItem",
+        "core/event-custom-data.json#/properties/contents/items",
+    ),
+    (
+        "PolicyRegulatoryFramework",
+        "governance/policy-category-definition.json"
+        "#/properties/regulatory_frameworks/items",
+    ),
 ])
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -841,6 +859,10 @@ INLINE_TYPE_HINTS = {
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
     ('PlannedDelivery', 'geo'): '*PlannedDeliveryGeo',
     ('CreativeBrief', 'messaging'): '*CreativeBriefMessaging',
+    ('CreativeBrief', 'compliance'): '*CreativeBriefCompliance',
+    ('CreativeBriefCompliance', 'required_disclosures'): 'CreativeBriefDisclosure',
+    ('EventCustomData', 'contents'): 'EventContentItem',
+    ('PolicyCategoryDefinition', 'regulatory_frameworks'): 'PolicyRegulatoryFramework',
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
