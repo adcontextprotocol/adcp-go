@@ -720,6 +720,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "pagination",
             "*ArtifactWebhookPagination",
         )
+        self.assert_field_type(
+            "core/performance-feedback.json",
+            "PerformanceFeedback",
+            "measurement_period",
+            "DatetimeRange",
+        )
+        self.assert_field_type(
+            "core/planned-delivery.json",
+            "PlannedDelivery",
+            "geo",
+            "*PlannedDeliveryGeo",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -740,6 +752,13 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("BatchNumber int `json:\"batch_number,omitempty\"`", pagination_generated)
         self.assertIn("TotalBatches int `json:\"total_batches,omitempty\"`", pagination_generated)
 
+        geo_schema = generate.load_schema_spec(
+            "core/planned-delivery.json#/properties/geo",
+        )
+        geo_generated = generate.schema_to_struct("PlannedDeliveryGeo", geo_schema)
+        self.assertIn("Countries []string `json:\"countries,omitempty\"`", geo_generated)
+        self.assertIn("Regions []string `json:\"regions,omitempty\"`", geo_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -749,6 +768,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
 
         self.assertNotIn(("ListCreativesRequest", "sort"), records)
         self.assertNotIn(("ArtifactWebhookPayload", "pagination"), records)
+        self.assertNotIn(("PerformanceFeedback", "measurement_period"), records)
+        self.assertNotIn(("PlannedDelivery", "geo"), records)
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):

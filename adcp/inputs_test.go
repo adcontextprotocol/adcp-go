@@ -243,6 +243,50 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		"batch_number":    float64(1),
 		"total_batches":   float64(3),
 	}, wire["pagination"])
+
+	out, err = json.Marshal(PerformanceFeedback{
+		FeedbackID: "pf-1",
+		MediaBuyID: "mb-1",
+		MeasurementPeriod: DatetimeRange{
+			Start: "2026-05-01T00:00:00Z",
+			End:   "2026-05-28T00:00:00Z",
+		},
+		PerformanceIndex: 1.2,
+		MetricType:       MetricTypeClickThroughRate,
+		FeedbackSource:   FeedbackSourcePlatformAnalytics,
+		Status:           "accepted",
+		SubmittedAt:      "2026-05-28T00:00:00Z",
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"start": "2026-05-01T00:00:00Z",
+		"end":   "2026-05-28T00:00:00Z",
+	}, wire["measurement_period"])
+
+	out, err = json.Marshal(PerformanceFeedback{})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"start": "",
+		"end":   "",
+	}, wire["measurement_period"])
+
+	out, err = json.Marshal(PlannedDelivery{
+		Geo: &PlannedDeliveryGeo{
+			Countries: []string{"US"},
+			Regions:   []string{"US-NY"},
+		},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"countries": []any{"US"},
+		"regions":   []any{"US-NY"},
+	}, wire["geo"])
 }
 
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {

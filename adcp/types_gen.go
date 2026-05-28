@@ -5931,7 +5931,7 @@ type PerformanceFeedback struct {
 	MediaBuyID string `json:"media_buy_id"` // Publisher's media buy identifier
 	PackageID string `json:"package_id,omitempty"` // Specific package within the media buy (if feedback is package-specific)
 	CreativeID string `json:"creative_id,omitempty"` // Specific creative asset (if feedback is creative-specific)
-	MeasurementPeriod any `json:"measurement_period"` // Time period for performance measurement
+	MeasurementPeriod DatetimeRange `json:"measurement_period"` // Time period for performance measurement
 	PerformanceIndex float64 `json:"performance_index"` // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expec
 	MetricType string `json:"metric_type"` // The business metric being measured
 	FeedbackSource string `json:"feedback_source"` // Source of the performance data
@@ -5996,7 +5996,7 @@ type FrequencyCap struct {
 
 // PlannedDelivery — The seller's interpreted delivery parameters for a media buy. Represents what the seller will actual
 type PlannedDelivery struct {
-	Geo any `json:"geo,omitempty"` // Geographic targeting the seller will apply.
+	Geo *PlannedDeliveryGeo `json:"geo,omitempty"` // Geographic targeting the seller will apply.
 	Channels []string `json:"channels,omitempty"` // Channels the seller will deliver on.
 	StartTime string `json:"start_time,omitempty"` // Actual flight start the seller will use.
 	EndTime string `json:"end_time,omitempty"` // Actual flight end the seller will use.
@@ -7045,6 +7045,12 @@ type ArtifactWebhookPagination struct {
 	TotalArtifacts int `json:"total_artifacts,omitempty"` // Total artifacts in the delivery period
 	BatchNumber int `json:"batch_number,omitempty"` // Current batch number (1-indexed)
 	TotalBatches int `json:"total_batches,omitempty"` // Total batches for this delivery period
+}
+
+// PlannedDeliveryGeo — Geographic targeting the seller will apply.
+type PlannedDeliveryGeo struct {
+	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 country codes where ads will deliver.
+	Regions []string `json:"regions,omitempty"` // ISO 3166-2 subdivision codes where ads will deliver.
 }
 
 // --- Tool request/response types ---

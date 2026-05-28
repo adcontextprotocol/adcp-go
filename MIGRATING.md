@@ -15,6 +15,12 @@ be populated.
   `ListCreativesRequest.Sort` is `*adcp.ListCreativesSort`, and
   `ArtifactWebhookPayload.Pagination` is `*adcp.ArtifactWebhookPagination`.
   Use nil to omit them.
+- Two more generated inline object fields that previously used `any` are now
+  typed: `PerformanceFeedback.MeasurementPeriod` is
+  `adcp.DatetimeRange`, and `PlannedDelivery.Geo` is `*adcp.PlannedDeliveryGeo`.
+  Populate `DatetimeRange.Start` and `DatetimeRange.End`; zero-value
+  `DatetimeRange{}` is not a valid wire payload. Use nil to omit
+  `PlannedDelivery.Geo`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,

@@ -635,6 +635,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "ArtifactWebhookPagination",
         "content-standards/artifact-webhook-payload.json#/properties/pagination",
     ),
+    (
+        "PlannedDeliveryGeo",
+        "core/planned-delivery.json#/properties/geo",
+    ),
 ])
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -816,6 +820,8 @@ INLINE_TYPE_HINTS = {
     ('CreativeFormat', 'accessibility'): '*CreativeFormatAccessibility',
     ('Signal', 'range'): '*SignalRange',
     ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
+    ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
+    ('PlannedDelivery', 'geo'): '*PlannedDeliveryGeo',
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
