@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 36
+python3 generate.py --coverage-max-unreviewed-any 30
 ```
 
-The generator currently reports 196 generated dynamic `any` uses:
+The generator currently reports 191 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 160 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 36 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 161 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 30 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 36
+python3 generate.py --coverage-max-unreviewed-any 30
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -46,18 +46,12 @@ the new dynamic shape is reviewed in the same PR.
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
 | `PolicyEntry.Exemplars` | `exemplars` | `any` | `inline_object` | `governance/policy-entry.json` |
-| `PolicyCategoryDefinition.RegulatoryFrameworks` | `regulatory_frameworks` | `[]any` | `array_item:inline_object` | `governance/policy-category-definition.json` |
-| `CreativeFormat.SupportedMacros` | `supported_macros` | `[]any` | `array_item:union` | `core/format.json` |
 | `Targeting.GeoProximity` | `geo_proximity` | `[]any` | `array_item:inline_object` | `core/targeting.json` |
 | `CatalogFieldMapping.Value` | `value` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
 | `CatalogFieldMapping.Default` | `default` | `any` | `unspecified_schema_type` | `core/catalog-field-mapping.json` |
-| `EventCustomData.Contents` | `contents` | `[]any` | `array_item:inline_object` | `core/event-custom-data.json` |
-| `CreativeBrief.Compliance` | `compliance` | `any` | `inline_object` | `core/creative-brief.json` |
-| `UserMatch.UIDs` | `uids` | `[]any` | `array_item:inline_object` | `core/user-match.json` |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
 | `SyncGovernanceSuccess.Accounts` | `accounts` | `[]any` | `array_item:inline_object` | `account/sync-governance-response.json#/oneOf/0` |
 | `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
-| `GetProductsRequest.Filters` | `filters` | `any` | `unknown_ref:/schemas/3.0.12/core/product-filters.json` | `media-buy/get-products-request.json` |
 | `GetProductsResponse.RefinementApplied` | `refinement_applied` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-response.json` |
 | `GetProductsResponse.Incomplete` | `incomplete` | `[]any` | `array_item:inline_object` | `media-buy/get-products-response.json` |
 | `CreateMediaBuyResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/create-media-buy-response.json` |
@@ -111,9 +105,8 @@ hand-written pattern already used for selected oneOf responses.
 
 ### Unknown References
 
-Two fallbacks are missing registry entries:
+One fallback is missing a registry entry:
 
-- `GetProductsRequest.Filters` -> `core/product-filters.json`
 - `MCPWebhookPayload.Result` -> `core/async-response-data.json`
 
 Do not paper over these with `any`. Add real schemas to the generation graph, or
@@ -135,12 +128,6 @@ acceptable only when the schema intent is clear and tested.
 `GetProductsRequest.Refine` and `GetProductsResponse.RefinementApplied` are
 currently unreviewed `[]map[string]any` freeform objects. Decide whether these
 are intentional protocol extension points or missing typed refinement schemas.
-
-### Union Array Items
-
-`CreativeFormat.SupportedMacros` is the only unreviewed array-item union. It is
-smaller than the top-level union work and may be a useful first discriminator
-exercise.
 
 ## Manual Ownership Baseline
 

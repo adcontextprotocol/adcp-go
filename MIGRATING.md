@@ -35,6 +35,13 @@ be populated.
 - Two more generated fields that previously used `any` are now typed:
   `CreativeFormat.SupportedMacros` is `[]string`, and `UserMatch.UIDs` is
   `[]adcp.UserMatchUID`.
+- Product discovery filters are now typed:
+  `GetProductsRequest.Filters` is `*adcp.ProductFilters`. Nested product
+  filter objects such as `BudgetRange`, `TrustedMatch`, `GeoProximity`, and
+  `Keywords` are generated types. `ProductFilters.RequiredFeatures` is
+  `map[string]bool`, matching the schema's open feature-flag bag. GeoJSON
+  coordinates remain `[]any` because Polygon and MultiPolygon coordinate arrays
+  have different nesting shapes.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -91,6 +98,11 @@ be populated.
 | `GetProductsRequest.PropertyList` | `*adcp.PropertyListRef` |
 | `Targeting.PropertyList` | `*adcp.PropertyListRef` |
 | `GetProductsRequest.TimeBudget` | `*adcp.Duration` |
+| `GetProductsRequest.Filters` | `*adcp.ProductFilters` |
+| `ProductFilters.BudgetRange` | `*adcp.ProductFilterBudgetRange` |
+| `ProductFilters.RequiredFeatures` | `map[string]bool` |
+| `ProductFilters.SignalTargeting` | `[]adcp.SignalTargeting` |
+| `ProductFilters.GeoProximity` | `[]adcp.ProductFilterGeoProximity` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
