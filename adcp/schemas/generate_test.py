@@ -774,6 +774,48 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "uids",
             "[]UserMatchUID",
         )
+        self.assert_field_type(
+            "bundled/media-buy/get-products-request.json",
+            "GetProductsRequest",
+            "filters",
+            "*ProductFilters",
+        )
+        self.assert_field_type(
+            "core/product-filters.json",
+            "ProductFilters",
+            "budget_range",
+            "*ProductFilterBudgetRange",
+        )
+        self.assert_field_type(
+            "core/product-filters.json",
+            "ProductFilters",
+            "required_features",
+            "map[string]bool",
+        )
+        self.assert_field_type(
+            "core/product-filters.json",
+            "ProductFilters",
+            "signal_targeting",
+            "[]SignalTargeting",
+        )
+        self.assert_field_type(
+            "core/product-filters.json",
+            "ProductFilters",
+            "geo_proximity",
+            "[]ProductFilterGeoProximity",
+        )
+        self.assert_field_type(
+            "core/signal-targeting.json",
+            "SignalTargeting",
+            "min_value",
+            "*float64",
+        )
+        self.assert_field_type(
+            "core/signal-targeting.json",
+            "SignalTargeting",
+            "max_value",
+            "*float64",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -874,6 +916,64 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Type string `json:\"type\"`", uid_generated)
         self.assertIn("Value string `json:\"value\"`", uid_generated)
 
+        filters_schema = generate.load_schema("core/product-filters.json")
+        filters_generated = generate.schema_to_struct("ProductFilters", filters_schema)
+        self.assertIn(
+            "BudgetRange *ProductFilterBudgetRange `json:\"budget_range,omitempty\"`",
+            filters_generated,
+        )
+        self.assertIn(
+            "RequiredFeatures map[string]bool `json:\"required_features,omitempty\"`",
+            filters_generated,
+        )
+        self.assertIn(
+            "SignalTargeting []SignalTargeting `json:\"signal_targeting,omitempty\"`",
+            filters_generated,
+        )
+        self.assertIn(
+            "GeoProximity []ProductFilterGeoProximity `json:\"geo_proximity,omitempty\"`",
+            filters_generated,
+        )
+
+        budget_schema = generate.load_schema_spec(
+            "core/product-filters.json#/properties/budget_range",
+        )
+        budget_generated = generate.schema_to_struct(
+            "ProductFilterBudgetRange",
+            budget_schema,
+        )
+        self.assertIn("Min *float64 `json:\"min,omitempty\"`", budget_generated)
+        self.assertIn("Max *float64 `json:\"max,omitempty\"`", budget_generated)
+        self.assertIn("Currency string `json:\"currency\"`", budget_generated)
+
+        proximity_schema = generate.load_schema_spec(
+            "core/product-filters.json#/properties/geo_proximity/items",
+        )
+        proximity_generated = generate.schema_to_struct(
+            "ProductFilterGeoProximity",
+            proximity_schema,
+        )
+        self.assertIn("Lat *float64 `json:\"lat,omitempty\"`", proximity_generated)
+        self.assertIn("Lng *float64 `json:\"lng,omitempty\"`", proximity_generated)
+        self.assertIn(
+            "TravelTime *ProductFilterTravelTime `json:\"travel_time,omitempty\"`",
+            proximity_generated,
+        )
+        self.assertIn(
+            "Geometry *ProductFilterGeometry `json:\"geometry,omitempty\"`",
+            proximity_generated,
+        )
+
+        geometry_schema = generate.load_schema_spec(
+            "core/product-filters.json#/properties/geo_proximity/items/properties/geometry",
+        )
+        geometry_generated = generate.schema_to_struct(
+            "ProductFilterGeometry",
+            geometry_schema,
+        )
+        self.assertIn("Type string `json:\"type\"`", geometry_generated)
+        self.assertIn("Coordinates []any `json:\"coordinates\"`", geometry_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -892,6 +992,23 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("PolicyCategoryDefinition", "regulatory_frameworks"), records)
         self.assertNotIn(("CreativeFormat", "supported_macros"), records)
         self.assertNotIn(("UserMatch", "uids"), records)
+        self.assertNotIn(("GetProductsRequest", "filters"), records)
+        self.assertNotIn(("ProductFilters", "required_features"), records)
+        self.assertNotIn(("ProductFilters", "signal_targeting"), records)
+
+        allowed = [
+            (record["type"], record["json"], record["allowance"])
+            for record in generate.any_coverage_report()["records"]
+            if record["allowed"]
+        ]
+        self.assertIn(
+            (
+                "ProductFilterGeometry",
+                "coordinates",
+                "GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon",
+            ),
+            allowed,
+        )
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):

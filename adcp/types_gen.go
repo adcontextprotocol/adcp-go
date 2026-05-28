@@ -5490,6 +5490,33 @@ type Product struct {
 	Ext any `json:"ext,omitempty"`
 }
 
+// ProductFilters — Structured filters for product discovery
+type ProductFilters struct {
+	DeliveryType string `json:"delivery_type,omitempty"`
+	Exclusivity string `json:"exclusivity,omitempty"` // Filter by exclusivity level. Returns products matching the specified exclusivity
+	IsFixedPrice *bool `json:"is_fixed_price,omitempty"` // Filter by pricing availability: true = products offering fixed pricing (at least
+	FormatIDs []FormatRef `json:"format_ids,omitempty"` // Filter by specific format IDs
+	StandardFormatsOnly *bool `json:"standard_formats_only,omitempty"` // Only return products accepting IAB standard formats
+	MinExposures int `json:"min_exposures,omitempty"` // Minimum exposures/impressions needed for measurement validity
+	StartDate string `json:"start_date,omitempty"` // Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks
+	EndDate string `json:"end_date,omitempty"` // Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks
+	BudgetRange *ProductFilterBudgetRange `json:"budget_range,omitempty"` // Budget range to filter appropriate products
+	Countries []string `json:"countries,omitempty"` // Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'G
+	Regions []string `json:"regions,omitempty"` // Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-S
+	Metros []ProductFilterMetro `json:"metros,omitempty"` // Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Us
+	Channels []string `json:"channels,omitempty"` // Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])
+	// Deprecated: Use trusted_match filter instead.
+	RequiredAxeIntegrations []string `json:"required_axe_integrations,omitempty"` // Deprecated: Use trusted_match filter instead. Filter to products executable thro
+	TrustedMatch *ProductFilterTrustedMatch `json:"trusted_match,omitempty"` // Filter products by Trusted Match Protocol capabilities. Only products with match
+	RequiredFeatures map[string]bool `json:"required_features,omitempty"` // Filter to products from sellers supporting specific protocol features. Only feat
+	RequiredGeoTargeting []ProductFilterGeoTargetingRequirement `json:"required_geo_targeting,omitempty"` // Filter to products from sellers supporting specific geo targeting capabilities.
+	SignalTargeting []SignalTargeting `json:"signal_targeting,omitempty"` // Filter to products supporting specific signals from data provider catalogs. Prod
+	PostalAreas []ProductFilterPostalArea `json:"postal_areas,omitempty"` // Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, l
+	GeoProximity []ProductFilterGeoProximity `json:"geo_proximity,omitempty"` // Filter by proximity to geographic points. Returns products with inventory covera
+	RequiredPerformanceStandards []PerformanceStandard `json:"required_performance_standards,omitempty"` // Filter to products that can meet the buyer's performance standard requirements.
+	Keywords []ProductFilterKeyword `json:"keywords,omitempty"` // Filter by keyword relevance for search and retail media platforms. Returns produ
+}
+
 // DataProviderSignalSelector — Selects signals from a data provider's adagents.json catalog. Used for product definitions and agent
 type DataProviderSignalSelector struct {
 	DataProviderDomain string `json:"data_provider_domain,omitempty"` // Domain where data provider's adagents.json is hosted (e.g., 'polk.com')
@@ -5762,6 +5789,16 @@ type Signal struct {
 	RestrictedAttributes []string `json:"restricted_attributes,omitempty"` // Restricted attribute categories this signal touches. Data providers SHOULD decla
 	PolicyCategories []string `json:"policy_categories,omitempty"` // Policy categories this signal is sensitive for (e.g., a children's interest sign
 	Range *SignalRange `json:"range,omitempty"` // For numeric signals, the valid value range
+}
+
+// SignalTargeting — Targeting constraint for a specific signal. Uses value_type as discriminator to determine the target
+type SignalTargeting struct {
+	SignalID *SignalID `json:"signal_id,omitempty"` // The signal to target
+	ValueType string `json:"value_type,omitempty"` // Discriminator for numeric signals
+	Value *bool `json:"value,omitempty"` // Whether to include (true) or exclude (false) users matching this signal
+	Values []string `json:"values,omitempty"` // Values to target. Users with any of these values will be included.
+	MinValue *float64 `json:"min_value,omitempty"` // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
+	MaxValue *float64 `json:"max_value,omitempty"` // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
 }
 
 // DeliveryTotals — Standard delivery metrics that can be reported at media buy, package, or creative level
@@ -6661,6 +6698,73 @@ type ProductMaterialSubmission struct {
 	Ext any `json:"ext,omitempty"`
 }
 
+// ProductFilterBudgetRange — Budget range to filter appropriate products
+type ProductFilterBudgetRange struct {
+	Min *float64 `json:"min,omitempty"` // Minimum budget amount
+	Max *float64 `json:"max,omitempty"` // Maximum budget amount
+	Currency string `json:"currency"` // ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')
+}
+
+type ProductFilterMetro struct {
+	System string `json:"system"` // Metro classification system
+	Code string `json:"code"` // Metro code within the system (e.g., '501' for NYC DMA)
+}
+
+// ProductFilterTrustedMatch — Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are
+type ProductFilterTrustedMatch struct {
+	Providers []ProductFilterTrustedMatchProvider `json:"providers,omitempty"` // Filter to products with specific TMP providers and match types. Each entry ident
+	ResponseTypes []string `json:"response_types,omitempty"` // Filter to products supporting specific TMP response types (e.g., 'activation', '
+}
+
+type ProductFilterTrustedMatchProvider struct {
+	AgentURL string `json:"agent_url"` // Provider's agent URL from the registry.
+	ContextMatch *bool `json:"context_match,omitempty"` // When true, require this provider to support context match.
+	IdentityMatch *bool `json:"identity_match,omitempty"` // When true, require this provider to support identity match.
+}
+
+type ProductFilterGeoTargetingRequirement struct {
+	Level string `json:"level"` // Geographic targeting level (country, region, metro, postal_area)
+	System string `json:"system,omitempty"` // Classification system within the level. Required for metro (e.g., 'nielsen_dma')
+}
+
+type ProductFilterPostalArea struct {
+	System string `json:"system"` // Postal code system (e.g., 'us_zip', 'gb_outward')
+	Values []string `json:"values"` // Postal codes within the system (e.g., ['10001', '10002'] for us_zip)
+}
+
+type ProductFilterGeoProximity struct {
+	Lat *float64 `json:"lat,omitempty"` // Latitude in decimal degrees (WGS 84)
+	Lng *float64 `json:"lng,omitempty"` // Longitude in decimal degrees (WGS 84)
+	Label string `json:"label,omitempty"` // Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')
+	TravelTime *ProductFilterTravelTime `json:"travel_time,omitempty"` // Travel time limit for isochrone calculation
+	TransportMode string `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is prov
+	Radius *ProductFilterRadius `json:"radius,omitempty"` // Simple radius from the point
+	Geometry *ProductFilterGeometry `json:"geometry,omitempty"` // Pre-computed GeoJSON geometry defining the proximity boundary
+}
+
+// ProductFilterTravelTime — Travel time limit for isochrone calculation
+type ProductFilterTravelTime struct {
+	Value float64 `json:"value"` // Travel time limit
+	Unit string `json:"unit"`
+}
+
+// ProductFilterRadius — Simple radius from the point
+type ProductFilterRadius struct {
+	Value float64 `json:"value"` // Radius distance
+	Unit string `json:"unit"` // Distance unit
+}
+
+// ProductFilterGeometry — Pre-computed GeoJSON geometry defining the proximity boundary
+type ProductFilterGeometry struct {
+	Type string `json:"type"` // GeoJSON geometry type
+	Coordinates []any `json:"coordinates"` // GeoJSON coordinates array
+}
+
+type ProductFilterKeyword struct {
+	Keyword string `json:"keyword"` // The keyword to target
+	MatchType string `json:"match_type,omitempty"`
+}
+
 type PriceAdjustment struct {
 	Kind string `json:"kind"`
 	Name string `json:"name"` // Specific adjustment name. Use well-known values where applicable for interoperab
@@ -7197,7 +7301,7 @@ type GetProductsRequest struct {
 	Catalog *Catalog `json:"catalog,omitempty"` // Catalog of items the buyer wants to promote. The seller matches catalog items ag
 	Account *AccountReference `json:"account,omitempty"` // Account for product lookup. Returns products with pricing specific to this accou
 	PreferredDeliveryTypes []string `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike filters.delivery_typ
-	Filters any `json:"filters,omitempty"`
+	Filters *ProductFilters `json:"filters,omitempty"`
 	PropertyList *PropertyListRef `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided, the
 	Fields []string `json:"fields,omitempty"` // Specific product fields to include in the response. When omitted, all fields are
 	TimeBudget *Duration `json:"time_budget,omitempty"` // Maximum time the buyer will commit to this request. The seller returns the best
