@@ -370,7 +370,7 @@ type AccountResult struct {
 
 type AccountSetup struct {
 	URL       string `json:"url,omitempty"`
-	Message   string `json:"message,omitempty"`
+	Message   string `json:"message"`
 	ExpiresAt string `json:"expires_at,omitempty"`
 }
 

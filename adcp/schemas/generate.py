@@ -753,6 +753,19 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'OptimizationGoalMaximizeValueTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/2',
 }
 
+# Hand-written inline types that do not have standalone schema files but should
+# still be structurally drift-checked against their owning schema pointers.
+HAND_WRITTEN_INLINE_SCHEMA_SPECS = {
+    'AccountSetup': [
+        'core/account.json#/properties/setup',
+        'account/sync-accounts-response.json#/oneOf/0/properties/accounts/items/properties/setup',
+        'bundled/creative/list-creatives-response.json#/properties/creatives/items/properties/account/properties/setup',
+        'bundled/creative/sync-creatives-response.json#/oneOf/0/properties/creatives/items/properties/account/properties/setup',
+        'bundled/media-buy/create-media-buy-response.json#/oneOf/0/properties/account/properties/setup',
+        'bundled/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/account/properties/setup',
+    ],
+}
+
 # Map schema-derived Go names to the preferred Go name. Applied both when
 # resolving $ref targets and when emitting core/tool schema structs, so a
 # schema named brand-ref.json emits as `type BrandReference struct` and every

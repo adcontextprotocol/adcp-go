@@ -356,6 +356,24 @@ def validate_shared_inline_overrides():
     return reports
 
 
+def validate_hand_written_inline_schema_specs(go_structs):
+    """Diff hand-written inline structs against their owning schema pointers."""
+    reports = []
+    for type_name, schema_specs in gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS.items():
+        go_fields = go_structs.get(type_name)
+        if go_fields is None:
+            reports.append({
+                'type': type_name,
+                'error': 'hand-written inline type not found in scanned Go sources',
+            })
+            continue
+        for schema_spec in schema_specs:
+            drift = diff_type(type_name, go_fields, schema_spec)
+            if drift:
+                reports.append(drift)
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -668,6 +686,8 @@ def main():
     shared_inline_errors = validate_shared_inline_overrides()
     union_schema_errors = validate_union_schema_specs()
     optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
+    hand_written_inline_reports = validate_hand_written_inline_schema_specs(go_structs)
+    reports.extend(hand_written_inline_reports)
 
     for type_name in sorted(gen.KNOWN_TYPES):
         if type_name in EXEMPT:
