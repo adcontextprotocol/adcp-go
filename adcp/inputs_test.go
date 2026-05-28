@@ -139,6 +139,76 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 	assert.Equal(t, map[string]any{"buyer_ref": "corr-1"}, wire["ext"])
 }
 
+func TestPackageOptionalNumericZeroRoundTrip(t *testing.T) {
+	var input PackageInput
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"product_id":"prod-1",
+		"budget":0,
+		"pricing_option_id":"price-1",
+		"bid_price":0,
+		"impressions":0
+	}`), &input))
+	require.NotNil(t, input.BidPrice)
+	require.NotNil(t, input.Impressions)
+	assert.Equal(t, float64(0), *input.BidPrice)
+	assert.Equal(t, float64(0), *input.Impressions)
+
+	var update PackageUpdate
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"package_id":"pkg-1",
+		"budget":0,
+		"bid_price":0,
+		"impressions":0
+	}`), &update))
+	require.NotNil(t, update.Budget)
+	require.NotNil(t, update.BidPrice)
+	require.NotNil(t, update.Impressions)
+	assert.Equal(t, float64(0), *update.Budget)
+	assert.Equal(t, float64(0), *update.BidPrice)
+	assert.Equal(t, float64(0), *update.Impressions)
+
+	var keyword KeywordTargetUpdate
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"keyword":"running shoes",
+		"match_type":"phrase",
+		"bid_price":0
+	}`), &keyword))
+	require.NotNil(t, keyword.BidPrice)
+	assert.Equal(t, float64(0), *keyword.BidPrice)
+}
+
+func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
+	out, err := json.Marshal(PackageInput{
+		ProductID:       "prod-1",
+		Budget:          100,
+		PricingOptionID: "price-1",
+	})
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.NotContains(t, wire, "bid_price")
+	assert.NotContains(t, wire, "impressions")
+
+	out, err = json.Marshal(PackageUpdate{
+		PackageID: "pkg-1",
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.NotContains(t, wire, "budget")
+	assert.NotContains(t, wire, "bid_price")
+	assert.NotContains(t, wire, "impressions")
+
+	out, err = json.Marshal(KeywordTargetUpdate{
+		Keyword:   "running shoes",
+		MatchType: "phrase",
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.NotContains(t, wire, "bid_price")
+}
+
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {
 	out, err := json.Marshal(CreativeAssignment{
 		CreativeID: "cr-typed",

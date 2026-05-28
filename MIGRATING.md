@@ -20,6 +20,9 @@ be populated.
   `KeywordTargetUpdate.BidPrice`. Use nil to omit the field, and
   `adcp.Ptr(0.0)` or `adcp.Float64(0)` when the wire payload must include an
   explicit zero.
+  `PackageInput.Budget` remains `float64` because it is required by the create
+  package schema; `PackageUpdate.Budget` is `*float64` because package updates
+  can omit budget or explicitly set it to zero.
 - `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
   cancellation. The AdCP schema constrains `canceled` to true; do not send
