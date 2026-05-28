@@ -7057,7 +7057,7 @@ type PlannedDeliveryGeo struct {
 type CreativeBriefMessaging struct {
 	Headline string `json:"headline,omitempty"` // Primary headline
 	Tagline string `json:"tagline,omitempty"` // Supporting tagline or sub-headline
-	Cta string `json:"cta,omitempty"` // Call-to-action text
+	CTA string `json:"cta,omitempty"` // Call-to-action text
 	KeyMessages []string `json:"key_messages,omitempty"` // Key messages to communicate in priority order
 }
 

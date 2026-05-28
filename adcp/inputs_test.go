@@ -312,7 +312,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		Messaging: &CreativeBriefMessaging{
 			Headline:    "Fresh arrivals",
 			Tagline:     "Built for warmer days",
-			Cta:         "Shop now",
+			CTA:         "Shop now",
 			KeyMessages: []string{"lightweight", "durable"},
 		},
 	})

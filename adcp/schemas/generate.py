@@ -1177,7 +1177,7 @@ def pascal_case(s):
     'ids' -> 'IDs'), which matters for Go idioms like FormatIDs, PropertyIDs."""
     parts = re.split(r'[-_]', s)
     result = []
-    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'mcp', 'ai', 'c2pa'}
+    acronyms = {'id', 'url', 'uri', 'api', 'http', 'html', 'css', 'json', 'xml', 'uid', 'ip', 'rid', 'cpm', 'cpc', 'cpa', 'cta', 'mcp', 'ai', 'c2pa'}
     for p in parts:
         lp = p.lower()
         if lp in acronyms:
