@@ -1056,6 +1056,22 @@ class InlineObjectGenerationTest(unittest.TestCase):
             ),
             allowed,
         )
+        self.assertIn(
+            (
+                "CatalogFieldMapping",
+                "value",
+                "catalog static literal values can be strings, numbers, booleans, arrays, or objects",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "CatalogFieldMapping",
+                "default",
+                "catalog fallback literal values can be strings, numbers, booleans, arrays, or objects",
+            ),
+            allowed,
+        )
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):
