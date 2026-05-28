@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 27
+python3 generate.py --coverage-max-unreviewed-any 26
 ```
 
 The generator currently reports 192 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 165 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 27 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 166 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 26 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 27
+python3 generate.py --coverage-max-unreviewed-any 26
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -70,7 +70,6 @@ the new dynamic shape is reviewed in the same PR.
 | `ReportPlanOutcomeResponse.Findings` | `findings` | `[]any` | `array_item:inline_object` | `governance/report-plan-outcome-response.json` |
 | `ReportPlanOutcomeResponse.PlanSummary` | `plan_summary` | `any` | `inline_object` | `governance/report-plan-outcome-response.json` |
 | `GetPlanAuditLogsResponse.Plans` | `plans` | `[]any` | `array_item:inline_object` | `governance/get-plan-audit-logs-response.json` |
-| `MCPWebhookPayload.Result` | `result` | `any` | `unknown_ref:/schemas/3.0.12/core/async-response-data.json` | `core/mcp-webhook-payload.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
 ## Work Queues
@@ -102,12 +101,9 @@ hand-written pattern already used for selected oneOf responses.
 
 ### Unknown References
 
-One fallback is missing a registry entry:
-
-- `MCPWebhookPayload.Result` -> `core/async-response-data.json`
-
-Do not paper over these with `any`. Add real schemas to the generation graph, or
-classify them as intentional open payloads with a specific allowlist reason.
+No unreviewed unknown `$ref` fallbacks remain. Future unknown refs should be
+added to the generation graph unless the target schema is an intentionally open
+or union-shaped payload with a specific allowlist reason.
 
 ### Schema Clarification
 
