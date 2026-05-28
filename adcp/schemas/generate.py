@@ -346,6 +346,22 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "core/targeting.json#/properties/geo_postal_areas/items",
     ),
     (
+        "GeoProximityTarget",
+        "core/targeting.json#/properties/geo_proximity/items",
+    ),
+    (
+        "GeoProximityTravelTime",
+        "core/targeting.json#/properties/geo_proximity/items/properties/travel_time",
+    ),
+    (
+        "GeoProximityRadius",
+        "core/targeting.json#/properties/geo_proximity/items/properties/radius",
+    ),
+    (
+        "GeoProximityGeometry",
+        "core/targeting.json#/properties/geo_proximity/items/properties/geometry",
+    ),
+    (
         "AgeRestriction",
         "core/targeting.json#/properties/age_restriction",
     ),
@@ -895,6 +911,12 @@ INLINE_TYPE_HINTS = {
     ('Targeting', 'geo_metros_exclude'): 'GeoMetroTarget',
     ('Targeting', 'geo_postal_areas'): 'GeoPostalAreaTarget',
     ('Targeting', 'geo_postal_areas_exclude'): 'GeoPostalAreaTarget',
+    ('Targeting', 'geo_proximity'): 'GeoProximityTarget',
+    ('GeoProximityTarget', 'lat'): '*float64',
+    ('GeoProximityTarget', 'lng'): '*float64',
+    ('GeoProximityTarget', 'travel_time'): '*GeoProximityTravelTime',
+    ('GeoProximityTarget', 'radius'): '*GeoProximityRadius',
+    ('GeoProximityTarget', 'geometry'): '*GeoProximityGeometry',
     ('Targeting', 'age_restriction'): '*AgeRestriction',
     ('Targeting', 'keyword_targets'): 'KeywordTarget',
     ('Targeting', 'negative_keywords'): 'NegativeKeywordTarget',
@@ -1086,6 +1108,7 @@ INTENTIONAL_ANY_FIELDS = {
     ('LogEventRequest', 'events'): 'event payloads are seller/buyer-defined',
     ('Catalog', 'items'): 'inline catalog item schema depends on catalog type',
     ('ProductFilterGeometry', 'coordinates'): 'GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon',
+    ('GeoProximityGeometry', 'coordinates'): 'GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon',
     ('SimulationSuccess', 'simulated'): 'test-controller simulation payload is scenario-specific',
     ('SimulationSuccess', 'cumulative'): 'test-controller cumulative state is scenario-specific',
     ('CheckGovernanceRequest', 'payload'): 'governance can evaluate different protocol payloads',

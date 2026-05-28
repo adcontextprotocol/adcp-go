@@ -5881,7 +5881,7 @@ type Targeting struct {
 	DeviceType []string `json:"device_type,omitempty"` // Restrict to specific device form factors. Use for campaigns targeting hardware c
 	DeviceTypeExclude []string `json:"device_type_exclude,omitempty"` // Exclude specific device form factors from delivery (e.g., exclude CTV for app-in
 	StoreCatchments []TargetingStoreCatchment `json:"store_catchments,omitempty"` // Target users within store catchment areas from a synced store catalog. Each entr
-	GeoProximity []any `json:"geo_proximity,omitempty"` // Target users within travel time, distance, or a custom boundary around arbitrary
+	GeoProximity []GeoProximityTarget `json:"geo_proximity,omitempty"` // Target users within travel time, distance, or a custom boundary around arbitrary
 	Language []string `json:"language,omitempty"` // Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en
 	KeywordTargets []KeywordTarget `json:"keyword_targets,omitempty"` // Keyword targeting for search and retail media platforms. Restricts delivery to q
 	NegativeKeywords []NegativeKeywordTarget `json:"negative_keywords,omitempty"` // Keywords to exclude from delivery. Queries matching these keywords will not trig
@@ -6384,6 +6384,35 @@ type GeoMetroTarget struct {
 type GeoPostalAreaTarget struct {
 	System string `json:"system"` // Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country a
 	Values []string `json:"values"` // Postal codes within the system (e.g., ['10001', '10002'] for us_zip)
+}
+
+type GeoProximityTarget struct {
+	Lat *float64 `json:"lat,omitempty"` // Latitude in decimal degrees (WGS 84). Required for travel_time and radius method
+	Lng *float64 `json:"lng,omitempty"` // Longitude in decimal degrees (WGS 84). Required for travel_time and radius metho
+	Label string `json:"label,omitempty"` // Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Pr
+	TravelTime *GeoProximityTravelTime `json:"travel_time,omitempty"` // Travel time limit for isochrone calculation. The platform resolves this to a geo
+	TransportMode string `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is prov
+	Radius *GeoProximityRadius `json:"radius,omitempty"` // Simple radius from the point. The platform draws a circle of this distance aroun
+	Geometry *GeoProximityGeometry `json:"geometry,omitempty"` // Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buye
+	Ext any `json:"ext,omitempty"`
+}
+
+// GeoProximityTravelTime — Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary bas
+type GeoProximityTravelTime struct {
+	Value float64 `json:"value"` // Travel time limit.
+	Unit string `json:"unit"`
+}
+
+// GeoProximityRadius — Simple radius from the point. The platform draws a circle of this distance around the coordinates.
+type GeoProximityRadius struct {
+	Value float64 `json:"value"` // Radius distance.
+	Unit string `json:"unit"` // Distance unit.
+}
+
+// GeoProximityGeometry — Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calcul
+type GeoProximityGeometry struct {
+	Type string `json:"type"` // GeoJSON geometry type.
+	Coordinates []any `json:"coordinates"` // GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon:
 }
 
 // AgeRestriction — Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeti
