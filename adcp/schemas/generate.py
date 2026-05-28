@@ -913,6 +913,12 @@ INLINE_TYPE_HINTS = {
     ('AudienceSelector', 'max_value'): '*float64',
     ('ForecastPoint', 'budget'): '*float64',
     ('OptimizationGoalEventSource', 'value_factor'): '*float64',
+    ('PackageInput', 'bid_price'): '*float64',
+    ('PackageInput', 'impressions'): '*float64',
+    ('PackageUpdate', 'budget'): '*float64',
+    ('PackageUpdate', 'bid_price'): '*float64',
+    ('PackageUpdate', 'impressions'): '*float64',
+    ('KeywordTargetUpdate', 'bid_price'): '*float64',
 }
 
 for _delivery_metric_type in (

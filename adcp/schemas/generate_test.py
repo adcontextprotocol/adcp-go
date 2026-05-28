@@ -647,6 +647,99 @@ class OptionalNumericPolicyTest(unittest.TestCase):
             "budget",
             "*float64",
         )
+        self.assert_field_type(
+            "media-buy/package-request.json",
+            "PackageInput",
+            "bid_price",
+            "*float64",
+        )
+        self.assert_field_type(
+            "media-buy/package-request.json",
+            "PackageInput",
+            "impressions",
+            "*float64",
+        )
+        self.assert_field_type(
+            "media-buy/package-update.json",
+            "PackageUpdate",
+            "budget",
+            "*float64",
+        )
+        self.assert_field_type(
+            "media-buy/package-update.json",
+            "PackageUpdate",
+            "bid_price",
+            "*float64",
+        )
+        self.assert_field_type(
+            "media-buy/package-update.json",
+            "PackageUpdate",
+            "impressions",
+            "*float64",
+        )
+        package_update = generate.load_schema("media-buy/package-update.json")
+        keyword_add = generate.json_pointer_get(
+            package_update,
+            "/properties/keyword_targets_add/items",
+        )
+        bid_price_type, _ = generate.field_go_type_info(
+            "KeywordTargetUpdate",
+            "bid_price",
+            keyword_add["properties"]["bid_price"],
+            set(keyword_add.get("required", [])),
+        )
+        self.assertEqual("*float64", bid_price_type)
+
+
+class PackageSchemaOwnershipTest(unittest.TestCase):
+    def assert_generated_struct_fields(self, schema_path, type_name, expected_fields):
+        schema = generate.load_schema(schema_path)
+        generated = generate.schema_to_struct(type_name, schema)
+
+        self.assertNotIn("BuyerRef", generated)
+        self.assertNotIn("buyer_ref", generated)
+        for field in expected_fields:
+            with self.subTest(type_name=type_name, field=field):
+                self.assertIn(field, generated)
+
+    def test_package_input_is_schema_owned(self):
+        self.assert_generated_struct_fields(
+            "media-buy/package-request.json",
+            "PackageInput",
+            [
+                "FormatIDs []FormatRef `json:\"format_ids,omitempty\"`",
+                "Paused *bool `json:\"paused,omitempty\"`",
+                "Catalogs []Catalog `json:\"catalogs,omitempty\"`",
+                "OptimizationGoals []OptimizationGoal `json:\"optimization_goals,omitempty\"`",
+                "CreativeAssignments []CreativeAssignment `json:\"creative_assignments,omitempty\"`",
+                "Creatives []CreativeAsset `json:\"creatives,omitempty\"`",
+                "BidPrice *float64 `json:\"bid_price,omitempty\"`",
+                "Impressions *float64 `json:\"impressions,omitempty\"`",
+                "Ext any `json:\"ext,omitempty\"`",
+            ],
+        )
+
+    def test_package_update_is_schema_owned(self):
+        self.assert_generated_struct_fields(
+            "media-buy/package-update.json",
+            "PackageUpdate",
+            [
+                "Paused *bool `json:\"paused,omitempty\"`",
+                "Canceled *bool `json:\"canceled,omitempty\"`",
+                "Catalogs []Catalog `json:\"catalogs,omitempty\"`",
+                "OptimizationGoals []OptimizationGoal `json:\"optimization_goals,omitempty\"`",
+                "KeywordTargetsAdd []KeywordTargetUpdate `json:\"keyword_targets_add,omitempty\"`",
+                "KeywordTargetsRemove []KeywordTargetRef `json:\"keyword_targets_remove,omitempty\"`",
+                "NegativeKeywordsAdd []KeywordTargetRef `json:\"negative_keywords_add,omitempty\"`",
+                "NegativeKeywordsRemove []KeywordTargetRef `json:\"negative_keywords_remove,omitempty\"`",
+                "CreativeAssignments []CreativeAssignment `json:\"creative_assignments,omitempty\"`",
+                "Creatives []CreativeAsset `json:\"creatives,omitempty\"`",
+                "Budget *float64 `json:\"budget,omitempty\"`",
+                "BidPrice *float64 `json:\"bid_price,omitempty\"`",
+                "Impressions *float64 `json:\"impressions,omitempty\"`",
+                "Ext any `json:\"ext,omitempty\"`",
+            ],
+        )
 
 
 if __name__ == "__main__":

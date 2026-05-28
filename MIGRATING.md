@@ -14,9 +14,12 @@ be populated.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
-  `CreativeAsset.Weight`, and `KeywordTarget.BidPrice`. Use nil to omit the
-  field, and `adcp.Ptr(0.0)` when the wire payload must include an explicit
-  zero.
+  `CreativeAsset.Weight`, `KeywordTarget.BidPrice`, `PackageInput.BidPrice`,
+  `PackageInput.Impressions`, `PackageUpdate.Budget`,
+  `PackageUpdate.BidPrice`, `PackageUpdate.Impressions`, and
+  `KeywordTargetUpdate.BidPrice`. Use nil to omit the field, and
+  `adcp.Ptr(0.0)` or `adcp.Float64(0)` when the wire payload must include an
+  explicit zero.
 - `UpdateMediaBuyRequest.Canceled` and `PackageUpdate.Canceled` are `*bool`.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
   cancellation. The AdCP schema constrains `canceled` to true; do not send

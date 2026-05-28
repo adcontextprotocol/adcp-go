@@ -63,8 +63,16 @@ func TestUpdateMediaBuyOptionalFlagsMarshal(t *testing.T) {
 
 func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
 	out, err := json.Marshal(PackageUpdate{
-		PackageID: "pkg-1",
-		Paused:    Bool(false),
+		PackageID:   "pkg-1",
+		Paused:      Bool(false),
+		Budget:      Float64(0),
+		BidPrice:    Float64(0),
+		Impressions: Float64(0),
+		KeywordTargetsAdd: []KeywordTargetUpdate{{
+			Keyword:   "running shoes",
+			MatchType: "phrase",
+			BidPrice:  Float64(0),
+		}},
 		CreativeAssignments: []CreativeAssignment{{
 			CreativeID: "cr-1",
 			Weight:     Float64(0),
@@ -75,7 +83,16 @@ func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, false, wire["paused"])
+	assert.Equal(t, float64(0), wire["budget"])
+	assert.Equal(t, float64(0), wire["bid_price"])
+	assert.Equal(t, float64(0), wire["impressions"])
 	assert.NotContains(t, wire, "canceled")
+	keywords, ok := wire["keyword_targets_add"].([]any)
+	require.True(t, ok)
+	require.Len(t, keywords, 1)
+	keyword, ok := keywords[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, float64(0), keyword["bid_price"])
 	assignments, ok := wire["creative_assignments"].([]any)
 	require.True(t, ok)
 	require.Len(t, assignments, 1)
@@ -83,6 +100,43 @@ func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "cr-1", assignment["creative_id"])
 	assert.Equal(t, float64(0), assignment["weight"])
+}
+
+func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
+	out, err := json.Marshal(PackageInput{
+		ProductID:       "prod-1",
+		PricingOptionID: "price-1",
+		Budget:          0,
+		FormatIDs:       []FormatRef{{ID: "display-banner"}},
+		Paused:          Bool(false),
+		BidPrice:        Float64(0),
+		Impressions:     Float64(0),
+		Catalogs:        []Catalog{{Type: "products"}},
+		CreativeAssignments: []CreativeAssignment{{
+			CreativeID: "cr-1",
+		}},
+		Creatives: []CreativeAsset{{
+			CreativeID: "cr-new-1",
+			Name:       "New creative",
+			FormatID:   FormatRef{ID: "display-banner"},
+			Assets:     map[string]any{"image": map[string]any{"url": "https://example.com/image.png"}},
+		}},
+		Ext: map[string]any{"buyer_ref": "corr-1"},
+	})
+	require.NoError(t, err)
+
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, float64(0), wire["budget"])
+	assert.Equal(t, false, wire["paused"])
+	assert.Equal(t, float64(0), wire["bid_price"])
+	assert.Equal(t, float64(0), wire["impressions"])
+	assert.Contains(t, wire, "format_ids")
+	assert.Contains(t, wire, "catalogs")
+	assert.Contains(t, wire, "creative_assignments")
+	assert.Contains(t, wire, "creatives")
+	assert.NotContains(t, wire, "buyer_ref")
+	assert.Equal(t, map[string]any{"buyer_ref": "corr-1"}, wire["ext"])
 }
 
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {
