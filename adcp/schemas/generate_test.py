@@ -732,6 +732,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "geo",
             "*PlannedDeliveryGeo",
         )
+        self.assert_field_type(
+            "core/account.json",
+            "Account",
+            "setup",
+            "*AccountSetup",
+        )
+        self.assert_field_type(
+            "core/creative-brief.json",
+            "CreativeBrief",
+            "messaging",
+            "*CreativeBriefMessaging",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -759,6 +771,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Countries []string `json:\"countries,omitempty\"`", geo_generated)
         self.assertIn("Regions []string `json:\"regions,omitempty\"`", geo_generated)
 
+        messaging_schema = generate.load_schema_spec(
+            "core/creative-brief.json#/properties/messaging",
+        )
+        messaging_generated = generate.schema_to_struct(
+            "CreativeBriefMessaging",
+            messaging_schema,
+        )
+        self.assertIn("Headline string `json:\"headline,omitempty\"`", messaging_generated)
+        self.assertIn("Tagline string `json:\"tagline,omitempty\"`", messaging_generated)
+        self.assertIn("Cta string `json:\"cta,omitempty\"`", messaging_generated)
+        self.assertIn("KeyMessages []string `json:\"key_messages,omitempty\"`", messaging_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -770,6 +794,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ArtifactWebhookPayload", "pagination"), records)
         self.assertNotIn(("PerformanceFeedback", "measurement_period"), records)
         self.assertNotIn(("PlannedDelivery", "geo"), records)
+        self.assertNotIn(("Account", "setup"), records)
+        self.assertNotIn(("CreativeBrief", "messaging"), records)
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):

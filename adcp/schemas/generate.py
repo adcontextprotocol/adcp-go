@@ -639,6 +639,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "PlannedDeliveryGeo",
         "core/planned-delivery.json#/properties/geo",
     ),
+    (
+        "CreativeBriefMessaging",
+        "core/creative-brief.json#/properties/messaging",
+    ),
 ])
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -802,6 +806,7 @@ INLINE_TYPE_HINTS = {
     ('Product', 'delivery_measurement'): '*ProductDeliveryMeasurement',
     ('Product', 'catalog_match'): '*ProductCatalogMatch',
     ('Account', 'credit_limit'): '*AccountCreditLimit',
+    ('Account', 'setup'): '*AccountSetup',
     ('Account', 'governance_agents'): 'AccountGovernanceAgent',
     ('Account', 'reporting_bucket'): '*ReportingBucket',
     ('Targeting', 'geo_metros'): 'GeoMetroTarget',
@@ -822,6 +827,7 @@ INLINE_TYPE_HINTS = {
     ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
     ('PlannedDelivery', 'geo'): '*PlannedDeliveryGeo',
+    ('CreativeBrief', 'messaging'): '*CreativeBriefMessaging',
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',

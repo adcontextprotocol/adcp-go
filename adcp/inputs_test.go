@@ -287,6 +287,44 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		"countries": []any{"US"},
 		"regions":   []any{"US-NY"},
 	}, wire["geo"])
+
+	out, err = json.Marshal(Account{
+		AccountID: "acct-1",
+		Name:      "Acme",
+		Status:    "pending_approval",
+		Setup: &AccountSetup{
+			URL:       "https://seller.example.com/onboarding",
+			Message:   "Complete account setup",
+			ExpiresAt: "2026-06-01T00:00:00Z",
+		},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"url":        "https://seller.example.com/onboarding",
+		"message":    "Complete account setup",
+		"expires_at": "2026-06-01T00:00:00Z",
+	}, wire["setup"])
+
+	out, err = json.Marshal(CreativeBrief{
+		Name: "Spring launch",
+		Messaging: &CreativeBriefMessaging{
+			Headline:    "Fresh arrivals",
+			Tagline:     "Built for warmer days",
+			Cta:         "Shop now",
+			KeyMessages: []string{"lightweight", "durable"},
+		},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, map[string]any{
+		"headline":     "Fresh arrivals",
+		"tagline":      "Built for warmer days",
+		"cta":          "Shop now",
+		"key_messages": []any{"lightweight", "durable"},
+	}, wire["messaging"])
 }
 
 func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {

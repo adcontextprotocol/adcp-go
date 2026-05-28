@@ -21,6 +21,9 @@ be populated.
   Populate `DatetimeRange.Start` and `DatetimeRange.End`; zero-value
   `DatetimeRange{}` is not a valid wire payload. Use nil to omit
   `PlannedDelivery.Geo`.
+- Two additional inline object fields that previously used `any` are now typed:
+  `Account.Setup` is `*adcp.AccountSetup`, and `CreativeBrief.Messaging` is
+  `*adcp.CreativeBriefMessaging`. `AccountSetup` now includes `ExpiresAt`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
