@@ -1072,6 +1072,14 @@ class InlineObjectGenerationTest(unittest.TestCase):
             ),
             allowed,
         )
+        self.assertIn(
+            (
+                "MCPWebhookPayload",
+                "result",
+                "async webhook result is a task-specific response union",
+            ),
+            allowed,
+        )
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):
