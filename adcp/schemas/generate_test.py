@@ -780,7 +780,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         )
         self.assertIn("Headline string `json:\"headline,omitempty\"`", messaging_generated)
         self.assertIn("Tagline string `json:\"tagline,omitempty\"`", messaging_generated)
-        self.assertIn("Cta string `json:\"cta,omitempty\"`", messaging_generated)
+        self.assertIn("CTA string `json:\"cta,omitempty\"`", messaging_generated)
         self.assertIn("KeyMessages []string `json:\"key_messages,omitempty\"`", messaging_generated)
 
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
