@@ -106,6 +106,15 @@ Decision:
   or accepted in the protocol version being added.
 - Do not promote reference-seller convenience fields into SDK protocol structs
   just because one example needs them.
+- Do not synthesize `Ext` on a typed request struct just because the schema has
+  `additionalProperties: true`. The protocol must define an explicit `ext`
+  field before the SDK exposes one. `ProductFilters` in AdCP 3.0.12 is the
+  concrete precedent: it is typed as schema-authored fields only, and the
+  protocol request for `filters.ext` is tracked upstream in
+  adcontextprotocol/adcp#5120.
+- Avoid `Extra` maps on buyer-constructed request types unless the protocol has
+  a read-modify-write preservation requirement. `Extra` is for preserving
+  unknown response metadata, not for inventing request-side extension surfaces.
 - Avoid flattening `ext` into top-level response objects. If compatibility
   requires flattening temporarily, typed fields are authoritative on collision,
   and the follow-up must identify the schema fields needed to remove flattening.

@@ -42,6 +42,12 @@ be populated.
   `map[string]bool`, matching the schema's open feature-flag bag. GeoJSON
   coordinates remain `[]any` because Polygon and MultiPolygon coordinate arrays
   have different nesting shapes.
+  `ProductFilters` does not include an `Ext` or `Extra` field in the AdCP
+  3.0.12 bundle, so arbitrary unknown filter keys that were possible when
+  `Filters` was `any` are no longer represented by the typed Go struct. Put
+  seller-specific request metadata under a schema-backed field where one exists,
+  or wait for the protocol to add an explicit `filters.ext` extension point
+  before relying on typed SDK support.
 - `Targeting.GeoProximity` is now `[]adcp.GeoProximityTarget` instead of
   `[]any`. Latitude and longitude are `*float64` so explicit zero coordinates
   still marshal. `GeoProximityGeometry.Coordinates` remains `[]any` for the
