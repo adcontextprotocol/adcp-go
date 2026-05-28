@@ -434,6 +434,20 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/get-media-buy-delivery-request.json#/properties/reporting_dimensions/properties/device_type",
     ),
     (
+        "GovernanceDeliveryMetrics",
+        "governance/check-governance-request.json#/properties/delivery_metrics",
+    ),
+    (
+        "GovernanceDeliveryReportingPeriod",
+        "governance/check-governance-request.json#/properties/delivery_metrics"
+        "/properties/reporting_period",
+    ),
+    (
+        "GovernanceAudienceDistribution",
+        "governance/check-governance-request.json#/properties/delivery_metrics"
+        "/properties/audience_distribution",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -955,6 +969,13 @@ INLINE_TYPE_HINTS = {
     ('DeliveryReportingDimensions', 'audience'): '*DeliveryReportingDimension',
     ('DeliveryReportingDimensions', 'placement'): '*DeliveryReportingDimension',
     ('DeliveryReportingGeoDimension', 'system'): 'string',
+    ('CheckGovernanceRequest', 'delivery_metrics'): '*GovernanceDeliveryMetrics',
+    ('GovernanceDeliveryMetrics', 'reporting_period'): 'GovernanceDeliveryReportingPeriod',
+    ('GovernanceDeliveryMetrics', 'spend'): '*float64',
+    ('GovernanceDeliveryMetrics', 'cumulative_spend'): '*float64',
+    ('GovernanceDeliveryMetrics', 'impressions'): '*int',
+    ('GovernanceDeliveryMetrics', 'cumulative_impressions'): '*int',
+    ('GovernanceDeliveryMetrics', 'audience_distribution'): '*GovernanceAudienceDistribution',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',

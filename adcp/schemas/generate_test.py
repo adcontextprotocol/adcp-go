@@ -822,6 +822,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "max_value",
             "*float64",
         )
+        self.assert_field_type(
+            "governance/check-governance-request.json",
+            "CheckGovernanceRequest",
+            "delivery_metrics",
+            "*GovernanceDeliveryMetrics",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1012,6 +1018,70 @@ class InlineObjectGenerationTest(unittest.TestCase):
             targeting_geometry_generated,
         )
 
+        delivery_schema = generate.load_schema_spec(
+            "governance/check-governance-request.json#/properties/delivery_metrics",
+        )
+        delivery_generated = generate.schema_to_struct(
+            "GovernanceDeliveryMetrics",
+            delivery_schema,
+        )
+        self.assertIn(
+            "ReportingPeriod GovernanceDeliveryReportingPeriod `json:\"reporting_period\"`",
+            delivery_generated,
+        )
+        self.assertIn("Spend *float64 `json:\"spend,omitempty\"`", delivery_generated)
+        self.assertIn(
+            "CumulativeSpend *float64 `json:\"cumulative_spend,omitempty\"`",
+            delivery_generated,
+        )
+        self.assertIn(
+            "Impressions *int `json:\"impressions,omitempty\"`",
+            delivery_generated,
+        )
+        self.assertIn(
+            "CumulativeImpressions *int `json:\"cumulative_impressions,omitempty\"`",
+            delivery_generated,
+        )
+        self.assertIn(
+            "GeoDistribution map[string]float64 `json:\"geo_distribution,omitempty\"`",
+            delivery_generated,
+        )
+        self.assertIn(
+            "ChannelDistribution map[string]float64 `json:\"channel_distribution,omitempty\"`",
+            delivery_generated,
+        )
+        self.assertIn("Pacing string `json:\"pacing,omitempty\"`", delivery_generated)
+        self.assertIn(
+            "AudienceDistribution *GovernanceAudienceDistribution `json:\"audience_distribution,omitempty\"`",
+            delivery_generated,
+        )
+
+        reporting_period_schema = generate.load_schema_spec(
+            "governance/check-governance-request.json#/properties/delivery_metrics"
+            "/properties/reporting_period",
+        )
+        reporting_period_generated = generate.schema_to_struct(
+            "GovernanceDeliveryReportingPeriod",
+            reporting_period_schema,
+        )
+        self.assertIn("Start string `json:\"start\"`", reporting_period_generated)
+        self.assertIn("End string `json:\"end\"`", reporting_period_generated)
+
+        audience_schema = generate.load_schema_spec(
+            "governance/check-governance-request.json#/properties/delivery_metrics"
+            "/properties/audience_distribution",
+        )
+        audience_generated = generate.schema_to_struct(
+            "GovernanceAudienceDistribution",
+            audience_schema,
+        )
+        self.assertIn("Baseline string `json:\"baseline\"`", audience_generated)
+        self.assertIn("Indices map[string]float64 `json:\"indices\"`", audience_generated)
+        self.assertIn(
+            "CumulativeIndices map[string]float64 `json:\"cumulative_indices,omitempty\"`",
+            audience_generated,
+        )
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1034,6 +1104,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ProductFilters", "required_features"), records)
         self.assertNotIn(("ProductFilters", "signal_targeting"), records)
         self.assertNotIn(("Targeting", "geo_proximity"), records)
+        self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])
