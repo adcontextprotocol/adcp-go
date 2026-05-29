@@ -6596,6 +6596,12 @@ type ReportPlanOutcomeError struct {
 	Message string `json:"message,omitempty"` // Human-readable error description.
 }
 
+// ReportPlanOutcomePlanSummary — Updated plan budget state. Present for 'completed' and 'failed' outcomes.
+type ReportPlanOutcomePlanSummary struct {
+	TotalCommitted *float64 `json:"total_committed,omitempty"` // Total budget committed across all campaigns in the plan.
+	BudgetRemaining *float64 `json:"budget_remaining,omitempty"` // Authorized budget minus total committed.
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7900,7 +7906,7 @@ type ReportPlanOutcomeResponse struct {
 	Status string `json:"status"` // 'accepted' means state updated with no issues. 'findings' means issues were dete
 	CommittedBudget float64 `json:"committed_budget,omitempty"` // Budget committed from this outcome. Present for 'completed' and 'failed' outcome
 	Findings []any `json:"findings,omitempty"` // Issues detected. Present only when status is 'findings'.
-	PlanSummary any `json:"plan_summary,omitempty"` // Updated plan budget state. Present for 'completed' and 'failed' outcomes.
+	PlanSummary *ReportPlanOutcomePlanSummary `json:"plan_summary,omitempty"` // Updated plan budget state. Present for 'completed' and 'failed' outcomes.
 	Replayed *bool `json:"replayed,omitempty"` // Set to true when this response is a cached replay returned for an idempotency_ke
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`

@@ -64,6 +64,12 @@ be populated.
 - `ReportPlanOutcomeRequest.Error` is now
   `*adcp.ReportPlanOutcomeError` instead of `any`, with schema-backed `Code`
   and `Message` fields.
+- `ReportPlanOutcomeResponse.PlanSummary` is now
+  `*adcp.ReportPlanOutcomePlanSummary` instead of `any`. Its optional budget
+  values, `TotalCommitted` and `BudgetRemaining`, are pointers so explicit zero
+  values still marshal. `ReportPlanOutcomeResponse.CommittedBudget` remains a
+  value field because it is a per-outcome delta where an omitted zero is not
+  currently distinct from no committed budget.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -129,6 +135,7 @@ be populated.
 | `CheckGovernanceRequest.DeliveryMetrics` | `*adcp.GovernanceDeliveryMetrics` |
 | `ReportPlanOutcomeRequest.Delivery` | `*adcp.ReportPlanOutcomeDelivery` |
 | `ReportPlanOutcomeRequest.Error` | `*adcp.ReportPlanOutcomeError` |
+| `ReportPlanOutcomeResponse.PlanSummary` | `*adcp.ReportPlanOutcomePlanSummary` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
