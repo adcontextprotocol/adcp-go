@@ -477,6 +477,18 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/get-products-response.json#/properties/incomplete/items",
     ),
     (
+        "SyncPlansPlan",
+        "governance/sync-plans-response.json#/properties/plans/items",
+    ),
+    (
+        "SyncPlansPlanCategory",
+        "governance/sync-plans-response.json#/properties/plans/items/properties/categories/items",
+    ),
+    (
+        "SyncPlansResolvedPolicy",
+        "governance/sync-plans-response.json#/properties/plans/items/properties/resolved_policies/items",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -1021,6 +1033,10 @@ INLINE_TYPE_HINTS = {
     ('PolicyExemplars', 'fail'): 'PolicyExemplar',
     ('GetProductsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('GetProductsIncompleteItem', 'estimated_wait'): '*Duration',
+    ('SyncPlansResponse', 'plans'): 'SyncPlansPlan',
+    ('SyncPlansPlan', 'categories'): 'SyncPlansPlanCategory',
+    ('SyncPlansPlan', 'resolved_policies'): 'SyncPlansResolvedPolicy',
+    ('SyncPlansResolvedPolicy', 'enforcement'): 'PolicyEnforcement',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
