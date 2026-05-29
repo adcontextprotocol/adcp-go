@@ -6574,6 +6574,22 @@ type GovernanceAudienceDistribution struct {
 	CumulativeIndices map[string]float64 `json:"cumulative_indices,omitempty"` // Cumulative audience index values since the governed action started. Same key for
 }
 
+// ReportPlanOutcomeDelivery — Delivery metrics. Required when outcome is 'delivery'.
+type ReportPlanOutcomeDelivery struct {
+	ReportingPeriod *ReportPlanOutcomeDeliveryReportingPeriod `json:"reporting_period,omitempty"` // Start and end timestamps for the reporting window.
+	Impressions *int `json:"impressions,omitempty"` // Impressions delivered in the period.
+	Spend *float64 `json:"spend,omitempty"` // Spend in the period.
+	CPM *float64 `json:"cpm,omitempty"` // Effective CPM for the period.
+	ViewabilityRate *float64 `json:"viewability_rate,omitempty"` // Viewability rate (0-1).
+	CompletionRate *float64 `json:"completion_rate,omitempty"` // Video completion rate (0-1).
+}
+
+// ReportPlanOutcomeDeliveryReportingPeriod — Start and end timestamps for the reporting window.
+type ReportPlanOutcomeDeliveryReportingPeriod struct {
+	Start string `json:"start"`
+	End string `json:"end"`
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7865,7 +7881,7 @@ type ReportPlanOutcomeRequest struct {
 	PurchaseType string `json:"purchase_type,omitempty"` // The type of financial commitment this outcome is for. Determines which budget al
 	Outcome string `json:"outcome"` // Outcome type.
 	SellerResponse any `json:"seller_response,omitempty"` // The seller's full response. Required when outcome is 'completed'.
-	Delivery any `json:"delivery,omitempty"` // Delivery metrics. Required when outcome is 'delivery'.
+	Delivery *ReportPlanOutcomeDelivery `json:"delivery,omitempty"` // Delivery metrics. Required when outcome is 'delivery'.
 	Error any `json:"error,omitempty"` // Error details. Required when outcome is 'failed'.
 	GovernanceContext string `json:"governance_context"` // Opaque governance context from the check_governance response that authorized thi
 	Context any `json:"context,omitempty"`
