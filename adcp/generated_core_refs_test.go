@@ -839,6 +839,31 @@ func TestPlanAuditLogsRoundTrip(t *testing.T) {
 	if strings.Contains(body, `"committed":null`) {
 		t.Fatalf("plan audit logs unexpectedly marshaled absent budget.committed:\n%s", body)
 	}
+
+	// Contrast: budget.committed explicitly zero must round-trip as "committed":0 inside
+	// the "budget" object, not be omitted. The governed_actions entry also has "committed":0
+	// (a non-pointer float64) — the scoped assertion on the "budget" object confirms we are
+	// checking PlanAuditBudget.Committed (*float64), not PlanAuditGovernedAction.Committed.
+	raw2 := []byte(`{"plans":[{"plan_id":"plan-2","plan_version":1,"status":"active","budget":{"authorized":5000,"committed":0},"summary":{},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}]}]}`)
+	var decoded2 GetPlanAuditLogsResponse
+	if err2 := json.Unmarshal(raw2, &decoded2); err2 != nil {
+		t.Fatalf("unmarshal plan audit logs with explicit committed zero: %v", err2)
+	}
+	if len(decoded2.Plans) != 1 {
+		t.Fatalf("plans len = %d, want 1", len(decoded2.Plans))
+	}
+	plan2 := decoded2.Plans[0]
+	if plan2.Budget.Committed == nil || *plan2.Budget.Committed != 0 {
+		t.Fatalf("budget.committed = %#v, want explicit pointer to 0", plan2.Budget.Committed)
+	}
+	encoded2, err2 := json.Marshal(decoded2)
+	if err2 != nil {
+		t.Fatalf("marshal plan audit logs with explicit committed zero: %v", err2)
+	}
+	if !strings.Contains(string(encoded2), `"budget":{"authorized":5000,"committed":0}`) {
+		t.Fatalf("explicit Budget.Committed:0 did not round-trip inside budget object"+
+			" (Budget.Committed is *float64; nil pointer is omitted, pointer-to-zero is emitted even with omitempty):\n%s", encoded2)
+	}
 }
 
 func TestGovernanceFindingsRoundTrip(t *testing.T) {
