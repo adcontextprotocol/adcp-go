@@ -79,6 +79,14 @@ be populated.
 - `SyncPlansResponse.Plans` is now `[]adcp.SyncPlansPlan` instead of
   `[]any`. Nested `Categories` and `ResolvedPolicies` are typed as
   `[]adcp.SyncPlansPlanCategory` and `[]adcp.SyncPlansResolvedPolicy`.
+- Governance findings are now typed:
+  `CheckGovernanceResponse.Findings` is `[]adcp.CheckGovernanceFinding`, and
+  `ReportPlanOutcomeResponse.Findings` is `[]adcp.ReportPlanOutcomeFinding`.
+  `CheckGovernanceFinding.Details` and `ReportPlanOutcomeFinding.Details`
+  remain `map[string]any` because finding details are category-specific
+  structured payloads. `CheckGovernanceFinding.Confidence` is `*float64`; use
+  nil when confidence is absent and `adcp.Ptr(0.0)` when explicit zero is
+  meaningful.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -148,6 +156,8 @@ be populated.
 | `PolicyEntry.Exemplars` | `*adcp.PolicyExemplars` |
 | `GetProductsResponse.Incomplete` | `[]adcp.GetProductsIncompleteItem` |
 | `SyncPlansResponse.Plans` | `[]adcp.SyncPlansPlan` |
+| `CheckGovernanceResponse.Findings` | `[]adcp.CheckGovernanceFinding` |
+| `ReportPlanOutcomeResponse.Findings` | `[]adcp.ReportPlanOutcomeFinding` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

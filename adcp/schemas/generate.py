@@ -489,6 +489,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/sync-plans-response.json#/properties/plans/items/properties/resolved_policies/items",
     ),
     (
+        "CheckGovernanceFinding",
+        "governance/check-governance-response.json#/properties/findings/items",
+    ),
+    (
+        "ReportPlanOutcomeFinding",
+        "governance/report-plan-outcome-response.json#/properties/findings/items",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -1037,6 +1045,11 @@ INLINE_TYPE_HINTS = {
     ('SyncPlansPlan', 'categories'): 'SyncPlansPlanCategory',
     ('SyncPlansPlan', 'resolved_policies'): 'SyncPlansResolvedPolicy',
     ('SyncPlansResolvedPolicy', 'enforcement'): 'PolicyEnforcement',
+    ('CheckGovernanceResponse', 'findings'): 'CheckGovernanceFinding',
+    ('CheckGovernanceFinding', 'severity'): 'EscalationSeverity',
+    ('CheckGovernanceFinding', 'confidence'): '*float64',
+    ('ReportPlanOutcomeResponse', 'findings'): 'ReportPlanOutcomeFinding',
+    ('ReportPlanOutcomeFinding', 'severity'): 'EscalationSeverity',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
@@ -1197,6 +1210,8 @@ INTENTIONAL_ANY_FIELDS = {
     ('SimulationSuccess', 'simulated'): 'test-controller simulation payload is scenario-specific',
     ('SimulationSuccess', 'cumulative'): 'test-controller cumulative state is scenario-specific',
     ('CheckGovernanceRequest', 'payload'): 'governance can evaluate different protocol payloads',
+    ('CheckGovernanceFinding', 'details'): 'governance finding details are structured but category-specific',
+    ('ReportPlanOutcomeFinding', 'details'): 'outcome finding details are structured but category-specific',
 }
 
 # Enum schemas
