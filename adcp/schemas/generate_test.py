@@ -864,6 +864,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "plans",
             "[]SyncPlansPlan",
         )
+        self.assert_field_type(
+            "governance/check-governance-response.json",
+            "CheckGovernanceResponse",
+            "findings",
+            "[]CheckGovernanceFinding",
+        )
+        self.assert_field_type(
+            "governance/report-plan-outcome-response.json",
+            "ReportPlanOutcomeResponse",
+            "findings",
+            "[]ReportPlanOutcomeFinding",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1274,6 +1286,43 @@ class InlineObjectGenerationTest(unittest.TestCase):
         )
         self.assertIn("Reason string `json:\"reason,omitempty\"`", sync_plan_policy_generated)
 
+        check_finding_schema = generate.load_schema_spec(
+            "governance/check-governance-response.json#/properties/findings/items",
+        )
+        check_finding_generated = generate.schema_to_struct(
+            "CheckGovernanceFinding",
+            check_finding_schema,
+        )
+        self.assertIn("CategoryID string `json:\"category_id\"`", check_finding_generated)
+        self.assertIn("PolicyID string `json:\"policy_id,omitempty\"`", check_finding_generated)
+        self.assertIn("SourcePlanID string `json:\"source_plan_id,omitempty\"`", check_finding_generated)
+        self.assertIn(
+            "Severity EscalationSeverity `json:\"severity\"`",
+            check_finding_generated,
+        )
+        self.assertIn("Explanation string `json:\"explanation\"`", check_finding_generated)
+        self.assertIn("Details map[string]any `json:\"details,omitempty\"`", check_finding_generated)
+        self.assertIn("Confidence *float64 `json:\"confidence,omitempty\"`", check_finding_generated)
+        self.assertIn(
+            "UncertaintyReason string `json:\"uncertainty_reason,omitempty\"`",
+            check_finding_generated,
+        )
+
+        outcome_finding_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-response.json#/properties/findings/items",
+        )
+        outcome_finding_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeFinding",
+            outcome_finding_schema,
+        )
+        self.assertIn("CategoryID string `json:\"category_id\"`", outcome_finding_generated)
+        self.assertIn(
+            "Severity EscalationSeverity `json:\"severity\"`",
+            outcome_finding_generated,
+        )
+        self.assertIn("Explanation string `json:\"explanation\"`", outcome_finding_generated)
+        self.assertIn("Details map[string]any `json:\"details,omitempty\"`", outcome_finding_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1303,6 +1352,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("PolicyEntry", "exemplars"), records)
         self.assertNotIn(("GetProductsResponse", "incomplete"), records)
         self.assertNotIn(("SyncPlansResponse", "plans"), records)
+        self.assertNotIn(("CheckGovernanceResponse", "findings"), records)
+        self.assertNotIn(("ReportPlanOutcomeResponse", "findings"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])
@@ -1314,6 +1365,22 @@ class InlineObjectGenerationTest(unittest.TestCase):
                 "ProductFilterGeometry",
                 "coordinates",
                 "GeoJSON coordinates are shape-dependent for Polygon/MultiPolygon",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "CheckGovernanceFinding",
+                "details",
+                "governance finding details are structured but category-specific",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "ReportPlanOutcomeFinding",
+                "details",
+                "outcome finding details are structured but category-specific",
             ),
             allowed,
         )

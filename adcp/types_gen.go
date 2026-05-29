@@ -6639,6 +6639,24 @@ type SyncPlansResolvedPolicy struct {
 	Reason string `json:"reason,omitempty"` // Why this policy was included (e.g., 'Matched jurisdiction US and policy category
 }
 
+type CheckGovernanceFinding struct {
+	CategoryID string `json:"category_id"` // Validation category that flagged the issue (e.g., 'budget_compliance', 'regulato
+	PolicyID string `json:"policy_id,omitempty"` // ID of the policy that triggered this finding. May reference a registry policy (w
+	SourcePlanID string `json:"source_plan_id,omitempty"` // For portfolio or aggregated evaluations where findings draw on bespoke policies
+	Severity EscalationSeverity `json:"severity"`
+	Explanation string `json:"explanation"` // Human-readable description of the issue.
+	Details map[string]any `json:"details,omitempty"` // Structured details for programmatic consumption.
+	Confidence *float64 `json:"confidence,omitempty"` // Confidence score (0-1) in this finding. Distinguishes 'this definitely violates
+	UncertaintyReason string `json:"uncertainty_reason,omitempty"` // Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions th
+}
+
+type ReportPlanOutcomeFinding struct {
+	CategoryID string `json:"category_id"` // Which validation category flagged the issue.
+	Severity EscalationSeverity `json:"severity"` // Finding severity.
+	Explanation string `json:"explanation"` // Human-readable description of the issue.
+	Details map[string]any `json:"details,omitempty"` // Structured details for programmatic consumption.
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7909,7 +7927,7 @@ type CheckGovernanceResponse struct {
 	Status string `json:"status"`
 	PlanID string `json:"plan_id"` // Echoed from request.
 	Explanation string `json:"explanation"` // Human-readable explanation of the governance decision.
-	Findings []any `json:"findings,omitempty"` // Specific issues found during the governance check. Present when status is 'denie
+	Findings []CheckGovernanceFinding `json:"findings,omitempty"` // Specific issues found during the governance check. Present when status is 'denie
 	Conditions []any `json:"conditions,omitempty"` // Present when status is 'conditions'. Specific adjustments the caller must make.
 	ExpiresAt string `json:"expires_at,omitempty"` // When this approval expires. Present when status is 'approved' or 'conditions'. T
 	NextCheck string `json:"next_check,omitempty"` // When the seller should next call check_governance with delivery metrics. Present
@@ -7942,7 +7960,7 @@ type ReportPlanOutcomeResponse struct {
 	OutcomeID string `json:"outcome_id"` // Unique identifier for this outcome record.
 	Status string `json:"status"` // 'accepted' means state updated with no issues. 'findings' means issues were dete
 	CommittedBudget float64 `json:"committed_budget,omitempty"` // Budget committed from this outcome. Present for 'completed' and 'failed' outcome
-	Findings []any `json:"findings,omitempty"` // Issues detected. Present only when status is 'findings'.
+	Findings []ReportPlanOutcomeFinding `json:"findings,omitempty"` // Issues detected. Present only when status is 'findings'.
 	PlanSummary *ReportPlanOutcomePlanSummary `json:"plan_summary,omitempty"` // Updated plan budget state. Present for 'completed' and 'failed' outcomes.
 	Replayed *bool `json:"replayed,omitempty"` // Set to true when this response is a cached replay returned for an idempotency_ke
 	Context any `json:"context,omitempty"`

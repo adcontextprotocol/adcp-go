@@ -278,6 +278,44 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "governance findings",
+			value: CheckGovernanceResponse{
+				CheckID:     "check-1",
+				Status:      "denied",
+				PlanID:      "plan-1",
+				Explanation: "Policy violation detected.",
+				Findings: []CheckGovernanceFinding{{
+					CategoryID:        "regulatory_compliance",
+					PolicyID:          "policy-1",
+					SourcePlanID:      "plan-1",
+					Severity:          EscalationSeverityWarning,
+					Explanation:       "Audience includes a restricted category.",
+					Details:           map[string]any{"field": "targeting.age"},
+					Confidence:        Ptr(0.0),
+					UncertaintyReason: "Segment overlap is partial.",
+				}},
+			},
+			want: []string{
+				`"findings":[{"category_id":"regulatory_compliance","policy_id":"policy-1","source_plan_id":"plan-1","severity":"warning","explanation":"Audience includes a restricted category.","details":{"field":"targeting.age"},"confidence":0,"uncertainty_reason":"Segment overlap is partial."}]`,
+			},
+		},
+		{
+			name: "report plan outcome findings",
+			value: ReportPlanOutcomeResponse{
+				OutcomeID: "outcome-1",
+				Status:    "findings",
+				Findings: []ReportPlanOutcomeFinding{{
+					CategoryID:  "budget_compliance",
+					Severity:    EscalationSeverityCritical,
+					Explanation: "Budget exceeded.",
+					Details:     map[string]any{"overage": 125.5},
+				}},
+			},
+			want: []string{
+				`"findings":[{"category_id":"budget_compliance","severity":"critical","explanation":"Budget exceeded.","details":{"overage":125.5}}]`,
+			},
+		},
+		{
 			name: "creative format disclosures",
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
@@ -581,6 +619,76 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGovernanceFindingsRoundTrip(t *testing.T) {
+	checkResp := CheckGovernanceResponse{
+		CheckID:     "check-1",
+		Status:      "denied",
+		PlanID:      "plan-1",
+		Explanation: "Policy violation detected.",
+		Findings: []CheckGovernanceFinding{{
+			CategoryID:        "regulatory_compliance",
+			PolicyID:          "policy-1",
+			SourcePlanID:      "plan-1",
+			Severity:          EscalationSeverityWarning,
+			Explanation:       "Audience includes a restricted category.",
+			Details:           map[string]any{"field": "targeting.age"},
+			Confidence:        Ptr(0.0),
+			UncertaintyReason: "Segment overlap is partial.",
+		}},
+	}
+
+	raw, err := json.Marshal(checkResp)
+	if err != nil {
+		t.Fatalf("marshal check governance response: %v", err)
+	}
+	var decodedCheck CheckGovernanceResponse
+	if err := json.Unmarshal(raw, &decodedCheck); err != nil {
+		t.Fatalf("unmarshal check governance response: %v", err)
+	}
+	if len(decodedCheck.Findings) != 1 {
+		t.Fatalf("check findings len = %d, want 1", len(decodedCheck.Findings))
+	}
+	checkFinding := decodedCheck.Findings[0]
+	if checkFinding.Severity != EscalationSeverityWarning || checkFinding.PolicyID != "policy-1" {
+		t.Fatalf("check finding did not round-trip: %#v", checkFinding)
+	}
+	if checkFinding.Confidence == nil || *checkFinding.Confidence != 0 {
+		t.Fatalf("confidence = %v, want pointer to 0", checkFinding.Confidence)
+	}
+	if checkFinding.Details["field"] != "targeting.age" {
+		t.Fatalf("details did not round-trip: %#v", checkFinding.Details)
+	}
+
+	outcomeResp := ReportPlanOutcomeResponse{
+		OutcomeID: "outcome-1",
+		Status:    "findings",
+		Findings: []ReportPlanOutcomeFinding{{
+			CategoryID:  "budget_compliance",
+			Severity:    EscalationSeverityCritical,
+			Explanation: "Budget exceeded.",
+			Details:     map[string]any{"overage": 125.5},
+		}},
+	}
+	raw, err = json.Marshal(outcomeResp)
+	if err != nil {
+		t.Fatalf("marshal report plan outcome response: %v", err)
+	}
+	var decodedOutcome ReportPlanOutcomeResponse
+	if err := json.Unmarshal(raw, &decodedOutcome); err != nil {
+		t.Fatalf("unmarshal report plan outcome response: %v", err)
+	}
+	if len(decodedOutcome.Findings) != 1 {
+		t.Fatalf("outcome findings len = %d, want 1", len(decodedOutcome.Findings))
+	}
+	outcomeFinding := decodedOutcome.Findings[0]
+	if outcomeFinding.Severity != EscalationSeverityCritical || outcomeFinding.CategoryID != "budget_compliance" {
+		t.Fatalf("outcome finding did not round-trip: %#v", outcomeFinding)
+	}
+	if outcomeFinding.Details["overage"] != 125.5 {
+		t.Fatalf("outcome details did not round-trip: %#v", outcomeFinding.Details)
 	}
 }
 
