@@ -858,6 +858,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "incomplete",
             "[]GetProductsIncompleteItem",
         )
+        self.assert_field_type(
+            "governance/sync-plans-response.json",
+            "SyncPlansResponse",
+            "plans",
+            "[]SyncPlansPlan",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1219,6 +1225,55 @@ class InlineObjectGenerationTest(unittest.TestCase):
             incomplete_generated,
         )
 
+        sync_plan_schema = generate.load_schema_spec(
+            "governance/sync-plans-response.json#/properties/plans/items",
+        )
+        sync_plan_generated = generate.schema_to_struct(
+            "SyncPlansPlan",
+            sync_plan_schema,
+        )
+        self.assertIn("PlanID string `json:\"plan_id\"`", sync_plan_generated)
+        self.assertIn("Status string `json:\"status\"`", sync_plan_generated)
+        self.assertIn("Version int `json:\"version\"`", sync_plan_generated)
+        self.assertIn(
+            "Categories []SyncPlansPlanCategory `json:\"categories,omitempty\"`",
+            sync_plan_generated,
+        )
+        self.assertIn(
+            "ResolvedPolicies []SyncPlansResolvedPolicy `json:\"resolved_policies,omitempty\"`",
+            sync_plan_generated,
+        )
+
+        sync_plan_category_schema = generate.load_schema_spec(
+            "governance/sync-plans-response.json#/properties/plans/items"
+            "/properties/categories/items",
+        )
+        sync_plan_category_generated = generate.schema_to_struct(
+            "SyncPlansPlanCategory",
+            sync_plan_category_schema,
+        )
+        self.assertIn(
+            "CategoryID string `json:\"category_id\"`",
+            sync_plan_category_generated,
+        )
+        self.assertIn("Status string `json:\"status\"`", sync_plan_category_generated)
+
+        sync_plan_policy_schema = generate.load_schema_spec(
+            "governance/sync-plans-response.json#/properties/plans/items"
+            "/properties/resolved_policies/items",
+        )
+        sync_plan_policy_generated = generate.schema_to_struct(
+            "SyncPlansResolvedPolicy",
+            sync_plan_policy_schema,
+        )
+        self.assertIn("PolicyID string `json:\"policy_id\"`", sync_plan_policy_generated)
+        self.assertIn("Source string `json:\"source\"`", sync_plan_policy_generated)
+        self.assertIn(
+            "Enforcement PolicyEnforcement `json:\"enforcement\"`",
+            sync_plan_policy_generated,
+        )
+        self.assertIn("Reason string `json:\"reason,omitempty\"`", sync_plan_policy_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1247,6 +1302,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ReportPlanOutcomeResponse", "plan_summary"), records)
         self.assertNotIn(("PolicyEntry", "exemplars"), records)
         self.assertNotIn(("GetProductsResponse", "incomplete"), records)
+        self.assertNotIn(("SyncPlansResponse", "plans"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

@@ -255,6 +255,29 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "sync plans response plans",
+			value: SyncPlansResponse{
+				Plans: []SyncPlansPlan{{
+					PlanID:  "plan-1",
+					Status:  "active",
+					Version: 2,
+					Categories: []SyncPlansPlanCategory{{
+						CategoryID: "budget_compliance",
+						Status:     "active",
+					}},
+					ResolvedPolicies: []SyncPlansResolvedPolicy{{
+						PolicyID:    "policy-1",
+						Source:      "explicit",
+						Enforcement: PolicyEnforcementMust,
+						Reason:      "Brand compliance configuration.",
+					}},
+				}},
+			},
+			want: []string{
+				`"plans":[{"plan_id":"plan-1","status":"active","version":2,"categories":[{"category_id":"budget_compliance","status":"active"}],"resolved_policies":[{"policy_id":"policy-1","source":"explicit","enforcement":"must","reason":"Brand compliance configuration."}]}]`,
+			},
+		},
+		{
 			name: "creative format disclosures",
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
@@ -558,6 +581,49 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSyncPlansResponsePlansRoundTrip(t *testing.T) {
+	resp := SyncPlansResponse{
+		Plans: []SyncPlansPlan{{
+			PlanID:  "plan-1",
+			Status:  "active",
+			Version: 2,
+			Categories: []SyncPlansPlanCategory{{
+				CategoryID: "budget_compliance",
+				Status:     "active",
+			}},
+			ResolvedPolicies: []SyncPlansResolvedPolicy{{
+				PolicyID:    "policy-1",
+				Source:      "explicit",
+				Enforcement: PolicyEnforcementMust,
+				Reason:      "Brand compliance configuration.",
+			}},
+		}},
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal sync plans response: %v", err)
+	}
+
+	var decoded SyncPlansResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal sync plans response: %v", err)
+	}
+	if len(decoded.Plans) != 1 {
+		t.Fatalf("plans len = %d, want 1", len(decoded.Plans))
+	}
+	plan := decoded.Plans[0]
+	if plan.PlanID != "plan-1" || plan.Status != "active" || plan.Version != 2 {
+		t.Fatalf("plan did not round-trip: %#v", plan)
+	}
+	if len(plan.Categories) != 1 || plan.Categories[0].CategoryID != "budget_compliance" {
+		t.Fatalf("categories did not round-trip: %#v", plan.Categories)
+	}
+	if len(plan.ResolvedPolicies) != 1 || plan.ResolvedPolicies[0].Enforcement != PolicyEnforcementMust {
+		t.Fatalf("resolved policies did not round-trip: %#v", plan.ResolvedPolicies)
 	}
 }
 

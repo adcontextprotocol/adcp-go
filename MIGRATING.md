@@ -76,6 +76,9 @@ be populated.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.
+- `SyncPlansResponse.Plans` is now `[]adcp.SyncPlansPlan` instead of
+  `[]any`. Nested `Categories` and `ResolvedPolicies` are typed as
+  `[]adcp.SyncPlansPlanCategory` and `[]adcp.SyncPlansResolvedPolicy`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -144,6 +147,7 @@ be populated.
 | `ReportPlanOutcomeResponse.PlanSummary` | `*adcp.ReportPlanOutcomePlanSummary` |
 | `PolicyEntry.Exemplars` | `*adcp.PolicyExemplars` |
 | `GetProductsResponse.Incomplete` | `[]adcp.GetProductsIncompleteItem` |
+| `SyncPlansResponse.Plans` | `[]adcp.SyncPlansPlan` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

@@ -6619,6 +6619,26 @@ type GetProductsIncompleteItem struct {
 	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the buyer to decide wh
 }
 
+type SyncPlansPlan struct {
+	PlanID string `json:"plan_id"` // Plan identifier.
+	Status string `json:"status"` // Sync result status. 'active' means sync succeeded; 'error' means sync failed.
+	Version int `json:"version"` // Plan version (increments on each sync).
+	Categories []SyncPlansPlanCategory `json:"categories,omitempty"` // Validation categories active for this plan.
+	ResolvedPolicies []SyncPlansResolvedPolicy `json:"resolved_policies,omitempty"` // Policies the governance agent will enforce for this plan. Includes explicitly re
+}
+
+type SyncPlansPlanCategory struct {
+	CategoryID string `json:"category_id"` // Validation category identifier.
+	Status string `json:"status"` // Whether this category is active for this plan.
+}
+
+type SyncPlansResolvedPolicy struct {
+	PolicyID string `json:"policy_id"` // Registry policy ID.
+	Source string `json:"source"` // How this policy was included. 'explicit': referenced in the brand compliance con
+	Enforcement PolicyEnforcement `json:"enforcement"` // Enforcement level for this policy.
+	Reason string `json:"reason,omitempty"` // Why this policy was included (e.g., 'Matched jurisdiction US and policy category
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7859,7 +7879,7 @@ type SyncPlansRequest struct {
 
 // SyncPlansResponse — Response from syncing campaign plans. Returns status and active validation categories for each plan.
 type SyncPlansResponse struct {
-	Plans []any `json:"plans"` // Status for each synced plan.
+	Plans []SyncPlansPlan `json:"plans"` // Status for each synced plan.
 	Replayed *bool `json:"replayed,omitempty"` // Set to true when this response is a cached replay returned for an idempotency_ke
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
