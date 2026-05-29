@@ -230,6 +230,67 @@ type GovernanceFeature struct {
 	MethodologyURL string        `json:"methodology_url,omitempty"`
 }
 
+// CheckGovernanceCondition is a typed condition item returned by
+// check_governance. RequiredValue is intentionally dynamic because a condition
+// can require any JSON literal or object. HasRequiredValue distinguishes an
+// absent advisory value from an explicit required_value, including JSON null.
+type CheckGovernanceCondition struct {
+	Field string `json:"field"`
+	// RequiredValue is emitted only when HasRequiredValue is true. Decode
+	// numeric JSON values as float64, following encoding/json's any behavior.
+	RequiredValue any `json:"-"`
+	// HasRequiredValue distinguishes absent required_value from explicit
+	// required_value, including JSON null. Set it true whenever RequiredValue
+	// should be present on the wire.
+	HasRequiredValue bool   `json:"-"`
+	Reason           string `json:"reason"`
+}
+
+type checkGovernanceConditionJSON struct {
+	Field         string           `json:"field"`
+	RequiredValue *json.RawMessage `json:"required_value,omitempty"`
+	Reason        string           `json:"reason"`
+}
+
+func (c CheckGovernanceCondition) MarshalJSON() ([]byte, error) {
+	var requiredValue *json.RawMessage
+	if c.HasRequiredValue {
+		rawBytes, err := json.Marshal(c.RequiredValue)
+		if err != nil {
+			return nil, err
+		}
+		raw := json.RawMessage(rawBytes)
+		requiredValue = &raw
+	}
+	return json.Marshal(checkGovernanceConditionJSON{
+		Field:         c.Field,
+		RequiredValue: requiredValue,
+		Reason:        c.Reason,
+	})
+}
+
+func (c *CheckGovernanceCondition) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var decoded checkGovernanceConditionJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	c.Field = decoded.Field
+	c.Reason = decoded.Reason
+	c.RequiredValue = nil
+	c.HasRequiredValue = false
+	if requiredValue, ok := raw["required_value"]; ok {
+		c.HasRequiredValue = true
+		if err := json.Unmarshal(requiredValue, &c.RequiredValue); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type FeatureRange struct {
 	Min float64 `json:"min"`
 	Max float64 `json:"max"`

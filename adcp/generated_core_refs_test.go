@@ -300,6 +300,24 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "governance conditions",
+			value: CheckGovernanceResponse{
+				CheckID:     "check-1",
+				Status:      "conditions",
+				PlanID:      "plan-1",
+				Explanation: "Approval requires a smaller budget.",
+				Conditions: []CheckGovernanceCondition{{
+					Field:            "planned_delivery.total_budget",
+					RequiredValue:    5000,
+					HasRequiredValue: true,
+					Reason:           "Budget exceeds approved plan.",
+				}},
+			},
+			want: []string{
+				`"conditions":[{"field":"planned_delivery.total_budget","required_value":5000,"reason":"Budget exceeds approved plan."}]`,
+			},
+		},
+		{
 			name: "report plan outcome findings",
 			value: ReportPlanOutcomeResponse{
 				OutcomeID: "outcome-1",
@@ -619,6 +637,87 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
+	resp := CheckGovernanceResponse{
+		CheckID:     "check-1",
+		Status:      "conditions",
+		PlanID:      "plan-1",
+		Explanation: "Approval requires a smaller budget.",
+		Conditions: []CheckGovernanceCondition{{
+			Field:            "planned_delivery.total_budget",
+			RequiredValue:    5000,
+			HasRequiredValue: true,
+			Reason:           "Budget exceeds approved plan.",
+		}},
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal check governance response: %v", err)
+	}
+	var decoded CheckGovernanceResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal check governance response: %v", err)
+	}
+	if len(decoded.Conditions) != 1 {
+		t.Fatalf("conditions len = %d, want 1", len(decoded.Conditions))
+	}
+	condition := decoded.Conditions[0]
+	if condition.Field != "planned_delivery.total_budget" || condition.Reason != "Budget exceeds approved plan." {
+		t.Fatalf("condition did not round-trip: %#v", condition)
+	}
+	if condition.RequiredValue != float64(5000) {
+		t.Fatalf("required_value = %#v, want 5000", condition.RequiredValue)
+	}
+	if !condition.HasRequiredValue {
+		t.Fatal("HasRequiredValue = false, want true")
+	}
+
+	raw = []byte(`{"check_id":"check-1","status":"conditions","conditions":[{"field":"planned_delivery.total_budget","required_value":null,"reason":"Unset budget."}]}`)
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal explicit null condition: %v", err)
+	}
+	condition = decoded.Conditions[0]
+	if !condition.HasRequiredValue {
+		t.Fatal("explicit null HasRequiredValue = false, want true")
+	}
+	if condition.RequiredValue != nil {
+		t.Fatalf("explicit null required_value = %#v, want nil", condition.RequiredValue)
+	}
+	raw, err = json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("marshal explicit null condition: %v", err)
+	}
+	if !strings.Contains(string(raw), `"required_value":null`) {
+		t.Fatalf("explicit null condition did not re-marshal required_value:null:\n%s", raw)
+	}
+
+	raw = []byte(`{"check_id":"check-1","status":"conditions","conditions":[{"field":"planned_delivery.total_budget","reason":"Review budget."}]}`)
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal advisory condition: %v", err)
+	}
+	condition = decoded.Conditions[0]
+	if condition.HasRequiredValue {
+		t.Fatal("advisory HasRequiredValue = true, want false")
+	}
+	raw, err = json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("marshal advisory condition: %v", err)
+	}
+	if strings.Contains(string(raw), `"required_value"`) {
+		t.Fatalf("advisory condition unexpectedly marshaled required_value:\n%s", raw)
+	}
+
+	resp.Conditions[0].HasRequiredValue = false
+	raw, err = json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal condition without presence bit: %v", err)
+	}
+	if strings.Contains(string(raw), `"required_value"`) {
+		t.Fatalf("condition without presence bit unexpectedly marshaled required_value:\n%s", raw)
 	}
 }
 

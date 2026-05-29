@@ -42,6 +42,12 @@ GO_SOURCE_FILES = [
     ADCP_DIR / 'seller.go',
 ]
 
+# Wire-visible JSON properties implemented by custom MarshalJSON/UnmarshalJSON
+# rather than direct struct tags.
+CUSTOM_WIRE_FIELDS = {
+    'CheckGovernanceCondition': {'required_value'},
+}
+
 # Types we deliberately do not diff against a named schema file:
 #   - oneOf union flatteners (Go can't express oneOf natively)
 #   - error/helper types that carry no schema
@@ -81,6 +87,7 @@ EXEMPT = {
     'SyncCreativeAssignment', 'DeliveryTotals', 'DeliveryData',
     'ReportingPeriod', 'PreviewResult', 'Preview',
     'PreviewRender', 'BuildCreativeResult', 'ProductsData',
+    'CheckGovernanceCondition',
     # collection response wrappers — responses with embedded payload
     'CreateCollectionListResponse', 'GetCollectionListResponse',
     'UpdateCollectionListResponse', 'DeleteCollectionListResponse',
@@ -602,6 +609,7 @@ def diff_type(type_name, go_fields, schema_spec):
     if not schema_props:
         return None
     go_tags = {tag for _, _, tag, _ in go_fields}
+    go_tags.update(CUSTOM_WIRE_FIELDS.get(type_name, set()))
     # A required field marked `omitempty` in Go is silently dropped from the
     # wire when the zero value is present — a distinct failure mode from
     # missing/extra fields, worth flagging separately so the fix is obvious.

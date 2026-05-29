@@ -48,6 +48,7 @@ KNOWN_TYPES = {
     'Preview', 'PreviewRender', 'BuildCreativeResult', 'SignalID',
     'SignalPricing', 'ActivationKey', 'CatalogResult',
     'EventSourceResult', 'LogEventResult',
+    'CheckGovernanceCondition',
     # oneOf schemas — generator produces `type X = any`; hand-writing flattens
     # the union into a single struct with all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
@@ -911,6 +912,9 @@ HAND_WRITTEN_INLINE_SCHEMA_SPECS = {
         'bundled/media-buy/create-media-buy-response.json#/oneOf/0/properties/account/properties/setup',
         'bundled/media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/account/properties/setup',
     ],
+    'CheckGovernanceCondition': [
+        'governance/check-governance-response.json#/properties/conditions/items',
+    ],
 }
 
 # Map schema-derived Go names to the preferred Go name. Applied both when
@@ -1050,6 +1054,7 @@ INLINE_TYPE_HINTS = {
     ('CheckGovernanceFinding', 'confidence'): '*float64',
     ('ReportPlanOutcomeResponse', 'findings'): 'ReportPlanOutcomeFinding',
     ('ReportPlanOutcomeFinding', 'severity'): 'EscalationSeverity',
+    ('CheckGovernanceResponse', 'conditions'): 'CheckGovernanceCondition',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
