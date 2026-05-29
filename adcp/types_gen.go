@@ -5411,7 +5411,7 @@ type PolicyEntry struct {
 	SourceName string `json:"source_name,omitempty"` // Name of the issuing body (e.g., "UK Food Standards Agency", "US Federal Trade Co
 	Policy string `json:"policy"` // Natural language policy text describing what is required, prohibited, or recomme
 	Guidance string `json:"guidance,omitempty"` // Implementation notes for governance agent developers. Not used in evaluation pro
-	Exemplars any `json:"exemplars,omitempty"` // Calibration examples for governance agents, following the Content Standards patt
+	Exemplars *PolicyExemplars `json:"exemplars,omitempty"` // Calibration examples for governance agents, following the Content Standards patt
 	Ext any `json:"ext,omitempty"`
 }
 
@@ -6600,6 +6600,17 @@ type ReportPlanOutcomeError struct {
 type ReportPlanOutcomePlanSummary struct {
 	TotalCommitted *float64 `json:"total_committed,omitempty"` // Total budget committed across all campaigns in the plan.
 	BudgetRemaining *float64 `json:"budget_remaining,omitempty"` // Authorized budget minus total committed.
+}
+
+// PolicyExemplars — Calibration examples for governance agents, following the Content Standards pattern.
+type PolicyExemplars struct {
+	Pass []PolicyExemplar `json:"pass,omitempty"` // Scenarios that comply with this policy.
+	Fail []PolicyExemplar `json:"fail,omitempty"` // Scenarios that violate this policy.
+}
+
+type PolicyExemplar struct {
+	Scenario string `json:"scenario"` // A concrete scenario describing an advertising action or configuration.
+	Explanation string `json:"explanation"` // Why this scenario passes or fails the policy.
 }
 
 type CreativeAgentRef struct {

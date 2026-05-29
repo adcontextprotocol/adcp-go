@@ -70,6 +70,9 @@ be populated.
   values still marshal. `ReportPlanOutcomeResponse.CommittedBudget` remains a
   value field because it is a per-outcome delta where an omitted zero is not
   currently distinct from no committed budget.
+- `PolicyEntry.Exemplars` is now `*adcp.PolicyExemplars` instead of `any`.
+  `PolicyExemplars.Pass` and `PolicyExemplars.Fail` are
+  `[]adcp.PolicyExemplar`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -136,6 +139,7 @@ be populated.
 | `ReportPlanOutcomeRequest.Delivery` | `*adcp.ReportPlanOutcomeDelivery` |
 | `ReportPlanOutcomeRequest.Error` | `*adcp.ReportPlanOutcomeError` |
 | `ReportPlanOutcomeResponse.PlanSummary` | `*adcp.ReportPlanOutcomePlanSummary` |
+| `PolicyEntry.Exemplars` | `*adcp.PolicyExemplars` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

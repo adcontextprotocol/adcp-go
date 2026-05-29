@@ -508,6 +508,27 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				`"planned_delivery":{"total_budget":1000,"currency":"USD"}`,
 			},
 		},
+		{
+			name: "policy entry exemplars",
+			value: PolicyEntry{
+				PolicyID:    "policy-1",
+				Enforcement: "must",
+				Policy:      "Do not target restricted categories.",
+				Exemplars: &PolicyExemplars{
+					Pass: []PolicyExemplar{{
+						Scenario:    "Age-neutral campaign",
+						Explanation: "No restricted attribute targeting.",
+					}},
+					Fail: []PolicyExemplar{{
+						Scenario:    "Housing ads targeted by age",
+						Explanation: "Age-based housing targeting violates policy.",
+					}},
+				},
+			},
+			want: []string{
+				`"exemplars":{"pass":[{"scenario":"Age-neutral campaign","explanation":"No restricted attribute targeting."}],"fail":[{"scenario":"Housing ads targeted by age","explanation":"Age-based housing targeting violates policy."}]}`,
+			},
+		},
 	}
 
 	for _, tc := range cases {
@@ -523,6 +544,43 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPolicyEntryExemplarsRoundTrip(t *testing.T) {
+	entry := PolicyEntry{
+		PolicyID:    "policy-1",
+		Enforcement: "must",
+		Policy:      "Do not target restricted categories.",
+		Exemplars: &PolicyExemplars{
+			Pass: []PolicyExemplar{{
+				Scenario:    "Age-neutral campaign",
+				Explanation: "No restricted attribute targeting.",
+			}},
+			Fail: []PolicyExemplar{{
+				Scenario:    "Housing ads targeted by age",
+				Explanation: "Age-based housing targeting violates policy.",
+			}},
+		},
+	}
+
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal policy entry: %v", err)
+	}
+
+	var decoded PolicyEntry
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal policy entry: %v", err)
+	}
+	if decoded.Exemplars == nil {
+		t.Fatal("exemplars did not round-trip")
+	}
+	if len(decoded.Exemplars.Pass) != 1 || decoded.Exemplars.Pass[0].Scenario != "Age-neutral campaign" {
+		t.Fatalf("pass exemplars did not round-trip: %#v", decoded.Exemplars.Pass)
+	}
+	if len(decoded.Exemplars.Fail) != 1 || decoded.Exemplars.Fail[0].Explanation != "Age-based housing targeting violates policy." {
+		t.Fatalf("fail exemplars did not round-trip: %#v", decoded.Exemplars.Fail)
 	}
 }
 

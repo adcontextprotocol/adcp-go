@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 22
+python3 generate.py --coverage-max-unreviewed-any 21
 ```
 
-The generator currently reports 188 generated dynamic `any` uses:
+The generator currently reports 187 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 166 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 22 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 21 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 22
+python3 generate.py --coverage-max-unreviewed-any 21
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -45,7 +45,6 @@ the new dynamic shape is reviewed in the same PR.
 
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
-| `PolicyEntry.Exemplars` | `exemplars` | `any` | `inline_object` | `governance/policy-entry.json` |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
 | `SyncGovernanceSuccess.Accounts` | `accounts` | `[]any` | `array_item:inline_object` | `account/sync-governance-response.json#/oneOf/0` |
 | `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
@@ -72,15 +71,18 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 20 unreviewed fallbacks are direct inline
+This is the largest generator gap: 14 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
 
 The first reduction passes typed low-risk leaf objects. Continue with inline
-objects that have stable, schema-owned property sets before moving into arrays
-of inline objects. Remaining direct-object candidates now need either local
-`$defs` reference support or an explicit unknown-field preservation decision.
+objects that have stable, schema-owned property sets. The next broad class is
+closed array-item schemas such as `GetProductsResponse.Incomplete`,
+`SyncPlansResponse.Plans`, `CheckGovernanceResponse.Findings` /
+`Conditions`, and `ReportPlanOutcomeResponse.Findings`. Keep genuinely
+open/controller payloads separate from schema-closed array items so the
+generator backlog does not turn typed object work into protocol-design work.
 
 ### Top-Level Unions
 
@@ -112,8 +114,10 @@ acceptable only when the schema intent is clear and tested.
 ### Product Refinement Shapes
 
 `GetProductsRequest.Refine` and `GetProductsResponse.RefinementApplied` are
-currently unreviewed `[]map[string]any` freeform objects. Decide whether these
-are intentional protocol extension points or missing typed refinement schemas.
+currently unreviewed `[]map[string]any` fallbacks because each array item is an
+inline discriminated `oneOf` object. The schema branches are closed and keyed by
+`scope`; this is a generator gap for inline union/discriminator generation, not
+a protocol extension-point decision.
 
 ## Manual Ownership Baseline
 
