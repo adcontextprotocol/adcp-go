@@ -623,6 +623,53 @@ func TestReportPlanOutcomeErrorRoundTrip(t *testing.T) {
 	}
 }
 
+func TestReportPlanOutcomePlanSummaryPreservesExplicitZero(t *testing.T) {
+	empty, err := json.Marshal(ReportPlanOutcomePlanSummary{})
+	if err != nil {
+		t.Fatalf("marshal empty report plan outcome plan summary: %v", err)
+	}
+	if string(empty) != "{}" {
+		t.Fatalf("empty plan summary = %s, want {}", empty)
+	}
+
+	resp := ReportPlanOutcomeResponse{
+		OutcomeID: "outcome-1",
+		Status:    "accepted",
+		PlanSummary: &ReportPlanOutcomePlanSummary{
+			TotalCommitted:  Ptr(0.0),
+			BudgetRemaining: Ptr(0.0),
+		},
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal report plan outcome response: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`"total_committed":0`,
+		`"budget_remaining":0`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("marshaled report plan outcome response missing %s:\n%s", want, body)
+		}
+	}
+
+	var decoded ReportPlanOutcomeResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal report plan outcome response: %v", err)
+	}
+	if decoded.PlanSummary == nil {
+		t.Fatal("plan_summary did not round-trip")
+	}
+	if decoded.PlanSummary.TotalCommitted == nil || *decoded.PlanSummary.TotalCommitted != 0 {
+		t.Fatalf("total_committed = %v, want pointer to 0", decoded.PlanSummary.TotalCommitted)
+	}
+	if decoded.PlanSummary.BudgetRemaining == nil || *decoded.PlanSummary.BudgetRemaining != 0 {
+		t.Fatalf("budget_remaining = %v, want pointer to 0", decoded.PlanSummary.BudgetRemaining)
+	}
+}
+
 func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 	if got := NewMediaBuyStatusFilter(); got != nil {
 		t.Fatalf("empty status filter constructor returned %#v, want nil", got)
