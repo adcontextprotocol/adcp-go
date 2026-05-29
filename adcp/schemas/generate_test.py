@@ -834,6 +834,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "delivery",
             "*ReportPlanOutcomeDelivery",
         )
+        self.assert_field_type(
+            "governance/report-plan-outcome-request.json",
+            "ReportPlanOutcomeRequest",
+            "error",
+            "*ReportPlanOutcomeError",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1129,6 +1135,16 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Start string `json:\"start\"`", outcome_reporting_period_generated)
         self.assertIn("End string `json:\"end\"`", outcome_reporting_period_generated)
 
+        outcome_error_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-request.json#/properties/error",
+        )
+        outcome_error_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeError",
+            outcome_error_schema,
+        )
+        self.assertIn("Code string `json:\"code,omitempty\"`", outcome_error_generated)
+        self.assertIn("Message string `json:\"message,omitempty\"`", outcome_error_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1153,6 +1169,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("Targeting", "geo_proximity"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
+        self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

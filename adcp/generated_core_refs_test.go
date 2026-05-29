@@ -586,6 +586,43 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestReportPlanOutcomeErrorRoundTrip(t *testing.T) {
+	req := ReportPlanOutcomeRequest{
+		PlanID:            "plan-1",
+		IdempotencyKey:    "idem-1",
+		Outcome:           "failed",
+		GovernanceContext: "ctx-1",
+		Error: &ReportPlanOutcomeError{
+			Code:    "seller_timeout",
+			Message: "seller timed out",
+		},
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal report plan outcome request: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`"error":{"code":"seller_timeout","message":"seller timed out"}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("marshaled report plan outcome missing %s:\n%s", want, body)
+		}
+	}
+
+	var decoded ReportPlanOutcomeRequest
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal report plan outcome request: %v", err)
+	}
+	if decoded.Error == nil {
+		t.Fatal("error did not round-trip")
+	}
+	if decoded.Error.Code != "seller_timeout" || decoded.Error.Message != "seller timed out" {
+		t.Fatalf("error = %#v, want seller timeout", decoded.Error)
+	}
+}
+
 func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 	if got := NewMediaBuyStatusFilter(); got != nil {
 		t.Fatalf("empty status filter constructor returned %#v, want nil", got)

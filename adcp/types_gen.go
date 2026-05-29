@@ -6590,6 +6590,12 @@ type ReportPlanOutcomeDeliveryReportingPeriod struct {
 	End string `json:"end"`
 }
 
+// ReportPlanOutcomeError — Error details. Required when outcome is 'failed'.
+type ReportPlanOutcomeError struct {
+	Code string `json:"code,omitempty"` // Error code from the seller.
+	Message string `json:"message,omitempty"` // Human-readable error description.
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7882,7 +7888,7 @@ type ReportPlanOutcomeRequest struct {
 	Outcome string `json:"outcome"` // Outcome type.
 	SellerResponse any `json:"seller_response,omitempty"` // The seller's full response. Required when outcome is 'completed'.
 	Delivery *ReportPlanOutcomeDelivery `json:"delivery,omitempty"` // Delivery metrics. Required when outcome is 'delivery'.
-	Error any `json:"error,omitempty"` // Error details. Required when outcome is 'failed'.
+	Error *ReportPlanOutcomeError `json:"error,omitempty"` // Error details. Required when outcome is 'failed'.
 	GovernanceContext string `json:"governance_context"` // Opaque governance context from the check_governance response that authorized thi
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
