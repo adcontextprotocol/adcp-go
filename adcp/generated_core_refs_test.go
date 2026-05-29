@@ -241,6 +241,20 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "get products incomplete",
+			value: GetProductsResponse{
+				Products: []Product{},
+				Incomplete: []GetProductsIncompleteItem{{
+					Scope:         "forecast",
+					Description:   "Forecast is still running.",
+					EstimatedWait: Ptr(Duration{Interval: 2, Unit: "minutes"}),
+				}},
+			},
+			want: []string{
+				`"incomplete":[{"scope":"forecast","description":"Forecast is still running.","estimated_wait":{"interval":2,"unit":"minutes"}}]`,
+			},
+		},
+		{
 			name: "creative format disclosures",
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
@@ -544,6 +558,37 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGetProductsIncompleteRoundTrip(t *testing.T) {
+	resp := GetProductsResponse{
+		Products: []Product{},
+		Incomplete: []GetProductsIncompleteItem{{
+			Scope:         "forecast",
+			Description:   "Forecast is still running.",
+			EstimatedWait: Ptr(Duration{Interval: 2, Unit: "minutes"}),
+		}},
+	}
+
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal get products response: %v", err)
+	}
+
+	var decoded GetProductsResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal get products response: %v", err)
+	}
+	if len(decoded.Incomplete) != 1 {
+		t.Fatalf("incomplete len = %d, want 1", len(decoded.Incomplete))
+	}
+	item := decoded.Incomplete[0]
+	if item.Scope != "forecast" || item.Description != "Forecast is still running." {
+		t.Fatalf("incomplete item did not round-trip: %#v", item)
+	}
+	if item.EstimatedWait == nil || item.EstimatedWait.Interval != 2 || item.EstimatedWait.Unit != "minutes" {
+		t.Fatalf("estimated_wait did not round-trip: %#v", item.EstimatedWait)
 	}
 }
 
