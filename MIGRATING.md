@@ -85,8 +85,8 @@ be populated.
   `CheckGovernanceFinding.Details` and `ReportPlanOutcomeFinding.Details`
   remain `map[string]any` because finding details are category-specific
   structured payloads. `CheckGovernanceFinding.Confidence` is `*float64`; use
-  nil when confidence is absent and `adcp.Ptr(0.0)` when explicit zero is
-  meaningful.
+  nil when confidence is absent, and use a pointer only when intentionally
+  sending a schema-valid confidence value, including `adcp.Ptr(0.0)`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
