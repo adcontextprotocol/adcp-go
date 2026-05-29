@@ -99,6 +99,15 @@ be populated.
   set `HasRequiredValue: true` whenever `required_value` should be present on
   the wire. To send `required_value: null`, set `HasRequiredValue: true` and
   leave `RequiredValue` nil.
+- `GetPlanAuditLogsResponse.Plans` is now `[]adcp.PlanAuditLog` instead of
+  `[]any`. Nested audit-log shapes are also typed, including
+  `PlanAuditBudget`, `PlanAuditSummary`, `PlanAuditEntry`,
+  `PlanAuditFinding`, and `PlanAuditGovernedAction`. Optional numeric counters
+  and metrics across the audit log use pointers so absent values are not
+  re-emitted as zero. Use `adcp.Ptr(0)` for explicit zero integer counters
+  such as `ChecksPerformed` and `Statuses.Approved`, and `adcp.Ptr(0.0)` or
+  `adcp.Float64(0)` for explicit zero float metrics such as `Budget.Authorized`
+  and `PlanAuditEntry.CommittedBudget`.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -171,6 +180,7 @@ be populated.
 | `CheckGovernanceResponse.Findings` | `[]adcp.CheckGovernanceFinding` |
 | `ReportPlanOutcomeResponse.Findings` | `[]adcp.ReportPlanOutcomeFinding` |
 | `CheckGovernanceResponse.Conditions` | `[]adcp.CheckGovernanceCondition` |
+| `GetPlanAuditLogsResponse.Plans` | `[]adcp.PlanAuditLog` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

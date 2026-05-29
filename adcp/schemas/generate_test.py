@@ -882,6 +882,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "conditions",
             "[]CheckGovernanceCondition",
         )
+        self.assert_field_type(
+            "governance/get-plan-audit-logs-response.json",
+            "GetPlanAuditLogsResponse",
+            "plans",
+            "[]PlanAuditLog",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1329,6 +1335,91 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Explanation string `json:\"explanation\"`", outcome_finding_generated)
         self.assertIn("Details map[string]any `json:\"details,omitempty\"`", outcome_finding_generated)
 
+        plan_audit_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items",
+        )
+        plan_audit_generated = generate.schema_to_struct(
+            "PlanAuditLog",
+            plan_audit_schema,
+        )
+        self.assertIn("PlanID string `json:\"plan_id\"`", plan_audit_generated)
+        self.assertIn("PlanVersion int `json:\"plan_version\"`", plan_audit_generated)
+        self.assertIn("Budget PlanAuditBudget `json:\"budget\"`", plan_audit_generated)
+        self.assertIn(
+            "ChannelAllocation map[string]PlanAuditChannelAllocation `json:\"channel_allocation,omitempty\"`",
+            plan_audit_generated,
+        )
+        self.assertIn("Summary PlanAuditSummary `json:\"summary\"`", plan_audit_generated)
+        self.assertIn(
+            "Entries []PlanAuditEntry `json:\"entries,omitempty\"`",
+            plan_audit_generated,
+        )
+        self.assertIn(
+            "GovernedActions []PlanAuditGovernedAction `json:\"governed_actions\"`",
+            plan_audit_generated,
+        )
+
+        plan_audit_budget_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+            "/properties/budget",
+        )
+        plan_audit_budget_generated = generate.schema_to_struct(
+            "PlanAuditBudget",
+            plan_audit_budget_schema,
+        )
+        self.assertIn("Authorized *float64 `json:\"authorized,omitempty\"`", plan_audit_budget_generated)
+        self.assertIn("Committed *float64 `json:\"committed,omitempty\"`", plan_audit_budget_generated)
+
+        plan_audit_summary_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+            "/properties/summary",
+        )
+        plan_audit_summary_generated = generate.schema_to_struct(
+            "PlanAuditSummary",
+            plan_audit_summary_schema,
+        )
+        self.assertIn("ChecksPerformed *int `json:\"checks_performed,omitempty\"`", plan_audit_summary_generated)
+        self.assertIn("Statuses *PlanAuditStatusCounts `json:\"statuses,omitempty\"`", plan_audit_summary_generated)
+        self.assertIn("Escalations []PlanAuditEscalation `json:\"escalations,omitempty\"`", plan_audit_summary_generated)
+        self.assertIn("DriftMetrics *PlanAuditDriftMetrics `json:\"drift_metrics,omitempty\"`", plan_audit_summary_generated)
+
+        plan_audit_entry_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+            "/properties/entries/items",
+        )
+        plan_audit_entry_generated = generate.schema_to_struct(
+            "PlanAuditEntry",
+            plan_audit_entry_schema,
+        )
+        self.assertIn("Status *GovernanceDecision `json:\"status,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("Mode *GovernanceMode `json:\"mode,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("Findings []PlanAuditFinding `json:\"findings,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("Outcome *OutcomeType `json:\"outcome,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("CommittedBudget *float64 `json:\"committed_budget,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("PurchaseType *PurchaseType `json:\"purchase_type,omitempty\"`", plan_audit_entry_generated)
+
+        plan_audit_finding_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+            "/properties/entries/items/properties/findings/items",
+        )
+        plan_audit_finding_generated = generate.schema_to_struct(
+            "PlanAuditFinding",
+            plan_audit_finding_schema,
+        )
+        self.assertIn("Severity EscalationSeverity `json:\"severity\"`", plan_audit_finding_generated)
+        self.assertIn("Confidence *float64 `json:\"confidence,omitempty\"`", plan_audit_finding_generated)
+
+        plan_audit_action_schema = generate.load_schema_spec(
+            "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+            "/properties/governed_actions/items",
+        )
+        plan_audit_action_generated = generate.schema_to_struct(
+            "PlanAuditGovernedAction",
+            plan_audit_action_schema,
+        )
+        self.assertIn("PurchaseType PurchaseType `json:\"purchase_type\"`", plan_audit_action_generated)
+        self.assertIn("Committed float64 `json:\"committed\"`", plan_audit_action_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1361,6 +1452,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("CheckGovernanceResponse", "findings"), records)
         self.assertNotIn(("ReportPlanOutcomeResponse", "findings"), records)
         self.assertNotIn(("CheckGovernanceResponse", "conditions"), records)
+        self.assertNotIn(("GetPlanAuditLogsResponse", "plans"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

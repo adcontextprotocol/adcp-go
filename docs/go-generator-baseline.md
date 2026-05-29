@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 16
+python3 generate.py --coverage-max-unreviewed-any 15
 ```
 
-The generator currently reports 184 generated dynamic `any` uses:
+The generator currently reports 183 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 168 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 16 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 15 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 16
+python3 generate.py --coverage-max-unreviewed-any 15
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -68,23 +68,22 @@ the new dynamic shape is reviewed in the same PR.
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
 | `ControllerError.CurrentState` | `current_state` | `any` | `unspecified_schema_type` | `compliance/comply-test-controller-response.json#/oneOf/5` |
 | `ReportPlanOutcomeRequest.SellerResponse` | `seller_response` | `any` | `inline_object` | `governance/report-plan-outcome-request.json` |
-| `GetPlanAuditLogsResponse.Plans` | `plans` | `[]any` | `array_item:inline_object` | `governance/get-plan-audit-logs-response.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
 ## Work Queues
 
 ### Inline Object Generation
 
-This is the largest generator gap: 9 unreviewed fallbacks are direct inline
+This is the largest generator gap: 8 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
 
 The first reduction passes typed low-risk leaf objects. Continue with inline
-objects that have stable, schema-owned property sets. The next broad class is
-closed array-item schemas such as `GetPlanAuditLogsResponse.Plans`. Keep
-genuinely open/controller payloads separate from schema-closed array items so
-the generator backlog does not turn typed object work into protocol-design work.
+objects that have stable, schema-owned property sets. The remaining inline
+object fallbacks mix genuinely open/controller payloads, inline unions, and
+schema-closed artifacts; keep those classes separate so the generator backlog
+does not turn typed object work into protocol-design work.
 
 ### Top-Level Unions
 
