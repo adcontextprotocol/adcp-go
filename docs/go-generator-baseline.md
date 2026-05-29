@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 17
+python3 generate.py --coverage-max-unreviewed-any 16
 ```
 
-The generator currently reports 185 generated dynamic `any` uses:
+The generator currently reports 184 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 168 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 17 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 16 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 17
+python3 generate.py --coverage-max-unreviewed-any 16
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -34,6 +34,12 @@ the new dynamic shape is reviewed in the same PR.
 - Governance finding details are intentional dynamic escape hatches:
   `CheckGovernanceFinding.Details` and `ReportPlanOutcomeFinding.Details` stay
   `map[string]any` because their structured payloads are category-specific.
+- `CheckGovernanceCondition.RequiredValue` stays `any` because a governance
+  condition can require different JSON value types. The type is hand-written so
+  `HasRequiredValue` preserves the difference between an absent advisory value
+  and an explicit `required_value`, including JSON `null`. Callers must set
+  `HasRequiredValue` when constructing any present `required_value`; decoded
+  numeric values follow `encoding/json` and become `float64`.
 - Inline object fallbacks are generator limitations unless the schema explicitly
   models open-ended data.
 - Top-level `oneOf` aliases are generator limitations. They need generated
@@ -61,7 +67,6 @@ the new dynamic shape is reviewed in the same PR.
 | `ComplyTestControllerResponse` | n/a | `any` | `top_level_oneOf_alias` | `compliance/comply-test-controller-response.json` |
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
 | `ControllerError.CurrentState` | `current_state` | `any` | `unspecified_schema_type` | `compliance/comply-test-controller-response.json#/oneOf/5` |
-| `CheckGovernanceResponse.Conditions` | `conditions` | `[]any` | `array_item:inline_object` | `governance/check-governance-response.json` |
 | `ReportPlanOutcomeRequest.SellerResponse` | `seller_response` | `any` | `inline_object` | `governance/report-plan-outcome-request.json` |
 | `GetPlanAuditLogsResponse.Plans` | `plans` | `[]any` | `array_item:inline_object` | `governance/get-plan-audit-logs-response.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
@@ -70,17 +75,16 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 10 unreviewed fallbacks are direct inline
+This is the largest generator gap: 9 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
 
 The first reduction passes typed low-risk leaf objects. Continue with inline
 objects that have stable, schema-owned property sets. The next broad class is
-closed array-item schemas such as `CheckGovernanceResponse.Conditions` and
-`GetPlanAuditLogsResponse.Plans`. Keep genuinely open/controller payloads
-separate from schema-closed array items so the generator backlog does not turn
-typed object work into protocol-design work.
+closed array-item schemas such as `GetPlanAuditLogsResponse.Plans`. Keep
+genuinely open/controller payloads separate from schema-closed array items so
+the generator backlog does not turn typed object work into protocol-design work.
 
 ### Top-Level Unions
 

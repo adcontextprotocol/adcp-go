@@ -7928,7 +7928,7 @@ type CheckGovernanceResponse struct {
 	PlanID string `json:"plan_id"` // Echoed from request.
 	Explanation string `json:"explanation"` // Human-readable explanation of the governance decision.
 	Findings []CheckGovernanceFinding `json:"findings,omitempty"` // Specific issues found during the governance check. Present when status is 'denie
-	Conditions []any `json:"conditions,omitempty"` // Present when status is 'conditions'. Specific adjustments the caller must make.
+	Conditions []CheckGovernanceCondition `json:"conditions,omitempty"` // Present when status is 'conditions'. Specific adjustments the caller must make.
 	ExpiresAt string `json:"expires_at,omitempty"` // When this approval expires. Present when status is 'approved' or 'conditions'. T
 	NextCheck string `json:"next_check,omitempty"` // When the seller should next call check_governance with delivery metrics. Present
 	CategoriesEvaluated []string `json:"categories_evaluated,omitempty"` // Governance categories evaluated during this check.

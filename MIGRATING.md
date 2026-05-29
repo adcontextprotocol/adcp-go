@@ -87,6 +87,18 @@ be populated.
   structured payloads. `CheckGovernanceFinding.Confidence` is `*float64`; use
   nil when confidence is absent, and use a pointer only when intentionally
   sending a schema-valid confidence value, including `adcp.Ptr(0.0)`.
+- `CheckGovernanceResponse.Conditions` is now
+  `[]adcp.CheckGovernanceCondition` instead of `[]any`.
+  `CheckGovernanceCondition.RequiredValue` remains `any` because a governance
+  condition can require different JSON value types. Treat decoded values as
+  generic JSON data (`nil`, `bool`, `string`, `float64`, `[]any`, or
+  `map[string]any`) or decode them into caller-owned types before use; numeric
+  values decode as `float64`. Use `HasRequiredValue` to distinguish an absent
+  advisory `required_value` from an explicit one, because `RequiredValue == nil`
+  can mean either absent or explicit JSON `null`. When constructing responses,
+  set `HasRequiredValue: true` whenever `required_value` should be present on
+  the wire. To send `required_value: null`, set `HasRequiredValue: true` and
+  leave `RequiredValue` nil.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -158,6 +170,7 @@ be populated.
 | `SyncPlansResponse.Plans` | `[]adcp.SyncPlansPlan` |
 | `CheckGovernanceResponse.Findings` | `[]adcp.CheckGovernanceFinding` |
 | `ReportPlanOutcomeResponse.Findings` | `[]adcp.ReportPlanOutcomeFinding` |
+| `CheckGovernanceResponse.Conditions` | `[]adcp.CheckGovernanceCondition` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

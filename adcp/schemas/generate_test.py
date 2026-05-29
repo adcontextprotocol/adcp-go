@@ -876,6 +876,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "findings",
             "[]ReportPlanOutcomeFinding",
         )
+        self.assert_field_type(
+            "governance/check-governance-response.json",
+            "CheckGovernanceResponse",
+            "conditions",
+            "[]CheckGovernanceCondition",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1354,6 +1360,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("SyncPlansResponse", "plans"), records)
         self.assertNotIn(("CheckGovernanceResponse", "findings"), records)
         self.assertNotIn(("ReportPlanOutcomeResponse", "findings"), records)
+        self.assertNotIn(("CheckGovernanceResponse", "conditions"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

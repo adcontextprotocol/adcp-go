@@ -9,6 +9,13 @@ ACCOUNT_SETUP_SCHEMA_PATHS_EXIST = all(
     (lint.SCRIPT_DIR / spec.split("#", 1)[0]).exists()
     for spec in ACCOUNT_SETUP_SCHEMA_SPECS
 )
+CHECK_GOVERNANCE_CONDITION_SCHEMA_SPECS = (
+    lint.gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS["CheckGovernanceCondition"]
+)
+CHECK_GOVERNANCE_CONDITION_SCHEMA_PATHS_EXIST = all(
+    (lint.SCRIPT_DIR / spec.split("#", 1)[0]).exists()
+    for spec in CHECK_GOVERNANCE_CONDITION_SCHEMA_SPECS
+)
 
 
 class SharedInlineOverrideLintTest(unittest.TestCase):
@@ -48,6 +55,15 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
 
         self.assertEqual([], [r for r in reports if r["type"] == "AccountSetup"])
 
+    @unittest.skipUnless(
+        CHECK_GOVERNANCE_CONDITION_SCHEMA_PATHS_EXIST,
+        "check governance condition schema is not present",
+    )
+    def test_current_check_governance_condition_shape_is_drift_checked(self):
+        reports = lint.validate_hand_written_inline_schema_specs(lint.parse_go_structs())
+
+        self.assertEqual([], [r for r in reports if r["type"] == "CheckGovernanceCondition"])
+
     def test_hand_written_inline_schema_reports_required_omitempty(self):
         schema_spec = "missing/schema.json#/properties/setup"
         specs = {
@@ -73,6 +89,35 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
         self.assertEqual(1, len(reports))
         self.assertEqual("InlineShape", reports[0]["type"])
         self.assertEqual(["message"], reports[0]["required_with_omitempty"])
+
+    def test_custom_wire_fields_count_as_present_for_drift(self):
+        schema_spec = "missing/schema.json#/properties/condition"
+        specs = {
+            "InlineShape": [schema_spec],
+        }
+        schema = {
+            "properties": {
+                "field": {"type": "string"},
+                "required_value": {},
+                "reason": {"type": "string"},
+            },
+            "required": ["field", "reason"],
+        }
+
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "HAND_WRITTEN_INLINE_SCHEMA_SPECS", specs),
+            mock.patch.object(lint, "CUSTOM_WIRE_FIELDS", {"InlineShape": {"required_value"}}),
+            mock.patch.object(lint, "load_schema_spec", return_value=schema),
+        ):
+            reports = lint.validate_hand_written_inline_schema_specs({
+                "InlineShape": [
+                    ("Field", "string", "field", False),
+                    ("Reason", "string", "reason", False),
+                ],
+            })
+
+        self.assertEqual([], reports)
 
 
 class OptionalNumericPointerLintTest(unittest.TestCase):
