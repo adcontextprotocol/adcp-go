@@ -828,6 +828,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "delivery_metrics",
             "*GovernanceDeliveryMetrics",
         )
+        self.assert_field_type(
+            "governance/report-plan-outcome-request.json",
+            "ReportPlanOutcomeRequest",
+            "delivery",
+            "*ReportPlanOutcomeDelivery",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1076,11 +1082,52 @@ class InlineObjectGenerationTest(unittest.TestCase):
             audience_schema,
         )
         self.assertIn("Baseline string `json:\"baseline\"`", audience_generated)
+        self.assertIn(
+            "BaselineDescription string `json:\"baseline_description,omitempty\"`",
+            audience_generated,
+        )
         self.assertIn("Indices map[string]float64 `json:\"indices\"`", audience_generated)
         self.assertIn(
             "CumulativeIndices map[string]float64 `json:\"cumulative_indices,omitempty\"`",
             audience_generated,
         )
+
+        outcome_delivery_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-request.json#/properties/delivery",
+        )
+        outcome_delivery_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeDelivery",
+            outcome_delivery_schema,
+        )
+        self.assertIn(
+            "ReportingPeriod *ReportPlanOutcomeDeliveryReportingPeriod `json:\"reporting_period,omitempty\"`",
+            outcome_delivery_generated,
+        )
+        self.assertIn(
+            "Impressions *int `json:\"impressions,omitempty\"`",
+            outcome_delivery_generated,
+        )
+        self.assertIn("Spend *float64 `json:\"spend,omitempty\"`", outcome_delivery_generated)
+        self.assertIn("CPM *float64 `json:\"cpm,omitempty\"`", outcome_delivery_generated)
+        self.assertIn(
+            "ViewabilityRate *float64 `json:\"viewability_rate,omitempty\"`",
+            outcome_delivery_generated,
+        )
+        self.assertIn(
+            "CompletionRate *float64 `json:\"completion_rate,omitempty\"`",
+            outcome_delivery_generated,
+        )
+
+        outcome_reporting_period_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-request.json#/properties/delivery"
+            "/properties/reporting_period",
+        )
+        outcome_reporting_period_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeDeliveryReportingPeriod",
+            outcome_reporting_period_schema,
+        )
+        self.assertIn("Start string `json:\"start\"`", outcome_reporting_period_generated)
+        self.assertIn("End string `json:\"end\"`", outcome_reporting_period_generated)
 
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
@@ -1105,6 +1152,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ProductFilters", "signal_targeting"), records)
         self.assertNotIn(("Targeting", "geo_proximity"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
+        self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

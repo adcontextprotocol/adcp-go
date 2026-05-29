@@ -526,6 +526,66 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 	}
 }
 
+func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
+	req := ReportPlanOutcomeRequest{
+		PlanID:            "plan-1",
+		IdempotencyKey:    "idem-1",
+		Outcome:           "delivery",
+		GovernanceContext: "ctx-1",
+		Delivery: Ptr(ReportPlanOutcomeDelivery{
+			ReportingPeriod: Ptr(ReportPlanOutcomeDeliveryReportingPeriod{
+				Start: "2026-06-01T00:00:00Z",
+				End:   "2026-06-01T01:00:00Z",
+			}),
+			Impressions:     Ptr(0),
+			Spend:           Ptr(0.0),
+			CPM:             Ptr(0.0),
+			ViewabilityRate: Ptr(0.0),
+			CompletionRate:  Ptr(0.0),
+		}),
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal report plan outcome request: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`"impressions":0`,
+		`"spend":0`,
+		`"cpm":0`,
+		`"viewability_rate":0`,
+		`"completion_rate":0`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("marshaled report plan outcome missing %s:\n%s", want, body)
+		}
+	}
+
+	var decoded ReportPlanOutcomeRequest
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal report plan outcome request: %v", err)
+	}
+	if decoded.Delivery == nil {
+		t.Fatal("delivery did not round-trip")
+	}
+	if decoded.Delivery.Impressions == nil || *decoded.Delivery.Impressions != 0 {
+		t.Fatalf("impressions = %v, want pointer to 0", decoded.Delivery.Impressions)
+	}
+	if decoded.Delivery.Spend == nil || *decoded.Delivery.Spend != 0 {
+		t.Fatalf("spend = %v, want pointer to 0", decoded.Delivery.Spend)
+	}
+	if decoded.Delivery.CPM == nil || *decoded.Delivery.CPM != 0 {
+		t.Fatalf("cpm = %v, want pointer to 0", decoded.Delivery.CPM)
+	}
+	if decoded.Delivery.ViewabilityRate == nil || *decoded.Delivery.ViewabilityRate != 0 {
+		t.Fatalf("viewability_rate = %v, want pointer to 0", decoded.Delivery.ViewabilityRate)
+	}
+	if decoded.Delivery.CompletionRate == nil || *decoded.Delivery.CompletionRate != 0 {
+		t.Fatalf("completion_rate = %v, want pointer to 0", decoded.Delivery.CompletionRate)
+	}
+}
+
 func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 	if got := NewMediaBuyStatusFilter(); got != nil {
 		t.Fatalf("empty status filter constructor returned %#v, want nil", got)

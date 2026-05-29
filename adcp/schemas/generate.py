@@ -448,6 +448,15 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "/properties/audience_distribution",
     ),
     (
+        "ReportPlanOutcomeDelivery",
+        "governance/report-plan-outcome-request.json#/properties/delivery",
+    ),
+    (
+        "ReportPlanOutcomeDeliveryReportingPeriod",
+        "governance/report-plan-outcome-request.json#/properties/delivery"
+        "/properties/reporting_period",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -976,6 +985,13 @@ INLINE_TYPE_HINTS = {
     ('GovernanceDeliveryMetrics', 'impressions'): '*int',
     ('GovernanceDeliveryMetrics', 'cumulative_impressions'): '*int',
     ('GovernanceDeliveryMetrics', 'audience_distribution'): '*GovernanceAudienceDistribution',
+    ('ReportPlanOutcomeRequest', 'delivery'): '*ReportPlanOutcomeDelivery',
+    ('ReportPlanOutcomeDelivery', 'reporting_period'): '*ReportPlanOutcomeDeliveryReportingPeriod',
+    ('ReportPlanOutcomeDelivery', 'impressions'): '*int',
+    ('ReportPlanOutcomeDelivery', 'spend'): '*float64',
+    ('ReportPlanOutcomeDelivery', 'cpm'): '*float64',
+    ('ReportPlanOutcomeDelivery', 'viewability_rate'): '*float64',
+    ('ReportPlanOutcomeDelivery', 'completion_rate'): '*float64',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
