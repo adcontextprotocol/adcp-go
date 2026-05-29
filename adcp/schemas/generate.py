@@ -473,6 +473,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/policy-entry.json#/$defs/exemplar",
     ),
     (
+        "GetProductsIncompleteItem",
+        "media-buy/get-products-response.json#/properties/incomplete/items",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -1015,6 +1019,8 @@ INLINE_TYPE_HINTS = {
     ('PolicyEntry', 'exemplars'): '*PolicyExemplars',
     ('PolicyExemplars', 'pass'): 'PolicyExemplar',
     ('PolicyExemplars', 'fail'): 'PolicyExemplar',
+    ('GetProductsResponse', 'incomplete'): 'GetProductsIncompleteItem',
+    ('GetProductsIncompleteItem', 'estimated_wait'): '*Duration',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',

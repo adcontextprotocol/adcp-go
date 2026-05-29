@@ -73,6 +73,9 @@ be populated.
 - `PolicyEntry.Exemplars` is now `*adcp.PolicyExemplars` instead of `any`.
   `PolicyExemplars.Pass` and `PolicyExemplars.Fail` are
   `[]adcp.PolicyExemplar`.
+- `GetProductsResponse.Incomplete` is now
+  `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
+  `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -140,6 +143,7 @@ be populated.
 | `ReportPlanOutcomeRequest.Error` | `*adcp.ReportPlanOutcomeError` |
 | `ReportPlanOutcomeResponse.PlanSummary` | `*adcp.ReportPlanOutcomePlanSummary` |
 | `PolicyEntry.Exemplars` | `*adcp.PolicyExemplars` |
+| `GetProductsResponse.Incomplete` | `[]adcp.GetProductsIncompleteItem` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |

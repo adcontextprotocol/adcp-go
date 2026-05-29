@@ -852,6 +852,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "exemplars",
             "*PolicyExemplars",
         )
+        self.assert_field_type(
+            "media-buy/get-products-response.json",
+            "GetProductsResponse",
+            "incomplete",
+            "[]GetProductsIncompleteItem",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1199,6 +1205,20 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Scenario string `json:\"scenario\"`", policy_exemplar_generated)
         self.assertIn("Explanation string `json:\"explanation\"`", policy_exemplar_generated)
 
+        incomplete_schema = generate.load_schema_spec(
+            "media-buy/get-products-response.json#/properties/incomplete/items",
+        )
+        incomplete_generated = generate.schema_to_struct(
+            "GetProductsIncompleteItem",
+            incomplete_schema,
+        )
+        self.assertIn("Scope string `json:\"scope\"`", incomplete_generated)
+        self.assertIn("Description string `json:\"description\"`", incomplete_generated)
+        self.assertIn(
+            "EstimatedWait *Duration `json:\"estimated_wait,omitempty\"`",
+            incomplete_generated,
+        )
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1226,6 +1246,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)
         self.assertNotIn(("ReportPlanOutcomeResponse", "plan_summary"), records)
         self.assertNotIn(("PolicyEntry", "exemplars"), records)
+        self.assertNotIn(("GetProductsResponse", "incomplete"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

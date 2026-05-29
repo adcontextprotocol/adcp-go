@@ -6613,6 +6613,12 @@ type PolicyExemplar struct {
 	Explanation string `json:"explanation"` // Why this scenario passes or fails the policy.
 }
 
+type GetProductsIncompleteItem struct {
+	Scope string `json:"scope"` // 'products': not all inventory sources were searched. 'pricing': products returne
+	Description string `json:"description"` // Human-readable explanation of what is missing and why.
+	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the buyer to decide wh
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7414,7 +7420,7 @@ type GetProductsResponse struct {
 	PropertyListApplied *bool `json:"property_list_applied,omitempty"` // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the ag
 	CatalogApplied *bool `json:"catalog_applied,omitempty"` // Whether the seller filtered results based on the provided catalog. True if the s
 	RefinementApplied []map[string]any `json:"refinement_applied,omitempty"` // Seller's response to each change request in the refine array, matched by positio
-	Incomplete []any `json:"incomplete,omitempty"` // Declares what the seller could not finish within the buyer's time_budget or due
+	Incomplete []GetProductsIncompleteItem `json:"incomplete,omitempty"` // Declares what the seller could not finish within the buyer's time_budget or due
 	Pagination *PaginationResponse `json:"pagination,omitempty"`
 	Sandbox *bool `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
 	Context any `json:"context,omitempty"`
