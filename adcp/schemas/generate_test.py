@@ -846,6 +846,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "plan_summary",
             "*ReportPlanOutcomePlanSummary",
         )
+        self.assert_field_type(
+            "governance/policy-entry.json",
+            "PolicyEntry",
+            "exemplars",
+            "*PolicyExemplars",
+        )
 
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
@@ -1167,6 +1173,32 @@ class InlineObjectGenerationTest(unittest.TestCase):
             outcome_plan_summary_generated,
         )
 
+        policy_exemplars_schema = generate.load_schema_spec(
+            "governance/policy-entry.json#/properties/exemplars",
+        )
+        policy_exemplars_generated = generate.schema_to_struct(
+            "PolicyExemplars",
+            policy_exemplars_schema,
+        )
+        self.assertIn(
+            "Pass []PolicyExemplar `json:\"pass,omitempty\"`",
+            policy_exemplars_generated,
+        )
+        self.assertIn(
+            "Fail []PolicyExemplar `json:\"fail,omitempty\"`",
+            policy_exemplars_generated,
+        )
+
+        policy_exemplar_schema = generate.load_schema_spec(
+            "governance/policy-entry.json#/$defs/exemplar",
+        )
+        policy_exemplar_generated = generate.schema_to_struct(
+            "PolicyExemplar",
+            policy_exemplar_schema,
+        )
+        self.assertIn("Scenario string `json:\"scenario\"`", policy_exemplar_generated)
+        self.assertIn("Explanation string `json:\"explanation\"`", policy_exemplar_generated)
+
     def test_typed_inline_objects_leave_unreviewed_any_coverage(self):
         records = [
             (record["type"], record["json"])
@@ -1193,6 +1225,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)
         self.assertNotIn(("ReportPlanOutcomeResponse", "plan_summary"), records)
+        self.assertNotIn(("PolicyEntry", "exemplars"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])

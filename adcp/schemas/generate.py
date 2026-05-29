@@ -465,6 +465,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/report-plan-outcome-response.json#/properties/plan_summary",
     ),
     (
+        "PolicyExemplars",
+        "governance/policy-entry.json#/properties/exemplars",
+    ),
+    (
+        "PolicyExemplar",
+        "governance/policy-entry.json#/$defs/exemplar",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -1004,6 +1012,9 @@ INLINE_TYPE_HINTS = {
     ('ReportPlanOutcomeResponse', 'plan_summary'): '*ReportPlanOutcomePlanSummary',
     ('ReportPlanOutcomePlanSummary', 'total_committed'): '*float64',
     ('ReportPlanOutcomePlanSummary', 'budget_remaining'): '*float64',
+    ('PolicyEntry', 'exemplars'): '*PolicyExemplars',
+    ('PolicyExemplars', 'pass'): 'PolicyExemplar',
+    ('PolicyExemplars', 'fail'): 'PolicyExemplar',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
