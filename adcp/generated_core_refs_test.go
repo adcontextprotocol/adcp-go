@@ -318,6 +318,81 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "plan audit logs",
+			value: GetPlanAuditLogsResponse{
+				Plans: []PlanAuditLog{{
+					PlanID:      "plan-1",
+					PlanVersion: 2,
+					Status:      "active",
+					Budget: PlanAuditBudget{
+						Authorized:     Ptr(10000.0),
+						Committed:      Ptr(2500.0),
+						Remaining:      Ptr(7500.0),
+						UtilizationPct: Ptr(25.0),
+					},
+					ChannelAllocation: map[string]PlanAuditChannelAllocation{
+						"ctv": {Committed: Ptr(1500.0), Pct: Ptr(60.0)},
+					},
+					Summary: PlanAuditSummary{
+						ChecksPerformed:  Ptr(3),
+						OutcomesReported: Ptr(1),
+						Statuses: &PlanAuditStatusCounts{
+							Approved:   Ptr(2),
+							Conditions: Ptr(1),
+						},
+						FindingsCount: Ptr(1),
+						Escalations: []PlanAuditEscalation{{
+							CheckID:    "check-2",
+							Reason:     "budget threshold",
+							Resolution: "approved_by_human",
+							ResolvedAt: "2026-05-28T12:00:00Z",
+						}},
+						DriftMetrics: &PlanAuditDriftMetrics{
+							EscalationRate:      Ptr(0.33),
+							EscalationRateTrend: "stable",
+							AutoApprovalRate:    Ptr(0.67),
+							Thresholds: &PlanAuditDriftThresholds{
+								EscalationRateMax: Ptr(0.5),
+							},
+						},
+					},
+					Entries: []PlanAuditEntry{{
+						ID:           "entry-1",
+						Type:         "check",
+						Timestamp:    "2026-05-28T11:00:00Z",
+						Tool:         "check_governance",
+						Status:       Ptr(GovernanceDecisionApproved),
+						Mode:         Ptr(GovernanceModeAudit),
+						PurchaseType: Ptr(PurchaseTypeMediaBuy),
+						Findings: []PlanAuditFinding{{
+							CategoryID:  "budget_compliance",
+							PolicyID:    "policy-1",
+							Severity:    EscalationSeverityWarning,
+							Explanation: "Near budget limit.",
+							Confidence:  Ptr(0.75),
+						}},
+					}},
+					GovernedActions: []PlanAuditGovernedAction{{
+						GovernanceContext: "ctx-1",
+						PurchaseType:      PurchaseTypeMediaBuy,
+						Status:            "active",
+						Committed:         2500,
+						CheckCount:        3,
+						SellerReference:   "mb-1",
+					}},
+				}},
+			},
+			want: []string{
+				`"plans":[{"plan_id":"plan-1","plan_version":2,"status":"active","budget":{"authorized":10000,"committed":2500,"remaining":7500,"utilization_pct":25}`,
+				`"channel_allocation":{"ctv":{"committed":1500,"pct":60}}`,
+				`"summary":{"checks_performed":3,"outcomes_reported":1,"statuses":{"approved":2,"conditions":1},"findings_count":1`,
+				`"escalations":[{"check_id":"check-2","reason":"budget threshold","resolution":"approved_by_human","resolved_at":"2026-05-28T12:00:00Z"}]`,
+				`"drift_metrics":{"escalation_rate":0.33,"escalation_rate_trend":"stable","auto_approval_rate":0.67,"thresholds":{"escalation_rate_max":0.5}}`,
+				`"entries":[{"id":"entry-1","type":"check","timestamp":"2026-05-28T11:00:00Z","tool":"check_governance","status":"approved","mode":"audit","findings":[{"category_id":"budget_compliance","policy_id":"policy-1","severity":"warning","explanation":"Near budget limit.","confidence":0.75}],"purchase_type":"media_buy"}]`,
+				`"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":2500,"check_count":3,"seller_reference":"mb-1"}]`,
+			},
+		},
+		{
 			name: "report plan outcome findings",
 			value: ReportPlanOutcomeResponse{
 				OutcomeID: "outcome-1",
@@ -718,6 +793,51 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 	}
 	if strings.Contains(string(raw), `"required_value"`) {
 		t.Fatalf("condition without presence bit unexpectedly marshaled required_value:\n%s", raw)
+	}
+}
+
+func TestPlanAuditLogsRoundTrip(t *testing.T) {
+	raw := []byte(`{"plans":[{"plan_id":"plan-1","plan_version":1,"status":"active","budget":{"authorized":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}],"entries":[{"id":"entry-1","type":"outcome","timestamp":"2026-05-28T11:00:00Z","outcome":"completed","committed_budget":0}]}]}`)
+
+	var decoded GetPlanAuditLogsResponse
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal plan audit logs: %v", err)
+	}
+	if len(decoded.Plans) != 1 {
+		t.Fatalf("plans len = %d, want 1", len(decoded.Plans))
+	}
+	plan := decoded.Plans[0]
+	if plan.Budget.Authorized == nil || *plan.Budget.Authorized != 0 {
+		t.Fatalf("budget.authorized = %#v, want explicit 0", plan.Budget.Authorized)
+	}
+	if plan.Budget.Committed != nil {
+		t.Fatalf("budget.committed = %#v, want absent", plan.Budget.Committed)
+	}
+	if plan.Summary.ChecksPerformed == nil || *plan.Summary.ChecksPerformed != 0 {
+		t.Fatalf("summary.checks_performed = %#v, want explicit 0", plan.Summary.ChecksPerformed)
+	}
+	if len(plan.Entries) != 1 || plan.Entries[0].CommittedBudget == nil || *plan.Entries[0].CommittedBudget != 0 {
+		t.Fatalf("entry committed_budget did not preserve explicit zero: %#v", plan.Entries)
+	}
+
+	encoded, err := json.Marshal(decoded)
+	if err != nil {
+		t.Fatalf("marshal plan audit logs: %v", err)
+	}
+	body := string(encoded)
+	for _, want := range []string{
+		`"authorized":0`,
+		`"checks_performed":0`,
+		`"committed_budget":0`,
+		`"committed":0`,
+		`"check_count":0`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("plan audit logs missing %s:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `"committed":null`) {
+		t.Fatalf("plan audit logs unexpectedly marshaled absent budget.committed:\n%s", body)
 	}
 }
 

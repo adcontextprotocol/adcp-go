@@ -6657,6 +6657,112 @@ type ReportPlanOutcomeFinding struct {
 	Details map[string]any `json:"details,omitempty"` // Structured details for programmatic consumption.
 }
 
+type PlanAuditLog struct {
+	PlanID string `json:"plan_id"` // Plan identifier.
+	PlanVersion int `json:"plan_version"` // Current plan version.
+	Status string `json:"status"` // Plan lifecycle status.
+	Budget PlanAuditBudget `json:"budget"` // Budget state.
+	ChannelAllocation map[string]PlanAuditChannelAllocation `json:"channel_allocation,omitempty"` // Current channel mix. Keyed by channel ID.
+	Summary PlanAuditSummary `json:"summary"` // Aggregate validation and outcome statistics.
+	Entries []PlanAuditEntry `json:"entries,omitempty"` // Ordered audit trail. Only present when include_entries is true.
+	GovernedActions []PlanAuditGovernedAction `json:"governed_actions"` // Per-action breakdown grouped by governance context.
+}
+
+// PlanAuditBudget — Budget state.
+type PlanAuditBudget struct {
+	Authorized *float64 `json:"authorized,omitempty"` // Total authorized budget from the plan.
+	Committed *float64 `json:"committed,omitempty"` // Total budget committed from confirmed outcomes.
+	Remaining *float64 `json:"remaining,omitempty"` // Authorized minus committed.
+	UtilizationPct *float64 `json:"utilization_pct,omitempty"` // Committed as a percentage of authorized.
+}
+
+type PlanAuditChannelAllocation struct {
+	Committed *float64 `json:"committed,omitempty"` // Budget committed to this channel.
+	Pct *float64 `json:"pct,omitempty"` // Channel's share of the authorized total budget.
+}
+
+// PlanAuditSummary — Aggregate validation and outcome statistics.
+type PlanAuditSummary struct {
+	ChecksPerformed *int `json:"checks_performed,omitempty"` // Total governance checks performed.
+	OutcomesReported *int `json:"outcomes_reported,omitempty"` // Total outcomes reported.
+	Statuses *PlanAuditStatusCounts `json:"statuses,omitempty"` // Count of each governance check status.
+	FindingsCount *int `json:"findings_count,omitempty"` // Total findings across all checks and outcomes.
+	Escalations []PlanAuditEscalation `json:"escalations,omitempty"` // All escalations and their resolutions.
+	DriftMetrics *PlanAuditDriftMetrics `json:"drift_metrics,omitempty"` // Aggregate governance metrics for detecting oversight drift. A declining escalati
+}
+
+// PlanAuditStatusCounts — Count of each governance check status.
+type PlanAuditStatusCounts struct {
+	Approved *int `json:"approved,omitempty"`
+	Denied *int `json:"denied,omitempty"`
+	Conditions *int `json:"conditions,omitempty"`
+	HumanReviewed *int `json:"human_reviewed,omitempty"` // Supplementary count of checks that went through internal human review. These che
+}
+
+type PlanAuditEscalation struct {
+	CheckID string `json:"check_id"` // The escalated governance check.
+	Reason string `json:"reason"` // Why it was escalated.
+	Resolution string `json:"resolution,omitempty"` // How it was resolved (e.g., 'approved_by_human', 'rejected_by_human').
+	ResolvedAt string `json:"resolved_at,omitempty"` // ISO 8601 resolution timestamp.
+}
+
+// PlanAuditDriftMetrics — Aggregate governance metrics for detecting oversight drift. A declining escalation rate may indicate
+type PlanAuditDriftMetrics struct {
+	EscalationRate *float64 `json:"escalation_rate,omitempty"` // Fraction of checks that resulted in escalation.
+	EscalationRateTrend string `json:"escalation_rate_trend,omitempty"` // Direction of escalation rate over the plan's lifetime.
+	AutoApprovalRate *float64 `json:"auto_approval_rate,omitempty"` // Fraction of checks approved without human intervention.
+	HumanOverrideRate *float64 `json:"human_override_rate,omitempty"` // Fraction of escalations where the human overrode the governance agent's recommen
+	MeanConfidence *float64 `json:"mean_confidence,omitempty"` // Average confidence score across all findings. Present when findings include conf
+	Thresholds *PlanAuditDriftThresholds `json:"thresholds,omitempty"` // Organization-defined thresholds for drift metrics. When a metric crosses its thr
+}
+
+// PlanAuditDriftThresholds — Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governan
+type PlanAuditDriftThresholds struct {
+	EscalationRateMax *float64 `json:"escalation_rate_max,omitempty"` // Maximum acceptable escalation rate. A rate above this suggests policy miscalibra
+	EscalationRateMin *float64 `json:"escalation_rate_min,omitempty"` // Minimum acceptable escalation rate. A rate below this may indicate eroding overs
+	AutoApprovalRateMax *float64 `json:"auto_approval_rate_max,omitempty"` // Maximum acceptable auto-approval rate.
+	HumanOverrideRateMax *float64 `json:"human_override_rate_max,omitempty"` // Maximum acceptable human override rate. A high rate suggests the governance agen
+}
+
+type PlanAuditEntry struct {
+	ID string `json:"id"` // Entry identifier.
+	Type string `json:"type"` // Entry type.
+	Timestamp string `json:"timestamp"` // ISO 8601 timestamp.
+	PlanID string `json:"plan_id,omitempty"` // Plan this entry belongs to. Present when querying multiple plans or a portfolio.
+	Caller string `json:"caller,omitempty"` // URL of the agent that made the request. Resolved from the credentials used on th
+	Tool string `json:"tool,omitempty"` // The AdCP tool (present for check entries).
+	Status *GovernanceDecision `json:"status,omitempty"` // Governance check status (present for check entries).
+	CheckType string `json:"check_type,omitempty"` // Whether the check was an intent check (orchestrator) or execution check (seller)
+	Mode *GovernanceMode `json:"mode,omitempty"` // Governance mode active at the moment this specific check was evaluated. Governan
+	Explanation string `json:"explanation,omitempty"` // Human-readable explanation of the governance decision (present for check entries
+	PoliciesEvaluated []string `json:"policies_evaluated,omitempty"` // Policy IDs evaluated during this check. Includes registry policy IDs (resolved v
+	CategoriesEvaluated []string `json:"categories_evaluated,omitempty"` // Governance categories evaluated (e.g., 'budget_authority', 'regulatory_complianc
+	Findings []PlanAuditFinding `json:"findings,omitempty"` // Findings from this check or outcome. Same structure as check_governance response
+	Outcome *OutcomeType `json:"outcome,omitempty"` // Outcome type (present for outcome entries).
+	CommittedBudget *float64 `json:"committed_budget,omitempty"` // Budget committed (present for completed outcome entries).
+	GovernanceContext string `json:"governance_context,omitempty"` // Governance context for this entry (present for check and outcome entries).
+	PlanHash string `json:"plan_hash,omitempty"` // Audit-layer binding to the plan revision this attestation was evaluated over — b
+	PurchaseType *PurchaseType `json:"purchase_type,omitempty"` // Purchase type for this entry.
+	OutcomeStatus string `json:"outcome_status,omitempty"` // Outcome status (present for outcome entries).
+}
+
+type PlanAuditFinding struct {
+	CategoryID string `json:"category_id"`
+	PolicyID string `json:"policy_id,omitempty"`
+	Severity EscalationSeverity `json:"severity"`
+	Explanation string `json:"explanation"`
+	Confidence *float64 `json:"confidence,omitempty"`
+}
+
+type PlanAuditGovernedAction struct {
+	GovernanceContext string `json:"governance_context"` // Governance context correlating this action's lifecycle.
+	PurchaseType PurchaseType `json:"purchase_type"` // Type of financial commitment.
+	Status string `json:"status"` // Action status.
+	Committed float64 `json:"committed"` // Budget committed for this action.
+	CheckCount int `json:"check_count"` // Number of governance checks performed for this action.
+	SellerReference string `json:"seller_reference,omitempty"` // The seller's identifier for the resource (e.g., media_buy_id, rights_grant_id).
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7981,7 +8087,7 @@ type GetPlanAuditLogsRequest struct {
 
 // GetPlanAuditLogsResponse — Governance state and audit trail for one or more plans.
 type GetPlanAuditLogsResponse struct {
-	Plans []any `json:"plans"` // Audit data for each requested plan.
+	Plans []PlanAuditLog `json:"plans"` // Audit data for each requested plan.
 	Context any `json:"context,omitempty"`
 	Ext any `json:"ext,omitempty"`
 }

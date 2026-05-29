@@ -498,6 +498,60 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/report-plan-outcome-response.json#/properties/findings/items",
     ),
     (
+        "PlanAuditLog",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items",
+    ),
+    (
+        "PlanAuditBudget",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/budget",
+    ),
+    (
+        "PlanAuditChannelAllocation",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/channel_allocation/additionalProperties",
+    ),
+    (
+        "PlanAuditSummary",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/summary",
+    ),
+    (
+        "PlanAuditStatusCounts",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/summary/properties/statuses",
+    ),
+    (
+        "PlanAuditEscalation",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/summary/properties/escalations/items",
+    ),
+    (
+        "PlanAuditDriftMetrics",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/summary/properties/drift_metrics",
+    ),
+    (
+        "PlanAuditDriftThresholds",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/summary/properties/drift_metrics/properties/thresholds",
+    ),
+    (
+        "PlanAuditEntry",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/entries/items",
+    ),
+    (
+        "PlanAuditFinding",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/entries/items/properties/findings/items",
+    ),
+    (
+        "PlanAuditGovernedAction",
+        "governance/get-plan-audit-logs-response.json#/properties/plans/items"
+        "/properties/governed_actions/items",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -1055,6 +1109,46 @@ INLINE_TYPE_HINTS = {
     ('ReportPlanOutcomeResponse', 'findings'): 'ReportPlanOutcomeFinding',
     ('ReportPlanOutcomeFinding', 'severity'): 'EscalationSeverity',
     ('CheckGovernanceResponse', 'conditions'): 'CheckGovernanceCondition',
+    ('GetPlanAuditLogsResponse', 'plans'): 'PlanAuditLog',
+    ('PlanAuditLog', 'budget'): 'PlanAuditBudget',
+    ('PlanAuditLog', 'channel_allocation'): 'map[string]PlanAuditChannelAllocation',
+    ('PlanAuditLog', 'summary'): 'PlanAuditSummary',
+    ('PlanAuditLog', 'entries'): 'PlanAuditEntry',
+    ('PlanAuditLog', 'governed_actions'): 'PlanAuditGovernedAction',
+    ('PlanAuditBudget', 'authorized'): '*float64',
+    ('PlanAuditBudget', 'committed'): '*float64',
+    ('PlanAuditBudget', 'remaining'): '*float64',
+    ('PlanAuditBudget', 'utilization_pct'): '*float64',
+    ('PlanAuditChannelAllocation', 'committed'): '*float64',
+    ('PlanAuditChannelAllocation', 'pct'): '*float64',
+    ('PlanAuditSummary', 'checks_performed'): '*int',
+    ('PlanAuditSummary', 'outcomes_reported'): '*int',
+    ('PlanAuditSummary', 'statuses'): '*PlanAuditStatusCounts',
+    ('PlanAuditSummary', 'findings_count'): '*int',
+    ('PlanAuditSummary', 'escalations'): 'PlanAuditEscalation',
+    ('PlanAuditSummary', 'drift_metrics'): '*PlanAuditDriftMetrics',
+    ('PlanAuditStatusCounts', 'approved'): '*int',
+    ('PlanAuditStatusCounts', 'denied'): '*int',
+    ('PlanAuditStatusCounts', 'conditions'): '*int',
+    ('PlanAuditStatusCounts', 'human_reviewed'): '*int',
+    ('PlanAuditDriftMetrics', 'escalation_rate'): '*float64',
+    ('PlanAuditDriftMetrics', 'auto_approval_rate'): '*float64',
+    ('PlanAuditDriftMetrics', 'human_override_rate'): '*float64',
+    ('PlanAuditDriftMetrics', 'mean_confidence'): '*float64',
+    ('PlanAuditDriftMetrics', 'thresholds'): '*PlanAuditDriftThresholds',
+    ('PlanAuditDriftThresholds', 'escalation_rate_max'): '*float64',
+    ('PlanAuditDriftThresholds', 'escalation_rate_min'): '*float64',
+    ('PlanAuditDriftThresholds', 'auto_approval_rate_max'): '*float64',
+    ('PlanAuditDriftThresholds', 'human_override_rate_max'): '*float64',
+    ('PlanAuditEntry', 'status'): 'GovernanceDecision',
+    ('PlanAuditEntry', 'mode'): 'GovernanceMode',
+    ('PlanAuditEntry', 'findings'): 'PlanAuditFinding',
+    ('PlanAuditEntry', 'outcome'): 'OutcomeType',
+    ('PlanAuditEntry', 'committed_budget'): '*float64',
+    ('PlanAuditEntry', 'purchase_type'): 'PurchaseType',
+    ('PlanAuditFinding', 'severity'): 'EscalationSeverity',
+    ('PlanAuditFinding', 'confidence'): '*float64',
+    ('PlanAuditGovernedAction', 'purchase_type'): 'PurchaseType',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',
