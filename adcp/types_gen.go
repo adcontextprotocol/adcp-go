@@ -6547,6 +6547,33 @@ type DeliveryReportingDimension struct {
 	SortBy string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the sell
 }
 
+// GovernanceDeliveryMetrics — Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compare
+type GovernanceDeliveryMetrics struct {
+	ReportingPeriod GovernanceDeliveryReportingPeriod `json:"reporting_period"` // Start and end timestamps for the reporting window.
+	Spend *float64 `json:"spend,omitempty"` // Total spend during the reporting period.
+	CumulativeSpend *float64 `json:"cumulative_spend,omitempty"` // Total spend since the governed action started.
+	Impressions *int `json:"impressions,omitempty"` // Impressions delivered during the reporting period.
+	CumulativeImpressions *int `json:"cumulative_impressions,omitempty"` // Total impressions since the governed action started.
+	GeoDistribution map[string]float64 `json:"geo_distribution,omitempty"` // Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are pe
+	ChannelDistribution map[string]float64 `json:"channel_distribution,omitempty"` // Actual channel distribution. Keys are channel enum values, values are percentage
+	Pacing string `json:"pacing,omitempty"` // Whether delivery is ahead of, on track with, or behind the planned pace.
+	AudienceDistribution *GovernanceAudienceDistribution `json:"audience_distribution,omitempty"` // Actual audience composition during the reporting period. Enables mid-flight drif
+}
+
+// GovernanceDeliveryReportingPeriod — Start and end timestamps for the reporting window.
+type GovernanceDeliveryReportingPeriod struct {
+	Start string `json:"start"`
+	End string `json:"end"`
+}
+
+// GovernanceAudienceDistribution — Actual audience composition during the reporting period. Enables mid-flight drift detection when act
+type GovernanceAudienceDistribution struct {
+	Baseline string `json:"baseline"` // Population baseline used for index calculation. 'census': national census or equ
+	BaselineDescription string `json:"baseline_description,omitempty"` // Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with
+	Indices map[string]float64 `json:"indices"` // Audience index values for the current reporting period. Keys are seller-defined
+	CumulativeIndices map[string]float64 `json:"cumulative_indices,omitempty"` // Cumulative audience index values since the governed action started. Same key for
+}
+
 type CreativeAgentRef struct {
 	AgentURL string `json:"agent_url"` // Base URL for the creative agent (e.g., 'https://reference.adcp.org', 'https://dc
 	AgentName string `json:"agent_name,omitempty"` // Human-readable name for the creative agent
@@ -7804,7 +7831,7 @@ type CheckGovernanceRequest struct {
 	GovernanceContext string `json:"governance_context,omitempty"` // Governance context token from a prior check_governance response. Pass this on su
 	Phase string `json:"phase,omitempty"` // The phase of the governed action's lifecycle. 'purchase': initial commitment (cr
 	PlannedDelivery *PlannedDelivery `json:"planned_delivery,omitempty"` // What the seller will actually deliver. Present on execution checks.
-	DeliveryMetrics any `json:"delivery_metrics,omitempty"` // Actual delivery performance data. MUST be present for 'delivery' phase. The gove
+	DeliveryMetrics *GovernanceDeliveryMetrics `json:"delivery_metrics,omitempty"` // Actual delivery performance data. MUST be present for 'delivery' phase. The gove
 	ModificationSummary string `json:"modification_summary,omitempty"` // Human-readable summary of what changed. SHOULD be present for 'modification' pha
 	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Invoice recipient from the purchase request. MUST be present when the tool paylo
 	Context any `json:"context,omitempty"`

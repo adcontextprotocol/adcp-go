@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 26
+python3 generate.py --coverage-max-unreviewed-any 25
 ```
 
-The generator currently reports 192 generated dynamic `any` uses:
+The generator currently reports 191 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 166 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 26 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 25 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 26
+python3 generate.py --coverage-max-unreviewed-any 25
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -61,7 +61,6 @@ the new dynamic shape is reviewed in the same PR.
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
 | `ControllerError.CurrentState` | `current_state` | `any` | `unspecified_schema_type` | `compliance/comply-test-controller-response.json#/oneOf/5` |
 | `SyncPlansResponse.Plans` | `plans` | `[]any` | `array_item:inline_object` | `governance/sync-plans-response.json` |
-| `CheckGovernanceRequest.DeliveryMetrics` | `delivery_metrics` | `any` | `inline_object` | `governance/check-governance-request.json` |
 | `CheckGovernanceResponse.Findings` | `findings` | `[]any` | `array_item:inline_object` | `governance/check-governance-response.json` |
 | `CheckGovernanceResponse.Conditions` | `conditions` | `[]any` | `array_item:inline_object` | `governance/check-governance-response.json` |
 | `ReportPlanOutcomeRequest.SellerResponse` | `seller_response` | `any` | `inline_object` | `governance/report-plan-outcome-request.json` |
@@ -76,7 +75,7 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 24 unreviewed fallbacks are direct inline
+This is the largest generator gap: 23 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
@@ -84,8 +83,7 @@ detection across generated names.
 The first reduction passes typed low-risk leaf objects. Continue with inline
 objects that have stable, schema-owned property sets before moving into arrays
 of inline objects. The next direct-object candidates are governance/reporting
-shapes such as `CheckGovernanceRequest.DeliveryMetrics` and
-`ReportPlanOutcomeRequest.Delivery`.
+shapes such as `ReportPlanOutcomeRequest.Delivery`.
 
 ### Top-Level Unions
 

@@ -52,6 +52,10 @@ be populated.
   `[]any`. Latitude and longitude are `*float64` so explicit zero coordinates
   still marshal. `GeoProximityGeometry.Coordinates` remains `[]any` for the
   same GeoJSON Polygon/MultiPolygon nesting reason.
+- `CheckGovernanceRequest.DeliveryMetrics` is now
+  `*adcp.GovernanceDeliveryMetrics` instead of `any`. Optional numeric delivery
+  values such as `Spend` and `Impressions` are pointers so explicit zero values
+  still marshal; use `adcp.Ptr(0.0)` or `adcp.Ptr(0)` when zero is meaningful.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -114,6 +118,7 @@ be populated.
 | `ProductFilters.SignalTargeting` | `[]adcp.SignalTargeting` |
 | `ProductFilters.GeoProximity` | `[]adcp.ProductFilterGeoProximity` |
 | `Targeting.GeoProximity` | `[]adcp.GeoProximityTarget` |
+| `CheckGovernanceRequest.DeliveryMetrics` | `*adcp.GovernanceDeliveryMetrics` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
