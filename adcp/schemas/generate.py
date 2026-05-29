@@ -457,6 +457,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "/properties/reporting_period",
     ),
     (
+        "ReportPlanOutcomeError",
+        "governance/report-plan-outcome-request.json#/properties/error",
+    ),
+    (
         "CreativeAgentRef",
         "media-buy/list-creative-formats-response.json#/properties/creative_agents/items",
     ),
@@ -992,6 +996,7 @@ INLINE_TYPE_HINTS = {
     ('ReportPlanOutcomeDelivery', 'cpm'): '*float64',
     ('ReportPlanOutcomeDelivery', 'viewability_rate'): '*float64',
     ('ReportPlanOutcomeDelivery', 'completion_rate'): '*float64',
+    ('ReportPlanOutcomeRequest', 'error'): '*ReportPlanOutcomeError',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',

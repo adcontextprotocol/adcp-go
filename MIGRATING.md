@@ -61,6 +61,9 @@ be populated.
   such as `Spend`, `CPM`, and `Impressions` are pointers so explicit zero values
   still marshal. The schema's open `additionalProperties` allowance is not
   exposed as a synthetic `Extra`/`Ext` map; use the schema-authored fields.
+- `ReportPlanOutcomeRequest.Error` is now
+  `*adcp.ReportPlanOutcomeError` instead of `any`, with schema-backed `Code`
+  and `Message` fields.
 - Optional numeric fields where explicit zero is meaningful are now pointers:
   `PricingOption.FixedPrice`, `AudienceSelector.MinValue`,
   `AudienceSelector.MaxValue`, `ForecastPoint.Budget`,
@@ -125,6 +128,7 @@ be populated.
 | `Targeting.GeoProximity` | `[]adcp.GeoProximityTarget` |
 | `CheckGovernanceRequest.DeliveryMetrics` | `*adcp.GovernanceDeliveryMetrics` |
 | `ReportPlanOutcomeRequest.Delivery` | `*adcp.ReportPlanOutcomeDelivery` |
+| `ReportPlanOutcomeRequest.Error` | `*adcp.ReportPlanOutcomeError` |
 | `Targeting.FrequencyCap` | `*adcp.FrequencyCap` |
 | `Targeting.DaypartTargets` | `[]adcp.DaypartTarget` |
 | `Catalog.FeedFieldMappings` | `[]adcp.CatalogFieldMapping` |
