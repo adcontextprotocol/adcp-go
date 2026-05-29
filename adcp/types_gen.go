@@ -6209,6 +6209,24 @@ type PackageUpdate struct {
 	Ext any `json:"ext,omitempty"`
 }
 
+// --- Referenced schema types ---
+
+// CreativeVariable — A dynamic content variable (DCO slot) on a creative. Variables represent content that can change at
+type CreativeVariable struct {
+	VariableID string `json:"variable_id"` // Variable identifier on the creative platform
+	Name string `json:"name"` // Human-readable variable name
+	VariableType string `json:"variable_type"` // Data type of the variable. Each type represents a semantic content slot: text (h
+	DefaultValue string `json:"default_value,omitempty"` // Default value used when no dynamic value is provided at serve time. All types ar
+	Required *bool `json:"required,omitempty"` // Whether this variable must have a value for the creative to serve
+}
+
+// MediaBuyFeatures — Optional media-buy protocol features. Used in capability declarations (seller declares support) and
+type MediaBuyFeatures struct {
+	InlineCreativeManagement *bool `json:"inline_creative_management,omitempty"` // Supports creatives provided inline in create_media_buy requests
+	PropertyListFiltering *bool `json:"property_list_filtering,omitempty"` // Honors property_list parameter in get_products to filter results to buyer-approv
+	CatalogManagement *bool `json:"catalog_management,omitempty"` // Supports sync_catalogs task for catalog feed management with platform review and
+}
+
 // --- Inline schema types ---
 
 type KeywordTargetUpdate struct {

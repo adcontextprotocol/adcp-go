@@ -1050,6 +1050,9 @@ INLINE_TYPE_HINTS = {
     ('CreativeFormat', 'accessibility'): '*CreativeFormatAccessibility',
     ('CreativeFormat', 'supported_macros'): 'string',
     ('Signal', 'range'): '*SignalRange',
+    # 3.1 forward-compatible hints for auto-discovered referenced schemas.
+    ('SignalListing', 'range'): '*SignalRange',
+    ('NotificationConfig', 'authentication'): '*LegacyWebhookAuthentication',
     ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
     ('PlannedDelivery', 'geo'): '*PlannedDeliveryGeo',
@@ -1311,6 +1314,10 @@ INTENTIONAL_ANY_FIELDS = {
     ('CheckGovernanceRequest', 'payload'): 'governance can evaluate different protocol payloads',
     ('CheckGovernanceFinding', 'details'): 'governance finding details are structured but category-specific',
     ('ReportPlanOutcomeFinding', 'details'): 'outcome finding details are structured but category-specific',
+    # 3.1 forward-compatible allowances for auto-discovered referenced schemas.
+    ('ProductFormatDeclaration', 'params'): 'canonical format parameters are schema-specific',
+    ('VendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
+    ('ForecastVendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
 }
 
 # Enum schemas
@@ -1394,6 +1401,41 @@ def resolve_ref_schema(ref):
     except SCHEMA_RESOLUTION_ERRORS as e:
         print(f'// Warning: skipped ref {ref}: {e}', file=sys.stderr)
         return None
+
+def ref_to_schema_path(ref):
+    """Return the repo-relative schema path for a bundled local $ref."""
+    if not isinstance(ref, str):
+        return None
+    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
+    if not m:
+        return None
+    rel = m.group(1)
+    path = (SCRIPT_DIR / rel).resolve()
+    root = SCRIPT_DIR.resolve()
+    if root != path and root not in path.parents:
+        return None
+    if not path.exists():
+        return None
+    return rel
+
+def iter_auto_discovery_refs(schema):
+    """Yield $refs that are part of the ordinary object field graph.
+
+    Top-level and nested oneOf/anyOf branches are deliberately skipped for
+    auto-discovery. Those unions usually need explicit SDK policy (flatten,
+    variant helpers, or intentional openness) instead of incidental type export.
+    """
+    if isinstance(schema, dict):
+        ref = schema.get('$ref')
+        if isinstance(ref, str):
+            yield ref
+        for key, value in schema.items():
+            if key in ('oneOf', 'anyOf'):
+                continue
+            yield from iter_auto_discovery_refs(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            yield from iter_auto_discovery_refs(item)
 
 def scalar_union_go_type(schema):
     """Return the element Go type for `scalar or []scalar` unions.
@@ -1489,6 +1531,24 @@ def has_struct_fields(schema):
     oneOf pattern used elsewhere in this package."""
     return bool(schema_properties(schema))
 
+def can_auto_generate_ref_schema(schema):
+    """True when an otherwise unlisted $ref target is safe to emit as a struct.
+
+    Auto-discovery is intentionally narrower than the hand-curated schema lists:
+    it picks up plain object schemas and object allOf compositions, but leaves
+    top-level anyOf/oneOf union payloads alone. Broad union payloads often need
+    custom Go ergonomics or intentionally remain open extension points.
+    """
+    if not isinstance(schema, dict):
+        return False
+    if schema.get('type') == 'object' or 'properties' in schema or 'allOf' in schema:
+        return has_struct_fields(schema)
+    if 'oneOf' in schema and schema.get('discriminator'):
+        branches = schema.get('oneOf', [])
+        if branches and all(isinstance(branch, dict) for branch in branches):
+            return has_struct_fields(schema)
+    return False
+
 def ref_to_go_name(ref):
     """Convert a $ref path to a Go type name.
     /schemas/core/product.json -> Product
@@ -1523,14 +1583,186 @@ def is_enum_ref(ref):
 
 
 _WILL_GENERATE_CACHE = None
+_AUTO_REF_SCHEMA_CACHE = None
 
 def _reset_will_generate_cache():
     """Clear the cache so the next `_will_generate_set()` call rebuilds from
     current CORE_SCHEMAS/TOOL_SCHEMAS/WEBHOOK_SCHEMAS. Called at the top of
     `generate()` to guarantee correctness when the module is used across
     multiple runs (e.g. imported by lint.py then invoked standalone)."""
-    global _WILL_GENERATE_CACHE
+    global _WILL_GENERATE_CACHE, _AUTO_REF_SCHEMA_CACHE
     _WILL_GENERATE_CACHE = None
+    _AUTO_REF_SCHEMA_CACHE = None
+
+
+def _schema_spec_path(spec):
+    """Return the filesystem schema path portion from path.json[#/pointer]."""
+    return spec.split('#', 1)[0]
+
+
+def _generation_seed_schema_paths():
+    """Schema files whose refs define the generator's reachable type graph."""
+    paths = []
+    seen = set()
+    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS + TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
+        if rel not in seen:
+            paths.append(rel)
+            seen.add(rel)
+    for spec in INLINE_SCHEMA_TYPES.values():
+        rel = _schema_spec_path(spec)
+        if rel not in seen:
+            paths.append(rel)
+            seen.add(rel)
+    for specs in UNION_SCHEMA_TYPES.values():
+        if isinstance(specs, str):
+            specs = (specs,)
+        for spec in specs:
+            rel = _schema_spec_path(spec)
+            if rel not in seen:
+                paths.append(rel)
+                seen.add(rel)
+    return paths
+
+
+def _schema_type_name(path):
+    return REF_ALIASES.get(pascal_case(Path(path).stem), pascal_case(Path(path).stem))
+
+
+def _explicit_generated_type_names():
+    """Names generated without auto-ref discovery."""
+    names = set(KNOWN_TYPES)
+    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS:
+        if schema_exists(rel):
+            names.add(_schema_type_name(rel))
+    for rel in TOOL_SCHEMAS + WEBHOOK_SCHEMAS:
+        if schema_exists(rel):
+            names.add(pascal_case(Path(rel).stem))
+    names.update(INLINE_SCHEMA_TYPES.keys())
+    names.update(supported_union_schemas(skip_names=KNOWN_TYPES).keys())
+    return names
+
+
+def schema_has_unreviewed_any(type_name, schema):
+    """Return True when emitting this struct would add unreviewed dynamic any."""
+    props = schema_properties(schema)
+    required_set = schema_required_names(schema)
+    for json_name, prop in props.items():
+        if not isinstance(prop, dict):
+            continue
+        go_type, reason = field_go_type_info(type_name, json_name, prop, required_set)
+        if not contains_dynamic_any(go_type):
+            continue
+        if any_allowance(type_name, json_name, go_type, reason) is None:
+            return True
+    return False
+
+
+def auto_ref_schema_paths():
+    """Return unlisted local object schemas reachable by $ref from generated roots.
+
+    This lets new protocol object types become Go structs without requiring a
+    hand edit to CORE_SCHEMAS for every additive schema file. The result is
+    stable-sorted for deterministic generated output.
+    """
+    global _AUTO_REF_SCHEMA_CACHE
+    if _AUTO_REF_SCHEMA_CACHE is not None:
+        return _AUTO_REF_SCHEMA_CACHE
+
+    configured = set(_generation_seed_schema_paths())
+    discovered = set()
+    queued = list(_generation_seed_schema_paths())
+    visited = set()
+
+    while queued:
+        rel = queued.pop(0)
+        if rel in visited or not schema_exists(rel):
+            continue
+        visited.add(rel)
+        try:
+            schema = load_schema(rel)
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            print(f'// Warning: skipped schema {rel}: {e}', file=sys.stderr)
+            continue
+
+        for ref in iter_auto_discovery_refs(schema):
+            ref_path = ref_to_schema_path(ref)
+            if not ref_path or ref_path in visited:
+                continue
+            if not schema_exists(ref_path):
+                continue
+            try:
+                ref_schema = load_schema(ref_path)
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                print(f'// Warning: skipped schema {ref_path}: {e}', file=sys.stderr)
+                continue
+
+            if ref_path not in queued:
+                queued.append(ref_path)
+            if ref_path not in configured and can_auto_generate_ref_schema(ref_schema):
+                discovered.add(ref_path)
+
+    explicit_names = _explicit_generated_type_names()
+    paths_by_name = {}
+    for path in discovered:
+        paths_by_name.setdefault(_schema_type_name(path), []).append(path)
+    collisions = {
+        name: sorted(paths)
+        for name, paths in paths_by_name.items()
+        if len(paths) > 1 or (name in explicit_names and name not in KNOWN_TYPES)
+    }
+    if collisions:
+        details = '; '.join(
+            f'{name}: {", ".join(paths)}'
+            for name, paths in sorted(collisions.items())
+        )
+        raise ValueError(
+            'auto-discovered schema type name collision; add REF_ALIASES or '
+            f'promote one schema explicitly: {details}'
+        )
+
+    # Filter out schemas that would add new unreviewed `any` fallbacks. Use a
+    # fixed point so a kept candidate cannot type-reference another candidate
+    # that is later filtered out.
+    remaining = set(discovered)
+    global _WILL_GENERATE_CACHE
+    previous_will_generate_cache = _WILL_GENERATE_CACHE
+    try:
+        while True:
+            _WILL_GENERATE_CACHE = explicit_names | {
+                _schema_type_name(path) for path in remaining
+            }
+            filtered = []
+            for path in sorted(remaining):
+                name = _schema_type_name(path)
+                # Explicit hand-written names are valid discovery leaves, but
+                # are not emitted again in the auto-ref section.
+                if name in explicit_names:
+                    continue
+                try:
+                    schema = load_schema(path)
+                except SCHEMA_RESOLUTION_ERRORS as e:
+                    print(f'// Warning: skipped schema {path}: {e}', file=sys.stderr)
+                    continue
+                if schema_has_unreviewed_any(name, schema):
+                    continue
+                filtered.append(path)
+            filtered_set = set(filtered)
+            if filtered_set == {
+                path for path in remaining
+                if _schema_type_name(path) not in explicit_names
+            }:
+                break
+            remaining = filtered_set
+        filtered = sorted(remaining)
+        filtered = [
+            path for path in filtered
+            if _schema_type_name(path) not in explicit_names
+        ]
+    finally:
+        _WILL_GENERATE_CACHE = previous_will_generate_cache
+
+    _AUTO_REF_SCHEMA_CACHE = tuple(filtered)
+    return _AUTO_REF_SCHEMA_CACHE
 
 
 def _will_generate_set():
@@ -1545,7 +1777,7 @@ def _will_generate_set():
     if _WILL_GENERATE_CACHE is not None:
         return _WILL_GENERATE_CACHE
     names = set()
-    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS:
+    for rel in CORE_SCHEMAS + SUPPORT_SCHEMAS + list(auto_ref_schema_paths()):
         if not schema_exists(rel):
             continue
         try:
@@ -1582,6 +1814,46 @@ def _will_generate_set():
     _WILL_GENERATE_CACHE = names
     return names
 
+def resolve_allof_go_type_info(branches, required=False):
+    """Resolve allOf when the composition has a lossless Go field type.
+
+    The common schema pattern is `$ref` plus validation-only constraints (for
+    example `not.required`). In that case the SDK field can use the referenced
+    Go type without inventing a second wrapper type. Compositions that add
+    inline properties still fall back to `any` unless they are explicitly named
+    through INLINE_SCHEMA_TYPES/INLINE_TYPE_HINTS.
+    """
+    if len(branches) == 1 and isinstance(branches[0], dict):
+        return resolve_go_type_info(branches[0], required)
+
+    ref_types = []
+    structural_branches = []
+    for branch in branches:
+        if not isinstance(branch, dict):
+            return 'any', 'unsupported_allOf'
+        if '$ref' in branch:
+            branch_extra = {
+                key: value for key, value in branch.items()
+                if key not in ('$ref', 'description', 'title')
+            }
+            if schema_properties(branch_extra):
+                return 'any', 'unsupported_allOf'
+            go_type, reason = resolve_go_type_info(branch, required)
+            if reason:
+                return 'any', f'allOf_ref:{reason}'
+            ref_types.append(go_type)
+            continue
+        if schema_properties(branch):
+            structural_branches.append(branch)
+
+    if len(ref_types) == 1 and not structural_branches:
+        return ref_types[0], None
+
+    if not ref_types and len(structural_branches) == 1:
+        return resolve_go_type_info(structural_branches[0], required)
+
+    return 'any', 'unsupported_allOf'
+
 def resolve_go_type_info(prop, required=False):
     """Resolve a JSON schema property to a Go type string and fallback reason.
 
@@ -1592,6 +1864,9 @@ def resolve_go_type_info(prop, required=False):
         ref = prop['$ref']
         if is_enum_ref(ref):
             return 'string', None  # Enums are strings in Go
+        ref_schema = resolve_ref_schema(ref)
+        if isinstance(ref_schema, dict) and ref_schema.get('type') == 'string':
+            return 'string', None
         name = ref_to_go_name(ref)
         # Error conflicts with the Error function in errors.go
         if name == 'Error':
@@ -1608,10 +1883,7 @@ def resolve_go_type_info(prop, required=False):
         return 'any', f'unknown_ref:{ref}'  # Avoid undefined type errors
 
     if 'allOf' in prop:
-        branches = prop.get('allOf', [])
-        if len(branches) == 1 and isinstance(branches[0], dict):
-            return resolve_go_type_info(branches[0], required)
-        return 'any', 'unsupported_allOf'
+        return resolve_allof_go_type_info(prop.get('allOf', []), required)
 
     typ = prop.get('type', '')
 
@@ -1978,6 +2250,7 @@ def generated_schema_entries():
     for section, paths in (
         ('core', CORE_SCHEMAS),
         ('support', SUPPORT_SCHEMAS),
+        ('auto_ref', auto_ref_schema_paths()),
     ):
         for path in paths:
             if not schema_exists(path):
@@ -2037,7 +2310,7 @@ def generated_schema_entries():
                 }
                 for idx, variant in enumerate(schema['oneOf']):
                     vname = variant.get('title', '')
-                    if vname and vname not in generated and 'properties' in variant:
+                    if vname and vname not in generated and has_struct_fields(variant):
                         generated.add(vname)
                         yield {
                             'section': section,
@@ -2049,7 +2322,7 @@ def generated_schema_entries():
                         }
                 continue
 
-            if schema.get('type') == 'object' and 'properties' in schema:
+            if has_struct_fields(schema):
                 yield {
                     'section': section,
                     'name': name,
@@ -2244,6 +2517,26 @@ def generate():
         if has_struct_fields(schema):
             print(schema_to_struct(name, schema))
 
+    # Generate reachable object $ref schema types that are not otherwise
+    # hand-curated. This is intentionally limited to object/allOf schemas so
+    # broad anyOf/oneOf payload unions remain explicit decisions.
+    auto_ref_paths = auto_ref_schema_paths()
+    if auto_ref_paths:
+        print('// --- Referenced schema types ---')
+        print()
+    for path in auto_ref_paths:
+        if not schema_exists(path):
+            print(f'// Skipped {path} (not found)', file=sys.stderr)
+            continue
+        schema = load_schema(path)
+        name = REF_ALIASES.get(pascal_case(Path(path).stem),
+                               pascal_case(Path(path).stem))
+        if name in generated:
+            continue
+        generated.add(name)
+        if has_struct_fields(schema):
+            print(schema_to_struct(name, schema))
+
     # Generate named inline schema-pointer types.
     print('// --- Inline schema types ---')
     print()
@@ -2285,11 +2578,11 @@ def generate():
                 vname = variant.get('title', '')
                 if vname and vname not in generated:
                     generated.add(vname)
-                    if 'properties' in variant:
+                    if has_struct_fields(variant):
                         print(schema_to_struct(vname, variant))
             continue
 
-        if schema.get('type') == 'object' and 'properties' in schema:
+        if has_struct_fields(schema):
             print(schema_to_struct(name, schema))
 
     # Generate webhook payload types and their IdempotencyKeyPtr methods.
@@ -2310,11 +2603,11 @@ def generate():
         if name in generated:
             continue
         generated.add(name)
-        if schema.get('type') == 'object' and 'properties' in schema:
+        if has_struct_fields(schema):
             # Webhook payloads must carry a required idempotency_key field
             # (adcontextprotocol/adcp#2417). Refuse to emit a method that
             # references a field the schema did not declare.
-            if 'idempotency_key' not in schema.get('properties', {}):
+            if 'idempotency_key' not in schema_properties(schema):
                 print(f'// {name}: WARNING: schema has no idempotency_key — IdempotencyKeyPtr method NOT generated', file=sys.stderr)
                 print(schema_to_struct(name, schema))
                 continue

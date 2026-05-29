@@ -103,6 +103,32 @@ No unreviewed unknown `$ref` fallbacks remain. Future unknown refs should be
 added to the generation graph unless the target schema is an intentionally open
 or union-shaped payload with a specific allowlist reason.
 
+## 3.1 Beta Smoke Check
+
+Snapshot date: 2026-05-29
+Schema bundle: AdCP 3.1.0-beta.7
+
+This is a non-gating compatibility smoke check, not the checked-in baseline.
+With the 3.1.0-beta.7 schemas overlaid onto the current generator, auto-discovery
+found 21 clean referenced schema types and reduced generated unreviewed `any`
+fallbacks from the initial beta evaluation's 100 to 64. Unknown refs are no
+longer the dominant class; the remaining surface is mostly inline objects,
+freeform payloads, unspecified schema types, and one mixed `allOf` account
+extension that needs named inline composition support.
+
+Do not pin the Go SDK to a beta schema bundle until the remaining 3.1 migration
+work is reviewed as protocol surface:
+
+- add named inline composition for mixed `allOf` shapes such as
+  `ListAccountsResponse.accounts[]`;
+- classify 3.1 vendor metric, signal-targeting, forecast dimension, and
+  capability inline objects as either generated structs or intentional open
+  payloads;
+- update hand-written capability and governance structs for the beta schema
+  drift; and
+- re-run strict drift lint, generated coverage, and reference seller tests
+  against the beta bundle.
+
 ### Schema Clarification
 
 One fallback comes from a schema without enough type information:

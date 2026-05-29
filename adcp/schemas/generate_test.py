@@ -1517,6 +1517,253 @@ class InlineObjectGenerationTest(unittest.TestCase):
         )
 
 
+class AutoRefDiscoveryTest(unittest.TestCase):
+    def setUp(self):
+        self.original_core_schemas = generate.CORE_SCHEMAS
+        self.original_support_schemas = generate.SUPPORT_SCHEMAS
+        self.original_tool_schemas = generate.TOOL_SCHEMAS
+        self.original_webhook_schemas = generate.WEBHOOK_SCHEMAS
+        self.original_inline_schema_types = generate.INLINE_SCHEMA_TYPES
+        self.original_union_schema_types = generate.UNION_SCHEMA_TYPES
+        self.original_known_types = generate.KNOWN_TYPES
+        self.original_load_schema = generate.load_schema
+        self.original_schema_exists = generate.schema_exists
+        self.original_ref_to_schema_path = generate.ref_to_schema_path
+        generate._reset_will_generate_cache()
+
+    def tearDown(self):
+        generate.CORE_SCHEMAS = self.original_core_schemas
+        generate.SUPPORT_SCHEMAS = self.original_support_schemas
+        generate.TOOL_SCHEMAS = self.original_tool_schemas
+        generate.WEBHOOK_SCHEMAS = self.original_webhook_schemas
+        generate.INLINE_SCHEMA_TYPES = self.original_inline_schema_types
+        generate.UNION_SCHEMA_TYPES = self.original_union_schema_types
+        generate.KNOWN_TYPES = self.original_known_types
+        generate.load_schema = self.original_load_schema
+        generate.schema_exists = self.original_schema_exists
+        generate.ref_to_schema_path = self.original_ref_to_schema_path
+        generate._reset_will_generate_cache()
+
+    def install_schema_fixture(self, schemas, core=None, tool=None):
+        generate.CORE_SCHEMAS = list(core or [])
+        generate.SUPPORT_SCHEMAS = []
+        generate.TOOL_SCHEMAS = list(tool or [])
+        generate.WEBHOOK_SCHEMAS = []
+        generate.INLINE_SCHEMA_TYPES = OrderedDict()
+        generate.UNION_SCHEMA_TYPES = OrderedDict()
+        generate.KNOWN_TYPES = set()
+
+        def schema_exists(path):
+            return path in schemas
+
+        def load_schema(path):
+            return schemas[path]
+
+        def ref_to_schema_path(ref):
+            prefix = "/schemas/test/"
+            if not isinstance(ref, str) or not ref.startswith(prefix):
+                return None
+            path = ref[len(prefix):].split("#", 1)[0]
+            return path if path in schemas else None
+
+        generate.schema_exists = schema_exists
+        generate.load_schema = load_schema
+        generate.ref_to_schema_path = ref_to_schema_path
+        generate._reset_will_generate_cache()
+
+    def test_auto_ref_discovery_exports_only_clean_reachable_object_types(self):
+        paths = set(generate.auto_ref_schema_paths())
+
+        self.assertIn("core/creative-variable.json", paths)
+        self.assertIn("core/media-buy-features.json", paths)
+        self.assertNotIn("content-standards/artifact.json", paths)
+        self.assertNotIn("core/overlay.json", paths)
+
+        unreviewed_auto_ref = [
+            (record["type"], record["json"], record["reason"])
+            for record in generate.any_coverage_report()["records"]
+            if record["section"] == "auto_ref" and not record["allowed"]
+        ]
+        self.assertEqual([], unreviewed_auto_ref)
+
+    def test_discriminated_oneof_object_refs_are_auto_generatable(self):
+        schema = {
+            "discriminator": {"propertyName": "scope"},
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"const": "product"},
+                        "signal_id": {"type": "string"},
+                    },
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"const": "data_provider"},
+                        "data_provider_domain": {"type": "string"},
+                    },
+                },
+            ],
+        }
+
+        self.assertTrue(generate.can_auto_generate_ref_schema(schema))
+
+    def test_local_string_schema_refs_resolve_to_string(self):
+        go_type, reason = generate.resolve_go_type_info({
+            "$ref": "/schemas/test/core/x-entity-types.json",
+        })
+
+        self.assertEqual("string", go_type)
+        self.assertIsNone(reason)
+
+    def test_validation_only_allof_resolves_to_ref_type(self):
+        go_type, reason = generate.resolve_go_type_info({
+            "allOf": [
+                {"$ref": "/schemas/test/core/publisher-property-selector.json"},
+                {"not": {"required": ["publisher_domains"]}},
+            ],
+        })
+
+        self.assertEqual("PublisherPropertySelector", go_type)
+        self.assertIsNone(reason)
+
+    def test_structural_allof_without_named_inline_type_stays_unreviewed(self):
+        go_type, reason = generate.resolve_go_type_info({
+            "allOf": [
+                {"$ref": "/schemas/test/core/account.json"},
+                {
+                    "type": "object",
+                    "properties": {
+                        "authorization": {"type": "string"},
+                    },
+                },
+            ],
+        })
+
+        self.assertEqual("any", go_type)
+        self.assertEqual("unsupported_allOf", reason)
+
+    def test_auto_ref_discovery_traverses_unemitted_wrapper_schemas(self):
+        self.install_schema_fixture(
+            {
+                "root.json": {
+                    "type": "object",
+                    "properties": {
+                        "wrapper": {"$ref": "/schemas/test/wrapper.json"},
+                    },
+                },
+                "wrapper.json": {
+                    "type": "object",
+                    "properties": {
+                        "leaf": {"$ref": "/schemas/test/leaf.json"},
+                        "open": {
+                            "type": "object",
+                            "properties": {
+                                "nested": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+                "leaf.json": {
+                    "type": "object",
+                    "properties": {
+                        "leaf_id": {"type": "string"},
+                    },
+                },
+            },
+            core=["root.json"],
+        )
+
+        self.assertEqual(("leaf.json",), generate.auto_ref_schema_paths())
+
+    def test_auto_ref_filter_is_fixed_point_for_dropped_peer_refs(self):
+        self.install_schema_fixture(
+            {
+                "root.json": {
+                    "type": "object",
+                    "properties": {
+                        "a": {"$ref": "/schemas/test/a.json"},
+                    },
+                },
+                "a.json": {
+                    "type": "object",
+                    "properties": {
+                        "b": {"$ref": "/schemas/test/b.json"},
+                    },
+                },
+                "b.json": {
+                    "type": "object",
+                    "properties": {
+                        "open": {
+                            "type": "object",
+                            "properties": {
+                                "nested": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+            core=["root.json"],
+        )
+
+        self.assertEqual((), generate.auto_ref_schema_paths())
+
+    def test_auto_ref_discovery_fails_on_name_collision(self):
+        self.install_schema_fixture(
+            {
+                "root.json": {
+                    "type": "object",
+                    "properties": {
+                        "a": {"$ref": "/schemas/test/alpha/shared.json"},
+                        "b": {"$ref": "/schemas/test/beta/shared.json"},
+                    },
+                },
+                "alpha/shared.json": {
+                    "type": "object",
+                    "properties": {"a": {"type": "string"}},
+                },
+                "beta/shared.json": {
+                    "type": "object",
+                    "properties": {"b": {"type": "string"}},
+                },
+            },
+            core=["root.json"],
+        )
+
+        with self.assertRaisesRegex(ValueError, "auto-discovered schema type name collision"):
+            generate.auto_ref_schema_paths()
+
+    def test_tool_allof_schema_is_generated_and_covered(self):
+        self.install_schema_fixture(
+            {
+                "tool.json": {
+                    "allOf": [
+                        {
+                            "type": "object",
+                            "properties": {"id": {"type": "string"}},
+                            "required": ["id"],
+                        },
+                        {
+                            "type": "object",
+                            "properties": {"name": {"type": "string"}},
+                        },
+                    ],
+                },
+            },
+            tool=["tool.json"],
+        )
+
+        entries = list(generate.generated_schema_entries())
+
+        self.assertEqual(1, len(entries))
+        self.assertEqual("Tool", entries[0]["name"])
+        self.assertEqual("struct", entries[0]["kind"])
+        generated = generate.schema_to_struct("Tool", entries[0]["schema_obj"])
+        self.assertIn("ID string `json:\"id\"`", generated)
+        self.assertIn("Name string `json:\"name,omitempty\"`", generated)
+
+
 class PackageSchemaOwnershipTest(unittest.TestCase):
     def assert_generated_struct_fields(self, schema_path, type_name, expected_fields):
         schema = generate.load_schema(schema_path)
