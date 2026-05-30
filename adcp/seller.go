@@ -42,10 +42,17 @@ func Register(server *mcp.Server, cfg Config) {
 
 	// Capabilities (always registered)
 	AddTool(server, "get_adcp_capabilities", "Returns agent capabilities",
-		func(ctx context.Context, req *mcp.CallToolRequest, input struct {
-			Context any `json:"context,omitempty"`
-		}) (*mcp.CallToolResult, any, error) {
-			result, out, err := CapabilitiesResponse(caps)
+		func(ctx context.Context, req *mcp.CallToolRequest, input GetAdcpCapabilitiesRequest) (*mcp.CallToolResult, any, error) {
+			data, ok := capabilitiesForVersion(caps, input.AdcpVersion, input.AdcpMajorVersion)
+			if !ok {
+				result, out, err := Errorf("VERSION_UNSUPPORTED", ErrorOptions{
+					Message:    "unsupported AdCP version",
+					Suggestion: "Call get_adcp_capabilities without a version pin to discover supported_versions.",
+					Details:    map[string]any{"supported_versions": caps.ADCP.SupportedVersions, "supported_majors": caps.ADCP.MajorVersions},
+				})
+				return attachContext(result, input.Context), out, err
+			}
+			result, out, err := CapabilitiesResponse(data)
 			return attachContext(result, input.Context), out, err
 		})
 
@@ -463,6 +470,19 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 	if len(caps.ADCP.MajorVersions) == 0 {
 		caps.ADCP.MajorVersions = []int{3}
 	}
+	if len(caps.ADCP.SupportedVersions) == 0 {
+		caps.ADCP.SupportedVersions = SupportedADCPVersions()
+	}
+	if caps.AdcpVersion == "" {
+		if version, ok := NegotiateADCPVersion("", 0, caps.ADCP.SupportedVersions); ok {
+			caps.AdcpVersion = version
+		}
+	}
+	if caps.AdcpMajorVersion == 0 {
+		if major, ok := MajorFromADCPVersion(caps.AdcpVersion); ok {
+			caps.AdcpMajorVersion = major
+		}
+	}
 	if existing := caps.ADCP.Idempotency.ReplayTTLSeconds; existing != 0 && existing != ttlSeconds {
 		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL (%ds) conflicts with Capabilities.ADCP.Idempotency.ReplayTTLSeconds (%ds) — set one or the other, not both", ttlSeconds, existing))
 	}
@@ -475,4 +495,28 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 		panic("adcp.Register: no supported_protocols — wire at least one handler (e.g. GetProducts) or set Capabilities.SupportedProtocols; AdCP 3.0 requires minItems: 1")
 	}
 	return &caps
+}
+
+func capabilitiesForVersion(base *CapabilitiesData, requestedVersion string, requestedMajor int) (*CapabilitiesData, bool) {
+	if base == nil || base.ADCP == nil {
+		return nil, false
+	}
+	servedVersion, ok := NegotiateADCPVersion(requestedVersion, requestedMajor, base.ADCP.SupportedVersions)
+	if !ok {
+		return nil, false
+	}
+	major, ok := MajorFromADCPVersion(servedVersion)
+	if !ok {
+		return nil, false
+	}
+
+	caps := *base
+	adcpCaps := *base.ADCP
+	adcpCaps.MajorVersions = append([]int(nil), base.ADCP.MajorVersions...)
+	adcpCaps.SupportedVersions = append([]string(nil), base.ADCP.SupportedVersions...)
+	caps.ADCP = &adcpCaps
+	caps.SupportedProtocols = append([]string(nil), base.SupportedProtocols...)
+	caps.AdcpVersion = servedVersion
+	caps.AdcpMajorVersion = major
+	return &caps, true
 }
