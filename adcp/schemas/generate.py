@@ -1040,6 +1040,41 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
 ])
 
+INLINE_SCHEMA_DESCRIPTIONS = {
+    'GetSignalsResponseSignal': (
+        'GetSignals response row with listing identity, enrichment, activation, and pricing fields.'
+    ),
+    'SignalCoverageForecastScope': 'Explicit denominator for the coverage forecast.',
+}
+
+FIELD_DESCRIPTION_OVERRIDES = {
+    ('GetAdcpCapabilitiesResponse', 'supported_protocols'): 'AdCP protocols this agent supports.',
+}
+
+ENUM_DESCRIPTION_OVERRIDES = {
+    'ProposalStatus': 'Lifecycle status of a proposal.',
+}
+
+FIELD_DESCRIPTION_FALLBACK_SPECS = {
+    ('GetSignalsResponseSignal', name): f'core/signal-definition.json#/properties/{name}'
+    for name in (
+        'segmentation_criteria',
+        'criteria_url',
+        'data_sources',
+        'methodology',
+        'audience_expansion',
+        'device_expansion',
+        'refresh_cadence',
+        'lookback_window',
+        'onboarder',
+        'countries',
+        'consent_basis',
+        'art9_basis',
+        'modeling',
+        'dts_compliant_version',
+    )
+}
+
 # Inline object helpers generated as plain structs drop unknown properties on
 # unmarshal/remarshal. Closed registrations are only safe while the schema keeps
 # `additionalProperties: false`; open registrations are explicit so a new inline
@@ -1823,6 +1858,25 @@ def safe_comment(text, max_len=80):
         return cutoff[:word_end].rstrip(' ,;:-')
     return cutoff
 
+def field_description(type_name, json_name, prop):
+    """Return the preferred field description, including reviewed fallbacks."""
+    override = FIELD_DESCRIPTION_OVERRIDES.get((type_name, json_name))
+    if override:
+        return override
+    desc = prop.get('description', '')
+    if desc:
+        return desc
+    spec = FIELD_DESCRIPTION_FALLBACK_SPECS.get((type_name, json_name))
+    if not spec:
+        return ''
+    try:
+        fallback = load_schema_spec(spec)
+    except SCHEMA_RESOLUTION_ERRORS:
+        return ''
+    if isinstance(fallback, dict):
+        return fallback.get('description', '')
+    return ''
+
 def deprecated_comment(prop):
     """Return the Go deprecation notice for a deprecated schema property."""
     if not prop.get('deprecated'):
@@ -2522,7 +2576,7 @@ def schema_to_struct(name, schema):
             tag += f',{omit}'
         tag += '"`'
 
-        desc = safe_comment(prop.get('description', ''), 80)
+        desc = safe_comment(field_description(name, json_name, prop), 80)
         comment = f' // {desc}' if desc else ''
 
         deprecated = deprecated_comment(prop)
@@ -2530,7 +2584,10 @@ def schema_to_struct(name, schema):
             fields.append(f'\t// {deprecated}')
         fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
-    desc = safe_comment(schema.get('description', ''), 100)
+    desc = safe_comment(
+        INLINE_SCHEMA_DESCRIPTIONS.get(name, '') or schema.get('description', ''),
+        100,
+    )
     doc = f'// {name} — {desc}\n' if desc else ''
     return f'{doc}type {name} struct {{\n' + '\n'.join(fields) + '\n}\n'
 
@@ -2717,6 +2774,7 @@ def enum_to_type(name, desc, values):
     lines = []
     members = enum_members(name, values)
 
+    desc = ENUM_DESCRIPTION_OVERRIDES.get(name, desc)
     lines.append(f'// {name} — {safe_comment(desc, 80)}' if desc else f'// {name} enum values')
     lines.append(f'type {name} = string')
     lines.append('const (')

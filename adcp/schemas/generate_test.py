@@ -101,6 +101,16 @@ class CommentGenerationTest(unittest.TestCase):
 
         self.assertEqual("Line one. Line two. Line three.", comment)
 
+    def test_enum_description_override_avoids_dangling_docs(self):
+        src = generate.enum_to_type(
+            "ProposalStatus",
+            "Lifecycle status of a proposal. This is the per-proposal signal for whether finalization is required before create_media_buy.",
+            ["draft", "committed"],
+        )
+
+        self.assertIn("// ProposalStatus — Lifecycle status of a proposal.", src)
+        self.assertNotIn("whether", src.splitlines()[0])
+
 
 class UnionHelperGenerationTest(unittest.TestCase):
     def setUp(self):
@@ -1878,6 +1888,32 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("GetSignalsResponse", "signals"), records)
         self.assertNotIn(("GetSignalsResponseSignal", "coverage_forecast"), records)
         self.assertNotIn(("SignalCoverageForecast", "scope"), records)
+
+        get_signals = generate.load_schema("signals/get-signals-response.json")
+        go_type, reason = generate.field_go_type_info(
+            "GetSignalsResponse",
+            "signals",
+            get_signals["properties"]["signals"],
+            set(),
+        )
+        self.assertEqual("[]GetSignalsResponseSignal", go_type)
+        self.assertIsNone(reason)
+
+        signal_item = generate.load_schema_spec(
+            "signals/get-signals-response.json#/properties/signals/items",
+        )
+        generated_signal = generate.schema_to_struct(
+            "GetSignalsResponseSignal",
+            signal_item,
+        )
+        self.assertIn(
+            "// GetSignalsResponseSignal — GetSignals response row with listing identity",
+            generated_signal,
+        )
+        self.assertIn(
+            "SegmentationCriteria string `json:\"segmentation_criteria,omitempty\"` // Rules governing inclusion",
+            generated_signal,
+        )
 
         allowed = [
             (record["type"], record["json"], record["allowance"])
