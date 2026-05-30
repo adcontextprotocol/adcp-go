@@ -7047,6 +7047,21 @@ type Talent struct {
 	BrandURL string     `json:"brand_url,omitempty"` // URL to this person's brand.json entry. Enables buyer agents to evaluate the
 }
 
+// Artifact — Content artifact for safety and suitability evaluation. An artifact represents content adjacent to
+type Artifact struct {
+	PropertyRID    string               `json:"property_rid"`               // Stable property identifier from the property catalog. Globally unique across
+	ArtifactID     string               `json:"artifact_id"`                // Identifier for this artifact within the property. The property owner defines
+	VariantID      string               `json:"variant_id,omitempty"`       // Identifies a specific variant of this artifact. Use for A/B tests
+	FormatID       *FormatRef           `json:"format_id,omitempty"`        // Always a structured object {agent_url, id} — never a plain string. Optional
+	URL            string               `json:"url,omitempty"`              // Optional URL for this artifact (web page, podcast feed, video page). Not all
+	PublishedTime  string               `json:"published_time,omitempty"`   // When the artifact was published (ISO 8601 format)
+	LastUpdateTime string               `json:"last_update_time,omitempty"` // When the artifact was last modified (ISO 8601 format)
+	Assets         []any                `json:"assets"`                     // Artifact assets in document flow order - text blocks, images, video, audio
+	Metadata       *ArtifactMetadata    `json:"metadata,omitempty"`         // Rich metadata extracted from the artifact
+	Provenance     *Provenance          `json:"provenance,omitempty"`       // Provenance metadata for this artifact. Serves as the default provenance for
+	Identifiers    *ArtifactIdentifiers `json:"identifiers,omitempty"`      // Platform-specific identifiers for this artifact
+}
+
 // AdInventoryConfig — Break-based ad inventory configuration for an installment. Describes the ad breaks available
 type AdInventoryConfig struct {
 	ExpectedBreaks       int      `json:"expected_breaks"`                   // Number of planned ad breaks in the installment
@@ -7825,6 +7840,32 @@ type SignalCoverageForecastScope struct {
 	Countries     []string   `json:"countries,omitempty"`       // Countries included in the denominator, as ISO 3166-1 alpha-2 codes.
 	LineItemTypes []string   `json:"line_item_types,omitempty"` // Seller or ad-server line item types included in the denominator.
 	DateRange     *DateRange `json:"date_range,omitempty"`      // Historical or planned date window used to compute the denominator.
+}
+
+type ArtifactWebhookArtifact struct {
+	Artifact     Artifact `json:"artifact"`                // The content artifact
+	DeliveredAt  string   `json:"delivered_at"`            // When the impression was delivered (ISO 8601)
+	ImpressionID string   `json:"impression_id,omitempty"` // Optional impression identifier for correlation with delivery reports
+	PackageID    string   `json:"package_id,omitempty"`    // Package within the media buy this artifact relates to
+}
+
+// ArtifactMetadata — Rich metadata extracted from the artifact
+type ArtifactMetadata struct {
+	Canonical   string           `json:"canonical,omitempty"`    // Canonical URL
+	Author      string           `json:"author,omitempty"`       // Artifact author name
+	Keywords    string           `json:"keywords,omitempty"`     // Artifact keywords
+	OpenGraph   map[string]any   `json:"open_graph,omitempty"`   // Open Graph protocol metadata
+	TwitterCard map[string]any   `json:"twitter_card,omitempty"` // Twitter Card metadata
+	JSONLd      []map[string]any `json:"json_ld,omitempty"`      // JSON-LD structured data (schema.org)
+}
+
+// ArtifactIdentifiers — Platform-specific identifiers for this artifact
+type ArtifactIdentifiers struct {
+	ApplePodcastID      string `json:"apple_podcast_id,omitempty"`      // Apple Podcasts ID
+	SpotifyCollectionID string `json:"spotify_collection_id,omitempty"` // Spotify collection ID
+	PodcastGuid         string `json:"podcast_guid,omitempty"`          // Podcast GUID (from RSS feed)
+	YoutubeVideoID      string `json:"youtube_video_id,omitempty"`      // YouTube video ID
+	RssURL              string `json:"rss_url,omitempty"`               // RSS feed URL
 }
 
 // AuditObservationDetails — Audit-safe structured details. Mirrors the safe allowlist keys used for
@@ -9933,13 +9974,13 @@ type ActivateSignalRequest struct {
 
 // ComplyTestControllerRequest — Request payload for the comply_test_controller tool. Triggers seller-side state transitions for
 type ComplyTestControllerRequest struct {
-	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	Scenario         string `json:"scenario"`                     // Test scenario to execute. 'list_scenarios' discovers supported scenarios.
-	Params           any    `json:"params,omitempty"`             // Scenario-specific parameters. Required for all scenarios except list_scenarios.
-	Context          any    `json:"context,omitempty"`
-	Ext              any    `json:"ext,omitempty"`
-	Account          any    `json:"account"` // Sandbox account assertion. The runner MUST set sandbox: true on every
+	AdcpVersion      string         `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int            `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Scenario         string         `json:"scenario"`                     // Test scenario to execute. 'list_scenarios' discovers supported scenarios.
+	Params           map[string]any `json:"params,omitempty"`             // Scenario-specific parameters. Required for all scenarios except list_scenarios.
+	Context          any            `json:"context,omitempty"`
+	Ext              any            `json:"ext,omitempty"`
+	Account          any            `json:"account"` // Sandbox account assertion. The runner MUST set sandbox: true on every
 }
 
 // ComplyTestControllerResponse is a discriminated union — use one of the generated variant structs.
@@ -10278,7 +10319,7 @@ type ArtifactWebhookPayload struct {
 	MediaBuyID     string                     `json:"media_buy_id"`         // Media buy identifier these artifacts belong to
 	BatchID        string                     `json:"batch_id"`             // Unique identifier for this batch of artifacts. Use for deduplication and
 	Timestamp      string                     `json:"timestamp"`            // When this batch was generated (ISO 8601)
-	Artifacts      []any                      `json:"artifacts"`            // Content artifacts from delivered impressions
+	Artifacts      []ArtifactWebhookArtifact  `json:"artifacts"`            // Content artifacts from delivered impressions
 	Pagination     *ArtifactWebhookPagination `json:"pagination,omitempty"` // Pagination info when batching large artifact sets
 	Ext            any                        `json:"ext,omitempty"`
 }

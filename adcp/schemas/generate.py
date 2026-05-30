@@ -277,6 +277,7 @@ CORE_SCHEMAS = [
     "core/installment.json",
     "core/special.json",
     "core/talent.json",
+    "content-standards/artifact.json",
     "core/ad-inventory-config.json",
     "core/account-authorization.json",
     "core/committed-metric.json",
@@ -435,6 +436,18 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     (
         "SignalCoverageForecastScope",
         "core/signal-coverage-forecast.json#/properties/scope",
+    ),
+    (
+        "ArtifactWebhookArtifact",
+        "content-standards/artifact-webhook-payload.json#/properties/artifacts/items",
+    ),
+    (
+        "ArtifactMetadata",
+        "content-standards/artifact.json#/properties/metadata",
+    ),
+    (
+        "ArtifactIdentifiers",
+        "content-standards/artifact.json#/properties/identifiers",
     ),
     (
         "AuditObservationDetails",
@@ -1251,6 +1264,9 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'OptimizationGoalAttributionWindow',
     'ListCreativesSort',
     'ArtifactWebhookPagination',
+    'ArtifactWebhookArtifact',
+    'ArtifactMetadata',
+    'ArtifactIdentifiers',
     'PlannedDeliveryGeo',
     'CreativeBriefMessaging',
     'CreativeBriefCompliance',
@@ -1624,6 +1640,7 @@ INLINE_TYPE_HINTS = {
     ('GetProductsRequest', 'refine'): 'GetProductsRefineItem',
     ('GetProductsResponse', 'refinement_applied'): 'GetProductsRefinementAppliedItem',
     ('ArtifactWebhookPayload', 'pagination'): '*ArtifactWebhookPagination',
+    ('ArtifactWebhookPayload', 'artifacts'): 'ArtifactWebhookArtifact',
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
     ('Product', 'product_card'): '*ProductCard',
     ('Product', 'product_card_detailed'): '*ProductCardDetailed',
@@ -1638,6 +1655,9 @@ INLINE_TYPE_HINTS = {
     ('CreativeAsset', 'provenance'): '*Provenance',
     ('CreativeManifest', 'provenance'): '*Provenance',
     ('Provenance', 'ai_tool'): '*ProvenanceAITool',
+    ('Artifact', 'metadata'): '*ArtifactMetadata',
+    ('Artifact', 'identifiers'): '*ArtifactIdentifiers',
+    ('ComplyTestControllerRequest', 'params'): 'map[string]any',
     ('Provenance', 'declared_by'): '*ProvenanceDeclaredBy',
     ('Provenance', 'c2pa'): '*ProvenanceC2PA',
     ('Provenance', 'disclosure'): '*ProvenanceDisclosure',
@@ -1838,6 +1858,11 @@ INTENTIONAL_ANY_FIELDS = {
     ('GetProductsResponse', 'extensions'): 'response extensions are seller-defined extension payloads',
     ('FilterExclusionDiagnostic', 'values'): 'filter diagnostic values are filter-specific strings or objects',
     ('ComplyTestControllerRequest', 'account'): 'compliance controller account selectors are scenario-specific',
+    ('Artifact', 'assets'): 'artifact assets are a discriminated content union',
+    ('ArtifactMetadata', 'open_graph'): 'Open Graph metadata accepts arbitrary protocol properties',
+    ('ArtifactMetadata', 'twitter_card'): 'Twitter Card metadata accepts arbitrary card properties',
+    ('ArtifactMetadata', 'json_ld'): 'JSON-LD entries are schema.org objects with arbitrary properties',
+    ('ComplyTestControllerRequest', 'params'): 'compliance controller params are scenario-specific and must preserve explicit scalar values',
 }
 
 # Enum schemas
