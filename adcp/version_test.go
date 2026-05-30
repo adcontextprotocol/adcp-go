@@ -67,6 +67,29 @@ func TestNegotiateADCPVersion(t *testing.T) {
 	}
 }
 
+func TestNegotiateADCPVersionMajorPresence(t *testing.T) {
+	tests := []struct {
+		name string
+		req  adcpVersionRequest
+		want string
+		ok   bool
+	}{
+		{name: "omitted major defaults highest", req: adcpVersionRequest{}, want: "3.1", ok: true},
+		{name: "explicit zero major is invalid", req: adcpVersionRequest{major: 0, majorProvided: true}, ok: false},
+		{name: "negative major is invalid", req: adcpVersionRequest{major: -1, majorProvided: true}, ok: false},
+		{name: "unsupported positive major is invalid", req: adcpVersionRequest{major: 4, majorProvided: true}, ok: false},
+		{name: "supported major selects highest matching release", req: adcpVersionRequest{major: 3, majorProvided: true}, want: "3.1", ok: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := negotiateADCPVersion(tt.req, nil)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestGeneratedRequestsDecode30And31VersionEnvelopes(t *testing.T) {
 	var products GetProductsRequest
 	require.NoError(t, json.Unmarshal([]byte(`{

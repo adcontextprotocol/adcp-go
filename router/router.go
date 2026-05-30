@@ -429,18 +429,19 @@ func mergeContextResponses(requestID string, responses []*tmproto.ContextMatchRe
 // mergeIdentityResponses combines eligibility from multiple providers.
 // Packages are provider-specific — duplicates across providers are a config error.
 // Merge is union: a package listed by any provider is eligible.
-// TTL: minimum across providers. TMPX: collected per provider ID.
+// Serve window: minimum across providers so the merged response preserves the
+// most restrictive buyer throttle. TMPX: collected per provider ID.
 func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
-	minTTL := -1
+	minServeWindowSec := -1
 	var tmpx string
 
 	for _, resp := range responses {
 		if resp.Tmpx != "" {
 			tmpx = resp.Tmpx
 		}
-		if minTTL < 0 || resp.ServeWindowSec < minTTL {
-			minTTL = resp.ServeWindowSec
+		if minServeWindowSec < 0 || resp.ServeWindowSec < minServeWindowSec {
+			minServeWindowSec = resp.ServeWindowSec
 		}
 		for _, pkgID := range resp.EligiblePackageIDs {
 			eligibleSet[pkgID] = struct{}{}
@@ -453,15 +454,15 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 	}
 	sort.Strings(eligible)
 
-	if minTTL < 0 {
-		minTTL = 0
+	if minServeWindowSec < 0 {
+		minServeWindowSec = 0
 	}
 
 	merged := &tmproto.IdentityMatchResponse{
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     minTTL,
+		ServeWindowSec:     minServeWindowSec,
 		Tmpx:               tmpx,
 	}
 	return merged
