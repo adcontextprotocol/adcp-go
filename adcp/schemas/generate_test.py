@@ -965,6 +965,81 @@ class InlineObjectGenerationTest(unittest.TestCase):
             filters_generated,
         )
 
+    def test_governance_finding_schema_assumptions_match_go_hints(self):
+        severity_specs = [
+            (
+                "CheckGovernanceFinding",
+                "governance/check-governance-response.json#/properties/findings/items",
+            ),
+            (
+                "ReportPlanOutcomeFinding",
+                "governance/report-plan-outcome-response.json#/properties/findings/items",
+            ),
+        ]
+        for type_name, schema_spec in severity_specs:
+            with self.subTest(type=type_name):
+                schema = generate.load_schema_spec(schema_spec)
+                prop = schema["properties"]["severity"]
+                self.assertEqual(
+                    "enums/escalation-severity.json",
+                    generate.ref_to_schema_path(prop["$ref"]),
+                    (
+                        f"{schema_spec}/properties/severity must keep resolving "
+                        "to EscalationSeverity; update Go typing, migration docs, "
+                        "or protocol schema if this changes"
+                    ),
+                )
+                go_type, reason = generate.field_go_type_info(
+                    type_name,
+                    "severity",
+                    prop,
+                    generate.schema_required_names(schema),
+                )
+                self.assertEqual("EscalationSeverity", go_type)
+                self.assertIsNone(reason)
+
+        check_schema_spec = (
+            "governance/check-governance-response.json#/properties/findings/items"
+        )
+        check_schema = generate.load_schema_spec(check_schema_spec)
+        confidence = check_schema["properties"]["confidence"]
+        self.assertEqual(
+            "number",
+            confidence.get("type"),
+            (
+                f"{check_schema_spec}/properties/confidence must stay numeric; "
+                "update Go typing, migration docs, or protocol schema if this changes"
+            ),
+        )
+        self.assertEqual(
+            0,
+            confidence.get("minimum"),
+            (
+                f"{check_schema_spec}/properties/confidence must keep inclusive "
+                "minimum 0; update Go typing, migration docs, or protocol schema "
+                "if this changes"
+            ),
+        )
+        self.assertEqual(
+            1,
+            confidence.get("maximum"),
+            (
+                f"{check_schema_spec}/properties/confidence must keep inclusive "
+                "maximum 1; update Go typing, migration docs, or protocol schema "
+                "if this changes"
+            ),
+        )
+        self.assertNotIn("exclusiveMinimum", confidence)
+        self.assertNotIn("exclusiveMaximum", confidence)
+        go_type, reason = generate.field_go_type_info(
+            "CheckGovernanceFinding",
+            "confidence",
+            confidence,
+            generate.schema_required_names(check_schema),
+        )
+        self.assertEqual("*float64", go_type)
+        self.assertIsNone(reason)
+
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
             "creative/list-creatives-request.json#/properties/sort",
