@@ -930,6 +930,21 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "*ArtifactWebhookPagination",
         )
         self.assert_field_type(
+            "content-standards/artifact-webhook-payload.json",
+            "ArtifactWebhookPayload",
+            "artifacts",
+            "[]ArtifactWebhookArtifact",
+        )
+        compliance_request = generate.load_schema("compliance/comply-test-controller-request.json")
+        params_type, params_reason = generate.field_go_type_info(
+            "ComplyTestControllerRequest",
+            "params",
+            compliance_request["properties"]["params"],
+            generate.schema_required_names(compliance_request),
+        )
+        self.assertEqual("map[string]any", params_type)
+        self.assertEqual("inline_type_hint", params_reason)
+        self.assert_field_type(
             "core/performance-feedback.json",
             "PerformanceFeedback",
             "measurement_period",
@@ -1853,9 +1868,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
             for record in generate.any_coverage_report()["records"]
             if not record["allowed"]
         ]
+        self.assertEqual([], records)
 
         self.assertNotIn(("ListCreativesRequest", "sort"), records)
         self.assertNotIn(("ArtifactWebhookPayload", "pagination"), records)
+        self.assertNotIn(("ArtifactWebhookPayload", "artifacts"), records)
+        self.assertNotIn(("ComplyTestControllerRequest", "params"), records)
         self.assertNotIn(("PerformanceFeedback", "measurement_period"), records)
         self.assertNotIn(("PlannedDelivery", "geo"), records)
         self.assertNotIn(("Account", "setup"), records)
@@ -1973,6 +1991,22 @@ class InlineObjectGenerationTest(unittest.TestCase):
                 "MCPWebhookPayload",
                 "result",
                 "core/async-response-data.json is a task-specific response union",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "Artifact",
+                "assets",
+                "artifact assets are a discriminated content union",
+            ),
+            allowed,
+        )
+        self.assertIn(
+            (
+                "ComplyTestControllerRequest",
+                "params",
+                "compliance controller params are scenario-specific and must preserve explicit scalar values",
             ),
             allowed,
         )

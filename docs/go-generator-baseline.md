@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 2
+python3 generate.py --coverage-max-unreviewed-any 0
 ```
 
-The generator currently reports 214 generated dynamic `any` uses:
+The generator currently reports 217 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 212 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 2 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 217 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 0 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 2
+python3 generate.py --coverage-max-unreviewed-any 0
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -52,25 +52,22 @@ the new dynamic shape is reviewed in the same PR.
 
 ## Unreviewed `any` Baseline
 
-| Surface | JSON field | Go type | Reason | Schema |
-| --- | --- | --- | --- | --- |
-| `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
-| `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
+There are no unreviewed generated `any` fallbacks. New dynamic fields must be
+typed or reviewed as intentional escape hatches in the same PR that introduces
+them.
 
 ## Work Queues
 
 ### Inline Object Generation
 
-This is the largest generator gap: 2 unreviewed fallbacks are direct inline
-objects or arrays of inline objects. The generator needs stable naming for
+The generator now covers the known schema-owned inline objects. Continued work
+should focus on making inline ownership less manual: stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
 
-The first reduction passes typed low-risk leaf objects. Continue with inline
-objects that have stable, schema-owned property sets. The remaining inline
-object fallbacks mix genuinely open/controller payloads, inline unions, and
-schema-closed artifacts; keep those classes separate so the generator backlog
-does not turn typed object work into protocol-design work.
+Keep genuinely open/controller payloads, inline unions, and schema-closed
+artifacts separate so the generator backlog does not turn typed object work into
+protocol-design work.
 
 ### Top-Level Unions
 
