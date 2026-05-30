@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 8
+python3 generate.py --coverage-max-unreviewed-any 4
 ```
 
-The generator currently reports 219 generated dynamic `any` uses:
+The generator currently reports 215 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 8 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 4 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 8
+python3 generate.py --coverage-max-unreviewed-any 4
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -42,9 +42,9 @@ the new dynamic shape is reviewed in the same PR.
   numeric values follow `encoding/json` and become `float64`.
 - Inline object fallbacks are generator limitations unless the schema explicitly
   models open-ended data.
-- Top-level `oneOf` aliases are generator limitations. They need generated
-  result interfaces, concrete variants, and discriminator-aware marshal/unmarshal
-  helpers.
+- Top-level `oneOf` response schemas are generated as closed Go interfaces with
+  schema-owned concrete variants. Add discriminator-aware marshal/unmarshal
+  helpers only when a caller needs to decode directly into the interface type.
 - Unknown `$ref` fallbacks are generator registry limitations unless the target
   schema is intentionally open.
 - Unspecified schema types are schema limitations first. Resolve them upstream or
@@ -54,13 +54,9 @@ the new dynamic shape is reviewed in the same PR.
 
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
-| `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
 | `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
 | `GetProductsResponse.RefinementApplied` | `refinement_applied` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-response.json` |
-| `CreateMediaBuyResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/create-media-buy-response.json` |
-| `ProvidePerformanceFeedbackResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/provide-performance-feedback-response.json` |
 | `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
-| `ComplyTestControllerResponse` | n/a | `any` | `top_level_oneOf_alias` | `compliance/comply-test-controller-response.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
 ## Work Queues
@@ -80,15 +76,11 @@ does not turn typed object work into protocol-design work.
 
 ### Top-Level Unions
 
-Four response schemas still become `type X = any`:
-
-- `SyncGovernanceResponse`
-- `CreateMediaBuyResponse`
-- `ProvidePerformanceFeedbackResponse`
-- `ComplyTestControllerResponse`
-
-These need a generated union interface and concrete branch types, matching the
-hand-written pattern already used for selected oneOf responses.
+Top-level response `oneOf` schemas now generate closed interfaces and concrete
+branch types instead of `type X = any`. The remaining follow-up is optional
+discriminator-aware unmarshal support for callers that want to decode directly
+into the interface type instead of unmarshalling into a concrete branch or
+`json.RawMessage` first.
 
 ### Unknown References
 
@@ -107,9 +99,10 @@ aggregates, missing metrics, signal targeting, forecast dimensions, provenance
 audit observations, wholesale-feed capability blocks, and the newly named
 inline delivery/reporting helper shapes.
 
-The rc.3 integration reduced unreviewed generated `any` fallbacks from the
-3.0.12 baseline of 15 to 13 while adding the 3.1 protocol surface. The remaining
-items are intentionally tracked as generator work, not schema drift.
+The rc.3 integration and subsequent generator passes reduced unreviewed
+generated `any` fallbacks from the 3.0.12 baseline of 15 to 4 while adding the
+3.1 protocol surface. The remaining items are intentionally tracked as
+generator work, not schema drift.
 
 ### Schema Clarification
 

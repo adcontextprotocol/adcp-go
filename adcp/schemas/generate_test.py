@@ -593,6 +593,137 @@ class StructGenerationTest(unittest.TestCase):
         )
 
 
+class TopLevelUnionGenerationTest(unittest.TestCase):
+    def test_union_interface_uses_generated_variant_markers(self):
+        schema = {
+            "oneOf": [
+                {
+                    "title": "TestSuccess",
+                    "type": "object",
+                    "properties": {"success": {"type": "boolean"}},
+                },
+                {
+                    "title": "TestError",
+                    "type": "object",
+                    "properties": {"errors": {"type": "array", "items": {}}},
+                },
+            ],
+        }
+
+        interface_src = generate.union_interface_to_type("TestResponse", schema)
+        marker_src = generate.union_marker_methods("TestResponse", schema)
+
+        self.assertIn("type TestResponse interface", interface_src)
+        self.assertIn("\tisTestResponse()", interface_src)
+        self.assertNotIn("type TestResponse = any", interface_src)
+        self.assertIn("func (TestSuccess) isTestResponse() {}", marker_src)
+        self.assertIn("func (TestError) isTestResponse() {}", marker_src)
+
+    def test_union_interface_rejects_unnamed_or_nonstruct_branches(self):
+        with self.assertRaisesRegex(ValueError, "branch 0 must have a title"):
+            generate.union_interface_to_type(
+                "TestResponse",
+                {"oneOf": [{"type": "object", "properties": {"ok": {"type": "boolean"}}}]},
+                "test/test-response.json",
+            )
+
+        with self.assertRaisesRegex(ValueError, "must define object properties"):
+            generate.union_interface_to_type(
+                "TestResponse",
+                {"oneOf": [{"title": "TestSuccess", "type": "string"}]},
+                "test/test-response.json",
+            )
+
+        with self.assertRaisesRegex(ValueError, "repeats variant TestSuccess"):
+            generate.union_interface_to_type(
+                "TestResponse",
+                {
+                    "oneOf": [
+                        {
+                            "title": "TestSuccess",
+                            "type": "object",
+                            "properties": {"ok": {"type": "boolean"}},
+                        },
+                        {
+                            "title": "TestSuccess",
+                            "type": "object",
+                            "properties": {"message": {"type": "string"}},
+                        },
+                    ],
+                },
+                "test/test-response.json",
+            )
+
+    def test_top_level_tool_union_generation_is_response_only(self):
+        schema = {
+            "oneOf": [
+                {
+                    "title": "TestSuccess",
+                    "type": "object",
+                    "properties": {"success": {"type": "boolean"}},
+                },
+            ],
+        }
+
+        self.assertEqual(
+            ["TestSuccess"],
+            generate.validate_top_level_tool_union(
+                "TestResponse",
+                schema,
+                "test/test-response.json",
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "top-level tool oneOf request"):
+            generate.validate_top_level_tool_union(
+                "TestRequest",
+                schema,
+                "test/test-request.json",
+            )
+
+    @unittest.skipUnless(shutil.which("go"), "go command not found")
+    def test_union_interface_runtime_accepts_values_and_pointers(self):
+        schema = {
+            "oneOf": [
+                {
+                    "title": "TestSuccess",
+                    "type": "object",
+                    "properties": {"success": {"type": "boolean"}},
+                },
+                {
+                    "title": "TestError",
+                    "type": "object",
+                    "properties": {"message": {"type": "string"}},
+                },
+            ],
+        }
+        generated = "\n".join([
+            generate.union_interface_to_type("TestResponse", schema),
+            generate.schema_to_struct("TestSuccess", schema["oneOf"][0]),
+            generate.schema_to_struct("TestError", schema["oneOf"][1]),
+            generate.union_marker_methods("TestResponse", schema),
+        ])
+        source = textwrap.dedent(f"""
+            package uniontest
+
+            import "testing"
+
+            {generated}
+
+            func TestUnionInterface(t *testing.T) {{
+                var _ TestResponse = TestSuccess{{}}
+                var _ TestResponse = &TestSuccess{{}}
+                var _ TestResponse = TestError{{}}
+                var _ TestResponse = &TestError{{}}
+            }}
+        """)
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(f"{tmp}/go.mod", "w") as f:
+                f.write("module uniontest\n\ngo 1.22\n")
+            with open(f"{tmp}/union_test.go", "w") as f:
+                f.write(source)
+            subprocess.run(["go", "test", "."], cwd=tmp, check=True)
+
+
 class OptimizationGoalSchemaTest(unittest.TestCase):
     def setUp(self):
         self.schema = generate.load_schema("core/optimization-goal.json")

@@ -35,7 +35,7 @@ SCHEMA_RESOLUTION_ERRORS = (
 # To remove a type from this list: the hand-written definition in types.go
 # (or inputs.go, etc.) must be deleted first, then the generator will emit
 # the type from its JSON schema. Types remain here when:
-#   - schema is oneOf with union fields (generator produces `type X = any`)
+#   - schema is oneOf with union fields that need hand-written flattening
 #   - type is an inline response-item with no standalone schema file
 #   - generator cannot produce the shape we want (nested inline arrays)
 #   - type has attached methods or helpers
@@ -52,8 +52,8 @@ KNOWN_TYPES = {
     'SignalPricing', 'ActivationKey', 'CatalogResult',
     'EventSourceResult', 'LogEventResult',
     'CheckGovernanceCondition',
-    # oneOf schemas — generator produces `type X = any`; hand-writing flattens
-    # the union into a single struct with all variant fields.
+    # oneOf schemas — hand-writing flattens the union into a single struct with
+    # all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
     'OptimizationGoal',
     'OptimizationGoalCostPerTarget', 'OptimizationGoalThresholdRateTarget',
@@ -2229,13 +2229,13 @@ def auto_ref_schema_paths():
 
 
 def _will_generate_set():
-    """Names (after REF_ALIASES) that this generator run will emit as structs.
+    """Names (after REF_ALIASES) that this generator run will emit.
     Used so `resolve_go_type` can typed-reference a schema-derived type even
     though it hasn't been emitted yet at the moment of the first reference.
     Excludes schemas that will not produce a struct. Core/support oneOf schemas
     with object branches are included because generation flattens their variant
-    fields into one struct; top-level tool oneOf schemas still emit `type X =
-    any` and are not treated as typed refs."""
+    fields into one struct; top-level tool response oneOf schemas are included
+    because generation emits a closed interface plus concrete variants."""
     global _WILL_GENERATE_CACHE
     if _WILL_GENERATE_CACHE is not None:
         return _WILL_GENERATE_CACHE
@@ -2261,6 +2261,10 @@ def _will_generate_set():
             print(f'// Warning: skipped schema {rel}: {e}', file=sys.stderr)
             continue
         if schema.get('type') == 'object' and 'properties' in schema:
+            stem = Path(rel).stem
+            name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
+            names.add(name)
+        elif 'oneOf' in schema and is_tool_response_schema(rel):
             stem = Path(rel).stem
             name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
             names.add(name)
@@ -2497,6 +2501,61 @@ def schema_to_struct(name, schema):
     desc = safe_comment(schema.get('description', ''), 100)
     doc = f'// {name} — {desc}\n' if desc else ''
     return f'{doc}type {name} struct {{\n' + '\n'.join(fields) + '\n}\n'
+
+def is_tool_response_schema(path):
+    return Path(path).stem.endswith('-response')
+
+def validate_top_level_tool_union(name, schema, schema_path):
+    if not is_tool_response_schema(schema_path):
+        raise ValueError(
+            f'{name} in {schema_path} is a top-level tool oneOf request; '
+            'add explicit request-union generation before emitting it'
+        )
+    return top_level_union_variants(name, schema, schema_path)
+
+def top_level_union_variants(name, schema, schema_path=None):
+    """Return generated variant names for a top-level oneOf schema."""
+    variants = []
+    seen = set()
+    location = f' in {schema_path}' if schema_path else ''
+    for idx, variant in enumerate(schema.get('oneOf', [])):
+        vname = variant.get('title', '')
+        if not vname:
+            raise ValueError(
+                f'{name}{location} oneOf branch {idx} must have a title '
+                'so Go can generate a named variant'
+            )
+        if not has_struct_fields(variant):
+            raise ValueError(
+                f'{name}{location} oneOf branch {idx} ({vname}) must define '
+                'object properties so Go can generate a variant struct'
+            )
+        if vname in seen:
+            raise ValueError(
+                f'{name}{location} oneOf branch {idx} repeats variant {vname}'
+            )
+        seen.add(vname)
+        variants.append(vname)
+    return variants
+
+def union_interface_to_type(name, schema, schema_path=None):
+    """Generate a closed Go interface for a top-level response union."""
+    top_level_union_variants(name, schema, schema_path)
+    marker = f'is{name}'
+    return '\n'.join([
+        f'// {name} is a discriminated union — use one of the generated variant structs.',
+        f'type {name} interface {{',
+        f'\t{marker}()',
+        '}',
+    ]) + '\n'
+
+def union_marker_methods(name, schema, schema_path=None):
+    """Generate marker methods for the variants of a top-level response union."""
+    marker = f'is{name}'
+    lines = []
+    for vname in top_level_union_variants(name, schema, schema_path):
+        lines.append(f'func ({vname}) {marker}() {{}}')
+    return '\n'.join(lines) + '\n'
 
 def scalar_or_array_union_to_type(name, schema):
     """Generate a Go helper for a `scalar or []scalar` JSON union."""
@@ -2796,12 +2855,13 @@ def generated_schema_entries():
             generated.add(name)
 
             if section == 'tool' and 'oneOf' in schema:
+                validate_top_level_tool_union(name, schema, path)
                 yield {
                     'section': section,
                     'name': name,
                     'schema': path,
                     'schema_obj': schema,
-                    'kind': 'alias_any',
+                    'kind': 'union_interface',
                 }
                 for idx, variant in enumerate(schema['oneOf']):
                     vname = variant.get('title', '')
@@ -2842,18 +2902,7 @@ def any_coverage_report():
     """Return a structured report of generated `any` fallbacks."""
     records = []
     for entry in generated_schema_entries():
-        if entry['kind'] == 'alias_any':
-            records.append({
-                'type': entry['name'],
-                'section': entry['section'],
-                'schema': entry['schema'],
-                'field': None,
-                'json': None,
-                'go_type': 'any',
-                'reason': 'top_level_oneOf_alias',
-                'allowed': False,
-                'allowance': None,
-            })
+        if entry['kind'] == 'union_interface':
             continue
 
         schema = entry['schema_obj']
@@ -3065,9 +3114,8 @@ def generate():
 
         # Handle oneOf at top level (like preview-creative-response.json)
         if 'oneOf' in schema:
-            print(f'// {name} is a discriminated union — use the appropriate variant type.')
-            print(f'type {name} = any')
-            print()
+            validate_top_level_tool_union(name, schema, path)
+            print(union_interface_to_type(name, schema, path))
             # Generate each variant
             for variant in schema['oneOf']:
                 vname = variant.get('title', '')
@@ -3075,6 +3123,7 @@ def generate():
                     generated.add(vname)
                     if has_struct_fields(variant):
                         print(schema_to_struct(vname, variant))
+            print(union_marker_methods(name, schema, path))
             continue
 
         if has_struct_fields(schema):

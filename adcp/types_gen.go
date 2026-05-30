@@ -9287,8 +9287,10 @@ type SyncGovernanceRequest struct {
 	Ext              any                      `json:"ext,omitempty"`
 }
 
-// SyncGovernanceResponse is a discriminated union — use the appropriate variant type.
-type SyncGovernanceResponse = any
+// SyncGovernanceResponse is a discriminated union — use one of the generated variant structs.
+type SyncGovernanceResponse interface {
+	isSyncGovernanceResponse()
+}
 
 // SyncGovernanceSuccess — Sync processed — individual accounts may have errors
 type SyncGovernanceSuccess struct {
@@ -9303,6 +9305,9 @@ type SyncGovernanceError struct {
 	Context any         `json:"context,omitempty"`
 	Ext     any         `json:"ext,omitempty"`
 }
+
+func (SyncGovernanceSuccess) isSyncGovernanceResponse() {}
+func (SyncGovernanceError) isSyncGovernanceResponse()   {}
 
 // ListAccountsRequest — Request parameters for listing accounts accessible to the authenticated agent. For
 type ListAccountsRequest struct {
@@ -9418,8 +9423,10 @@ type CreateMediaBuyRequest struct {
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// CreateMediaBuyResponse is a discriminated union — use the appropriate variant type.
-type CreateMediaBuyResponse = any
+// CreateMediaBuyResponse is a discriminated union — use one of the generated variant structs.
+type CreateMediaBuyResponse interface {
+	isCreateMediaBuyResponse()
+}
 
 // CreateMediaBuySuccess — Success response - media buy created successfully
 type CreateMediaBuySuccess struct {
@@ -9459,6 +9466,10 @@ type CreateMediaBuySubmitted struct {
 	Context any         `json:"context,omitempty"` // Opaque media-buy-level correlation data echoed unchanged from the
 	Ext     any         `json:"ext,omitempty"`
 }
+
+func (CreateMediaBuySuccess) isCreateMediaBuyResponse()   {}
+func (CreateMediaBuyError) isCreateMediaBuyResponse()     {}
+func (CreateMediaBuySubmitted) isCreateMediaBuyResponse() {}
 
 // UpdateMediaBuyRequest — Request parameters for updating campaign and package settings
 type UpdateMediaBuyRequest struct {
@@ -9672,8 +9683,10 @@ type ProvidePerformanceFeedbackRequest struct {
 	Ext               any            `json:"ext,omitempty"`
 }
 
-// ProvidePerformanceFeedbackResponse is a discriminated union — use the appropriate variant type.
-type ProvidePerformanceFeedbackResponse = any
+// ProvidePerformanceFeedbackResponse is a discriminated union — use one of the generated variant structs.
+type ProvidePerformanceFeedbackResponse interface {
+	isProvidePerformanceFeedbackResponse()
+}
 
 // ProvidePerformanceFeedbackSuccess — Success response - feedback received and processed
 type ProvidePerformanceFeedbackSuccess struct {
@@ -9689,6 +9702,9 @@ type ProvidePerformanceFeedbackError struct {
 	Context any         `json:"context,omitempty"`
 	Ext     any         `json:"ext,omitempty"`
 }
+
+func (ProvidePerformanceFeedbackSuccess) isProvidePerformanceFeedbackResponse() {}
+func (ProvidePerformanceFeedbackError) isProvidePerformanceFeedbackResponse()   {}
 
 // BuildCreativeRequest — Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1)
 type BuildCreativeRequest struct {
@@ -9848,8 +9864,10 @@ type ComplyTestControllerRequest struct {
 	Account          any    `json:"account"` // Sandbox account assertion. The runner MUST set sandbox: true on every
 }
 
-// ComplyTestControllerResponse is a discriminated union — use the appropriate variant type.
-type ComplyTestControllerResponse = any
+// ComplyTestControllerResponse is a discriminated union — use one of the generated variant structs.
+type ComplyTestControllerResponse interface {
+	isComplyTestControllerResponse()
+}
 
 // ListScenariosSuccess — Lists which scenarios this seller's test controller supports
 type ListScenariosSuccess struct {
@@ -9925,6 +9943,15 @@ type ControllerError struct {
 	Context      any     `json:"context,omitempty"`
 	Ext          any     `json:"ext,omitempty"`
 }
+
+func (ListScenariosSuccess) isComplyTestControllerResponse()               {}
+func (StateTransitionSuccess) isComplyTestControllerResponse()             {}
+func (SimulationSuccess) isComplyTestControllerResponse()                  {}
+func (ForcedDirectiveSuccess) isComplyTestControllerResponse()             {}
+func (SeedSuccess) isComplyTestControllerResponse()                        {}
+func (ProvenanceAuditObservationsSuccess) isComplyTestControllerResponse() {}
+func (UpstreamTrafficSuccess) isComplyTestControllerResponse()             {}
+func (ControllerError) isComplyTestControllerResponse()                    {}
 
 // SyncPlansRequest — Push campaign plans to the governance agent. A plan defines the authorized parameters for a
 type SyncPlansRequest struct {
