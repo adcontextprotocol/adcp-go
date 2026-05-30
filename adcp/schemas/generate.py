@@ -10,8 +10,11 @@ with proper json tags matching the wire format.
 """
 
 import argparse
+import contextlib
+import io
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from collections import OrderedDict
@@ -2914,7 +2917,22 @@ def main(argv=None):
             return 1
         return 0
 
-    generate()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        generate()
+    source = buf.getvalue()
+    try:
+        result = subprocess.run(
+            ['gofmt'],
+            input=source,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        print(source, end='')
+    else:
+        print(result.stdout, end='')
     return 0
 
 
