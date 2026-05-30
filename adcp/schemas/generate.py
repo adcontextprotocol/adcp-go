@@ -565,6 +565,15 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/create-media-buy-request.json#/properties/artifact_webhook",
     ),
     (
+        "SyncGovernanceAccountResult",
+        "account/sync-governance-response.json#/oneOf/0/properties/accounts/items",
+    ),
+    (
+        "SyncGovernanceAgentResult",
+        "account/sync-governance-response.json#/oneOf/0/properties/accounts/items"
+        "/properties/governance_agents/items",
+    ),
+    (
         "DeliveryAttributionWindow",
         "media-buy/get-media-buy-delivery-request.json#/properties/attribution_window",
     ),
@@ -1066,6 +1075,7 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'CollectionRequestPagination',
     'CollectionChangeSummary',
     'PropertyChangeSummary',
+    'SyncGovernanceAgentResult',
     'InstallmentDerivative',
     'ProductFilterMetro',
     'ProductFilterTrustedMatch',
@@ -1098,6 +1108,7 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'PackageDelivery',
     'ProductDeliveryMeasurement',
     'ProductCatalogMatch',
+    'SyncGovernanceAccountResult',
     'AccountCreditLimit',
     'GeoProximityTarget',
     'CreativeFormatAccessibility',
@@ -1497,6 +1508,8 @@ INLINE_TYPE_HINTS = {
     ('PlanAuditFinding', 'severity'): 'EscalationSeverity',
     ('PlanAuditFinding', 'confidence'): '*float64',
     ('PlanAuditGovernedAction', 'purchase_type'): 'PurchaseType',
+    ('SyncGovernanceSuccess', 'accounts'): 'SyncGovernanceAccountResult',
+    ('SyncGovernanceAccountResult', 'governance_agents'): 'SyncGovernanceAgentResult',
     ('ListCreativeFormatsResponse', 'creative_agents'): 'CreativeAgentRef',
     ('BuildCreativeRequest', 'preview_inputs'): 'BuildCreativePreviewInput',
     ('GetMediaBuysRequest', 'status_filter'): '*MediaBuyStatusFilter',

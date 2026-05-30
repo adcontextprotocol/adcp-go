@@ -1578,6 +1578,38 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertIn("Severity EscalationSeverity `json:\"severity\"`", plan_audit_finding_generated)
         self.assertIn("Confidence *float64 `json:\"confidence,omitempty\"`", plan_audit_finding_generated)
 
+        sync_governance_success_schema = generate.load_schema_spec(
+            "account/sync-governance-response.json#/oneOf/0",
+        )
+        sync_governance_accounts_type, reason = generate.field_go_type_info(
+            "SyncGovernanceSuccess",
+            "accounts",
+            generate.schema_properties(sync_governance_success_schema)["accounts"],
+            generate.schema_required_names(sync_governance_success_schema),
+        )
+        self.assertEqual("[]SyncGovernanceAccountResult", sync_governance_accounts_type)
+        self.assertIsNone(reason)
+
+        sync_governance_account_schema = generate.load_schema_spec(
+            "account/sync-governance-response.json#/oneOf/0/properties/accounts/items",
+        )
+        sync_governance_account_generated = generate.schema_to_struct(
+            "SyncGovernanceAccountResult",
+            sync_governance_account_schema,
+        )
+        self.assertIn(
+            "Account AccountReference `json:\"account\"`",
+            sync_governance_account_generated,
+        )
+        self.assertIn(
+            "GovernanceAgents []SyncGovernanceAgentResult `json:\"governance_agents,omitempty\"`",
+            sync_governance_account_generated,
+        )
+        self.assertIn(
+            "Errors []AdcpError `json:\"errors,omitempty\"`",
+            sync_governance_account_generated,
+        )
+
         plan_audit_action_schema = generate.load_schema_spec(
             "governance/get-plan-audit-logs-response.json#/properties/plans/items"
             "/properties/governed_actions/items",
@@ -1611,6 +1643,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ProductFilters", "required_features"), records)
         self.assertNotIn(("ProductFilters", "signal_targeting"), records)
         self.assertNotIn(("Targeting", "geo_proximity"), records)
+        self.assertNotIn(("SyncGovernanceSuccess", "accounts"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)
