@@ -298,6 +298,7 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             mock.patch.object(lint, "validate_cross_type_inline_hints", return_value=[]),
             mock.patch.object(lint, "validate_union_schema_specs", return_value=[]),
             mock.patch.object(lint, "validate_custom_wire_fields", return_value=[]),
+            mock.patch.object(lint, "optional_bool_pointer_reports", return_value=[]),
             mock.patch.object(lint, "optional_numeric_pointer_reports", return_value=[]),
             mock.patch.object(
                 lint,
@@ -324,6 +325,7 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             payload["hand_written_inline_schema_divergence"],
         )
         self.assertIn(inline_report, payload["drift"])
+        self.assertEqual([], payload["optional_bool_pointer"])
 
 
 class InlineAdditionalPropertiesPolicyLintTest(unittest.TestCase):
@@ -550,6 +552,83 @@ class OptionalNumericPointerLintTest(unittest.TestCase):
             {"type": "number", "exclusiveMinimum": 0, "description": "Minimum view duration."},
             set(),
         ))
+
+    def test_optional_bool_pointer_candidate(self):
+        self.assertTrue(lint.optional_bool_pointer_candidate(
+            "emits",
+            {"type": "boolean", "default": False},
+            set(),
+        ))
+        self.assertFalse(lint.optional_bool_pointer_candidate(
+            "supported",
+            {"type": "boolean"},
+            {"supported"},
+        ))
+        self.assertFalse(lint.optional_bool_pointer_candidate(
+            "count",
+            {"type": "integer"},
+            set(),
+        ))
+
+    def test_optional_bool_lint_catches_hand_written_bool_omitempty(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "emits": {"type": "boolean", "default": False},
+                "supported": {"type": "boolean"},
+            },
+            "required": ["supported"],
+        }
+
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[]),
+            mock.patch.object(lint, "resolve_schema_spec", return_value="shape.json"),
+            mock.patch.object(lint, "load_schema_spec", return_value=schema),
+        ):
+            reports = lint.optional_bool_pointer_reports({
+                "Shape": [
+                    ("Emits", "bool", "emits", True),
+                    ("Supported", "bool", "supported", False),
+                ],
+            })
+
+        self.assertEqual([("Shape", "emits")], [
+            (r["type"], r["json"]) for r in reports
+        ])
+
+    def test_optional_bool_lint_catches_generated_bool_omitempty(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "emits": {"type": "boolean", "default": False},
+                "supported": {"type": "boolean"},
+            },
+            "required": ["supported"],
+        }
+        entry = {
+            "kind": "struct",
+            "name": "GeneratedShape",
+            "schema": "generated-shape.json",
+            "schema_obj": schema,
+        }
+
+        def field_go_type_info(type_name, json_name, prop, required_set):
+            return ("bool", None)
+
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[entry]),
+            mock.patch.object(lint.gen, "field_go_type_info", side_effect=field_go_type_info),
+            mock.patch.object(lint, "resolve_schema_spec", return_value=None),
+        ):
+            reports = lint.optional_bool_pointer_reports({})
+
+        self.assertEqual([("GeneratedShape", "emits")], [
+            (r["type"], r["json"]) for r in reports
+        ])
+
+    def test_optional_bool_lint_current_schema_is_clean(self):
+        reports = lint.optional_bool_pointer_reports(lint.parse_go_structs())
+        self.assertEqual([], reports)
 
     def test_optional_numeric_lint_catches_current_schema_candidates(self):
         reports = lint.optional_numeric_pointer_reports(lint.parse_go_structs())
