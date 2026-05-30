@@ -54,6 +54,75 @@ class SharedInlineOverrideLintTest(unittest.TestCase):
         self.assertEqual([], reports[0]["missing"])
 
 
+class CrossTypeInlineHintLintTest(unittest.TestCase):
+    def test_performance_feedback_measurement_period_hint_is_registered(self):
+        hint_key = ("PerformanceFeedback", "measurement_period")
+
+        self.assertEqual("DatetimeRange", lint.gen.CROSS_TYPE_INLINE_HINTS[hint_key])
+        self.assertEqual("DatetimeRange", lint.gen.INLINE_TYPE_HINTS[hint_key])
+
+    def test_cross_type_inline_hint_reports_shape_drift(self):
+        entries = [
+            {
+                "kind": "struct",
+                "name": "SourceShape",
+                "schema": "source.json",
+                "schema_obj": {
+                    "properties": {
+                        "period": {
+                            "type": "object",
+                            "properties": {
+                                "start": {},
+                                "timezone": {},
+                            },
+                            "required": ["start", "timezone"],
+                        },
+                    },
+                },
+            },
+            {
+                "kind": "struct",
+                "name": "TargetShape",
+                "schema": "target.json",
+                "schema_obj": {
+                    "properties": {
+                        "start": {},
+                        "end": {},
+                    },
+                    "required": ["start", "end"],
+                },
+            },
+        ]
+
+        with (
+            mock.patch.object(
+                lint.gen,
+                "CROSS_TYPE_INLINE_HINTS",
+                {("SourceShape", "period"): "TargetShape"},
+            ),
+            mock.patch.object(
+                lint.gen,
+                "INLINE_TYPE_HINTS",
+                {("SourceShape", "period"): "TargetShape"},
+            ),
+            mock.patch.object(
+                lint.gen,
+                "generated_schema_entries",
+                return_value=iter(entries),
+            ),
+        ):
+            reports = lint.validate_cross_type_inline_hints()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("SourceShape", reports[0]["type"])
+        self.assertEqual("period", reports[0]["json"])
+        self.assertEqual("TargetShape", reports[0]["target_type"])
+        self.assertEqual(["end"], reports[0]["missing"])
+        self.assertEqual(["timezone"], reports[0]["extra"])
+        self.assertEqual(["end"], reports[0]["required_missing"])
+        self.assertEqual(["timezone"], reports[0]["required_extra"])
+
+
 class HandWrittenInlineSchemaLintTest(unittest.TestCase):
     def test_account_setup_inline_schema_registration_is_pinned_without_schemas(self):
         self.assertEqual(
@@ -226,6 +295,7 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             mock.patch.object(lint, "validate_inline_schema_specs", return_value=[]),
             mock.patch.object(lint, "validate_inline_additional_properties_policies", return_value=[]),
             mock.patch.object(lint, "validate_shared_inline_overrides", return_value=[]),
+            mock.patch.object(lint, "validate_cross_type_inline_hints", return_value=[]),
             mock.patch.object(lint, "validate_union_schema_specs", return_value=[]),
             mock.patch.object(lint, "validate_custom_wire_fields", return_value=[]),
             mock.patch.object(lint, "optional_numeric_pointer_reports", return_value=[]),

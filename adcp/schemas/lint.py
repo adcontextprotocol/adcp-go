@@ -509,6 +509,88 @@ def validate_shared_inline_overrides():
     return reports
 
 
+def validate_cross_type_inline_hints():
+    """Verify inline hints that reuse another type stay schema-equivalent."""
+    reports = []
+    entries = {
+        entry['name']: entry
+        for entry in gen.generated_schema_entries()
+        if entry['kind'] == 'struct'
+    }
+    for hint_key, target_type in gen.CROSS_TYPE_INLINE_HINTS.items():
+        source_type, json_name = hint_key
+        actual_hint = gen.INLINE_TYPE_HINTS.get(hint_key)
+        base_actual_hint = (
+            actual_hint[1:]
+            if actual_hint and actual_hint.startswith('*')
+            else actual_hint
+        )
+        if base_actual_hint != target_type:
+            reports.append({
+                'type': source_type,
+                'json': json_name,
+                'target_type': target_type,
+                'actual_hint': actual_hint,
+                'error': 'cross-type inline hint does not match INLINE_TYPE_HINTS',
+            })
+            continue
+
+        source_entry = entries.get(source_type)
+        target_entry = entries.get(target_type)
+        if source_entry is None:
+            reports.append({
+                'type': source_type,
+                'json': json_name,
+                'target_type': target_type,
+                'error': 'cross-type inline hint source type not generated',
+            })
+            continue
+        if target_entry is None:
+            reports.append({
+                'type': source_type,
+                'json': json_name,
+                'target_type': target_type,
+                'schema': source_entry['schema'],
+                'error': 'cross-type inline hint target type not generated',
+            })
+            continue
+
+        source_props = gen.schema_properties(source_entry['schema_obj'])
+        prop = source_props.get(json_name)
+        if not isinstance(prop, dict):
+            reports.append({
+                'type': source_type,
+                'json': json_name,
+                'target_type': target_type,
+                'schema': source_entry['schema'],
+                'target_schema': target_entry['schema'],
+                'error': 'cross-type inline hint source field not found',
+            })
+            continue
+        if prop.get('type') == 'array' and isinstance(prop.get('items'), dict):
+            prop = prop['items']
+
+        source_shape = schema_property_set(prop)
+        target_shape = schema_property_set(target_entry['schema_obj'])
+        source_required = schema_required_set(prop)
+        target_required = schema_required_set(target_entry['schema_obj'])
+        if source_shape == target_shape and source_required == target_required:
+            continue
+        reports.append({
+            'type': source_type,
+            'json': json_name,
+            'target_type': target_type,
+            'schema': source_entry['schema'],
+            'target_schema': target_entry['schema'],
+            'missing': sorted(target_shape - source_shape),
+            'extra': sorted(source_shape - target_shape),
+            'required_missing': sorted(target_required - source_required),
+            'required_extra': sorted(source_required - target_required),
+            'error': 'cross-type inline hint schema shape differs',
+        })
+    return reports
+
+
 def validate_hand_written_inline_schema_specs(go_structs):
     """Diff hand-written inline structs against their owning schema pointers."""
     reports = []
@@ -892,6 +974,7 @@ def main():
     inline_schema_errors = validate_inline_schema_specs()
     inline_additional_properties_errors = validate_inline_additional_properties_policies()
     shared_inline_errors = validate_shared_inline_overrides()
+    cross_type_inline_errors = validate_cross_type_inline_hints()
     union_schema_errors = validate_union_schema_specs()
     custom_wire_field_errors = validate_custom_wire_fields(
         go_structs,
@@ -927,6 +1010,7 @@ def main():
             'inline_schema_errors': inline_schema_errors,
             'inline_additional_properties_errors': inline_additional_properties_errors,
             'shared_inline_errors': shared_inline_errors,
+            'cross_type_inline_errors': cross_type_inline_errors,
             'union_schema_errors': union_schema_errors,
             'custom_wire_field_errors': custom_wire_field_errors,
             'optional_numeric_pointer': optional_numeric_reports,
@@ -962,6 +1046,38 @@ def main():
                     print(f'    missing: {", ".join(r["missing"])}')
                 if r.get('extra'):
                     print(f'    extra:   {", ".join(r["extra"])}')
+            print()
+        if cross_type_inline_errors:
+            print(
+                'Cross-type inline hint errors in '
+                f'{len(cross_type_inline_errors)} type(s):'
+            )
+            for r in cross_type_inline_errors:
+                print()
+                print(
+                    f'  {r["type"]}.{r.get("json", "?")}  '
+                    f'({r.get("schema", "?")})'
+                )
+                print(f'    target: {r.get("target_type", "?")}')
+                if r.get('target_schema'):
+                    print(f'    target schema: {r["target_schema"]}')
+                print(f'    error:  {r["error"]}')
+                if r.get('actual_hint') is not None:
+                    print(f'    actual hint: {r["actual_hint"]}')
+                if r.get('missing'):
+                    print(f'    missing: {", ".join(r["missing"])}')
+                if r.get('extra'):
+                    print(f'    extra:   {", ".join(r["extra"])}')
+                if r.get('required_missing'):
+                    print(
+                        '    required missing: '
+                        f'{", ".join(r["required_missing"])}'
+                    )
+                if r.get('required_extra'):
+                    print(
+                        '    required extra:   '
+                        f'{", ".join(r["required_extra"])}'
+                    )
             print()
         if hand_written_inline_schema_divergence:
             print(
@@ -1047,6 +1163,7 @@ def main():
         bool(inline_schema_errors)
         or bool(inline_additional_properties_errors)
         or bool(shared_inline_errors)
+        or bool(cross_type_inline_errors)
         or bool(hand_written_inline_schema_divergence)
         or bool(union_schema_errors)
         or bool(custom_wire_field_errors)
