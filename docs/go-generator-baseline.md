@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 12
+python3 generate.py --coverage-max-unreviewed-any 10
 ```
 
-The generator currently reports 223 generated dynamic `any` uses:
+The generator currently reports 221 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 12 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 10 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 12
+python3 generate.py --coverage-max-unreviewed-any 10
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -59,8 +59,6 @@ the new dynamic shape is reviewed in the same PR.
 | `GetProductsResponse.RefinementApplied` | `refinement_applied` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-response.json` |
 | `CreateMediaBuyResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/create-media-buy-response.json` |
 | `ProvidePerformanceFeedbackResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/provide-performance-feedback-response.json` |
-| `PreviewCreativeRequest.Inputs` | `inputs` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
-| `PreviewCreativeRequest.Requests` | `requests` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
 | `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
 | `ComplyTestControllerResponse` | n/a | `any` | `top_level_oneOf_alias` | `compliance/comply-test-controller-response.json` |
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
@@ -71,7 +69,7 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 5 unreviewed fallbacks are direct inline
+This is the largest generator gap: 4 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.

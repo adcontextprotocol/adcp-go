@@ -9123,6 +9123,22 @@ type ListCreativesSort struct {
 	Direction SortDirection     `json:"direction,omitempty"` // Sort direction
 }
 
+type PreviewCreativeInput struct {
+	Name               string            `json:"name"`                          // Human-readable name for this input set (e.g., 'Sunny morning on mobile'
+	Macros             map[string]string `json:"macros,omitempty"`              // Macro values to use for this preview. Supports all universal macros from the
+	ContextDescription string            `json:"context_description,omitempty"` // Natural language description of the context for AI-generated content (e.g.
+}
+
+type PreviewCreativeBatchRequest struct {
+	FormatID         *FormatRef             `json:"format_id,omitempty"`     // Format identifier for rendering the preview. Defaults to
+	CreativeManifest CreativeManifest       `json:"creative_manifest"`       // Complete creative manifest with all required assets.
+	Inputs           []PreviewCreativeInput `json:"inputs,omitempty"`        // Array of input sets for generating multiple preview variants
+	TemplateID       string                 `json:"template_id,omitempty"`   // Specific template ID for custom format rendering
+	Quality          CreativeQuality        `json:"quality,omitempty"`       // Render quality for this preview. Overrides batch-level default.
+	OutputFormat     PreviewOutputFormat    `json:"output_format,omitempty"` // Output format for this preview. Overrides batch-level default.
+	ItemLimit        int                    `json:"item_limit,omitempty"`    // Maximum number of catalog items to render in this preview.
+}
+
 // ArtifactWebhookPagination — Pagination info when batching large artifact sets
 type ArtifactWebhookPagination struct {
 	TotalArtifacts int `json:"total_artifacts,omitempty"` // Total artifacts in the delivery period
@@ -9721,21 +9737,21 @@ type ListCreativesRequest struct {
 
 // PreviewCreativeRequest — Request to generate previews of creative manifests. Uses request_type to select single, batch, or
 type PreviewCreativeRequest struct {
-	AdcpVersion      string              `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion int                 `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	RequestType      string              `json:"request_type"`                 // Preview mode. 'single' previews one creative manifest. 'batch' previews
-	CreativeManifest *CreativeManifest   `json:"creative_manifest,omitempty"`  // Complete creative manifest with all required assets for the format. Required
-	FormatID         *FormatRef          `json:"format_id,omitempty"`          // Always a structured object {agent_url, id} — never a plain string. Format
-	Inputs           []any               `json:"inputs,omitempty"`             // Array of input sets for generating multiple preview variants. Each input set
-	TemplateID       string              `json:"template_id,omitempty"`        // Specific template ID for custom format rendering. Used in single mode.
-	Quality          CreativeQuality     `json:"quality,omitempty"`            // Render quality. 'draft' produces fast, lower-fidelity renderings. 'production'
-	OutputFormat     PreviewOutputFormat `json:"output_format,omitempty"`      // Output format. 'url' returns preview_url (iframe-embeddable URL), 'html'
-	ItemLimit        int                 `json:"item_limit,omitempty"`         // Maximum number of catalog items to render per preview variant. Used in single
-	Requests         []any               `json:"requests,omitempty"`           // Array of preview requests (1-50 items). Required when request_type is 'batch'.
-	VariantID        string              `json:"variant_id,omitempty"`         // Platform-assigned variant identifier from get_creative_delivery response.
-	CreativeID       string              `json:"creative_id,omitempty"`        // Creative identifier for context. Used in variant mode.
-	Context          any                 `json:"context,omitempty"`
-	Ext              any                 `json:"ext,omitempty"`
+	AdcpVersion      string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	RequestType      string                        `json:"request_type"`                 // Preview mode. 'single' previews one creative manifest. 'batch' previews
+	CreativeManifest *CreativeManifest             `json:"creative_manifest,omitempty"`  // Complete creative manifest with all required assets for the format. Required
+	FormatID         *FormatRef                    `json:"format_id,omitempty"`          // Always a structured object {agent_url, id} — never a plain string. Format
+	Inputs           []PreviewCreativeInput        `json:"inputs,omitempty"`             // Array of input sets for generating multiple preview variants. Each input set
+	TemplateID       string                        `json:"template_id,omitempty"`        // Specific template ID for custom format rendering. Used in single mode.
+	Quality          CreativeQuality               `json:"quality,omitempty"`            // Render quality. 'draft' produces fast, lower-fidelity renderings. 'production'
+	OutputFormat     PreviewOutputFormat           `json:"output_format,omitempty"`      // Output format. 'url' returns preview_url (iframe-embeddable URL), 'html'
+	ItemLimit        int                           `json:"item_limit,omitempty"`         // Maximum number of catalog items to render per preview variant. Used in single
+	Requests         []PreviewCreativeBatchRequest `json:"requests,omitempty"`           // Array of preview requests (1-50 items). Required when request_type is 'batch'.
+	VariantID        string                        `json:"variant_id,omitempty"`         // Platform-assigned variant identifier from get_creative_delivery response.
+	CreativeID       string                        `json:"creative_id,omitempty"`        // Creative identifier for context. Used in variant mode.
+	Context          any                           `json:"context,omitempty"`
+	Ext              any                           `json:"ext,omitempty"`
 }
 
 // GetSignalsRequest — Request parameters for discovering and refining signals. Use signal_spec for natural language

@@ -967,6 +967,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "creative/list-creatives-request.json#/properties/sort",
     ),
     (
+        "PreviewCreativeInput",
+        "creative/preview-creative-request.json#/properties/inputs/items",
+    ),
+    (
+        "PreviewCreativeBatchRequest",
+        "creative/preview-creative-request.json#/properties/requests/items",
+    ),
+    (
         "ArtifactWebhookPagination",
         "content-standards/artifact-webhook-payload.json#/properties/pagination",
     ),
@@ -1115,6 +1123,8 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'DeliveryQuartileData',
     'IOAcceptance',
     'ArtifactWebhookConfig',
+    'PreviewCreativeInput',
+    'PreviewCreativeBatchRequest',
     'DeliveryAttributionWindow',
     'DeliveryReportingDimensions',
     'DeliveryReportingGeoDimension',
@@ -1194,6 +1204,11 @@ SHARED_INLINE_OVERRIDES = {
         "#/properties/reporting_dimensions/properties/audience",
         "media-buy/get-media-buy-delivery-request.json"
         "#/properties/reporting_dimensions/properties/placement",
+    ],
+    "PreviewCreativeInput": [
+        "creative/preview-creative-request.json#/properties/inputs/items",
+        "creative/preview-creative-request.json"
+        "#/properties/requests/items/properties/inputs/items",
     ],
 }
 
@@ -1352,6 +1367,9 @@ INLINE_TYPE_HINTS = {
     ('GetSignalsRequest', 'filters'): 'SignalFilters',
     ('GetProductsRequest', 'filters'): '*ProductFilters',
     ('ListCreativesRequest', 'sort'): '*ListCreativesSort',
+    ('PreviewCreativeRequest', 'inputs'): 'PreviewCreativeInput',
+    ('PreviewCreativeRequest', 'requests'): 'PreviewCreativeBatchRequest',
+    ('PreviewCreativeBatchRequest', 'inputs'): 'PreviewCreativeInput',
     ('SyncPlansRequest', 'plans'): 'Plan',
     ('GetProductsResponse', 'proposals'): 'Proposal',
     ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',
