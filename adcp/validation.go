@@ -50,6 +50,20 @@ func ValidateOptimizationGoal(goal OptimizationGoal, opts ...ValidationOption) [
 	return goal.Validate(opts...)
 }
 
+// ValidateSignalTargeting checks required fields and branch-specific fields for
+// SignalTargeting's flattened value_type oneOf representation. Unknown
+// value_type values are allowed unless WithStrictEnums is supplied.
+func ValidateSignalTargeting(targeting SignalTargeting, opts ...ValidationOption) []ValidationIssue {
+	return targeting.Validate(opts...)
+}
+
+// ValidateAudienceSelector checks required fields and branch-specific fields
+// for AudienceSelector's flattened type/value_type oneOf representation.
+// Unknown discriminator values are allowed unless WithStrictEnums is supplied.
+func ValidateAudienceSelector(selector AudienceSelector, opts ...ValidationOption) []ValidationIssue {
+	return selector.Validate(opts...)
+}
+
 // Validate checks required fields and current-schema invariants that Go zero
 // values cannot express. Call it before submitting package requests or updates
 // that include optimization_goals. OptimizationGoal is a flattened Go
@@ -80,6 +94,66 @@ func (g OptimizationGoal) Validate(opts ...ValidationOption) []ValidationIssue {
 			Code:    "INVALID_VALUE",
 			Message: "priority must be at least 1 when set",
 		})
+	}
+
+	return issues
+}
+
+// Validate checks SignalTargeting's current-schema oneOf invariants. It is
+// intentionally opt-in and forward-compatible: unknown value_type values are
+// ignored unless WithStrictEnums is supplied.
+func (t SignalTargeting) Validate(opts ...ValidationOption) []ValidationIssue {
+	cfg := newValidationConfig(opts)
+	return validateSignalTargetingFields(
+		t.ValueType,
+		t.SignalRef,
+		t.SignalID,
+		t.Value,
+		t.Values,
+		t.MinValue,
+		t.MaxValue,
+		"",
+		cfg,
+	)
+}
+
+// Validate checks AudienceSelector's current-schema oneOf invariants. It is
+// intentionally opt-in and forward-compatible: unknown type/value_type values
+// are ignored unless WithStrictEnums is supplied.
+func (s AudienceSelector) Validate(opts ...ValidationOption) []ValidationIssue {
+	cfg := newValidationConfig(opts)
+	var issues []ValidationIssue
+
+	switch s.Type {
+	case "":
+		issues = appendRequired(issues, "type")
+	case "signal":
+		issues = append(issues, validateSignalTargetingFields(
+			s.ValueType,
+			s.SignalRef,
+			s.SignalID,
+			s.Value,
+			s.Values,
+			s.MinValue,
+			s.MaxValue,
+			"",
+			cfg,
+		)...)
+	case "description":
+		if s.Description == "" {
+			issues = appendRequired(issues, "description")
+		}
+		issues = appendUnsupportedIfSet(issues, "signal_ref", s.SignalRef != nil)
+		issues = appendUnsupportedIfSet(issues, "signal_id", s.SignalID != nil)
+		issues = appendUnsupportedIfSet(issues, "value_type", s.ValueType != "")
+		issues = appendUnsupportedIfSet(issues, "value", s.Value != nil)
+		issues = appendUnsupportedIfSet(issues, "values", len(s.Values) > 0)
+		issues = appendUnsupportedIfSet(issues, "min_value", s.MinValue != nil)
+		issues = appendUnsupportedIfSet(issues, "max_value", s.MaxValue != nil)
+	default:
+		if cfg.strictEnums {
+			issues = appendUnknownVariant(issues, "type")
+		}
 	}
 
 	return issues
@@ -139,6 +213,61 @@ func validateEventOptimizationGoal(g OptimizationGoal, cfg validationConfig) []V
 	}
 	if g.AttributionWindow != nil {
 		issues = append(issues, g.AttributionWindow.validate("attribution_window", cfg)...)
+	}
+
+	return issues
+}
+
+func validateSignalTargetingFields(
+	valueType string,
+	signalRef *SignalRef,
+	signalID *SignalID,
+	value *bool,
+	values []string,
+	minValue *float64,
+	maxValue *float64,
+	path string,
+	cfg validationConfig,
+) []ValidationIssue {
+	var issues []ValidationIssue
+
+	if signalRef == nil && signalID == nil {
+		issues = appendRequired(issues, validationPath(path, "signal_ref"))
+	}
+	if valueType == "" {
+		issues = appendRequired(issues, validationPath(path, "value_type"))
+		return issues
+	}
+
+	switch valueType {
+	case "binary":
+		if value == nil {
+			issues = appendRequired(issues, validationPath(path, "value"))
+		}
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "values"), len(values) > 0)
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "min_value"), minValue != nil)
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "max_value"), maxValue != nil)
+	case "categorical":
+		if len(values) == 0 {
+			issues = appendRequired(issues, validationPath(path, "values"))
+		}
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "value"), value != nil)
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "min_value"), minValue != nil)
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "max_value"), maxValue != nil)
+	case "numeric":
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "value"), value != nil)
+		issues = appendUnsupportedIfSet(issues, validationPath(path, "values"), len(values) > 0)
+		if minValue != nil && maxValue != nil && *minValue > *maxValue {
+			issues = append(issues, ValidationIssue{
+				Field:   validationPath(path, "max_value"),
+				Code:    "INVALID_VALUE",
+				Message: "max_value must be greater than or equal to min_value",
+			})
+		}
+	default:
+		if cfg.strictEnums && !IsKnownSignalValueType(SignalValueType(valueType)) {
+			issues = appendUnknownVariant(issues, validationPath(path, "value_type"))
+		}
 	}
 
 	return issues
@@ -379,6 +508,24 @@ func appendUnknownVariant(issues []ValidationIssue, field string) []ValidationIs
 		Code:    "UNKNOWN_VARIANT",
 		Message: "value is not a current schema variant",
 	})
+}
+
+func appendUnsupportedIfSet(issues []ValidationIssue, field string, set bool) []ValidationIssue {
+	if !set {
+		return issues
+	}
+	return append(issues, ValidationIssue{
+		Field:   field,
+		Code:    "UNSUPPORTED_FIELD",
+		Message: "field is not supported for this schema variant",
+	})
+}
+
+func validationPath(prefix, field string) string {
+	if prefix == "" {
+		return field
+	}
+	return prefix + "." + field
 }
 
 func isKnownDurationUnit(v string) bool {

@@ -362,3 +362,138 @@ func TestValidateOptimizationGoal_NumericRules(t *testing.T) {
 		t.Fatalf("Validate missing target_frequency.max issue: %#v", issues)
 	}
 }
+
+func TestValidateSignalTargeting_ValidBinary(t *testing.T) {
+	targeting := SignalTargeting{
+		SignalRef: &SignalRef{Scope: "product", SignalID: "auto_intenders"},
+		ValueType: "binary",
+		Value:     Ptr(true),
+	}
+
+	if issues := ValidateSignalTargeting(targeting, WithStrictEnums()); len(issues) != 0 {
+		t.Fatalf("ValidateSignalTargeting issues = %#v, want none", issues)
+	}
+}
+
+func TestValidateSignalTargeting_BranchSpecificFields(t *testing.T) {
+	targeting := SignalTargeting{
+		SignalRef: &SignalRef{Scope: "product", SignalID: "segment"},
+		ValueType: "categorical",
+		Value:     Ptr(true),
+		MinValue:  Ptr(1.0),
+	}
+
+	issues := targeting.Validate()
+	for _, want := range []struct {
+		field string
+		code  string
+	}{
+		{"values", "REQUIRED_FIELD"},
+		{"value", "UNSUPPORTED_FIELD"},
+		{"min_value", "UNSUPPORTED_FIELD"},
+	} {
+		if !hasValidationIssue(issues, want.field, want.code) {
+			t.Fatalf("Validate missing issue %s/%s in %#v", want.field, want.code, issues)
+		}
+	}
+}
+
+func TestValidateSignalTargeting_NumericRange(t *testing.T) {
+	targeting := SignalTargeting{
+		SignalID:  &SignalID{Source: "data_provider", ID: "score"},
+		ValueType: "numeric",
+		MinValue:  Ptr(10.0),
+		MaxValue:  Ptr(5.0),
+	}
+
+	issues := targeting.Validate()
+	if !hasValidationIssue(issues, "max_value", "INVALID_VALUE") {
+		t.Fatalf("Validate missing numeric range issue: %#v", issues)
+	}
+}
+
+func TestValidateSignalTargeting_StrictEnumsAreOptIn(t *testing.T) {
+	targeting := SignalTargeting{
+		SignalRef: &SignalRef{Scope: "product", SignalID: "future"},
+		ValueType: "future_type",
+	}
+
+	if issues := targeting.Validate(); hasValidationIssue(issues, "value_type", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate reported strict variant issue without WithStrictEnums: %#v", issues)
+	}
+	if issues := targeting.Validate(WithStrictEnums()); !hasValidationIssue(issues, "value_type", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate missing strict variant issue: %#v", issues)
+	}
+}
+
+func TestValidateSignalTargeting_RequiresSignalReference(t *testing.T) {
+	targeting := SignalTargeting{
+		ValueType: "binary",
+		Value:     Ptr(false),
+	}
+
+	if issues := targeting.Validate(); !hasValidationIssue(issues, "signal_ref", "REQUIRED_FIELD") {
+		t.Fatalf("Validate missing signal_ref requirement: %#v", issues)
+	}
+}
+
+func TestValidateAudienceSelector_ValidDescription(t *testing.T) {
+	selector := AudienceSelector{
+		Type:        "description",
+		Description: "likely EV buyers",
+		Category:    "behavioral",
+	}
+
+	if issues := ValidateAudienceSelector(selector, WithStrictEnums()); len(issues) != 0 {
+		t.Fatalf("ValidateAudienceSelector issues = %#v, want none", issues)
+	}
+}
+
+func TestValidateAudienceSelector_SignalDelegatesValueTypeRules(t *testing.T) {
+	selector := AudienceSelector{
+		Type:      "signal",
+		SignalRef: &SignalRef{Scope: "product", SignalID: "age_band"},
+		ValueType: "numeric",
+		Values:    []string{"18-34"},
+	}
+
+	issues := selector.Validate()
+	if !hasValidationIssue(issues, "values", "UNSUPPORTED_FIELD") {
+		t.Fatalf("Validate missing signal branch values issue: %#v", issues)
+	}
+}
+
+func TestValidateAudienceSelector_DescriptionBranchSpecificFields(t *testing.T) {
+	selector := AudienceSelector{
+		Type:      "description",
+		SignalRef: &SignalRef{Scope: "product", SignalID: "segment"},
+		ValueType: "binary",
+		Value:     Ptr(true),
+	}
+
+	issues := selector.Validate()
+	for _, want := range []struct {
+		field string
+		code  string
+	}{
+		{"description", "REQUIRED_FIELD"},
+		{"signal_ref", "UNSUPPORTED_FIELD"},
+		{"value_type", "UNSUPPORTED_FIELD"},
+		{"value", "UNSUPPORTED_FIELD"},
+	} {
+		if !hasValidationIssue(issues, want.field, want.code) {
+			t.Fatalf("Validate missing issue %s/%s in %#v", want.field, want.code, issues)
+		}
+	}
+}
+
+func TestValidateAudienceSelector_StrictEnumsAreOptIn(t *testing.T) {
+	selector := AudienceSelector{Type: "future_selector"}
+
+	if issues := selector.Validate(); hasValidationIssue(issues, "type", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate reported strict variant issue without WithStrictEnums: %#v", issues)
+	}
+	if issues := selector.Validate(WithStrictEnums()); !hasValidationIssue(issues, "type", "UNKNOWN_VARIANT") {
+		t.Fatalf("Validate missing strict variant issue: %#v", issues)
+	}
+}
