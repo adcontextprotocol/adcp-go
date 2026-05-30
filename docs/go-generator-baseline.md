@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 13
+python3 generate.py --coverage-max-unreviewed-any 12
 ```
 
 The generator currently reports 223 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 210 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 13 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 12 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 13
+python3 generate.py --coverage-max-unreviewed-any 12
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -55,7 +55,6 @@ the new dynamic shape is reviewed in the same PR.
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
 | `SyncGovernanceResponse` | n/a | `any` | `top_level_oneOf_alias` | `account/sync-governance-response.json` |
-| `SyncGovernanceSuccess.Accounts` | `accounts` | `[]any` | `array_item:inline_object` | `account/sync-governance-response.json#/oneOf/0` |
 | `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
 | `GetProductsResponse.RefinementApplied` | `refinement_applied` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-response.json` |
 | `CreateMediaBuyResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/create-media-buy-response.json` |
@@ -72,7 +71,7 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 6 unreviewed fallbacks are direct inline
+This is the largest generator gap: 5 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.

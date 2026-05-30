@@ -244,6 +244,26 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		"total_batches":   float64(3),
 	}, wire["pagination"])
 
+	out, err = json.Marshal(SyncGovernanceSuccess{
+		Accounts: []SyncGovernanceAccountResult{{
+			Account: AccountReference{AccountID: "acct-1"},
+			Status:  "synced",
+			GovernanceAgents: []SyncGovernanceAgentResult{{
+				URL: "https://governance.example.com",
+			}},
+		}},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	accounts, ok := wire["accounts"].([]any)
+	require.True(t, ok)
+	require.Len(t, accounts, 1)
+	account, ok := accounts[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "synced", account["status"])
+	assert.Equal(t, map[string]any{"account_id": "acct-1"}, account["account"])
+
 	out, err = json.Marshal(PerformanceFeedback{
 		FeedbackID: "pf-1",
 		MediaBuyID: "mb-1",

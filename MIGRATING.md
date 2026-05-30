@@ -73,6 +73,10 @@ be populated.
 - `PolicyEntry.Exemplars` is now `*adcp.PolicyExemplars` instead of `any`.
   `PolicyExemplars.Pass` and `PolicyExemplars.Fail` are
   `[]adcp.PolicyExemplar`.
+- `SyncGovernanceSuccess.Accounts` is now
+  `[]adcp.SyncGovernanceAccountResult` instead of `[]any`.
+  `GovernanceAgents` is now `[]adcp.SyncGovernanceAgentResult`; per-account
+  `Errors` remains `[]adcp.AdcpError`.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.

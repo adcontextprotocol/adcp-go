@@ -8125,6 +8125,17 @@ type ArtifactWebhookConfig struct {
 	SamplingRate   *float64                    `json:"sampling_rate,omitempty"`   // Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10%
 }
 
+type SyncGovernanceAccountResult struct {
+	Account          AccountReference            `json:"account"`                     // Account reference, echoed from request
+	Status           string                      `json:"status"`                      // Sync result. synced: governance agents persisted. failed: could not complete
+	GovernanceAgents []SyncGovernanceAgentResult `json:"governance_agents,omitempty"` // Governance agent now synced on this account. Reflects the persisted state
+	Errors           []AdcpError                 `json:"errors,omitempty"`            // Per-account errors (only present when status is 'failed')
+}
+
+type SyncGovernanceAgentResult struct {
+	URL string `json:"url"` // Governance agent endpoint URL.
+}
+
 // DeliveryAttributionWindow — Attribution window to apply for conversion metrics. When provided, the seller returns conversion
 type DeliveryAttributionWindow struct {
 	PostClick *Duration        `json:"post_click,omitempty"` // Post-click attribution window to apply.
@@ -9246,9 +9257,9 @@ type SyncGovernanceResponse = any
 
 // SyncGovernanceSuccess — Sync processed — individual accounts may have errors
 type SyncGovernanceSuccess struct {
-	Accounts []any `json:"accounts"` // Per-account sync results
-	Context  any   `json:"context,omitempty"`
-	Ext      any   `json:"ext,omitempty"`
+	Accounts []SyncGovernanceAccountResult `json:"accounts"` // Per-account sync results
+	Context  any                           `json:"context,omitempty"`
+	Ext      any                           `json:"ext,omitempty"`
 }
 
 // SyncGovernanceError — Operation failed completely, no accounts were processed
