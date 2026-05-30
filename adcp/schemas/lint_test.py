@@ -55,6 +55,47 @@ class SharedInlineOverrideLintTest(unittest.TestCase):
 
 
 class HandWrittenInlineSchemaLintTest(unittest.TestCase):
+    def test_schema_divergence_reports_property_and_required_drift(self):
+        specs = {
+            "InlineShape": [
+                "shape.json#/properties/first",
+                "shape.json#/properties/second",
+            ],
+        }
+
+        def load_schema_spec(spec):
+            if spec.endswith("/first"):
+                return {
+                    "properties": {
+                        "message": {"type": "string"},
+                        "url": {"type": "string"},
+                    },
+                    "required": ["message"],
+                }
+            return {
+                "properties": {
+                    "message": {"type": "string"},
+                    "expires_at": {"type": "string"},
+                },
+                "required": ["message", "expires_at"],
+            }
+
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "HAND_WRITTEN_INLINE_SCHEMA_SPECS", specs),
+            mock.patch.object(lint, "load_schema_spec", side_effect=load_schema_spec),
+        ):
+            reports = lint.validate_hand_written_inline_schema_divergence()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual("shape.json#/properties/second", reports[0]["schema"])
+        self.assertEqual("shape.json#/properties/first", reports[0]["anchor_schema"])
+        self.assertEqual(["url"], reports[0]["missing"])
+        self.assertEqual(["expires_at"], reports[0]["extra"])
+        self.assertEqual([], reports[0]["required_missing"])
+        self.assertEqual(["expires_at"], reports[0]["required_extra"])
+
     @unittest.skipUnless(ACCOUNT_SETUP_SCHEMA_PATHS_EXIST, "account setup schemas are not present")
     def test_current_account_setup_shape_is_drift_checked(self):
         reports = lint.validate_hand_written_inline_schema_specs(lint.parse_go_structs())
@@ -133,6 +174,16 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             "extra_in_go": [],
             "required_with_omitempty": [],
         }
+        schema_divergence_report = {
+            "type": "InlineShape",
+            "schema": "shape.json#/properties/second",
+            "anchor_schema": "shape.json#/properties/first",
+            "missing": ["url"],
+            "extra": [],
+            "required_missing": [],
+            "required_extra": [],
+            "error": "hand-written inline schema shape differs",
+        }
 
         with (
             mock.patch.object(lint.Path, "exists", return_value=True),
@@ -145,6 +196,11 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             mock.patch.object(lint, "validate_union_schema_specs", return_value=[]),
             mock.patch.object(lint, "validate_custom_wire_fields", return_value=[]),
             mock.patch.object(lint, "optional_numeric_pointer_reports", return_value=[]),
+            mock.patch.object(
+                lint,
+                "validate_hand_written_inline_schema_divergence",
+                return_value=[schema_divergence_report],
+            ),
             mock.patch.object(
                 lint,
                 "validate_hand_written_inline_schema_specs",
@@ -160,6 +216,10 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
         self.assertEqual(0, rc)
         payload = json.loads(out.getvalue())
         self.assertEqual([inline_report], payload["hand_written_inline_drift"])
+        self.assertEqual(
+            [schema_divergence_report],
+            payload["hand_written_inline_schema_divergence"],
+        )
         self.assertIn(inline_report, payload["drift"])
 
 
