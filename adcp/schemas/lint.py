@@ -134,6 +134,11 @@ FIELD_LINE_RE = re.compile(
     r'`json:"([^",]+)((?:,[^"]*)?)"`',
     re.MULTILINE,
 )
+CUSTOM_JSON_METHOD_RE = re.compile(
+    r'^func\s*\(\s*(?:\w+\s+)?\*?(\w+)\s*\)\s*'
+    r'(MarshalJSON|UnmarshalJSON)\s*\(',
+    re.MULTILINE,
+)
 
 
 def _has_omitempty(tag_modifier):
@@ -168,6 +173,49 @@ def parse_go_structs():
                 ))
             structs[name] = fields
     return structs
+
+
+def parse_custom_json_methods():
+    """Return {type_name: {MarshalJSON, UnmarshalJSON}} for scanned Go files."""
+    methods = {}
+    for path in GO_SOURCE_FILES:
+        if not path.exists():
+            continue
+        src = path.read_text()
+        for m in CUSTOM_JSON_METHOD_RE.finditer(src):
+            methods.setdefault(m.group(1), set()).add(m.group(2))
+    return methods
+
+
+def validate_custom_wire_fields(go_structs, custom_json_methods):
+    """Require every custom wire-field allowance to have custom JSON methods.
+
+    CUSTOM_WIRE_FIELDS exists for fields that are deliberately wire-visible
+    through MarshalJSON/UnmarshalJSON while staying hidden from direct struct
+    tags. If those methods disappear, the allowance would otherwise keep
+    suppressing schema drift.
+    """
+    reports = []
+    required_methods = {'MarshalJSON', 'UnmarshalJSON'}
+    for type_name, fields in sorted(CUSTOM_WIRE_FIELDS.items()):
+        report = {
+            'type': type_name,
+            'fields': sorted(fields),
+        }
+        if type_name not in go_structs:
+            reports.append({
+                **report,
+                'error': 'custom wire fields declared for unknown Go type',
+            })
+            continue
+        missing = sorted(required_methods - custom_json_methods.get(type_name, set()))
+        if missing:
+            reports.append({
+                **report,
+                'missing_methods': missing,
+                'error': 'custom wire fields require custom JSON methods',
+            })
+    return reports
 
 
 def load_schema(path):
@@ -687,12 +735,17 @@ def main():
         return 2
 
     go_structs = parse_go_structs()
+    custom_json_methods = parse_custom_json_methods()
     _assert_exempt_subset_known(go_structs)
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
     shared_inline_errors = validate_shared_inline_overrides()
     union_schema_errors = validate_union_schema_specs()
+    custom_wire_field_errors = validate_custom_wire_fields(
+        go_structs,
+        custom_json_methods,
+    )
     optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
     hand_written_inline_reports = validate_hand_written_inline_schema_specs(go_structs)
     reports.extend(hand_written_inline_reports)
@@ -720,6 +773,7 @@ def main():
             'inline_schema_errors': inline_schema_errors,
             'shared_inline_errors': shared_inline_errors,
             'union_schema_errors': union_schema_errors,
+            'custom_wire_field_errors': custom_wire_field_errors,
             'optional_numeric_pointer': optional_numeric_reports,
         }
         print(json.dumps(out, indent=2))
@@ -749,6 +803,19 @@ def main():
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
+            print()
+        if custom_wire_field_errors:
+            print(
+                'Custom wire-field errors in '
+                f'{len(custom_wire_field_errors)} type(s):'
+            )
+            for r in custom_wire_field_errors:
+                print()
+                print(f'  {r["type"]}')
+                print(f'    fields: {", ".join(r["fields"])}')
+                print(f'    error:  {r["error"]}')
+                if r.get('missing_methods'):
+                    print(f'    missing methods: {", ".join(r["missing_methods"])}')
             print()
         if optional_numeric_reports:
             print(
@@ -789,6 +856,7 @@ def main():
         bool(inline_schema_errors)
         or bool(shared_inline_errors)
         or bool(union_schema_errors)
+        or bool(custom_wire_field_errors)
         or bool(reports)
         or bool(optional_numeric_reports)
         or (args.strict and bool(no_schema))
