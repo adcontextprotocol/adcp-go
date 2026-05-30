@@ -942,6 +942,29 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "[]PlanAuditLog",
         )
 
+    def test_required_features_hint_matches_open_boolean_bag_schema(self):
+        filters_schema = generate.load_schema("core/product-filters.json")
+        required_features = filters_schema["properties"]["required_features"]
+        features_path = generate.ref_to_schema_path(required_features["$ref"])
+
+        self.assertEqual("core/media-buy-features.json", features_path)
+
+        features_schema = generate.load_schema(features_path)
+        self.assertEqual("object", features_schema.get("type"))
+        self.assertEqual({"type": "boolean"}, features_schema.get("additionalProperties"))
+        for name, prop in features_schema.get("properties", {}).items():
+            self.assertEqual(
+                "boolean",
+                prop.get("type"),
+                f"media-buy feature {name} must stay boolean",
+            )
+
+        filters_generated = generate.schema_to_struct("ProductFilters", filters_schema)
+        self.assertIn(
+            "RequiredFeatures map[string]bool `json:\"required_features,omitempty\"`",
+            filters_generated,
+        )
+
     def test_inline_object_structs_are_generated_from_schema_pointers(self):
         sort_schema = generate.load_schema_spec(
             "creative/list-creatives-request.json#/properties/sort",
