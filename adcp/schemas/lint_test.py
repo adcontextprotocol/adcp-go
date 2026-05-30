@@ -55,6 +55,39 @@ class SharedInlineOverrideLintTest(unittest.TestCase):
 
 
 class HandWrittenInlineSchemaLintTest(unittest.TestCase):
+    def test_account_setup_inline_schema_registration_is_pinned_without_schemas(self):
+        self.assertEqual(
+            [
+                "core/account.json#/properties/setup",
+                (
+                    "account/sync-accounts-response.json"
+                    "#/oneOf/0/properties/accounts/items/properties/setup"
+                ),
+                (
+                    "bundled/creative/list-creatives-response.json"
+                    "#/properties/creatives/items/properties/account/properties/setup"
+                ),
+                (
+                    "bundled/creative/sync-creatives-response.json"
+                    "#/oneOf/0/properties/creatives/items/properties/account/properties/setup"
+                ),
+                (
+                    "bundled/media-buy/create-media-buy-response.json"
+                    "#/oneOf/0/properties/account/properties/setup"
+                ),
+                (
+                    "bundled/media-buy/get-media-buys-response.json"
+                    "#/properties/media_buys/items/properties/account/properties/setup"
+                ),
+            ],
+            ACCOUNT_SETUP_SCHEMA_SPECS,
+        )
+        self.assertEqual(6, len(ACCOUNT_SETUP_SCHEMA_SPECS))
+        for schema_spec in ACCOUNT_SETUP_SCHEMA_SPECS:
+            path_part, pointer = schema_spec.split("#", 1)
+            self.assertTrue(path_part.endswith(".json"))
+            self.assertTrue(pointer.startswith("/"))
+
     def test_schema_divergence_reports_property_and_required_drift(self):
         specs = {
             "InlineShape": [
