@@ -1,3 +1,5 @@
+from pathlib import Path
+import tempfile
 import unittest
 from unittest import mock
 
@@ -118,6 +120,70 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             })
 
         self.assertEqual([], reports)
+
+
+class CustomWireFieldLintTest(unittest.TestCase):
+    def test_current_custom_wire_fields_are_backed_by_methods(self):
+        reports = lint.validate_custom_wire_fields(
+            lint.parse_go_structs(),
+            lint.parse_custom_json_methods(),
+        )
+
+        self.assertEqual([], reports)
+
+    def test_parse_custom_json_methods_finds_value_and_pointer_receivers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "custom.go"
+            source.write_text(
+                """
+package adcp
+
+func (s InlineShape) MarshalJSON() ([]byte, error) {
+	return nil, nil
+}
+
+func (s *InlineShape) UnmarshalJSON(data []byte) error {
+	return nil
+}
+"""
+            )
+            with mock.patch.object(lint, "GO_SOURCE_FILES", [source]):
+                methods = lint.parse_custom_json_methods()
+
+        self.assertEqual({"MarshalJSON", "UnmarshalJSON"}, methods["InlineShape"])
+
+    def test_custom_wire_fields_require_known_go_type(self):
+        with mock.patch.object(lint, "CUSTOM_WIRE_FIELDS", {
+            "InlineShape": {"required_value"},
+        }):
+            reports = lint.validate_custom_wire_fields({}, {
+                "InlineShape": {"MarshalJSON", "UnmarshalJSON"},
+            })
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual(
+            "custom wire fields declared for unknown Go type",
+            reports[0]["error"],
+        )
+
+    def test_custom_wire_fields_require_marshal_and_unmarshal(self):
+        with mock.patch.object(lint, "CUSTOM_WIRE_FIELDS", {
+            "InlineShape": {"required_value"},
+        }):
+            reports = lint.validate_custom_wire_fields(
+                {"InlineShape": []},
+                {"InlineShape": {"MarshalJSON"}},
+            )
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual(["required_value"], reports[0]["fields"])
+        self.assertEqual(["UnmarshalJSON"], reports[0]["missing_methods"])
+        self.assertEqual(
+            "custom wire fields require custom JSON methods",
+            reports[0]["error"],
+        )
 
 
 class OptionalNumericPointerLintTest(unittest.TestCase):
