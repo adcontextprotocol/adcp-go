@@ -527,6 +527,58 @@ def validate_hand_written_inline_schema_specs(go_structs):
     return reports
 
 
+def validate_hand_written_inline_schema_divergence():
+    """Report schema-side drift among pointers sharing one hand-written type."""
+    reports = []
+    for type_name, schema_specs in gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS.items():
+        loaded = []
+        error_count = len(reports)
+        for schema_spec in schema_specs:
+            path_part = schema_spec.split('#', 1)[0]
+            schema_path = SCRIPT_DIR / path_part
+            if not schema_path.exists():
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'schema not found: {schema_path}',
+                })
+                continue
+            try:
+                schema = load_schema_spec(schema_spec)
+            except SCHEMA_RESOLUTION_ERRORS as e:
+                reports.append({
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'error': f'could not resolve schema pointer: {e}',
+                })
+                continue
+            loaded.append((
+                schema_spec,
+                schema_property_set(schema),
+                schema_required_set(schema),
+            ))
+        if len(reports) != error_count or len(loaded) != len(schema_specs):
+            continue
+        if len(loaded) < 2:
+            continue
+
+        anchor_spec, anchor_props, anchor_required = loaded[0]
+        for schema_spec, props, required in loaded[1:]:
+            if props == anchor_props and required == anchor_required:
+                continue
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'anchor_schema': anchor_spec,
+                'missing': sorted(anchor_props - props),
+                'extra': sorted(props - anchor_props),
+                'required_missing': sorted(anchor_required - required),
+                'required_extra': sorted(required - anchor_required),
+                'error': 'hand-written inline schema shape differs',
+            })
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -846,6 +898,7 @@ def main():
         custom_json_methods,
     )
     optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
+    hand_written_inline_schema_divergence = validate_hand_written_inline_schema_divergence()
     hand_written_inline_reports = validate_hand_written_inline_schema_specs(go_structs)
     reports.extend(hand_written_inline_reports)
 
@@ -869,6 +922,7 @@ def main():
         out = {
             'drift': reports,
             'hand_written_inline_drift': hand_written_inline_reports,
+            'hand_written_inline_schema_divergence': hand_written_inline_schema_divergence,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
             'inline_additional_properties_errors': inline_additional_properties_errors,
@@ -908,6 +962,31 @@ def main():
                     print(f'    missing: {", ".join(r["missing"])}')
                 if r.get('extra'):
                     print(f'    extra:   {", ".join(r["extra"])}')
+            print()
+        if hand_written_inline_schema_divergence:
+            print(
+                'Hand-written inline schema divergence in '
+                f'{len(hand_written_inline_schema_divergence)} type(s):'
+            )
+            for r in hand_written_inline_schema_divergence:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    anchor: {r.get("anchor_schema", "?")}')
+                print(f'    error:  {r["error"]}')
+                if r.get('missing'):
+                    print(f'    missing: {", ".join(r["missing"])}')
+                if r.get('extra'):
+                    print(f'    extra:   {", ".join(r["extra"])}')
+                if r.get('required_missing'):
+                    print(
+                        '    required missing: '
+                        f'{", ".join(r["required_missing"])}'
+                    )
+                if r.get('required_extra'):
+                    print(
+                        '    required extra:   '
+                        f'{", ".join(r["required_extra"])}'
+                    )
             print()
         if union_schema_errors:
             print(f'Union schema pointer errors in {len(union_schema_errors)} type(s):')
@@ -968,6 +1047,7 @@ def main():
         bool(inline_schema_errors)
         or bool(inline_additional_properties_errors)
         or bool(shared_inline_errors)
+        or bool(hand_written_inline_schema_divergence)
         or bool(union_schema_errors)
         or bool(custom_wire_field_errors)
         or bool(reports)
