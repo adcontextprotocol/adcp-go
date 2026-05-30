@@ -1564,7 +1564,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             (
                 "MCPWebhookPayload",
                 "result",
-                "async webhook result is a task-specific response union",
+                "core/async-response-data.json is a task-specific response union",
             ),
             allowed,
         )
