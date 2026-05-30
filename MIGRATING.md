@@ -61,6 +61,12 @@ be populated.
   such as `Spend`, `CPM`, and `Impressions` are pointers so explicit zero values
   still marshal. The schema's open `additionalProperties` allowance is not
   exposed as a synthetic `Extra`/`Ext` map; use the schema-authored fields.
+- `ReportPlanOutcomeRequest.SellerResponse` is now
+  `*adcp.ReportPlanOutcomeSellerResponse` instead of `any`. Optional budget
+  values such as `CommittedBudget` and package `Budget` are pointers so explicit
+  zero values still marshal. The schema's open `additionalProperties` allowance
+  is not exposed as a synthetic `Extra`/`Ext` map; use the schema-authored
+  fields.
 - `ReportPlanOutcomeRequest.Error` is now
   `*adcp.ReportPlanOutcomeError` instead of `any`, with schema-backed `Code`
   and `Message` fields.

@@ -911,6 +911,12 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assert_field_type(
             "governance/report-plan-outcome-request.json",
             "ReportPlanOutcomeRequest",
+            "seller_response",
+            "*ReportPlanOutcomeSellerResponse",
+        )
+        self.assert_field_type(
+            "governance/report-plan-outcome-request.json",
+            "ReportPlanOutcomeRequest",
             "delivery",
             "*ReportPlanOutcomeDelivery",
         )
@@ -1353,6 +1359,36 @@ class InlineObjectGenerationTest(unittest.TestCase):
             outcome_delivery_generated,
         )
 
+        seller_response_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-request.json#/properties/seller_response",
+        )
+        seller_response_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeSellerResponse",
+            seller_response_schema,
+        )
+        self.assertIn(
+            "CommittedBudget *float64 `json:\"committed_budget,omitempty\"`",
+            seller_response_generated,
+        )
+        self.assertIn(
+            "Packages []ReportPlanOutcomeSellerPackage `json:\"packages,omitempty\"`",
+            seller_response_generated,
+        )
+        self.assertIn(
+            "PlannedDelivery *PlannedDelivery `json:\"planned_delivery,omitempty\"`",
+            seller_response_generated,
+        )
+
+        seller_package_schema = generate.load_schema_spec(
+            "governance/report-plan-outcome-request.json#/properties/seller_response"
+            "/properties/packages/items",
+        )
+        seller_package_generated = generate.schema_to_struct(
+            "ReportPlanOutcomeSellerPackage",
+            seller_package_schema,
+        )
+        self.assertIn("Budget *float64 `json:\"budget,omitempty\"`", seller_package_generated)
+
         outcome_reporting_period_schema = generate.load_schema_spec(
             "governance/report-plan-outcome-request.json#/properties/delivery"
             "/properties/reporting_period",
@@ -1675,6 +1711,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("PreviewCreativeRequest", "inputs"), records)
         self.assertNotIn(("PreviewCreativeRequest", "requests"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
+        self.assertNotIn(("ReportPlanOutcomeRequest", "seller_response"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)
         self.assertNotIn(("ReportPlanOutcomeResponse", "plan_summary"), records)

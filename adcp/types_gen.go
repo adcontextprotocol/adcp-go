@@ -8203,6 +8203,19 @@ type ReportPlanOutcomeDelivery struct {
 	CompletionRate  *float64                                  `json:"completion_rate,omitempty"`  // Video completion rate (0-1).
 }
 
+// ReportPlanOutcomeSellerResponse — The seller's full response. Required when outcome is 'completed'.
+type ReportPlanOutcomeSellerResponse struct {
+	SellerReference  string                           `json:"seller_reference,omitempty"`  // The seller's identifier for the created resource (e.g., media_buy_id
+	CommittedBudget  *float64                         `json:"committed_budget,omitempty"`  // Total budget committed across all confirmed packages. When present, the
+	Packages         []ReportPlanOutcomeSellerPackage `json:"packages,omitempty"`          // Confirmed packages with actual budget and targeting.
+	PlannedDelivery  *PlannedDelivery                 `json:"planned_delivery,omitempty"`  // What the seller said it will deliver. When seller-side governance is not
+	CreativeDeadline string                           `json:"creative_deadline,omitempty"` // ISO 8601 deadline for creative submission.
+}
+
+type ReportPlanOutcomeSellerPackage struct {
+	Budget *float64 `json:"budget,omitempty"`
+}
+
 // ReportPlanOutcomeDeliveryReportingPeriod — Start and end timestamps for the reporting window.
 type ReportPlanOutcomeDeliveryReportingPeriod struct {
 	Start string `json:"start"`
@@ -9977,19 +9990,19 @@ type CheckGovernanceResponse struct {
 
 // ReportPlanOutcomeRequest — Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side
 type ReportPlanOutcomeRequest struct {
-	AdcpVersion       string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion  int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	PlanID            string                     `json:"plan_id"`                      // The plan this outcome is for. The plan uniquely scopes the account and
-	CheckID           string                     `json:"check_id,omitempty"`           // The check_id from check_governance. Links the outcome to the governance check
-	IdempotencyKey    string                     `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate outcome
-	PurchaseType      PurchaseType               `json:"purchase_type,omitempty"`      // The type of financial commitment this outcome is for. Determines which budget
-	Outcome           OutcomeType                `json:"outcome"`                      // Outcome type.
-	SellerResponse    any                        `json:"seller_response,omitempty"`    // The seller's full response. Required when outcome is 'completed'.
-	Delivery          *ReportPlanOutcomeDelivery `json:"delivery,omitempty"`           // Delivery metrics. Required when outcome is 'delivery'.
-	Error             *ReportPlanOutcomeError    `json:"error,omitempty"`              // Error details. Required when outcome is 'failed'.
-	GovernanceContext string                     `json:"governance_context"`           // Opaque governance context from the check_governance response that authorized
-	Context           any                        `json:"context,omitempty"`
-	Ext               any                        `json:"ext,omitempty"`
+	AdcpVersion       string                           `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion  int                              `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	PlanID            string                           `json:"plan_id"`                      // The plan this outcome is for. The plan uniquely scopes the account and
+	CheckID           string                           `json:"check_id,omitempty"`           // The check_id from check_governance. Links the outcome to the governance check
+	IdempotencyKey    string                           `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate outcome
+	PurchaseType      PurchaseType                     `json:"purchase_type,omitempty"`      // The type of financial commitment this outcome is for. Determines which budget
+	Outcome           OutcomeType                      `json:"outcome"`                      // Outcome type.
+	SellerResponse    *ReportPlanOutcomeSellerResponse `json:"seller_response,omitempty"`    // The seller's full response. Required when outcome is 'completed'.
+	Delivery          *ReportPlanOutcomeDelivery       `json:"delivery,omitempty"`           // Delivery metrics. Required when outcome is 'delivery'.
+	Error             *ReportPlanOutcomeError          `json:"error,omitempty"`              // Error details. Required when outcome is 'failed'.
+	GovernanceContext string                           `json:"governance_context"`           // Opaque governance context from the check_governance response that authorized
+	Context           any                              `json:"context,omitempty"`
+	Ext               any                              `json:"ext,omitempty"`
 }
 
 // ReportPlanOutcomeResponse — Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent)

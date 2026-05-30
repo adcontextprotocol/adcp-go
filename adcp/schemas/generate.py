@@ -608,6 +608,15 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "governance/report-plan-outcome-request.json#/properties/delivery",
     ),
     (
+        "ReportPlanOutcomeSellerResponse",
+        "governance/report-plan-outcome-request.json#/properties/seller_response",
+    ),
+    (
+        "ReportPlanOutcomeSellerPackage",
+        "governance/report-plan-outcome-request.json#/properties/seller_response"
+        "/properties/packages/items",
+    ),
+    (
         "ReportPlanOutcomeDeliveryReportingPeriod",
         "governance/report-plan-outcome-request.json#/properties/delivery"
         "/properties/reporting_period",
@@ -1130,6 +1139,8 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'DeliveryReportingGeoDimension',
     'DeliveryReportingDimension',
     'ReportPlanOutcomeDelivery',
+    'ReportPlanOutcomeSellerResponse',
+    'ReportPlanOutcomeSellerPackage',
     'CreativeAgentRef',
     'BuildCreativePreviewInput',
     'RightsAgentRef',
@@ -1460,6 +1471,10 @@ INLINE_TYPE_HINTS = {
     ('GovernanceDeliveryMetrics', 'impressions'): '*int',
     ('GovernanceDeliveryMetrics', 'cumulative_impressions'): '*int',
     ('GovernanceDeliveryMetrics', 'audience_distribution'): '*GovernanceAudienceDistribution',
+    ('ReportPlanOutcomeRequest', 'seller_response'): '*ReportPlanOutcomeSellerResponse',
+    ('ReportPlanOutcomeSellerResponse', 'committed_budget'): '*float64',
+    ('ReportPlanOutcomeSellerResponse', 'packages'): 'ReportPlanOutcomeSellerPackage',
+    ('ReportPlanOutcomeSellerPackage', 'budget'): '*float64',
     ('ReportPlanOutcomeRequest', 'delivery'): '*ReportPlanOutcomeDelivery',
     ('ReportPlanOutcomeDelivery', 'reporting_period'): '*ReportPlanOutcomeDeliveryReportingPeriod',
     ('ReportPlanOutcomeDelivery', 'impressions'): '*int',
