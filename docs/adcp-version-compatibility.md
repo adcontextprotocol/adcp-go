@@ -6,7 +6,7 @@ and servers.
 
 ## Contract
 
-- `adcp_version` is the authoritative release-precision version pin.
+- `adcp_version` is the buyer's release-precision version pin.
 - `adcp_major_version` remains accepted and emitted through 3.x for backward
   compatibility.
 - `adcp.ADCPVersion.supported_versions` advertises the release-precision
@@ -15,9 +15,65 @@ and servers.
   release.
 - Requests pinned to `3.0` are served as `3.0` even when the seller also
   supports `3.1`.
+- Requests pinned to a newer supported-minor prerelease can be served by the
+  matching stable release. For example, a `3.1-rc.3` request against a seller
+  that supports `["3.0", "3.1"]` is served as `3.1`.
+- Requests pinned above the seller's support downshift to the highest supported
+  release in the same major. For example, a `3.1` request against a `["3.0"]`
+  seller is served as `3.0`.
 - Requests pinned to an unsupported major return `VERSION_UNSUPPORTED`.
 - Full semver build identifiers are normalized before use on the wire: for
   example, `3.1.0-rc.3` becomes `3.1-rc.3`.
+
+## Go Usage
+
+| Helper | Use |
+| --- | --- |
+| `SupportedADCPVersions()` | Default seller `ADCPVersion.SupportedVersions` value. |
+| `DefaultADCPVersion()` | Highest SDK-supported 3.x release for unpinned responses. |
+| `VersionEnvelopeFor(version)` | Buyer-side helper for filling `AdcpVersion` and `AdcpMajorVersion` together. |
+| `NormalizeADCPVersion(version)` | Convert bundle/build versions such as `3.1.0-rc.3` to wire versions. |
+| `NegotiateADCPVersion(requestedVersion, requestedMajor, supported)` | Seller-side compatibility resolution. |
+
+Buyer requests should set both fields through 3.x:
+
+```go
+env, ok := adcp.VersionEnvelopeFor("3.1")
+if !ok {
+    return fmt.Errorf("invalid AdCP version")
+}
+req := adcp.GetProductsRequest{
+    AdcpVersion:      env.AdcpVersion,
+    AdcpMajorVersion: env.AdcpMajorVersion,
+    BuyingMode:       "brief",
+    Brief:            "Launch a test campaign.",
+}
+```
+
+Sellers using `adcp.Register` get automatic version negotiation for
+`get_adcp_capabilities`, including the `protocols` filter on the generated
+`GetAdcpCapabilitiesRequest`. Other tool handlers receive the decoded request
+type and can call `NegotiateADCPVersion` when they need to choose a
+version-specific response shape:
+
+```go
+served, ok := adcp.NegotiateADCPVersion(
+    req.AdcpVersion,
+    req.AdcpMajorVersion,
+    adcp.SupportedADCPVersions(),
+)
+if !ok {
+    return nil, adcp.NewError("VERSION_UNSUPPORTED", adcp.ErrorOptions{
+        Message: "unsupported AdCP version",
+    })
+}
+```
+
+The convenience response builders keep the existing payload-oriented SDK
+surface. If a seller needs to force a full generated response envelope for a
+specific tool before the SDK exposes a dedicated builder, it should construct
+the generated response type directly and return it in MCP structured content
+from a custom handler.
 
 ## Type Policy
 

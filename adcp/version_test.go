@@ -53,6 +53,7 @@ func TestNegotiateADCPVersion(t *testing.T) {
 		{name: "legacy major", requestMajor: 3, want: "3.1", ok: true},
 		{name: "default highest", want: "3.1", ok: true},
 		{name: "downshift", requestVersion: "3.1", supported: []string{"3.0"}, want: "3.0", ok: true},
+		{name: "pre release uses matching stable", requestVersion: "3.1-rc.3", supported: []string{"3.0", "3.1"}, want: "3.1", ok: true},
 		{name: "cross major unsupported", requestVersion: "4.0", ok: false},
 	}
 

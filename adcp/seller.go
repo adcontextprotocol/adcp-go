@@ -52,6 +52,18 @@ func Register(server *mcp.Server, cfg Config) {
 				})
 				return attachContext(result, input.Context), out, err
 			}
+			data, ok = filterCapabilitiesByProtocols(data, input.Protocols)
+			if !ok {
+				result, out, err := Errorf("UNSUPPORTED_FEATURE", ErrorOptions{
+					Message: "unsupported AdCP protocol",
+					Field:   "protocols",
+					Details: map[string]any{
+						"requested_protocols": input.Protocols,
+						"supported_protocols": caps.SupportedProtocols,
+					},
+				})
+				return attachContext(result, input.Context), out, err
+			}
 			result, out, err := CapabilitiesResponse(data)
 			return attachContext(result, input.Context), out, err
 		})
@@ -519,4 +531,63 @@ func capabilitiesForVersion(base *CapabilitiesData, requestedVersion string, req
 	caps.AdcpVersion = servedVersion
 	caps.AdcpMajorVersion = major
 	return &caps, true
+}
+
+func filterCapabilitiesByProtocols(base *CapabilitiesData, protocols []string) (*CapabilitiesData, bool) {
+	if base == nil || len(protocols) == 0 {
+		return base, true
+	}
+
+	requested := make(map[string]bool, len(protocols))
+	for _, protocol := range protocols {
+		requested[protocol] = true
+	}
+
+	filtered := *base
+	filtered.SupportedProtocols = make([]string, 0, len(base.SupportedProtocols))
+	for _, protocol := range base.SupportedProtocols {
+		if requested[protocol] {
+			filtered.SupportedProtocols = append(filtered.SupportedProtocols, protocol)
+		}
+	}
+	if len(filtered.SupportedProtocols) == 0 {
+		return nil, false
+	}
+
+	filtered.Account = nil
+	filtered.MediaBuy = nil
+	filtered.Signals = nil
+	filtered.Governance = nil
+	filtered.SponsoredIntelligence = nil
+	filtered.Brand = nil
+	filtered.Creative = nil
+	filtered.Measurement = nil
+	filtered.WholesaleFeedVersioning = nil
+	filtered.WholesaleFeedWebhooks = nil
+
+	for _, protocol := range filtered.SupportedProtocols {
+		switch protocol {
+		case "media_buy":
+			filtered.Account = base.Account
+			filtered.MediaBuy = base.MediaBuy
+			filtered.WholesaleFeedVersioning = base.WholesaleFeedVersioning
+			filtered.WholesaleFeedWebhooks = base.WholesaleFeedWebhooks
+		case "signals":
+			filtered.Signals = base.Signals
+			filtered.WholesaleFeedVersioning = base.WholesaleFeedVersioning
+			filtered.WholesaleFeedWebhooks = base.WholesaleFeedWebhooks
+		case "governance":
+			filtered.Governance = base.Governance
+		case "sponsored_intelligence":
+			filtered.SponsoredIntelligence = base.SponsoredIntelligence
+		case "brand":
+			filtered.Brand = base.Brand
+		case "creative":
+			filtered.Creative = base.Creative
+		case "measurement":
+			filtered.Measurement = base.Measurement
+		}
+	}
+
+	return &filtered, true
 }

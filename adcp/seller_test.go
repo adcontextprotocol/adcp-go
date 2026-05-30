@@ -311,6 +311,37 @@ func TestRegisteredCapabilitiesNegotiatesVersionPins(t *testing.T) {
 	}
 }
 
+func TestRegisteredCapabilitiesFiltersProtocols(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		Capabilities: &CapabilitiesData{
+			SupportedProtocols: []string{"media_buy", "signals", "creative"},
+			Account:            &AccountCapabilities{SupportedBilling: []string{"agent"}},
+			MediaBuy:           &MediaBuyCapabilities{SupportedPricingModels: []string{"cpm"}},
+			Signals:            &SignalsCapabilities{DiscoveryModes: []string{"managed"}},
+			Creative:           &CreativeCapabilities{HasCreativeLibrary: Bool(true)},
+		},
+	}), "get_adcp_capabilities", map[string]any{"protocols": []string{"media_buy"}})
+
+	wire := structuredContentMap(t, result)
+	assert.False(t, result.IsError)
+	assert.Equal(t, []any{"media_buy"}, wire["supported_protocols"])
+	assert.Contains(t, wire, "account")
+	assert.Contains(t, wire, "media_buy")
+	assert.NotContains(t, wire, "signals")
+	assert.NotContains(t, wire, "creative")
+}
+
+func TestRegisteredCapabilitiesRejectsUnsupportedProtocolFilter(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{"protocols": []string{"signals"}})
+	wire := structuredContentMap(t, result)
+
+	assert.True(t, result.IsError)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "UNSUPPORTED_FEATURE", errPayload["code"])
+	assert.Equal(t, "protocols", errPayload["field"])
+}
+
 func TestRegisteredCapabilitiesRejectsUnsupportedVersion(t *testing.T) {
 	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{"adcp_version": "4.0"})
 	wire := structuredContentMap(t, result)

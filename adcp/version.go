@@ -76,6 +76,11 @@ func NegotiateADCPVersion(requestedVersion string, requestedMajor int, supported
 		if !ok {
 			return "", false
 		}
+		if requested.prerelease != "" {
+			if stable, ok := findSupportedADCPRelease(supportedReleases, requested.major, requested.minor, ""); ok {
+				return stable.version, true
+			}
+		}
 		return highestSupportedADCPRelease(supportedReleases, requested.major, &requested)
 	}
 
@@ -126,6 +131,15 @@ func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRe
 		return "", false
 	}
 	return best.version, true
+}
+
+func findSupportedADCPRelease(supported []adcpRelease, major, minor int, prerelease string) (adcpRelease, bool) {
+	for _, release := range supported {
+		if release.major == major && release.minor == minor && release.prerelease == prerelease {
+			return release, true
+		}
+	}
+	return adcpRelease{}, false
 }
 
 func parseADCPRelease(version string) (adcpRelease, bool) {

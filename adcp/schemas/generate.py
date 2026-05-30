@@ -2929,8 +2929,13 @@ def main(argv=None):
             capture_output=True,
             check=True,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError:
         print(source, end='')
+    except subprocess.CalledProcessError as exc:
+        if exc.stderr:
+            print(exc.stderr, file=sys.stderr, end='')
+        print('gofmt failed while formatting generated Go', file=sys.stderr)
+        return 1
     else:
         print(result.stdout, end='')
     return 0

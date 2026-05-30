@@ -7,7 +7,7 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 15
+python3 generate.py --coverage-max-unreviewed-any 13
 ```
 
 The generator currently reports 223 generated dynamic `any` uses:
@@ -20,7 +20,7 @@ The generator currently reports 223 generated dynamic `any` uses:
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 15
+python3 generate.py --coverage-max-unreviewed-any 13
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
