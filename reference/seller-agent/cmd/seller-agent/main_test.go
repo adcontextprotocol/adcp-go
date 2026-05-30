@@ -621,13 +621,27 @@ func TestCustomScenario_SeedPricingOption(t *testing.T) {
 func TestCustomScenario_ForceCreateMediaBuyArm_Submitted(t *testing.T) {
 	b := newTestBackend()
 
-	_, err := b.handleCustomScenario("force_create_media_buy_arm", map[string]any{
+	result, err := b.handleCustomScenario("force_create_media_buy_arm", map[string]any{
 		"arm":     "submitted",
 		"task_id": "task-abc-123",
 		"message": "processing in async queue",
 	})
 	if err != nil {
 		t.Fatalf("force_create_media_buy_arm: %v", err)
+	}
+	resultMap, ok := result.(map[string]any)
+	if !ok {
+		t.Fatalf("want map result, got %T", result)
+	}
+	forced, ok := resultMap["forced"].(map[string]any)
+	if !ok {
+		t.Fatalf("want forced map, got %T", resultMap["forced"])
+	}
+	if forced["message"] != nil {
+		t.Fatalf("forced.message should not be present: %#v", forced)
+	}
+	if resultMap["message"] != "processing in async queue" {
+		t.Fatalf("want top-level message, got %#v", resultMap["message"])
 	}
 
 	resp, err := b.createMediaBuyResponse(&adcp.CreateMediaBuyRequest{

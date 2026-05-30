@@ -650,7 +650,11 @@ func (b *backend) handleCustomScenario(scenario string, params map[string]any) (
 		b.mu.Lock()
 		b.forced = &forceArm{TaskID: taskID, Message: message}
 		b.mu.Unlock()
-		return map[string]any{"success": true, "forced": map[string]any{"arm": arm, "task_id": taskID, "message": message}}, nil
+		return map[string]any{
+			"success": true,
+			"forced":  map[string]any{"arm": arm, "task_id": taskID},
+			"message": message,
+		}, nil
 	default:
 		return nil, &adcp.TestControllerError{Code: "UNKNOWN_SCENARIO", Message: "Unrecognized scenario name"}
 	}

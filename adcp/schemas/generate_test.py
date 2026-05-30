@@ -890,6 +890,17 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "requests",
             "[]PreviewCreativeBatchRequest",
         )
+        forced_success_schema = generate.load_schema_spec(
+            "compliance/comply-test-controller-response.json#/oneOf/3",
+        )
+        forced_type, reason = generate.field_go_type_info(
+            "ForcedDirectiveSuccess",
+            "forced",
+            generate.schema_properties(forced_success_schema)["forced"],
+            generate.schema_required_names(forced_success_schema),
+        )
+        self.assertEqual("ForcedDirective", forced_type)
+        self.assertIsNone(reason)
         self.assert_field_type(
             "core/signal-targeting.json",
             "SignalTargeting",
@@ -1674,6 +1685,16 @@ class InlineObjectGenerationTest(unittest.TestCase):
             preview_batch_request_generated,
         )
 
+        forced_directive_schema = generate.load_schema_spec(
+            "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced",
+        )
+        forced_directive_generated = generate.schema_to_struct(
+            "ForcedDirective",
+            forced_directive_schema,
+        )
+        self.assertIn("Arm string `json:\"arm\"`", forced_directive_generated)
+        self.assertIn("TaskID string `json:\"task_id,omitempty\"`", forced_directive_generated)
+
         plan_audit_action_schema = generate.load_schema_spec(
             "governance/get-plan-audit-logs-response.json#/properties/plans/items"
             "/properties/governed_actions/items",
@@ -1710,6 +1731,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("SyncGovernanceSuccess", "accounts"), records)
         self.assertNotIn(("PreviewCreativeRequest", "inputs"), records)
         self.assertNotIn(("PreviewCreativeRequest", "requests"), records)
+        self.assertNotIn(("ForcedDirectiveSuccess", "forced"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "seller_response"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
