@@ -1,4 +1,8 @@
+import contextlib
+import io
+import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -120,6 +124,43 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             })
 
         self.assertEqual([], reports)
+
+    def test_json_output_exposes_hand_written_inline_drift_separately(self):
+        inline_report = {
+            "type": "InlineShape",
+            "schema": "shape.json#/properties/inline",
+            "missing_in_go": ["message"],
+            "extra_in_go": [],
+            "required_with_omitempty": [],
+        }
+
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint, "parse_go_structs", return_value={}),
+            mock.patch.object(lint, "parse_custom_json_methods", return_value={}),
+            mock.patch.object(lint, "_assert_exempt_subset_known", return_value=None),
+            mock.patch.object(lint, "validate_inline_schema_specs", return_value=[]),
+            mock.patch.object(lint, "validate_inline_additional_properties_policies", return_value=[]),
+            mock.patch.object(lint, "validate_shared_inline_overrides", return_value=[]),
+            mock.patch.object(lint, "validate_union_schema_specs", return_value=[]),
+            mock.patch.object(lint, "validate_custom_wire_fields", return_value=[]),
+            mock.patch.object(lint, "optional_numeric_pointer_reports", return_value=[]),
+            mock.patch.object(
+                lint,
+                "validate_hand_written_inline_schema_specs",
+                return_value=[inline_report],
+            ),
+            mock.patch.object(lint.gen, "KNOWN_TYPES", set()),
+            mock.patch.object(sys, "argv", ["lint.py", "--json"]),
+        ):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = lint.main()
+
+        self.assertEqual(0, rc)
+        payload = json.loads(out.getvalue())
+        self.assertEqual([inline_report], payload["hand_written_inline_drift"])
+        self.assertIn(inline_report, payload["drift"])
 
 
 class InlineAdditionalPropertiesPolicyLintTest(unittest.TestCase):

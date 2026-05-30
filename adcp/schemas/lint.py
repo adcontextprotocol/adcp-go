@@ -868,6 +868,7 @@ def main():
     if args.json:
         out = {
             'drift': reports,
+            'hand_written_inline_drift': hand_written_inline_reports,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
             'inline_additional_properties_errors': inline_additional_properties_errors,
