@@ -4568,7 +4568,7 @@ func ParsePropertyType(s string) (PropertyType, error) {
 	return "", fmt.Errorf("unknown PropertyType value")
 }
 
-// ProposalStatus — Lifecycle status of a proposal. This is the per-proposal signal for whether
+// ProposalStatus — Lifecycle status of a proposal.
 type ProposalStatus = string
 
 const (
@@ -7777,6 +7777,7 @@ type GetSignalsIncompleteItem struct {
 	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the caller to decide
 }
 
+// GetSignalsResponseSignal — GetSignals response row with listing identity, enrichment, activation, and pricing fields.
 type GetSignalsResponseSignal struct {
 	SignalRef *SignalRef `json:"signal_ref,omitempty"` // Canonical signal reference for discovery, activation, and media-buy targeting.
 	// Deprecated: DEPRECATED.
@@ -7791,24 +7792,24 @@ type GetSignalsResponseSignal struct {
 	RestrictedAttributes []RestrictedAttribute    `json:"restricted_attributes,omitempty"` // Restricted attribute categories this signal touches.
 	PolicyCategories     []string                 `json:"policy_categories,omitempty"`     // Policy categories this signal is sensitive for.
 	Taxonomy             *SignalTaxonomy          `json:"taxonomy,omitempty"`              // Optional taxonomy metadata describing what this signal means in an external
-	SegmentationCriteria string                   `json:"segmentation_criteria,omitempty"`
-	CriteriaURL          string                   `json:"criteria_url,omitempty"`
-	DataSources          []string                 `json:"data_sources,omitempty"`
-	Methodology          string                   `json:"methodology,omitempty"`
-	AudienceExpansion    *bool                    `json:"audience_expansion,omitempty"`
-	DeviceExpansion      *bool                    `json:"device_expansion,omitempty"`
-	RefreshCadence       string                   `json:"refresh_cadence,omitempty"`
-	LookbackWindow       string                   `json:"lookback_window,omitempty"`
-	Onboarder            *SignalOnboarder         `json:"onboarder,omitempty"`
-	Countries            []string                 `json:"countries,omitempty"`
-	ConsentBasis         []ConsentBasis           `json:"consent_basis,omitempty"`
-	Art9Basis            string                   `json:"art9_basis,omitempty"`
-	Modeling             *SignalModeling          `json:"modeling,omitempty"`
-	DataSubjectRights    *SignalDataSubjectRights `json:"data_subject_rights,omitempty"` // Per-signal data-subject-rights routing. This is a contact/routing reference
-	DtsCompliantVersion  string                   `json:"dts_compliant_version,omitempty"`
-	SignalAgentSegmentID string                   `json:"signal_agent_segment_id"` // Opaque signal handle issued by this signal source. Pass this string verbatim
-	SignalType           SignalCatalogType        `json:"signal_type"`             // Commercial/provenance type of signal (marketplace, custom, owned)
-	DataProvider         string                   `json:"data_provider,omitempty"` // Human-readable source name for the signal, when applicable. For
+	SegmentationCriteria string                   `json:"segmentation_criteria,omitempty"` // Rules governing inclusion of identifiers in the segment. Aligns with IAB Data
+	CriteriaURL          string                   `json:"criteria_url,omitempty"`          // Optional URL to a longer-form methodology or criteria document. This is a
+	DataSources          []string                 `json:"data_sources,omitempty"`          // Origin categories of the raw data used to compile the signal, aligned with IAB
+	Methodology          string                   `json:"methodology,omitempty"`           // How the signal's audience membership or attribute was determined. 'modeled'
+	AudienceExpansion    *bool                    `json:"audience_expansion,omitempty"`    // Whether look-alike or similar-audience expansion was used to include
+	DeviceExpansion      *bool                    `json:"device_expansion,omitempty"`      // Whether the signal was expanded deterministically across devices of the same
+	RefreshCadence       string                   `json:"refresh_cadence,omitempty"`       // Cadence at which the signal definition's underlying segment membership is
+	LookbackWindow       string                   `json:"lookback_window,omitempty"`       // Time window in which a qualifying event can occur for inclusion.
+	Onboarder            *SignalOnboarder         `json:"onboarder,omitempty"`             // Onboarder disclosure. Required when data_sources includes an offline_* or
+	Countries            []string                 `json:"countries,omitempty"`             // ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must
+	ConsentBasis         []ConsentBasis           `json:"consent_basis,omitempty"`         // Declared GDPR Article 6 lawful basis or consent basis under which this
+	Art9Basis            string                   `json:"art9_basis,omitempty"`            // GDPR Article 9 basis when restricted_attributes is non-empty and the signal is
+	Modeling             *SignalModeling          `json:"modeling,omitempty"`              // Modeling disclosure for modeled data signals. Required when methodology is
+	DataSubjectRights    *SignalDataSubjectRights `json:"data_subject_rights,omitempty"`   // Per-signal data-subject-rights routing. This is a contact/routing reference
+	DtsCompliantVersion  string                   `json:"dts_compliant_version,omitempty"` // IAB Data Transparency Standard version this signal definition self-attests as
+	SignalAgentSegmentID string                   `json:"signal_agent_segment_id"`         // Opaque signal handle issued by this signal source. Pass this string verbatim
+	SignalType           SignalCatalogType        `json:"signal_type"`                     // Commercial/provenance type of signal (marketplace, custom, owned)
+	DataProvider         string                   `json:"data_provider,omitempty"`         // Human-readable source name for the signal, when applicable. For
 	// Deprecated: DEPRECATED for detailed planning.
 	CoveragePercentage float64                 `json:"coverage_percentage,omitempty"` // DEPRECATED for detailed planning. Optional legacy scalar percentage of
 	CoverageForecast   *SignalCoverageForecast `json:"coverage_forecast,omitempty"`   // Optional forecast-shaped signal availability guidance. When present, this is
@@ -7816,7 +7817,7 @@ type GetSignalsResponseSignal struct {
 	PricingOptions     []VendorPricingOption   `json:"pricing_options,omitempty"`     // Pricing options available for this signal when it has an incremental price.
 }
 
-// SignalCoverageForecastScope — Explicit denominator for the coverage forecast. This identifies the inventory, product, account
+// SignalCoverageForecastScope — Explicit denominator for the coverage forecast.
 type SignalCoverageForecastScope struct {
 	Kind          string     `json:"kind"`                      // Denominator family for the coverage forecast.
 	Label         string     `json:"label"`                     // Human-readable denominator label, such as 'network price-priority inventory'.
@@ -9318,7 +9319,7 @@ type GetAdcpCapabilitiesResponse struct {
 	GovernanceContext       string                               `json:"governance_context,omitempty"`        // Governance context token issued by the account's governance agent during
 	Payload                 map[string]any                       `json:"payload,omitempty"`                   // Conceptual grouping for the task-specific response data defined by individual
 	Adcp                    ADCPVersion                          `json:"adcp"`                                // Core AdCP protocol information
-	SupportedProtocols      []string                             `json:"supported_protocols"`                 // AdCP protocols this agent supports. Stable values both (a) declare which tools
+	SupportedProtocols      []string                             `json:"supported_protocols"`                 // AdCP protocols this agent supports.
 	Account                 *AccountCapabilities                 `json:"account,omitempty"`                   // Account management capabilities. Describes how accounts are established, what
 	MediaBuy                *MediaBuyCapabilities                `json:"media_buy,omitempty"`                 // Media-buy protocol capabilities. Expected when media_buy is in
 	Signals                 *SignalsCapabilities                 `json:"signals,omitempty"`                   // Signals protocol capabilities. Only present if signals is in
