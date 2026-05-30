@@ -797,14 +797,14 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 }
 
 func TestPlanAuditLogsRoundTrip(t *testing.T) {
-	raw := []byte(`{"plans":[{"plan_id":"plan-1","plan_version":1,"status":"active","budget":{"authorized":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}],"entries":[{"id":"entry-1","type":"outcome","timestamp":"2026-05-28T11:00:00Z","outcome":"completed","committed_budget":0}]}]}`)
+	raw := []byte(`{"plans":[{"plan_id":"plan-1","plan_version":1,"status":"active","budget":{"authorized":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}],"entries":[{"id":"entry-1","type":"outcome","timestamp":"2026-05-28T11:00:00Z","outcome":"completed","committed_budget":0}]},{"plan_id":"plan-2","plan_version":1,"status":"active","budget":{"authorized":0,"committed":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-2","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}]}]}`)
 
 	var decoded GetPlanAuditLogsResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal plan audit logs: %v", err)
 	}
-	if len(decoded.Plans) != 1 {
-		t.Fatalf("plans len = %d, want 1", len(decoded.Plans))
+	if len(decoded.Plans) != 2 {
+		t.Fatalf("plans len = %d, want 2", len(decoded.Plans))
 	}
 	plan := decoded.Plans[0]
 	if plan.Budget.Authorized == nil || *plan.Budget.Authorized != 0 {
@@ -818,6 +818,10 @@ func TestPlanAuditLogsRoundTrip(t *testing.T) {
 	}
 	if len(plan.Entries) != 1 || plan.Entries[0].CommittedBudget == nil || *plan.Entries[0].CommittedBudget != 0 {
 		t.Fatalf("entry committed_budget did not preserve explicit zero: %#v", plan.Entries)
+	}
+	committedPlan := decoded.Plans[1]
+	if committedPlan.Budget.Committed == nil || *committedPlan.Budget.Committed != 0 {
+		t.Fatalf("budget.committed = %#v, want explicit 0", committedPlan.Budget.Committed)
 	}
 
 	encoded, err := json.Marshal(decoded)
@@ -838,6 +842,20 @@ func TestPlanAuditLogsRoundTrip(t *testing.T) {
 	}
 	if strings.Contains(body, `"committed":null`) {
 		t.Fatalf("plan audit logs unexpectedly marshaled absent budget.committed:\n%s", body)
+	}
+	var encodedDoc struct {
+		Plans []struct {
+			Budget map[string]json.RawMessage `json:"budget"`
+		} `json:"plans"`
+	}
+	if err := json.Unmarshal(encoded, &encodedDoc); err != nil {
+		t.Fatalf("decode encoded plan audit logs: %v", err)
+	}
+	if _, ok := encodedDoc.Plans[0].Budget["committed"]; ok {
+		t.Fatalf("absent budget.committed unexpectedly encoded in plan 1:\n%s", body)
+	}
+	if got := string(encodedDoc.Plans[1].Budget["committed"]); got != "0" {
+		t.Fatalf("plan 2 budget.committed encoded as %s, want 0:\n%s", got, body)
 	}
 }
 
