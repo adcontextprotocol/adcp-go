@@ -234,6 +234,7 @@ CORE_SCHEMAS = [
     "core/destination.json",
     "core/activation-key.json",
     "core/signal-definition.json",
+    "core/signal-coverage-forecast.json",
     "core/signal-id.json",
     "core/signal-targeting.json",
     "core/signal-pricing-option.json",
@@ -426,6 +427,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     (
         "GetSignalsIncompleteItem",
         "signals/get-signals-response.json#/properties/incomplete/items",
+    ),
+    (
+        "GetSignalsResponseSignal",
+        "signals/get-signals-response.json#/properties/signals/items",
+    ),
+    (
+        "SignalCoverageForecastScope",
+        "core/signal-coverage-forecast.json#/properties/scope",
     ),
     (
         "AuditObservationDetails",
@@ -1134,6 +1143,8 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'GetProductsFilterDiagnostics',
     'CapabilitiesWholesaleFeedVersioning',
     'CapabilitiesWholesaleFeedWebhooks',
+    'GetSignalsResponseSignal',
+    'SignalCoverageForecastScope',
     'DeliveryAggregatedTotals',
     'MediaBuyDeliveryTotals',
     'MediaBuyDelivery',
@@ -1440,6 +1451,15 @@ INLINE_TYPE_HINTS = {
     ('Signal', 'range'): '*SignalRange',
     # 3.1 forward-compatible hints for auto-discovered referenced schemas.
     ('SignalListing', 'range'): '*SignalRange',
+    ('GetSignalsResponse', 'signals'): 'GetSignalsResponseSignal',
+    ('GetSignalsResponseSignal', 'range'): '*SignalRange',
+    ('GetSignalsResponseSignal', 'taxonomy'): '*SignalTaxonomy',
+    ('GetSignalsResponseSignal', 'onboarder'): '*SignalOnboarder',
+    ('GetSignalsResponseSignal', 'modeling'): '*SignalModeling',
+    ('GetSignalsResponseSignal', 'data_subject_rights'): '*SignalDataSubjectRights',
+    ('GetSignalsResponseSignal', 'coverage_forecast'): '*SignalCoverageForecast',
+    ('SignalCoverageForecast', 'points'): 'ForecastPoint',
+    ('SignalCoverageForecast', 'scope'): 'SignalCoverageForecastScope',
     ('ProductSignalTargetingOption', 'range'): '*SignalRange',
     ('PackageSignalTargeting', 'min_value'): '*float64',
     ('PackageSignalTargeting', 'max_value'): '*float64',

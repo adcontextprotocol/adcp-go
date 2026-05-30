@@ -1875,6 +1875,9 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ReportPlanOutcomeResponse", "findings"), records)
         self.assertNotIn(("CheckGovernanceResponse", "conditions"), records)
         self.assertNotIn(("GetPlanAuditLogsResponse", "plans"), records)
+        self.assertNotIn(("GetSignalsResponse", "signals"), records)
+        self.assertNotIn(("GetSignalsResponseSignal", "coverage_forecast"), records)
+        self.assertNotIn(("SignalCoverageForecast", "scope"), records)
 
         allowed = [
             (record["type"], record["json"], record["allowance"])
