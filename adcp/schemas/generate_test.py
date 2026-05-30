@@ -1914,7 +1914,6 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "SegmentationCriteria string `json:\"segmentation_criteria,omitempty\"` // Rules governing inclusion",
             generated_signal,
         )
-
         allowed = [
             (record["type"], record["json"], record["allowance"])
             for record in generate.any_coverage_report()["records"]
@@ -1928,6 +1927,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             ),
             allowed,
         )
+
         self.assertIn(
             (
                 "CheckGovernanceFinding",
@@ -1976,6 +1976,15 @@ class InlineObjectGenerationTest(unittest.TestCase):
             ),
             allowed,
         )
+
+    def test_field_description_fallback_specs_resolve(self):
+        for (type_name, json_name), spec in generate.FIELD_DESCRIPTION_FALLBACK_SPECS.items():
+            with self.subTest(type_name=type_name, json_name=json_name):
+                self.assertNotIn((type_name, json_name), generate.FIELD_DESCRIPTION_OVERRIDES)
+                fallback = generate.load_schema_spec(spec)
+                self.assertIsInstance(fallback, dict)
+                self.assertTrue(fallback.get("description"))
+                self.assertTrue(generate.field_description(type_name, json_name, {}))
 
 
 class AutoRefDiscoveryTest(unittest.TestCase):

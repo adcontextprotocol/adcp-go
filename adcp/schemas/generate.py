@@ -1861,13 +1861,13 @@ def safe_comment(text, max_len=80):
 def field_description(type_name, json_name, prop):
     """Return the preferred field description, including reviewed fallbacks."""
     override = FIELD_DESCRIPTION_OVERRIDES.get((type_name, json_name))
-    if override:
+    if override is not None:
         return override
     desc = prop.get('description', '')
     if desc:
         return desc
     spec = FIELD_DESCRIPTION_FALLBACK_SPECS.get((type_name, json_name))
-    if not spec:
+    if spec is None:
         return ''
     try:
         fallback = load_schema_spec(spec)
@@ -2774,6 +2774,7 @@ def enum_to_type(name, desc, values):
     lines = []
     members = enum_members(name, values)
 
+    # Enum overrides are total replacements for schema docs that truncate poorly.
     desc = ENUM_DESCRIPTION_OVERRIDES.get(name, desc)
     lines.append(f'// {name} — {safe_comment(desc, 80)}' if desc else f'// {name} enum values')
     lines.append(f'type {name} = string')
