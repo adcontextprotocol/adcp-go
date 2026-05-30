@@ -77,6 +77,10 @@ be populated.
   `[]adcp.SyncGovernanceAccountResult` instead of `[]any`.
   `GovernanceAgents` is now `[]adcp.SyncGovernanceAgentResult`; per-account
   `Errors` remains `[]adcp.AdcpError`.
+- `PreviewCreativeRequest.Inputs` is now `[]adcp.PreviewCreativeInput` and
+  `PreviewCreativeRequest.Requests` is now
+  `[]adcp.PreviewCreativeBatchRequest` instead of `[]any`. Batch request
+  `Inputs` also uses `[]adcp.PreviewCreativeInput`.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.

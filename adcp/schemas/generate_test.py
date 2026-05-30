@@ -879,6 +879,18 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "[]GeoProximityTarget",
         )
         self.assert_field_type(
+            "creative/preview-creative-request.json",
+            "PreviewCreativeRequest",
+            "inputs",
+            "[]PreviewCreativeInput",
+        )
+        self.assert_field_type(
+            "creative/preview-creative-request.json",
+            "PreviewCreativeRequest",
+            "requests",
+            "[]PreviewCreativeBatchRequest",
+        )
+        self.assert_field_type(
             "core/signal-targeting.json",
             "SignalTargeting",
             "min_value",
@@ -1610,6 +1622,22 @@ class InlineObjectGenerationTest(unittest.TestCase):
             sync_governance_account_generated,
         )
 
+        preview_batch_request_schema = generate.load_schema_spec(
+            "creative/preview-creative-request.json#/properties/requests/items",
+        )
+        preview_batch_request_generated = generate.schema_to_struct(
+            "PreviewCreativeBatchRequest",
+            preview_batch_request_schema,
+        )
+        self.assertIn(
+            "CreativeManifest CreativeManifest `json:\"creative_manifest\"`",
+            preview_batch_request_generated,
+        )
+        self.assertIn(
+            "Inputs []PreviewCreativeInput `json:\"inputs,omitempty\"`",
+            preview_batch_request_generated,
+        )
+
         plan_audit_action_schema = generate.load_schema_spec(
             "governance/get-plan-audit-logs-response.json#/properties/plans/items"
             "/properties/governed_actions/items",
@@ -1644,6 +1672,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assertNotIn(("ProductFilters", "signal_targeting"), records)
         self.assertNotIn(("Targeting", "geo_proximity"), records)
         self.assertNotIn(("SyncGovernanceSuccess", "accounts"), records)
+        self.assertNotIn(("PreviewCreativeRequest", "inputs"), records)
+        self.assertNotIn(("PreviewCreativeRequest", "requests"), records)
         self.assertNotIn(("CheckGovernanceRequest", "delivery_metrics"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "delivery"), records)
         self.assertNotIn(("ReportPlanOutcomeRequest", "error"), records)

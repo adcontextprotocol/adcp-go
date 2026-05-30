@@ -264,6 +264,31 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 	assert.Equal(t, "synced", account["status"])
 	assert.Equal(t, map[string]any{"account_id": "acct-1"}, account["account"])
 
+	out, err = json.Marshal(PreviewCreativeRequest{
+		RequestType: "batch",
+		Requests: []PreviewCreativeBatchRequest{{
+			CreativeManifest: CreativeManifest{Assets: map[string]any{}},
+			Inputs: []PreviewCreativeInput{{
+				Name:   "mobile",
+				Macros: map[string]string{"city": "Honolulu"},
+			}},
+			OutputFormat: PreviewOutputFormatURL,
+		}},
+	})
+	require.NoError(t, err)
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	requests, ok := wire["requests"].([]any)
+	require.True(t, ok)
+	require.Len(t, requests, 1)
+	previewRequest, ok := requests[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "url", previewRequest["output_format"])
+	assert.Equal(t, []any{map[string]any{
+		"name":   "mobile",
+		"macros": map[string]any{"city": "Honolulu"},
+	}}, previewRequest["inputs"])
+
 	out, err = json.Marshal(PerformanceFeedback{
 		FeedbackID: "pf-1",
 		MediaBuyID: "mb-1",
