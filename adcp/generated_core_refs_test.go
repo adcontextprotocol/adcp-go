@@ -110,7 +110,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			name: "targeting typed refs",
 			value: Targeting{
 				DaypartTargets: []DaypartTarget{{Days: []string{"mon", "tue"}, StartHour: 9, EndHour: 17}},
-				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: "user", Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
+				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: Ptr(ReachUnit("user")), Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
 				PropertyList:   Ptr(PropertyListRef{AgentURL: "https://lists.example/mcp", ListID: "pl-456"}),
 				GeoMetros:      []GeoMetroTarget{{System: "nielsen_dma", Values: []string{"501"}}},
 				StoreCatchments: []TargetingStoreCatchment{{
