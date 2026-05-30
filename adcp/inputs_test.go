@@ -118,7 +118,7 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 		Creatives: []CreativeAsset{{
 			CreativeID: "cr-new-1",
 			Name:       "New creative",
-			FormatID:   FormatRef{ID: "display-banner"},
+			FormatID:   &FormatRef{ID: "display-banner"},
 			Assets:     map[string]any{"image": map[string]any{"url": "https://example.com/image.png"}},
 		}},
 		Ext: map[string]any{"buyer_ref": "corr-1"},

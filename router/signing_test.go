@@ -90,7 +90,7 @@ func TestRouter_SignsIdentityMatchPerProvider(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          "id-sign",
 				EligiblePackageIDs: []string{"pkg"},
-				TTLSec:             60,
+				ServeWindowSec:     60,
 			})
 		}))
 	}

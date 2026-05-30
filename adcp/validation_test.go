@@ -46,7 +46,7 @@ func TestValidateOptimizationGoal_ValidEventGoal(t *testing.T) {
 		}},
 		Target: OptimizationGoalPerAdSpendTarget{Value: 4},
 		AttributionWindow: &OptimizationGoalAttributionWindow{
-			PostClick: Duration{Interval: 7, Unit: "days"},
+			PostClick: &Duration{Interval: 7, Unit: "days"},
 		},
 	}
 

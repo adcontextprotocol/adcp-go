@@ -207,7 +207,13 @@ func (w *OptimizationGoalAttributionWindow) validate(path string, cfg validation
 	if w == nil {
 		return nil
 	}
-	issues := w.PostClick.validate(path+".post_click", cfg)
+	var issues []ValidationIssue
+	if w.PostClick != nil {
+		issues = append(issues, w.PostClick.validate(path+".post_click", cfg)...)
+	} else {
+		issues = appendRequired(issues, path+".post_click.interval")
+		issues = appendRequired(issues, path+".post_click.unit")
+	}
 	if w.PostView != nil {
 		issues = append(issues, w.PostView.validate(path+".post_view", cfg)...)
 	}

@@ -56,7 +56,7 @@ type Config struct {
 	MaxOpenConnections int
 
 	// ResponseTTL is the cache TTL hint returned to callers in
-	// IdentityMatchResponse.TTLSec.
+	// IdentityMatchResponse.ServeWindowSec.
 	ResponseTTL time.Duration
 
 	// StrictContentType rejects requests whose Content-Type is not

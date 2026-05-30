@@ -679,7 +679,7 @@ func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
 		Account:          buy.Account,
 		InvoiceRecipient: responseBusinessEntity(buy.InvoiceRecipient),
 		Status:           buy.Status,
-		ConfirmedAt:      buy.ConfirmedAt,
+		ConfirmedAt:      adcp.Ptr(buy.ConfirmedAt),
 		CreativeDeadline: buy.CreativeDeadline,
 		Revision:         buy.Revision,
 		ValidActions:     buy.ValidActions,

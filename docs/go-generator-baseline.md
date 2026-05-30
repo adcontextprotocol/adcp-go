@@ -1,26 +1,26 @@
 # Go Generator Baseline
 
-Snapshot date: 2026-05-28
-Schema bundle: AdCP 3.0.12
+Snapshot date: 2026-05-30
+Schema bundle: AdCP 3.1.0-rc.3
 Command:
 
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 15
+python3 generate.py --coverage-max-unreviewed-any 13
 ```
 
-The generator currently reports 183 generated dynamic `any` uses:
+The generator currently reports 223 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 168 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 15 | CI baseline; every new unreviewed fallback is a regression |
+| Reviewed intentional `any` | 210 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Unreviewed generated `any` | 13 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 15
+python3 generate.py --coverage-max-unreviewed-any 13
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -62,11 +62,9 @@ the new dynamic shape is reviewed in the same PR.
 | `ProvidePerformanceFeedbackResponse` | n/a | `any` | `top_level_oneOf_alias` | `media-buy/provide-performance-feedback-response.json` |
 | `PreviewCreativeRequest.Inputs` | `inputs` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
 | `PreviewCreativeRequest.Requests` | `requests` | `[]any` | `array_item:inline_object` | `creative/preview-creative-request.json` |
-| `GetSignalsResponse.Signals` | `signals` | `[]any` | `array_item:inline_object` | `signals/get-signals-response.json` |
 | `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
 | `ComplyTestControllerResponse` | n/a | `any` | `top_level_oneOf_alias` | `compliance/comply-test-controller-response.json` |
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
-| `ControllerError.CurrentState` | `current_state` | `any` | `unspecified_schema_type` | `compliance/comply-test-controller-response.json#/oneOf/5` |
 | `ReportPlanOutcomeRequest.SellerResponse` | `seller_response` | `any` | `inline_object` | `governance/report-plan-outcome-request.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
@@ -74,7 +72,7 @@ the new dynamic shape is reviewed in the same PR.
 
 ### Inline Object Generation
 
-This is the largest generator gap: 8 unreviewed fallbacks are direct inline
+This is the largest generator gap: 6 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.
@@ -103,31 +101,20 @@ No unreviewed unknown `$ref` fallbacks remain. Future unknown refs should be
 added to the generation graph unless the target schema is an intentionally open
 or union-shaped payload with a specific allowlist reason.
 
-## 3.1 Beta Smoke Check
+## 3.1 RC3 Integration
 
-Snapshot date: 2026-05-29
-Schema bundle: AdCP 3.1.0-beta.7
+Snapshot date: 2026-05-30
+Schema bundle: AdCP 3.1.0-rc.3
 
-This is a non-gating compatibility smoke check, not the checked-in baseline.
-With the 3.1.0-beta.7 schemas overlaid onto the current generator, auto-discovery
-found 21 clean referenced schema types and reduced generated unreviewed `any`
-fallbacks from the initial beta evaluation's 100 to 64. Unknown refs are no
-longer the dominant class; the remaining surface is mostly inline objects,
-freeform payloads, unspecified schema types, and one mixed `allOf` account
-extension that needs named inline composition support.
+The checked-in baseline now uses the rc.3 bundle. The generator owns the new
+named 3.1 schemas for account authorization, committed metrics, delivery metric
+aggregates, missing metrics, signal targeting, forecast dimensions, provenance
+audit observations, wholesale-feed capability blocks, and the newly named
+inline delivery/reporting helper shapes.
 
-Do not pin the Go SDK to a beta schema bundle until the remaining 3.1 migration
-work is reviewed as protocol surface:
-
-- add named inline composition for mixed `allOf` shapes such as
-  `ListAccountsResponse.accounts[]`;
-- classify 3.1 vendor metric, signal-targeting, forecast dimension, and
-  capability inline objects as either generated structs or intentional open
-  payloads;
-- update hand-written capability and governance structs for the beta schema
-  drift; and
-- re-run strict drift lint, generated coverage, and reference seller tests
-  against the beta bundle.
+The rc.3 integration reduced unreviewed generated `any` fallbacks from the
+3.0.12 baseline of 15 to 13 while adding the 3.1 protocol surface. The remaining
+items are intentionally tracked as generator work, not schema drift.
 
 ### Schema Clarification
 

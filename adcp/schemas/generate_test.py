@@ -1,11 +1,21 @@
+import contextlib
+import io
 import shutil
 import subprocess
 import tempfile
 import textwrap
 import unittest
 from collections import OrderedDict
+from unittest import mock
 
 import generate
+
+
+def emit_unformatted_go():
+    print('package adcp')
+    print('type Test struct {')
+    print('Name string `json:"name"`')
+    print('}')
 
 
 def without_descriptions(value):
@@ -32,6 +42,49 @@ def scalar_or_array_schema(min_items=1, description="Test union"):
             },
         ],
     }
+
+
+class GenerateMainTest(unittest.TestCase):
+    def test_main_formats_generated_go(self):
+        completed = subprocess.CompletedProcess(
+            ["gofmt"],
+            0,
+            stdout='package adcp\n\ntype Test struct {\n\tName string `json:"name"`\n}\n',
+            stderr="",
+        )
+
+        with mock.patch.object(generate, "generate", emit_unformatted_go), \
+                mock.patch.object(generate.subprocess, "run", return_value=completed):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = generate.main([])
+
+        self.assertEqual(0, rc)
+        self.assertIn("\tName string", out.getvalue())
+
+    def test_main_falls_back_when_gofmt_is_missing(self):
+        with mock.patch.object(generate, "generate", emit_unformatted_go), \
+                mock.patch.object(generate.subprocess, "run", side_effect=OSError("missing")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = generate.main([])
+
+        self.assertEqual(0, rc)
+        self.assertIn("type Test struct {", out.getvalue())
+
+    def test_main_fails_when_gofmt_fails(self):
+        err = subprocess.CalledProcessError(1, ["gofmt"], stderr="bad go\n")
+        with mock.patch.object(generate, "generate", emit_unformatted_go), \
+                mock.patch.object(generate.subprocess, "run", side_effect=err):
+            out = io.StringIO()
+            err_out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err_out):
+                rc = generate.main([])
+
+        self.assertEqual(1, rc)
+        self.assertEqual("", out.getvalue())
+        self.assertIn("bad go", err_out.getvalue())
+        self.assertIn("gofmt failed", err_out.getvalue())
 
 
 class UnionHelperGenerationTest(unittest.TestCase):
@@ -1391,7 +1444,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "PlanAuditEntry",
             plan_audit_entry_schema,
         )
-        self.assertIn("Status *GovernanceDecision `json:\"status,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("Verdict *GovernanceDecision `json:\"verdict,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Mode *GovernanceMode `json:\"mode,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Findings []PlanAuditFinding `json:\"findings,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Outcome *OutcomeType `json:\"outcome,omitempty\"`", plan_audit_entry_generated)

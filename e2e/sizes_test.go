@@ -50,7 +50,7 @@ func TestMeasure_RequestResponseSizes(t *testing.T) {
 	idResp := tmproto.IdentityMatchResponse{
 		RequestID:          idReq.RequestID,
 		EligiblePackageIDs: []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe", "pkg-travel-sponsored"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 
 	// Expose request (local types — not part of tmproto wire format).

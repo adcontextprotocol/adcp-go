@@ -29,10 +29,11 @@ func Ptr[T any](v T) *T {
 
 // CreativeAssignment assigns an existing creative to a package.
 type CreativeAssignment struct {
-	CreativeID   string         `json:"creative_id"`
-	Weight       *float64       `json:"weight,omitempty"`
-	PlacementIDs []string       `json:"placement_ids,omitempty"`
-	Extra        map[string]any `json:"-"`
+	CreativeID    string         `json:"creative_id"`
+	Weight        *float64       `json:"weight,omitempty"`
+	PlacementRefs []PlacementRef `json:"placement_refs,omitempty"`
+	PlacementIDs  []string       `json:"placement_ids,omitempty"`
+	Extra         map[string]any `json:"-"`
 }
 
 // SyncCreativeAssignment assigns a synced creative to an existing package.
@@ -46,7 +47,7 @@ type SyncCreativeAssignment struct {
 // MarshalJSON preserves schema-allowed vendor fields while keeping typed fields
 // authoritative when keys collide.
 func (a CreativeAssignment) MarshalJSON() ([]byte, error) {
-	out := make(map[string]any, len(a.Extra)+3)
+	out := make(map[string]any, len(a.Extra)+4)
 	for k, v := range a.Extra {
 		if isCreativeAssignmentField(k) {
 			continue
@@ -56,6 +57,9 @@ func (a CreativeAssignment) MarshalJSON() ([]byte, error) {
 	out["creative_id"] = a.CreativeID
 	if a.Weight != nil {
 		out["weight"] = *a.Weight
+	}
+	if len(a.PlacementRefs) > 0 {
+		out["placement_refs"] = a.PlacementRefs
 	}
 	if len(a.PlacementIDs) > 0 {
 		out["placement_ids"] = a.PlacementIDs
@@ -87,6 +91,12 @@ func (a *CreativeAssignment) UnmarshalJSON(data []byte) error {
 		a.Weight = &weight
 		delete(raw, "weight")
 	}
+	if v, ok := raw["placement_refs"]; ok {
+		if err := json.Unmarshal(v, &a.PlacementRefs); err != nil {
+			return err
+		}
+		delete(raw, "placement_refs")
+	}
 	if v, ok := raw["placement_ids"]; ok {
 		if err := json.Unmarshal(v, &a.PlacementIDs); err != nil {
 			return err
@@ -110,7 +120,7 @@ func (a *CreativeAssignment) UnmarshalJSON(data []byte) error {
 
 func isCreativeAssignmentField(key string) bool {
 	switch key {
-	case "creative_id", "weight", "placement_ids":
+	case "creative_id", "weight", "placement_refs", "placement_ids":
 		return true
 	default:
 		return false

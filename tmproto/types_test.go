@@ -155,7 +155,7 @@ func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
 	resp := &IdentityMatchResponse{
 		RequestID:          "id-test-002",
 		EligiblePackageIDs: []string{"pkg-1", "pkg-3"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 
 	data, err := json.Marshal(resp)
@@ -168,7 +168,7 @@ func TestIdentityMatchResponse_RoundTrip(t *testing.T) {
 	require.Len(t, got.EligiblePackageIDs, 2, "eligible_package_ids")
 	assert.Equal(t, "pkg-1", got.EligiblePackageIDs[0], "eligible_package_ids[0]")
 	assert.Equal(t, "pkg-3", got.EligiblePackageIDs[1], "eligible_package_ids[1]")
-	assert.Equal(t, 300, got.TTLSec, "ttl_sec")
+	assert.Equal(t, 300, got.ServeWindowSec, "serve_window_sec")
 }
 
 func TestIdentityMatchRequest_Country(t *testing.T) {
@@ -207,7 +207,7 @@ func TestIdentityMatchResponse_TMPX(t *testing.T) {
 	resp := &IdentityMatchResponse{
 		RequestID:          "id-tmpx-001",
 		EligiblePackageIDs: []string{"pkg-1"},
-		TTLSec:             60,
+		ServeWindowSec:     60,
 		Tmpx:               "k1.dGVzdC10b2tlbg",
 	}
 
@@ -226,7 +226,7 @@ func TestIdentityMatchResponse_TmpxSingle(t *testing.T) {
 	resp := &IdentityMatchResponse{
 		RequestID:          "id-tmpx-single",
 		EligiblePackageIDs: []string{"pkg-1"},
-		TTLSec:             120,
+		ServeWindowSec:     120,
 		Tmpx:               "k1.acme-token",
 	}
 
@@ -243,7 +243,7 @@ func TestIdentityMatchResponse_TMPXOmittedWhenEmpty(t *testing.T) {
 	resp := &IdentityMatchResponse{
 		RequestID:          "id-omit-002",
 		EligiblePackageIDs: []string{"pkg-1"},
-		TTLSec:             60,
+		ServeWindowSec:     60,
 	}
 
 	data, err := json.Marshal(resp)

@@ -14,6 +14,7 @@ package main
 import (
     "context"
     "log"
+    "time"
 
     "github.com/adcontextprotocol/adcp-go/adcp"
     "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -22,15 +23,18 @@ import (
 func main() {
     server := mcp.NewServer(&mcp.Implementation{Name: "my-agent", Version: "1.0.0"}, nil)
 
-    adcp.AddTool(server, "get_adcp_capabilities", "Agent capabilities",
-        func(ctx context.Context, req *mcp.CallToolRequest, input adcp.EmptyInput) (*mcp.CallToolResult, any, error) {
-            return adcp.CapabilitiesResponse(&adcp.CapabilitiesData{
-                ADCP:               &adcp.ADCPVersion{MajorVersions: []int{3}},
-                SupportedProtocols: []string{"media_buy"},
-            })
-        })
-
-    // Add more tools — see skills/ for complete patterns
+    adcp.Register(server, adcp.Config{
+        IdempotencyReplayTTL: 24 * time.Hour,
+        Capabilities: &adcp.CapabilitiesData{
+            SupportedProtocols: []string{"media_buy"},
+            MediaBuy: &adcp.MediaBuyCapabilities{
+                SupportedPricingModels: []string{"cpm"},
+            },
+        },
+        GetProducts: func(ctx context.Context, acct any, req *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
+            return &adcp.ProductsData{Products: []adcp.Product{}}, nil
+        },
+    })
 
     log.Fatal(adcp.Serve(func() *mcp.Server { return server }))
 }
@@ -59,13 +63,18 @@ Use skill files to build complete agents with coding assistants (Claude, Codex).
 ### Tool registration
 
 ```go
-adcp.AddTool(server, "tool_name", "Description",
-    func(ctx context.Context, req *mcp.CallToolRequest, input InputType) (*mcp.CallToolResult, any, error) {
-        return adcp.Result(data, "summary")
+adcp.AddTool(server, "get_products", "Available advertising products",
+    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.GetProductsRequest) (*mcp.CallToolResult, any, error) {
+        return adcp.ProductsResponse(&adcp.ProductsData{Products: []adcp.Product{}})
     })
 ```
 
 `AddTool` generates a JSON schema from the Go input struct while allowing additional protocol fields. Use it instead of `mcp.AddTool` (which rejects extra fields).
+
+Prefer `adcp.Register` for seller agents when possible. It wires common tools,
+fills required idempotency and capability fields, and handles AdCP 3.0/3.1
+capability negotiation. See [`docs/adcp-version-compatibility.md`](docs/adcp-version-compatibility.md)
+for the version compatibility contract.
 
 ### Response builders
 
@@ -93,7 +102,6 @@ adcp.AddTool(server, "tool_name", "Description",
 | `adcp.SyncEventSourcesResponse(sources, sandbox)` | `sync_event_sources` |
 | `adcp.LogEventResponse(received, processed, matchQuality, sandbox)` | `log_event` |
 | `adcp.PerformanceFeedbackResponse(sandbox)` | `provide_performance_feedback` |
-| `adcp.Result(data, summary)` | Any tool (generic) |
 | `adcp.Errorf(code, opts)` | Error response |
 
 ### Other
@@ -107,7 +115,7 @@ adcp.AddTool(server, "tool_name", "Description",
 
 - [`adcp/types.go`](adcp/types.go) — Hand-written SDK types (Product, MediaBuyData, Signal, etc.)
 - [`adcp/inputs.go`](adcp/inputs.go) — Typed input structs for all tool handlers
-- [`adcp/types_gen.go`](adcp/types_gen.go) — types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) v3.0.0-rc.4 (latest dev snapshot)
+- [`adcp/types_gen.go`](adcp/types_gen.go) — types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) 3.1.0-rc.3
 - [`adcp/governance_types.go`](adcp/governance_types.go) — hand-written `Plan` and related governance types (inline in sync_plans)
 - [`adcp/plan_validate.go`](adcp/plan_validate.go) — client-side enforcement of the budget `oneOf` and Annex III `if/then` invariants
 

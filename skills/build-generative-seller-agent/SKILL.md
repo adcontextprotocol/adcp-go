@@ -22,7 +22,10 @@ Ask the user — don't guess.
 
 ## Tool Registration
 
-Use `adcp.AddTool` for all tools.
+Prefer `adcp.Register` for seller agents. It wires the standard tools, fills
+required idempotency and capability fields, and handles AdCP 3.0/3.1 capability
+negotiation. Use `adcp.AddTool` only for custom tools or when you need a
+hand-wired handler.
 
 ```go
 adcp.AddTool(server, "tool_name", "Description",
@@ -35,14 +38,29 @@ adcp.AddTool(server, "tool_name", "Description",
 
 ### 1. `get_adcp_capabilities`
 
+When using `adcp.Register`, provide capabilities through `adcp.Config` instead
+of hand-wiring this tool. `Register` accepts `GetAdcpCapabilitiesRequest`,
+honors `adcp_version`, legacy `adcp_major_version`, and the `protocols` filter,
+then emits `supported_versions`.
+
 ```go
-adcp.AddTool(server, "get_adcp_capabilities", "Agent capabilities",
-    func(ctx context.Context, req *mcp.CallToolRequest, input adcp.EmptyInput) (*mcp.CallToolResult, any, error) {
-        return adcp.CapabilitiesResponse(&adcp.CapabilitiesData{
-            ADCP:               &adcp.ADCPVersion{MajorVersions: []int{3}},
-            SupportedProtocols: []string{"media_buy", "compliance_testing"},
-        })
-    })
+adcp.Register(server, adcp.Config{
+    Sandbox:              true,
+    IdempotencyReplayTTL: 24 * time.Hour,
+    Capabilities: &adcp.CapabilitiesData{
+        SupportedProtocols: []string{"media_buy", "creative"},
+        MediaBuy: &adcp.MediaBuyCapabilities{
+            SupportedPricingModels: []string{"cpm"},
+        },
+        Creative: &adcp.CreativeCapabilities{
+            HasCreativeLibrary: adcp.Bool(true),
+        },
+        ComplianceTesting: &adcp.ComplianceTestingCapabilities{
+            Scenarios: []string{"force_media_buy_status", "force_creative_status"},
+        },
+    },
+    // Wire the handlers below into Config instead of AddTool when using Register.
+})
 ```
 
 ### 2. `sync_accounts`

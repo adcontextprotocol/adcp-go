@@ -18,6 +18,8 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		Placements: []Placement{{
 			PlacementID: "homepage",
 			Name:        "Homepage",
+			Kind:        "publisher_ref",
+			Mode:        "targetable",
 			FormatIDs:   []FormatRef{{AgentURL: "https://seller.example/mcp", ID: "display_300x250"}},
 		}},
 		Forecast: &DeliveryForecast{
@@ -40,12 +42,16 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 			Notes:    "50% in-view for 1s",
 		},
 		ProductCard: &ProductCard{
-			FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "product_card_standard"},
-			Manifest: map[string]any{"headline": "Premium Display"},
+			Title:      "Premium Display",
+			PriceLabel: "From $15 CPM",
 		},
 		ProductCardDetailed: &ProductCardDetailed{
-			FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "product_card_detailed"},
-			Manifest: map[string]any{"sections": []any{"overview"}},
+			Title:       "Premium Display",
+			Description: "High-impact display placements.",
+			Specifications: []ProductCardSpecification{{
+				Label: "Format",
+				Value: "Display",
+			}},
 		},
 		ReportingCapabilities: ReportingCapabilities{
 			AvailableReportingFrequencies: []string{"daily"},
@@ -150,12 +156,12 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 	}
 	body := string(raw)
 	for _, want := range []string{
-		`"placements":[{"placement_id":"homepage","name":"Homepage"`,
+		`"placements":[{"kind":"publisher_ref","placement_id":"homepage","name":"Homepage","mode":"targetable"`,
 		`"forecast":{"points":[{"budget":1000,"metrics":{"impressions":{"mid":100000}}}],"method":"historical","currency":"USD"}`,
 		`"outcome_measurement":{"type":"brand_lift","attribution":"matched_market","reporting":"weekly"}`,
 		`"delivery_measurement":{"provider":"MRC-accredited display measurement","notes":"50% in-view for 1s"}`,
-		`"product_card":{"format_id":{"agent_url":"https://seller.example/mcp","id":"product_card_standard"},"manifest":{"headline":"Premium Display"}}`,
-		`"product_card_detailed":{"format_id":{"agent_url":"https://seller.example/mcp","id":"product_card_detailed"},"manifest":{"sections":["overview"]}}`,
+		`"product_card":{"title":"Premium Display","price_label":"From $15 CPM"}`,
+		`"product_card_detailed":{"title":"Premium Display","description":"High-impact display placements.","specifications":[{"label":"Format","value":"Display"}]}`,
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
 		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
 		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
@@ -256,7 +262,7 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			v: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
-				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
+				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
 				Assets:     map[string]any{"image": "asset-1"},
 			},
 			deny: []string{`"weight"`},
@@ -266,7 +272,7 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			v: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
-				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
+				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
 				Assets:     map[string]any{"image": "asset-1"},
 				Weight:     Ptr(0.0),
 			},

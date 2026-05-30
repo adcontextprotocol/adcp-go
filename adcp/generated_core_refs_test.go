@@ -281,7 +281,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			name: "governance findings",
 			value: CheckGovernanceResponse{
 				CheckID:     "check-1",
-				Status:      "denied",
+				Verdict:     "denied",
 				PlanID:      "plan-1",
 				Explanation: "Policy violation detected.",
 				Findings: []CheckGovernanceFinding{{
@@ -303,7 +303,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			name: "governance conditions",
 			value: CheckGovernanceResponse{
 				CheckID:     "check-1",
-				Status:      "conditions",
+				Verdict:     "conditions",
 				PlanID:      "plan-1",
 				Explanation: "Approval requires a smaller budget.",
 				Conditions: []CheckGovernanceCondition{{
@@ -361,7 +361,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 						Type:         "check",
 						Timestamp:    "2026-05-28T11:00:00Z",
 						Tool:         "check_governance",
-						Status:       Ptr(GovernanceDecisionApproved),
+						Verdict:      Ptr(GovernanceDecisionApproved),
 						Mode:         Ptr(GovernanceModeAudit),
 						PurchaseType: Ptr(PurchaseTypeMediaBuy),
 						Findings: []PlanAuditFinding{{
@@ -388,15 +388,15 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				`"summary":{"checks_performed":3,"outcomes_reported":1,"statuses":{"approved":2,"conditions":1},"findings_count":1`,
 				`"escalations":[{"check_id":"check-2","reason":"budget threshold","resolution":"approved_by_human","resolved_at":"2026-05-28T12:00:00Z"}]`,
 				`"drift_metrics":{"escalation_rate":0.33,"escalation_rate_trend":"stable","auto_approval_rate":0.67,"thresholds":{"escalation_rate_max":0.5}}`,
-				`"entries":[{"id":"entry-1","type":"check","timestamp":"2026-05-28T11:00:00Z","tool":"check_governance","status":"approved","mode":"audit","findings":[{"category_id":"budget_compliance","policy_id":"policy-1","severity":"warning","explanation":"Near budget limit.","confidence":0.75}],"purchase_type":"media_buy"}]`,
+				`"entries":[{"id":"entry-1","type":"check","timestamp":"2026-05-28T11:00:00Z","tool":"check_governance","verdict":"approved","mode":"audit","findings":[{"category_id":"budget_compliance","policy_id":"policy-1","severity":"warning","explanation":"Near budget limit.","confidence":0.75}],"purchase_type":"media_buy"}]`,
 				`"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":2500,"check_count":3,"seller_reference":"mb-1"}]`,
 			},
 		},
 		{
 			name: "report plan outcome findings",
 			value: ReportPlanOutcomeResponse{
-				OutcomeID: "outcome-1",
-				Status:    "findings",
+				OutcomeID:    "outcome-1",
+				OutcomeState: "findings",
 				Findings: []ReportPlanOutcomeFinding{{
 					CategoryID:  "budget_compliance",
 					Severity:    EscalationSeverityCritical,
@@ -437,7 +437,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			value: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
-				FormatID:   FormatRef{AgentURL: "https://seller.example/mcp", ID: "gen_display"},
+				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "gen_display"},
 				Assets:     map[string]any{"headline": "Sale"},
 				Inputs: []CreativeAssetInput{{
 					Name:               "default",
@@ -718,7 +718,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 	resp := CheckGovernanceResponse{
 		CheckID:     "check-1",
-		Status:      "conditions",
+		Verdict:     "conditions",
 		PlanID:      "plan-1",
 		Explanation: "Approval requires a smaller budget.",
 		Conditions: []CheckGovernanceCondition{{
@@ -751,7 +751,7 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 		t.Fatal("HasRequiredValue = false, want true")
 	}
 
-	raw = []byte(`{"check_id":"check-1","status":"conditions","conditions":[{"field":"planned_delivery.total_budget","required_value":null,"reason":"Unset budget."}]}`)
+	raw = []byte(`{"check_id":"check-1","verdict":"conditions","conditions":[{"field":"planned_delivery.total_budget","required_value":null,"reason":"Unset budget."}]}`)
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal explicit null condition: %v", err)
 	}
@@ -770,7 +770,7 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 		t.Fatalf("explicit null condition did not re-marshal required_value:null:\n%s", raw)
 	}
 
-	raw = []byte(`{"check_id":"check-1","status":"conditions","conditions":[{"field":"planned_delivery.total_budget","reason":"Review budget."}]}`)
+	raw = []byte(`{"check_id":"check-1","verdict":"conditions","conditions":[{"field":"planned_delivery.total_budget","reason":"Review budget."}]}`)
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal advisory condition: %v", err)
 	}
@@ -844,7 +844,7 @@ func TestPlanAuditLogsRoundTrip(t *testing.T) {
 func TestGovernanceFindingsRoundTrip(t *testing.T) {
 	checkResp := CheckGovernanceResponse{
 		CheckID:     "check-1",
-		Status:      "denied",
+		Verdict:     "denied",
 		PlanID:      "plan-1",
 		Explanation: "Policy violation detected.",
 		Findings: []CheckGovernanceFinding{{
@@ -882,8 +882,8 @@ func TestGovernanceFindingsRoundTrip(t *testing.T) {
 	}
 
 	outcomeResp := ReportPlanOutcomeResponse{
-		OutcomeID: "outcome-1",
-		Status:    "findings",
+		OutcomeID:    "outcome-1",
+		OutcomeState: "findings",
 		Findings: []ReportPlanOutcomeFinding{{
 			CategoryID:  "budget_compliance",
 			Severity:    EscalationSeverityCritical,
@@ -1129,8 +1129,8 @@ func TestReportPlanOutcomePlanSummaryPreservesExplicitZero(t *testing.T) {
 	}
 
 	resp := ReportPlanOutcomeResponse{
-		OutcomeID: "outcome-1",
-		Status:    "accepted",
+		OutcomeID:    "outcome-1",
+		OutcomeState: "accepted",
 		PlanSummary: &ReportPlanOutcomePlanSummary{
 			TotalCommitted:  Ptr(0.0),
 			BudgetRemaining: Ptr(0.0),
