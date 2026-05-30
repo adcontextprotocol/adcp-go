@@ -1186,6 +1186,13 @@ SHARED_INLINE_OVERRIDES = {
     ],
 }
 
+# Inline hints that deliberately reuse an existing generated type for a sibling
+# inline schema. lint.py verifies the source inline schema and target type keep
+# the same field and requiredness shape.
+CROSS_TYPE_INLINE_HINTS = {
+    ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
+}
+
 # Named enum helpers generated from inline JSON Schema pointers. These cover
 # important SDK validation values that are not standalone enum schema files.
 INLINE_ENUM_TYPES = OrderedDict([
