@@ -385,8 +385,24 @@ func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 	t.Run("success stamps sandbox and context", func(t *testing.T) {
 		result := callRegisteredTool(t, baseTestConfig(Config{
 			Sandbox: true,
-			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
 				return &CreateMediaBuySuccess{
+					MediaBuyID: "mb-1",
+					Packages:   []Package{},
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.Equal(t, ctxValue, wire["context"])
+		assert.Equal(t, true, wire["sandbox"])
+	})
+
+	t.Run("success value stamps sandbox and context", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			Sandbox: true,
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+				return CreateMediaBuySuccess{
 					MediaBuyID: "mb-1",
 					Packages:   []Package{},
 				}, nil
@@ -401,7 +417,7 @@ func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 	t.Run("success preserves explicit sandbox", func(t *testing.T) {
 		result := callRegisteredTool(t, baseTestConfig(Config{
 			Sandbox: true,
-			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
 				return &CreateMediaBuySuccess{
 					MediaBuyID: "mb-1",
 					Packages:   []Package{},
@@ -417,7 +433,7 @@ func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 
 	t.Run("submitted stamps context", func(t *testing.T) {
 		result := callRegisteredTool(t, baseTestConfig(Config{
-			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
 				return &CreateMediaBuySubmitted{
 					TaskID: "task-1",
 				}, nil
@@ -431,8 +447,22 @@ func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 
 	t.Run("schema error stamps context", func(t *testing.T) {
 		result := callRegisteredTool(t, baseTestConfig(Config{
-			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResult, error) {
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
 				return &CreateMediaBuyError{
+					Errors: []AdcpError{{"code": "INVALID_REQUEST", "message": "bad request"}},
+				}, nil
+			},
+		}), "create_media_buy", args)
+
+		wire := structuredContentMap(t, result)
+		assert.True(t, result.IsError)
+		assert.Equal(t, ctxValue, wire["context"])
+	})
+
+	t.Run("schema error value stamps context", func(t *testing.T) {
+		result := callRegisteredTool(t, baseTestConfig(Config{
+			CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+				return CreateMediaBuyError{
 					Errors: []AdcpError{{"code": "INVALID_REQUEST", "message": "bad request"}},
 				}, nil
 			},

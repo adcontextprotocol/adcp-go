@@ -32,7 +32,7 @@ import (
 //	    GetProducts: func(ctx context.Context, acct any, req *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
 //	        return &adcp.ProductsData{Products: catalog.Query(req.Brief)}, nil
 //	    },
-//	    CreateMediaBuy: func(ctx context.Context, acct any, req *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
+//	    CreateMediaBuy: func(ctx context.Context, acct any, req *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResponse, error) {
 //	        return oms.BookCampaign(req)
 //	    },
 //	})
@@ -127,7 +127,7 @@ func Register(server *mcp.Server, cfg Config) {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
-				stampCreateMediaBuyResult(buy, sandbox, input.Context)
+				buy = stampCreateMediaBuyResult(buy, sandbox, input.Context)
 				result, out, err := MediaBuyResponse(buy)
 				return attachContext(result, input.Context), out, err
 			})
@@ -347,7 +347,7 @@ type Config struct {
 	SyncAccounts   func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
 	SyncGovernance func(ctx context.Context, req *SyncGovernanceRequest) ([]GovernanceResult, error)
 	GetProducts    func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
-	CreateMediaBuy func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResult, error)
+	CreateMediaBuy func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResponse, error)
 	GetMediaBuys   func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
 	GetDelivery    func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
 
@@ -423,18 +423,34 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 	return acct, nil
 }
 
-func stampCreateMediaBuyResult(result CreateMediaBuyResult, sandbox bool, context any) {
+func stampCreateMediaBuyResult(result CreateMediaBuyResponse, sandbox bool, context any) CreateMediaBuyResponse {
 	switch v := result.(type) {
 	case *CreateMediaBuySuccess:
 		if v.Sandbox == nil {
 			v.Sandbox = Bool(sandbox)
 		}
 		v.Context = context
+		return v
+	case CreateMediaBuySuccess:
+		if v.Sandbox == nil {
+			v.Sandbox = Bool(sandbox)
+		}
+		v.Context = context
+		return v
 	case *CreateMediaBuySubmitted:
 		v.Context = context
+		return v
+	case CreateMediaBuySubmitted:
+		v.Context = context
+		return v
 	case *CreateMediaBuyError:
 		v.Context = context
+		return v
+	case CreateMediaBuyError:
+		v.Context = context
+		return v
 	}
+	return result
 }
 
 // detectProtocols returns supported_protocols values inferred from the

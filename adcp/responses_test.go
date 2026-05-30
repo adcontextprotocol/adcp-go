@@ -44,6 +44,37 @@ func TestMediaBuyResponseSubmittedUsesTypedTaskFields(t *testing.T) {
 	assert.IsType(t, &CreateMediaBuySubmitted{}, out)
 }
 
+func TestMediaBuyResponseAcceptsValueVariants(t *testing.T) {
+	var alias CreateMediaBuyResult = CreateMediaBuySuccess{
+		MediaBuyID: "mb-1",
+		Packages:   []Package{{PackageID: "pkg-1"}},
+	}
+	result, out, err := MediaBuyResponse(alias)
+	require.NoError(t, err)
+
+	wire, ok := result.StructuredContent.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "mb-1", wire["media_buy_id"])
+	assert.IsType(t, &CreateMediaBuySuccess{}, out)
+
+	result, out, err = MediaBuyResponse(CreateMediaBuySubmitted{TaskID: "task-1"})
+	require.NoError(t, err)
+	wire, ok = result.StructuredContent.(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "submitted", wire["status"])
+	assert.IsType(t, &CreateMediaBuySubmitted{}, out)
+
+	result, out, err = MediaBuyResponse(CreateMediaBuyError{
+		Errors: []AdcpError{{"code": "INVALID_REQUEST", "message": "bad request"}},
+	})
+	require.NoError(t, err)
+	wire, ok = result.StructuredContent.(map[string]any)
+	require.True(t, ok)
+	assert.True(t, result.IsError)
+	assert.Contains(t, wire, "errors")
+	assert.IsType(t, &CreateMediaBuyError{}, out)
+}
+
 func TestMediaBuyResponseSubmittedRequiresTaskID(t *testing.T) {
 	result, out, err := MediaBuyResponse(&CreateMediaBuySubmitted{Status: "submitted"})
 	require.NoError(t, err)
