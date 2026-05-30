@@ -1060,8 +1060,8 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "creative/list-creatives-request.json#/properties/sort",
         )
         sort_generated = generate.schema_to_struct("ListCreativesSort", sort_schema)
-        self.assertIn("Field string `json:\"field,omitempty\"`", sort_generated)
-        self.assertIn("Direction string `json:\"direction,omitempty\"`", sort_generated)
+        self.assertIn("Field CreativeSortField `json:\"field,omitempty\"`", sort_generated)
+        self.assertIn("Direction SortDirection `json:\"direction,omitempty\"`", sort_generated)
 
         pagination_schema = generate.load_schema_spec(
             "content-standards/artifact-webhook-payload.json#/properties/pagination",
@@ -1122,7 +1122,10 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "Jurisdictions []string `json:\"jurisdictions,omitempty\"`",
             disclosure_generated,
         )
-        self.assertIn("Persistence string `json:\"persistence,omitempty\"`", disclosure_generated)
+        self.assertIn(
+            "Persistence DisclosurePersistence `json:\"persistence,omitempty\"`",
+            disclosure_generated,
+        )
 
         event_item_schema = generate.load_schema_spec(
             "core/event-custom-data.json#/properties/contents/items",
@@ -1151,7 +1154,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "core/user-match.json#/properties/uids/items",
         )
         uid_generated = generate.schema_to_struct("UserMatchUID", uid_schema)
-        self.assertIn("Type string `json:\"type\"`", uid_generated)
+        self.assertIn("Type UIDType `json:\"type\"`", uid_generated)
         self.assertIn("Value string `json:\"value\"`", uid_generated)
 
         filters_schema = generate.load_schema("core/product-filters.json")

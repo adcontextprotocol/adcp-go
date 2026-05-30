@@ -20,7 +20,7 @@ func TestGeneratedDeliveryTypesRoundTrip(t *testing.T) {
 		AggregatedTotals: &DeliveryAggregatedTotals{
 			Impressions:   1000,
 			Spend:         125,
-			ReachUnit:     "households",
+			ReachUnit:     Ptr(ReachUnitHouseholds),
 			MediaBuyCount: 1,
 		},
 		MediaBuyDeliveries: []MediaBuyDelivery{{

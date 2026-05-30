@@ -2290,7 +2290,7 @@ def resolve_go_type_info(prop, required=False):
     if '$ref' in prop:
         ref = prop['$ref']
         if is_enum_ref(ref):
-            return 'string', None  # Enums are strings in Go
+            return ref_to_go_name(ref), None
         ref_schema = resolve_ref_schema(ref)
         if isinstance(ref_schema, dict) and ref_schema.get('type') == 'string':
             return 'string', None
@@ -2394,7 +2394,9 @@ def should_pointer_optional_type(go_type):
 def field_go_type_info(type_name, json_name, prop, required_set):
     """Return the generated field type and fallback reason for a struct field."""
     hint_key = (type_name, json_name)
-    if hint_key in INLINE_TYPE_HINTS:
+    has_hint = hint_key in INLINE_TYPE_HINTS
+    direct_enum_ref = not has_hint and '$ref' in prop and is_enum_ref(prop['$ref'])
+    if has_hint:
         hint_type = INLINE_TYPE_HINTS[hint_key]
         if prop.get('type', '') == 'array':
             go_type = f'[]{hint_type}'
@@ -2407,7 +2409,7 @@ def field_go_type_info(type_name, json_name, prop, required_set):
     is_required = json_name in required_set
     if not is_required and go_type == 'bool':
         go_type = '*bool'
-    elif not is_required and should_pointer_optional_type(go_type):
+    elif not is_required and should_pointer_optional_type(go_type) and not direct_enum_ref:
         go_type = f'*{go_type}'
     return go_type, reason
 
