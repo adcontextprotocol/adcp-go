@@ -14,7 +14,7 @@ type AdcpError = map[string]any
 
 // --- Enum types ---
 
-// AccountScope — How the seller scoped a billing account relative to the operator and brand dimen
+// AccountScope — How the seller scoped a billing account relative to the operator and brand
 type AccountScope = string
 
 const (
@@ -88,7 +88,7 @@ func ParseAccountStatus(s string) (AccountStatus, error) {
 	return "", fmt.Errorf("unknown AccountStatus value")
 }
 
-// ActionNotAllowedReason — Reason a mutation on update_media_buy was rejected with ACTION_NOT_ALLOWED. Lets
+// ActionNotAllowedReason — Reason a mutation on update_media_buy was rejected with ACTION_NOT_ALLOWED.
 type ActionNotAllowedReason = string
 
 const (
@@ -165,7 +165,7 @@ func ParseActionSource(s string) (ActionSource, error) {
 	return "", fmt.Errorf("unknown ActionSource value")
 }
 
-// AdcpProtocol — AdCP protocols for task categorization — referenced by tasks-list-request, webho
+// AdcpProtocol — AdCP protocols for task categorization — referenced by tasks-list-request
 type AdcpProtocol = string
 
 const (
@@ -240,7 +240,7 @@ func ParseAdjustmentKind(s string) (AdjustmentKind, error) {
 	return "", fmt.Errorf("unknown AdjustmentKind value")
 }
 
-// AdvertiserIndustry — Standardized advertiser industry classification. Top-level categories classify t
+// AdvertiserIndustry — Standardized advertiser industry classification. Top-level categories classify
 type AdvertiserIndustry = string
 
 const (
@@ -353,7 +353,7 @@ func ParseAdvertiserIndustry(s string) (AdvertiserIndustry, error) {
 	return "", fmt.Errorf("unknown AdvertiserIndustry value")
 }
 
-// AgeVerificationMethod — Methods for verifying user age for compliance. Does not include 'inferred' as it
+// AgeVerificationMethod — Methods for verifying user age for compliance. Does not include 'inferred' as
 type AgeVerificationMethod = string
 
 const (
@@ -390,7 +390,7 @@ func ParseAgeVerificationMethod(s string) (AgeVerificationMethod, error) {
 	return "", fmt.Errorf("unknown AgeVerificationMethod value")
 }
 
-// AssessmentStatus — Standardized quality level for health and readiness assessments. Comparable acro
+// AssessmentStatus — Standardized quality level for health and readiness assessments. Comparable
 type AssessmentStatus = string
 
 const (
@@ -426,7 +426,7 @@ func ParseAssessmentStatus(s string) (AssessmentStatus, error) {
 	return "", fmt.Errorf("unknown AssessmentStatus value")
 }
 
-// AssetContentType — Types of content that can be used as creative assets. Describes what KIND of con
+// AssetContentType — Types of content that can be used as creative assets. Describes what KIND of
 type AssetContentType = string
 
 const (
@@ -472,7 +472,7 @@ func ParseAssetContentType(s string) (AssetContentType, error) {
 	return "", fmt.Errorf("unknown AssetContentType value")
 }
 
-// AttributionMethodology — How attribution between ad exposure and outcome events was computed. Used as a `
+// AttributionMethodology — How attribution between ad exposure and outcome events was computed. Used as a
 type AttributionMethodology = string
 
 const (
@@ -545,7 +545,7 @@ func ParseAttributionModel(s string) (AttributionModel, error) {
 	return "", fmt.Errorf("unknown AttributionModel value")
 }
 
-// AudienceSource — Origin of an audience segment in delivery reporting breakdowns. Only 'synced' au
+// AudienceSource — Origin of an audience segment in delivery reporting breakdowns. Only 'synced'
 type AudienceSource = string
 
 const (
@@ -583,7 +583,7 @@ func ParseAudienceSource(s string) (AudienceSource, error) {
 	return "", fmt.Errorf("unknown AudienceSource value")
 }
 
-// AudienceStatus — Matching status of a synced audience on a seller platform. Present when the sync
+// AudienceStatus — Matching status of a synced audience on a seller platform. Present when the
 type AudienceStatus = string
 
 const (
@@ -655,7 +655,7 @@ func ParseAudioChannelLayout(s string) (AudioChannelLayout, error) {
 	return "", fmt.Errorf("unknown AudioChannelLayout value")
 }
 
-// AuthScheme — Legacy authentication schemes for the webhook auth block. Bearer: token sent in
+// AuthScheme — Legacy authentication schemes for the webhook auth block. Bearer: token sent
 type AuthScheme = string
 
 const (
@@ -757,7 +757,7 @@ func ParseAvailableMetric(s string) (AvailableMetric, error) {
 	return "", fmt.Errorf("unknown AvailableMetric value")
 }
 
-// BillingParty — Which party the seller invoices for an account. Determines the billing entity an
+// BillingParty — Which party the seller invoices for an account. Determines the billing entity
 type BillingParty = string
 
 const (
@@ -792,7 +792,7 @@ func ParseBillingParty(s string) (BillingParty, error) {
 	return "", fmt.Errorf("unknown BillingParty value")
 }
 
-// BinaryVerdict — Strictly two-outcome evaluation result used for overall record-level verdicts in
+// BinaryVerdict — Strictly two-outcome evaluation result used for overall record-level verdicts
 type BinaryVerdict = string
 
 const (
@@ -826,7 +826,7 @@ func ParseBinaryVerdict(s string) (BinaryVerdict, error) {
 	return "", fmt.Errorf("unknown BinaryVerdict value")
 }
 
-// BrandAgentType — Functional roles for agents declared in brand.json. Each type represents a disti
+// BrandAgentType — Functional roles for agents declared in brand.json. Each type represents a
 type BrandAgentType = string
 
 const (
@@ -866,7 +866,7 @@ func ParseBrandAgentType(s string) (BrandAgentType, error) {
 	return "", fmt.Errorf("unknown BrandAgentType value")
 }
 
-// C2PAWatermarkAction — C2PA action classification for a content watermark. Distinguishes watermarks tha
+// C2PAWatermarkAction — C2PA action classification for a content watermark. Distinguishes watermarks
 type C2PAWatermarkAction = string
 
 const (
@@ -971,7 +971,7 @@ func ParseCatalogAction(s string) (CatalogAction, error) {
 	return "", fmt.Errorf("unknown CatalogAction value")
 }
 
-// CatalogItemStatus — Approval status of an individual item within a synced catalog. Platforms review
+// CatalogItemStatus — Approval status of an individual item within a synced catalog. Platforms
 type CatalogItemStatus = string
 
 const (
@@ -1008,7 +1008,7 @@ func ParseCatalogItemStatus(s string) (CatalogItemStatus, error) {
 	return "", fmt.Errorf("unknown CatalogItemStatus value")
 }
 
-// CatalogType — The type of catalog feed. Determines the item schema and how the platform resolv
+// CatalogType — The type of catalog feed. Determines the item schema and how the platform
 type CatalogType = string
 
 const (
@@ -1053,7 +1053,7 @@ func ParseCatalogType(s string) (CatalogType, error) {
 	return "", fmt.Errorf("unknown CatalogType value")
 }
 
-// Channels — Standardized advertising media channels describing how buyers allocate budget. C
+// Channels — Standardized advertising media channels describing how buyers allocate budget.
 type Channels = string
 
 const (
@@ -1213,7 +1213,7 @@ func ParseCollectionCadence(s string) (CollectionCadence, error) {
 	return "", fmt.Errorf("unknown CollectionCadence value")
 }
 
-// CollectionKind — What kind of content program a collection represents. Determines how installment
+// CollectionKind — What kind of content program a collection represents. Determines how
 type CollectionKind = string
 
 const (
@@ -1249,7 +1249,7 @@ func ParseCollectionKind(s string) (CollectionKind, error) {
 	return "", fmt.Errorf("unknown CollectionKind value")
 }
 
-// CollectionRelationship — How two collections are related. References are scoped to the same get_products
+// CollectionRelationship — How two collections are related. References are scoped to the same
 type CollectionRelationship = string
 
 const (
@@ -1322,7 +1322,7 @@ func ParseCollectionStatus(s string) (CollectionStatus, error) {
 	return "", fmt.Errorf("unknown CollectionStatus value")
 }
 
-// CompletionSource — Trust-source disambiguator for `completion_rate` — *who* attested to the complet
+// CompletionSource — Trust-source disambiguator for `completion_rate` — *who* attested to the
 type CompletionSource = string
 
 const (
@@ -1356,7 +1356,7 @@ func ParseCompletionSource(s string) (CompletionSource, error) {
 	return "", fmt.Errorf("unknown CompletionSource value")
 }
 
-// ConsentBasis — Common GDPR lawful bases relevant to advertising. Covers the Article 6(1) bases
+// ConsentBasis — Common GDPR lawful bases relevant to advertising. Covers the Article 6(1)
 type ConsentBasis = string
 
 const (
@@ -1392,7 +1392,7 @@ func ParseConsentBasis(s string) (ConsentBasis, error) {
 	return "", fmt.Errorf("unknown ConsentBasis value")
 }
 
-// ContentIDType — Identifier type used in content_ids on conversion events to match back to catalo
+// ContentIDType — Identifier type used in content_ids on conversion events to match back to
 type ContentIDType = string
 
 const (
@@ -1588,7 +1588,7 @@ func ParseCreativeApprovalStatus(s string) (CreativeApprovalStatus, error) {
 	return "", fmt.Errorf("unknown CreativeApprovalStatus value")
 }
 
-// CreativeEventReasonCode — Categorical reason carried on creative lifecycle webhooks (`creative.status_chan
+// CreativeEventReasonCode — Categorical reason carried on creative lifecycle webhooks
 type CreativeEventReasonCode = string
 
 const (
@@ -1633,7 +1633,7 @@ func ParseCreativeEventReasonCode(s string) (CreativeEventReasonCode, error) {
 	return "", fmt.Errorf("unknown CreativeEventReasonCode value")
 }
 
-// CreativeIdentifierType — Industry-standard identifier types for advertising creatives. These identifiers
+// CreativeIdentifierType — Industry-standard identifier types for advertising creatives. These
 type CreativeIdentifierType = string
 
 const (
@@ -1739,7 +1739,7 @@ func ParseCreativeSortField(s string) (CreativeSortField, error) {
 	return "", fmt.Errorf("unknown CreativeSortField value")
 }
 
-// CreativeStatus — Lifecycle status of a creative asset in a creative library. See the Creative Pro
+// CreativeStatus — Lifecycle status of a creative asset in a creative library. See the Creative
 type CreativeStatus = string
 
 const (
@@ -1776,7 +1776,7 @@ func ParseCreativeStatus(s string) (CreativeStatus, error) {
 	return "", fmt.Errorf("unknown CreativeStatus value")
 }
 
-// DaastTrackingEvent — Tracking events for audio ads. Aligned to the IAB DAAST 1.1 `Tracking@event` enu
+// DaastTrackingEvent — Tracking events for audio ads. Aligned to the IAB DAAST 1.1 `Tracking@event`
 type DaastTrackingEvent = string
 
 const (
@@ -1973,7 +1973,7 @@ func ParseDeliveryType(s string) (DeliveryType, error) {
 	return "", fmt.Errorf("unknown DeliveryType value")
 }
 
-// DemographicSystem — Audience measurement systems for demographic notation in GRP forecasts and prici
+// DemographicSystem — Audience measurement systems for demographic notation in GRP forecasts and
 type DemographicSystem = string
 
 const (
@@ -2011,7 +2011,7 @@ func ParseDemographicSystem(s string) (DemographicSystem, error) {
 	return "", fmt.Errorf("unknown DemographicSystem value")
 }
 
-// DerivativeType — What kind of derivative content an installment represents relative to its source
+// DerivativeType — What kind of derivative content an installment represents relative to its
 type DerivativeType = string
 
 const (
@@ -2048,7 +2048,7 @@ func ParseDerivativeType(s string) (DerivativeType, error) {
 	return "", fmt.Errorf("unknown DerivativeType value")
 }
 
-// DevicePlatform — Operating system platforms for device targeting. Browser values from Sec-CH-UA-P
+// DevicePlatform — Operating system platforms for device targeting. Browser values from
 type DevicePlatform = string
 
 const (
@@ -2092,7 +2092,7 @@ func ParseDevicePlatform(s string) (DevicePlatform, error) {
 	return "", fmt.Errorf("unknown DevicePlatform value")
 }
 
-// DeviceType — Device form factor categories for targeting and reporting. Complements device-pl
+// DeviceType — Device form factor categories for targeting and reporting. Complements
 type DeviceType = string
 
 const (
@@ -2130,7 +2130,7 @@ func ParseDeviceType(s string) (DeviceType, error) {
 	return "", fmt.Errorf("unknown DeviceType value")
 }
 
-// DigitalSourceType — Classification of AI involvement in content creation, aligned with IPTC digitals
+// DigitalSourceType — Classification of AI involvement in content creation, aligned with IPTC
 type DigitalSourceType = string
 
 const (
@@ -2209,7 +2209,7 @@ func ParseDimensionUnit(s string) (DimensionUnit, error) {
 	return "", fmt.Errorf("unknown DimensionUnit value")
 }
 
-// DisclosurePersistence — How long a disclosure must persist during content playback or display. Different
+// DisclosurePersistence — How long a disclosure must persist during content playback or display.
 type DisclosurePersistence = string
 
 const (
@@ -2244,7 +2244,7 @@ func ParseDisclosurePersistence(s string) (DisclosurePersistence, error) {
 	return "", fmt.Errorf("unknown DisclosurePersistence value")
 }
 
-// DisclosurePosition — Where a required disclosure should appear within a creative. Used by creative br
+// DisclosurePosition — Where a required disclosure should appear within a creative. Used by creative
 type DisclosurePosition = string
 
 const (
@@ -2319,7 +2319,7 @@ func ParseDistanceUnit(s string) (DistanceUnit, error) {
 	return "", fmt.Errorf("unknown DistanceUnit value")
 }
 
-// DistributionIdentifierType — Platform-specific identifier types for collection distribution. Maps a collectio
+// DistributionIdentifierType — Platform-specific identifier types for collection distribution. Maps a
 type DistributionIdentifierType = string
 
 const (
@@ -2372,7 +2372,7 @@ func ParseDistributionIdentifierType(s string) (DistributionIdentifierType, erro
 	return "", fmt.Errorf("unknown DistributionIdentifierType value")
 }
 
-// EmbeddedProvenanceMethod — How provenance data is carried within the content stream. Distinguishes between
+// EmbeddedProvenanceMethod — How provenance data is carried within the content stream. Distinguishes
 type EmbeddedProvenanceMethod = string
 
 const (
@@ -2406,7 +2406,7 @@ func ParseEmbeddedProvenanceMethod(s string) (EmbeddedProvenanceMethod, error) {
 	return "", fmt.Errorf("unknown EmbeddedProvenanceMethod value")
 }
 
-// ErrorCode — Standard error code vocabulary for AdCP. Codes are machine-readable so agents ca
+// ErrorCode — Standard error code vocabulary for AdCP. Codes are machine-readable so agents
 type ErrorCode = string
 
 const (
@@ -2520,7 +2520,7 @@ func ParseErrorCode(s string) (ErrorCode, error) {
 	return "", fmt.Errorf("unknown ErrorCode value")
 }
 
-// ErrorScope — Shared discriminator vocabulary for `error.details.scope` across `error-details/
+// ErrorScope — Shared discriminator vocabulary for `error.details.scope` across
 type ErrorScope = string
 
 const (
@@ -2685,7 +2685,7 @@ func ParseExclusivity(s string) (Exclusivity, error) {
 	return "", fmt.Errorf("unknown Exclusivity value")
 }
 
-// FeatureCheckStatus — Per-feature evaluation outcome in content standards checks. For the two-outcome
+// FeatureCheckStatus — Per-feature evaluation outcome in content standards checks. For the
 type FeatureCheckStatus = string
 
 const (
@@ -2721,7 +2721,7 @@ func ParseFeatureCheckStatus(s string) (FeatureCheckStatus, error) {
 	return "", fmt.Errorf("unknown FeatureCheckStatus value")
 }
 
-// FeedFormat — Catalog feed formats. Determines how the platform parses items from an external
+// FeedFormat — Catalog feed formats. Determines how the platform parses items from an
 type FeedFormat = string
 
 const (
@@ -2829,7 +2829,7 @@ func ParseForecastMethod(s string) (ForecastMethod, error) {
 	return "", fmt.Errorf("unknown ForecastMethod value")
 }
 
-// ForecastRangeUnit — Describes how to interpret the points array in a DeliveryForecast — what axis th
+// ForecastRangeUnit — Describes how to interpret the points array in a DeliveryForecast — what axis
 type ForecastRangeUnit = string
 
 const (
@@ -2869,7 +2869,7 @@ func ParseForecastRangeUnit(s string) (ForecastRangeUnit, error) {
 	return "", fmt.Errorf("unknown ForecastRangeUnit value")
 }
 
-// ForecastableMetric — Standard delivery, engagement, and availability metric names for forecasts. **Mo
+// ForecastableMetric — Standard delivery, engagement, and availability metric names for forecasts.
 type ForecastableMetric = string
 
 const (
@@ -2918,7 +2918,7 @@ func ParseForecastableMetric(s string) (ForecastableMetric, error) {
 	return "", fmt.Errorf("unknown ForecastableMetric value")
 }
 
-// FormatIDParameter — Types of parameters that template formats accept in format_id objects to create
+// FormatIDParameter — Types of parameters that template formats accept in format_id objects to
 type FormatIDParameter = string
 
 const (
@@ -2952,7 +2952,7 @@ func ParseFormatIDParameter(s string) (FormatIDParameter, error) {
 	return "", fmt.Errorf("unknown FormatIDParameter value")
 }
 
-// FrameRateType — Whether the video uses a constant or variable frame rate. Broadcast and SSAI con
+// FrameRateType — Whether the video uses a constant or variable frame rate. Broadcast and SSAI
 type FrameRateType = string
 
 const (
@@ -3019,7 +3019,7 @@ func ParseFrequencyCapScope(s string) (FrequencyCapScope, error) {
 	return "", fmt.Errorf("unknown FrequencyCapScope value")
 }
 
-// GenreTaxonomy — Taxonomy systems for genre classification. When declared, genre values should be
+// GenreTaxonomy — Taxonomy systems for genre classification. When declared, genre values should
 type GenreTaxonomy = string
 
 const (
@@ -3060,7 +3060,7 @@ func ParseGenreTaxonomy(s string) (GenreTaxonomy, error) {
 	return "", fmt.Errorf("unknown GenreTaxonomy value")
 }
 
-// GeoLevel — Geographic targeting granularity levels. Some levels (metro, postal_area) requir
+// GeoLevel — Geographic targeting granularity levels. Some levels (metro, postal_area)
 type GeoLevel = string
 
 const (
@@ -3096,7 +3096,7 @@ func ParseGeoLevel(s string) (GeoLevel, error) {
 	return "", fmt.Errorf("unknown GeoLevel value")
 }
 
-// GopType — Group of Pictures structure. SSAI and broadcast require closed GOPs for clean sp
+// GopType — Group of Pictures structure. SSAI and broadcast require closed GOPs for clean
 type GopType = string
 
 const (
@@ -3130,7 +3130,7 @@ func ParseGopType(s string) (GopType, error) {
 	return "", fmt.Errorf("unknown GopType value")
 }
 
-// GovernanceDecision — Outcome of a governance check_governance call. Distinct from creative approval s
+// GovernanceDecision — Outcome of a governance check_governance call. Distinct from creative approval
 type GovernanceDecision = string
 
 const (
@@ -3165,7 +3165,7 @@ func ParseGovernanceDecision(s string) (GovernanceDecision, error) {
 	return "", fmt.Errorf("unknown GovernanceDecision value")
 }
 
-// GovernanceDomain — Governance sub-domains that a registry policy applies to. Used to indicate which
+// GovernanceDomain — Governance sub-domains that a registry policy applies to. Used to indicate
 type GovernanceDomain = string
 
 const (
@@ -3201,7 +3201,7 @@ func ParseGovernanceDomain(s string) (GovernanceDomain, error) {
 	return "", fmt.Errorf("unknown GovernanceDomain value")
 }
 
-// GovernanceMode — Operating mode for a governance agent. Controls whether findings block execution
+// GovernanceMode — Operating mode for a governance agent. Controls whether findings block
 type GovernanceMode = string
 
 const (
@@ -3236,7 +3236,7 @@ func ParseGovernanceMode(s string) (GovernanceMode, error) {
 	return "", fmt.Errorf("unknown GovernanceMode value")
 }
 
-// GovernancePhase — The phase of the governed action's lifecycle that triggered the governance check
+// GovernancePhase — The phase of the governed action's lifecycle that triggered the governance
 type GovernancePhase = string
 
 const (
@@ -3392,7 +3392,7 @@ func ParseIdentifierTypes(s string) (IdentifierTypes, error) {
 	return "", fmt.Errorf("unknown IdentifierTypes value")
 }
 
-// ImpairmentOfflineState — Canonical offline values that may appear in impairment.transition.to. Each value
+// ImpairmentOfflineState — Canonical offline values that may appear in impairment.transition.to. Each
 type ImpairmentOfflineState = string
 
 const (
@@ -3429,7 +3429,7 @@ func ParseImpairmentOfflineState(s string) (ImpairmentOfflineState, error) {
 	return "", fmt.Errorf("unknown ImpairmentOfflineState value")
 }
 
-// ImpairmentReasonCode — Categorical reason a dependency resource entered an offline state, surfacing why
+// ImpairmentReasonCode — Categorical reason a dependency resource entered an offline state, surfacing
 type ImpairmentReasonCode = string
 
 const (
@@ -3578,7 +3578,7 @@ func ParseLandingPageRequirement(s string) (LandingPageRequirement, error) {
 	return "", fmt.Errorf("unknown LandingPageRequirement value")
 }
 
-// LiftDimension — Brand-lift dimension disambiguator. Brand lift is multidimensional in production
+// LiftDimension — Brand-lift dimension disambiguator. Brand lift is multidimensional in
 type LiftDimension = string
 
 const (
@@ -3615,7 +3615,7 @@ func ParseLiftDimension(s string) (LiftDimension, error) {
 	return "", fmt.Errorf("unknown LiftDimension value")
 }
 
-// LogoSlot — Canonical renderer-facing logo slot. Use when selecting a logo variant from bran
+// LogoSlot — Canonical renderer-facing logo slot. Use when selecting a logo variant from
 type LogoSlot = string
 
 const (
@@ -3660,7 +3660,7 @@ func ParseLogoSlot(s string) (LogoSlot, error) {
 	return "", fmt.Errorf("unknown LogoSlot value")
 }
 
-// MakegoodRemedy — Remedy types available when a performance standard or billing measurement thresh
+// MakegoodRemedy — Remedy types available when a performance standard or billing measurement
 type MakegoodRemedy = string
 
 const (
@@ -3729,7 +3729,7 @@ func ParseMarkdownFlavor(s string) (MarkdownFlavor, error) {
 	return "", fmt.Errorf("unknown MarkdownFlavor value")
 }
 
-// MatchIDType — Identifier types for audience match reporting. Combines hashed PII types (from a
+// MatchIDType — Identifier types for audience match reporting. Combines hashed PII types (from
 type MatchIDType = string
 
 const (
@@ -3770,7 +3770,7 @@ func ParseMatchIDType(s string) (MatchIDType, error) {
 	return "", fmt.Errorf("unknown MatchIDType value")
 }
 
-// MatchType — Keyword targeting match type. broad: ads may serve on queries semantically relat
+// MatchType — Keyword targeting match type. broad: ads may serve on queries semantically
 type MatchType = string
 
 const (
@@ -3805,7 +3805,7 @@ func ParseMatchType(s string) (MatchType, error) {
 	return "", fmt.Errorf("unknown MatchType value")
 }
 
-// MediaBuyActionMode — How a seller honors a given action on a media buy. Buyers branch on this to deci
+// MediaBuyActionMode — How a seller honors a given action on a media buy. Buyers branch on this to
 type MediaBuyActionMode = string
 
 const (
@@ -3841,7 +3841,7 @@ func ParseMediaBuyActionMode(s string) (MediaBuyActionMode, error) {
 	return "", fmt.Errorf("unknown MediaBuyActionMode value")
 }
 
-// MediaBuyHealth — Aggregate health of a media buy based on upstream dependency state. Orthogonal t
+// MediaBuyHealth — Aggregate health of a media buy based on upstream dependency state. Orthogonal
 type MediaBuyHealth = string
 
 const (
@@ -3914,7 +3914,7 @@ func ParseMediaBuyStatus(s string) (MediaBuyStatus, error) {
 	return "", fmt.Errorf("unknown MediaBuyStatus value")
 }
 
-// MediaBuyValidAction — Actions the buyer can perform on a media buy. Used as the action identifier in b
+// MediaBuyValidAction — Actions the buyer can perform on a media buy. Used as the action identifier in
 type MediaBuyValidAction = string
 
 const (
@@ -3967,7 +3967,7 @@ func ParseMediaBuyValidAction(s string) (MediaBuyValidAction, error) {
 	return "", fmt.Errorf("unknown MediaBuyValidAction value")
 }
 
-// MetricScope — Discriminator for entries in unified metric arrays (`committed_metrics`, `missin
+// MetricScope — Discriminator for entries in unified metric arrays (`committed_metrics`
 type MetricScope = string
 
 const (
@@ -4001,7 +4001,7 @@ func ParseMetricScope(s string) (MetricScope, error) {
 	return "", fmt.Errorf("unknown MetricScope value")
 }
 
-// MetricType — **Deprecated as of this minor.** Legacy free-form enum mixing metrics, verificat
+// MetricType — **Deprecated as of this minor.** Legacy free-form enum mixing metrics
 type MetricType = string
 
 const (
@@ -4078,7 +4078,7 @@ func ParseMetroSystem(s string) (MetroSystem, error) {
 	return "", fmt.Errorf("unknown MetroSystem value")
 }
 
-// MoovAtomPosition — Position of the moov atom in an MP4 container. 'start' enables progressive downl
+// MoovAtomPosition — Position of the moov atom in an MP4 container. 'start' enables progressive
 type MoovAtomPosition = string
 
 const (
@@ -4112,7 +4112,7 @@ func ParseMoovAtomPosition(s string) (MoovAtomPosition, error) {
 	return "", fmt.Errorf("unknown MoovAtomPosition value")
 }
 
-// NotificationType — Type of push notification fired by a seller agent. Media-buy-anchored notificati
+// NotificationType — Type of push notification fired by a seller agent. Media-buy-anchored
 type NotificationType = string
 
 const (
@@ -4160,7 +4160,7 @@ func ParseNotificationType(s string) (NotificationType, error) {
 	return "", fmt.Errorf("unknown NotificationType value")
 }
 
-// OutcomeType — The type of outcome reported to a campaign governance agent after a seller inter
+// OutcomeType — The type of outcome reported to a campaign governance agent after a seller
 type OutcomeType = string
 
 const (
@@ -4268,7 +4268,7 @@ func ParsePaymentTerms(s string) (PaymentTerms, error) {
 	return "", fmt.Errorf("unknown PaymentTerms value")
 }
 
-// PerformanceStandardMetric — Performance metrics that support rate thresholds on media buys — the verificatio
+// PerformanceStandardMetric — Performance metrics that support rate thresholds on media buys — the
 type PerformanceStandardMetric = string
 
 const (
@@ -4374,7 +4374,7 @@ func ParsePolicyEnforcement(s string) (PolicyEnforcement, error) {
 	return "", fmt.Errorf("unknown PolicyEnforcement value")
 }
 
-// PostalSystem — Postal code systems for geographic targeting. System names encode country and pr
+// PostalSystem — Postal code systems for geographic targeting. System names encode country and
 type PostalSystem = string
 
 const (
@@ -4492,7 +4492,7 @@ func ParsePricingModel(s string) (PricingModel, error) {
 	return "", fmt.Errorf("unknown PricingModel value")
 }
 
-// ProductionQuality — Production quality tier for collection content. Maps to OpenRTB content.prodq: p
+// ProductionQuality — Production quality tier for collection content. Maps to OpenRTB content.prodq
 type ProductionQuality = string
 
 const (
@@ -4527,7 +4527,7 @@ func ParseProductionQuality(s string) (ProductionQuality, error) {
 	return "", fmt.Errorf("unknown ProductionQuality value")
 }
 
-// PropertyType — Types of addressable advertising properties with verifiable ownership. Property
+// PropertyType — Types of addressable advertising properties with verifiable ownership.
 type PropertyType = string
 
 const (
@@ -4569,7 +4569,7 @@ func ParsePropertyType(s string) (PropertyType, error) {
 	return "", fmt.Errorf("unknown PropertyType value")
 }
 
-// ProposalStatus — Lifecycle status of a proposal. Absent means the proposal is ready to buy (backw
+// ProposalStatus — Lifecycle status of a proposal. Absent means the proposal is ready to buy
 type ProposalStatus = string
 
 const (
@@ -4676,7 +4676,7 @@ func ParsePurchaseType(s string) (PurchaseType, error) {
 	return "", fmt.Errorf("unknown PurchaseType value")
 }
 
-// ReachUnit — Unit of measurement for reach and audience size metrics. Different channels and
+// ReachUnit — Unit of measurement for reach and audience size metrics. Different channels
 type ReachUnit = string
 
 const (
@@ -4749,7 +4749,7 @@ func ParseReportingFrequency(s string) (ReportingFrequency, error) {
 	return "", fmt.Errorf("unknown ReportingFrequency value")
 }
 
-// ResponseType — What the publisher wants back from a TMP context match. Determines the richness
+// ResponseType — What the publisher wants back from a TMP context match. Determines the
 type ResponseType = string
 
 const (
@@ -4785,7 +4785,7 @@ func ParseResponseType(s string) (ResponseType, error) {
 	return "", fmt.Errorf("unknown ResponseType value")
 }
 
-// RestrictedAttribute — Personal data categories that may be restricted from use in audience targeting.
+// RestrictedAttribute — Personal data categories that may be restricted from use in audience
 type RestrictedAttribute = string
 
 const (
@@ -4827,7 +4827,7 @@ func ParseRestrictedAttribute(s string) (RestrictedAttribute, error) {
 	return "", fmt.Errorf("unknown RestrictedAttribute value")
 }
 
-// RightType — Categories of intellectual property rights that can be licensed through the bran
+// RightType — Categories of intellectual property rights that can be licensed through the
 type RightType = string
 
 const (
@@ -4864,7 +4864,7 @@ func ParseRightType(s string) (RightType, error) {
 	return "", fmt.Errorf("unknown RightType value")
 }
 
-// RightUse — Types of rights usage that can be licensed through the brand protocol. Aligned w
+// RightUse — Types of rights usage that can be licensed through the brand protocol. Aligned
 type RightUse = string
 
 const (
@@ -4946,7 +4946,7 @@ func ParseRightsBillingPeriod(s string) (RightsBillingPeriod, error) {
 	return "", fmt.Errorf("unknown RightsBillingPeriod value")
 }
 
-// ScanType — Video scan method. Modern digital delivery requires progressive scan; interlaced
+// ScanType — Video scan method. Modern digital delivery requires progressive scan
 type ScanType = string
 
 const (
@@ -5051,7 +5051,7 @@ func ParseSignalCatalogType(s string) (SignalCatalogType, error) {
 	return "", fmt.Errorf("unknown SignalCatalogType value")
 }
 
-// SignalSource — Source type for signal identifiers. Determines how the signal is referenced and
+// SignalSource — Source type for signal identifiers. Determines how the signal is referenced
 type SignalSource = string
 
 const (
@@ -5120,7 +5120,7 @@ func ParseSignalValueType(s string) (SignalValueType, error) {
 	return "", fmt.Errorf("unknown SignalValueType value")
 }
 
-// SnapshotUnavailableReason — Machine-readable reason a delivery snapshot was requested but could not be retur
+// SnapshotUnavailableReason — Machine-readable reason a delivery snapshot was requested but could not be
 type SnapshotUnavailableReason = string
 
 const (
@@ -5189,7 +5189,7 @@ func ParseSortDirection(s string) (SortDirection, error) {
 	return "", fmt.Errorf("unknown SortDirection value")
 }
 
-// SortMetric — Numeric delivery metrics available for sorting breakdown rows. Subset of deliver
+// SortMetric — Numeric delivery metrics available for sorting breakdown rows. Subset of
 type SortMetric = string
 
 const (
@@ -5287,7 +5287,7 @@ func ParseSpecialCategory(s string) (SpecialCategory, error) {
 	return "", fmt.Errorf("unknown SpecialCategory value")
 }
 
-// Specialism — Specialized capability claims an agent can make. Each specialism maps to a compl
+// Specialism — Specialized capability claims an agent can make. Each specialism maps to a
 type Specialism = string
 
 const (
@@ -5381,7 +5381,7 @@ func ParseTalentRole(s string) (TalentRole, error) {
 	return "", fmt.Errorf("unknown TalentRole value")
 }
 
-// TaskStatus — Standardized task status values based on A2A TaskState enum. Indicates the curre
+// TaskStatus — Standardized task status values based on A2A TaskState enum. Indicates the
 type TaskStatus = string
 
 const (
@@ -5422,7 +5422,7 @@ func ParseTaskStatus(s string) (TaskStatus, error) {
 	return "", fmt.Errorf("unknown TaskStatus value")
 }
 
-// TaskType — Valid AdCP task types across all domains. These represent the complete set of op
+// TaskType — Valid AdCP task types across all domains. These represent the complete set of
 type TaskType = string
 
 const (
@@ -5476,7 +5476,7 @@ func ParseTaskType(s string) (TaskType, error) {
 	return "", fmt.Errorf("unknown TaskType value")
 }
 
-// TransportMode — Transportation modes for isochrone-based catchment area calculations. Determines
+// TransportMode — Transportation modes for isochrone-based catchment area calculations.
 type TransportMode = string
 
 const (
@@ -5546,7 +5546,7 @@ func ParseTravelTimeUnit(s string) (TravelTimeUnit, error) {
 	return "", fmt.Errorf("unknown TravelTimeUnit value")
 }
 
-// UIDType — Type of user identifier. Used in audience sync, event logging, and TMP identity
+// UIDType — Type of user identifier. Used in audience sync, event logging, and TMP
 type UIDType = string
 
 const (
@@ -5588,7 +5588,7 @@ func ParseUIDType(s string) (UIDType, error) {
 	return "", fmt.Errorf("unknown UIDType value")
 }
 
-// UniversalMacro — Standardized macro placeholders for dynamic value substitution in creative track
+// UniversalMacro — Standardized macro placeholders for dynamic value substitution in creative
 type UniversalMacro = string
 
 const (
@@ -5795,7 +5795,7 @@ func ParseValidationMode(s string) (ValidationMode, error) {
 	return "", fmt.Errorf("unknown ValidationMode value")
 }
 
-// VastTrackingEvent — Tracking events for video ads. Includes the IAB VAST 4.2 `Tracking@event` enumer
+// VastTrackingEvent — Tracking events for video ads. Includes the IAB VAST 4.2 `Tracking@event`
 type VastTrackingEvent = string
 
 const (
@@ -5900,7 +5900,7 @@ func ParseVastVersion(s string) (VastVersion, error) {
 	return "", fmt.Errorf("unknown VastVersion value")
 }
 
-// VideoPlacementType — Declared video placement classification for OLV and other video inventory, using
+// VideoPlacementType — Declared video placement classification for OLV and other video inventory
 type VideoPlacementType = string
 
 const (
@@ -5936,7 +5936,7 @@ func ParseVideoPlacementType(s string) (VideoPlacementType, error) {
 	return "", fmt.Errorf("unknown VideoPlacementType value")
 }
 
-// ViewabilityStandard — Viewability measurement standard applied to determine whether an impression qual
+// ViewabilityStandard — Viewability measurement standard applied to determine whether an impression
 type ViewabilityStandard = string
 
 const (
@@ -5970,7 +5970,7 @@ func ParseViewabilityStandard(s string) (ViewabilityStandard, error) {
 	return "", fmt.Errorf("unknown ViewabilityStandard value")
 }
 
-// WatermarkMediaType — Media category of a content watermark. Identifies what kind of content the water
+// WatermarkMediaType — Media category of a content watermark. Identifies what kind of content the
 type WatermarkMediaType = string
 
 const (
@@ -6112,7 +6112,7 @@ func ParseWebhookSecurityMethod(s string) (WebhookSecurityMethod, error) {
 	return "", fmt.Errorf("unknown WebhookSecurityMethod value")
 }
 
-// OptimizationMetric — Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swi
+// OptimizationMetric — Seller-native metric to optimize for. Delivery metrics: clicks (link clicks
 type OptimizationMetric = string
 
 const (
@@ -6205,63 +6205,63 @@ func (v *MediaBuyStatusFilter) UnmarshalJSON(data []byte) error {
 
 // --- Core types ---
 
-// PolicyEntry — A policy — either published to the shared registry (with full regulatory metadata) or authored inlin
+// PolicyEntry — A policy — either published to the shared registry (with full regulatory metadata) or authored
 type PolicyEntry struct {
-	PolicyID            string              `json:"policy_id"`                       // Unique identifier for this policy. Registry-published ids are canonical (e.g., "
-	Source              string              `json:"source,omitempty"`                // Origin of this policy. 'registry' = published to the shared AdCP policy registry
-	Version             string              `json:"version,omitempty"`               // Semver version string (e.g., "1.0.0"). Incremented when policy content changes.
-	Name                string              `json:"name,omitempty"`                  // Human-readable name (e.g., "UK HFSS Restrictions"). Optional for inline bespoke
+	PolicyID            string              `json:"policy_id"`                       // Unique identifier for this policy. Registry-published ids are canonical (e.g.
+	Source              string              `json:"source,omitempty"`                // Origin of this policy. 'registry' = published to the shared AdCP policy
+	Version             string              `json:"version,omitempty"`               // Semver version string (e.g., "1.0.0"). Incremented when policy content
+	Name                string              `json:"name,omitempty"`                  // Human-readable name (e.g., "UK HFSS Restrictions"). Optional for inline
 	Description         string              `json:"description,omitempty"`           // Brief summary of what this policy covers.
-	Category            string              `json:"category,omitempty"`              // The nature of the obligation: regulation (legal requirement) or standard (best p
-	Enforcement         string              `json:"enforcement"`                     // How governance agents treat violations. Regulations are typically "must"; standa
-	RequiresHumanReview *bool               `json:"requires_human_review,omitempty"` // When true, plans subject to this policy MUST set plan.human_review_required = tr
-	Jurisdictions       []string            `json:"jurisdictions,omitempty"`         // ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means th
-	RegionAliases       map[string][]string `json:"region_aliases,omitempty"`        // Named groups of jurisdictions for convenience (e.g., {"EU": ["AT","BE","BG",...]
-	PolicyCategories    []string            `json:"policy_categories,omitempty"`     // Regulatory categories this policy belongs to (e.g., ["children_directed", "age_r
-	Channels            []string            `json:"channels,omitempty"`              // Advertising channels this policy applies to. If omitted or null, the policy appl
-	GovernanceDomains   []string            `json:"governance_domains,omitempty"`    // Governance sub-domains this policy applies to. Determines which types of governa
-	EffectiveDate       string              `json:"effective_date,omitempty"`        // ISO 8601 date when the regulation or standard takes effect. Before this date, go
-	SunsetDate          string              `json:"sunset_date,omitempty"`           // ISO 8601 date when the regulation or standard is no longer enforced. After this
+	Category            string              `json:"category,omitempty"`              // The nature of the obligation: regulation (legal requirement) or standard (best
+	Enforcement         string              `json:"enforcement"`                     // How governance agents treat violations. Regulations are typically "must"
+	RequiresHumanReview *bool               `json:"requires_human_review,omitempty"` // When true, plans subject to this policy MUST set plan.human_review_required =
+	Jurisdictions       []string            `json:"jurisdictions,omitempty"`         // ISO 3166-1 alpha-2 country codes where this policy applies. Empty array means
+	RegionAliases       map[string][]string `json:"region_aliases,omitempty"`        // Named groups of jurisdictions for convenience (e.g., {"EU"
+	PolicyCategories    []string            `json:"policy_categories,omitempty"`     // Regulatory categories this policy belongs to (e.g., ["children_directed"
+	Channels            []string            `json:"channels,omitempty"`              // Advertising channels this policy applies to. If omitted or null, the policy
+	GovernanceDomains   []string            `json:"governance_domains,omitempty"`    // Governance sub-domains this policy applies to. Determines which types of
+	EffectiveDate       string              `json:"effective_date,omitempty"`        // ISO 8601 date when the regulation or standard takes effect. Before this date
+	SunsetDate          string              `json:"sunset_date,omitempty"`           // ISO 8601 date when the regulation or standard is no longer enforced. After
 	SourceURL           string              `json:"source_url,omitempty"`            // Link to the source regulation, standard, or legislation.
-	SourceName          string              `json:"source_name,omitempty"`           // Name of the issuing body (e.g., "UK Food Standards Agency", "US Federal Trade Co
-	Policy              string              `json:"policy"`                          // Natural language policy text describing what is required, prohibited, or recomme
-	Guidance            string              `json:"guidance,omitempty"`              // Implementation notes for governance agent developers. Not used in evaluation pro
-	Exemplars           *PolicyExemplars    `json:"exemplars,omitempty"`             // Calibration examples for governance agents, following the Content Standards patt
+	SourceName          string              `json:"source_name,omitempty"`           // Name of the issuing body (e.g., "UK Food Standards Agency", "US Federal Trade
+	Policy              string              `json:"policy"`                          // Natural language policy text describing what is required, prohibited, or
+	Guidance            string              `json:"guidance,omitempty"`              // Implementation notes for governance agent developers. Not used in evaluation
+	Exemplars           *PolicyExemplars    `json:"exemplars,omitempty"`             // Calibration examples for governance agents, following the Content Standards
 	Ext                 any                 `json:"ext,omitempty"`
 }
 
-// PolicyCategoryDefinition — Definition of a policy category in the registry. Policy categories group related regulatory regimes
+// PolicyCategoryDefinition — Definition of a policy category in the registry. Policy categories group related regulatory
 type PolicyCategoryDefinition struct {
-	CategoryID           string                      `json:"category_id"`                     // Unique identifier for this category. Used in plan.policy_categories, signal-defi
+	CategoryID           string                      `json:"category_id"`                     // Unique identifier for this category. Used in plan.policy_categories
 	Name                 string                      `json:"name"`                            // Human-readable name (e.g., 'Children-Directed Content').
-	Description          string                      `json:"description"`                     // What this category covers. Defines the boundary — what campaigns or data fall un
-	RegulatoryFrameworks []PolicyRegulatoryFramework `json:"regulatory_frameworks,omitempty"` // Key regulations and standards grouped under this category. Governance agents use
-	RestrictedAttributes []string                    `json:"restricted_attributes,omitempty"` // Restricted attribute categories that regulations in this category prohibit for t
-	RequiresHumanReview  *bool                       `json:"requires_human_review,omitempty"` // When true, any plan declaring this category MUST set plan.human_review_required
-	Industries           []string                    `json:"industries,omitempty"`            // Industries where this category commonly applies (e.g., 'pharmaceutical' for age_
-	Guidance             string                      `json:"guidance,omitempty"`              // Implementation notes for governance agents. Edge cases, disambiguation, and comm
-	RelatedCategories    []string                    `json:"related_categories,omitempty"`    // Categories that frequently co-occur (e.g., 'children_directed' often appears wit
+	Description          string                      `json:"description"`                     // What this category covers. Defines the boundary — what campaigns or data fall
+	RegulatoryFrameworks []PolicyRegulatoryFramework `json:"regulatory_frameworks,omitempty"` // Key regulations and standards grouped under this category. Governance agents
+	RestrictedAttributes []string                    `json:"restricted_attributes,omitempty"` // Restricted attribute categories that regulations in this category prohibit for
+	RequiresHumanReview  *bool                       `json:"requires_human_review,omitempty"` // When true, any plan declaring this category MUST set
+	Industries           []string                    `json:"industries,omitempty"`            // Industries where this category commonly applies (e.g., 'pharmaceutical' for
+	Guidance             string                      `json:"guidance,omitempty"`              // Implementation notes for governance agents. Edge cases, disambiguation, and
+	RelatedCategories    []string                    `json:"related_categories,omitempty"`    // Categories that frequently co-occur (e.g., 'children_directed' often appears
 }
 
-// AudienceConstraints — Buyer-defined audience targeting constraints for a campaign plan. Specifies who the campaign should
+// AudienceConstraints — Buyer-defined audience targeting constraints for a campaign plan. Specifies who the campaign
 type AudienceConstraints struct {
-	Include []AudienceSelector `json:"include,omitempty"` // Desired audience criteria. The seller's targeting should align with these. Each
-	Exclude []AudienceSelector `json:"exclude,omitempty"` // Excluded audience criteria. The seller's targeting must not overlap with these.
+	Include []AudienceSelector `json:"include,omitempty"` // Desired audience criteria. The seller's targeting should align with these.
+	Exclude []AudienceSelector `json:"exclude,omitempty"` // Excluded audience criteria. The seller's targeting must not overlap with
 }
 
-// AudienceSelector — Selects an audience by signal reference or natural language description. Uses 'type' as the primary
+// AudienceSelector — Selects an audience by signal reference or natural language description. Uses 'type' as the
 type AudienceSelector struct {
 	Type      string     `json:"type,omitempty"`       // Discriminator for description-based selectors
 	SignalRef *SignalRef `json:"signal_ref,omitempty"` // The signal to target. New selectors SHOULD use signal_ref.
 	// Deprecated: DEPRECATED.
-	SignalID    *SignalID `json:"signal_id,omitempty"`   // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility w
+	SignalID    *SignalID `json:"signal_id,omitempty"`   // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility
 	ValueType   string    `json:"value_type,omitempty"`  // Discriminator for numeric signals
 	Value       *bool     `json:"value,omitempty"`       // Whether to include (true) or exclude (false) users matching this signal
 	Values      []string  `json:"values,omitempty"`      // Values to target. Users with any of these values will be included.
-	MinValue    *float64  `json:"min_value,omitempty"`   // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
-	MaxValue    *float64  `json:"max_value,omitempty"`   // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
-	Description string    `json:"description,omitempty"` // Natural language description of the audience (e.g., 'likely EV buyers', 'high ne
-	Category    string    `json:"category,omitempty"`    // Optional grouping hint for the governance agent (e.g., 'demographic', 'behaviora
+	MinValue    *float64  `json:"min_value,omitempty"`   // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both
+	MaxValue    *float64  `json:"max_value,omitempty"`   // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both
+	Description string    `json:"description,omitempty"` // Natural language description of the audience (e.g., 'likely EV buyers', 'high
+	Category    string    `json:"category,omitempty"`    // Optional grouping hint for the governance agent (e.g., 'demographic'
 }
 
 // Product — Represents available advertising inventory
@@ -6269,211 +6269,211 @@ type Product struct {
 	ProductID                string                      `json:"product_id"`                      // Unique identifier for the product
 	Name                     string                      `json:"name"`                            // Human-readable product name
 	Description              string                      `json:"description"`                     // Detailed description of the product and its inventory
-	PublisherProperties      []PublisherPropertySelector `json:"publisher_properties"`            // SDK implementers MUST enforce singular-only at runtime: each entry uses the sing
-	Channels                 []string                    `json:"channels,omitempty"`              // Advertising channels this product is sold as. Products inherit from their proper
-	FormatIDs                []FormatRef                 `json:"format_ids,omitempty"`            // Legacy named-format path: array of supported creative format IDs (structured for
-	FormatOptions            []ProductFormatDeclaration  `json:"format_options,omitempty"`        // 3.1+ format-option path: one or more inline format declarations the product acce
-	Placements               []Placement                 `json:"placements,omitempty"`            // Optional array of specific public placements within this product. Placement IDs
-	VideoPlacementTypes      []string                    `json:"video_placement_types,omitempty"` // Declared video placement types that may be included in this product, using IAB T
+	PublisherProperties      []PublisherPropertySelector `json:"publisher_properties"`            // SDK implementers MUST enforce singular-only at runtime: each entry uses the
+	Channels                 []string                    `json:"channels,omitempty"`              // Advertising channels this product is sold as. Products inherit from their
+	FormatIDs                []FormatRef                 `json:"format_ids,omitempty"`            // Legacy named-format path: array of supported creative format IDs (structured
+	FormatOptions            []ProductFormatDeclaration  `json:"format_options,omitempty"`        // 3.1+ format-option path: one or more inline format declarations the product
+	Placements               []Placement                 `json:"placements,omitempty"`            // Optional array of specific public placements within this product. Placement
+	VideoPlacementTypes      []string                    `json:"video_placement_types,omitempty"` // Declared video placement types that may be included in this product, using IAB
 	DeliveryType             string                      `json:"delivery_type"`
-	Exclusivity              string                      `json:"exclusivity,omitempty"`           // Whether this product offers exclusive access to its inventory. Defaults to 'none
+	Exclusivity              string                      `json:"exclusivity,omitempty"`           // Whether this product offers exclusive access to its inventory. Defaults to
 	PricingOptions           []PricingOption             `json:"pricing_options"`                 // Available pricing models for this product
-	Forecast                 *DeliveryForecast           `json:"forecast,omitempty"`              // Forecasted delivery metrics for this product. Gives buyers an estimate of expect
-	OutcomeMeasurement       *OutcomeMeasurement         `json:"outcome_measurement,omitempty"`   // **Deprecated as of this minor.** Outcome capabilities (incremental sales lift, b
-	DeliveryMeasurement      *ProductDeliveryMeasurement `json:"delivery_measurement,omitempty"`  // Measurement vendors and methodology for delivery metrics. The buyer accepts the
-	MeasurementTerms         *MeasurementTerms           `json:"measurement_terms,omitempty"`     // Seller's default billing measurement and makegood terms. Declares who counts the
-	PerformanceStandards     []PerformanceStandard       `json:"performance_standards,omitempty"` // Seller's default performance standards for this product: viewability, IVT, compl
-	CancellationPolicy       *CancellationPolicy         `json:"cancellation_policy,omitempty"`   // Cancellation terms for this product. Declares the minimum notice period required
-	AllowedActions           []ProductAllowedAction      `json:"allowed_actions,omitempty"`       // Actions buyers may perform on buys created against this product, scoped to statu
+	Forecast                 *DeliveryForecast           `json:"forecast,omitempty"`              // Forecasted delivery metrics for this product. Gives buyers an estimate of
+	OutcomeMeasurement       *OutcomeMeasurement         `json:"outcome_measurement,omitempty"`   // **Deprecated as of this minor.** Outcome capabilities (incremental sales lift
+	DeliveryMeasurement      *ProductDeliveryMeasurement `json:"delivery_measurement,omitempty"`  // Measurement vendors and methodology for delivery metrics. The buyer accepts
+	MeasurementTerms         *MeasurementTerms           `json:"measurement_terms,omitempty"`     // Seller's default billing measurement and makegood terms. Declares who counts
+	PerformanceStandards     []PerformanceStandard       `json:"performance_standards,omitempty"` // Seller's default performance standards for this product: viewability, IVT
+	CancellationPolicy       *CancellationPolicy         `json:"cancellation_policy,omitempty"`   // Cancellation terms for this product. Declares the minimum notice period
+	AllowedActions           []ProductAllowedAction      `json:"allowed_actions,omitempty"`       // Actions buyers may perform on buys created against this product, scoped to
 	ReportingCapabilities    ReportingCapabilities       `json:"reporting_capabilities"`
 	CreativePolicy           *CreativePolicy             `json:"creative_policy,omitempty"`
 	IsCustom                 *bool                       `json:"is_custom,omitempty"`                  // Whether this is a custom product
-	PropertyTargetingAllowed *bool                       `json:"property_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its publisher_properties.
+	PropertyTargetingAllowed *bool                       `json:"property_targeting_allowed,omitempty"` // Whether buyers can filter this product to a subset of its
 	// Deprecated: Deprecated.
-	DataProviderSignals        []DataProviderSignalSelector   `json:"data_provider_signals,omitempty"`        // Deprecated. Legacy/non-selectable metadata for data-provider signals already bun
-	IncludedSignals            []SignalListing                `json:"included_signals,omitempty"`             // Non-selectable signal metadata for signals already included in, bundled with, or
-	SignalTargetingOptions     []ProductSignalTargetingOption `json:"signal_targeting_options,omitempty"`     // Inline seller-offered signals that may be applied to packages for this product a
-	SignalTargetingRules       *SignalTargetingRules          `json:"signal_targeting_rules,omitempty"`       // Composition rules for selecting signals on this product. The selectable signal m
-	SignalTargetingAllowed     *bool                          `json:"signal_targeting_allowed,omitempty"`     // Whether this product has a package-level signal_targeting_groups surface. When f
-	CatalogTypes               []string                       `json:"catalog_types,omitempty"`                // Catalog types this product supports for catalog-driven campaigns. A sponsored pr
-	MetricOptimization         *ProductMetricOptimization     `json:"metric_optimization,omitempty"`          // Metric optimization capabilities for this product. Presence indicates the produc
-	VendorMetricOptimization   *VendorMetricOptimization      `json:"vendor_metric_optimization,omitempty"`   // Vendor-attested metric optimization capabilities for this product. Presence indi
-	MaxOptimizationGoals       int                            `json:"max_optimization_goals,omitempty"`       // Maximum number of optimization_goals this product accepts on a package. When abs
-	MeasurementReadiness       *MeasurementReadiness          `json:"measurement_readiness,omitempty"`        // Assessment of whether the buyer's event source setup is sufficient for this prod
-	ConversionTracking         *ProductConversionTracking     `json:"conversion_tracking,omitempty"`          // Conversion event tracking for this product. Presence indicates the product suppo
-	CatalogMatch               *ProductCatalogMatch           `json:"catalog_match,omitempty"`                // When the buyer provides a catalog on get_products, indicates which catalog items
-	BriefRelevance             string                         `json:"brief_relevance,omitempty"`              // Explanation of why this product matches the brief (only included when brief is p
-	ExpiresAt                  string                         `json:"expires_at,omitempty"`                   // Expiration timestamp. After this time, the product may no longer be available fo
-	ProductCard                *ProductCard                   `json:"product_card,omitempty"`                 // Optional standard visual card for displaying this product in user interfaces (ca
-	ProductCardDetailed        *ProductCardDetailed           `json:"product_card_detailed,omitempty"`        // Optional detailed card with hero + carousel + structured specifications, for ric
-	Collections                []CollectionSelector           `json:"collections,omitempty"`                  // Collections available in this product. Each entry references collections declare
-	CollectionTargetingAllowed *bool                          `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false (de
-	Installments               []Installment                  `json:"installments,omitempty"`                 // Specific installments included in this product. Each installment references its
-	EnforcedPolicies           []string                       `json:"enforced_policies,omitempty"`            // Registry policy IDs the seller enforces for this product. Enforcement level come
-	TrustedMatch               *ProductTrustedMatch           `json:"trusted_match,omitempty"`                // Trusted Match Protocol capabilities for this product. When present, the product
-	MaterialSubmission         *ProductMaterialSubmission     `json:"material_submission,omitempty"`          // Instructions for submitting physical creative materials (print, static OOH, cine
+	DataProviderSignals        []DataProviderSignalSelector   `json:"data_provider_signals,omitempty"`        // Deprecated. Legacy/non-selectable metadata for data-provider signals already
+	IncludedSignals            []SignalListing                `json:"included_signals,omitempty"`             // Non-selectable signal metadata for signals already included in, bundled with
+	SignalTargetingOptions     []ProductSignalTargetingOption `json:"signal_targeting_options,omitempty"`     // Inline seller-offered signals that may be applied to packages for this product
+	SignalTargetingRules       *SignalTargetingRules          `json:"signal_targeting_rules,omitempty"`       // Composition rules for selecting signals on this product. The selectable signal
+	SignalTargetingAllowed     *bool                          `json:"signal_targeting_allowed,omitempty"`     // Whether this product has a package-level signal_targeting_groups surface. When
+	CatalogTypes               []string                       `json:"catalog_types,omitempty"`                // Catalog types this product supports for catalog-driven campaigns. A sponsored
+	MetricOptimization         *ProductMetricOptimization     `json:"metric_optimization,omitempty"`          // Metric optimization capabilities for this product. Presence indicates the
+	VendorMetricOptimization   *VendorMetricOptimization      `json:"vendor_metric_optimization,omitempty"`   // Vendor-attested metric optimization capabilities for this product. Presence
+	MaxOptimizationGoals       int                            `json:"max_optimization_goals,omitempty"`       // Maximum number of optimization_goals this product accepts on a package. When
+	MeasurementReadiness       *MeasurementReadiness          `json:"measurement_readiness,omitempty"`        // Assessment of whether the buyer's event source setup is sufficient for this
+	ConversionTracking         *ProductConversionTracking     `json:"conversion_tracking,omitempty"`          // Conversion event tracking for this product. Presence indicates the product
+	CatalogMatch               *ProductCatalogMatch           `json:"catalog_match,omitempty"`                // When the buyer provides a catalog on get_products, indicates which catalog
+	BriefRelevance             string                         `json:"brief_relevance,omitempty"`              // Explanation of why this product matches the brief (only included when brief is
+	ExpiresAt                  string                         `json:"expires_at,omitempty"`                   // Expiration timestamp. After this time, the product may no longer be available
+	ProductCard                *ProductCard                   `json:"product_card,omitempty"`                 // Optional standard visual card for displaying this product in user interfaces
+	ProductCardDetailed        *ProductCardDetailed           `json:"product_card_detailed,omitempty"`        // Optional detailed card with hero + carousel + structured specifications, for
+	Collections                []CollectionSelector           `json:"collections,omitempty"`                  // Collections available in this product. Each entry references collections
+	CollectionTargetingAllowed *bool                          `json:"collection_targeting_allowed,omitempty"` // Whether buyers can target a subset of this product's collections. When false
+	Installments               []Installment                  `json:"installments,omitempty"`                 // Specific installments included in this product. Each installment references
+	EnforcedPolicies           []string                       `json:"enforced_policies,omitempty"`            // Registry policy IDs the seller enforces for this product. Enforcement level
+	TrustedMatch               *ProductTrustedMatch           `json:"trusted_match,omitempty"`                // Trusted Match Protocol capabilities for this product. When present, the
+	MaterialSubmission         *ProductMaterialSubmission     `json:"material_submission,omitempty"`          // Instructions for submitting physical creative materials (print, static OOH
 	Ext                        any                            `json:"ext,omitempty"`
 }
 
 // ProductFilters — Structured filters for product discovery
 type ProductFilters struct {
 	DeliveryType        string                    `json:"delivery_type,omitempty"`
-	Exclusivity         string                    `json:"exclusivity,omitempty"`           // Filter by exclusivity level. Returns products matching the specified exclusivity
-	IsFixedPrice        *bool                     `json:"is_fixed_price,omitempty"`        // Filter by pricing availability and returned pricing options: true = products off
+	Exclusivity         string                    `json:"exclusivity,omitempty"`           // Filter by exclusivity level. Returns products matching the specified
+	IsFixedPrice        *bool                     `json:"is_fixed_price,omitempty"`        // Filter by pricing availability and returned pricing options: true = products
 	FormatIDs           []FormatRef               `json:"format_ids,omitempty"`            // Filter by specific format IDs
 	StandardFormatsOnly *bool                     `json:"standard_formats_only,omitempty"` // Only return products accepting IAB standard formats
 	MinExposures        int                       `json:"min_exposures,omitempty"`         // Minimum exposures/impressions needed for measurement validity
 	StartDate           string                    `json:"start_date,omitempty"`            // Campaign start date (ISO 8601 date format: YYYY-MM-DD) for availability checks
 	EndDate             string                    `json:"end_date,omitempty"`              // Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks
 	BudgetRange         *ProductFilterBudgetRange `json:"budget_range,omitempty"`          // Budget range to filter appropriate products
-	Countries           []string                  `json:"countries,omitempty"`             // Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA', 'G
-	Regions             []string                  `json:"regions,omitempty"`               // Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA', 'GB-S
-	Metros              []ProductFilterMetro      `json:"metros,omitempty"`                // Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV). Us
+	Countries           []string                  `json:"countries,omitempty"`             // Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA'
+	Regions             []string                  `json:"regions,omitempty"`               // Filter by region coverage using ISO 3166-2 codes (e.g., ['US-NY', 'US-CA'
+	Metros              []ProductFilterMetro      `json:"metros,omitempty"`                // Filter by metro coverage for locally-bound inventory (radio, DOOH, local TV).
 	Channels            []string                  `json:"channels,omitempty"`              // Filter by advertising channels (e.g., ['display', 'ctv', 'dooh'])
-	VideoPlacementTypes []string                  `json:"video_placement_types,omitempty"` // Filter video products by acceptable declared video placement types, using IAB Te
+	VideoPlacementTypes []string                  `json:"video_placement_types,omitempty"` // Filter video products by acceptable declared video placement types, using IAB
 	// Deprecated: Use trusted_match filter instead.
-	RequiredAxeIntegrations      []string                               `json:"required_axe_integrations,omitempty"`      // Deprecated: Use trusted_match filter instead. Filter to products executable thro
-	TrustedMatch                 *ProductFilterTrustedMatch             `json:"trusted_match,omitempty"`                  // Filter products by Trusted Match Protocol capabilities. Only products with match
-	RequiredFeatures             map[string]bool                        `json:"required_features,omitempty"`              // Filter to products from sellers supporting specific protocol features. Only feat
-	RequiredGeoTargeting         []ProductFilterGeoTargetingRequirement `json:"required_geo_targeting,omitempty"`         // Filter to products from sellers supporting specific geo targeting capabilities.
-	SignalTargeting              []SignalTargeting                      `json:"signal_targeting,omitempty"`               // Filter to products where the requested signals are buyer-selectable and jointly
-	PostalAreas                  []ProductFilterPostalArea              `json:"postal_areas,omitempty"`                   // Filter by postal area coverage for locally-bound inventory (direct mail, DOOH, l
-	GeoProximity                 []ProductFilterGeoProximity            `json:"geo_proximity,omitempty"`                  // Filter by proximity to geographic points. Returns products with inventory covera
-	RequiredPerformanceStandards []PerformanceStandard                  `json:"required_performance_standards,omitempty"` // Filter to products that can meet the buyer's performance standard requirements.
-	RequiredMetrics              []string                               `json:"required_metrics,omitempty"`               // Filter to products whose `reporting_capabilities.available_metrics` is a superse
-	RequiredVendorMetrics        []RequiredVendorMetric                 `json:"required_vendor_metrics,omitempty"`        // Filter to products whose `reporting_capabilities.vendor_metrics` matches these c
-	Keywords                     []ProductFilterKeyword                 `json:"keywords,omitempty"`                       // Filter by keyword relevance for search and retail media platforms. Returns produ
-	Ext                          any                                    `json:"ext,omitempty"`                            // Vendor-namespaced extension parameters for seller-specific filter criteria not c
+	RequiredAxeIntegrations      []string                               `json:"required_axe_integrations,omitempty"`      // Deprecated: Use trusted_match filter instead. Filter to products executable
+	TrustedMatch                 *ProductFilterTrustedMatch             `json:"trusted_match,omitempty"`                  // Filter products by Trusted Match Protocol capabilities. Only products with
+	RequiredFeatures             map[string]bool                        `json:"required_features,omitempty"`              // Filter to products from sellers supporting specific protocol features. Only
+	RequiredGeoTargeting         []ProductFilterGeoTargetingRequirement `json:"required_geo_targeting,omitempty"`         // Filter to products from sellers supporting specific geo targeting
+	SignalTargeting              []SignalTargeting                      `json:"signal_targeting,omitempty"`               // Filter to products where the requested signals are buyer-selectable and
+	PostalAreas                  []ProductFilterPostalArea              `json:"postal_areas,omitempty"`                   // Filter by postal area coverage for locally-bound inventory (direct mail, DOOH
+	GeoProximity                 []ProductFilterGeoProximity            `json:"geo_proximity,omitempty"`                  // Filter by proximity to geographic points. Returns products with inventory
+	RequiredPerformanceStandards []PerformanceStandard                  `json:"required_performance_standards,omitempty"` // Filter to products that can meet the buyer's performance standard
+	RequiredMetrics              []string                               `json:"required_metrics,omitempty"`               // Filter to products whose `reporting_capabilities.available_metrics` is a
+	RequiredVendorMetrics        []RequiredVendorMetric                 `json:"required_vendor_metrics,omitempty"`        // Filter to products whose `reporting_capabilities.vendor_metrics` matches these
+	Keywords                     []ProductFilterKeyword                 `json:"keywords,omitempty"`                       // Filter by keyword relevance for search and retail media platforms. Returns
+	Ext                          any                                    `json:"ext,omitempty"`                            // Vendor-namespaced extension parameters for seller-specific filter criteria not
 }
 
-// DataProviderSignalSelector — Selects signals from a data provider's adagents.json signals[]. Used for product definitions and age
+// DataProviderSignalSelector — Selects signals from a data provider's adagents.json signals[]. Used for product definitions and
 type DataProviderSignalSelector struct {
 	DataProviderDomain string   `json:"data_provider_domain,omitempty"` // Domain where data provider's adagents.json is hosted (e.g., 'polk.com')
 	SelectionType      string   `json:"selection_type,omitempty"`       // Discriminator indicating selection by signal tags
 	SignalIDs          []string `json:"signal_ids,omitempty"`           // Specific signal IDs from the data provider's published signal definitions
-	SignalTags         []string `json:"signal_tags,omitempty"`          // Signal tags from the data provider's published signal definitions. Selector cove
+	SignalTags         []string `json:"signal_tags,omitempty"`          // Signal tags from the data provider's published signal definitions. Selector
 }
 
-// Placement — Represents a specific public ad placement within a product's inventory. Placement IDs are scoped by
+// Placement — Represents a specific public ad placement within a product's inventory. Placement IDs are scoped
 type Placement struct {
-	Kind                string                     `json:"kind"`                            // Placement structure discriminator. `publisher_ref` identifies a placement by `{p
-	PlacementID         string                     `json:"placement_id"`                    // Placement identifier in the publisher namespace. When `publisher_domain` is pres
-	PublisherDomain     string                     `json:"publisher_domain,omitempty"`      // Publisher domain whose adagents.json placement declarations define this placemen
-	Name                string                     `json:"name,omitempty"`                  // Human-readable name for the placement (e.g., 'Homepage Banner', 'Article Sidebar
+	Kind                string                     `json:"kind"`                            // Placement structure discriminator. `publisher_ref` identifies a placement by
+	PlacementID         string                     `json:"placement_id"`                    // Placement identifier in the publisher namespace. When `publisher_domain` is
+	PublisherDomain     string                     `json:"publisher_domain,omitempty"`      // Publisher domain whose adagents.json placement declarations define this
+	Name                string                     `json:"name,omitempty"`                  // Human-readable name for the placement (e.g., 'Homepage Banner', 'Article
 	Description         string                     `json:"description,omitempty"`           // Detailed description of where and how the placement appears
-	Mode                string                     `json:"mode"`                            // Required product-level relationship to this placement. `targetable` means the bu
-	Tags                []string                   `json:"tags,omitempty"`                  // Optional tags for grouping placements within a product (e.g., 'homepage', 'nativ
-	FormatIDs           []FormatRef                `json:"format_ids,omitempty"`            // Format IDs supported by this specific placement. Can include: (1) concrete forma
-	FormatOptions       []ProductFormatDeclaration `json:"format_options,omitempty"`        // 3.1+ canonical format-option declarations supported by this specific product pla
-	VideoPlacementTypes []string                   `json:"video_placement_types,omitempty"` // Declared video placement types for this product placement, using IAB Tech Lab/Op
+	Mode                string                     `json:"mode"`                            // Required product-level relationship to this placement. `targetable` means the
+	Tags                []string                   `json:"tags,omitempty"`                  // Optional tags for grouping placements within a product (e.g., 'homepage'
+	FormatIDs           []FormatRef                `json:"format_ids,omitempty"`            // Format IDs supported by this specific placement. Can include: (1) concrete
+	FormatOptions       []ProductFormatDeclaration `json:"format_options,omitempty"`        // 3.1+ canonical format-option declarations supported by this specific product
+	VideoPlacementTypes []string                   `json:"video_placement_types,omitempty"` // Declared video placement types for this product placement, using IAB Tech
 }
 
-// DeliveryForecast — Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help b
+// DeliveryForecast — Forecasted delivery metrics for a proposal or product allocation. Publishers attach points to help
 type DeliveryForecast struct {
-	Points            []ForecastPoint `json:"points"`                        // Forecasted delivery data points. For spend curves (default), points at ascending
-	ForecastRangeUnit string          `json:"forecast_range_unit,omitempty"` // How to interpret the points array. 'spend' (default when omitted): points at asc
+	Points            []ForecastPoint `json:"points"`                        // Forecasted delivery data points. For spend curves (default), points at
+	ForecastRangeUnit string          `json:"forecast_range_unit,omitempty"` // How to interpret the points array. 'spend' (default when omitted): points at
 	Method            string          `json:"method"`                        // Method used to produce this forecast
 	Currency          string          `json:"currency"`                      // ISO 4217 currency code for monetary values in this forecast (spend, budget)
-	DemographicSystem string          `json:"demographic_system,omitempty"`  // Measurement system for the demographic field. Ensures buyer and seller agree on
-	Demographic       string          `json:"demographic,omitempty"`         // Target demographic code within the specified demographic_system. For Nielsen: P1
-	MeasurementSource string          `json:"measurement_source,omitempty"`  // Third-party measurement provider whose data was used to produce this forecast. D
-	ReachUnit         string          `json:"reach_unit,omitempty"`          // Unit of measurement for reach and audience_size metrics in this forecast. Requir
+	DemographicSystem string          `json:"demographic_system,omitempty"`  // Measurement system for the demographic field. Ensures buyer and seller agree
+	Demographic       string          `json:"demographic,omitempty"`         // Target demographic code within the specified demographic_system. For Nielsen
+	MeasurementSource string          `json:"measurement_source,omitempty"`  // Third-party measurement provider whose data was used to produce this forecast.
+	ReachUnit         string          `json:"reach_unit,omitempty"`          // Unit of measurement for reach and audience_size metrics in this forecast.
 	GeneratedAt       string          `json:"generated_at,omitempty"`        // When this forecast was computed
-	ValidUntil        string          `json:"valid_until,omitempty"`         // When this forecast expires. After this time, the forecast should be refreshed. F
+	ValidUntil        string          `json:"valid_until,omitempty"`         // When this forecast expires. After this time, the forecast should be refreshed.
 	Ext               any             `json:"ext,omitempty"`
 }
 
-// ForecastPoint — A forecast data point. When budget is present, the point pairs a spend level with expected delivery
+// ForecastPoint — A forecast data point. When budget is present, the point pairs a spend level with expected
 type ForecastPoint struct {
-	Label              string                      `json:"label,omitempty"`                // Human-readable name for this forecast point. Required when forecast_range_unit i
-	Budget             *float64                    `json:"budget,omitempty"`               // Budget amount for this forecast point. Required for spend curves; omit for avail
-	ProductID          string                      `json:"product_id,omitempty"`           // Optional product context for this forecast row. Usually omitted on product-level
-	Dimensions         []ForecastPointDimension    `json:"dimensions,omitempty"`           // Dimension constraints represented by this forecast point, such as country, regio
-	Metrics            map[string]ForecastRange    `json:"metrics"`                        // Forecasted metric values. Keys are forecastable-metric enum values for delivery/
-	Viewability        *ForecastViewability        `json:"viewability,omitempty"`          // Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but numeri
-	VendorMetricValues []ForecastVendorMetricValue `json:"vendor_metric_values,omitempty"` // Forecasted values for vendor-defined metrics that the product's reporting_capabi
+	Label              string                      `json:"label,omitempty"`                // Human-readable name for this forecast point. Required when forecast_range_unit
+	Budget             *float64                    `json:"budget,omitempty"`               // Budget amount for this forecast point. Required for spend curves; omit for
+	ProductID          string                      `json:"product_id,omitempty"`           // Optional product context for this forecast row. Usually omitted on
+	Dimensions         []ForecastPointDimension    `json:"dimensions,omitempty"`           // Dimension constraints represented by this forecast point, such as country
+	Metrics            map[string]ForecastRange    `json:"metrics"`                        // Forecasted metric values. Keys are forecastable-metric enum values for
+	Viewability        *ForecastViewability        `json:"viewability,omitempty"`          // Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but
+	VendorMetricValues []ForecastVendorMetricValue `json:"vendor_metric_values,omitempty"` // Forecasted values for vendor-defined metrics that the product's
 }
 
-// ForecastRange — A forecast value with optional confidence bounds. Either mid (point estimate) or both low and high (
+// ForecastRange — A forecast value with optional confidence bounds. Either mid (point estimate) or both low and high
 type ForecastRange struct {
 	Low  float64 `json:"low,omitempty"`  // Conservative (low-end) forecast value
 	Mid  float64 `json:"mid,omitempty"`  // Expected (most likely) forecast value
 	High float64 `json:"high,omitempty"` // Optimistic (high-end) forecast value
 }
 
-// Proposal — A proposed media plan with budget allocations across products. Represents the publisher's strategic
+// Proposal — A proposed media plan with budget allocations across products. Represents the publisher's
 type Proposal struct {
 	ProposalID          string                  `json:"proposal_id"`                     // Unique identifier for this proposal. Used to execute it via create_media_buy.
 	Name                string                  `json:"name"`                            // Human-readable name for this media plan proposal
 	Description         string                  `json:"description,omitempty"`           // Explanation of the proposal strategy and what it achieves
-	Allocations         []ProductAllocation     `json:"allocations"`                     // Budget allocations across products. Allocation percentages MUST sum to 100. Publ
-	ProposalStatus      string                  `json:"proposal_status,omitempty"`       // Lifecycle status of this proposal. When absent, the proposal is ready to buy (ba
-	ExpiresAt           string                  `json:"expires_at,omitempty"`            // When this proposal expires and can no longer be executed. For draft proposals, i
-	InsertionOrder      *InsertionOrder         `json:"insertion_order,omitempty"`       // Formal insertion order attached to a committed proposal. Present when the seller
+	Allocations         []ProductAllocation     `json:"allocations"`                     // Budget allocations across products. Allocation percentages MUST sum to 100.
+	ProposalStatus      string                  `json:"proposal_status,omitempty"`       // Lifecycle status of this proposal. When absent, the proposal is ready to buy
+	ExpiresAt           string                  `json:"expires_at,omitempty"`            // When this proposal expires and can no longer be executed. For draft proposals
+	InsertionOrder      *InsertionOrder         `json:"insertion_order,omitempty"`       // Formal insertion order attached to a committed proposal. Present when the
 	TotalBudgetGuidance *ProposalBudgetGuidance `json:"total_budget_guidance,omitempty"` // Optional budget guidance for this proposal
 	BriefAlignment      string                  `json:"brief_alignment,omitempty"`       // Explanation of how this proposal aligns with the campaign brief
-	Forecast            *DeliveryForecast       `json:"forecast,omitempty"`              // Aggregate forecasted delivery metrics for the entire proposal. When both proposa
+	Forecast            *DeliveryForecast       `json:"forecast,omitempty"`              // Aggregate forecasted delivery metrics for the entire proposal. When both
 	Ext                 any                     `json:"ext,omitempty"`
 }
 
-// ProductAllocation — A budget allocation for a specific product within a proposal. Percentages across all allocations in
+// ProductAllocation — A budget allocation for a specific product within a proposal. Percentages across all allocations
 type ProductAllocation struct {
 	ProductID            string            `json:"product_id"`                  // ID of the product (must reference a product in the products array)
 	AllocationPercentage float64           `json:"allocation_percentage"`       // Percentage of total budget allocated to this product (0-100)
 	PricingOptionID      string            `json:"pricing_option_id,omitempty"` // Recommended pricing option ID from the product's pricing_options array
 	Rationale            string            `json:"rationale,omitempty"`         // Explanation of why this product and allocation are recommended
 	Sequence             int               `json:"sequence,omitempty"`          // Optional ordering hint for multi-line-item plans (1-based)
-	Tags                 []string          `json:"tags,omitempty"`              // Categorical tags for this allocation (e.g., 'desktop', 'german', 'mobile') - use
-	StartTime            string            `json:"start_time,omitempty"`        // Recommended flight start date/time for this allocation in ISO 8601 format. Allow
-	EndTime              string            `json:"end_time,omitempty"`          // Recommended flight end date/time for this allocation in ISO 8601 format. Allows
+	Tags                 []string          `json:"tags,omitempty"`              // Categorical tags for this allocation (e.g., 'desktop', 'german', 'mobile')
+	StartTime            string            `json:"start_time,omitempty"`        // Recommended flight start date/time for this allocation in ISO 8601 format.
+	EndTime              string            `json:"end_time,omitempty"`          // Recommended flight end date/time for this allocation in ISO 8601 format.
 	DaypartTargets       []DaypartTarget   `json:"daypart_targets,omitempty"`   // Recommended time windows for this allocation in spot-plan proposals.
 	Forecast             *DeliveryForecast `json:"forecast,omitempty"`          // Forecasted delivery metrics for this allocation
 	Ext                  any               `json:"ext,omitempty"`
 }
 
-// InsertionOrder — A signing wrapper attached to a committed proposal. The IO does not introduce new deal terms — all n
+// InsertionOrder — A signing wrapper attached to a committed proposal. The IO does not introduce new deal terms — all
 type InsertionOrder struct {
-	IoID              string               `json:"io_id"`                 // Unique identifier for this insertion order. Referenced by io_acceptance on creat
-	Terms             *InsertionOrderTerms `json:"terms,omitempty"`       // Summary fields echoed from the committed proposal for agent verification. Buyer
+	IoID              string               `json:"io_id"`                 // Unique identifier for this insertion order. Referenced by io_acceptance on
+	Terms             *InsertionOrderTerms `json:"terms,omitempty"`       // Summary fields echoed from the committed proposal for agent verification.
 	TermsURL          string               `json:"terms_url,omitempty"`   // URL to a human-readable document containing the full insertion order terms
-	SigningURL        string               `json:"signing_url,omitempty"` // URL to an electronic signing service (e.g., DocuSign) for human signature workfl
-	RequiresSignature bool                 `json:"requires_signature"`    // Whether the buyer must accept this IO before creating a media buy. When true, cr
+	SigningURL        string               `json:"signing_url,omitempty"` // URL to an electronic signing service (e.g., DocuSign) for human signature
+	RequiresSignature bool                 `json:"requires_signature"`    // Whether the buyer must accept this IO before creating a media buy. When true
 }
 
-// OutcomeMeasurement — **Deprecated as of this minor.** Predates the unified measurement-vocabulary pattern. Outcome metric
+// OutcomeMeasurement — **Deprecated as of this minor.** Predates the unified measurement-vocabulary pattern. Outcome
 type OutcomeMeasurement struct {
 	Type        string    `json:"type"`             // Type of measurement
 	Attribution string    `json:"attribution"`      // Attribution methodology
-	Window      *Duration `json:"window,omitempty"` // Attribution window as a structured duration (e.g., {"interval": 30, "unit": "day
+	Window      *Duration `json:"window,omitempty"` // Attribution window as a structured duration (e.g., {"interval": 30, "unit"
 	Reporting   string    `json:"reporting"`        // Reporting frequency and format
 }
 
 // ReportingCapabilities — Reporting capabilities available for a product
 type ReportingCapabilities struct {
 	AvailableReportingFrequencies   []string                `json:"available_reporting_frequencies"`              // Supported reporting frequency options
-	ExpectedDelayMinutes            int                     `json:"expected_delay_minutes"`                       // Expected delay in minutes before reporting data becomes available (e.g., 240 for
-	Timezone                        string                  `json:"timezone"`                                     // Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g., 'America/New_Y
+	ExpectedDelayMinutes            int                     `json:"expected_delay_minutes"`                       // Expected delay in minutes before reporting data becomes available (e.g., 240
+	Timezone                        string                  `json:"timezone"`                                     // Timezone for reporting periods. Use 'UTC' or IANA timezone (e.g.
 	SupportsWebhooks                bool                    `json:"supports_webhooks"`                            // Whether this product supports webhook-based reporting notifications
-	AvailableMetrics                []string                `json:"available_metrics"`                            // Metrics available in reporting. Impressions and spend are always implicitly incl
-	VendorMetrics                   []ReportingVendorMetric `json:"vendor_metrics,omitempty"`                     // Vendor-defined metrics this product can report, beyond the closed `available_met
-	SupportsCreativeBreakdown       *bool                   `json:"supports_creative_breakdown,omitempty"`        // Whether this product supports creative-level metric breakdowns in delivery repor
-	SupportsKeywordBreakdown        *bool                   `json:"supports_keyword_breakdown,omitempty"`         // Whether this product supports keyword-level metric breakdowns in delivery report
-	SupportsGeoBreakdown            *GeoBreakdownSupport    `json:"supports_geo_breakdown,omitempty"`             // Geographic breakdown support for this product. Declares which geo levels and sys
-	SupportsDeviceTypeBreakdown     *bool                   `json:"supports_device_type_breakdown,omitempty"`     // Whether this product supports device type breakdowns in delivery reporting (by_d
-	SupportsDevicePlatformBreakdown *bool                   `json:"supports_device_platform_breakdown,omitempty"` // Whether this product supports device platform breakdowns in delivery reporting (
-	SupportsAudienceBreakdown       *bool                   `json:"supports_audience_breakdown,omitempty"`        // Whether this product supports audience segment breakdowns in delivery reporting
-	SupportsPlacementBreakdown      *bool                   `json:"supports_placement_breakdown,omitempty"`       // Whether this product supports placement breakdowns in delivery reporting (by_pla
-	DateRangeSupport                string                  `json:"date_range_support"`                           // Whether delivery data can be filtered to arbitrary date ranges. 'date_range' mea
-	WindowedPullGranularities       []string                `json:"windowed_pull_granularities,omitempty"`        // Granularities at which this product honors per-window pulls on get_media_buy_del
-	MeasurementWindows              []MeasurementWindow     `json:"measurement_windows,omitempty"`                // Measurement maturation stages available for this product. Used by any channel wh
+	AvailableMetrics                []string                `json:"available_metrics"`                            // Metrics available in reporting. Impressions and spend are always implicitly
+	VendorMetrics                   []ReportingVendorMetric `json:"vendor_metrics,omitempty"`                     // Vendor-defined metrics this product can report, beyond the closed
+	SupportsCreativeBreakdown       *bool                   `json:"supports_creative_breakdown,omitempty"`        // Whether this product supports creative-level metric breakdowns in delivery
+	SupportsKeywordBreakdown        *bool                   `json:"supports_keyword_breakdown,omitempty"`         // Whether this product supports keyword-level metric breakdowns in delivery
+	SupportsGeoBreakdown            *GeoBreakdownSupport    `json:"supports_geo_breakdown,omitempty"`             // Geographic breakdown support for this product. Declares which geo levels and
+	SupportsDeviceTypeBreakdown     *bool                   `json:"supports_device_type_breakdown,omitempty"`     // Whether this product supports device type breakdowns in delivery reporting
+	SupportsDevicePlatformBreakdown *bool                   `json:"supports_device_platform_breakdown,omitempty"` // Whether this product supports device platform breakdowns in delivery reporting
+	SupportsAudienceBreakdown       *bool                   `json:"supports_audience_breakdown,omitempty"`        // Whether this product supports audience segment breakdowns in delivery
+	SupportsPlacementBreakdown      *bool                   `json:"supports_placement_breakdown,omitempty"`       // Whether this product supports placement breakdowns in delivery reporting
+	DateRangeSupport                string                  `json:"date_range_support"`                           // Whether delivery data can be filtered to arbitrary date ranges. 'date_range'
+	WindowedPullGranularities       []string                `json:"windowed_pull_granularities,omitempty"`        // Granularities at which this product honors per-window pulls on
+	MeasurementWindows              []MeasurementWindow     `json:"measurement_windows,omitempty"`                // Measurement maturation stages available for this product. Used by any channel
 }
 
-// GeoBreakdownSupport — Declares which geographic levels and classification systems are available for by_geo reporting break
+// GeoBreakdownSupport — Declares which geographic levels and classification systems are available for by_geo reporting
 type GeoBreakdownSupport struct {
 	Country    *bool           `json:"country,omitempty"`     // Supports country-level geo breakdown (ISO 3166-1 alpha-2)
 	Region     *bool           `json:"region,omitempty"`      // Supports region/state-level geo breakdown (ISO 3166-2)
-	Metro      map[string]bool `json:"metro,omitempty"`       // Metro area breakdown support. Keys are metro-system enum values; true means supp
-	PostalArea map[string]bool `json:"postal_area,omitempty"` // Postal area breakdown support. Keys are postal-system enum values; true means su
+	Metro      map[string]bool `json:"metro,omitempty"`       // Metro area breakdown support. Keys are metro-system enum values; true means
+	PostalArea map[string]bool `json:"postal_area,omitempty"` // Postal area breakdown support. Keys are postal-system enum values; true means
 }
 
 // CreativePolicy — Creative requirements and restrictions for a product
@@ -6481,149 +6481,149 @@ type CreativePolicy struct {
 	CoBranding             string                          `json:"co_branding"`                       // Co-branding requirement
 	LandingPage            string                          `json:"landing_page"`                      // Landing page requirements
 	TemplatesAvailable     bool                            `json:"templates_available"`               // Whether creative templates are provided
-	ProvenanceRequired     *bool                           `json:"provenance_required,omitempty"`     // Whether creatives must include provenance metadata. When true, the seller requir
-	ProvenanceRequirements *CreativeProvenanceRequirements `json:"provenance_requirements,omitempty"` // Structured provenance requirements for creatives. Refines `provenance_required`:
-	AcceptedVerifiers      []CreativeAcceptedVerifier      `json:"accepted_verifiers,omitempty"`      // Governance agents the seller operates, has allowlisted, or otherwise trusts to v
+	ProvenanceRequired     *bool                           `json:"provenance_required,omitempty"`     // Whether creatives must include provenance metadata. When true, the seller
+	ProvenanceRequirements *CreativeProvenanceRequirements `json:"provenance_requirements,omitempty"` // Structured provenance requirements for creatives. Refines
+	AcceptedVerifiers      []CreativeAcceptedVerifier      `json:"accepted_verifiers,omitempty"`      // Governance agents the seller operates, has allowlisted, or otherwise trusts to
 }
 
-// MeasurementReadiness — Per-product assessment of whether the buyer's event source setup is sufficient for the product's opt
+// MeasurementReadiness — Per-product assessment of whether the buyer's event source setup is sufficient for the product's
 type MeasurementReadiness struct {
-	Status             string            `json:"status"`                         // Overall measurement readiness level for this product given the buyer's event set
-	RequiredEventTypes []string          `json:"required_event_types,omitempty"` // Event types this product needs for effective optimization. Buyers should ensure
-	MissingEventTypes  []string          `json:"missing_event_types,omitempty"`  // Event types this product requires that the buyer has not configured. Empty or ab
-	Issues             []DiagnosticIssue `json:"issues,omitempty"`               // Actionable issues preventing full measurement readiness. Sellers should limit to
-	Notes              string            `json:"notes,omitempty"`                // Seller explanation of the readiness assessment, recommendations for improvement,
+	Status             string            `json:"status"`                         // Overall measurement readiness level for this product given the buyer's event
+	RequiredEventTypes []string          `json:"required_event_types,omitempty"` // Event types this product needs for effective optimization. Buyers should
+	MissingEventTypes  []string          `json:"missing_event_types,omitempty"`  // Event types this product requires that the buyer has not configured. Empty or
+	Issues             []DiagnosticIssue `json:"issues,omitempty"`               // Actionable issues preventing full measurement readiness. Sellers should limit
+	Notes              string            `json:"notes,omitempty"`                // Seller explanation of the readiness assessment, recommendations for
 }
 
-// DiagnosticIssue — An actionable issue detected during a health or readiness assessment. Used by event source health an
+// DiagnosticIssue — An actionable issue detected during a health or readiness assessment. Used by event source health
 type DiagnosticIssue struct {
-	Severity string `json:"severity"` // 'error': blocks optimization until resolved. 'warning': optimization works but e
+	Severity string `json:"severity"` // 'error': blocks optimization until resolved. 'warning': optimization works but
 	Message  string `json:"message"`  // Human/agent-readable description of the issue and how to resolve it.
 }
 
-// CollectionSelector — References collections declared in an adagents.json. Buyers resolve full collection objects by fetch
+// CollectionSelector — References collections declared in an adagents.json. Buyers resolve full collection objects by
 type CollectionSelector struct {
-	PublisherDomain string   `json:"publisher_domain"` // Domain where the adagents.json declaring these collections is hosted (e.g., 'mrb
-	CollectionIDs   []string `json:"collection_ids"`   // Collection IDs from the adagents.json collections array. Each ID must match a co
+	PublisherDomain string   `json:"publisher_domain"` // Domain where the adagents.json declaring these collections is hosted (e.g.
+	CollectionIDs   []string `json:"collection_ids"`   // Collection IDs from the adagents.json collections array. Each ID must match a
 }
 
 // Package — A specific product within a media buy (line item)
 type Package struct {
 	PackageID            string                `json:"package_id"`           // Seller's unique identifier for the package
-	ProductID            string                `json:"product_id,omitempty"` // ID of the product this package is based on. For packages created from an explici
-	Budget               float64               `json:"budget,omitempty"`     // Budget allocation for this package in the currency specified by the pricing opti
+	ProductID            string                `json:"product_id,omitempty"` // ID of the product this package is based on. For packages created from an
+	Budget               float64               `json:"budget,omitempty"`     // Budget allocation for this package in the currency specified by the pricing
 	Pacing               string                `json:"pacing,omitempty"`
 	PricingOptionID      string                `json:"pricing_option_id,omitempty"`  // ID of the selected pricing option from the product's pricing_options array
-	BidPrice             float64               `json:"bid_price,omitempty"`          // Bid price for auction-based pricing. This is the exact bid/price to honor unless
-	PriceBreakdown       *PriceBreakdown       `json:"price_breakdown,omitempty"`    // Breakdown of the effective price for this package. On fixed-price packages, echo
+	BidPrice             float64               `json:"bid_price,omitempty"`          // Bid price for auction-based pricing. This is the exact bid/price to honor
+	PriceBreakdown       *PriceBreakdown       `json:"price_breakdown,omitempty"`    // Breakdown of the effective price for this package. On fixed-price packages
 	Impressions          float64               `json:"impressions,omitempty"`        // Impression goal for this package
-	Catalogs             []Catalog             `json:"catalogs,omitempty"`           // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., on
-	FormatIDs            []FormatRef           `json:"format_ids,omitempty"`         // Legacy named-format IDs supplied for this package on create_media_buy. Sellers S
-	FormatOptionRefs     []FormatOptionRef     `json:"format_option_refs,omitempty"` // Structured 3.1+ format option references supplied for this package on create_med
-	FormatKind           string                `json:"format_kind,omitempty"`        // Direct canonical selector supplied for this package on create_media_buy. Sellers
-	Params               map[string]any        `json:"params,omitempty"`             // Parameters for the direct canonical selector in `format_kind`, echoed from the c
+	Catalogs             []Catalog             `json:"catalogs,omitempty"`           // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g.
+	FormatIDs            []FormatRef           `json:"format_ids,omitempty"`         // Legacy named-format IDs supplied for this package on create_media_buy. Sellers
+	FormatOptionRefs     []FormatOptionRef     `json:"format_option_refs,omitempty"` // Structured 3.1+ format option references supplied for this package on
+	FormatKind           string                `json:"format_kind,omitempty"`        // Direct canonical selector supplied for this package on create_media_buy.
+	Params               map[string]any        `json:"params,omitempty"`             // Parameters for the direct canonical selector in `format_kind`, echoed from the
 	TargetingOverlay     *Targeting            `json:"targeting_overlay,omitempty"`
-	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`      // Agreed billing measurement and makegood terms for this package. Reflects what wa
-	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`  // Agreed performance standards for this package. When any entry specifies a vendor
-	CommittedMetrics     []CommittedMetric     `json:"committed_metrics,omitempty"`      // The binding reporting contract for this package — what the seller has agreed to
+	MeasurementTerms     *MeasurementTerms     `json:"measurement_terms,omitempty"`      // Agreed billing measurement and makegood terms for this package. Reflects what
+	PerformanceStandards []PerformanceStandard `json:"performance_standards,omitempty"`  // Agreed performance standards for this package. When any entry specifies a
+	CommittedMetrics     []CommittedMetric     `json:"committed_metrics,omitempty"`      // The binding reporting contract for this package — what the seller has agreed
 	CreativeAssignments  []CreativeAssignment  `json:"creative_assignments,omitempty"`   // Creative assets assigned to this package
 	FormatIDsToProvide   []FormatRef           `json:"format_ids_to_provide,omitempty"`  // Format IDs that creative assets will be provided for this package
-	OptimizationGoals    []OptimizationGoal    `json:"optimization_goals,omitempty"`     // Optimization targets for this package. The seller optimizes delivery toward thes
-	StartTime            string                `json:"start_time,omitempty"`             // Flight start date/time for this package in ISO 8601 format. When omitted, the pa
-	EndTime              string                `json:"end_time,omitempty"`               // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
-	Paused               *bool                 `json:"paused,omitempty"`                 // Whether this package is paused by the buyer. Paused packages do not deliver impr
-	Canceled             *bool                 `json:"canceled,omitempty"`               // Whether this package has been canceled. Canceled packages stop delivery and cann
+	OptimizationGoals    []OptimizationGoal    `json:"optimization_goals,omitempty"`     // Optimization targets for this package. The seller optimizes delivery toward
+	StartTime            string                `json:"start_time,omitempty"`             // Flight start date/time for this package in ISO 8601 format. When omitted, the
+	EndTime              string                `json:"end_time,omitempty"`               // Flight end date/time for this package in ISO 8601 format. When omitted, the
+	Paused               *bool                 `json:"paused,omitempty"`                 // Whether this package is paused by the buyer. Paused packages do not deliver
+	Canceled             *bool                 `json:"canceled,omitempty"`               // Whether this package has been canceled. Canceled packages stop delivery and
 	Cancellation         *PackageCancellation  `json:"cancellation,omitempty"`           // Cancellation metadata. Present only when canceled is true.
-	AgencyEstimateNumber string                `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Echoed from the buyer'
-	CreativeDeadline     string                `json:"creative_deadline,omitempty"`      // ISO 8601 timestamp for creative upload or change deadline for this package. Afte
-	Context              any                   `json:"context,omitempty"`                // Opaque package-level correlation data echoed unchanged in responses, webhooks, a
+	AgencyEstimateNumber string                `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Echoed from the
+	CreativeDeadline     string                `json:"creative_deadline,omitempty"`      // ISO 8601 timestamp for creative upload or change deadline for this package.
+	Context              any                   `json:"context,omitempty"`                // Opaque package-level correlation data echoed unchanged in responses, webhooks
 	Ext                  any                   `json:"ext,omitempty"`
 }
 
-// PriceBreakdown — Breaks down the composition of fixed_price from a list (rate card) price through adjustments. Adjust
+// PriceBreakdown — Breaks down the composition of fixed_price from a list (rate card) price through adjustments.
 type PriceBreakdown struct {
-	ListPrice   float64           `json:"list_price"`  // Rate card or base price before any adjustments. The starting point from which fi
-	Adjustments []PriceAdjustment `json:"adjustments"` // Ordered list of price adjustments. Fee and discount adjustments walk list_price
+	ListPrice   float64           `json:"list_price"`  // Rate card or base price before any adjustments. The starting point from which
+	Adjustments []PriceAdjustment `json:"adjustments"` // Ordered list of price adjustments. Fee and discount adjustments walk
 }
 
 // CreativeFormat — Represents a creative format with its requirements
 type CreativeFormat struct {
-	FormatID                     FormatRef                            `json:"format_id"`                                // This format's own identifier — a structured object {agent_url, id}, not a string
+	FormatID                     FormatRef                            `json:"format_id"`                                // This format's own identifier — a structured object {agent_url, id}, not a
 	Name                         string                               `json:"name"`                                     // Human-readable format name
 	Description                  string                               `json:"description,omitempty"`                    // Plain text explanation of what this format does and what assets it requires
 	ExampleURL                   string                               `json:"example_url,omitempty"`                    // Optional URL to showcase page with examples and interactive demos of this format
-	AcceptsParameters            []string                             `json:"accepts_parameters,omitempty"`             // List of parameters this format accepts in format_id. Template formats define whi
-	Renders                      []Render                             `json:"renders,omitempty"`                        // Specification of rendered pieces for this format. Most formats produce a single
-	Assets                       []AssetSlot                          `json:"assets,omitempty"`                         // Array of all assets supported for this format. Each asset is identified by its a
+	AcceptsParameters            []string                             `json:"accepts_parameters,omitempty"`             // List of parameters this format accepts in format_id. Template formats define
+	Renders                      []Render                             `json:"renders,omitempty"`                        // Specification of rendered pieces for this format. Most formats produce a
+	Assets                       []AssetSlot                          `json:"assets,omitempty"`                         // Array of all assets supported for this format. Each asset is identified by its
 	Delivery                     map[string]any                       `json:"delivery,omitempty"`                       // Delivery method specifications (e.g., hosted, VAST, third-party tags)
-	SupportedMacros              []string                             `json:"supported_macros,omitempty"`               // List of universal macros supported by this format (e.g., MEDIA_BUY_ID, CACHEBUST
-	InputFormatIDs               []FormatRef                          `json:"input_format_ids,omitempty"`               // Array of format IDs this format accepts as input creative manifests. When presen
-	OutputFormatIDs              []FormatRef                          `json:"output_format_ids,omitempty"`              // Array of format IDs that this format can produce as output. When present, indica
-	FormatCard                   *CreativeFormatCard                  `json:"format_card,omitempty"`                    // Optional standard visual card (300x400px) for displaying this format in user int
-	Accessibility                *CreativeFormatAccessibility         `json:"accessibility,omitempty"`                  // Accessibility posture of this format. Declares the WCAG conformance level that c
-	SupportedDisclosurePositions []string                             `json:"supported_disclosure_positions,omitempty"` // Disclosure positions this format can render. Buyers use this to determine whethe
-	DisclosureCapabilities       []CreativeFormatDisclosureCapability `json:"disclosure_capabilities,omitempty"`        // Structured disclosure capabilities per position with persistence modes. Declares
-	FormatCardDetailed           *CreativeFormatCardDetailed          `json:"format_card_detailed,omitempty"`           // Optional detailed card with carousel and full specifications. Provides rich form
-	ReportedMetrics              []string                             `json:"reported_metrics,omitempty"`               // Metrics this format can produce in delivery reporting. Buyers receive the inters
-	PricingOptions               []VendorPricingOption                `json:"pricing_options,omitempty"`                // Pricing options for this format. Used by transformation and generation agents th
-	Canonical                    *CanonicalProjectionRef              `json:"canonical,omitempty"`                      // Optional v2 canonical-projection annotation. Always an object — bare-string shor
+	SupportedMacros              []string                             `json:"supported_macros,omitempty"`               // List of universal macros supported by this format (e.g., MEDIA_BUY_ID
+	InputFormatIDs               []FormatRef                          `json:"input_format_ids,omitempty"`               // Array of format IDs this format accepts as input creative manifests. When
+	OutputFormatIDs              []FormatRef                          `json:"output_format_ids,omitempty"`              // Array of format IDs that this format can produce as output. When present
+	FormatCard                   *CreativeFormatCard                  `json:"format_card,omitempty"`                    // Optional standard visual card (300x400px) for displaying this format in user
+	Accessibility                *CreativeFormatAccessibility         `json:"accessibility,omitempty"`                  // Accessibility posture of this format. Declares the WCAG conformance level that
+	SupportedDisclosurePositions []string                             `json:"supported_disclosure_positions,omitempty"` // Disclosure positions this format can render. Buyers use this to determine
+	DisclosureCapabilities       []CreativeFormatDisclosureCapability `json:"disclosure_capabilities,omitempty"`        // Structured disclosure capabilities per position with persistence modes.
+	FormatCardDetailed           *CreativeFormatCardDetailed          `json:"format_card_detailed,omitempty"`           // Optional detailed card with carousel and full specifications. Provides rich
+	ReportedMetrics              []string                             `json:"reported_metrics,omitempty"`               // Metrics this format can produce in delivery reporting. Buyers receive the
+	PricingOptions               []VendorPricingOption                `json:"pricing_options,omitempty"`                // Pricing options for this format. Used by transformation and generation agents
+	Canonical                    *CanonicalProjectionRef              `json:"canonical,omitempty"`                      // Optional v2 canonical-projection annotation. Always an object — bare-string
 	// Deprecated: **DEPRECATED in 3.1.
-	CanonicalParameters *ProductFormatDeclaration `json:"canonical_parameters,omitempty"` // **DEPRECATED in 3.1. Removed at 4.0.** Use `v1_format_ref` on the v2 `ProductFor
+	CanonicalParameters *ProductFormatDeclaration `json:"canonical_parameters,omitempty"` // **DEPRECATED in 3.1. Removed at 4.0.** Use `v1_format_ref` on the v2
 }
 
-// FormatRef — A JSON object — never a plain string — that identifies a creative format by its declaring agent and
+// FormatRef — A JSON object — never a plain string — that identifies a creative format by its declaring agent
 type FormatRef struct {
-	AgentURL   string  `json:"agent_url"`             // URL of the agent that defines this format (e.g., 'https://creative.adcontextprot
-	ID         string  `json:"id"`                    // Format identifier within the agent's namespace (e.g., 'display_static', 'video_h
-	Width      int     `json:"width,omitempty"`       // Width in pixels for visual formats. When specified, height must also be specifie
-	Height     int     `json:"height,omitempty"`      // Height in pixels for visual formats. When specified, width must also be specifie
-	DurationMs float64 `json:"duration_ms,omitempty"` // Duration in milliseconds for time-based formats (video, audio). When specified,
+	AgentURL   string  `json:"agent_url"`             // URL of the agent that defines this format (e.g.
+	ID         string  `json:"id"`                    // Format identifier within the agent's namespace (e.g., 'display_static'
+	Width      int     `json:"width,omitempty"`       // Width in pixels for visual formats. When specified, height must also be
+	Height     int     `json:"height,omitempty"`      // Height in pixels for visual formats. When specified, width must also be
+	DurationMs float64 `json:"duration_ms,omitempty"` // Duration in milliseconds for time-based formats (video, audio). When
 }
 
-// CreativeAsset — Creative asset for upload to library — supports static assets, generative formats, and third-party s
+// CreativeAsset — Creative asset for upload to library — supports static assets, generative formats, and third-party
 type CreativeAsset struct {
-	CreativeID          string               `json:"creative_id"`                    // Unique identifier for the creative. Stable across legacy named-format and 3.1+ c
+	CreativeID          string               `json:"creative_id"`                    // Unique identifier for the creative. Stable across legacy named-format and 3.1+
 	Name                string               `json:"name"`                           // Human-readable creative name
-	FormatID            *FormatRef           `json:"format_id,omitempty"`            // Legacy named-format path. Always a structured object {agent_url, id} — never a p
-	FormatKind          string               `json:"format_kind,omitempty"`          // 3.1+ canonical-format path. The canonical format name this creative targets (e.g
-	FormatOptionRef     *FormatOptionRef     `json:"format_option_ref,omitempty"`    // 3.1+ format-option path, optional. Structured format option reference matching o
-	Assets              map[string]any       `json:"assets"`                         // Assets required by the format, keyed by asset_id. Each slot value is either a si
-	Inputs              []CreativeAssetInput `json:"inputs,omitempty"`               // Preview contexts for generative formats - defines what scenarios to generate pre
+	FormatID            *FormatRef           `json:"format_id,omitempty"`            // Legacy named-format path. Always a structured object {agent_url, id} — never a
+	FormatKind          string               `json:"format_kind,omitempty"`          // 3.1+ canonical-format path. The canonical format name this creative targets
+	FormatOptionRef     *FormatOptionRef     `json:"format_option_ref,omitempty"`    // 3.1+ format-option path, optional. Structured format option reference matching
+	Assets              map[string]any       `json:"assets"`                         // Assets required by the format, keyed by asset_id. Each slot value is either a
+	Inputs              []CreativeAssetInput `json:"inputs,omitempty"`               // Preview contexts for generative formats - defines what scenarios to generate
 	Tags                []string             `json:"tags,omitempty"`                 // User-defined tags for organization and searchability
-	Status              string               `json:"status,omitempty"`               // For generative creatives: set to 'approved' to finalize, 'rejected' to request r
-	Weight              *float64             `json:"weight,omitempty"`               // Optional delivery weight for creative rotation when uploading via create_media_b
-	PlacementRefs       []PlacementRef       `json:"placement_refs,omitempty"`       // Optional structured placement references where this uploaded creative should run
-	PlacementIDs        []string             `json:"placement_ids,omitempty"`        // Legacy shorthand array of placement IDs where this creative should run when uplo
-	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast cl
-	Provenance          *Provenance          `json:"provenance,omitempty"`           // Provenance metadata for this creative. Serves as the default provenance for all
+	Status              string               `json:"status,omitempty"`               // For generative creatives: set to 'approved' to finalize, 'rejected' to request
+	Weight              *float64             `json:"weight,omitempty"`               // Optional delivery weight for creative rotation when uploading via
+	PlacementRefs       []PlacementRef       `json:"placement_refs,omitempty"`       // Optional structured placement references where this uploaded creative should
+	PlacementIDs        []string             `json:"placement_ids,omitempty"`        // Legacy shorthand array of placement IDs where this creative should run when
+	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this creative (e.g., Ad-ID, ISCI, Clearcast
+	Provenance          *Provenance          `json:"provenance,omitempty"`           // Provenance metadata for this creative. Serves as the default provenance for
 }
 
-// CreativeManifest — Complete specification of a creative: format identification + assets. A manifest carries EITHER a le
+// CreativeManifest — Complete specification of a creative: format identification + assets. A manifest carries EITHER a
 type CreativeManifest struct {
-	FormatID            *FormatRef           `json:"format_id,omitempty"`            // Legacy named-format path. Always a structured object {agent_url, id} — never a p
-	FormatKind          string               `json:"format_kind,omitempty"`          // 3.1+ canonical-format path. The canonical format name this manifest targets (e.g
-	FormatOptionRef     *FormatOptionRef     `json:"format_option_ref,omitempty"`    // 3.1+ format-option path, optional. Structured format option reference matching o
-	Assets              map[string]any       `json:"assets"`                         // Map of slot keys to actual asset content. Legacy named-format path: each key mat
-	Brand               *BrandReference      `json:"brand,omitempty"`                // Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house
-	Rights              []RightsConstraint   `json:"rights,omitempty"`               // Rights constraints attached to this creative. Each entry represents constraints
-	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI, Cle
-	Provenance          *Provenance          `json:"provenance,omitempty"`           // Provenance metadata for this creative manifest. Serves as the default provenance
+	FormatID            *FormatRef           `json:"format_id,omitempty"`            // Legacy named-format path. Always a structured object {agent_url, id} — never a
+	FormatKind          string               `json:"format_kind,omitempty"`          // 3.1+ canonical-format path. The canonical format name this manifest targets
+	FormatOptionRef     *FormatOptionRef     `json:"format_option_ref,omitempty"`    // 3.1+ format-option path, optional. Structured format option reference matching
+	Assets              map[string]any       `json:"assets"`                         // Map of slot keys to actual asset content. Legacy named-format path: each key
+	Brand               *BrandReference      `json:"brand,omitempty"`                // Brand identity reference (BrandRef — `domain` plus optional `brand_id` for
+	Rights              []RightsConstraint   `json:"rights,omitempty"`               // Rights constraints attached to this creative. Each entry represents
+	IndustryIdentifiers []IndustryIdentifier `json:"industry_identifiers,omitempty"` // Industry-standard identifiers for this specific manifest (e.g., Ad-ID, ISCI
+	Provenance          *Provenance          `json:"provenance,omitempty"`           // Provenance metadata for this creative manifest. Serves as the default
 	Ext                 any                  `json:"ext,omitempty"`
 }
 
-// Provenance — Declares how content was produced, whether AI was involved, and what disclosure obligations apply. A
+// Provenance — Declares how content was produced, whether AI was involved, and what disclosure obligations apply.
 type Provenance struct {
 	DigitalSourceType  string                         `json:"digital_source_type,omitempty"` // IPTC-aligned classification of AI involvement in producing this content
-	AITool             *ProvenanceAITool              `json:"ai_tool,omitempty"`             // AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI me
-	HumanOversight     string                         `json:"human_oversight,omitempty"`     // Level of human involvement in the AI-assisted creation process. Independent of `
-	DeclaredBy         *ProvenanceDeclaredBy          `json:"declared_by,omitempty"`         // Party declaring this provenance. Identifies who attached the provenance claim, e
-	DeclaredAt         string                         `json:"declared_at,omitempty"`         // When this provenance claim was made (ISO 8601). Distinct from created_time, whic
+	AITool             *ProvenanceAITool              `json:"ai_tool,omitempty"`             // AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI
+	HumanOversight     string                         `json:"human_oversight,omitempty"`     // Level of human involvement in the AI-assisted creation process. Independent of
+	DeclaredBy         *ProvenanceDeclaredBy          `json:"declared_by,omitempty"`         // Party declaring this provenance. Identifies who attached the provenance claim
+	DeclaredAt         string                         `json:"declared_at,omitempty"`         // When this provenance claim was made (ISO 8601). Distinct from created_time
 	CreatedTime        string                         `json:"created_time,omitempty"`        // When this content was created or generated (ISO 8601)
-	C2PA               *ProvenanceC2PA                `json:"c2pa,omitempty"`                // C2PA sidecar manifest reference. Links to a detached cryptographic provenance ma
-	EmbeddedProvenance []ProvenanceEmbeddedProvenance `json:"embedded_provenance,omitempty"` // Provenance metadata embedded within the content stream. Each entry declares one
-	Watermarks         []ProvenanceWatermark          `json:"watermarks,omitempty"`          // Content watermarks applied to this asset. Each entry declares one watermarking l
-	Disclosure         *ProvenanceDisclosure          `json:"disclosure,omitempty"`          // Regulatory disclosure requirements for this content. Indicates whether AI disclo
-	Verification       []ProvenanceVerification       `json:"verification,omitempty"`        // Third-party verification or detection results for this content. Multiple service
+	C2PA               *ProvenanceC2PA                `json:"c2pa,omitempty"`                // C2PA sidecar manifest reference. Links to a detached cryptographic provenance
+	EmbeddedProvenance []ProvenanceEmbeddedProvenance `json:"embedded_provenance,omitempty"` // Provenance metadata embedded within the content stream. Each entry declares
+	Watermarks         []ProvenanceWatermark          `json:"watermarks,omitempty"`          // Content watermarks applied to this asset. Each entry declares one watermarking
+	Disclosure         *ProvenanceDisclosure          `json:"disclosure,omitempty"`          // Regulatory disclosure requirements for this content. Indicates whether AI
+	Verification       []ProvenanceVerification       `json:"verification,omitempty"`        // Third-party verification or detection results for this content. Multiple
 	Ext                any                            `json:"ext,omitempty"`
 }
 
@@ -6635,7 +6635,7 @@ type Destination struct {
 	AgentURL string `json:"agent_url,omitempty"` // URL identifying the deployment agent (for sales agents, etc.)
 }
 
-// Signal — Definition of a signal in published adagents.json signals[]. The publishing domain supplies the name
+// Signal — Definition of a signal in published adagents.json signals[]. The publishing domain supplies the
 type Signal struct {
 	ID                   string                   `json:"id"`                              // Signal identifier within the publishing domain's adagents.json signals[]
 	Name                 string                   `json:"name"`                            // Human-readable signal name
@@ -6643,42 +6643,42 @@ type Signal struct {
 	ValueType            string                   `json:"value_type"`                      // The data type of this signal's values
 	Tags                 []string                 `json:"tags,omitempty"`                  // Tags for grouping and filtering this domain's published signal definitions
 	AllowedValues        []string                 `json:"allowed_values,omitempty"`        // For categorical signals, the valid values users can be assigned
-	RestrictedAttributes []string                 `json:"restricted_attributes,omitempty"` // Restricted attribute categories this signal touches. Data providers SHOULD decla
-	PolicyCategories     []string                 `json:"policy_categories,omitempty"`     // Policy categories this signal is sensitive for (e.g., a children's interest sign
+	RestrictedAttributes []string                 `json:"restricted_attributes,omitempty"` // Restricted attribute categories this signal touches. Data providers SHOULD
+	PolicyCategories     []string                 `json:"policy_categories,omitempty"`     // Policy categories this signal is sensitive for (e.g., a children's interest
 	Range                *SignalRange             `json:"range,omitempty"`                 // For numeric signals, the valid value range
-	Taxonomy             *SignalTaxonomy          `json:"taxonomy,omitempty"`              // Optional taxonomy metadata describing what this signal means in an external audi
-	SegmentationCriteria string                   `json:"segmentation_criteria,omitempty"` // Rules governing inclusion of identifiers in the segment. Aligns with IAB Data Tr
-	CriteriaURL          string                   `json:"criteria_url,omitempty"`          // Optional URL to a longer-form methodology or criteria document. This is a disclo
-	DataSources          []string                 `json:"data_sources,omitempty"`          // Origin categories of the raw data used to compile the signal, aligned with IAB D
-	Methodology          string                   `json:"methodology,omitempty"`           // How the signal's audience membership or attribute was determined. 'modeled' requ
-	AudienceExpansion    *bool                    `json:"audience_expansion,omitempty"`    // Whether look-alike or similar-audience expansion was used to include additional
-	DeviceExpansion      *bool                    `json:"device_expansion,omitempty"`      // Whether the signal was expanded deterministically across devices of the same use
-	RefreshCadence       string                   `json:"refresh_cadence,omitempty"`       // Cadence at which the signal definition's underlying segment membership is refres
+	Taxonomy             *SignalTaxonomy          `json:"taxonomy,omitempty"`              // Optional taxonomy metadata describing what this signal means in an external
+	SegmentationCriteria string                   `json:"segmentation_criteria,omitempty"` // Rules governing inclusion of identifiers in the segment. Aligns with IAB Data
+	CriteriaURL          string                   `json:"criteria_url,omitempty"`          // Optional URL to a longer-form methodology or criteria document. This is a
+	DataSources          []string                 `json:"data_sources,omitempty"`          // Origin categories of the raw data used to compile the signal, aligned with IAB
+	Methodology          string                   `json:"methodology,omitempty"`           // How the signal's audience membership or attribute was determined. 'modeled'
+	AudienceExpansion    *bool                    `json:"audience_expansion,omitempty"`    // Whether look-alike or similar-audience expansion was used to include
+	DeviceExpansion      *bool                    `json:"device_expansion,omitempty"`      // Whether the signal was expanded deterministically across devices of the same
+	RefreshCadence       string                   `json:"refresh_cadence,omitempty"`       // Cadence at which the signal definition's underlying segment membership is
 	LookbackWindow       string                   `json:"lookback_window,omitempty"`       // Time window in which a qualifying event can occur for inclusion.
-	Onboarder            *SignalOnboarder         `json:"onboarder,omitempty"`             // Onboarder disclosure. Required when data_sources includes an offline_* or public
+	Onboarder            *SignalOnboarder         `json:"onboarder,omitempty"`             // Onboarder disclosure. Required when data_sources includes an offline_* or
 	SubjectType          string                   `json:"subject_type,omitempty"`          // What kind of subject this signal characterizes.
 	ResolutionMethod     string                   `json:"resolution_method,omitempty"`     // How the subject is resolved at decision time.
 	IDTypes              []string                 `json:"id_types,omitempty"`              // Identifier currencies analyzed to determine audience membership or attributes.
-	AudienceScope        string                   `json:"audience_scope,omitempty"`        // Context within which the audience attribute was determined. 'single_domain' requ
-	OriginatingDomain    string                   `json:"originating_domain,omitempty"`    // Domain of the digital property where the audience originates. Required when audi
-	Countries            []string                 `json:"countries,omitempty"`             // ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must no
-	ConsentBasis         []string                 `json:"consent_basis,omitempty"`         // Declared GDPR Article 6 lawful basis or consent basis under which this signal's
-	Art9Basis            string                   `json:"art9_basis,omitempty"`            // GDPR Article 9 basis when restricted_attributes is non-empty and the signal is u
-	Modeling             *SignalModeling          `json:"modeling,omitempty"`              // Modeling disclosure for modeled data signals. Required when methodology is 'mode
-	DataSubjectRights    *SignalDataSubjectRights `json:"data_subject_rights,omitempty"`   // Per-signal data-subject-rights routing. Inline on the signal because upstream so
-	DtsCompliantVersion  string                   `json:"dts_compliant_version,omitempty"` // IAB Data Transparency Standard version this signal definition self-attests as sa
+	AudienceScope        string                   `json:"audience_scope,omitempty"`        // Context within which the audience attribute was determined. 'single_domain'
+	OriginatingDomain    string                   `json:"originating_domain,omitempty"`    // Domain of the digital property where the audience originates. Required when
+	Countries            []string                 `json:"countries,omitempty"`             // ISO 3166-1 alpha-2 country codes where the signal is applicable. Sellers must
+	ConsentBasis         []string                 `json:"consent_basis,omitempty"`         // Declared GDPR Article 6 lawful basis or consent basis under which this
+	Art9Basis            string                   `json:"art9_basis,omitempty"`            // GDPR Article 9 basis when restricted_attributes is non-empty and the signal is
+	Modeling             *SignalModeling          `json:"modeling,omitempty"`              // Modeling disclosure for modeled data signals. Required when methodology is
+	DataSubjectRights    *SignalDataSubjectRights `json:"data_subject_rights,omitempty"`   // Per-signal data-subject-rights routing. Inline on the signal because upstream
+	DtsCompliantVersion  string                   `json:"dts_compliant_version,omitempty"` // IAB Data Transparency Standard version this signal definition self-attests as
 }
 
-// SignalTargeting — Targeting constraint for a specific signal. Uses value_type as discriminator to determine the target
+// SignalTargeting — Targeting constraint for a specific signal. Uses value_type as discriminator to determine the
 type SignalTargeting struct {
 	SignalRef *SignalRef `json:"signal_ref,omitempty"` // The signal to target. New targeting constraints SHOULD use signal_ref.
 	// Deprecated: DEPRECATED.
-	SignalID  *SignalID `json:"signal_id,omitempty"`  // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility w
+	SignalID  *SignalID `json:"signal_id,omitempty"`  // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility
 	ValueType string    `json:"value_type,omitempty"` // Discriminator for numeric signals
 	Value     *bool     `json:"value,omitempty"`      // Whether to include (true) or exclude (false) users matching this signal
 	Values    []string  `json:"values,omitempty"`     // Values to target. Users with any of these values will be included.
-	MinValue  *float64  `json:"min_value,omitempty"`  // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both a
-	MaxValue  *float64  `json:"max_value,omitempty"`  // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both a
+	MinValue  *float64  `json:"min_value,omitempty"`  // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both
+	MaxValue  *float64  `json:"max_value,omitempty"`  // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both
 }
 
 // DeliveryTotals — Standard delivery metrics that can be reported at media buy, package, or creative level
@@ -6687,108 +6687,108 @@ type DeliveryTotals struct {
 	Spend                float64                       `json:"spend,omitempty"`                   // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 }
 
-// Account — A billing account representing the relationship between a buyer and seller. The account determines r
+// Account — A billing account representing the relationship between a buyer and seller. The account determines
 type Account struct {
 	AccountID           string                   `json:"account_id"`               // Unique identifier for this account
 	Name                string                   `json:"name"`                     // Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')
 	Advertiser          string                   `json:"advertiser,omitempty"`     // The advertiser whose rates apply to this account
-	BillingProxy        string                   `json:"billing_proxy,omitempty"`  // Optional intermediary who receives invoices on behalf of the advertiser (e.g., a
-	Status              string                   `json:"status"`                   // Account lifecycle status. See the Accounts Protocol overview for the operations
+	BillingProxy        string                   `json:"billing_proxy,omitempty"`  // Optional intermediary who receives invoices on behalf of the advertiser (e.g.
+	Status              string                   `json:"status"`                   // Account lifecycle status. See the Accounts Protocol overview for the
 	Brand               *BrandReference          `json:"brand,omitempty"`          // Brand reference identifying the advertiser
-	Operator            string                   `json:"operator,omitempty"`       // Domain of the entity operating this account. When the brand operates directly, t
-	Billing             string                   `json:"billing,omitempty"`        // Who is invoiced on this account. See billing_entity for the invoiced party's bus
-	BillingEntity       *BusinessEntity          `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the lega
+	Operator            string                   `json:"operator,omitempty"`       // Domain of the entity operating this account. When the brand operates directly
+	Billing             string                   `json:"billing,omitempty"`        // Who is invoiced on this account. See billing_entity for the invoiced party's
+	BillingEntity       *BusinessEntity          `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the
 	RateCard            string                   `json:"rate_card,omitempty"`      // Identifier for the rate card applied to this account
-	PaymentTerms        string                   `json:"payment_terms,omitempty"`  // Payment terms agreed for this account. Binding for all invoices when the account
+	PaymentTerms        string                   `json:"payment_terms,omitempty"`  // Payment terms agreed for this account. Binding for all invoices when the
 	CreditLimit         *AccountCreditLimit      `json:"credit_limit,omitempty"`   // Maximum outstanding balance allowed
-	Setup               *AccountSetup            `json:"setup,omitempty"`          // Present when status is 'pending_approval'. Contains next steps for completing ac
+	Setup               *AccountSetup            `json:"setup,omitempty"`          // Present when status is 'pending_approval'. Contains next steps for completing
 	AccountScope        string                   `json:"account_scope,omitempty"`
-	GovernanceAgents    []AccountGovernanceAgent `json:"governance_agents,omitempty"`    // Governance agent endpoint registered on this account. Exactly one entry per sync
-	ReportingBucket     *ReportingBucket         `json:"reporting_bucket,omitempty"`     // Cloud storage bucket where the seller delivers offline reporting files for this
-	Sandbox             *bool                    `json:"sandbox,omitempty"`              // When true, this is a sandbox account — no real platform calls, no real spend. Fo
-	NotificationConfigs []NotificationConfig     `json:"notification_configs,omitempty"` // Account-level webhook subscriptions for notifications whose lifecycle outlives a
+	GovernanceAgents    []AccountGovernanceAgent `json:"governance_agents,omitempty"`    // Governance agent endpoint registered on this account. Exactly one entry per
+	ReportingBucket     *ReportingBucket         `json:"reporting_bucket,omitempty"`     // Cloud storage bucket where the seller delivers offline reporting files for
+	Sandbox             *bool                    `json:"sandbox,omitempty"`              // When true, this is a sandbox account — no real platform calls, no real spend.
+	NotificationConfigs []NotificationConfig     `json:"notification_configs,omitempty"` // Account-level webhook subscriptions for notifications whose lifecycle outlives
 	Ext                 any                      `json:"ext,omitempty"`
 }
 
-// Targeting — Optional restriction overlays for media buys. Most targeting should be expressed in the brief and ha
+// Targeting — Optional restriction overlays for media buys. Most targeting should be expressed in the brief and
 type Targeting struct {
-	GeoCountries          []string              `json:"geo_countries,omitempty"`            // Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US', '
-	GeoCountriesExclude   []string              `json:"geo_countries_exclude,omitempty"`    // Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US',
-	GeoRegions            []string              `json:"geo_regions,omitempty"`              // Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes (e.g.
-	GeoRegionsExclude     []string              `json:"geo_regions_exclude,omitempty"`      // Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes (e.g
-	GeoMetros             []GeoMetroTarget      `json:"geo_metros,omitempty"`               // Restrict delivery to specific metro areas. Each entry specifies the classificati
-	GeoMetrosExclude      []GeoMetroTarget      `json:"geo_metros_exclude,omitempty"`       // Exclude specific metro areas from delivery. Each entry specifies the classificat
-	GeoPostalAreas        []GeoPostalAreaTarget `json:"geo_postal_areas,omitempty"`         // Restrict delivery to specific postal areas. Each entry specifies the postal syst
-	GeoPostalAreasExclude []GeoPostalAreaTarget `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal sys
-	DaypartTargets        []DaypartTarget       `json:"daypart_targets,omitempty"`          // Restrict delivery to specific time windows. Each entry specifies days of week an
+	GeoCountries          []string              `json:"geo_countries,omitempty"`            // Restrict delivery to specific countries. ISO 3166-1 alpha-2 codes (e.g., 'US'
+	GeoCountriesExclude   []string              `json:"geo_countries_exclude,omitempty"`    // Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g.
+	GeoRegions            []string              `json:"geo_regions,omitempty"`              // Restrict delivery to specific regions/states. ISO 3166-2 subdivision codes
+	GeoRegionsExclude     []string              `json:"geo_regions_exclude,omitempty"`      // Exclude specific regions/states from delivery. ISO 3166-2 subdivision codes
+	GeoMetros             []GeoMetroTarget      `json:"geo_metros,omitempty"`               // Restrict delivery to specific metro areas. Each entry specifies the
+	GeoMetrosExclude      []GeoMetroTarget      `json:"geo_metros_exclude,omitempty"`       // Exclude specific metro areas from delivery. Each entry specifies the
+	GeoPostalAreas        []GeoPostalAreaTarget `json:"geo_postal_areas,omitempty"`         // Restrict delivery to specific postal areas. Each entry specifies the postal
+	GeoPostalAreasExclude []GeoPostalAreaTarget `json:"geo_postal_areas_exclude,omitempty"` // Exclude specific postal areas from delivery. Each entry specifies the postal
+	DaypartTargets        []DaypartTarget       `json:"daypart_targets,omitempty"`          // Restrict delivery to specific time windows. Each entry specifies days of week
 	// Deprecated: Use TMP provider fields instead.
-	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for targe
+	AxeIncludeSegment string `json:"axe_include_segment,omitempty"` // Deprecated: Use TMP provider fields instead. AXE segment ID to include for
 	// Deprecated: Use TMP provider fields instead.
-	AxeExcludeSegment     string                        `json:"axe_exclude_segment,omitempty"`     // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from targ
-	AudienceInclude       []string                      `json:"audience_include,omitempty"`        // Restrict delivery to members of these first-party CRM audiences. Only users pres
-	AudienceExclude       []string                      `json:"audience_exclude,omitempty"`        // Suppress delivery to members of these first-party CRM audiences. Matched users a
-	SignalTargetingGroups *PackageSignalTargetingGroups `json:"signal_targeting_groups,omitempty"` // Basic Boolean grouping for seller-offered signals. v1 supports a required top-le
+	AxeExcludeSegment     string                        `json:"axe_exclude_segment,omitempty"`     // Deprecated: Use TMP provider fields instead. AXE segment ID to exclude from
+	AudienceInclude       []string                      `json:"audience_include,omitempty"`        // Restrict delivery to members of these first-party CRM audiences. Only users
+	AudienceExclude       []string                      `json:"audience_exclude,omitempty"`        // Suppress delivery to members of these first-party CRM audiences. Matched users
+	SignalTargetingGroups *PackageSignalTargetingGroups `json:"signal_targeting_groups,omitempty"` // Basic Boolean grouping for seller-offered signals. v1 supports a required
 	// Deprecated: DEPRECATED.
-	SignalTargeting       []SignalTargeting         `json:"signal_targeting,omitempty"` // DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Lega
+	SignalTargeting       []SignalTargeting         `json:"signal_targeting,omitempty"` // DEPRECATED. Use signal_targeting_groups for package-level signal targeting.
 	FrequencyCap          *FrequencyCap             `json:"frequency_cap,omitempty"`
-	PropertyList          *PropertyListRef          `json:"property_list,omitempty"`           // Reference to a property list for targeting specific properties within this produ
-	CollectionList        *CollectionListRef        `json:"collection_list,omitempty"`         // Reference to a collection list for including specific collections (programs, sho
-	CollectionListExclude *CollectionListRef        `json:"collection_list_exclude,omitempty"` // Reference to a collection list for excluding specific collections (programs, sho
-	AgeRestriction        *AgeRestriction           `json:"age_restriction,omitempty"`         // Age restriction for compliance. Use for legal requirements (alcohol, gambling),
-	DevicePlatform        []string                  `json:"device_platform,omitempty"`         // Restrict to specific platforms. Use for technical compatibility (app only works
-	DeviceType            []string                  `json:"device_type,omitempty"`             // Restrict to specific device form factors. Use for campaigns targeting hardware c
-	DeviceTypeExclude     []string                  `json:"device_type_exclude,omitempty"`     // Exclude specific device form factors from delivery (e.g., exclude CTV for app-in
-	StoreCatchments       []TargetingStoreCatchment `json:"store_catchments,omitempty"`        // Target users within store catchment areas from a synced store catalog. Each entr
-	GeoProximity          []GeoProximityTarget      `json:"geo_proximity,omitempty"`           // Target users within travel time, distance, or a custom boundary around arbitrary
-	Language              []string                  `json:"language,omitempty"`                // Restrict to users with specific language preferences. ISO 639-1 codes (e.g., 'en
-	KeywordTargets        []KeywordTarget           `json:"keyword_targets,omitempty"`         // Keyword targeting for search and retail media platforms. Restricts delivery to q
-	NegativeKeywords      []NegativeKeywordTarget   `json:"negative_keywords,omitempty"`       // Keywords to exclude from delivery. Queries matching these keywords will not trig
+	PropertyList          *PropertyListRef          `json:"property_list,omitempty"`           // Reference to a property list for targeting specific properties within this
+	CollectionList        *CollectionListRef        `json:"collection_list,omitempty"`         // Reference to a collection list for including specific collections (programs
+	CollectionListExclude *CollectionListRef        `json:"collection_list_exclude,omitempty"` // Reference to a collection list for excluding specific collections (programs
+	AgeRestriction        *AgeRestriction           `json:"age_restriction,omitempty"`         // Age restriction for compliance. Use for legal requirements (alcohol
+	DevicePlatform        []string                  `json:"device_platform,omitempty"`         // Restrict to specific platforms. Use for technical compatibility (app only
+	DeviceType            []string                  `json:"device_type,omitempty"`             // Restrict to specific device form factors. Use for campaigns targeting hardware
+	DeviceTypeExclude     []string                  `json:"device_type_exclude,omitempty"`     // Exclude specific device form factors from delivery (e.g., exclude CTV for
+	StoreCatchments       []TargetingStoreCatchment `json:"store_catchments,omitempty"`        // Target users within store catchment areas from a synced store catalog. Each
+	GeoProximity          []GeoProximityTarget      `json:"geo_proximity,omitempty"`           // Target users within travel time, distance, or a custom boundary around
+	Language              []string                  `json:"language,omitempty"`                // Restrict to users with specific language preferences. ISO 639-1 codes (e.g.
+	KeywordTargets        []KeywordTarget           `json:"keyword_targets,omitempty"`         // Keyword targeting for search and retail media platforms. Restricts delivery to
+	NegativeKeywords      []NegativeKeywordTarget   `json:"negative_keywords,omitempty"`       // Keywords to exclude from delivery. Queries matching these keywords will not
 }
 
 // PaginationResponse — Standard cursor-based pagination metadata for list responses
 type PaginationResponse struct {
 	HasMore    bool   `json:"has_more"`              // Whether more results are available beyond this page
-	Cursor     string `json:"cursor,omitempty"`      // Opaque cursor to pass in the next request to fetch the next page. Only present w
-	TotalCount int    `json:"total_count,omitempty"` // Total number of items matching the query across all pages. Optional because not
+	Cursor     string `json:"cursor,omitempty"`      // Opaque cursor to pass in the next request to fetch the next page. Only present
+	TotalCount int    `json:"total_count,omitempty"` // Total number of items matching the query across all pages. Optional because
 }
 
 // PaginationRequest — Standard cursor-based pagination parameters for list operations
@@ -6797,37 +6797,37 @@ type PaginationRequest struct {
 	Cursor     string `json:"cursor,omitempty"`      // Opaque cursor from a previous response to fetch the next page
 }
 
-// Catalog — A typed data feed. Catalogs carry the items, locations, stock levels, or pricing that publishers use
+// Catalog — A typed data feed. Catalogs carry the items, locations, stock levels, or pricing that publishers
 type Catalog struct {
-	CatalogID         string                `json:"catalog_id,omitempty"`          // Buyer's identifier for this catalog. Required when syncing via sync_catalogs. Wh
-	Name              string                `json:"name,omitempty"`                // Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam S
-	Type              string                `json:"type"`                          // Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product' (e
-	URL               string                `json:"url,omitempty"`                 // URL to an external catalog feed. The platform fetches and resolves items from th
-	FeedFormat        string                `json:"feed_format,omitempty"`         // Format of the external feed at url. Required when url points to a non-AdCP feed
-	UpdateFrequency   string                `json:"update_frequency,omitempty"`    // How often the platform should re-fetch the feed from url. Only applicable when u
-	Items             []map[string]any      `json:"items,omitempty"`               // Inline catalog data. The item schema depends on the catalog type: Offering objec
-	IDs               []string              `json:"ids,omitempty"`                 // Filter catalog to specific item IDs. For offering-type catalogs, these are offer
-	Gtins             []string              `json:"gtins,omitempty"`               // Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matc
-	Tags              []string              `json:"tags,omitempty"`                // Filter catalog to items with these tags. Tags are matched using OR logic — items
-	Category          string                `json:"category,omitempty"`            // Filter catalog to items in this category (e.g., 'beverages/soft-drinks', 'chef-p
-	Query             string                `json:"query,omitempty"`               // Natural language filter for catalog items (e.g., 'all pasta sauces under $5', 'a
-	ConversionEvents  []string              `json:"conversion_events,omitempty"`   // Event types that represent conversions for items in this catalog. Declares what
-	ContentIDType     string                `json:"content_id_type,omitempty"`     // Identifier type that the event's content_ids field should be matched against for
-	FeedFieldMappings []CatalogFieldMapping `json:"feed_field_mappings,omitempty"` // Declarative normalization rules for external feeds. Maps non-standard feed field
+	CatalogID         string                `json:"catalog_id,omitempty"`          // Buyer's identifier for this catalog. Required when syncing via sync_catalogs.
+	Name              string                `json:"name,omitempty"`                // Human-readable name for this catalog (e.g., 'Summer Products 2025', 'Amsterdam
+	Type              string                `json:"type"`                          // Catalog type. Structural types: 'offering' (AdCP Offering objects), 'product'
+	URL               string                `json:"url,omitempty"`                 // URL to an external catalog feed. The platform fetches and resolves items from
+	FeedFormat        string                `json:"feed_format,omitempty"`         // Format of the external feed at url. Required when url points to a non-AdCP
+	UpdateFrequency   string                `json:"update_frequency,omitempty"`    // How often the platform should re-fetch the feed from url. Only applicable when
+	Items             []map[string]any      `json:"items,omitempty"`               // Inline catalog data. The item schema depends on the catalog type: Offering
+	IDs               []string              `json:"ids,omitempty"`                 // Filter catalog to specific item IDs. For offering-type catalogs, these are
+	Gtins             []string              `json:"gtins,omitempty"`               // Filter product-type catalogs by GTIN identifiers for cross-retailer catalog
+	Tags              []string              `json:"tags,omitempty"`                // Filter catalog to items with these tags. Tags are matched using OR logic —
+	Category          string                `json:"category,omitempty"`            // Filter catalog to items in this category (e.g., 'beverages/soft-drinks'
+	Query             string                `json:"query,omitempty"`               // Natural language filter for catalog items (e.g., 'all pasta sauces under $5'
+	ConversionEvents  []string              `json:"conversion_events,omitempty"`   // Event types that represent conversions for items in this catalog. Declares
+	ContentIDType     string                `json:"content_id_type,omitempty"`     // Identifier type that the event's content_ids field should be matched against
+	FeedFieldMappings []CatalogFieldMapping `json:"feed_field_mappings,omitempty"` // Declarative normalization rules for external feeds. Maps non-standard feed
 }
 
-// CatalogFieldMapping — Declares how a field in an external feed maps to the AdCP catalog item schema. Used in sync_catalogs
+// CatalogFieldMapping — Declares how a field in an external feed maps to the AdCP catalog item schema. Used in
 type CatalogFieldMapping struct {
-	FeedField    string  `json:"feed_field,omitempty"`     // Field name in the external feed record. Omit when injecting a static literal val
-	CatalogField string  `json:"catalog_field,omitempty"`  // Target field on the catalog item schema, using dot notation for nested fields (e
-	AssetGroupID string  `json:"asset_group_id,omitempty"` // Places the feed field value (a URL) into a typed asset pool on the catalog item'
-	Value        any     `json:"value,omitempty"`          // Static literal value to inject into catalog_field for every item, regardless of
-	Transform    string  `json:"transform,omitempty"`      // Named transform to apply to the feed field value before writing to the catalog s
-	Format       string  `json:"format,omitempty"`         // For transform 'date': the input date format string (e.g., 'YYYYMMDD', 'MM/DD/YYY
-	Timezone     string  `json:"timezone,omitempty"`       // For transform 'date': the timezone of the input value. IANA timezone identifier
-	By           float64 `json:"by,omitempty"`             // For transform 'divide': the divisor to apply (e.g., 100 to convert integer cents
-	Separator    string  `json:"separator,omitempty"`      // For transform 'split': the separator character or string to split on. Defaults t
-	Default      any     `json:"default,omitempty"`        // Fallback value to use when feed_field is absent, null, or empty. Applied after a
+	FeedField    string  `json:"feed_field,omitempty"`     // Field name in the external feed record. Omit when injecting a static literal
+	CatalogField string  `json:"catalog_field,omitempty"`  // Target field on the catalog item schema, using dot notation for nested fields
+	AssetGroupID string  `json:"asset_group_id,omitempty"` // Places the feed field value (a URL) into a typed asset pool on the catalog
+	Value        any     `json:"value,omitempty"`          // Static literal value to inject into catalog_field for every item, regardless
+	Transform    string  `json:"transform,omitempty"`      // Named transform to apply to the feed field value before writing to the catalog
+	Format       string  `json:"format,omitempty"`         // For transform 'date': the input date format string (e.g., 'YYYYMMDD'
+	Timezone     string  `json:"timezone,omitempty"`       // For transform 'date': the timezone of the input value. IANA timezone
+	By           float64 `json:"by,omitempty"`             // For transform 'divide': the divisor to apply (e.g., 100 to convert integer
+	Separator    string  `json:"separator,omitempty"`      // For transform 'split': the separator character or string to split on. Defaults
+	Default      any     `json:"default,omitempty"`        // Fallback value to use when feed_field is absent, null, or empty. Applied after
 	Ext          any     `json:"ext,omitempty"`
 }
 
@@ -6849,8 +6849,8 @@ type EventCustomData struct {
 	Value           float64            `json:"value,omitempty"`            // Monetary value of the event (should be accompanied by currency)
 	Currency        string             `json:"currency,omitempty"`         // ISO 4217 currency code
 	OrderID         string             `json:"order_id,omitempty"`         // Unique order or transaction identifier
-	ContentIDs      []string           `json:"content_ids,omitempty"`      // Item identifiers for catalog attribution. Values are matched against catalog ite
-	ContentType     string             `json:"content_type,omitempty"`     // Category of content associated with the event (e.g., 'product', 'job', 'hotel').
+	ContentIDs      []string           `json:"content_ids,omitempty"`      // Item identifiers for catalog attribution. Values are matched against catalog
+	ContentType     string             `json:"content_type,omitempty"`     // Category of content associated with the event (e.g., 'product', 'job'
 	ContentName     string             `json:"content_name,omitempty"`     // Name of the product or content
 	ContentCategory string             `json:"content_category,omitempty"` // Category of the product or content
 	NumItems        int                `json:"num_items,omitempty"`        // Number of items in the event
@@ -6866,71 +6866,71 @@ type PerformanceFeedback struct {
 	PackageID         string          `json:"package_id,omitempty"`  // Specific package within the media buy (if feedback is package-specific)
 	CreativeID        string          `json:"creative_id,omitempty"` // Specific creative asset (if feedback is creative-specific)
 	MeasurementPeriod DatetimeRange   `json:"measurement_period"`    // Time period for performance measurement
-	PerformanceIndex  float64         `json:"performance_index"`     // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expec
-	MetricType        string          `json:"metric_type,omitempty"` // **Deprecated as of this minor.** The legacy free-form metric enum that mixes met
-	Metric            map[string]any  `json:"metric,omitempty"`      // The metric this feedback row pertains to, using the same `(scope, metric_id, qua
+	PerformanceIndex  float64         `json:"performance_index"`     // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above
+	MetricType        string          `json:"metric_type,omitempty"` // **Deprecated as of this minor.** The legacy free-form metric enum that mixes
+	Metric            map[string]any  `json:"metric,omitempty"`      // The metric this feedback row pertains to, using the same `(scope, metric_id
 	FeedbackSource    string          `json:"feedback_source"`       // Source of the performance data
-	Vendor            *BrandReference `json:"vendor,omitempty"`      // Vendor that produced this feedback. SHOULD be populated when `feedback_source` i
+	Vendor            *BrandReference `json:"vendor,omitempty"`      // Vendor that produced this feedback. SHOULD be populated when `feedback_source`
 	Status            string          `json:"status"`                // Processing status of the performance feedback
 	SubmittedAt       string          `json:"submitted_at"`          // ISO 8601 timestamp when feedback was submitted
 	AppliedAt         string          `json:"applied_at,omitempty"`  // ISO 8601 timestamp when feedback was applied to optimization algorithms
 }
 
-// CreativeBrief — Campaign-level creative context for AI-powered creative generation. Provides the layer between brand
+// CreativeBrief — Campaign-level creative context for AI-powered creative generation. Provides the layer between
 type CreativeBrief struct {
 	Name            string                   `json:"name"`                       // Campaign or flight name for identification
 	Objective       string                   `json:"objective,omitempty"`        // Campaign objective that guides creative tone and call-to-action strategy
-	Tone            string                   `json:"tone,omitempty"`             // Desired tone for this campaign, modulating the brand's base tone (e.g., 'playful
+	Tone            string                   `json:"tone,omitempty"`             // Desired tone for this campaign, modulating the brand's base tone (e.g.
 	Audience        string                   `json:"audience,omitempty"`         // Target audience description for this campaign
 	Territory       string                   `json:"territory,omitempty"`        // Creative territory or positioning the campaign should occupy
 	Messaging       *CreativeBriefMessaging  `json:"messaging,omitempty"`        // Messaging framework for the campaign
-	ReferenceAssets []ReferenceAsset         `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots, exa
-	Compliance      *CreativeBriefCompliance `json:"compliance,omitempty"`       // Regulatory and legal compliance requirements for this campaign. Campaign-specifi
+	ReferenceAssets []ReferenceAsset         `json:"reference_assets,omitempty"` // Visual and strategic reference materials such as mood boards, product shots
+	Compliance      *CreativeBriefCompliance `json:"compliance,omitempty"`       // Regulatory and legal compliance requirements for this campaign.
 }
 
-// ReferenceAsset — A reference asset that provides creative context. Carries visual materials (mood boards, product sho
+// ReferenceAsset — A reference asset that provides creative context. Carries visual materials (mood boards, product
 type ReferenceAsset struct {
 	URL         string `json:"url"`                   // URL to the reference asset (image, video, or document)
-	Role        string `json:"role"`                  // How the creative agent should use this asset. style_reference: match the visual
-	Description string `json:"description,omitempty"` // Human-readable description of the asset and how it should inform creative genera
+	Role        string `json:"role"`                  // How the creative agent should use this asset. style_reference: match the
+	Description string `json:"description,omitempty"` // Human-readable description of the asset and how it should inform creative
 }
 
-// BusinessEntity — Structured business identity for B2B invoicing and contracts. Contains the legal, tax, and payment d
+// BusinessEntity — Structured business identity for B2B invoicing and contracts. Contains the legal, tax, and payment
 type BusinessEntity struct {
 	LegalName          string            `json:"legal_name"`                    // Registered legal name of the business entity
-	VatID              string            `json:"vat_id,omitempty"`              // VAT identification number (e.g., DE123456789 for Germany, FR12345678901 for Fran
+	VatID              string            `json:"vat_id,omitempty"`              // VAT identification number (e.g., DE123456789 for Germany, FR12345678901 for
 	TaxID              string            `json:"tax_id,omitempty"`              // Tax identification number for jurisdictions that do not use VAT (e.g., US EIN)
 	RegistrationNumber string            `json:"registration_number,omitempty"` // Company registration number (e.g., HRB 12345 for German Handelsregister)
 	Address            *BusinessAddress  `json:"address,omitempty"`             // Postal address for invoicing and legal correspondence
-	Contacts           []BusinessContact `json:"contacts,omitempty"`            // Contacts for billing, legal, and operational matters. Contains personal data sub
-	Bank               *BankAccount      `json:"bank,omitempty"`                // Bank account details for payment processing. Write-only: included in requests to
+	Contacts           []BusinessContact `json:"contacts,omitempty"`            // Contacts for billing, legal, and operational matters. Contains personal data
+	Bank               *BankAccount      `json:"bank,omitempty"`                // Bank account details for payment processing. Write-only: included in requests
 	Ext                any               `json:"ext,omitempty"`
 }
 
-// DatetimeRange — A datetime range with inclusive start and end timestamps (ISO 8601 with timezone). Used for measurem
+// DatetimeRange — A datetime range with inclusive start and end timestamps (ISO 8601 with timezone). Used for
 type DatetimeRange struct {
 	Start string `json:"start"` // Start timestamp (inclusive), ISO 8601
 	End   string `json:"end"`   // End timestamp (inclusive), ISO 8601
 }
 
-// DaypartTarget — A time window for daypart targeting. Specifies days of week and an hour range. start_hour is inclusi
+// DaypartTarget — A time window for daypart targeting. Specifies days of week and an hour range. start_hour is
 type DaypartTarget struct {
-	Days      []string `json:"days"`            // Days of week this window applies to. Use multiple days for compact targeting (e.
-	StartHour int      `json:"start_hour"`      // Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 = 6
-	EndHour   int      `json:"end_hour"`        // End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight. Must
-	Label     string   `json:"label,omitempty"` // Optional human-readable name for this time window (e.g., 'Morning Drive', 'Prime
+	Days      []string `json:"days"`            // Days of week this window applies to. Use multiple days for compact targeting
+	StartHour int      `json:"start_hour"`      // Start hour (inclusive), 0-23 in 24-hour format. 0 = midnight, 6 = 6:00am, 18 =
+	EndHour   int      `json:"end_hour"`        // End hour (exclusive), 1-24 in 24-hour format. 10 = 10:00am, 24 = midnight.
+	Label     string   `json:"label,omitempty"` // Optional human-readable name for this time window (e.g., 'Morning Drive'
 }
 
-// FrequencyCap — Frequency capping settings for package-level application. Two types of frequency control can be used
+// FrequencyCap — Frequency capping settings for package-level application. Two types of frequency control can be
 type FrequencyCap struct {
-	Suppress        *Duration `json:"suppress,omitempty"`         // Cooldown period between consecutive exposures to the same entity. Prevents back-
-	SuppressMinutes float64   `json:"suppress_minutes,omitempty"` // Deprecated — use suppress instead. Cooldown period in minutes between consecutiv
-	MaxImpressions  int       `json:"max_impressions,omitempty"`  // Maximum number of impressions per entity per window. For duration windows, imple
-	Per             string    `json:"per,omitempty"`              // Entity granularity for impression counting. Required when max_impressions is set
-	Window          *Duration `json:"window,omitempty"`           // Time window for the max_impressions cap (e.g. {"interval": 7, "unit": "days"} or
+	Suppress        *Duration `json:"suppress,omitempty"`         // Cooldown period between consecutive exposures to the same entity. Prevents
+	SuppressMinutes float64   `json:"suppress_minutes,omitempty"` // Deprecated — use suppress instead. Cooldown period in minutes between
+	MaxImpressions  int       `json:"max_impressions,omitempty"`  // Maximum number of impressions per entity per window. For duration windows
+	Per             string    `json:"per,omitempty"`              // Entity granularity for impression counting. Required when max_impressions is
+	Window          *Duration `json:"window,omitempty"`           // Time window for the max_impressions cap (e.g. {"interval": 7, "unit": "days"}
 }
 
-// PlannedDelivery — The seller's interpreted delivery parameters for a media buy. Represents what the seller will actual
+// PlannedDelivery — The seller's interpreted delivery parameters for a media buy. Represents what the seller will
 type PlannedDelivery struct {
 	Geo               *PlannedDeliveryGeo `json:"geo,omitempty"`                // Geographic targeting the seller will apply.
 	Channels          []string            `json:"channels,omitempty"`           // Channels the seller will deliver on.
@@ -6938,58 +6938,58 @@ type PlannedDelivery struct {
 	EndTime           string              `json:"end_time,omitempty"`           // Actual flight end the seller will use.
 	FrequencyCap      *FrequencyCap       `json:"frequency_cap,omitempty"`      // Frequency cap the seller will apply.
 	AudienceSummary   string              `json:"audience_summary,omitempty"`   // Human-readable summary of the audience the seller will target.
-	AudienceTargeting []AudienceSelector  `json:"audience_targeting,omitempty"` // Structured audience targeting the seller will activate. Each entry is either a s
+	AudienceTargeting []AudienceSelector  `json:"audience_targeting,omitempty"` // Structured audience targeting the seller will activate. Each entry is either a
 	TotalBudget       float64             `json:"total_budget,omitempty"`       // Total budget the seller will deliver against.
 	Currency          string              `json:"currency,omitempty"`           // ISO 4217 currency code for the budget.
 	EnforcedPolicies  []string            `json:"enforced_policies,omitempty"`  // Registry policy IDs the seller will enforce for this delivery.
 	Ext               any                 `json:"ext,omitempty"`
 }
 
-// PropertyListRef — Reference to an externally managed property list. Enables passing large property sets (50,000+) with
+// PropertyListRef — Reference to an externally managed property list. Enables passing large property sets (50,000+)
 type PropertyListRef struct {
 	AgentURL  string `json:"agent_url"`            // URL of the agent managing the property list
 	ListID    string `json:"list_id"`              // Identifier for the property list within the agent
-	AuthToken string `json:"auth_token,omitempty"` // JWT or other authorization token for accessing the list. Optional if the list is
+	AuthToken string `json:"auth_token,omitempty"` // JWT or other authorization token for accessing the list. Optional if the list
 }
 
-// PushNotificationConfig — Webhook configuration for asynchronous task notifications. Uses A2A-compatible PushNotificationConfi
+// PushNotificationConfig — Webhook configuration for asynchronous task notifications. Uses A2A-compatible
 type PushNotificationConfig struct {
-	URL            string                       `json:"url"`                      // Webhook endpoint URL for task status notifications. The wire contract is unconst
-	OperationID    string                       `json:"operation_id,omitempty"`   // Buyer-supplied correlation identifier for the operation that will produce webhoo
-	Token          string                       `json:"token,omitempty"`          // Optional client-provided token for webhook validation. The seller MUST echo this
-	Authentication *LegacyWebhookAuthentication `json:"authentication,omitempty"` // Legacy authentication configuration (A2A-compatible). Opts the seller into Beare
+	URL            string                       `json:"url"`                      // Webhook endpoint URL for task status notifications. The wire contract is
+	OperationID    string                       `json:"operation_id,omitempty"`   // Buyer-supplied correlation identifier for the operation that will produce
+	Token          string                       `json:"token,omitempty"`          // Optional client-provided token for webhook validation. The seller MUST echo
+	Authentication *LegacyWebhookAuthentication `json:"authentication,omitempty"` // Legacy authentication configuration (A2A-compatible). Opts the seller into
 }
 
-// ReportingWebhook — Webhook configuration for automated reporting delivery. Configures where and how campaign performanc
+// ReportingWebhook — Webhook configuration for automated reporting delivery. Configures where and how campaign
 type ReportingWebhook struct {
 	URL                string                      `json:"url"`                         // Webhook endpoint URL for reporting notifications
-	Token              string                      `json:"token,omitempty"`             // Optional client-provided token for webhook validation. Echoed back in webhook pa
-	Authentication     LegacyWebhookAuthentication `json:"authentication"`              // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
-	ReportingFrequency string                      `json:"reporting_frequency"`         // Frequency for automated reporting delivery. Must be supported by all products in
-	RequestedMetrics   []string                    `json:"requested_metrics,omitempty"` // Optional list of metrics to include in webhook notifications. If omitted, all av
+	Token              string                      `json:"token,omitempty"`             // Optional client-provided token for webhook validation. Echoed back in webhook
+	Authentication     LegacyWebhookAuthentication `json:"authentication"`              // Legacy authentication configuration for webhook delivery (A2A-compatible).
+	ReportingFrequency string                      `json:"reporting_frequency"`         // Frequency for automated reporting delivery. Must be supported by all products
+	RequestedMetrics   []string                    `json:"requested_metrics,omitempty"` // Optional list of metrics to include in webhook notifications. If omitted, all
 }
 
-// RightsConstraint — Rights metadata attached to a creative manifest. Each entry represents constraints from a single rig
+// RightsConstraint — Rights metadata attached to a creative manifest. Each entry represents constraints from a single
 type RightsConstraint struct {
 	RightsID          string         `json:"rights_id"`                    // Rights grant identifier from the acquire_rights response
 	RightsAgent       RightsAgentRef `json:"rights_agent"`                 // The agent that granted these rights
 	ValidFrom         string         `json:"valid_from,omitempty"`         // Start of the rights validity period
-	ValidUntil        string         `json:"valid_until,omitempty"`        // End of the rights validity period. Creative should not be served after this time
+	ValidUntil        string         `json:"valid_until,omitempty"`        // End of the rights validity period. Creative should not be served after this
 	Uses              []string       `json:"uses"`                         // Rights uses covered by this constraint
-	Countries         []string       `json:"countries,omitempty"`          // Countries where this creative may be served under these rights (ISO 3166-1 alpha
-	ExcludedCountries []string       `json:"excluded_countries,omitempty"` // Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the g
-	ImpressionCap     int            `json:"impression_cap,omitempty"`     // Maximum total impressions allowed for the full validity period (valid_from to va
-	RightType         string         `json:"right_type,omitempty"`         // Type of rights (talent, music, etc.). Helps identify constraints when a creative
-	ApprovalStatus    string         `json:"approval_status,omitempty"`    // Approval status from the rights holder at manifest creation time (snapshot, not
-	VerificationURL   string         `json:"verification_url,omitempty"`   // URL where downstream supply chain participants can verify this rights grant is a
+	Countries         []string       `json:"countries,omitempty"`          // Countries where this creative may be served under these rights (ISO 3166-1
+	ExcludedCountries []string       `json:"excluded_countries,omitempty"` // Countries excluded from rights availability (ISO 3166-1 alpha-2). Use when the
+	ImpressionCap     int            `json:"impression_cap,omitempty"`     // Maximum total impressions allowed for the full validity period (valid_from to
+	RightType         string         `json:"right_type,omitempty"`         // Type of rights (talent, music, etc.). Helps identify constraints when a
+	ApprovalStatus    string         `json:"approval_status,omitempty"`    // Approval status from the rights holder at manifest creation time (snapshot
+	VerificationURL   string         `json:"verification_url,omitempty"`   // URL where downstream supply chain participants can verify this rights grant is
 	Ext               any            `json:"ext,omitempty"`
 }
 
-// UserMatch — User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs, an
+// UserMatch — User identifiers for attribution matching. Supports universal IDs, hashed identifiers, click IDs
 type UserMatch struct {
 	UIDs            []UserMatchUID `json:"uids,omitempty"`              // Universal ID values for user matching
-	HashedEmail     string         `json:"hashed_email,omitempty"`      // SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before ha
-	HashedPhone     string         `json:"hashed_phone,omitempty"`      // SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must nor
+	HashedEmail     string         `json:"hashed_email,omitempty"`      // SHA-256 hash of lowercase, trimmed email address. Buyer must normalize before
+	HashedPhone     string         `json:"hashed_phone,omitempty"`      // SHA-256 hash of E.164-formatted phone number (e.g. +12065551234). Buyer must
 	ClickID         string         `json:"click_id,omitempty"`          // Platform click identifier (fbclid, gclid, ttclid, ScCid, etc.)
 	ClickIDType     string         `json:"click_id_type,omitempty"`     // Type of click identifier (e.g. fbclid, gclid, ttclid, msclkid, ScCid)
 	ClientIP        string         `json:"client_ip,omitempty"`         // Client IP address for probabilistic matching
@@ -6997,10 +6997,10 @@ type UserMatch struct {
 	Ext             any            `json:"ext,omitempty"`
 }
 
-// Installment — A single bookable unit within a collection — one episode, issue, event, or rotation period. The pare
+// Installment — A single bookable unit within a collection — one episode, issue, event, or rotation period. The
 type Installment struct {
 	InstallmentID     string                 `json:"installment_id"`               // Unique identifier for this installment within the collection
-	CollectionID      string                 `json:"collection_id,omitempty"`      // Parent collection reference. Required when the product spans multiple collection
+	CollectionID      string                 `json:"collection_id,omitempty"`      // Parent collection reference. Required when the product spans multiple
 	Name              string                 `json:"name,omitempty"`               // Installment title
 	Season            string                 `json:"season,omitempty"`             // Season identifier (e.g., '1', '2024', 'spring_2026')
 	InstallmentNumber string                 `json:"installment_number,omitempty"` // Installment number within the season (e.g., '3', '47')
@@ -7008,18 +7008,18 @@ type Installment struct {
 	Status            string                 `json:"status,omitempty"`             // Lifecycle status of the installment
 	DurationSeconds   int                    `json:"duration_seconds,omitempty"`   // Expected duration of the installment in seconds
 	FlexibleEnd       *bool                  `json:"flexible_end,omitempty"`       // Whether the end time is approximate (live events, sports)
-	ValidUntil        string                 `json:"valid_until,omitempty"`        // When this installment data expires and should be re-queried. Agents should re-qu
-	ContentRating     *ContentRating         `json:"content_rating,omitempty"`     // Installment-specific content rating. Overrides the collection's baseline content
-	Topics            []string               `json:"topics,omitempty"`             // Content topics for this installment. Uses the same taxonomy as the collection's
-	Special           *Special               `json:"special,omitempty"`            // Installment-specific event context. When present, this installment is anchored t
-	GuestTalent       []Talent               `json:"guest_talent,omitempty"`       // Installment-specific guests and talent. Additive to the collection's recurring t
-	AdInventory       *AdInventoryConfig     `json:"ad_inventory,omitempty"`       // Break-based ad inventory for this installment. For non-break formats (host reads
-	Deadlines         *InstallmentDeadlines  `json:"deadlines,omitempty"`          // Booking, cancellation, and material submission deadlines for this installment. P
-	DerivativeOf      *InstallmentDerivative `json:"derivative_of,omitempty"`      // When this installment is a clip, highlight, or recap derived from a full install
+	ValidUntil        string                 `json:"valid_until,omitempty"`        // When this installment data expires and should be re-queried. Agents should
+	ContentRating     *ContentRating         `json:"content_rating,omitempty"`     // Installment-specific content rating. Overrides the collection's baseline
+	Topics            []string               `json:"topics,omitempty"`             // Content topics for this installment. Uses the same taxonomy as the
+	Special           *Special               `json:"special,omitempty"`            // Installment-specific event context. When present, this installment is anchored
+	GuestTalent       []Talent               `json:"guest_talent,omitempty"`       // Installment-specific guests and talent. Additive to the collection's recurring
+	AdInventory       *AdInventoryConfig     `json:"ad_inventory,omitempty"`       // Break-based ad inventory for this installment. For non-break formats (host
+	Deadlines         *InstallmentDeadlines  `json:"deadlines,omitempty"`          // Booking, cancellation, and material submission deadlines for this installment.
+	DerivativeOf      *InstallmentDerivative `json:"derivative_of,omitempty"`      // When this installment is a clip, highlight, or recap derived from a full
 	Ext               any                    `json:"ext,omitempty"`
 }
 
-// Special — Event-anchored content tied to a real-world event or occasion. When present on a collection, indicat
+// Special — Event-anchored content tied to a real-world event or occasion. When present on a collection
 type Special struct {
 	Name     string `json:"name"`               // Name of the event (e.g., 'Olympics 2028', 'Super Bowl LXI')
 	Category string `json:"category,omitempty"` // Category of the event
@@ -7027,61 +7027,61 @@ type Special struct {
 	Ends     string `json:"ends,omitempty"`     // When the event ends (ISO 8601). Omit for single-day events.
 }
 
-// Talent — A person associated with a collection or installment, with an optional link to their brand.json iden
+// Talent — A person associated with a collection or installment, with an optional link to their brand.json
 type Talent struct {
 	Role     string `json:"role"`                // Role of this person on the collection or installment
 	Name     string `json:"name"`                // Person's name as credited on the collection
-	BrandURL string `json:"brand_url,omitempty"` // URL to this person's brand.json entry. Enables buyer agents to evaluate the tale
+	BrandURL string `json:"brand_url,omitempty"` // URL to this person's brand.json entry. Enables buyer agents to evaluate the
 }
 
-// AdInventoryConfig — Break-based ad inventory configuration for an installment. Describes the ad breaks available within
+// AdInventoryConfig — Break-based ad inventory configuration for an installment. Describes the ad breaks available
 type AdInventoryConfig struct {
 	ExpectedBreaks       int      `json:"expected_breaks"`                   // Number of planned ad breaks in the installment
 	TotalAdSeconds       int      `json:"total_ad_seconds,omitempty"`        // Total seconds of ad time across all breaks
-	MaxAdDurationSeconds int      `json:"max_ad_duration_seconds,omitempty"` // Maximum duration in seconds for a single ad within a break. Buyers need this to
-	UnplannedBreaks      *bool    `json:"unplanned_breaks,omitempty"`        // Whether ad breaks are dynamic and driven by live conditions (sports timeouts, el
+	MaxAdDurationSeconds int      `json:"max_ad_duration_seconds,omitempty"` // Maximum duration in seconds for a single ad within a break. Buyers need this
+	UnplannedBreaks      *bool    `json:"unplanned_breaks,omitempty"`        // Whether ad breaks are dynamic and driven by live conditions (sports timeouts
 	SupportedFormats     []string `json:"supported_formats,omitempty"`       // Ad format types supported in breaks (e.g., 'video', 'audio', 'display')
 }
 
-// AccountAuthorization — The authenticated caller's grant against a specific account: which tasks are callable, which request
+// AccountAuthorization — The authenticated caller's grant against a specific account: which tasks are callable, which
 type AccountAuthorization struct {
-	AllowedTasks []string            `json:"allowed_tasks"`          // Canonical snake_case task names the caller may invoke against this account (e.g.
-	FieldScopes  map[string][]string `json:"field_scopes,omitempty"` // Optional per-task allowlist of request fields the caller may set. Keys are task
-	ScopeName    any                 `json:"scope_name,omitempty"`   // Optional named scope identifier. When present, callers and the vendor agent can
-	ReadOnly     *bool               `json:"read_only,omitempty"`    // Convenience flag. When true, the caller is permitted only non-mutating tasks. Se
+	AllowedTasks []string            `json:"allowed_tasks"`          // Canonical snake_case task names the caller may invoke against this account
+	FieldScopes  map[string][]string `json:"field_scopes,omitempty"` // Optional per-task allowlist of request fields the caller may set. Keys are
+	ScopeName    any                 `json:"scope_name,omitempty"`   // Optional named scope identifier. When present, callers and the vendor agent
+	ReadOnly     *bool               `json:"read_only,omitempty"`    // Convenience flag. When true, the caller is permitted only non-mutating tasks.
 }
 
-// CommittedMetric — One metric in a package's binding reporting contract. Each entry uses `scope` as the discriminator a
+// CommittedMetric — One metric in a package's binding reporting contract. Each entry uses `scope` as the discriminator
 type CommittedMetric struct {
 	Scope       string           `json:"scope,omitempty"`        // Vendor-defined metric, identified by the tuple `(vendor, metric_id)`.
 	MetricID    string           `json:"metric_id,omitempty"`    // Identifier for the metric within the vendor's vocabulary.
-	Qualifier   *MetricQualifier `json:"qualifier,omitempty"`    // Disambiguates metrics whose definition varies by qualifier. Today carries five k
+	Qualifier   *MetricQualifier `json:"qualifier,omitempty"`    // Disambiguates metrics whose definition varies by qualifier. Today carries five
 	CommittedAt string           `json:"committed_at,omitempty"` // ISO 8601 timestamp when this vendor metric became part of the contract.
-	Vendor      *BrandReference  `json:"vendor,omitempty"`       // Vendor that defines and computes this metric. The vendor's `brand.json` `agents[
+	Vendor      *BrandReference  `json:"vendor,omitempty"`       // Vendor that defines and computes this metric. The vendor's `brand.json`
 }
 
-// InstallmentDeadlines — Deadlines associated with a bookable installment. Applies to any channel where inventory is tied to
+// InstallmentDeadlines — Deadlines associated with a bookable installment. Applies to any channel where inventory is tied
 type InstallmentDeadlines struct {
-	BookingDeadline      string             `json:"booking_deadline,omitempty"`      // Last date/time to book a placement in this installment (ISO 8601). After this po
-	CancellationDeadline string             `json:"cancellation_deadline,omitempty"` // Last date/time to cancel without penalty (ISO 8601). Cancellations after this po
-	MaterialDeadlines    []MaterialDeadline `json:"material_deadlines,omitempty"`    // Stages for creative material submission. Items MUST be in chronological order by
+	BookingDeadline      string             `json:"booking_deadline,omitempty"`      // Last date/time to book a placement in this installment (ISO 8601). After this
+	CancellationDeadline string             `json:"cancellation_deadline,omitempty"` // Last date/time to cancel without penalty (ISO 8601). Cancellations after this
+	MaterialDeadlines    []MaterialDeadline `json:"material_deadlines,omitempty"`    // Stages for creative material submission. Items MUST be in chronological order
 }
 
-// MaterialDeadline — A deadline for creative material submission. Sellers declare stages to distinguish draft materials (
+// MaterialDeadline — A deadline for creative material submission. Sellers declare stages to distinguish draft materials
 type MaterialDeadline struct {
-	Stage string `json:"stage"`           // Submission stage identifier. Use 'draft' for materials that need seller processi
+	Stage string `json:"stage"`           // Submission stage identifier. Use 'draft' for materials that need seller
 	DueAt string `json:"due_at"`          // When materials for this stage are due (ISO 8601)
-	Label string `json:"label,omitempty"` // What the seller needs at this stage (e.g., 'Talking points and brand guidelines'
+	Label string `json:"label,omitempty"` // What the seller needs at this stage (e.g., 'Talking points and brand
 }
 
-// AuditObservation — Non-blocking observation emitted by a creative governance agent. Audit observations surface claims t
+// AuditObservation — Non-blocking observation emitted by a creative governance agent. Audit observations surface claims
 type AuditObservation struct {
-	Code     string                   `json:"code"`     // Machine-readable observation code. `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED` means
-	Severity string                   `json:"severity"` // Routing severity. `audit-worthy` means the observation should be retained and ma
-	Recovery string                   `json:"recovery"` // Caller recovery category for audit observations, distinct from the canonical err
-	Field    string                   `json:"field"`    // Resolved creative manifest path for the risky claim side of the observation, for
-	Message  string                   `json:"message"`  // Human-readable summary suitable for an audit queue. Do not include PII, cross-te
-	Details  *AuditObservationDetails `json:"details"`  // Audit-safe structured details. Mirrors the safe allowlist keys used for `PROVENA
+	Code     string                   `json:"code"`     // Machine-readable observation code. `OVERSIGHT_DISCLOSURE_CARVEOUT_CLAIMED`
+	Severity string                   `json:"severity"` // Routing severity. `audit-worthy` means the observation should be retained and
+	Recovery string                   `json:"recovery"` // Caller recovery category for audit observations, distinct from the canonical
+	Field    string                   `json:"field"`    // Resolved creative manifest path for the risky claim side of the observation
+	Message  string                   `json:"message"`  // Human-readable summary suitable for an audit queue. Do not include PII
+	Details  *AuditObservationDetails `json:"details"`  // Audit-safe structured details. Mirrors the safe allowlist keys used for
 	Ext      any                      `json:"ext,omitempty"`
 }
 
@@ -7089,88 +7089,88 @@ type AuditObservation struct {
 
 // PackageInput — Package configuration for media buy creation
 type PackageInput struct {
-	AdcpVersion          string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion     int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ProductID            string                     `json:"product_id"`                   // Product ID for this package. Sellers MUST echo this value on every response pack
-	FormatIDs            []FormatRef                `json:"format_ids,omitempty"`         // Legacy named-format selector. Array of format IDs that will be used for this pac
-	FormatOptionRefs     []FormatOptionRef          `json:"format_option_refs,omitempty"` // 3.1+ format-option selector. Array of structured format option references, each
-	FormatKind           string                     `json:"format_kind,omitempty"`        // 3.1+ direct canonical selector. Names the canonical format shape this package ta
-	Params               map[string]any             `json:"params,omitempty"`             // Parameters for the direct canonical selector in `format_kind`. Shape follows the
+	AdcpVersion          string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion     int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ProductID            string                     `json:"product_id"`                   // Product ID for this package. Sellers MUST echo this value on every response
+	FormatIDs            []FormatRef                `json:"format_ids,omitempty"`         // Legacy named-format selector. Array of format IDs that will be used for this
+	FormatOptionRefs     []FormatOptionRef          `json:"format_option_refs,omitempty"` // 3.1+ format-option selector. Array of structured format option references
+	FormatKind           string                     `json:"format_kind,omitempty"`        // 3.1+ direct canonical selector. Names the canonical format shape this package
+	Params               map[string]any             `json:"params,omitempty"`             // Parameters for the direct canonical selector in `format_kind`. Shape follows
 	Budget               float64                    `json:"budget"`                       // Budget allocation for this package in the media buy's currency
 	Pacing               string                     `json:"pacing,omitempty"`
 	PricingOptionID      string                     `json:"pricing_option_id"`            // ID of the selected pricing option from the product's pricing_options array
-	BidPrice             *float64                   `json:"bid_price,omitempty"`          // Bid price for auction-based pricing options. This is the exact bid/price to hono
+	BidPrice             *float64                   `json:"bid_price,omitempty"`          // Bid price for auction-based pricing options. This is the exact bid/price to
 	Impressions          *float64                   `json:"impressions,omitempty"`        // Impression goal for this package
-	StartTime            string                     `json:"start_time,omitempty"`         // Flight start date/time for this package in ISO 8601 format. When omitted, the pa
-	EndTime              string                     `json:"end_time,omitempty"`           // Flight end date/time for this package in ISO 8601 format. When omitted, the pack
-	Paused               *bool                      `json:"paused,omitempty"`             // Whether this package should be created in a paused state. Paused packages do not
-	Catalogs             []Catalog                  `json:"catalogs,omitempty"`           // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., on
-	OptimizationGoals    []OptimizationGoal         `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward thes
+	StartTime            string                     `json:"start_time,omitempty"`         // Flight start date/time for this package in ISO 8601 format. When omitted, the
+	EndTime              string                     `json:"end_time,omitempty"`           // Flight end date/time for this package in ISO 8601 format. When omitted, the
+	Paused               *bool                      `json:"paused,omitempty"`             // Whether this package should be created in a paused state. Paused packages do
+	Catalogs             []Catalog                  `json:"catalogs,omitempty"`           // Catalogs this package promotes. Each catalog MUST have a distinct type (e.g.
+	OptimizationGoals    []OptimizationGoal         `json:"optimization_goals,omitempty"` // Optimization targets for this package. The seller optimizes delivery toward
 	TargetingOverlay     *Targeting                 `json:"targeting_overlay,omitempty"`
-	MeasurementTerms     *MeasurementTerms          `json:"measurement_terms,omitempty"`      // Buyer's proposed billing measurement and makegood terms. Overrides product defau
-	PerformanceStandards []PerformanceStandard      `json:"performance_standards,omitempty"`  // Buyer's proposed performance standards for this package. Overrides product defau
-	CommittedMetrics     []RequestedCommittedMetric `json:"committed_metrics,omitempty"`      // Buyer's proposed reporting contract for this package — the metrics the buyer wan
-	CreativeAssignments  []CreativeAssignment       `json:"creative_assignments,omitempty"`   // Assign existing library creatives to this package with optional weights and plac
-	Creatives            []CreativeAsset            `json:"creatives,omitempty"`              // Upload new creative assets and assign to this package (creatives will be added t
-	AgencyEstimateNumber string                     `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Overrides the media bu
-	Context              any                        `json:"context,omitempty"`                // Opaque package-level correlation data echoed unchanged in the package response,
+	MeasurementTerms     *MeasurementTerms          `json:"measurement_terms,omitempty"`      // Buyer's proposed billing measurement and makegood terms. Overrides product
+	PerformanceStandards []PerformanceStandard      `json:"performance_standards,omitempty"`  // Buyer's proposed performance standards for this package. Overrides product
+	CommittedMetrics     []RequestedCommittedMetric `json:"committed_metrics,omitempty"`      // Buyer's proposed reporting contract for this package — the metrics the buyer
+	CreativeAssignments  []CreativeAssignment       `json:"creative_assignments,omitempty"`   // Assign existing library creatives to this package with optional weights and
+	Creatives            []CreativeAsset            `json:"creatives,omitempty"`              // Upload new creative assets and assign to this package (creatives will be added
+	AgencyEstimateNumber string                     `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number for this package. Overrides the media
+	Context              any                        `json:"context,omitempty"`                // Opaque package-level correlation data echoed unchanged in the package
 	Ext                  any                        `json:"ext,omitempty"`
 }
 
-// PackageUpdate — Package update configuration for update_media_buy. Identifies package by package_id and specifies fi
+// PackageUpdate — Package update configuration for update_media_buy. Identifies package by package_id and specifies
 type PackageUpdate struct {
 	PackageID              string                `json:"package_id"`       // Seller's ID of package to update
-	Budget                 *float64              `json:"budget,omitempty"` // Updated budget allocation for this package in the currency specified by the pric
+	Budget                 *float64              `json:"budget,omitempty"` // Updated budget allocation for this package in the currency specified by the
 	Pacing                 string                `json:"pacing,omitempty"`
-	BidPrice               *float64              `json:"bid_price,omitempty"`                // Updated bid price for auction-based pricing options. This is the exact bid/price
+	BidPrice               *float64              `json:"bid_price,omitempty"`                // Updated bid price for auction-based pricing options. This is the exact
 	Impressions            *float64              `json:"impressions,omitempty"`              // Updated impression goal for this package
-	StartTime              string                `json:"start_time,omitempty"`               // Updated flight start date/time for this package in ISO 8601 format. Must fall wi
-	EndTime                string                `json:"end_time,omitempty"`                 // Updated flight end date/time for this package in ISO 8601 format. Must fall with
+	StartTime              string                `json:"start_time,omitempty"`               // Updated flight start date/time for this package in ISO 8601 format. Must fall
+	EndTime                string                `json:"end_time,omitempty"`                 // Updated flight end date/time for this package in ISO 8601 format. Must fall
 	Paused                 *bool                 `json:"paused,omitempty"`                   // Pause/resume specific package (true = paused, false = active)
-	Canceled               *bool                 `json:"canceled,omitempty"`                 // Cancel this specific package. Cancellation is irreversible — canceled packages s
+	Canceled               *bool                 `json:"canceled,omitempty"`                 // Cancel this specific package. Cancellation is irreversible — canceled packages
 	CancellationReason     string                `json:"cancellation_reason,omitempty"`      // Reason for canceling this package.
-	Catalogs               []Catalog             `json:"catalogs,omitempty"`                 // Replace the catalogs this package promotes. Uses replacement semantics — the pro
-	OptimizationGoals      []OptimizationGoal    `json:"optimization_goals,omitempty"`       // Replace all optimization goals for this package. Uses replacement semantics — om
-	TargetingOverlay       *Targeting            `json:"targeting_overlay,omitempty"`        // Targeting overlay to apply to this package. Uses replacement semantics — the ful
-	KeywordTargetsAdd      []KeywordTargetUpdate `json:"keyword_targets_add,omitempty"`      // Keyword targets to add or update on this package. Upserts by (keyword, match_typ
-	KeywordTargetsRemove   []KeywordTargetRef    `json:"keyword_targets_remove,omitempty"`   // Keyword targets to remove from this package. Removes matching (keyword, match_ty
-	NegativeKeywordsAdd    []KeywordTargetRef    `json:"negative_keywords_add,omitempty"`    // Negative keywords to add to this package. Appends to the existing negative keywo
-	NegativeKeywordsRemove []KeywordTargetRef    `json:"negative_keywords_remove,omitempty"` // Negative keywords to remove from this package. Removes matching keyword+match_ty
-	CreativeAssignments    []CreativeAssignment  `json:"creative_assignments,omitempty"`     // Replace creative assignments for this package with optional weights and placemen
-	Creatives              []CreativeAsset       `json:"creatives,omitempty"`                // Upload new creative assets and assign to this package (creatives will be added t
+	Catalogs               []Catalog             `json:"catalogs,omitempty"`                 // Replace the catalogs this package promotes. Uses replacement semantics — the
+	OptimizationGoals      []OptimizationGoal    `json:"optimization_goals,omitempty"`       // Replace all optimization goals for this package. Uses replacement semantics —
+	TargetingOverlay       *Targeting            `json:"targeting_overlay,omitempty"`        // Targeting overlay to apply to this package. Uses replacement semantics — the
+	KeywordTargetsAdd      []KeywordTargetUpdate `json:"keyword_targets_add,omitempty"`      // Keyword targets to add or update on this package. Upserts by (keyword
+	KeywordTargetsRemove   []KeywordTargetRef    `json:"keyword_targets_remove,omitempty"`   // Keyword targets to remove from this package. Removes matching (keyword
+	NegativeKeywordsAdd    []KeywordTargetRef    `json:"negative_keywords_add,omitempty"`    // Negative keywords to add to this package. Appends to the existing negative
+	NegativeKeywordsRemove []KeywordTargetRef    `json:"negative_keywords_remove,omitempty"` // Negative keywords to remove from this package. Removes matching
+	CreativeAssignments    []CreativeAssignment  `json:"creative_assignments,omitempty"`     // Replace creative assignments for this package with optional weights and
+	Creatives              []CreativeAsset       `json:"creatives,omitempty"`                // Upload new creative assets and assign to this package (creatives will be added
 	Context                any                   `json:"context,omitempty"`
 	Ext                    any                   `json:"ext,omitempty"`
 }
 
 // --- Referenced schema types ---
 
-// AccountWithAuthorization — List-accounts response item: the full Account object plus optional caller-specific authorization met
+// AccountWithAuthorization — List-accounts response item: the full Account object plus optional caller-specific authorization
 type AccountWithAuthorization struct {
 	AccountID           string                   `json:"account_id"`               // Unique identifier for this account
 	Name                string                   `json:"name"`                     // Human-readable account name (e.g., 'Acme', 'Acme c/o Pinnacle')
 	Advertiser          string                   `json:"advertiser,omitempty"`     // The advertiser whose rates apply to this account
-	BillingProxy        string                   `json:"billing_proxy,omitempty"`  // Optional intermediary who receives invoices on behalf of the advertiser (e.g., a
-	Status              string                   `json:"status"`                   // Account lifecycle status. See the Accounts Protocol overview for the operations
+	BillingProxy        string                   `json:"billing_proxy,omitempty"`  // Optional intermediary who receives invoices on behalf of the advertiser (e.g.
+	Status              string                   `json:"status"`                   // Account lifecycle status. See the Accounts Protocol overview for the
 	Brand               *BrandReference          `json:"brand,omitempty"`          // Brand reference identifying the advertiser
-	Operator            string                   `json:"operator,omitempty"`       // Domain of the entity operating this account. When the brand operates directly, t
-	Billing             string                   `json:"billing,omitempty"`        // Who is invoiced on this account. See billing_entity for the invoiced party's bus
-	BillingEntity       *BusinessEntity          `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the lega
+	Operator            string                   `json:"operator,omitempty"`       // Domain of the entity operating this account. When the brand operates directly
+	Billing             string                   `json:"billing,omitempty"`        // Who is invoiced on this account. See billing_entity for the invoiced party's
+	BillingEntity       *BusinessEntity          `json:"billing_entity,omitempty"` // Business entity details for the party responsible for payment. Contains the
 	RateCard            string                   `json:"rate_card,omitempty"`      // Identifier for the rate card applied to this account
-	PaymentTerms        string                   `json:"payment_terms,omitempty"`  // Payment terms agreed for this account. Binding for all invoices when the account
+	PaymentTerms        string                   `json:"payment_terms,omitempty"`  // Payment terms agreed for this account. Binding for all invoices when the
 	CreditLimit         *AccountCreditLimit      `json:"credit_limit,omitempty"`   // Maximum outstanding balance allowed
-	Setup               *AccountSetup            `json:"setup,omitempty"`          // Present when status is 'pending_approval'. Contains next steps for completing ac
+	Setup               *AccountSetup            `json:"setup,omitempty"`          // Present when status is 'pending_approval'. Contains next steps for completing
 	AccountScope        string                   `json:"account_scope,omitempty"`
-	GovernanceAgents    []AccountGovernanceAgent `json:"governance_agents,omitempty"`    // Governance agent endpoint registered on this account. Exactly one entry per sync
-	ReportingBucket     *ReportingBucket         `json:"reporting_bucket,omitempty"`     // Cloud storage bucket where the seller delivers offline reporting files for this
-	Sandbox             *bool                    `json:"sandbox,omitempty"`              // When true, this is a sandbox account — no real platform calls, no real spend. Fo
-	NotificationConfigs []NotificationConfig     `json:"notification_configs,omitempty"` // Account-level webhook subscriptions for notifications whose lifecycle outlives a
+	GovernanceAgents    []AccountGovernanceAgent `json:"governance_agents,omitempty"`    // Governance agent endpoint registered on this account. Exactly one entry per
+	ReportingBucket     *ReportingBucket         `json:"reporting_bucket,omitempty"`     // Cloud storage bucket where the seller delivers offline reporting files for
+	Sandbox             *bool                    `json:"sandbox,omitempty"`              // When true, this is a sandbox account — no real platform calls, no real spend.
+	NotificationConfigs []NotificationConfig     `json:"notification_configs,omitempty"` // Account-level webhook subscriptions for notifications whose lifecycle outlives
 	Ext                 any                      `json:"ext,omitempty"`
-	Authorization       *AccountAuthorization    `json:"authorization,omitempty"` // Optional. The caller's scope grant against this account. Vendor agents of any ty
+	Authorization       *AccountAuthorization    `json:"authorization,omitempty"` // Optional. The caller's scope grant against this account. Vendor agents of any
 }
 
 // ImageAsset — Image asset with URL and dimensions
 type ImageAsset struct {
-	AssetType  string      `json:"asset_type"`           // Discriminator identifying this as an image asset. See /schemas/creative/asset-ty
+	AssetType  string      `json:"asset_type"`           // Discriminator identifying this as an image asset. See
 	URL        string      `json:"url"`                  // URL to the image asset
 	Width      int         `json:"width"`                // Width in pixels
 	Height     int         `json:"height"`               // Height in pixels
@@ -7179,216 +7179,216 @@ type ImageAsset struct {
 	Provenance *Provenance `json:"provenance,omitempty"` // Provenance metadata for this asset, overrides manifest-level provenance
 }
 
-// CanonicalProjectionRef — Authoritative v1 → v2 projection annotation on a v1 named format. Tells SDKs which canonical-formats
+// CanonicalProjectionRef — Authoritative v1 → v2 projection annotation on a v1 named format. Tells SDKs which
 type CanonicalProjectionRef struct {
-	Kind          string                            `json:"kind"`                     // The v2 canonical-format-kind this v1 format projects to (`image`, `html5`, `disp
-	AssetSource   string                            `json:"asset_source,omitempty"`   // Where the rendered asset bytes come from on the projected v2 declaration. Defaul
-	SlotsOverride []CanonicalProjectionSlotOverride `json:"slots_override,omitempty"` // When the v1 named format's slot shape differs from the canonical's default slots
+	Kind          string                            `json:"kind"`                     // The v2 canonical-format-kind this v1 format projects to (`image`, `html5`
+	AssetSource   string                            `json:"asset_source,omitempty"`   // Where the rendered asset bytes come from on the projected v2 declaration.
+	SlotsOverride []CanonicalProjectionSlotOverride `json:"slots_override,omitempty"` // When the v1 named format's slot shape differs from the canonical's default
 }
 
-// CanonicalProjectionSlotOverride — A single slot override used when projecting a legacy named format to a v2 canonical ProductFormatDec
+// CanonicalProjectionSlotOverride — A single slot override used when projecting a legacy named format to a v2 canonical
 type CanonicalProjectionSlotOverride struct {
-	AssetGroupID          string `json:"asset_group_id"`                    // Asset group identifier from `asset-group-vocabulary.json` (e.g., `generation_pro
-	AssetType             string `json:"asset_type"`                        // Asset type — `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`, `zi
+	AssetGroupID          string `json:"asset_group_id"`                    // Asset group identifier from `asset-group-vocabulary.json` (e.g.
+	AssetType             string `json:"asset_type"`                        // Asset type — `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`
 	Required              *bool  `json:"required,omitempty"`                // Whether the slot is required in the projected declaration.
 	MaxChars              int    `json:"max_chars,omitempty"`               // Max character count for text slots.
-	ConsumedForProduction *bool  `json:"consumed_for_production,omitempty"` // When false, slot is for moderation/review only and is NOT consumed by the seller
+	ConsumedForProduction *bool  `json:"consumed_for_production,omitempty"` // When false, slot is for moderation/review only and is NOT consumed by the
 }
 
-// CreativeVariable — A dynamic content variable (DCO slot) on a creative. Variables represent content that can change at
+// CreativeVariable — A dynamic content variable (DCO slot) on a creative. Variables represent content that can change
 type CreativeVariable struct {
 	VariableID   string `json:"variable_id"`             // Variable identifier on the creative platform
 	Name         string `json:"name"`                    // Human-readable variable name
-	VariableType string `json:"variable_type"`           // Data type of the variable. Each type represents a semantic content slot: text (h
-	DefaultValue string `json:"default_value,omitempty"` // Default value used when no dynamic value is provided at serve time. All types ar
+	VariableType string `json:"variable_type"`           // Data type of the variable. Each type represents a semantic content slot: text
+	DefaultValue string `json:"default_value,omitempty"` // Default value used when no dynamic value is provided at serve time. All types
 	Required     *bool  `json:"required,omitempty"`      // Whether this variable must have a value for the creative to serve
 }
 
-// DateRange — A date range with inclusive start and end dates (ISO 8601 calendar dates). Used for billing periods,
+// DateRange — A date range with inclusive start and end dates (ISO 8601 calendar dates). Used for billing
 type DateRange struct {
 	Start string `json:"start"` // Start date (inclusive), ISO 8601
 	End   string `json:"end"`   // End date (inclusive), ISO 8601
 }
 
-// DeliveryMetricAggregate — One cross-buy delivery aggregate partitioned by metric scope and qualifier. Row-symmetric with `pack
+// DeliveryMetricAggregate — One cross-buy delivery aggregate partitioned by metric scope and qualifier. Row-symmetric with
 type DeliveryMetricAggregate struct {
 	Scope                 string           `json:"scope,omitempty"`                  // Vendor-defined metric, identified by the tuple `(vendor, metric_id)`.
 	MetricID              string           `json:"metric_id,omitempty"`              // Identifier for the metric within the vendor's vocabulary.
-	Qualifier             *MetricQualifier `json:"qualifier,omitempty"`              // Optional qualifier keys for vendor metrics that need disambiguation (rare today
-	Value                 float64          `json:"value,omitempty"`                  // Aggregated vendor-attested value. Unit semantics defined by the vendor — see the
-	MeasurableImpressions float64          `json:"measurable_impressions,omitempty"` // Coverage denominator — vendor measurement is rarely 100% of delivery (only impre
+	Qualifier             *MetricQualifier `json:"qualifier,omitempty"`              // Optional qualifier keys for vendor metrics that need disambiguation (rare
+	Value                 float64          `json:"value,omitempty"`                  // Aggregated vendor-attested value. Unit semantics defined by the vendor — see
+	MeasurableImpressions float64          `json:"measurable_impressions,omitempty"` // Coverage denominator — vendor measurement is rarely 100% of delivery (only
 	ViewableImpressions   float64          `json:"viewable_impressions,omitempty"`   // Component for `viewable_rate` (numerator).
-	Impressions           float64          `json:"impressions,omitempty"`            // Component for rate metrics whose denominator is total impressions (e.g., `comple
+	Impressions           float64          `json:"impressions,omitempty"`            // Component for rate metrics whose denominator is total impressions (e.g.
 	CompletedViews        float64          `json:"completed_views,omitempty"`        // Component for `completion_rate` (numerator).
 	Spend                 float64          `json:"spend,omitempty"`                  // Component for cost-per metrics (denominator-ish; the cost half of the ratio).
 	Conversions           float64          `json:"conversions,omitempty"`            // Component for `cost_per_acquisition` and ROAS-family metrics.
 	ConversionValue       float64          `json:"conversion_value,omitempty"`       // Component for `roas` (numerator).
 	Clicks                float64          `json:"clicks,omitempty"`                 // Component for `cost_per_click` and click-rate metrics.
-	Vendor                *BrandReference  `json:"vendor,omitempty"`                 // Vendor that defines and computes this metric. The vendor's `brand.json` `agents[
+	Vendor                *BrandReference  `json:"vendor,omitempty"`                 // Vendor that defines and computes this metric. The vendor's `brand.json`
 }
 
-// ForecastVendorMetricValue — A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values parall
+// ForecastVendorMetricValue — A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values
 type ForecastVendorMetricValue struct {
-	Vendor                BrandReference `json:"vendor"`                           // Vendor that defines and forecasts this metric. Matches a reporting_capabilities.
-	MetricID              string         `json:"metric_id"`                        // Identifier for the metric within the vendor's vocabulary. Matches a vendor_metri
-	Value                 ForecastRange  `json:"value"`                            // Forecasted vendor metric value. Unit semantics are vendor-defined; see unit and
-	Unit                  string         `json:"unit,omitempty"`                   // Unit of the value. Free-form to accommodate heterogeneous vendor metrics (e.g.,
-	MeasurableImpressions *ForecastRange `json:"measurable_impressions,omitempty"` // Forecasted number of impressions the vendor expects to be able to measure. Cover
-	Breakdown             map[string]any `json:"breakdown,omitempty"`              // Optional structured payload for vendor metrics that do not fit a single scalar.
+	Vendor                BrandReference `json:"vendor"`                           // Vendor that defines and forecasts this metric. Matches a
+	MetricID              string         `json:"metric_id"`                        // Identifier for the metric within the vendor's vocabulary. Matches a
+	Value                 ForecastRange  `json:"value"`                            // Forecasted vendor metric value. Unit semantics are vendor-defined; see unit
+	Unit                  string         `json:"unit,omitempty"`                   // Unit of the value. Free-form to accommodate heterogeneous vendor metrics
+	MeasurableImpressions *ForecastRange `json:"measurable_impressions,omitempty"` // Forecasted number of impressions the vendor expects to be able to measure.
+	Breakdown             map[string]any `json:"breakdown,omitempty"`              // Optional structured payload for vendor metrics that do not fit a single
 }
 
-// FormatOptionRef — Discriminated reference to a product format option. The global canonical shape is still named by `fo
+// FormatOptionRef — Discriminated reference to a product format option. The global canonical shape is still named by
 type FormatOptionRef struct {
 	Scope          string `json:"scope,omitempty"`            // Reference resolves only against the target product's inline `format_options[]`.
 	FormatOptionID string `json:"format_option_id,omitempty"` // Stable format option ID from the target product's inline `format_options[]`.
 }
 
-// MediaBuyAvailableAction — An action currently available on a media buy, resolved against the buy's current status, negotiated
+// MediaBuyAvailableAction — An action currently available on a media buy, resolved against the buy's current status
 type MediaBuyAvailableAction struct {
 	Action   string     `json:"action"`              // The action identifier.
-	Mode     string     `json:"mode"`                // The single mode that applies right now on this buy for this action. Singular bec
-	Sla      *SlaWindow `json:"sla,omitempty"`       // Optional SLA commitment for this action on this buy. Absence means no commitment
-	TermsRef string     `json:"terms_ref,omitempty"` // Optional pointer into buy-terms negotiation (forward-references the buy-terms na
+	Mode     string     `json:"mode"`                // The single mode that applies right now on this buy for this action. Singular
+	Sla      *SlaWindow `json:"sla,omitempty"`       // Optional SLA commitment for this action on this buy. Absence means no
+	TermsRef string     `json:"terms_ref,omitempty"` // Optional pointer into buy-terms negotiation (forward-references the buy-terms
 }
 
-// MediaBuyFeatures — Optional media-buy protocol features. Used in capability declarations (seller declares support) and
+// MediaBuyFeatures — Optional media-buy protocol features. Used in capability declarations (seller declares support)
 type MediaBuyFeatures struct {
 	InlineCreativeManagement  *bool `json:"inline_creative_management,omitempty"`  // Supports creatives provided inline in create_media_buy requests
-	PropertyListFiltering     *bool `json:"property_list_filtering,omitempty"`     // Honors property_list parameter in get_products to filter results to buyer-approv
-	CatalogManagement         *bool `json:"catalog_management,omitempty"`          // Supports sync_catalogs task for catalog feed management with platform review and
-	CommittedMetricsSupported *bool `json:"committed_metrics_supported,omitempty"` // Seller has per-package snapshot infrastructure for the reporting contract. When
+	PropertyListFiltering     *bool `json:"property_list_filtering,omitempty"`     // Honors property_list parameter in get_products to filter results to
+	CatalogManagement         *bool `json:"catalog_management,omitempty"`          // Supports sync_catalogs task for catalog feed management with platform review
+	CommittedMetricsSupported *bool `json:"committed_metrics_supported,omitempty"` // Seller has per-package snapshot infrastructure for the reporting contract.
 }
 
-// MissingMetric — One metric the binding reporting contract declared but that is not populated in a delivery report. S
+// MissingMetric — One metric the binding reporting contract declared but that is not populated in a delivery report.
 type MissingMetric struct {
 	Scope     string           `json:"scope,omitempty"`
 	MetricID  string           `json:"metric_id,omitempty"`
-	Qualifier *MetricQualifier `json:"qualifier,omitempty"` // Mirrors the qualifier on `committed_metrics` so the missing entry preserves the
+	Qualifier *MetricQualifier `json:"qualifier,omitempty"` // Mirrors the qualifier on `committed_metrics` so the missing entry preserves
 	Vendor    *BrandReference  `json:"vendor,omitempty"`
 }
 
-// NotificationConfig — Account-level webhook subscription for notifications whose lifecycle outlives any single media buy —
+// NotificationConfig — Account-level webhook subscription for notifications whose lifecycle outlives any single media buy
 type NotificationConfig struct {
-	SubscriberID   string                       `json:"subscriber_id"`            // Buyer-supplied identifier for this subscription endpoint. This is the stable log
-	URL            string                       `json:"url"`                      // Webhook endpoint URL. Same wire contract as `push-notification-config.url` — `fo
-	EventTypes     []string                     `json:"event_types"`              // Notification types this subscriber wishes to receive on the registered `url`. Th
-	Authentication *LegacyWebhookAuthentication `json:"authentication,omitempty"` // Legacy authentication selector. Same precedence and semantics as `push-notificat
-	Active         *bool                        `json:"active,omitempty"`         // When false, the seller persists the configuration but suppresses fires. Use to p
+	SubscriberID   string                       `json:"subscriber_id"`            // Buyer-supplied identifier for this subscription endpoint. This is the stable
+	URL            string                       `json:"url"`                      // Webhook endpoint URL. Same wire contract as `push-notification-config.url` —
+	EventTypes     []string                     `json:"event_types"`              // Notification types this subscriber wishes to receive on the registered `url`.
+	Authentication *LegacyWebhookAuthentication `json:"authentication,omitempty"` // Legacy authentication selector. Same precedence and semantics as
+	Active         *bool                        `json:"active,omitempty"`         // When false, the seller persists the configuration but suppresses fires. Use to
 	Ext            any                          `json:"ext,omitempty"`
 }
 
-// PackageSignalTargetingGroup — A basic Boolean group of package-level signal targeting entries. 'any' means the user must match at
+// PackageSignalTargetingGroup — A basic Boolean group of package-level signal targeting entries. 'any' means the user must match
 type PackageSignalTargetingGroup struct {
-	Operator string                   `json:"operator"` // How to evaluate the signals in this group. 'any' is an OR include group. 'none'
-	Signals  []PackageSignalTargeting `json:"signals"`  // Signal targeting entries evaluated by this group. Each entry uses the package si
+	Operator string                   `json:"operator"` // How to evaluate the signals in this group. 'any' is an OR include group.
+	Signals  []PackageSignalTargeting `json:"signals"`  // Signal targeting entries evaluated by this group. Each entry uses the package
 }
 
-// PackageSignalTargetingGroups — Top-level basic Boolean composition for package signal targeting. The groups-level operator is requi
+// PackageSignalTargetingGroups — Top-level basic Boolean composition for package signal targeting. The groups-level operator is
 type PackageSignalTargetingGroups struct {
-	Operator string                        `json:"operator"` // Groups-level operator. Required even though v1 only supports 'all': every child
-	Groups   []PackageSignalTargetingGroup `json:"groups"`   // Signal targeting groups to evaluate. Use operator 'any' for include groups and '
+	Operator string                        `json:"operator"` // Groups-level operator. Required even though v1 only supports 'all': every
+	Groups   []PackageSignalTargetingGroup `json:"groups"`   // Signal targeting groups to evaluate. Use operator 'any' for include groups and
 }
 
-// PackageSignalTargeting — Buy-time selection of one seller-offered signal inside a package signal targeting group. The signal_
+// PackageSignalTargeting — Buy-time selection of one seller-offered signal inside a package signal targeting group. The
 type PackageSignalTargeting struct {
 	SignalRef            *SignalRef     `json:"signal_ref,omitempty"`              // Named signal being targeted.
 	ValueType            string         `json:"value_type,omitempty"`              // Discriminator for numeric signals.
-	Value                *bool          `json:"value,omitempty"`                   // Binary package signal entries match users for whom the signal is true. Use the p
+	Value                *bool          `json:"value,omitempty"`                   // Binary package signal entries match users for whom the signal is true. Use the
 	Values               []string       `json:"values,omitempty"`                  // Values to target. Users with any of these values match the expression.
-	MinValue             *float64       `json:"min_value,omitempty"`               // Minimum value, inclusive. Omit for no minimum. Should be within the signal defin
-	MaxValue             *float64       `json:"max_value,omitempty"`               // Maximum value, inclusive. Omit for no maximum. Should be within the signal defin
-	PricingOptionID      string         `json:"pricing_option_id,omitempty"`       // Pricing option selected for this signal. Use the pricing_option_id from the prod
-	SignalAgentSegmentID string         `json:"signal_agent_segment_id,omitempty"` // Optional opaque seller execution handle for this signal. Omit when signal_ref is
-	ActivationKey        *ActivationKey `json:"activation_key,omitempty"`          // Destination-specific activation key returned by get_signals or activate_signal.
+	MinValue             *float64       `json:"min_value,omitempty"`               // Minimum value, inclusive. Omit for no minimum. Should be within the signal
+	MaxValue             *float64       `json:"max_value,omitempty"`               // Maximum value, inclusive. Omit for no maximum. Should be within the signal
+	PricingOptionID      string         `json:"pricing_option_id,omitempty"`       // Pricing option selected for this signal. Use the pricing_option_id from the
+	SignalAgentSegmentID string         `json:"signal_agent_segment_id,omitempty"` // Optional opaque seller execution handle for this signal. Omit when signal_ref
+	ActivationKey        *ActivationKey `json:"activation_key,omitempty"`          // Destination-specific activation key returned by get_signals or
 }
 
-// PlacementRef — Reference to a placement by publisher domain and placement ID. Placement IDs are publisher-scoped, m
+// PlacementRef — Reference to a placement by publisher domain and placement ID. Placement IDs are publisher-scoped
 type PlacementRef struct {
-	PublisherDomain string `json:"publisher_domain,omitempty"` // Domain where the adagents.json declaring this placement is hosted. Omitted only
-	PlacementID     string `json:"placement_id"`               // Placement ID from the publisher's adagents.json placement catalog, or an inline
+	PublisherDomain string `json:"publisher_domain,omitempty"` // Domain where the adagents.json declaring this placement is hosted. Omitted
+	PlacementID     string `json:"placement_id"`               // Placement ID from the publisher's adagents.json placement catalog, or an
 }
 
-// PlatformExtensionRef — Reference to a platform extension definition. The agent that owns the URI is authoritative for the e
+// PlatformExtensionRef — Reference to a platform extension definition. The agent that owns the URI is authoritative for the
 type PlatformExtensionRef struct {
-	URI    string `json:"uri"`    // HTTPS URL identifying the extension. `https://` is mandatory — `http://`, `file:
-	Digest string `json:"digest"` // SHA-256 content digest of the extension definition (sha256:<hex>). Used to detec
+	URI    string `json:"uri"`    // HTTPS URL identifying the extension. `https://` is mandatory — `http://`
+	Digest string `json:"digest"` // SHA-256 content digest of the extension definition (sha256:<hex>). Used to
 }
 
-// ProductAllowedAction — An action a seller declares as allowed on buys created against this product, scoped to the buy statu
+// ProductAllowedAction — An action a seller declares as allowed on buys created against this product, scoped to the buy
 type ProductAllowedAction struct {
 	Action          string     `json:"action"`                     // The action identifier.
-	Modes           []string   `json:"modes"`                      // Modes available for this action on this product. A product may declare multiple
-	AllowedStatuses []string   `json:"allowed_statuses,omitempty"` // Media buy statuses in which this action is permitted. When absent, the action is
-	Sla             *SlaWindow `json:"sla,omitempty"`              // Optional SLA commitment for this action on this product. Absence means no commit
-	TermsRef        string     `json:"terms_ref,omitempty"`        // Optional pointer into buy-terms negotiation (forward-references the buy-terms na
+	Modes           []string   `json:"modes"`                      // Modes available for this action on this product. A product may declare
+	AllowedStatuses []string   `json:"allowed_statuses,omitempty"` // Media buy statuses in which this action is permitted. When absent, the action
+	Sla             *SlaWindow `json:"sla,omitempty"`              // Optional SLA commitment for this action on this product. Absence means no
+	TermsRef        string     `json:"terms_ref,omitempty"`        // Optional pointer into buy-terms negotiation (forward-references the buy-terms
 }
 
-// ProductFormatDeclaration — Inline format declaration on a product. The `format_kind` discriminator names which canonical format
+// ProductFormatDeclaration — Inline format declaration on a product. The `format_kind` discriminator names which canonical
 type ProductFormatDeclaration struct {
 	FormatKind           string                `json:"format_kind"`
-	Params               map[string]any        `json:"params"`                           // Custom shape's params. Validated against the schema fetched from `format_schema.
-	FormatOptionID       string                `json:"format_option_id,omitempty"`       // Stable identifier for this format declaration within its namespace. REQUIRED whe
-	PublisherDomain      string                `json:"publisher_domain,omitempty"`       // Namespace for `format_option_id` when this declaration references or narrows a p
-	DisplayName          string                `json:"display_name,omitempty"`           // Optional seller-controlled human-readable label for this format declaration. Use
-	AppliesToChannels    []string              `json:"applies_to_channels,omitempty"`    // Optional subset of the parent product's `channels` to which this declaration app
-	SellerPreference     string                `json:"seller_preference,omitempty"`      // Optional soft routing hint *within* a product's accepted set of formats — NOT an
-	CanonicalFormatsOnly *bool                 `json:"canonical_formats_only,omitempty"` // When true, this format declaration has no clean v1 projection and SDKs MUST NOT
-	Experimental         *bool                 `json:"experimental,omitempty"`           // When true, THIS seller's specific product declaration may not work as declared —
-	FormatShape          string                `json:"format_shape,omitempty"`           // REQUIRED when `format_kind: "custom"`; otherwise MUST be absent. Recognized glob
-	V1FormatRef          []FormatRef           `json:"v1_format_ref,omitempty"`          // Authoritative v2 → v1 link, expressed as an array of one or more v1 `format_id`
-	FormatSchema         *PlatformExtensionRef `json:"format_schema,omitempty"`          // REQUIRED when `format_kind: "custom"`; otherwise MUST be absent. URI+digest refe
+	Params               map[string]any        `json:"params"`                           // Custom shape's params. Validated against the schema fetched from
+	FormatOptionID       string                `json:"format_option_id,omitempty"`       // Stable identifier for this format declaration within its namespace. REQUIRED
+	PublisherDomain      string                `json:"publisher_domain,omitempty"`       // Namespace for `format_option_id` when this declaration references or narrows a
+	DisplayName          string                `json:"display_name,omitempty"`           // Optional seller-controlled human-readable label for this format declaration.
+	AppliesToChannels    []string              `json:"applies_to_channels,omitempty"`    // Optional subset of the parent product's `channels` to which this declaration
+	SellerPreference     string                `json:"seller_preference,omitempty"`      // Optional soft routing hint *within* a product's accepted set of formats — NOT
+	CanonicalFormatsOnly *bool                 `json:"canonical_formats_only,omitempty"` // When true, this format declaration has no clean v1 projection and SDKs MUST
+	Experimental         *bool                 `json:"experimental,omitempty"`           // When true, THIS seller's specific product declaration may not work as declared
+	FormatShape          string                `json:"format_shape,omitempty"`           // REQUIRED when `format_kind: "custom"`; otherwise MUST be absent. Recognized
+	V1FormatRef          []FormatRef           `json:"v1_format_ref,omitempty"`          // Authoritative v2 → v1 link, expressed as an array of one or more v1
+	FormatSchema         *PlatformExtensionRef `json:"format_schema,omitempty"`          // REQUIRED when `format_kind: "custom"`; otherwise MUST be absent. URI+digest
 }
 
-// ProductSignalTargetingOption — A signal the seller makes available inline for package-level signal composition on this product. Pro
+// ProductSignalTargetingOption — A signal the seller makes available inline for package-level signal composition on this product.
 type ProductSignalTargetingOption struct {
-	SignalRef SignalRef `json:"signal_ref"` // Canonical signal reference. Use scope 'product' for a product-local signal defin
+	SignalRef SignalRef `json:"signal_ref"` // Canonical signal reference. Use scope 'product' for a product-local signal
 	// Deprecated: DEPRECATED.
-	SignalID              *SignalID             `json:"signal_id,omitempty"`               // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility w
-	Name                  string                `json:"name,omitempty"`                    // Human-readable signal name. Required when signal_ref.scope is 'product'. For dat
-	Description           string                `json:"description,omitempty"`             // Detailed signal description. For data_provider and signal_source refs, this is o
-	MethodologyURL        string                `json:"methodology_url,omitempty"`         // Optional link to published methodology, media-kit, or data documentation. For da
-	LastUpdated           string                `json:"last_updated,omitempty"`            // When this listing record was last updated. This indicates freshness of the listi
-	ValueType             string                `json:"value_type,omitempty"`              // The data type of this signal's values. Required when signal_ref.scope is 'produc
+	SignalID              *SignalID             `json:"signal_id,omitempty"`               // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility
+	Name                  string                `json:"name,omitempty"`                    // Human-readable signal name. Required when signal_ref.scope is 'product'. For
+	Description           string                `json:"description,omitempty"`             // Detailed signal description. For data_provider and signal_source refs, this is
+	MethodologyURL        string                `json:"methodology_url,omitempty"`         // Optional link to published methodology, media-kit, or data documentation. For
+	LastUpdated           string                `json:"last_updated,omitempty"`            // When this listing record was last updated. This indicates freshness of the
+	ValueType             string                `json:"value_type,omitempty"`              // The data type of this signal's values. Required when signal_ref.scope is
 	Categories            []string              `json:"categories,omitempty"`              // Valid values for categorical signals. Present when value_type is 'categorical'.
 	Range                 *SignalRange          `json:"range,omitempty"`                   // Valid range for numeric signals. Present when value_type is 'numeric'.
-	SignalAgentSegmentID  string                `json:"signal_agent_segment_id,omitempty"` // Optional opaque seller execution handle for this signal. Omit when signal_ref is
-	ActivationStatus      string                `json:"activation_status,omitempty"`       // Whether this signal option is ready to select on create_media_buy for the reques
-	AllowedTargetingModes []string              `json:"allowed_targeting_modes,omitempty"` // How this signal may be used when composing package-level signal targeting groups
-	DefaultSelected       *bool                 `json:"default_selected,omitempty"`        // Whether the seller recommends or preselects this signal when composing this prod
-	SelectionGroup        string                `json:"selection_group,omitempty"`         // Optional product-defined composability bucket for signal options, such as altern
-	PricingOptions        []VendorPricingOption `json:"pricing_options,omitempty"`         // Signal pricing options available when this signal is selected on this product. P
+	SignalAgentSegmentID  string                `json:"signal_agent_segment_id,omitempty"` // Optional opaque seller execution handle for this signal. Omit when signal_ref
+	ActivationStatus      string                `json:"activation_status,omitempty"`       // Whether this signal option is ready to select on create_media_buy for the
+	AllowedTargetingModes []string              `json:"allowed_targeting_modes,omitempty"` // How this signal may be used when composing package-level signal targeting
+	DefaultSelected       *bool                 `json:"default_selected,omitempty"`        // Whether the seller recommends or preselects this signal when composing this
+	SelectionGroup        string                `json:"selection_group,omitempty"`         // Optional product-defined composability bucket for signal options, such as
+	PricingOptions        []VendorPricingOption `json:"pricing_options,omitempty"`         // Signal pricing options available when this signal is selected on this product.
 }
 
-// ProtocolEnvelope — Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the prot
+// ProtocolEnvelope — Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the
 type ProtocolEnvelope struct {
-	ContextID              string                  `json:"context_id,omitempty"`               // Session/conversation identifier for tracking related operations across multiple
-	Context                any                     `json:"context,omitempty"`                  // Per-request opaque caller-supplied correlation object echoed unchanged in the re
-	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
+	ContextID              string                  `json:"context_id,omitempty"`               // Session/conversation identifier for tracking related operations across
+	Context                any                     `json:"context,omitempty"`                  // Per-request opaque caller-supplied correlation object echoed unchanged in the
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
 }
 
-// SignalListing — Shared signal identity and definition metadata used when a signal is listed outside its authoritativ
+// SignalListing — Shared signal identity and definition metadata used when a signal is listed outside its
 type SignalListing struct {
-	SignalRef *SignalRef `json:"signal_ref,omitempty"` // Canonical signal reference. Use scope 'product' for a product-local signal defin
+	SignalRef *SignalRef `json:"signal_ref,omitempty"` // Canonical signal reference. Use scope 'product' for a product-local signal
 	// Deprecated: DEPRECATED.
-	SignalID       *SignalID    `json:"signal_id,omitempty"`       // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility w
-	Name           string       `json:"name,omitempty"`            // Human-readable signal name. Required when signal_ref.scope is 'product'. For dat
-	Description    string       `json:"description,omitempty"`     // Detailed signal description. For data_provider and signal_source refs, this is o
-	MethodologyURL string       `json:"methodology_url,omitempty"` // Optional link to published methodology, media-kit, or data documentation. For da
-	LastUpdated    string       `json:"last_updated,omitempty"`    // When this listing record was last updated. This indicates freshness of the listi
-	ValueType      string       `json:"value_type,omitempty"`      // The data type of this signal's values. Required when signal_ref.scope is 'produc
+	SignalID       *SignalID    `json:"signal_id,omitempty"`       // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility
+	Name           string       `json:"name,omitempty"`            // Human-readable signal name. Required when signal_ref.scope is 'product'. For
+	Description    string       `json:"description,omitempty"`     // Detailed signal description. For data_provider and signal_source refs, this is
+	MethodologyURL string       `json:"methodology_url,omitempty"` // Optional link to published methodology, media-kit, or data documentation. For
+	LastUpdated    string       `json:"last_updated,omitempty"`    // When this listing record was last updated. This indicates freshness of the
+	ValueType      string       `json:"value_type,omitempty"`      // The data type of this signal's values. Required when signal_ref.scope is
 	Categories     []string     `json:"categories,omitempty"`      // Valid values for categorical signals. Present when value_type is 'categorical'.
 	Range          *SignalRange `json:"range,omitempty"`           // Valid range for numeric signals. Present when value_type is 'numeric'.
 }
 
-// SignalRef — Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal re
+// SignalRef — Reference to a named signal definition. Uses scope as discriminator: 'data_provider' for a signal
 type SignalRef struct {
 	Scope              string `json:"scope,omitempty"`                // Discriminator indicating the signal resolves through the issuing signal source.
 	SignalID           string `json:"signal_id,omitempty"`            // Signal identifier within the issuing signal source's signal set.
@@ -7396,87 +7396,87 @@ type SignalRef struct {
 	SignalSourceURL    string `json:"signal_source_url,omitempty"`    // URL of the signal source that issues this source-native signal.
 }
 
-// SignalSelectionGroupRule — Product-scoped override for one ProductSignalTargetingOption.selection_group value. Use this when a
+// SignalSelectionGroupRule — Product-scoped override for one ProductSignalTargetingOption.selection_group value. Use this when
 type SignalSelectionGroupRule struct {
 	SelectionGroup     string `json:"selection_group"`                // ProductSignalTargetingOption.selection_group value this rule applies to.
-	TargetingMode      string `json:"targeting_mode,omitempty"`       // How options in this selection_group are intended to be used in signal_targeting_
-	SelectionMode      string `json:"selection_mode,omitempty"`       // Selection behavior for this selection_group. 'required' means at least min_selec
-	MinSelectedSignals int    `json:"min_selected_signals,omitempty"` // Minimum selected options from this selection_group. If selection_mode is 'requir
+	TargetingMode      string `json:"targeting_mode,omitempty"`       // How options in this selection_group are intended to be used in
+	SelectionMode      string `json:"selection_mode,omitempty"`       // Selection behavior for this selection_group. 'required' means at least
+	MinSelectedSignals int    `json:"min_selected_signals,omitempty"` // Minimum selected options from this selection_group. If selection_mode is
 	MaxSelectedSignals int    `json:"max_selected_signals,omitempty"` // Maximum selected options from this selection_group.
 }
 
-// SignalTargetingExpression — Predicate over a named signal definition. Signals are typed dimensions, similar to feature values: b
+// SignalTargetingExpression — Predicate over a named signal definition. Signals are typed dimensions, similar to feature values
 type SignalTargetingExpression struct {
 	SignalRef *SignalRef `json:"signal_ref,omitempty"` // Named signal being targeted.
 	ValueType string     `json:"value_type,omitempty"` // Discriminator for numeric signals.
-	Value     *bool      `json:"value,omitempty"`      // Binary package signal entries match users for whom the signal is true. Use the p
+	Value     *bool      `json:"value,omitempty"`      // Binary package signal entries match users for whom the signal is true. Use the
 	Values    []string   `json:"values,omitempty"`     // Values to target. Users with any of these values match the expression.
-	MinValue  *float64   `json:"min_value,omitempty"`  // Minimum value, inclusive. Omit for no minimum. Should be within the signal defin
-	MaxValue  *float64   `json:"max_value,omitempty"`  // Maximum value, inclusive. Omit for no maximum. Should be within the signal defin
+	MinValue  *float64   `json:"min_value,omitempty"`  // Minimum value, inclusive. Omit for no minimum. Should be within the signal
+	MaxValue  *float64   `json:"max_value,omitempty"`  // Maximum value, inclusive. Omit for no maximum. Should be within the signal
 }
 
-// SignalTargetingRules — Product-level composition rules for selecting signals on packages. The selectable signal menu may co
+// SignalTargetingRules — Product-level composition rules for selecting signals on packages. The selectable signal menu may
 type SignalTargetingRules struct {
-	ResolutionModel             string                     `json:"resolution_model,omitempty"`                // How selected signal_targeting_options are resolved against the product's invento
-	SelectionMode               string                     `json:"selection_mode,omitempty"`                  // Default selection behavior for selectable signals on this product. 'optional' me
-	MinSelectedSignals          *int                       `json:"min_selected_signals,omitempty"`            // Minimum number of signals the buyer must select when selection_mode is 'required
-	MaxSelectedSignals          int                        `json:"max_selected_signals,omitempty"`            // Maximum number of signals the buyer may select for a package. Omit when there is
-	MaxSelectedPerGroup         int                        `json:"max_selected_per_group,omitempty"`          // Maximum number of signal_targeting_options the buyer may select from the same Pr
-	MaxSignalTargetingGroups    int                        `json:"max_signal_targeting_groups,omitempty"`     // Maximum number of child groups allowed in packages[].targeting_overlay.signal_ta
-	MaxSignalsPerTargetingGroup int                        `json:"max_signals_per_targeting_group,omitempty"` // Maximum number of signals allowed in each packages[].targeting_overlay.signal_ta
-	SelectionGroupRules         []SignalSelectionGroupRule `json:"selection_group_rules,omitempty"`           // Optional product-scoped overrides for specific ProductSignalTargetingOption.sele
+	ResolutionModel             string                     `json:"resolution_model,omitempty"`                // How selected signal_targeting_options are resolved against the product's
+	SelectionMode               string                     `json:"selection_mode,omitempty"`                  // Default selection behavior for selectable signals on this product. 'optional'
+	MinSelectedSignals          *int                       `json:"min_selected_signals,omitempty"`            // Minimum number of signals the buyer must select when selection_mode is
+	MaxSelectedSignals          int                        `json:"max_selected_signals,omitempty"`            // Maximum number of signals the buyer may select for a package. Omit when there
+	MaxSelectedPerGroup         int                        `json:"max_selected_per_group,omitempty"`          // Maximum number of signal_targeting_options the buyer may select from the same
+	MaxSignalTargetingGroups    int                        `json:"max_signal_targeting_groups,omitempty"`     // Maximum number of child groups allowed in
+	MaxSignalsPerTargetingGroup int                        `json:"max_signals_per_targeting_group,omitempty"` // Maximum number of signals allowed in each
+	SelectionGroupRules         []SignalSelectionGroupRule `json:"selection_group_rules,omitempty"`           // Optional product-scoped overrides for specific
 }
 
-// SlaWindow — Service-level commitment a seller declares for a given action. Optional throughout: absence means no
+// SlaWindow — Service-level commitment a seller declares for a given action. Optional throughout: absence means
 type SlaWindow struct {
-	ResponseMax   string `json:"response_max,omitempty"`   // Maximum time from when the buyer issues the action to when the seller acknowledg
-	CompletionMax string `json:"completion_max,omitempty"` // Maximum time from buyer issuing the action to the seller completing it (mutation
+	ResponseMax   string `json:"response_max,omitempty"`   // Maximum time from when the buyer issues the action to when the seller
+	CompletionMax string `json:"completion_max,omitempty"` // Maximum time from buyer issuing the action to the seller completing it
 }
 
-// VendorMetricOptimizationSupportedMetric — One vendor-defined metric that a product can optimize toward. Identified by the tuple `(vendor, metr
+// VendorMetricOptimizationSupportedMetric — One vendor-defined metric that a product can optimize toward. Identified by the tuple `(vendor
 type VendorMetricOptimizationSupportedMetric struct {
-	Vendor           BrandReference `json:"vendor"`                      // Vendor that defines and computes this metric. The vendor's `brand.json` is the d
-	MetricID         string         `json:"metric_id"`                   // Identifier for the metric within the vendor's vocabulary (e.g., `attention_score
-	SupportedTargets []string       `json:"supported_targets,omitempty"` // Target kinds available for `vendor_metric` goals against this `(vendor, metric_i
+	Vendor           BrandReference `json:"vendor"`                      // Vendor that defines and computes this metric. The vendor's `brand.json` is the
+	MetricID         string         `json:"metric_id"`                   // Identifier for the metric within the vendor's vocabulary (e.g.
+	SupportedTargets []string       `json:"supported_targets,omitempty"` // Target kinds available for `vendor_metric` goals against this `(vendor
 }
 
-// VendorMetricOptimization — Vendor-attested metric optimization capabilities for a product. Presence indicates the product suppo
+// VendorMetricOptimization — Vendor-attested metric optimization capabilities for a product. Presence indicates the product
 type VendorMetricOptimization struct {
-	SupportedMetrics []VendorMetricOptimizationSupportedMetric `json:"supported_metrics"` // Vendor-defined metrics this product can steer delivery toward. Each entry pairs
+	SupportedMetrics []VendorMetricOptimizationSupportedMetric `json:"supported_metrics"` // Vendor-defined metrics this product can steer delivery toward. Each entry
 }
 
-// VendorMetricValue — A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_valu
+// VendorMetricValue — A reported value for a vendor-defined metric, emitted in `delivery-metrics.json`
 type VendorMetricValue struct {
-	Vendor                BrandReference `json:"vendor"`                           // Vendor that produced this value. Matches a `vendor_metrics[].vendor` declaration
-	MetricID              string         `json:"metric_id"`                        // Identifier for the metric within the vendor's vocabulary. Matches a `vendor_metr
-	Value                 float64        `json:"value"`                            // The reported value. Unit semantics are vendor-defined — see `unit` field below a
-	Unit                  string         `json:"unit,omitempty"`                   // Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics
-	MeasurableImpressions float64        `json:"measurable_impressions,omitempty"` // Number of impressions in this reporting period that the vendor was able to measu
-	Breakdown             map[string]any `json:"breakdown,omitempty"`              // Optional structured payload for vendor metrics that don't fit a single scalar —
+	Vendor                BrandReference `json:"vendor"`                           // Vendor that produced this value. Matches a `vendor_metrics[].vendor`
+	MetricID              string         `json:"metric_id"`                        // Identifier for the metric within the vendor's vocabulary. Matches a
+	Value                 float64        `json:"value"`                            // The reported value. Unit semantics are vendor-defined — see `unit` field below
+	Unit                  string         `json:"unit,omitempty"`                   // Unit of the value. Free-form to accommodate the heterogeneity of vendor
+	MeasurableImpressions float64        `json:"measurable_impressions,omitempty"` // Number of impressions in this reporting period that the vendor was able to
+	Breakdown             map[string]any `json:"breakdown,omitempty"`              // Optional structured payload for vendor metrics that don't fit a single scalar
 }
 
-// VersionEnvelope — Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP req
+// VersionEnvelope — Release-precision AdCP protocol version negotiation fields. Composed via `allOf` into every AdCP
 type VersionEnvelope struct {
-	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 }
 
-// WebhookActivityRecord — Single webhook delivery attempt surfaced to a calling principal as a buyer-side debug aid. Represent
+// WebhookActivityRecord — Single webhook delivery attempt surfaced to a calling principal as a buyer-side debug aid.
 type WebhookActivityRecord struct {
-	IdempotencyKey   string  `json:"idempotency_key"`              // Equals the `idempotency_key` carried in the webhook payload itself (see docs/bui
-	SubscriberID     string  `json:"subscriber_id,omitempty"`      // Identifies which registered webhook subscriber received this fire. **Required on
+	IdempotencyKey   string  `json:"idempotency_key"`              // Equals the `idempotency_key` carried in the webhook payload itself (see
+	SubscriberID     string  `json:"subscriber_id,omitempty"`      // Identifies which registered webhook subscriber received this fire. **Required
 	FiredAt          string  `json:"fired_at"`                     // ISO 8601 timestamp when the seller initiated the HTTP request for this attempt.
-	CompletedAt      *string `json:"completed_at,omitempty"`       // ISO 8601 timestamp when the seller observed the response (or terminal timeout /
-	NotificationType string  `json:"notification_type"`            // Notification type carried by this fire, verbatim from the webhook payload. Inclu
-	SequenceNumber   int     `json:"sequence_number,omitempty"`    // Sequence number from the webhook payload. Surfaced here so the buyer can spot st
-	Attempt          int     `json:"attempt"`                      // 1-indexed retry counter for this logical fire. Initial fire is attempt=1; retrie
-	Status           string  `json:"status"`                       // Outcome of this attempt. `success` — response received with 2xx (`http_status_co
-	URL              string  `json:"url"`                          // Target URL for this fire. Query string and fragment MUST be stripped before surf
-	HTTPStatusCode   *int    `json:"http_status_code,omitempty"`   // HTTP status code returned by the buyer's endpoint. Explicitly `null` when no HTT
-	ResponseTimeMs   *int    `json:"response_time_ms,omitempty"`   // Wall-clock latency between request send and response receipt, in milliseconds. E
-	PayloadSizeBytes int     `json:"payload_size_bytes,omitempty"` // Size of the request body the seller sent, in bytes. Useful for diagnosing oversi
-	ErrorMessage     *string `json:"error_message,omitempty"`      // Short human-readable server-side classification of why this attempt did not succ
-	Ext              any     `json:"ext,omitempty"`                // Resource-specific extension slot. Adopters MAY surface a resource-specific cross
+	CompletedAt      *string `json:"completed_at,omitempty"`       // ISO 8601 timestamp when the seller observed the response (or terminal timeout
+	NotificationType string  `json:"notification_type"`            // Notification type carried by this fire, verbatim from the webhook payload.
+	SequenceNumber   int     `json:"sequence_number,omitempty"`    // Sequence number from the webhook payload. Surfaced here so the buyer can spot
+	Attempt          int     `json:"attempt"`                      // 1-indexed retry counter for this logical fire. Initial fire is attempt=1
+	Status           string  `json:"status"`                       // Outcome of this attempt. `success` — response received with 2xx
+	URL              string  `json:"url"`                          // Target URL for this fire. Query string and fragment MUST be stripped before
+	HTTPStatusCode   *int    `json:"http_status_code,omitempty"`   // HTTP status code returned by the buyer's endpoint. Explicitly `null` when no
+	ResponseTimeMs   *int    `json:"response_time_ms,omitempty"`   // Wall-clock latency between request send and response receipt, in milliseconds.
+	PayloadSizeBytes int     `json:"payload_size_bytes,omitempty"` // Size of the request body the seller sent, in bytes. Useful for diagnosing
+	ErrorMessage     *string `json:"error_message,omitempty"`      // Short human-readable server-side classification of why this attempt did not
+	Ext              any     `json:"ext,omitempty"`                // Resource-specific extension slot. Adopters MAY surface a resource-specific
 }
 
 // --- Inline schema types ---
@@ -7484,110 +7484,110 @@ type WebhookActivityRecord struct {
 type ForecastPointDimension struct {
 	Kind            string        `json:"kind,omitempty"`              // Dimension family discriminator.
 	GeoLevel        string        `json:"geo_level,omitempty"`         // Geographic level for this forecast point.
-	System          string        `json:"system,omitempty"`            // Classification system for metro or postal_area levels. Required when geo_level i
-	GeoCode         string        `json:"geo_code,omitempty"`          // Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US').
-	GeoName         string        `json:"geo_name,omitempty"`          // Human-readable geographic name (e.g., 'United States', 'California', 'New York D
-	PlacementRef    *PlacementRef `json:"placement_ref,omitempty"`     // Structured placement reference for this forecast row. References an entry from t
-	PlacementName   string        `json:"placement_name,omitempty"`    // Human-readable placement name, useful when the buyer has not resolved the placem
+	System          string        `json:"system,omitempty"`            // Classification system for metro or postal_area levels. Required when geo_level
+	GeoCode         string        `json:"geo_code,omitempty"`          // Geographic code within the level and system. Country: ISO 3166-1 alpha-2
+	GeoName         string        `json:"geo_name,omitempty"`          // Human-readable geographic name (e.g., 'United States', 'California', 'New York
+	PlacementRef    *PlacementRef `json:"placement_ref,omitempty"`     // Structured placement reference for this forecast row. References an entry from
+	PlacementName   string        `json:"placement_name,omitempty"`    // Human-readable placement name, useful when the buyer has not resolved the
 	DeviceType      string        `json:"device_type,omitempty"`       // Device form factor for this forecast row.
 	DevicePlatform  string        `json:"device_platform,omitempty"`   // Operating system or platform for this forecast row.
 	AudienceID      string        `json:"audience_id,omitempty"`       // Audience segment identifier for this forecast row.
 	AudienceSource  string        `json:"audience_source,omitempty"`   // Origin of the audience segment.
 	AudienceName    string        `json:"audience_name,omitempty"`     // Human-readable audience segment name.
-	SignalRef       *SignalRef    `json:"signal_ref,omitempty"`        // Canonical signal reference for this forecast row. Required when the row needs to
-	SignalID        string        `json:"signal_id,omitempty"`         // Signal identifier shorthand for this forecast row. Use only when the enclosing c
-	SignalValue     any           `json:"signal_value,omitempty"`      // Signal value bucket represented by this point. Use null with presence 'absent' t
-	Presence        string        `json:"presence,omitempty"`          // Whether the signal is present for this point. Use 'absent' for the explicit not-
-	SignalName      string        `json:"signal_name,omitempty"`       // Human-readable signal name, useful when the buyer has not resolved the signal de
+	SignalRef       *SignalRef    `json:"signal_ref,omitempty"`        // Canonical signal reference for this forecast row. Required when the row needs
+	SignalID        string        `json:"signal_id,omitempty"`         // Signal identifier shorthand for this forecast row. Use only when the enclosing
+	SignalValue     any           `json:"signal_value,omitempty"`      // Signal value bucket represented by this point. Use null with presence 'absent'
+	Presence        string        `json:"presence,omitempty"`          // Whether the signal is present for this point. Use 'absent' for the explicit
+	SignalName      string        `json:"signal_name,omitempty"`       // Human-readable signal name, useful when the buyer has not resolved the signal
 	SignalValueName string        `json:"signal_value_name,omitempty"` // Human-readable label for the signal value bucket.
 }
 
-// ReachWindow — Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the
+// ReachWindow — Measurement window for the reported `reach` and `frequency` values in this row. Declares whether
 type ReachWindow struct {
-	Kind   string    `json:"kind"`             // Window semantics. `cumulative` — uniques since campaign start; the value is the
-	Period *Duration `json:"period,omitempty"` // Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling
+	Kind   string    `json:"kind"`             // Window semantics. `cumulative` — uniques since campaign start; the value is
+	Period *Duration `json:"period,omitempty"` // Duration of the measurement window. REQUIRED when `kind` is `period` or
 }
 
-// MetricQualifier — Disambiguates metrics whose definition varies by qualifier. Today carries five keys — `viewability_s
+// MetricQualifier — Disambiguates metrics whose definition varies by qualifier. Today carries five keys —
 type MetricQualifier struct {
-	ViewabilityStandard    string    `json:"viewability_standard,omitempty"`    // Viewability standard the seller commits to for this metric. MUST be set when `me
-	CompletionSource       string    `json:"completion_source,omitempty"`       // Source of `completion_rate` attestation. MUST be set when `metric_id` is `comple
-	AttributionMethodology string    `json:"attribution_methodology,omitempty"` // How attribution between ad exposure and outcome events was computed. SHOULD be s
-	AttributionWindow      *Duration `json:"attribution_window,omitempty"`      // Time window over which outcome attribution is computed. **Object-valued, not str
-	LiftDimension          string    `json:"lift_dimension,omitempty"`          // Which dimension of `brand_lift` this row represents — awareness, consideration,
+	ViewabilityStandard    string    `json:"viewability_standard,omitempty"`    // Viewability standard the seller commits to for this metric. MUST be set when
+	CompletionSource       string    `json:"completion_source,omitempty"`       // Source of `completion_rate` attestation. MUST be set when `metric_id` is
+	AttributionMethodology string    `json:"attribution_methodology,omitempty"` // How attribution between ad exposure and outcome events was computed. SHOULD be
+	AttributionWindow      *Duration `json:"attribution_window,omitempty"`      // Time window over which outcome attribution is computed. **Object-valued, not
+	LiftDimension          string    `json:"lift_dimension,omitempty"`          // Which dimension of `brand_lift` this row represents — awareness
 }
 
 type RequestedCommittedMetric struct {
 	Scope     string           `json:"scope,omitempty"`     // Vendor-defined metric, identified by the tuple `(vendor, metric_id)`.
-	MetricID  string           `json:"metric_id,omitempty"` // Identifier for the metric within the vendor's vocabulary. MUST be present in the
-	Qualifier *MetricQualifier `json:"qualifier,omitempty"` // Disambiguator — same shape as on the response-side `committed_metrics`. Required
-	Vendor    *BrandReference  `json:"vendor,omitempty"`    // Vendor that defines and computes this metric. The vendor's `brand.json` `agents[
+	MetricID  string           `json:"metric_id,omitempty"` // Identifier for the metric within the vendor's vocabulary. MUST be present in
+	Qualifier *MetricQualifier `json:"qualifier,omitempty"` // Disambiguator — same shape as on the response-side `committed_metrics`.
+	Vendor    *BrandReference  `json:"vendor,omitempty"`    // Vendor that defines and computes this metric. The vendor's `brand.json`
 }
 
-// ForecastViewability — Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but numeric values are Forecas
+// ForecastViewability — Forecasted viewability metrics. Mirrors delivery-metrics.viewability, but numeric values are
 type ForecastViewability struct {
 	Vendor                *BrandReference `json:"vendor,omitempty"`                 // Vendor expected to produce or verify these viewability values.
-	MeasurableImpressions *ForecastRange  `json:"measurable_impressions,omitempty"` // Forecasted impressions where viewability can be measured. Coverage denominator f
-	ViewableImpressions   *ForecastRange  `json:"viewable_impressions,omitempty"`   // Forecasted impressions expected to meet the viewability threshold defined by sta
-	ViewableRate          *ForecastRange  `json:"viewable_rate,omitempty"`          // Forecasted viewable impression rate (viewable_impressions / measurable_impressio
+	MeasurableImpressions *ForecastRange  `json:"measurable_impressions,omitempty"` // Forecasted impressions where viewability can be measured. Coverage denominator
+	ViewableImpressions   *ForecastRange  `json:"viewable_impressions,omitempty"`   // Forecasted impressions expected to meet the viewability threshold defined by
+	ViewableRate          *ForecastRange  `json:"viewable_rate,omitempty"`          // Forecasted viewable impression rate (viewable_impressions /
 	ViewedSeconds         *ForecastRange  `json:"viewed_seconds,omitempty"`         // Forecasted average in-view duration per measurable impression, in seconds.
 	Standard              string          `json:"standard,omitempty"`               // Viewability measurement standard applied to these forecasted values.
 }
 
 type ReportingVendorMetric struct {
-	Vendor   BrandReference `json:"vendor"`    // Vendor that defines and computes this metric. The vendor's `brand.json` is the d
-	MetricID string         `json:"metric_id"` // Identifier for the metric within the vendor's vocabulary (e.g., `attention_units
+	Vendor   BrandReference `json:"vendor"`    // Vendor that defines and computes this metric. The vendor's `brand.json` is the
+	MetricID string         `json:"metric_id"` // Identifier for the metric within the vendor's vocabulary (e.g.
 }
 
 type RequiredVendorMetric struct {
-	Vendor   *BrandReference `json:"vendor,omitempty"`    // Pin to a specific vendor. Optional — omit to match any vendor offering this `met
-	MetricID string          `json:"metric_id,omitempty"` // Pin to an exact metric identifier within a vendor's vocabulary. Optional — omit
+	Vendor   *BrandReference `json:"vendor,omitempty"`    // Pin to a specific vendor. Optional — omit to match any vendor offering this
+	MetricID string          `json:"metric_id,omitempty"` // Pin to an exact metric identifier within a vendor's vocabulary. Optional —
 }
 
-// CreativeProvenanceRequirements — Structured provenance requirements for creatives. Refines `provenance_required`: when `provenance_re
+// CreativeProvenanceRequirements — Structured provenance requirements for creatives. Refines `provenance_required`: when
 type CreativeProvenanceRequirements struct {
-	RequireDigitalSourceType  *bool `json:"require_digital_source_type,omitempty"` // When true, the seller requires creatives to include a `digital_source_type` fiel
-	RequireDisclosureMetadata *bool `json:"require_disclosure_metadata,omitempty"` // When true, the seller requires creatives to include a `disclosure` object in the
-	RequireEmbeddedProvenance *bool `json:"require_embedded_provenance,omitempty"` // When true, the seller requires creatives to include at least one `embedded_prove
+	RequireDigitalSourceType  *bool `json:"require_digital_source_type,omitempty"` // When true, the seller requires creatives to include a `digital_source_type`
+	RequireDisclosureMetadata *bool `json:"require_disclosure_metadata,omitempty"` // When true, the seller requires creatives to include a `disclosure` object in
+	RequireEmbeddedProvenance *bool `json:"require_embedded_provenance,omitempty"` // When true, the seller requires creatives to include at least one
 }
 
 type CreativeAcceptedVerifier struct {
-	AgentURL  string   `json:"agent_url"`            // URL of the governance agent. MUST use the `https://` scheme. The seller calls th
-	FeatureID string   `json:"feature_id,omitempty"` // Optional canonical `feature_id` the seller will request against this agent (e.g.
-	Providers []string `json:"providers,omitempty"`  // Optional `provider` labels this agent verifies (e.g., `['Encypher', 'Digimarc']`
+	AgentURL  string   `json:"agent_url"`            // URL of the governance agent. MUST use the `https://` scheme. The seller calls
+	FeatureID string   `json:"feature_id,omitempty"` // Optional canonical `feature_id` the seller will request against this agent
+	Providers []string `json:"providers,omitempty"`  // Optional `provider` labels this agent verifies (e.g., `['Encypher'
 }
 
 type ProvenanceEmbeddedProvenance struct {
 	Method      string                 `json:"method"`                 // How provenance data is carried within the content
-	Standard    string                 `json:"standard,omitempty"`     // Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7 te
-	Provider    string                 `json:"provider"`               // Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Displa
-	VerifyAgent *ProvenanceVerifyAgent `json:"verify_agent,omitempty"` // Buyer's representation that this embedding can be verified by a governance agent
+	Standard    string                 `json:"standard,omitempty"`     // Standard the embedding conforms to, if any (e.g., 'c2pa' for C2PA Section A.7
+	Provider    string                 `json:"provider"`               // Organization that performed the embedding (e.g., 'Encypher', 'Digimarc').
+	VerifyAgent *ProvenanceVerifyAgent `json:"verify_agent,omitempty"` // Buyer's representation that this embedding can be verified by a governance
 	EmbeddedAt  string                 `json:"embedded_at,omitempty"`  // When the provenance data was embedded (ISO 8601)
 }
 
 type ProvenanceWatermark struct {
 	MediaType   string                 `json:"media_type"`             // Media category of the watermarked content
-	Provider    string                 `json:"provider"`               // Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher').
-	VerifyAgent *ProvenanceVerifyAgent `json:"verify_agent,omitempty"` // Buyer's representation that this watermark can be detected by a governance agent
+	Provider    string                 `json:"provider"`               // Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI'
+	VerifyAgent *ProvenanceVerifyAgent `json:"verify_agent,omitempty"` // Buyer's representation that this watermark can be detected by a governance
 	C2PAAction  string                 `json:"c2pa_action,omitempty"`  // C2PA action classification for this watermark
 	EmbeddedAt  string                 `json:"embedded_at,omitempty"`  // When the watermark was applied (ISO 8601)
 }
 
-// ProvenanceVerifyAgent — Buyer's representation that this embedding can be verified by a governance agent on the seller's `cr
+// ProvenanceVerifyAgent — Buyer's representation that this embedding can be verified by a governance agent on the seller's
 type ProvenanceVerifyAgent struct {
-	AgentURL  string `json:"agent_url"`            // URL of the governance agent the buyer represents was used to embed/verify this l
-	FeatureID string `json:"feature_id,omitempty"` // Optional `feature_id` the buyer represents the seller should request via `get_cr
+	AgentURL  string `json:"agent_url"`            // URL of the governance agent the buyer represents was used to embed/verify this
+	FeatureID string `json:"feature_id,omitempty"` // Optional `feature_id` the buyer represents the seller should request via
 }
 
-// SignalTaxonomy — Optional taxonomy metadata describing what this signal means in an external audience, content, retai
+// SignalTaxonomy — Optional taxonomy metadata describing what this signal means in an external audience, content
 type SignalTaxonomy struct {
 	Ref                 string                       `json:"ref"`                             // URI identifying the taxonomy or taxonomy documentation.
 	Version             string                       `json:"version,omitempty"`               // Version identifier for the taxonomy when the taxonomy has versioned definitions.
 	Segtax              int                          `json:"segtax,omitempty"`                // OpenRTB segtax code when the taxonomy maps to an OpenRTB segment taxonomy.
-	Etag                string                       `json:"etag,omitempty"`                  // Optional validator for custom taxonomy definitions so consumers can detect drift
-	Values              []SignalTaxonomyValue        `json:"values"`                          // Taxonomy node values that describe this signal. These are meaning/discovery meta
-	ValueMappings       []SignalTaxonomyValueMapping `json:"value_mappings,omitempty"`        // For categorical signals, maps package-targeting allowed_values[] strings to stab
-	ParentMatchBehavior string                       `json:"parent_match_behavior,omitempty"` // Whether this signal definition supports treating a parent taxonomy node as match
+	Etag                string                       `json:"etag,omitempty"`                  // Optional validator for custom taxonomy definitions so consumers can detect
+	Values              []SignalTaxonomyValue        `json:"values"`                          // Taxonomy node values that describe this signal. These are meaning/discovery
+	ValueMappings       []SignalTaxonomyValueMapping `json:"value_mappings,omitempty"`        // For categorical signals, maps package-targeting allowed_values[] strings to
+	ParentMatchBehavior string                       `json:"parent_match_behavior,omitempty"` // Whether this signal definition supports treating a parent taxonomy node as
 }
 
 type SignalTaxonomyValue struct {
@@ -7611,42 +7611,42 @@ type SignalOnboarder struct {
 	PreOnboardingPrecisionLevel    string   `json:"pre_onboarding_precision_level,omitempty"`
 }
 
-// SignalModeling — Modeling disclosure for modeled data signals. Required when methodology is 'modeled' or audience_exp
+// SignalModeling — Modeling disclosure for modeled data signals. Required when methodology is 'modeled' or
 type SignalModeling struct {
 	Method                    string                    `json:"method"`
 	SeedSource                *SignalModelingSeedSource `json:"seed_source"`
 	TrainingDataJurisdictions []string                  `json:"training_data_jurisdictions"` // ISO 3166-1 alpha-2 country codes where the model's training data was collected.
-	AIActRiskClass            string                    `json:"ai_act_risk_class"`           // EU AI Act risk classification self-declared by the provider. Prohibited-risk mod
-	Disclosure                *SignalModelingDisclosure `json:"disclosure,omitempty"`        // Signal/modeling-specific disclosure requirements and jurisdictional notes. This
+	AIActRiskClass            string                    `json:"ai_act_risk_class"`           // EU AI Act risk classification self-declared by the provider. Prohibited-risk
+	Disclosure                *SignalModelingDisclosure `json:"disclosure,omitempty"`        // Signal/modeling-specific disclosure requirements and jurisdictional notes.
 }
 
 type SignalModelingSeedSource struct {
 	Type           string `json:"type"`
-	ProviderSigned bool   `json:"provider_signed"` // Whether the seed source carries a signed attestation under one of the provider's
+	ProviderSigned bool   `json:"provider_signed"` // Whether the seed source carries a signed attestation under one of the
 }
 
-// SignalModelingDisclosure — Disclosure requirements and jurisdictional notes for modeled data signals. This schema is intentiona
+// SignalModelingDisclosure — Disclosure requirements and jurisdictional notes for modeled data signals. This schema is
 type SignalModelingDisclosure struct {
-	Required      bool                                   `json:"required"`                // The provider's claim that a modeling or AI-use disclosure is required for this s
+	Required      bool                                   `json:"required"`                // The provider's claim that a modeling or AI-use disclosure is required for this
 	Jurisdictions []SignalModelingDisclosureJurisdiction `json:"jurisdictions,omitempty"` // Jurisdictions where a modeling or AI-use disclosure applies.
-	Notes         string                                 `json:"notes,omitempty"`         // Optional provider notes on how the disclosure should be interpreted. Information
+	Notes         string                                 `json:"notes,omitempty"`         // Optional provider notes on how the disclosure should be interpreted.
 }
 
 type SignalModelingDisclosureJurisdiction struct {
 	Country        string `json:"country"`                   // ISO 3166-1 alpha-2 country code.
-	Region         string `json:"region,omitempty"`          // Provider-defined sub-national region code or name when the obligation is regiona
+	Region         string `json:"region,omitempty"`          // Provider-defined sub-national region code or name when the obligation is
 	Regulation     string `json:"regulation"`                // Provider-supplied regulation identifier for the disclosure obligation.
-	DisclosureText string `json:"disclosure_text,omitempty"` // Human-readable disclosure text or summary the provider expects buyers or reviewe
-	DisclosureURL  string `json:"disclosure_url,omitempty"`  // Optional URL to the provider's canonical disclosure or methodology page for this
+	DisclosureText string `json:"disclosure_text,omitempty"` // Human-readable disclosure text or summary the provider expects buyers or
+	DisclosureURL  string `json:"disclosure_url,omitempty"`  // Optional URL to the provider's canonical disclosure or methodology page for
 	Audience       string `json:"audience,omitempty"`        // Primary audience for this disclosure entry.
 }
 
-// SignalDataSubjectRights — Per-signal data-subject-rights routing. Inline on the signal because upstream source and rights rout
+// SignalDataSubjectRights — Per-signal data-subject-rights routing. Inline on the signal because upstream source and rights
 type SignalDataSubjectRights struct {
-	UpstreamSourceDomain string                           `json:"upstream_source_domain,omitempty"` // Domain of the upstream data source whose rights process these channels reach, wh
+	UpstreamSourceDomain string                           `json:"upstream_source_domain,omitempty"` // Domain of the upstream data source whose rights process these channels reach
 	Channels             []SignalDataSubjectRightsChannel `json:"channels"`                         // Rights request channels and the rights each channel supports.
 	ResponseSlaDays      int                              `json:"response_sla_days,omitempty"`      // Maximum response time in days for the declared rights channels.
-	GpcHonored           *bool                            `json:"gpc_honored,omitempty"`            // Whether Global Privacy Control signals are honored as objection or opt-out reque
+	GpcHonored           *bool                            `json:"gpc_honored,omitempty"`            // Whether Global Privacy Control signals are honored as objection or opt-out
 	CcpaOptOutURL        string                           `json:"ccpa_opt_out_url,omitempty"`       // US-specific 'Do Not Sell or Share' opt-out URL where required.
 }
 
@@ -7655,16 +7655,16 @@ type SignalDataSubjectRightsChannel struct {
 	URL       string   `json:"url,omitempty"`       // HTTPS URL for submitting the rights request.
 	Email     string   `json:"email,omitempty"`     // Email address for submitting the rights request.
 	Languages []string `json:"languages,omitempty"` // BCP 47 language tags supported by this channel.
-	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 countries this channel serves, when the provider routes right
+	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 countries this channel serves, when the provider routes
 }
 
 type DeliveryWindow struct {
 	WindowStart       string                  `json:"window_start"`                 // ISO 8601 start of the window slice (inclusive). UTC.
-	WindowEnd         string                  `json:"window_end"`                   // ISO 8601 end of the window slice (exclusive). The next row's window_start equals
-	Totals            *DeliveryTotals         `json:"totals"`                       // Aggregate metrics for this window slice across all packages. Shape-aligned with
-	ByPackage         []DeliveryWindowPackage `json:"by_package,omitempty"`         // Per-package metrics for this window slice. Same shape as the parent media_buy_de
-	IsFinal           *bool                   `json:"is_final,omitempty"`           // Whether the slice data is final for this window. Same semantics as the per-packa
-	MeasurementWindow string                  `json:"measurement_window,omitempty"` // Which measurement-window stage this slice represents (e.g., 'live', 'c3', 'c7'),
+	WindowEnd         string                  `json:"window_end"`                   // ISO 8601 end of the window slice (exclusive). The next row's window_start
+	Totals            *DeliveryTotals         `json:"totals"`                       // Aggregate metrics for this window slice across all packages. Shape-aligned
+	ByPackage         []DeliveryWindowPackage `json:"by_package,omitempty"`         // Per-package metrics for this window slice. Same shape as the parent
+	IsFinal           *bool                   `json:"is_final,omitempty"`           // Whether the slice data is final for this window. Same semantics as the
+	MeasurementWindow string                  `json:"measurement_window,omitempty"` // Which measurement-window stage this slice represents (e.g., 'live', 'c3'
 }
 
 type DeliveryWindowPackage struct {
@@ -7672,43 +7672,43 @@ type DeliveryWindowPackage struct {
 	Spend                float64                       `json:"spend,omitempty"`                   // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	PackageID            string                        `json:"package_id"`                        // Seller's package identifier
 }
 
@@ -7717,46 +7717,46 @@ type ProductCardSpecification struct {
 	Value string `json:"value"`
 }
 
-// GetProductsFilterDiagnostics — Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate se
+// GetProductsFilterDiagnostics — Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate
 type GetProductsFilterDiagnostics struct {
-	Semantics       string                               `json:"semantics,omitempty"`        // How `excluded_by[*].count` values are computed across multiple filters. `only`:
-	TotalCandidates int                                  `json:"total_candidates,omitempty"` // Number of products the seller considered before applying `filters`. Baseline for
-	ExcludedBy      map[string]FilterExclusionDiagnostic `json:"excluded_by,omitempty"`      // Per-filter exclusion counts, keyed by the filter property name as it appears in
+	Semantics       string                               `json:"semantics,omitempty"`        // How `excluded_by[*].count` values are computed across multiple filters.
+	TotalCandidates int                                  `json:"total_candidates,omitempty"` // Number of products the seller considered before applying `filters`. Baseline
+	ExcludedBy      map[string]FilterExclusionDiagnostic `json:"excluded_by,omitempty"`      // Per-filter exclusion counts, keyed by the filter property name as it appears
 }
 
 type FilterExclusionDiagnostic struct {
-	Count  int    `json:"count"`            // Number of products excluded by this filter, interpreted per the parent `semantic
-	Values []any  `json:"values,omitempty"` // Optional list of the specific filter values that contributed to exclusions, when
-	Notes  string `json:"notes,omitempty"`  // Optional human-readable note about why this filter narrowed the set (e.g., 'no p
+	Count  int    `json:"count"`            // Number of products excluded by this filter, interpreted per the parent
+	Values []any  `json:"values,omitempty"` // Optional list of the specific filter values that contributed to exclusions
+	Notes  string `json:"notes,omitempty"`  // Optional human-readable note about why this filter narrowed the set (e.g., 'no
 }
 
-// CapabilitiesWholesaleFeedVersioning — Conditional-fetch token capabilities for get_products and get_signals. Independent of wholesale feed
+// CapabilitiesWholesaleFeedVersioning — Conditional-fetch token capabilities for get_products and get_signals. Independent of wholesale
 type CapabilitiesWholesaleFeedVersioning struct {
-	Supported              bool  `json:"supported"`                          // Whether the agent returns wholesale_feed_version on responses and honors if_whol
-	PricingVersionSeparate *bool `json:"pricing_version_separate,omitempty"` // Whether the agent tracks pricing_version independently of wholesale_feed_version
-	CacheScopeAccount      *bool `json:"cache_scope_account,omitempty"`      // Whether the agent ever returns cache_scope: 'account' (i.e., publishes per-accou
+	Supported              bool  `json:"supported"`                          // Whether the agent returns wholesale_feed_version on responses and honors
+	PricingVersionSeparate *bool `json:"pricing_version_separate,omitempty"` // Whether the agent tracks pricing_version independently of
+	CacheScopeAccount      *bool `json:"cache_scope_account,omitempty"`      // Whether the agent ever returns cache_scope: 'account' (i.e., publishes
 }
 
-// CapabilitiesWholesaleFeedWebhooks — Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Declared by sales
+// CapabilitiesWholesaleFeedWebhooks — Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities. Declared by
 type CapabilitiesWholesaleFeedWebhooks struct {
-	Supported  bool     `json:"supported"`             // Whether this agent can push wholesale feed change payloads through account-level
-	EventTypes []string `json:"event_types,omitempty"` // Wholesale feed webhook event types this agent can emit. Sales agents emit produc
+	Supported  bool     `json:"supported"`             // Whether this agent can push wholesale feed change payloads through
+	EventTypes []string `json:"event_types,omitempty"` // Wholesale feed webhook event types this agent can emit. Sales agents emit
 }
 
 type GetSignalsIncompleteItem struct {
-	Scope         string    `json:"scope"`                    // 'signals': not all matching signals were returned. 'pricing': signals returned b
+	Scope         string    `json:"scope"`                    // 'signals': not all matching signals were returned. 'pricing': signals returned
 	Description   string    `json:"description"`              // Human-readable explanation of what is missing and why.
-	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the caller to decide w
+	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the caller to decide
 }
 
-// AuditObservationDetails — Audit-safe structured details. Mirrors the safe allowlist keys used for `PROVENANCE_CLAIM_CONTRADICT
+// AuditObservationDetails — Audit-safe structured details. Mirrors the safe allowlist keys used for
 type AuditObservationDetails struct {
 	AgentURL       string                       `json:"agent_url"`                 // Governance agent URL that produced the observation.
 	FeatureID      string                       `json:"feature_id,omitempty"`      // Feature or policy check that produced the observation.
 	ClaimedValue   AuditObservationClaimedValue `json:"claimed_value"`             // Compact object of claimed provenance values that triggered the observation.
 	ObservedValue  any                          `json:"observed_value,omitempty"`  // Verifier observation relevant to the claim, when applicable.
 	Confidence     float64                      `json:"confidence,omitempty"`      // Confidence score for the observation, when applicable.
-	SubstitutedFor string                       `json:"substituted_for,omitempty"` // Buyer-nominated verifier URL when the seller or orchestrator used a different on
+	SubstitutedFor string                       `json:"substituted_for,omitempty"` // Buyer-nominated verifier URL when the seller or orchestrator used a different
 }
 
 // AuditObservationClaimedValue — Compact object of claimed provenance values that triggered the observation.
@@ -7766,31 +7766,31 @@ type AuditObservationClaimedValue struct {
 }
 
 type UpstreamRecordedCall struct {
-	AttestationMode       string                 `json:"attestation_mode"`                  // Per-call attestation mode echoing the request's `params.attestation_mode`. Requi
+	AttestationMode       string                 `json:"attestation_mode"`                  // Per-call attestation mode echoing the request's `params.attestation_mode`.
 	Method                string                 `json:"method"`                            // HTTP method of the outbound call.
-	Endpoint              string                 `json:"endpoint"`                          // Composed `<METHOD> <URL>` string used for `endpoint_pattern` matching, e.g. 'POS
-	URL                   string                 `json:"url"`                               // Full URL of the outbound call (scheme + host + path + query). Treated as untrust
+	Endpoint              string                 `json:"endpoint"`                          // Composed `<METHOD> <URL>` string used for `endpoint_pattern` matching, e.g.
+	URL                   string                 `json:"url"`                               // Full URL of the outbound call (scheme + host + path + query). Treated as
 	Host                  string                 `json:"host,omitempty"`                    // Host portion of the URL, useful for grouping calls by upstream platform.
 	Path                  string                 `json:"path,omitempty"`                    // Path portion of the URL (without query string).
-	ContentType           string                 `json:"content_type"`                      // Media type of the outbound request body, mirroring the agent's outbound `Content
-	Purpose               string                 `json:"purpose,omitempty"`                 // Optional adopter-supplied semantic tag for the call's role. Values: `platform_pr
-	Payload               any                    `json:"payload,omitempty"`                 // Request body the agent sent. Required when `attestation_mode` is `raw` (or omitt
-	PayloadDigestSha256   string                 `json:"payload_digest_sha256,omitempty"`   // SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 cha
-	PayloadLength         int                    `json:"payload_length"`                    // Byte length of the post-redaction body bytes represented by this recorded_call.
-	IdentifierMatchProofs []IdentifierMatchProof `json:"identifier_match_proofs,omitempty"` // Per-identifier echo proofs for digest-mode calls. Required when `attestation_mod
-	Timestamp             string                 `json:"timestamp"`                         // ISO 8601 timestamp the adopter recorded the outbound call. MUST reflect the adop
-	StatusCode            int                    `json:"status_code,omitempty"`             // HTTP status code returned by the upstream. Optional — adopters MAY omit when the
+	ContentType           string                 `json:"content_type"`                      // Media type of the outbound request body, mirroring the agent's outbound
+	Purpose               string                 `json:"purpose,omitempty"`                 // Optional adopter-supplied semantic tag for the call's role. Values
+	Payload               any                    `json:"payload,omitempty"`                 // Request body the agent sent. Required when `attestation_mode` is `raw` (or
+	PayloadDigestSha256   string                 `json:"payload_digest_sha256,omitempty"`   // SHA-256 digest of the canonicalized outbound request body, lowercase hex (64
+	PayloadLength         int                    `json:"payload_length"`                    // Byte length of the post-redaction body bytes represented by this
+	IdentifierMatchProofs []IdentifierMatchProof `json:"identifier_match_proofs,omitempty"` // Per-identifier echo proofs for digest-mode calls. Required when
+	Timestamp             string                 `json:"timestamp"`                         // ISO 8601 timestamp the adopter recorded the outbound call. MUST reflect the
+	StatusCode            int                    `json:"status_code,omitempty"`             // HTTP status code returned by the upstream. Optional — adopters MAY omit when
 }
 
 type IdentifierMatchProof struct {
-	IdentifierValueSha256 string `json:"identifier_value_sha256"` // Echo of one digest from `params.identifier_value_digests` so the runner can pair
-	Found                 bool   `json:"found"`                   // True if any string token in the recorded payload hashes to the queried digest. F
+	IdentifierValueSha256 string `json:"identifier_value_sha256"` // Echo of one digest from `params.identifier_value_digests` so the runner can
+	Found                 bool   `json:"found"`                   // True if any string token in the recorded payload hashes to the queried digest.
 }
 
 type KeywordTargetUpdate struct {
 	Keyword   string   `json:"keyword"` // The keyword to target
 	MatchType string   `json:"match_type"`
-	BidPrice  *float64 `json:"bid_price,omitempty"` // Per-keyword bid price. Inherits currency and max_bid interpretation from the pac
+	BidPrice  *float64 `json:"bid_price,omitempty"` // Per-keyword bid price. Inherits currency and max_bid interpretation from the
 }
 
 type KeywordTargetRef struct {
@@ -7798,7 +7798,7 @@ type KeywordTargetRef struct {
 	MatchType string `json:"match_type"`
 }
 
-// DeliveryAggregatedTotals — Combined metrics across all returned media buys. Only included in API responses (get_media_buy_deliv
+// DeliveryAggregatedTotals — Combined metrics across all returned media buys. Only included in API responses
 type DeliveryAggregatedTotals struct {
 	Impressions        float64                   `json:"impressions"`                    // Total impressions delivered across all media buys
 	Spend              float64                   `json:"spend"`                          // Total amount spent across all media buys
@@ -7807,15 +7807,15 @@ type DeliveryAggregatedTotals struct {
 	Views              float64                   `json:"views,omitempty"`                // Total views across all media buys (if applicable)
 	Conversions        float64                   `json:"conversions,omitempty"`          // Total conversions across all media buys (if applicable)
 	ConversionValue    float64                   `json:"conversion_value,omitempty"`     // Total conversion value across all media buys (if applicable)
-	Roas               float64                   `json:"roas,omitempty"`                 // Aggregate return on ad spend across all media buys (total conversion_value / tot
-	NewToBrandRate     float64                   `json:"new_to_brand_rate,omitempty"`    // Fraction of total conversions across all media buys from first-time brand buyers
-	CostPerAcquisition float64                   `json:"cost_per_acquisition,omitempty"` // Aggregate cost per conversion across all media buys (total spend / total convers
-	CompletionRate     float64                   `json:"completion_rate,omitempty"`      // Aggregate completion rate across all media buys (weighted by impressions, not a
-	Reach              float64                   `json:"reach,omitempty"`                // Deduplicated reach across all media buys (if the seller can deduplicate across b
-	ReachUnit          string                    `json:"reach_unit,omitempty"`           // Unit of measurement for reach. Only present when all aggregated media buys use t
-	Frequency          float64                   `json:"frequency,omitempty"`            // Average frequency per reach unit across all media buys (impressions / reach when
+	Roas               float64                   `json:"roas,omitempty"`                 // Aggregate return on ad spend across all media buys (total conversion_value /
+	NewToBrandRate     float64                   `json:"new_to_brand_rate,omitempty"`    // Fraction of total conversions across all media buys from first-time brand
+	CostPerAcquisition float64                   `json:"cost_per_acquisition,omitempty"` // Aggregate cost per conversion across all media buys (total spend / total
+	CompletionRate     float64                   `json:"completion_rate,omitempty"`      // Aggregate completion rate across all media buys (weighted by impressions, not
+	Reach              float64                   `json:"reach,omitempty"`                // Deduplicated reach across all media buys (if the seller can deduplicate across
+	ReachUnit          string                    `json:"reach_unit,omitempty"`           // Unit of measurement for reach. Only present when all aggregated media buys use
+	Frequency          float64                   `json:"frequency,omitempty"`            // Average frequency per reach unit across all media buys (impressions / reach
 	MediaBuyCount      int                       `json:"media_buy_count"`                // Number of media buys included in the response
-	MetricAggregates   []DeliveryMetricAggregate `json:"metric_aggregates,omitempty"`    // Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `pack
+	MetricAggregates   []DeliveryMetricAggregate `json:"metric_aggregates,omitempty"`    // Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with
 }
 
 type MediaBuyDeliveryTotals struct {
@@ -7823,57 +7823,57 @@ type MediaBuyDeliveryTotals struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
-	EffectiveRate        float64                       `json:"effective_rate,omitempty"`          // Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm',
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
+	EffectiveRate        float64                       `json:"effective_rate,omitempty"`          // Effective rate paid per unit based on pricing_model (e.g., actual CPM for
 }
 
 type MediaBuyDelivery struct {
 	MediaBuyID           string                   `json:"media_buy_id"`                    // Seller's media buy identifier
-	Status               string                   `json:"status"`                          // Current media buy status. Lifecycle states use the same taxonomy as media-buy-st
-	ExpectedAvailability string                   `json:"expected_availability,omitempty"` // When delayed data is expected to be available (only present when status is repor
-	IsAdjusted           *bool                    `json:"is_adjusted,omitempty"`           // Indicates this delivery contains updated data for a previously reported period.
-	IsFinal              *bool                    `json:"is_final,omitempty"`              // Whether this row's delivery data is final for the reporting period. The row does
-	FinalizedAt          string                   `json:"finalized_at,omitempty"`          // ISO 8601 timestamp at which this row became final. Present only when `is_final:
+	Status               string                   `json:"status"`                          // Current media buy status. Lifecycle states use the same taxonomy as
+	ExpectedAvailability string                   `json:"expected_availability,omitempty"` // When delayed data is expected to be available (only present when status is
+	IsAdjusted           *bool                    `json:"is_adjusted,omitempty"`           // Indicates this delivery contains updated data for a previously reported
+	IsFinal              *bool                    `json:"is_final,omitempty"`              // Whether this row's delivery data is final for the reporting period. The row
+	FinalizedAt          string                   `json:"finalized_at,omitempty"`          // ISO 8601 timestamp at which this row became final. Present only when
 	PricingModel         string                   `json:"pricing_model,omitempty"`         // Pricing model used for this media buy
 	Totals               MediaBuyDeliveryTotals   `json:"totals"`
 	ByPackage            []PackageDelivery        `json:"by_package"`                // Metrics broken down by package
-	Windows              []DeliveryWindow         `json:"windows,omitempty"`         // Per-window delivery slices over the reporting period at the requested time_granu
+	Windows              []DeliveryWindow         `json:"windows,omitempty"`         // Per-window delivery slices over the reporting period at the requested
 	DailyBreakdown       []MediaBuyDailyBreakdown `json:"daily_breakdown,omitempty"` // Day-by-day delivery
 }
 
@@ -7882,82 +7882,82 @@ type PackageDelivery struct {
 	Spend                     float64                         `json:"spend"`                                  // Amount spent
 	Clicks                    float64                         `json:"clicks,omitempty"`                       // Total clicks
 	Ctr                       float64                         `json:"ctr,omitempty"`                          // Click-through rate (clicks/impressions)
-	Views                     float64                         `json:"views,omitempty"`                        // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews            float64                         `json:"completed_views,omitempty"`              // Video/audio completions. When the package has a completed_views optimization goa
+	Views                     float64                         `json:"views,omitempty"`                        // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews            float64                         `json:"completed_views,omitempty"`              // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate            float64                         `json:"completion_rate,omitempty"`              // Completion rate (completed_views/impressions)
-	Conversions               float64                         `json:"conversions,omitempty"`                  // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions               float64                         `json:"conversions,omitempty"`                  // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue           float64                         `json:"conversion_value,omitempty"`             // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                      float64                         `json:"roas,omitempty"`                         // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition        float64                         `json:"cost_per_acquisition,omitempty"`         // Cost per conversion (spend / conversions)
-	NewToBrandRate            float64                         `json:"new_to_brand_rate,omitempty"`            // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate            float64                         `json:"new_to_brand_rate,omitempty"`            // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                     float64                         `json:"leads,omitempty"`                        // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift      float64                         `json:"incremental_sales_lift,omitempty"`       // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift                 float64                         `json:"brand_lift,omitempty"`                   // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic               float64                         `json:"foot_traffic,omitempty"`                 // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift            float64                         `json:"conversion_lift,omitempty"`              // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift           float64                         `json:"brand_search_lift,omitempty"`            // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                     float64                         `json:"plays,omitempty"`                        // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType               []DeliveryEventTypeMetrics      `json:"by_event_type,omitempty"`                // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift      float64                         `json:"incremental_sales_lift,omitempty"`       // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift                 float64                         `json:"brand_lift,omitempty"`                   // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic               float64                         `json:"foot_traffic,omitempty"`                 // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift            float64                         `json:"conversion_lift,omitempty"`              // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift           float64                         `json:"brand_search_lift,omitempty"`            // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                     float64                         `json:"plays,omitempty"`                        // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType               []DeliveryEventTypeMetrics      `json:"by_event_type,omitempty"`                // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                      float64                         `json:"grps,omitempty"`                         // Gross Rating Points delivered (for CPP)
-	Reach                     float64                         `json:"reach,omitempty"`                        // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit                 string                          `json:"reach_unit,omitempty"`                   // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow               *ReachWindow                    `json:"reach_window,omitempty"`                 // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency                 float64                         `json:"frequency,omitempty"`                    // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                     float64                         `json:"reach,omitempty"`                        // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit                 string                          `json:"reach_unit,omitempty"`                   // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow               *ReachWindow                    `json:"reach_window,omitempty"`                 // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency                 float64                         `json:"frequency,omitempty"`                    // Average frequency per reach unit, measured over the window declared in
 	QuartileData              *DeliveryQuartileData           `json:"quartile_data,omitempty"`                // Audio/video quartile completion data
 	DoohMetrics               *DeliveryDOOHMetrics            `json:"dooh_metrics,omitempty"`                 // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability               *DeliveryViewability            `json:"viewability,omitempty"`                  // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements               float64                         `json:"engagements,omitempty"`                  // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows                   float64                         `json:"follows,omitempty"`                      // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability               *DeliveryViewability            `json:"viewability,omitempty"`                  // Viewability metrics. Viewable rate should be calculated as
+	Engagements               float64                         `json:"engagements,omitempty"`                  // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows                   float64                         `json:"follows,omitempty"`                      // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                     float64                         `json:"saves,omitempty"`                        // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits             float64                         `json:"profile_visits,omitempty"`               // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate            float64                         `json:"engagement_rate,omitempty"`              // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits             float64                         `json:"profile_visits,omitempty"`               // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate            float64                         `json:"engagement_rate,omitempty"`              // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick              float64                         `json:"cost_per_click,omitempty"`               // Cost per click (spend / clicks)
-	CostPerCompletedView      float64                         `json:"cost_per_completed_view,omitempty"`      // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                       float64                         `json:"cpm,omitempty"`                          // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads                 float64                         `json:"downloads,omitempty"`                    // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold                 float64                         `json:"units_sold,omitempty"`                   // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits           float64                         `json:"new_to_brand_units,omitempty"`           // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource            []DeliveryActionSourceMetrics   `json:"by_action_source,omitempty"`             // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues        []VendorMetricValue             `json:"vendor_metric_values,omitempty"`         // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView      float64                         `json:"cost_per_completed_view,omitempty"`      // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                       float64                         `json:"cpm,omitempty"`                          // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads                 float64                         `json:"downloads,omitempty"`                    // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold                 float64                         `json:"units_sold,omitempty"`                   // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits           float64                         `json:"new_to_brand_units,omitempty"`           // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource            []DeliveryActionSourceMetrics   `json:"by_action_source,omitempty"`             // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues        []VendorMetricValue             `json:"vendor_metric_values,omitempty"`         // Reported values for vendor-defined metrics that the product's
 	PackageID                 string                          `json:"package_id"`                             // Seller's package identifier
 	PacingIndex               float64                         `json:"pacing_index,omitempty"`                 // Delivery pace (1.0 = on track, <1.0 = behind, >1.0 = ahead)
-	PricingModel              string                          `json:"pricing_model"`                          // The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how th
-	Rate                      float64                         `json:"rate"`                                   // The pricing rate for this package in the specified currency. For fixed-rate pric
-	Currency                  string                          `json:"currency"`                               // ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing. Indicat
-	DeliveryStatus            string                          `json:"delivery_status,omitempty"`              // System-reported operational state of this package. Reflects actual delivery stat
+	PricingModel              string                          `json:"pricing_model"`                          // The pricing model used for this package (e.g., cpm, cpcv, cpp). Indicates how
+	Rate                      float64                         `json:"rate"`                                   // The pricing rate for this package in the specified currency. For fixed-rate
+	Currency                  string                          `json:"currency"`                               // ISO 4217 currency code (e.g., USD, EUR, GBP) for this package's pricing.
+	DeliveryStatus            string                          `json:"delivery_status,omitempty"`              // System-reported operational state of this package. Reflects actual delivery
 	Paused                    *bool                           `json:"paused,omitempty"`                       // Whether this package is currently paused by the buyer
-	IsFinal                   *bool                           `json:"is_final,omitempty"`                     // Whether this delivery data is final for the reporting period. When false, the da
-	FinalizedAt               string                          `json:"finalized_at,omitempty"`                 // ISO 8601 timestamp at which this package's data became final. Present only when
-	MeasurementWindow         string                          `json:"measurement_window,omitempty"`           // Which measurement window this data represents, referencing a window_id from the
-	SupersedesWindow          string                          `json:"supersedes_window,omitempty"`            // Which measurement window this data replaces. Present on window_update notificati
-	MissingMetrics            []MissingMetric                 `json:"missing_metrics,omitempty"`              // Metrics that the binding reporting contract declared but that are NOT populated
-	ByCatalogItem             []PackageCatalogItemDelivery    `json:"by_catalog_item,omitempty"`              // Delivery by catalog item within this package. Available for catalog-driven packa
-	ByCreative                []PackageCreativeDelivery       `json:"by_creative,omitempty"`                  // Metrics broken down by creative within this package. Available when the seller s
-	ByKeyword                 []PackageKeywordDelivery        `json:"by_keyword,omitempty"`                   // Metrics broken down by keyword within this package. One row per (keyword, match_
-	ByGeo                     []PackageGeoDelivery            `json:"by_geo,omitempty"`                       // Delivery by geographic area within this package. Available when the buyer reques
-	ByGeoTruncated            *bool                           `json:"by_geo_truncated,omitempty"`             // Whether by_geo was truncated due to the requested limit or a seller-imposed maxi
-	ByDeviceType              []PackageDeviceTypeDelivery     `json:"by_device_type,omitempty"`               // Delivery by device form factor within this package. Available when the buyer req
-	ByDeviceTypeTruncated     *bool                           `json:"by_device_type_truncated,omitempty"`     // Whether by_device_type was truncated. Sellers MUST return this flag whenever by_
-	ByDevicePlatform          []PackageDevicePlatformDelivery `json:"by_device_platform,omitempty"`           // Delivery by operating system within this package. Available when the buyer reque
-	ByDevicePlatformTruncated *bool                           `json:"by_device_platform_truncated,omitempty"` // Whether by_device_platform was truncated. Sellers MUST return this flag whenever
-	ByAudience                []PackageAudienceDelivery       `json:"by_audience,omitempty"`                  // Delivery by audience segment within this package. Available when the buyer reque
-	ByAudienceTruncated       *bool                           `json:"by_audience_truncated,omitempty"`        // Whether by_audience was truncated. Sellers MUST return this flag whenever by_aud
-	ByPlacement               []PackagePlacementDelivery      `json:"by_placement,omitempty"`                 // Delivery by placement within this package. Available when the buyer requests pla
-	ByPlacementTruncated      *bool                           `json:"by_placement_truncated,omitempty"`       // Whether by_placement was truncated. Sellers MUST return this flag whenever by_pl
-	DailyBreakdown            []PackageDailyBreakdown         `json:"daily_breakdown,omitempty"`              // Day-by-day delivery for this package. Only present when include_package_daily_br
+	IsFinal                   *bool                           `json:"is_final,omitempty"`                     // Whether this delivery data is final for the reporting period. When false, the
+	FinalizedAt               string                          `json:"finalized_at,omitempty"`                 // ISO 8601 timestamp at which this package's data became final. Present only
+	MeasurementWindow         string                          `json:"measurement_window,omitempty"`           // Which measurement window this data represents, referencing a window_id from
+	SupersedesWindow          string                          `json:"supersedes_window,omitempty"`            // Which measurement window this data replaces. Present on window_update
+	MissingMetrics            []MissingMetric                 `json:"missing_metrics,omitempty"`              // Metrics that the binding reporting contract declared but that are NOT
+	ByCatalogItem             []PackageCatalogItemDelivery    `json:"by_catalog_item,omitempty"`              // Delivery by catalog item within this package. Available for catalog-driven
+	ByCreative                []PackageCreativeDelivery       `json:"by_creative,omitempty"`                  // Metrics broken down by creative within this package. Available when the seller
+	ByKeyword                 []PackageKeywordDelivery        `json:"by_keyword,omitempty"`                   // Metrics broken down by keyword within this package. One row per (keyword
+	ByGeo                     []PackageGeoDelivery            `json:"by_geo,omitempty"`                       // Delivery by geographic area within this package. Available when the buyer
+	ByGeoTruncated            *bool                           `json:"by_geo_truncated,omitempty"`             // Whether by_geo was truncated due to the requested limit or a seller-imposed
+	ByDeviceType              []PackageDeviceTypeDelivery     `json:"by_device_type,omitempty"`               // Delivery by device form factor within this package. Available when the buyer
+	ByDeviceTypeTruncated     *bool                           `json:"by_device_type_truncated,omitempty"`     // Whether by_device_type was truncated. Sellers MUST return this flag whenever
+	ByDevicePlatform          []PackageDevicePlatformDelivery `json:"by_device_platform,omitempty"`           // Delivery by operating system within this package. Available when the buyer
+	ByDevicePlatformTruncated *bool                           `json:"by_device_platform_truncated,omitempty"` // Whether by_device_platform was truncated. Sellers MUST return this flag
+	ByAudience                []PackageAudienceDelivery       `json:"by_audience,omitempty"`                  // Delivery by audience segment within this package. Available when the buyer
+	ByAudienceTruncated       *bool                           `json:"by_audience_truncated,omitempty"`        // Whether by_audience was truncated. Sellers MUST return this flag whenever
+	ByPlacement               []PackagePlacementDelivery      `json:"by_placement,omitempty"`                 // Delivery by placement within this package. Available when the buyer requests
+	ByPlacementTruncated      *bool                           `json:"by_placement_truncated,omitempty"`       // Whether by_placement was truncated. Sellers MUST return this flag whenever
+	DailyBreakdown            []PackageDailyBreakdown         `json:"daily_breakdown,omitempty"`              // Day-by-day delivery for this package. Only present when
 }
 
-// ProductDeliveryMeasurement — Measurement vendors and methodology for delivery metrics. The buyer accepts the declared vendors as
+// ProductDeliveryMeasurement — Measurement vendors and methodology for delivery metrics. The buyer accepts the declared vendors
 type ProductDeliveryMeasurement struct {
-	Vendors  []BrandReference `json:"vendors,omitempty"`  // Measurement vendors used for this product, as structured `BrandRef` identities.
-	Provider string           `json:"provider,omitempty"` // **Deprecated as of this minor.** Free-form measurement provider description (e.g
-	Notes    string           `json:"notes,omitempty"`    // Additional details about measurement methodology in plain language (e.g., 'MRC-a
+	Vendors  []BrandReference `json:"vendors,omitempty"`  // Measurement vendors used for this product, as structured `BrandRef`
+	Provider string           `json:"provider,omitempty"` // **Deprecated as of this minor.** Free-form measurement provider description
+	Notes    string           `json:"notes,omitempty"`    // Additional details about measurement methodology in plain language (e.g.
 }
 
-// ProductCatalogMatch — When the buyer provides a catalog on get_products, indicates which catalog items are eligible for th
+// ProductCatalogMatch — When the buyer provides a catalog on get_products, indicates which catalog items are eligible for
 type ProductCatalogMatch struct {
-	MatchedGtins   []string `json:"matched_gtins,omitempty"` // GTINs from the buyer's catalog that are eligible on this product's inventory. St
-	MatchedIDs     []string `json:"matched_ids,omitempty"`   // Item IDs from the buyer's catalog that matched this product's inventory. The ID
+	MatchedGtins   []string `json:"matched_gtins,omitempty"` // GTINs from the buyer's catalog that are eligible on this product's inventory.
+	MatchedIDs     []string `json:"matched_ids,omitempty"`   // Item IDs from the buyer's catalog that matched this product's inventory. The
 	MatchedCount   int      `json:"matched_count,omitempty"` // Number of catalog items that matched this product's inventory.
 	SubmittedCount int      `json:"submitted_count"`         // Total catalog items evaluated from the buyer's catalog.
 }
@@ -7972,16 +7972,16 @@ type AccountGovernanceAgent struct {
 	URL string `json:"url"` // Governance agent endpoint URL. Must use HTTPS.
 }
 
-// ReportingBucket — Cloud storage bucket where the seller delivers offline reporting files for this account. Seller prov
+// ReportingBucket — Cloud storage bucket where the seller delivers offline reporting files for this account. Seller
 type ReportingBucket struct {
 	Protocol          string `json:"protocol"`                     // Cloud storage protocol
 	Bucket            string `json:"bucket"`                       // Bucket or container name
-	Prefix            string `json:"prefix,omitempty"`             // Path prefix within the bucket. Seller appends date-based partitioning beneath th
+	Prefix            string `json:"prefix,omitempty"`             // Path prefix within the bucket. Seller appends date-based partitioning beneath
 	Region            string `json:"region,omitempty"`             // Cloud region for the bucket
-	Format            string `json:"format,omitempty"`             // File format for delivered files. Parquet, Avro, and ORC use internal compression
+	Format            string `json:"format,omitempty"`             // File format for delivered files. Parquet, Avro, and ORC use internal
 	Compression       string `json:"compression,omitempty"`        // Compression applied to delivered files
-	FileRetentionDays int    `json:"file_retention_days"`          // How long reporting files are retained in the bucket before deletion. Buyers must
-	SetupInstructions string `json:"setup_instructions,omitempty"` // URL to documentation for configuring buyer read access to this bucket (IAM role,
+	FileRetentionDays int    `json:"file_retention_days"`          // How long reporting files are retained in the bucket before deletion. Buyers
+	SetupInstructions string `json:"setup_instructions,omitempty"` // URL to documentation for configuring buyer read access to this bucket (IAM
 }
 
 type GeoMetroTarget struct {
@@ -7990,22 +7990,22 @@ type GeoMetroTarget struct {
 }
 
 type GeoPostalAreaTarget struct {
-	System string   `json:"system"` // Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country a
+	System string   `json:"system"` // Postal code system (e.g., 'us_zip', 'gb_outward'). System name encodes country
 	Values []string `json:"values"` // Postal codes within the system (e.g., ['10001', '10002'] for us_zip)
 }
 
 type GeoProximityTarget struct {
-	Lat           *float64                `json:"lat,omitempty"`            // Latitude in decimal degrees (WGS 84). Required for travel_time and radius method
-	Lng           *float64                `json:"lng,omitempty"`            // Longitude in decimal degrees (WGS 84). Required for travel_time and radius metho
-	Label         string                  `json:"label,omitempty"`          // Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Pr
-	TravelTime    *GeoProximityTravelTime `json:"travel_time,omitempty"`    // Travel time limit for isochrone calculation. The platform resolves this to a geo
-	TransportMode string                  `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is prov
-	Radius        *GeoProximityRadius     `json:"radius,omitempty"`         // Simple radius from the point. The platform draws a circle of this distance aroun
-	Geometry      *GeoProximityGeometry   `json:"geometry,omitempty"`       // Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buye
+	Lat           *float64                `json:"lat,omitempty"`            // Latitude in decimal degrees (WGS 84). Required for travel_time and radius
+	Lng           *float64                `json:"lng,omitempty"`            // Longitude in decimal degrees (WGS 84). Required for travel_time and radius
+	Label         string                  `json:"label,omitempty"`          // Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport'
+	TravelTime    *GeoProximityTravelTime `json:"travel_time,omitempty"`    // Travel time limit for isochrone calculation. The platform resolves this to a
+	TransportMode string                  `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is
+	Radius        *GeoProximityRadius     `json:"radius,omitempty"`         // Simple radius from the point. The platform draws a circle of this distance
+	Geometry      *GeoProximityGeometry   `json:"geometry,omitempty"`       // Pre-computed GeoJSON geometry defining the proximity boundary. Use when the
 	Ext           any                     `json:"ext,omitempty"`
 }
 
-// GeoProximityTravelTime — Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary bas
+// GeoProximityTravelTime — Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary
 type GeoProximityTravelTime struct {
 	Value float64 `json:"value"` // Travel time limit.
 	Unit  string  `json:"unit"`
@@ -8017,23 +8017,23 @@ type GeoProximityRadius struct {
 	Unit  string  `json:"unit"`  // Distance unit.
 }
 
-// GeoProximityGeometry — Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calcul
+// GeoProximityGeometry — Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already
 type GeoProximityGeometry struct {
 	Type        string `json:"type"`        // GeoJSON geometry type.
-	Coordinates []any  `json:"coordinates"` // GeoJSON coordinates array. For Polygon: array of linear rings. For MultiPolygon:
+	Coordinates []any  `json:"coordinates"` // GeoJSON coordinates array. For Polygon: array of linear rings. For
 }
 
-// AgeRestriction — Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeti
+// AgeRestriction — Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience
 type AgeRestriction struct {
 	Min                  int      `json:"min"`                             // Minimum age required
 	VerificationRequired *bool    `json:"verification_required,omitempty"` // Whether verified age (not inferred) is required for compliance
-	AcceptedMethods      []string `json:"accepted_methods,omitempty"`      // Accepted verification methods. If omitted, any method the platform supports is a
+	AcceptedMethods      []string `json:"accepted_methods,omitempty"`      // Accepted verification methods. If omitted, any method the platform supports is
 }
 
 type KeywordTarget struct {
 	Keyword   string   `json:"keyword"` // The keyword to target
 	MatchType string   `json:"match_type"`
-	BidPrice  *float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's pricing
+	BidPrice  *float64 `json:"bid_price,omitempty"` // Per-keyword bid price, denominated in the same currency as the package's
 }
 
 type NegativeKeywordTarget struct {
@@ -8057,19 +8057,19 @@ type BusinessContact struct {
 	Phone string `json:"phone,omitempty"`
 }
 
-// BankAccount — Bank account details for payment processing. Write-only: included in requests to provide payment coo
+// BankAccount — Bank account details for payment processing. Write-only: included in requests to provide payment
 type BankAccount struct {
 	AccountHolder string `json:"account_holder"`           // Name on the bank account
 	Iban          string `json:"iban,omitempty"`           // International Bank Account Number (SEPA markets)
 	Bic           string `json:"bic,omitempty"`            // Bank Identifier Code / SWIFT code (SEPA markets)
-	RoutingNumber string `json:"routing_number,omitempty"` // Bank routing number for non-SEPA markets (e.g., US ABA routing number, Canadian
+	RoutingNumber string `json:"routing_number,omitempty"` // Bank routing number for non-SEPA markets (e.g., US ABA routing number
 	AccountNumber string `json:"account_number,omitempty"` // Bank account number for non-SEPA markets
 }
 
-// LegacyWebhookAuthentication — Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256 sig
+// LegacyWebhookAuthentication — Legacy authentication configuration (A2A-compatible). Opts the seller into Bearer or HMAC-SHA256
 type LegacyWebhookAuthentication struct {
-	Schemes     []string `json:"schemes"`     // Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['
-	Credentials string   `json:"credentials"` // Credentials for the legacy scheme. For Bearer: token sent in Authorization heade
+	Schemes     []string `json:"schemes"`     // Array of authentication schemes. Supported: ['Bearer'] for simple token auth
+	Credentials string   `json:"credentials"` // Credentials for the legacy scheme. For Bearer: token sent in Authorization
 }
 
 // PackageCancellation — Cancellation metadata. Present only when canceled is true.
@@ -8077,13 +8077,13 @@ type PackageCancellation struct {
 	CanceledAt     string `json:"canceled_at"`               // ISO 8601 timestamp when this package was canceled.
 	CanceledBy     string `json:"canceled_by"`               // Which party initiated the package cancellation.
 	Reason         string `json:"reason,omitempty"`          // Reason the package was canceled.
-	AcknowledgedAt string `json:"acknowledged_at,omitempty"` // ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms inven
+	AcknowledgedAt string `json:"acknowledged_at,omitempty"` // ISO 8601 timestamp when the seller acknowledged the cancellation. Confirms
 }
 
-// CreativeFormatAccessibility — Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by
+// CreativeFormatAccessibility — Accessibility posture of this format. Declares the WCAG conformance level that creatives produced
 type CreativeFormatAccessibility struct {
-	WcagLevel                string `json:"wcag_level"`                           // WCAG conformance level that this format achieves. For format-rendered creatives,
-	RequiresAccessibleAssets *bool  `json:"requires_accessible_assets,omitempty"` // When true, all assets with x-accessibility fields must include those fields. For
+	WcagLevel                string `json:"wcag_level"`                           // WCAG conformance level that this format achieves. For format-rendered
+	RequiresAccessibleAssets *bool  `json:"requires_accessible_assets,omitempty"` // When true, all assets with x-accessibility fields must include those fields.
 }
 
 // SignalRange — For numeric signals, the valid value range
@@ -8101,71 +8101,71 @@ type DeliveryQuartileData struct {
 	Q4Views float64 `json:"q4_views,omitempty"` // 100% completion views
 }
 
-// MediaBuyBudget — Total budget for the media buy when executing a proposal. The publisher applies the proposal's alloc
+// MediaBuyBudget — Total budget for the media buy when executing a proposal. The publisher applies the proposal's
 type MediaBuyBudget struct {
 	Amount   float64 `json:"amount"`   // Total budget amount
 	Currency string  `json:"currency"` // ISO 4217 currency code
 }
 
-// IOAcceptance — Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_o
+// IOAcceptance — Acceptance of an insertion order from a committed proposal. Required when the proposal's
 type IOAcceptance struct {
 	IoID        string `json:"io_id"`                  // The io_id from the proposal's insertion_order being accepted
 	AcceptedAt  string `json:"accepted_at"`            // ISO 8601 timestamp when the IO was accepted
 	Signatory   string `json:"signatory"`              // Who accepted the IO — agent identifier or human name
-	SignatureID string `json:"signature_id,omitempty"` // Reference to the electronic signature from the signing service, when signing_url
+	SignatureID string `json:"signature_id,omitempty"` // Reference to the electronic signature from the signing service, when
 }
 
-// ArtifactWebhookConfig — Optional webhook configuration for content artifact delivery. Used by governance agents to validate
+// ArtifactWebhookConfig — Optional webhook configuration for content artifact delivery. Used by governance agents to
 type ArtifactWebhookConfig struct {
 	URL            string                      `json:"url"`                       // Webhook endpoint URL for artifact delivery
-	Token          string                      `json:"token,omitempty"`           // Optional client-provided token for webhook validation. Echoed back in webhook pa
-	Authentication LegacyWebhookAuthentication `json:"authentication"`            // Legacy authentication configuration for webhook delivery (A2A-compatible). Opts
-	DeliveryMode   string                      `json:"delivery_mode"`             // How artifacts are delivered. 'realtime' pushes artifacts as impressions occur. '
-	BatchFrequency string                      `json:"batch_frequency,omitempty"` // For batched delivery, how often to push artifacts. Required when delivery_mode i
-	SamplingRate   *float64                    `json:"sampling_rate,omitempty"`   // Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sampl
+	Token          string                      `json:"token,omitempty"`           // Optional client-provided token for webhook validation. Echoed back in webhook
+	Authentication LegacyWebhookAuthentication `json:"authentication"`            // Legacy authentication configuration for webhook delivery (A2A-compatible).
+	DeliveryMode   string                      `json:"delivery_mode"`             // How artifacts are delivered. 'realtime' pushes artifacts as impressions occur.
+	BatchFrequency string                      `json:"batch_frequency,omitempty"` // For batched delivery, how often to push artifacts. Required when delivery_mode
+	SamplingRate   *float64                    `json:"sampling_rate,omitempty"`   // Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10%
 }
 
-// DeliveryAttributionWindow — Attribution window to apply for conversion metrics. When provided, the seller returns conversion dat
+// DeliveryAttributionWindow — Attribution window to apply for conversion metrics. When provided, the seller returns conversion
 type DeliveryAttributionWindow struct {
 	PostClick *Duration `json:"post_click,omitempty"` // Post-click attribution window to apply.
 	PostView  *Duration `json:"post_view,omitempty"`  // Post-view attribution window to apply.
 	Model     string    `json:"model,omitempty"`      // Attribution model to use. When omitted, the seller applies their default model.
 }
 
-// DeliveryReportingDimensions — Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown dimensio
+// DeliveryReportingDimensions — Request dimensional breakdowns in delivery reporting. Each key enables a specific breakdown
 type DeliveryReportingDimensions struct {
-	Geo            *DeliveryReportingGeoDimension `json:"geo,omitempty"`             // Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdow
+	Geo            *DeliveryReportingGeoDimension `json:"geo,omitempty"`             // Request geographic breakdown. Check
 	DeviceType     *DeliveryReportingDimension    `json:"device_type,omitempty"`     // Request device type breakdown.
 	DevicePlatform *DeliveryReportingDimension    `json:"device_platform,omitempty"` // Request device platform breakdown.
 	Audience       *DeliveryReportingDimension    `json:"audience,omitempty"`        // Request audience segment breakdown.
 	Placement      *DeliveryReportingDimension    `json:"placement,omitempty"`       // Request placement breakdown.
 }
 
-// DeliveryReportingGeoDimension — Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdown for available leve
+// DeliveryReportingGeoDimension — Request geographic breakdown. Check reporting_capabilities.supports_geo_breakdown for available
 type DeliveryReportingGeoDimension struct {
 	GeoLevel string `json:"geo_level"`         // Geographic granularity level for the breakdown
-	System   string `json:"system,omitempty"`  // Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_
-	Limit    int    `json:"limit,omitempty"`   // Maximum number of geo entries to return. Defaults to 25. When truncated, by_geo_
-	SortBy   string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the sell
+	System   string `json:"system,omitempty"`  // Classification system for metro or postal_area levels (e.g., 'nielsen_dma'
+	Limit    int    `json:"limit,omitempty"`   // Maximum number of geo entries to return. Defaults to 25. When truncated
+	SortBy   string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the
 }
 
 // DeliveryReportingDimension — Request device type breakdown.
 type DeliveryReportingDimension struct {
-	Limit  int    `json:"limit,omitempty"`   // Maximum number of entries to return. When omitted, all entries are returned (the
-	SortBy string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the sell
+	Limit  int    `json:"limit,omitempty"`   // Maximum number of entries to return. When omitted, all entries are returned
+	SortBy string `json:"sort_by,omitempty"` // Metric to sort breakdown rows by (descending). Falls back to 'spend' if the
 }
 
-// GovernanceDeliveryMetrics — Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent compare
+// GovernanceDeliveryMetrics — Actual delivery performance data. MUST be present for 'delivery' phase. The governance agent
 type GovernanceDeliveryMetrics struct {
 	ReportingPeriod       GovernanceDeliveryReportingPeriod `json:"reporting_period"`                 // Start and end timestamps for the reporting window.
 	Spend                 *float64                          `json:"spend,omitempty"`                  // Total spend during the reporting period.
 	CumulativeSpend       *float64                          `json:"cumulative_spend,omitempty"`       // Total spend since the governed action started.
 	Impressions           *int                              `json:"impressions,omitempty"`            // Impressions delivered during the reporting period.
 	CumulativeImpressions *int                              `json:"cumulative_impressions,omitempty"` // Total impressions since the governed action started.
-	GeoDistribution       map[string]float64                `json:"geo_distribution,omitempty"`       // Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are pe
-	ChannelDistribution   map[string]float64                `json:"channel_distribution,omitempty"`   // Actual channel distribution. Keys are channel enum values, values are percentage
+	GeoDistribution       map[string]float64                `json:"geo_distribution,omitempty"`       // Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are
+	ChannelDistribution   map[string]float64                `json:"channel_distribution,omitempty"`   // Actual channel distribution. Keys are channel enum values, values are
 	Pacing                string                            `json:"pacing,omitempty"`                 // Whether delivery is ahead of, on track with, or behind the planned pace.
-	AudienceDistribution  *GovernanceAudienceDistribution   `json:"audience_distribution,omitempty"`  // Actual audience composition during the reporting period. Enables mid-flight drif
+	AudienceDistribution  *GovernanceAudienceDistribution   `json:"audience_distribution,omitempty"`  // Actual audience composition during the reporting period. Enables mid-flight
 }
 
 // GovernanceDeliveryReportingPeriod — Start and end timestamps for the reporting window.
@@ -8174,12 +8174,12 @@ type GovernanceDeliveryReportingPeriod struct {
 	End   string `json:"end"`
 }
 
-// GovernanceAudienceDistribution — Actual audience composition during the reporting period. Enables mid-flight drift detection when act
+// GovernanceAudienceDistribution — Actual audience composition during the reporting period. Enables mid-flight drift detection when
 type GovernanceAudienceDistribution struct {
-	Baseline            string             `json:"baseline"`                       // Population baseline used for index calculation. 'census': national census or equ
-	BaselineDescription string             `json:"baseline_description,omitempty"` // Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with
-	Indices             map[string]float64 `json:"indices"`                        // Audience index values for the current reporting period. Keys are seller-defined
-	CumulativeIndices   map[string]float64 `json:"cumulative_indices,omitempty"`   // Cumulative audience index values since the governed action started. Same key for
+	Baseline            string             `json:"baseline"`                       // Population baseline used for index calculation. 'census': national census or
+	BaselineDescription string             `json:"baseline_description,omitempty"` // Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+
+	Indices             map[string]float64 `json:"indices"`                        // Audience index values for the current reporting period. Keys are
+	CumulativeIndices   map[string]float64 `json:"cumulative_indices,omitempty"`   // Cumulative audience index values since the governed action started. Same key
 }
 
 // ReportPlanOutcomeDelivery — Delivery metrics. Required when outcome is 'delivery'.
@@ -8222,9 +8222,9 @@ type PolicyExemplar struct {
 }
 
 type GetProductsIncompleteItem struct {
-	Scope         string    `json:"scope"`                    // 'products': not all inventory sources were searched. 'pricing': products returne
+	Scope         string    `json:"scope"`                    // 'products': not all inventory sources were searched. 'pricing': products
 	Description   string    `json:"description"`              // Human-readable explanation of what is missing and why.
-	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the buyer to decide wh
+	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time would resolve this scope. Allows the buyer to decide
 }
 
 type SyncPlansPlan struct {
@@ -8232,7 +8232,7 @@ type SyncPlansPlan struct {
 	Status           string                    `json:"status"`                      // Sync result status. 'active' means sync succeeded; 'error' means sync failed.
 	Version          int                       `json:"version"`                     // Plan version (increments on each sync).
 	Categories       []SyncPlansPlanCategory   `json:"categories,omitempty"`        // Validation categories active for this plan.
-	ResolvedPolicies []SyncPlansResolvedPolicy `json:"resolved_policies,omitempty"` // Policies the governance agent will enforce for this plan. Includes explicitly re
+	ResolvedPolicies []SyncPlansResolvedPolicy `json:"resolved_policies,omitempty"` // Policies the governance agent will enforce for this plan. Includes explicitly
 }
 
 type SyncPlansPlanCategory struct {
@@ -8242,20 +8242,20 @@ type SyncPlansPlanCategory struct {
 
 type SyncPlansResolvedPolicy struct {
 	PolicyID    string            `json:"policy_id"`        // Registry policy ID.
-	Source      string            `json:"source"`           // How this policy was included. 'explicit': referenced in the brand compliance con
+	Source      string            `json:"source"`           // How this policy was included. 'explicit': referenced in the brand compliance
 	Enforcement PolicyEnforcement `json:"enforcement"`      // Enforcement level for this policy.
-	Reason      string            `json:"reason,omitempty"` // Why this policy was included (e.g., 'Matched jurisdiction US and policy category
+	Reason      string            `json:"reason,omitempty"` // Why this policy was included (e.g., 'Matched jurisdiction US and policy
 }
 
 type CheckGovernanceFinding struct {
-	CategoryID        string             `json:"category_id"`              // Validation category that flagged the issue (e.g., 'budget_compliance', 'regulato
-	PolicyID          string             `json:"policy_id,omitempty"`      // ID of the policy that triggered this finding. May reference a registry policy (w
-	SourcePlanID      string             `json:"source_plan_id,omitempty"` // For portfolio or aggregated evaluations where findings draw on bespoke policies
+	CategoryID        string             `json:"category_id"`              // Validation category that flagged the issue (e.g., 'budget_compliance'
+	PolicyID          string             `json:"policy_id,omitempty"`      // ID of the policy that triggered this finding. May reference a registry policy
+	SourcePlanID      string             `json:"source_plan_id,omitempty"` // For portfolio or aggregated evaluations where findings draw on bespoke
 	Severity          EscalationSeverity `json:"severity"`
 	Explanation       string             `json:"explanation"`                  // Human-readable description of the issue.
 	Details           map[string]any     `json:"details,omitempty"`            // Structured details for programmatic consumption.
-	Confidence        *float64           `json:"confidence,omitempty"`         // Confidence score (0-1) in this finding. Distinguishes 'this definitely violates
-	UncertaintyReason string             `json:"uncertainty_reason,omitempty"` // Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions th
+	Confidence        *float64           `json:"confidence,omitempty"`         // Confidence score (0-1) in this finding. Distinguishes 'this definitely
+	UncertaintyReason string             `json:"uncertainty_reason,omitempty"` // Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions
 }
 
 type ReportPlanOutcomeFinding struct {
@@ -8296,7 +8296,7 @@ type PlanAuditSummary struct {
 	Statuses         *PlanAuditStatusCounts `json:"statuses,omitempty"`          // Count of each governance check status.
 	FindingsCount    *int                   `json:"findings_count,omitempty"`    // Total findings across all checks and outcomes.
 	Escalations      []PlanAuditEscalation  `json:"escalations,omitempty"`       // All escalations and their resolutions.
-	DriftMetrics     *PlanAuditDriftMetrics `json:"drift_metrics,omitempty"`     // Aggregate governance metrics for detecting oversight drift. A declining escalati
+	DriftMetrics     *PlanAuditDriftMetrics `json:"drift_metrics,omitempty"`     // Aggregate governance metrics for detecting oversight drift. A declining
 }
 
 // PlanAuditStatusCounts — Count of each governance check status.
@@ -8304,7 +8304,7 @@ type PlanAuditStatusCounts struct {
 	Approved      *int `json:"approved,omitempty"`
 	Denied        *int `json:"denied,omitempty"`
 	Conditions    *int `json:"conditions,omitempty"`
-	HumanReviewed *int `json:"human_reviewed,omitempty"` // Supplementary count of checks that went through internal human review. These che
+	HumanReviewed *int `json:"human_reviewed,omitempty"` // Supplementary count of checks that went through internal human review. These
 }
 
 type PlanAuditEscalation struct {
@@ -8314,22 +8314,22 @@ type PlanAuditEscalation struct {
 	ResolvedAt string `json:"resolved_at,omitempty"` // ISO 8601 resolution timestamp.
 }
 
-// PlanAuditDriftMetrics — Aggregate governance metrics for detecting oversight drift. A declining escalation rate may indicate
+// PlanAuditDriftMetrics — Aggregate governance metrics for detecting oversight drift. A declining escalation rate may
 type PlanAuditDriftMetrics struct {
 	EscalationRate      *float64                  `json:"escalation_rate,omitempty"`       // Fraction of checks that resulted in escalation.
 	EscalationRateTrend string                    `json:"escalation_rate_trend,omitempty"` // Direction of escalation rate over the plan's lifetime.
 	AutoApprovalRate    *float64                  `json:"auto_approval_rate,omitempty"`    // Fraction of checks approved without human intervention.
-	HumanOverrideRate   *float64                  `json:"human_override_rate,omitempty"`   // Fraction of escalations where the human overrode the governance agent's recommen
-	MeanConfidence      *float64                  `json:"mean_confidence,omitempty"`       // Average confidence score across all findings. Present when findings include conf
-	Thresholds          *PlanAuditDriftThresholds `json:"thresholds,omitempty"`            // Organization-defined thresholds for drift metrics. When a metric crosses its thr
+	HumanOverrideRate   *float64                  `json:"human_override_rate,omitempty"`   // Fraction of escalations where the human overrode the governance agent's
+	MeanConfidence      *float64                  `json:"mean_confidence,omitempty"`       // Average confidence score across all findings. Present when findings include
+	Thresholds          *PlanAuditDriftThresholds `json:"thresholds,omitempty"`            // Organization-defined thresholds for drift metrics. When a metric crosses its
 }
 
-// PlanAuditDriftThresholds — Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the governan
+// PlanAuditDriftThresholds — Organization-defined thresholds for drift metrics. When a metric crosses its threshold, the
 type PlanAuditDriftThresholds struct {
-	EscalationRateMax    *float64 `json:"escalation_rate_max,omitempty"`     // Maximum acceptable escalation rate. A rate above this suggests policy miscalibra
-	EscalationRateMin    *float64 `json:"escalation_rate_min,omitempty"`     // Minimum acceptable escalation rate. A rate below this may indicate eroding overs
+	EscalationRateMax    *float64 `json:"escalation_rate_max,omitempty"`     // Maximum acceptable escalation rate. A rate above this suggests policy
+	EscalationRateMin    *float64 `json:"escalation_rate_min,omitempty"`     // Minimum acceptable escalation rate. A rate below this may indicate eroding
 	AutoApprovalRateMax  *float64 `json:"auto_approval_rate_max,omitempty"`  // Maximum acceptable auto-approval rate.
-	HumanOverrideRateMax *float64 `json:"human_override_rate_max,omitempty"` // Maximum acceptable human override rate. A high rate suggests the governance agen
+	HumanOverrideRateMax *float64 `json:"human_override_rate_max,omitempty"` // Maximum acceptable human override rate. A high rate suggests the governance
 }
 
 type PlanAuditEntry struct {
@@ -8337,19 +8337,19 @@ type PlanAuditEntry struct {
 	Type                string              `json:"type"`                           // Entry type.
 	Timestamp           string              `json:"timestamp"`                      // ISO 8601 timestamp.
 	PlanID              string              `json:"plan_id,omitempty"`              // Plan this entry belongs to. Present when querying multiple plans or a portfolio.
-	Caller              string              `json:"caller,omitempty"`               // URL of the agent that made the request. Resolved from the credentials used on th
+	Caller              string              `json:"caller,omitempty"`               // URL of the agent that made the request. Resolved from the credentials used on
 	Tool                string              `json:"tool,omitempty"`                 // The AdCP tool (present for check entries).
-	Verdict             *GovernanceDecision `json:"verdict,omitempty"`              // Governance verdict (present for check entries). Renamed from `status` in 3.1 alo
-	CheckType           string              `json:"check_type,omitempty"`           // Whether the check was an intent check (orchestrator) or execution check (seller)
-	Mode                *GovernanceMode     `json:"mode,omitempty"`                 // Governance mode active at the moment this specific check was evaluated. Governan
-	Explanation         string              `json:"explanation,omitempty"`          // Human-readable explanation of the governance decision (present for check entries
-	PoliciesEvaluated   []string            `json:"policies_evaluated,omitempty"`   // Policy IDs evaluated during this check. Includes registry policy IDs (resolved v
-	CategoriesEvaluated []string            `json:"categories_evaluated,omitempty"` // Governance categories evaluated (e.g., 'budget_authority', 'regulatory_complianc
-	Findings            []PlanAuditFinding  `json:"findings,omitempty"`             // Findings from this check or outcome. Same structure as check_governance response
+	Verdict             *GovernanceDecision `json:"verdict,omitempty"`              // Governance verdict (present for check entries). Renamed from `status` in 3.1
+	CheckType           string              `json:"check_type,omitempty"`           // Whether the check was an intent check (orchestrator) or execution check
+	Mode                *GovernanceMode     `json:"mode,omitempty"`                 // Governance mode active at the moment this specific check was evaluated.
+	Explanation         string              `json:"explanation,omitempty"`          // Human-readable explanation of the governance decision (present for check
+	PoliciesEvaluated   []string            `json:"policies_evaluated,omitempty"`   // Policy IDs evaluated during this check. Includes registry policy IDs (resolved
+	CategoriesEvaluated []string            `json:"categories_evaluated,omitempty"` // Governance categories evaluated (e.g., 'budget_authority'
+	Findings            []PlanAuditFinding  `json:"findings,omitempty"`             // Findings from this check or outcome. Same structure as check_governance
 	Outcome             *OutcomeType        `json:"outcome,omitempty"`              // Outcome type (present for outcome entries).
 	CommittedBudget     *float64            `json:"committed_budget,omitempty"`     // Budget committed (present for completed outcome entries).
 	GovernanceContext   string              `json:"governance_context,omitempty"`   // Governance context for this entry (present for check and outcome entries).
-	PlanHash            string              `json:"plan_hash,omitempty"`            // Audit-layer binding to the plan revision this attestation was evaluated over — b
+	PlanHash            string              `json:"plan_hash,omitempty"`            // Audit-layer binding to the plan revision this attestation was evaluated over —
 	PurchaseType        *PurchaseType       `json:"purchase_type,omitempty"`        // Purchase type for this entry.
 	OutcomeStatus       string              `json:"outcome_status,omitempty"`       // Outcome status (present for outcome entries).
 }
@@ -8368,22 +8368,22 @@ type PlanAuditGovernedAction struct {
 	Status            string       `json:"status"`                     // Action status.
 	Committed         float64      `json:"committed"`                  // Budget committed for this action.
 	CheckCount        int          `json:"check_count"`                // Number of governance checks performed for this action.
-	SellerReference   string       `json:"seller_reference,omitempty"` // The seller's identifier for the resource (e.g., media_buy_id, rights_grant_id).
+	SellerReference   string       `json:"seller_reference,omitempty"` // The seller's identifier for the resource (e.g., media_buy_id
 }
 
 type CreativeAgentRef struct {
-	AgentURL     string   `json:"agent_url"`              // Base URL for the creative agent (e.g., 'https://reference.example.com', 'https:/
+	AgentURL     string   `json:"agent_url"`              // Base URL for the creative agent (e.g., 'https://reference.example.com'
 	AgentName    string   `json:"agent_name,omitempty"`   // Human-readable name for the creative agent
 	Capabilities []string `json:"capabilities,omitempty"` // Capabilities this creative agent provides
 }
 
 type BuildCreativePreviewInput struct {
-	Name               string            `json:"name"`                          // Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evenin
+	Name               string            `json:"name"`                          // Human-readable name for this input set (e.g., 'Sunny morning on mobile'
 	Macros             map[string]string `json:"macros,omitempty"`              // Macro values to use for this preview variant
 	ContextDescription string            `json:"context_description,omitempty"` // Natural language description of the context for AI-generated content
 }
 
-// CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can cont
+// CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can
 type CollectionRequestPagination struct {
 	MaxResults int    `json:"max_results,omitempty"` // Maximum number of collections to return per page
 	Cursor     string `json:"cursor,omitempty"`      // Opaque cursor from a previous response to fetch the next page
@@ -8409,80 +8409,80 @@ type RightsAgentRef struct {
 	ID  string `json:"id"`  // Agent identifier
 }
 
-// ProductCard — Optional standard visual card for displaying this product in user interfaces (catalog browsers, dash
+// ProductCard — Optional standard visual card for displaying this product in user interfaces (catalog browsers
 type ProductCard struct {
-	Image       *ImageAsset `json:"image,omitempty"`       // Hero image for the card. Recommended ~300x400 (4:3 portrait) for the standard ca
+	Image       *ImageAsset `json:"image,omitempty"`       // Hero image for the card. Recommended ~300x400 (4:3 portrait) for the standard
 	Title       string      `json:"title,omitempty"`       // Card title (typically the product name).
 	Description string      `json:"description,omitempty"` // Short descriptive blurb shown below the title.
-	PriceLabel  string      `json:"price_label,omitempty"` // Formatted price or pricing summary (e.g., 'From $5 CPM', 'Auction floor $0.50 CP
+	PriceLabel  string      `json:"price_label,omitempty"` // Formatted price or pricing summary (e.g., 'From $5 CPM', 'Auction floor $0.50
 	CTALabel    string      `json:"cta_label,omitempty"`   // Call-to-action button label (e.g., 'View details', 'Get proposal').
 }
 
-// ProductCardDetailed — Optional detailed card with hero + carousel + structured specifications, for rich product presentati
+// ProductCardDetailed — Optional detailed card with hero + carousel + structured specifications, for rich product
 type ProductCardDetailed struct {
 	HeroImage      *ImageAsset                `json:"hero_image,omitempty"`      // Primary hero image at the top of the detailed view.
 	CarouselImages []ImageAsset               `json:"carousel_images,omitempty"` // Additional images for a swipeable carousel below the hero.
 	Title          string                     `json:"title,omitempty"`           // Page title (typically the product name).
-	Description    string                     `json:"description,omitempty"`     // Full descriptive copy. Markdown allowed in client renderers that support it; oth
-	Specifications []ProductCardSpecification `json:"specifications,omitempty"`  // Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration: 30s'
+	Description    string                     `json:"description,omitempty"`     // Full descriptive copy. Markdown allowed in client renderers that support it
+	Specifications []ProductCardSpecification `json:"specifications,omitempty"`  // Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration
 	PriceLabel     string                     `json:"price_label,omitempty"`     // Formatted price or pricing summary.
 	CTALabel       string                     `json:"cta_label,omitempty"`       // Call-to-action button label.
 }
 
-// CreativeFormatCard — Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rend
+// CreativeFormatCard — Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be
 type CreativeFormatCard struct {
 	FormatID FormatRef      `json:"format_id"` // Creative format defining the card layout (typically format_card_standard)
 	Manifest map[string]any `json:"manifest"`  // Asset manifest for rendering the card, structure defined by the format
 }
 
-// CreativeFormatCardDetailed — Optional detailed card with carousel and full specifications. Provides rich format documentation sim
+// CreativeFormatCardDetailed — Optional detailed card with carousel and full specifications. Provides rich format documentation
 type CreativeFormatCardDetailed struct {
-	FormatID FormatRef      `json:"format_id"` // Creative format defining the detailed card layout (typically format_card_detaile
+	FormatID FormatRef      `json:"format_id"` // Creative format defining the detailed card layout (typically
 	Manifest map[string]any `json:"manifest"`  // Asset manifest for rendering the detailed card, structure defined by the format
 }
 
-// ProvenanceAITool — AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and C2
+// ProvenanceAITool — AI system used to generate or modify this content. Aligns with IPTC 2025.1 AI metadata fields and
 type ProvenanceAITool struct {
 	Name     string `json:"name"`               // Name of the AI tool or model (e.g., 'DALL-E 3', 'Stable Diffusion XL', 'Gemini')
-	Version  string `json:"version,omitempty"`  // Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For g
-	Provider string `json:"provider,omitempty"` // Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI', 'Google'
+	Version  string `json:"version,omitempty"`  // Version identifier for the AI tool or model (e.g., '25.1', '0125', '2.1'). For
+	Provider string `json:"provider,omitempty"` // Organization that provides the AI tool (e.g., 'OpenAI', 'Stability AI'
 }
 
-// ProvenanceDeclaredBy — Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving pa
+// ProvenanceDeclaredBy — Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving
 type ProvenanceDeclaredBy struct {
 	AgentURL string `json:"agent_url,omitempty"` // URL of the agent or service that declared this provenance
 	Role     string `json:"role"`                // Role of the declaring party in the supply chain
 }
 
-// ProvenanceC2PA — C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this cont
+// ProvenanceC2PA — C2PA sidecar manifest reference. Links to a detached cryptographic provenance manifest for this
 type ProvenanceC2PA struct {
 	ManifestURL string `json:"manifest_url"` // URL to the C2PA manifest store for this content
 }
 
-// ProvenanceDisclosure — Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required and
+// ProvenanceDisclosure — Regulatory disclosure requirements for this content. Indicates whether AI disclosure is required
 type ProvenanceDisclosure struct {
-	Required      bool                               `json:"required"`                // The declaring party's claim that AI disclosure is required for this content unde
+	Required      bool                               `json:"required"`                // The declaring party's claim that AI disclosure is required for this content
 	Jurisdictions []ProvenanceDisclosureJurisdiction `json:"jurisdictions,omitempty"` // Jurisdictions where disclosure obligations apply
 }
 
 type ProvenanceDisclosureJurisdiction struct {
 	Country        string                              `json:"country"`                   // ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')
 	Region         string                              `json:"region,omitempty"`          // Sub-national region code (e.g., 'CA' for California, 'BY' for Bavaria)
-	Regulation     string                              `json:"regulation"`                // Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942', 'cn_deep_synth
+	Regulation     string                              `json:"regulation"`                // Regulation identifier (e.g., 'eu_ai_act_article_50', 'ca_sb_942'
 	LabelText      string                              `json:"label_text,omitempty"`      // Required disclosure label text for this jurisdiction, in the local language
-	RenderGuidance *ProvenanceDisclosureRenderGuidance `json:"render_guidance,omitempty"` // How the disclosure should be rendered for this jurisdiction. Expresses the decla
+	RenderGuidance *ProvenanceDisclosureRenderGuidance `json:"render_guidance,omitempty"` // How the disclosure should be rendered for this jurisdiction. Expresses the
 }
 
-// ProvenanceDisclosureRenderGuidance — How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's intent
+// ProvenanceDisclosureRenderGuidance — How the disclosure should be rendered for this jurisdiction. Expresses the declaring party's
 type ProvenanceDisclosureRenderGuidance struct {
 	Persistence   string   `json:"persistence,omitempty"`     // How long the disclosure must persist during content playback or display
-	MinDurationMs int      `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds for initial persistence. Recommended wh
-	Positions     []string `json:"positions,omitempty"`       // Preferred disclosure positions in priority order. The first position a format su
+	MinDurationMs int      `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds for initial persistence. Recommended
+	Positions     []string `json:"positions,omitempty"`       // Preferred disclosure positions in priority order. The first position a format
 	Ext           any      `json:"ext,omitempty"`
 }
 
 type ProvenanceVerification struct {
-	VerifiedBy   string  `json:"verified_by"`             // Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation', 'Real
+	VerifiedBy   string  `json:"verified_by"`             // Name of the verification service (e.g., 'DoubleVerify', 'Hive Moderation'
 	VerifiedTime string  `json:"verified_time,omitempty"` // When the verification was performed (ISO 8601)
 	Result       string  `json:"result"`                  // Verification outcome
 	Confidence   float64 `json:"confidence,omitempty"`    // Confidence score of the verification result (0.0 to 1.0)
@@ -8497,7 +8497,7 @@ type ProposalBudgetGuidance struct {
 	Currency    string  `json:"currency,omitempty"`    // ISO 4217 currency code
 }
 
-// InsertionOrderTerms — Summary fields echoed from the committed proposal for agent verification. Buyer agents use these to
+// InsertionOrderTerms — Summary fields echoed from the committed proposal for agent verification. Buyer agents use these
 type InsertionOrderTerms struct {
 	Advertiser   string                `json:"advertiser,omitempty"`    // Advertiser name or identifier
 	Publisher    string                `json:"publisher,omitempty"`     // Publisher name or identifier
@@ -8513,49 +8513,49 @@ type InsertionOrderBudget struct {
 	Currency string  `json:"currency"` // ISO 4217 currency code
 }
 
-// InstallmentDerivative — When this installment is a clip, highlight, or recap derived from a full installment. The source ins
+// InstallmentDerivative — When this installment is a clip, highlight, or recap derived from a full installment. The source
 type InstallmentDerivative struct {
 	InstallmentID string `json:"installment_id"` // The source installment this content is derived from
 	Type          string `json:"type"`           // What kind of derivative content this is
 }
 
-// ProductMetricOptimization — Metric optimization capabilities for this product. Presence indicates the product supports optimizat
+// ProductMetricOptimization — Metric optimization capabilities for this product. Presence indicates the product supports
 type ProductMetricOptimization struct {
-	SupportedMetrics       []string  `json:"supported_metrics"`                  // Metric kinds this product can optimize for. Buyers should only request metric go
-	SupportedReachUnits    []string  `json:"supported_reach_units,omitempty"`    // Reach units this product can optimize for. Required when supported_metrics inclu
-	SupportedViewDurations []float64 `json:"supported_view_durations,omitempty"` // Video view duration thresholds (in seconds) this product supports for completed_
-	SupportedTargets       []string  `json:"supported_targets,omitempty"`        // Target kinds available for metric goals on this product. Values match target.kin
+	SupportedMetrics       []string  `json:"supported_metrics"`                  // Metric kinds this product can optimize for. Buyers should only request metric
+	SupportedReachUnits    []string  `json:"supported_reach_units,omitempty"`    // Reach units this product can optimize for. Required when supported_metrics
+	SupportedViewDurations []float64 `json:"supported_view_durations,omitempty"` // Video view duration thresholds (in seconds) this product supports for
+	SupportedTargets       []string  `json:"supported_targets,omitempty"`        // Target kinds available for metric goals on this product. Values match
 }
 
-// ProductConversionTracking — Conversion event tracking for this product. Presence indicates the product supports optimization_goa
+// ProductConversionTracking — Conversion event tracking for this product. Presence indicates the product supports
 type ProductConversionTracking struct {
-	ActionSources    []string `json:"action_sources,omitempty"`    // Action sources relevant to this product (e.g. a retail media product might have
-	SupportedTargets []string `json:"supported_targets,omitempty"` // Target kinds available for event goals on this product. Values match target.kind
-	PlatformManaged  *bool    `json:"platform_managed,omitempty"`  // Whether the seller provides its own always-on measurement (e.g. Amazon sales att
+	ActionSources    []string `json:"action_sources,omitempty"`    // Action sources relevant to this product (e.g. a retail media product might
+	SupportedTargets []string `json:"supported_targets,omitempty"` // Target kinds available for event goals on this product. Values match
+	PlatformManaged  *bool    `json:"platform_managed,omitempty"`  // Whether the seller provides its own always-on measurement (e.g. Amazon sales
 }
 
-// ProductTrustedMatch — Trusted Match Protocol capabilities for this product. When present, the product supports real-time c
+// ProductTrustedMatch — Trusted Match Protocol capabilities for this product. When present, the product supports real-time
 type ProductTrustedMatch struct {
-	ContextMatch  bool                          `json:"context_match"`            // Whether this product supports Context Match requests. When true, the publisher's
-	IdentityMatch *bool                         `json:"identity_match,omitempty"` // Whether this product supports Identity Match requests. When true, the publisher'
+	ContextMatch  bool                          `json:"context_match"`            // Whether this product supports Context Match requests. When true, the
+	IdentityMatch *bool                         `json:"identity_match,omitempty"` // Whether this product supports Identity Match requests. When true, the
 	ResponseTypes []string                      `json:"response_types,omitempty"` // What the publisher can accept back from context match.
-	DynamicBrands *bool                         `json:"dynamic_brands,omitempty"` // Whether the buyer can select a brand at match time. When false (default), the br
-	Providers     []ProductTrustedMatchProvider `json:"providers,omitempty"`      // TMP providers integrated with this product's inventory. Each entry identifies a
+	DynamicBrands *bool                         `json:"dynamic_brands,omitempty"` // Whether the buyer can select a brand at match time. When false (default), the
+	Providers     []ProductTrustedMatchProvider `json:"providers,omitempty"`      // TMP providers integrated with this product's inventory. Each entry identifies
 }
 
 type ProductTrustedMatchProvider struct {
-	AgentURL      string   `json:"agent_url"`                // Provider's agent URL from the registry. Canonical identifier for this TMP provid
+	AgentURL      string   `json:"agent_url"`                // Provider's agent URL from the registry. Canonical identifier for this TMP
 	ContextMatch  *bool    `json:"context_match,omitempty"`  // Whether this provider handles context match for this product.
 	IdentityMatch *bool    `json:"identity_match,omitempty"` // Whether this provider handles identity match for this product.
-	Countries     []string `json:"countries,omitempty"`      // ISO 3166-1 alpha-2 country codes this provider serves for identity match. The ro
-	UIDTypes      []string `json:"uid_types,omitempty"`      // Identity types this regional provider can resolve. The router filters providers
+	Countries     []string `json:"countries,omitempty"`      // ISO 3166-1 alpha-2 country codes this provider serves for identity match. The
+	UIDTypes      []string `json:"uid_types,omitempty"`      // Identity types this regional provider can resolve. The router filters
 }
 
-// ProductMaterialSubmission — Instructions for submitting physical creative materials (print, static OOH, cinema). Present only fo
+// ProductMaterialSubmission — Instructions for submitting physical creative materials (print, static OOH, cinema). Present only
 type ProductMaterialSubmission struct {
 	URL          string `json:"url,omitempty"`          // HTTPS URL for uploading or submitting physical creative materials
 	Email        string `json:"email,omitempty"`        // Email address for creative material submission
-	Instructions string `json:"instructions,omitempty"` // Human-readable instructions for material submission (file naming conventions, sh
+	Instructions string `json:"instructions,omitempty"` // Human-readable instructions for material submission (file naming conventions
 	Ext          any    `json:"ext,omitempty"`
 }
 
@@ -8571,10 +8571,10 @@ type ProductFilterMetro struct {
 	Code   string `json:"code"`   // Metro code within the system (e.g., '501' for NYC DMA)
 }
 
-// ProductFilterTrustedMatch — Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are
+// ProductFilterTrustedMatch — Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support
 type ProductFilterTrustedMatch struct {
-	Providers     []ProductFilterTrustedMatchProvider `json:"providers,omitempty"`      // Filter to products with specific TMP providers and match types. Each entry ident
-	ResponseTypes []string                            `json:"response_types,omitempty"` // Filter to products supporting specific TMP response types (e.g., 'activation', '
+	Providers     []ProductFilterTrustedMatchProvider `json:"providers,omitempty"`      // Filter to products with specific TMP providers and match types. Each entry
+	ResponseTypes []string                            `json:"response_types,omitempty"` // Filter to products supporting specific TMP response types (e.g., 'activation'
 }
 
 type ProductFilterTrustedMatchProvider struct {
@@ -8585,7 +8585,7 @@ type ProductFilterTrustedMatchProvider struct {
 
 type ProductFilterGeoTargetingRequirement struct {
 	Level  string `json:"level"`            // Geographic targeting level (country, region, metro, postal_area)
-	System string `json:"system,omitempty"` // Classification system within the level. Required for metro (e.g., 'nielsen_dma')
+	System string `json:"system,omitempty"` // Classification system within the level. Required for metro (e.g.
 }
 
 type ProductFilterPostalArea struct {
@@ -8598,7 +8598,7 @@ type ProductFilterGeoProximity struct {
 	Lng           *float64                 `json:"lng,omitempty"`            // Longitude in decimal degrees (WGS 84)
 	Label         string                   `json:"label,omitempty"`          // Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')
 	TravelTime    *ProductFilterTravelTime `json:"travel_time,omitempty"`    // Travel time limit for isochrone calculation
-	TransportMode string                   `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is prov
+	TransportMode string                   `json:"transport_mode,omitempty"` // Transportation mode for isochrone calculation. Required when travel_time is
 	Radius        *ProductFilterRadius     `json:"radius,omitempty"`         // Simple radius from the point
 	Geometry      *ProductFilterGeometry   `json:"geometry,omitempty"`       // Pre-computed GeoJSON geometry defining the proximity boundary
 }
@@ -8628,11 +8628,11 @@ type ProductFilterKeyword struct {
 
 type PriceAdjustment struct {
 	Kind        string  `json:"kind"`
-	Name        string  `json:"name"`                  // Specific adjustment name. Use well-known values where applicable for interoperab
-	Rate        float64 `json:"rate,omitempty"`        // Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive — kind
-	Amount      float64 `json:"amount,omitempty"`      // Adjustment as a fixed monetary amount in the pricing option's currency. Always p
-	Description string  `json:"description,omitempty"` // Human-readable description of this adjustment (e.g., 'Malstaffel 12x', '2% Skont
-	Beneficiary string  `json:"beneficiary,omitempty"` // Identifies who receives this adjustment's value. For commissions, the intermedia
+	Name        string  `json:"name"`                  // Specific adjustment name. Use well-known values where applicable for
+	Rate        float64 `json:"rate,omitempty"`        // Adjustment as a decimal proportion (e.g., 0.15 for 15%). Always positive —
+	Amount      float64 `json:"amount,omitempty"`      // Adjustment as a fixed monetary amount in the pricing option's currency. Always
+	Description string  `json:"description,omitempty"` // Human-readable description of this adjustment (e.g., 'Malstaffel 12x', '2%
+	Beneficiary string  `json:"beneficiary,omitempty"` // Identifies who receives this adjustment's value. For commissions, the
 }
 
 type CreativeFormatDisclosureCapability struct {
@@ -8649,12 +8649,12 @@ type CreativeAssetInput struct {
 type TargetingStoreCatchment struct {
 	CatalogID    string   `json:"catalog_id"`              // Synced store-type catalog ID from sync_catalogs.
 	StoreIDs     []string `json:"store_ids,omitempty"`     // Filter to specific stores within the catalog. Omit to target all stores.
-	CatchmentIDs []string `json:"catchment_ids,omitempty"` // Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchme
+	CatchmentIDs []string `json:"catchment_ids,omitempty"` // Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all
 }
 
 type DeliveryEventTypeMetrics struct {
 	EventType     string  `json:"event_type"`                // The event type
-	EventSourceID string  `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple e
+	EventSourceID string  `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple
 	Count         float64 `json:"count"`                     // Number of events of this type
 	Value         float64 `json:"value,omitempty"`           // Total monetary value of events of this type
 }
@@ -8665,7 +8665,7 @@ type DeliveryDOOHMetrics struct {
 	ScreensUsed       int                          `json:"screens_used,omitempty"`        // Number of unique screens displaying the ad
 	ScreenTimeSeconds int                          `json:"screen_time_seconds,omitempty"` // Total display time in seconds
 	SovAchieved       float64                      `json:"sov_achieved,omitempty"`        // Actual share of voice delivered (0.0 to 1.0)
-	CalculationNotes  string                       `json:"calculation_notes,omitempty"`   // Per-row supplementary methodology notes for DOOH impression calculation (e.g., '
+	CalculationNotes  string                       `json:"calculation_notes,omitempty"`   // Per-row supplementary methodology notes for DOOH impression calculation (e.g.
 	VenueBreakdown    []DeliveryDOOHVenueBreakdown `json:"venue_breakdown,omitempty"`     // Per-venue performance breakdown
 }
 
@@ -8678,19 +8678,19 @@ type DeliveryDOOHVenueBreakdown struct {
 	ScreensUsed int    `json:"screens_used,omitempty"` // Number of screens used at this venue
 }
 
-// DeliveryViewability — Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impress
+// DeliveryViewability — Viewability metrics. Viewable rate should be calculated as viewable_impressions /
 type DeliveryViewability struct {
-	Vendor                *BrandReference `json:"vendor,omitempty"`                 // Vendor that produced these viewability values. Optional but RECOMMENDED so the r
-	MeasurableImpressions float64         `json:"measurable_impressions,omitempty"` // Impressions where viewability could be measured. Excludes environments without m
-	ViewableImpressions   float64         `json:"viewable_impressions,omitempty"`   // Impressions that met the viewability threshold defined by the measurement standa
-	ViewableRate          float64         `json:"viewable_rate,omitempty"`          // Viewable impression rate (viewable_impressions / measurable_impressions). Range
-	ViewedSeconds         float64         `json:"viewed_seconds,omitempty"`         // Average in-view duration per measurable impression, in seconds. Reporting-side c
-	Standard              string          `json:"standard,omitempty"`               // Viewability measurement standard applied to these metrics. Governs the in-view t
+	Vendor                *BrandReference `json:"vendor,omitempty"`                 // Vendor that produced these viewability values. Optional but RECOMMENDED so the
+	MeasurableImpressions float64         `json:"measurable_impressions,omitempty"` // Impressions where viewability could be measured. Excludes environments without
+	ViewableImpressions   float64         `json:"viewable_impressions,omitempty"`   // Impressions that met the viewability threshold defined by the measurement
+	ViewableRate          float64         `json:"viewable_rate,omitempty"`          // Viewable impression rate (viewable_impressions / measurable_impressions).
+	ViewedSeconds         float64         `json:"viewed_seconds,omitempty"`         // Average in-view duration per measurable impression, in seconds. Reporting-side
+	Standard              string          `json:"standard,omitempty"`               // Viewability measurement standard applied to these metrics. Governs the in-view
 }
 
 type DeliveryActionSourceMetrics struct {
 	ActionSource  string  `json:"action_source"`             // Where the conversion occurred
-	EventSourceID string  `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple e
+	EventSourceID string  `json:"event_source_id,omitempty"` // Event source that produced these conversions (for disambiguation when multiple
 	Count         float64 `json:"count"`                     // Number of conversions from this action source
 	Value         float64 `json:"value,omitempty"`           // Total monetary value of conversions from this action source
 }
@@ -8710,43 +8710,43 @@ type PackageCatalogItemDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	ContentID            string                        `json:"content_id"`                        // Catalog item identifier (e.g., SKU, GTIN, job_id, offering_id)
 	ContentIDType        string                        `json:"content_id_type,omitempty"`         // Identifier type for this content_id
 }
@@ -8756,45 +8756,45 @@ type PackageCreativeDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	CreativeID           string                        `json:"creative_id"`                       // Creative identifier matching the creative assignment
-	Weight               float64                       `json:"weight,omitempty"`                  // Observed delivery share for this creative within the package during the reportin
+	Weight               float64                       `json:"weight,omitempty"`                  // Observed delivery share for this creative within the package during the
 }
 
 type PackageKeywordDelivery struct {
@@ -8802,43 +8802,43 @@ type PackageKeywordDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	Keyword              string                        `json:"keyword"`                           // The targeted keyword
 	MatchType            string                        `json:"match_type"`
 }
@@ -8848,47 +8848,47 @@ type PackageGeoDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	GeoLevel             string                        `json:"geo_level"`                         // Geographic level of this entry (country, region, metro, postal_area)
-	System               string                        `json:"system,omitempty"`                  // Classification system for metro or postal_area levels (e.g., 'nielsen_dma', 'us_
-	GeoCode              string                        `json:"geo_code"`                          // Geographic code within the level and system. Country: ISO 3166-1 alpha-2 ('US').
-	GeoName              string                        `json:"geo_name,omitempty"`                // Human-readable geographic name (e.g., 'United States', 'California', 'New York D
+	System               string                        `json:"system,omitempty"`                  // Classification system for metro or postal_area levels (e.g., 'nielsen_dma'
+	GeoCode              string                        `json:"geo_code"`                          // Geographic code within the level and system. Country: ISO 3166-1 alpha-2
+	GeoName              string                        `json:"geo_name,omitempty"`                // Human-readable geographic name (e.g., 'United States', 'California', 'New York
 }
 
 type PackageDeviceTypeDelivery struct {
@@ -8896,43 +8896,43 @@ type PackageDeviceTypeDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	DeviceType           string                        `json:"device_type"`                       // Device form factor (desktop, mobile, tablet, ctv, dooh, unknown)
 }
 
@@ -8941,43 +8941,43 @@ type PackageDevicePlatformDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	DevicePlatform       string                        `json:"device_platform"`                   // Operating system platform
 }
 
@@ -8986,45 +8986,45 @@ type PackageAudienceDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
-	AudienceID           string                        `json:"audience_id"`                       // Audience segment identifier. For 'synced' source, matches audience_id from sync_
-	AudienceSource       string                        `json:"audience_source"`                   // Origin of the audience segment (synced, platform, third_party, lookalike, retarg
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
+	AudienceID           string                        `json:"audience_id"`                       // Audience segment identifier. For 'synced' source, matches audience_id from
+	AudienceSource       string                        `json:"audience_source"`                   // Origin of the audience segment (synced, platform, third_party, lookalike
 	AudienceName         string                        `json:"audience_name,omitempty"`           // Human-readable audience segment name
 }
 
@@ -9033,43 +9033,43 @@ type PackagePlacementDelivery struct {
 	Spend                float64                       `json:"spend"`                             // Amount spent
 	Clicks               float64                       `json:"clicks,omitempty"`                  // Total clicks
 	Ctr                  float64                       `json:"ctr,omitempty"`                     // Click-through rate (clicks/impressions)
-	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this i
-	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization goa
+	Views                float64                       `json:"views,omitempty"`                   // Content engagements counted toward the billable view threshold. For video this
+	CompletedViews       float64                       `json:"completed_views,omitempty"`         // Video/audio completions. When the package has a completed_views optimization
 	CompletionRate       float64                       `json:"completion_rate,omitempty"`         // Completion rate (completed_views/impressions)
-	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present, th
+	Conversions          float64                       `json:"conversions,omitempty"`             // Total conversions attributed to this delivery. When by_event_type is present
 	ConversionValue      float64                       `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions (in the reporting currency)
 	Roas                 float64                       `json:"roas,omitempty"`                    // Return on ad spend (conversion_value / spend)
 	CostPerAcquisition   float64                       `json:"cost_per_acquisition,omitempty"`    // Cost per conversion (spend / conversions)
-	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 = none,
+	NewToBrandRate       float64                       `json:"new_to_brand_rate,omitempty"`       // Fraction of `conversions` (transactions) from first-time brand buyers, 0 =
 	Leads                float64                       `json:"leads,omitempty"`                   // Leads generated (convenience alias for by_event_type where event_type='lead')
-	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the control/hold
-	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration, favora
-	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over baselin
-	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the contr
-	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via sear
-	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a lo
-	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS, CPA)
+	IncrementalSalesLift float64                       `json:"incremental_sales_lift,omitempty"`  // Incremental sales lift attributed to the campaign — sales above the
+	BrandLift            float64                       `json:"brand_lift,omitempty"`              // Brand lift — measured change in a brand metric (awareness, consideration
+	FootTraffic          float64                       `json:"foot_traffic,omitempty"`            // Store visits attributed to ad exposure. Count of incremental visits over
+	ConversionLift       float64                       `json:"conversion_lift,omitempty"`         // Incremental conversions attributed to the campaign — conversions above the
+	BrandSearchLift      float64                       `json:"brand_search_lift,omitempty"`       // Lift in brand search query volume attributed to the campaign — measured via
+	Plays                float64                       `json:"plays,omitempty"`                   // Number of times the ad creative was displayed on a DOOH screen or played in a
+	ByEventType          []DeliveryEventTypeMetrics    `json:"by_event_type,omitempty"`           // Conversion metrics broken down by event type. Spend-derived metrics (ROAS
 	Grps                 float64                       `json:"grps,omitempty"`                    // Gross Rating Points delivered (for CPP)
-	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted, u
-	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared on
-	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this row.
-	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in `reach_wi
+	Reach                float64                       `json:"reach,omitempty"`                   // Unique reach in the units specified by reach_unit. When reach_unit is omitted
+	ReachUnit            string                        `json:"reach_unit,omitempty"`              // Unit of measurement for the reach field. Aligns with the reach_unit declared
+	ReachWindow          *ReachWindow                  `json:"reach_window,omitempty"`            // Measurement window for the reported `reach` and `frequency` values in this
+	Frequency            float64                       `json:"frequency,omitempty"`               // Average frequency per reach unit, measured over the window declared in
 	QuartileData         *DeliveryQuartileData         `json:"quartile_data,omitempty"`           // Audio/video quartile completion data
 	DoohMetrics          *DeliveryDOOHMetrics          `json:"dooh_metrics,omitempty"`            // DOOH-specific metrics (only included for DOOH campaigns)
-	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as viewable_impressions
-	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes soc
-	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to this
+	Viewability          *DeliveryViewability          `json:"viewability,omitempty"`             // Viewability metrics. Viewable rate should be calculated as
+	Engagements          float64                       `json:"engagements,omitempty"`             // Total engagements — direct interactions with the ad beyond viewing. Includes
+	Follows              float64                       `json:"follows,omitempty"`                 // New followers, page likes, artist/podcast/channel subscribes attributed to
 	Saves                float64                       `json:"saves,omitempty"`                   // Saves, bookmarks, playlist adds, pins attributed to this delivery.
-	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or storef
-	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically engagements/impression
+	ProfileVisits        float64                       `json:"profile_visits,omitempty"`          // Visits to the brand's in-platform page (profile, artist page, channel, or
+	EngagementRate       float64                       `json:"engagement_rate,omitempty"`         // Platform-specific engagement rate (0.0 to 1.0). Typically
 	CostPerClick         float64                       `json:"cost_per_click,omitempty"`          // Cost per click (spend / clicks)
-	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar f
-	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000. Univers
-	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x method
-	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from `conve
-	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar — t
-	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store, etc.).
-	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's `reporting_capabil
+	CostPerCompletedView float64                       `json:"cost_per_completed_view,omitempty"` // Cost per completed view (spend / completed_views). Primary CPCV pricing scalar
+	CPM                  float64                       `json:"cpm,omitempty"`                     // Cost per thousand impressions, computed as (spend / impressions) × 1000.
+	Downloads            float64                       `json:"downloads,omitempty"`               // Audio/podcast downloads (IAB Podcast Measurement Technical Guidelines 2.x
+	UnitsSold            float64                       `json:"units_sold,omitempty"`              // Items sold attributed to this delivery. Retail-media scalar distinct from
+	NewToBrandUnits      float64                       `json:"new_to_brand_units,omitempty"`      // Units sold to first-time brand buyers (count, not rate). Retail-media scalar —
+	ByActionSource       []DeliveryActionSourceMetrics `json:"by_action_source,omitempty"`        // Conversion metrics broken down by action source (website, app, in_store
+	VendorMetricValues   []VendorMetricValue           `json:"vendor_metric_values,omitempty"`    // Reported values for vendor-defined metrics that the product's
 	PlacementID          string                        `json:"placement_id"`                      // Placement identifier from the product's placements array
 	PlacementName        string                        `json:"placement_name,omitempty"`          // Human-readable placement name
 }
@@ -9084,26 +9084,26 @@ type PackageDailyBreakdown struct {
 	NewToBrandRate  float64 `json:"new_to_brand_rate,omitempty"` // Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)
 }
 
-// OptimizationGoalTargetFrequency — Target frequency band for reach optimization. Only applicable when metric is 'reach'. Frames frequen
+// OptimizationGoalTargetFrequency — Target frequency band for reach optimization. Only applicable when metric is 'reach'. Frames
 type OptimizationGoalTargetFrequency struct {
-	Min    int      `json:"min,omitempty"` // Minimum frequency for an entity to be considered meaningfully reached within the
-	Max    int      `json:"max,omitempty"` // Frequency at which an entity is considered saturated within the window. Impressi
-	Window Duration `json:"window"`        // Time window over which frequency is measured (e.g. {"interval": 7, "unit": "days
+	Min    int      `json:"min,omitempty"` // Minimum frequency for an entity to be considered meaningfully reached within
+	Max    int      `json:"max,omitempty"` // Frequency at which an entity is considered saturated within the window.
+	Window Duration `json:"window"`        // Time window over which frequency is measured (e.g. {"interval": 7, "unit"
 }
 
 type OptimizationGoalEventSource struct {
-	EventSourceID   string   `json:"event_source_id"`             // Event source to include (must be configured on this account via sync_event_sourc
-	EventType       string   `json:"event_type"`                  // Event type to include from this source (e.g., purchase, lead, app_install, refun
-	CustomEventName string   `json:"custom_event_name,omitempty"` // Required when event_type is 'custom'. Platform-specific name for the custom even
-	ValueField      string   `json:"value_field,omitempty"`       // Which field in the event's custom_data carries the monetary value. The seller mu
-	ValueFactor     *float64 `json:"value_factor,omitempty"`      // Multiplier the seller must apply to value_field before aggregation. Use -1 for r
+	EventSourceID   string   `json:"event_source_id"`             // Event source to include (must be configured on this account via
+	EventType       string   `json:"event_type"`                  // Event type to include from this source (e.g., purchase, lead, app_install
+	CustomEventName string   `json:"custom_event_name,omitempty"` // Required when event_type is 'custom'. Platform-specific name for the custom
+	ValueField      string   `json:"value_field,omitempty"`       // Which field in the event's custom_data carries the monetary value. The seller
+	ValueFactor     *float64 `json:"value_factor,omitempty"`      // Multiplier the seller must apply to value_field before aggregation. Use -1 for
 }
 
-// OptimizationGoalAttributionWindow — Attribution window for this optimization goal — references the canonical `attribution-window` shape
+// OptimizationGoalAttributionWindow — Attribution window for this optimization goal — references the canonical `attribution-window`
 type OptimizationGoalAttributionWindow struct {
-	PostClick *Duration `json:"post_click,omitempty"` // Post-click attribution window. Conversions occurring within this duration after
-	PostView  *Duration `json:"post_view,omitempty"`  // Post-view attribution window. Conversions occurring within this duration after a
-	Model     string    `json:"model,omitempty"`      // Attribution model used to assign credit when multiple touchpoints exist. SHOULD
+	PostClick *Duration `json:"post_click,omitempty"` // Post-click attribution window. Conversions occurring within this duration
+	PostView  *Duration `json:"post_view,omitempty"`  // Post-view attribution window. Conversions occurring within this duration after
+	Model     string    `json:"model,omitempty"`      // Attribution model used to assign credit when multiple touchpoints exist.
 }
 
 // ListCreativesSort — Sorting parameters
@@ -9133,20 +9133,20 @@ type CreativeBriefMessaging struct {
 	KeyMessages []string `json:"key_messages,omitempty"` // Key messages to communicate in priority order
 }
 
-// CreativeBriefCompliance — Regulatory and legal compliance requirements for this campaign. Campaign-specific, regional, and pro
+// CreativeBriefCompliance — Regulatory and legal compliance requirements for this campaign. Campaign-specific, regional, and
 type CreativeBriefCompliance struct {
-	RequiredDisclosures []CreativeBriefDisclosure `json:"required_disclosures,omitempty"` // Disclosures that must appear in creatives for this campaign. Each disclosure spe
-	ProhibitedClaims    []string                  `json:"prohibited_claims,omitempty"`    // Claims that must not appear in creatives for this campaign. Creative agents shou
+	RequiredDisclosures []CreativeBriefDisclosure `json:"required_disclosures,omitempty"` // Disclosures that must appear in creatives for this campaign. Each disclosure
+	ProhibitedClaims    []string                  `json:"prohibited_claims,omitempty"`    // Claims that must not appear in creatives for this campaign. Creative agents
 }
 
 type CreativeBriefDisclosure struct {
 	Text          string   `json:"text"`                      // The disclosure text that must appear in the creative
-	Position      string   `json:"position,omitempty"`        // Where the disclosure should appear within the creative. prominent: clearly visib
-	Jurisdictions []string `json:"jurisdictions,omitempty"`   // Jurisdictions where this disclosure is required. ISO 3166-1 alpha-2 country code
-	Regulation    string   `json:"regulation,omitempty"`      // The regulation or legal authority requiring this disclosure (e.g., 'SEC Rule 156
-	MinDurationMs int      `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds. For video/audio disclosures, how long
-	Language      string   `json:"language,omitempty"`        // Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA', '
-	Persistence   string   `json:"persistence,omitempty"`     // How long the disclosure must persist during content playback or display. When om
+	Position      string   `json:"position,omitempty"`        // Where the disclosure should appear within the creative. prominent: clearly
+	Jurisdictions []string `json:"jurisdictions,omitempty"`   // Jurisdictions where this disclosure is required. ISO 3166-1 alpha-2 country
+	Regulation    string   `json:"regulation,omitempty"`      // The regulation or legal authority requiring this disclosure (e.g., 'SEC Rule
+	MinDurationMs int      `json:"min_duration_ms,omitempty"` // Minimum display duration in milliseconds. For video/audio disclosures, how
+	Language      string   `json:"language,omitempty"`        // Language of the disclosure text as a BCP 47 language tag (e.g., 'en', 'fr-CA'
+	Persistence   string   `json:"persistence,omitempty"`     // How long the disclosure must persist during content playback or display. When
 }
 
 type EventContentItem struct {
@@ -9170,73 +9170,73 @@ type UserMatchUID struct {
 
 // --- Tool request/response types ---
 
-// GetAdcpCapabilitiesRequest — Request payload for get_adcp_capabilities task. Protocol-level capability discovery that works acros
+// GetAdcpCapabilitiesRequest — Request payload for get_adcp_capabilities task. Protocol-level capability discovery that works
 type GetAdcpCapabilitiesRequest struct {
-	AdcpVersion      string   `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int      `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Protocols        []string `json:"protocols,omitempty"`          // Specific protocols to query capabilities for. If omitted, returns capabilities f
+	AdcpVersion      string   `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int      `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Protocols        []string `json:"protocols,omitempty"`          // Specific protocols to query capabilities for. If omitted, returns capabilities
 	Context          any      `json:"context,omitempty"`
 	Ext              any      `json:"ext,omitempty"`
 }
 
-// GetAdcpCapabilitiesResponse — Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all AdCP
+// GetAdcpCapabilitiesResponse — Response payload for get_adcp_capabilities task. Protocol-level capability discovery across all
 type GetAdcpCapabilitiesResponse struct {
-	AdcpVersion             string                               `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion        int                                  `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID               string                               `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion             string                               `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion        int                                  `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID               string                               `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                 any                                  `json:"context,omitempty"`
-	TaskID                  string                               `json:"task_id,omitempty"`                   // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                  string                               `json:"status"`                              // Current task execution state. Indicates whether the task is completed, in progre
-	Message                 string                               `json:"message,omitempty"`                   // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp               string                               `json:"timestamp,omitempty"`                 // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed                *bool                                `json:"replayed,omitempty"`                  // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError               AdcpError                            `json:"adcp_error,omitempty"`                // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig  *PushNotificationConfig              `json:"push_notification_config,omitempty"`  // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext       string                               `json:"governance_context,omitempty"`        // Governance context token issued by the account's governance agent during check_g
-	Payload                 map[string]any                       `json:"payload,omitempty"`                   // Conceptual grouping for the task-specific response data defined by individual ta
+	TaskID                  string                               `json:"task_id,omitempty"`                   // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                  string                               `json:"status"`                              // Current task execution state. Indicates whether the task is completed, in
+	Message                 string                               `json:"message,omitempty"`                   // Human-readable summary of the task result. Provides natural language
+	Timestamp               string                               `json:"timestamp,omitempty"`                 // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed                *bool                                `json:"replayed,omitempty"`                  // Set to true when this response was returned from the idempotency cache rather
+	AdcpError               AdcpError                            `json:"adcp_error,omitempty"`                // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig  *PushNotificationConfig              `json:"push_notification_config,omitempty"`  // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext       string                               `json:"governance_context,omitempty"`        // Governance context token issued by the account's governance agent during
+	Payload                 map[string]any                       `json:"payload,omitempty"`                   // Conceptual grouping for the task-specific response data defined by individual
 	Adcp                    ADCPVersion                          `json:"adcp"`                                // Core AdCP protocol information
-	SupportedProtocols      []string                             `json:"supported_protocols"`                 // AdCP protocols this agent supports. Each value both (a) declares which tools the
-	Account                 *AccountCapabilities                 `json:"account,omitempty"`                   // Account management capabilities. Describes how accounts are established, what bi
-	MediaBuy                *MediaBuyCapabilities                `json:"media_buy,omitempty"`                 // Media-buy protocol capabilities. Expected when media_buy is in supported_protoco
-	Signals                 *SignalsCapabilities                 `json:"signals,omitempty"`                   // Signals protocol capabilities. Only present if signals is in supported_protocols
-	Governance              *GovernanceCapabilities              `json:"governance,omitempty"`                // Governance protocol capabilities. Only present if governance is in supported_pro
-	SponsoredIntelligence   *SICapabilities                      `json:"sponsored_intelligence,omitempty"`    // Sponsored Intelligence protocol capabilities. Only present if sponsored_intellig
-	Brand                   *BrandCapabilities                   `json:"brand,omitempty"`                     // Brand protocol capabilities. Only present if brand is in supported_protocols. Br
-	Creative                *CreativeCapabilities                `json:"creative,omitempty"`                  // Creative protocol capabilities. Only present if creative is in supported_protoco
-	RequestSigning          *RequestSigningCapabilities          `json:"request_signing,omitempty"`           // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 — capabi
-	WebhookSigning          *WebhookSigningCapabilities          `json:"webhook_signing,omitempty"`           // RFC 9421 webhook-signature support for outbound webhook callbacks (top-level pee
-	Identity                *IdentityCapabilities                `json:"identity,omitempty"`                  // Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scopi
-	Measurement             any                                  `json:"measurement,omitempty"`               // Measurement capability block. Presence indicates this agent computes one or more
-	ComplianceTesting       *ComplianceTestingCapabilities       `json:"compliance_testing,omitempty"`        // Compliance testing capabilities. The presence of this block declares that the ag
-	Specialisms             []string                             `json:"specialisms,omitempty"`               // Optional — specialized compliance claims this agent supports. Values MUST be keb
-	ExtensionsSupported     []string                             `json:"extensions_supported,omitempty"`      // Extension namespaces this agent supports. Buyers can expect meaningful data in e
-	ExperimentalFeatures    []string                             `json:"experimental_features,omitempty"`     // Experimental AdCP surfaces this agent implements. A surface is experimental when
-	WholesaleFeedVersioning *CapabilitiesWholesaleFeedVersioning `json:"wholesale_feed_versioning,omitempty"` // Conditional-fetch token capabilities for get_products and get_signals. Independe
-	LastUpdated             string                               `json:"last_updated,omitempty"`              // ISO 8601 timestamp of when capabilities were last updated. Buyers can use this f
+	SupportedProtocols      []string                             `json:"supported_protocols"`                 // AdCP protocols this agent supports. Each value both (a) declares which tools
+	Account                 *AccountCapabilities                 `json:"account,omitempty"`                   // Account management capabilities. Describes how accounts are established, what
+	MediaBuy                *MediaBuyCapabilities                `json:"media_buy,omitempty"`                 // Media-buy protocol capabilities. Expected when media_buy is in
+	Signals                 *SignalsCapabilities                 `json:"signals,omitempty"`                   // Signals protocol capabilities. Only present if signals is in
+	Governance              *GovernanceCapabilities              `json:"governance,omitempty"`                // Governance protocol capabilities. Only present if governance is in
+	SponsoredIntelligence   *SICapabilities                      `json:"sponsored_intelligence,omitempty"`    // Sponsored Intelligence protocol capabilities. Only present if
+	Brand                   *BrandCapabilities                   `json:"brand,omitempty"`                     // Brand protocol capabilities. Only present if brand is in supported_protocols.
+	Creative                *CreativeCapabilities                `json:"creative,omitempty"`                  // Creative protocol capabilities. Only present if creative is in
+	RequestSigning          *RequestSigningCapabilities          `json:"request_signing,omitempty"`           // RFC 9421 HTTP Signatures support for incoming requests. Optional in 3.0 —
+	WebhookSigning          *WebhookSigningCapabilities          `json:"webhook_signing,omitempty"`           // RFC 9421 webhook-signature support for outbound webhook callbacks (top-level
+	Identity                *IdentityCapabilities                `json:"identity,omitempty"`                  // Operator identity posture — trust-root pointer (`brand_json_url`) plus
+	Measurement             any                                  `json:"measurement,omitempty"`               // Measurement capability block. Presence indicates this agent computes one or
+	ComplianceTesting       *ComplianceTestingCapabilities       `json:"compliance_testing,omitempty"`        // Compliance testing capabilities. The presence of this block declares that the
+	Specialisms             []string                             `json:"specialisms,omitempty"`               // Optional — specialized compliance claims this agent supports. Values MUST be
+	ExtensionsSupported     []string                             `json:"extensions_supported,omitempty"`      // Extension namespaces this agent supports. Buyers can expect meaningful data in
+	ExperimentalFeatures    []string                             `json:"experimental_features,omitempty"`     // Experimental AdCP surfaces this agent implements. A surface is experimental
+	WholesaleFeedVersioning *CapabilitiesWholesaleFeedVersioning `json:"wholesale_feed_versioning,omitempty"` // Conditional-fetch token capabilities for get_products and get_signals.
+	LastUpdated             string                               `json:"last_updated,omitempty"`              // ISO 8601 timestamp of when capabilities were last updated. Buyers can use this
 	Errors                  []AdcpError                          `json:"errors,omitempty"`                    // Task-specific errors and warnings
 	Ext                     any                                  `json:"ext,omitempty"`
-	WholesaleFeedWebhooks   *CapabilitiesWholesaleFeedWebhooks   `json:"wholesale_feed_webhooks,omitempty"` // Per-agent wholesale product-feed and wholesale signals-feed webhook capabilities
+	WholesaleFeedWebhooks   *CapabilitiesWholesaleFeedWebhooks   `json:"wholesale_feed_webhooks,omitempty"` // Per-agent wholesale product-feed and wholesale signals-feed webhook
 }
 
-// SyncAccountsRequest — Sync advertiser account state with a seller. Two modes, distinguished by the key on each per-account
+// SyncAccountsRequest — Sync advertiser account state with a seller. Two modes, distinguished by the key on each
 type SyncAccountsRequest struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated unique key for at-most-once execution. Natural per-account upse
-	Accounts               []AccountInput          `json:"accounts"`                           // Per-account sync entries. Each entry uses one of two key shapes: the `account` f
-	DeleteMissing          *bool                   `json:"delete_missing,omitempty"`           // When true, accounts previously synced by this agent but not included in this req
-	DryRun                 *bool                   `json:"dry_run,omitempty"`                  // When true, preview what would change without applying. Returns what would be cre
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Webhook for async notifications when account status changes (e.g., pending_appro
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated unique key for at-most-once execution. Natural per-account
+	Accounts               []AccountInput          `json:"accounts"`                           // Per-account sync entries. Each entry uses one of two key shapes: the `account`
+	DeleteMissing          *bool                   `json:"delete_missing,omitempty"`           // When true, accounts previously synced by this agent but not included in this
+	DryRun                 *bool                   `json:"dry_run,omitempty"`                  // When true, preview what would change without applying. Returns what would be
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Webhook for async notifications when account status changes (e.g.
 	Context                any                     `json:"context,omitempty"`
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// SyncGovernanceRequest — Sync the governance agent endpoint against specific accounts. The seller persists the governance age
+// SyncGovernanceRequest — Sync the governance agent endpoint against specific accounts. The seller persists the governance
 type SyncGovernanceRequest struct {
-	AdcpVersion      string                   `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                      `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey   string                   `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `account` gives resource
-	Accounts         []GovernanceAccountInput `json:"accounts"`                     // Per-account governance agent configuration. Each entry pairs an account referenc
+	AdcpVersion      string                   `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                      `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey   string                   `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `account` gives
+	Accounts         []GovernanceAccountInput `json:"accounts"`                     // Per-account governance agent configuration. Each entry pairs an account
 	Context          any                      `json:"context,omitempty"`
 	Ext              any                      `json:"ext,omitempty"`
 }
@@ -9258,116 +9258,116 @@ type SyncGovernanceError struct {
 	Ext     any         `json:"ext,omitempty"`
 }
 
-// ListAccountsRequest — Request parameters for listing accounts accessible to the authenticated agent. For upstream-managed
+// ListAccountsRequest — Request parameters for listing accounts accessible to the authenticated agent. For
 type ListAccountsRequest struct {
-	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account          *AccountReference  `json:"account,omitempty"`            // Optional exact account filter. Use `account_id` to retrieve one known account fr
+	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account          *AccountReference  `json:"account,omitempty"`            // Optional exact account filter. Use `account_id` to retrieve one known account
 	Status           string             `json:"status,omitempty"`             // Filter accounts by status. Omit to return accounts in all statuses.
 	Pagination       *PaginationRequest `json:"pagination,omitempty"`
-	Sandbox          *bool              `json:"sandbox,omitempty"` // Filter by sandbox status. true returns only sandbox accounts, false returns only
+	Sandbox          *bool              `json:"sandbox,omitempty"` // Filter by sandbox status. true returns only sandbox accounts, false returns
 	Context          any                `json:"context,omitempty"`
 	Ext              any                `json:"ext,omitempty"`
 }
 
 // ListAccountsResponse — Response payload for list_accounts task
 type ListAccountsResponse struct {
-	AdcpVersion            string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                     `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                     `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                        `json:"context,omitempty"`
-	TaskID                 string                     `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                     `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                     `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                     `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                      `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError                  `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig    `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                     `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any             `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
-	Accounts               []AccountWithAuthorization `json:"accounts"`                           // Array of accounts accessible to the authenticated agent. Each entry is the full
+	TaskID                 string                     `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                     `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                     `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                     `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                      `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError                  `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig    `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                     `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any             `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Accounts               []AccountWithAuthorization `json:"accounts"`                           // Array of accounts accessible to the authenticated agent. Each entry is the
 	Errors                 []AdcpError                `json:"errors,omitempty"`                   // Task-specific errors and warnings
 	Pagination             *PaginationResponse        `json:"pagination,omitempty"`
 	Ext                    any                        `json:"ext,omitempty"`
 }
 
-// GetProductsRequest — Request parameters for discovering or refining advertising products. buying_mode declares the buyer'
+// GetProductsRequest — Request parameters for discovering or refining advertising products. buying_mode declares the
 type GetProductsRequest struct {
-	AdcpVersion            string             `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	BuyingMode             string             `json:"buying_mode"`                        // Declares buyer intent for this request. 'brief': publisher curates product recom
-	Brief                  string             `json:"brief,omitempty"`                    // Natural language description of campaign requirements. Required when buying_mode
-	Refine                 []map[string]any   `json:"refine,omitempty"`                   // Array of change requests for iterating on products and proposals from a previous
-	Brand                  *BrandReference    `json:"brand,omitempty"`                    // Brand reference for product discovery context. Resolved to full brand identity a
-	Catalog                *Catalog           `json:"catalog,omitempty"`                  // Catalog of items the buyer wants to promote. The seller matches catalog items ag
-	Account                *AccountReference  `json:"account,omitempty"`                  // Account for product lookup. Returns products with pricing specific to this accou
-	PreferredDeliveryTypes []string           `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike filters.delivery_typ
+	AdcpVersion            string             `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	BuyingMode             string             `json:"buying_mode"`                        // Declares buyer intent for this request. 'brief': publisher curates product
+	Brief                  string             `json:"brief,omitempty"`                    // Natural language description of campaign requirements. Required when
+	Refine                 []map[string]any   `json:"refine,omitempty"`                   // Array of change requests for iterating on products and proposals from a
+	Brand                  *BrandReference    `json:"brand,omitempty"`                    // Brand reference for product discovery context. Resolved to full brand identity
+	Catalog                *Catalog           `json:"catalog,omitempty"`                  // Catalog of items the buyer wants to promote. The seller matches catalog items
+	Account                *AccountReference  `json:"account,omitempty"`                  // Account for product lookup. Returns products with pricing specific to this
+	PreferredDeliveryTypes []string           `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike
 	Filters                *ProductFilters    `json:"filters,omitempty"`
-	PropertyList           *PropertyListRef   `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided, the
-	Fields                 []string           `json:"fields,omitempty"`        // Specific product fields to include in the response. When omitted, all fields are
-	TimeBudget             *Duration          `json:"time_budget,omitempty"`   // Maximum time the buyer will commit to this request. The seller returns the best
+	PropertyList           *PropertyListRef   `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided
+	Fields                 []string           `json:"fields,omitempty"`        // Specific product fields to include in the response. When omitted, all fields
+	TimeBudget             *Duration          `json:"time_budget,omitempty"`   // Maximum time the buyer will commit to this request. The seller returns the
 	Pagination             *PaginationRequest `json:"pagination,omitempty"`
-	IfWholesaleFeedVersion string             `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode get_produ
-	IfPricingVersion       string             `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_products response. MUST only be se
+	IfWholesaleFeedVersion string             `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode
+	IfPricingVersion       string             `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_products response. MUST only be
 	Context                any                `json:"context,omitempty"`
-	RequiredPolicies       []string           `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in this
+	RequiredPolicies       []string           `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in
 	Ext                    any                `json:"ext,omitempty"`
 }
 
 // GetProductsResponse — Response payload for get_products task
 type GetProductsResponse struct {
-	AdcpVersion            string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                        `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                        `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                           `json:"context,omitempty"`
-	TaskID                 string                        `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                        `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                        `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                        `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                         `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError                     `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig       `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                        `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any                `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
+	TaskID                 string                        `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                        `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                        `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                        `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                         `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError                     `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig       `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                        `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any                `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
 	Products               []Product                     `json:"products,omitempty"`                 // Array of matching products
-	Extensions             map[string]any                `json:"extensions,omitempty"`               // Bundled platform-extension definitions referenced by any product in `products`.
-	Proposals              []Proposal                    `json:"proposals,omitempty"`                // Optional array of proposed media plans with budget allocations across products.
+	Extensions             map[string]any                `json:"extensions,omitempty"`               // Bundled platform-extension definitions referenced by any product in
+	Proposals              []Proposal                    `json:"proposals,omitempty"`                // Optional array of proposed media plans with budget allocations across
 	Errors                 []AdcpError                   `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., product filtering issues)
-	PropertyListApplied    *bool                         `json:"property_list_applied,omitempty"`    // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the ag
-	CatalogApplied         *bool                         `json:"catalog_applied,omitempty"`          // Whether the seller filtered results based on the provided catalog. True if the s
-	RefinementApplied      []map[string]any              `json:"refinement_applied,omitempty"`       // Seller's response to each change request in the refine array, matched by positio
-	Incomplete             []GetProductsIncompleteItem   `json:"incomplete,omitempty"`               // Declares what the seller could not finish within the buyer's time_budget or due
-	FilterDiagnostics      *GetProductsFilterDiagnostics `json:"filter_diagnostics,omitempty"`       // Optional non-fatal diagnostic block describing how the request's `filters` narro
+	PropertyListApplied    *bool                         `json:"property_list_applied,omitempty"`    // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the
+	CatalogApplied         *bool                         `json:"catalog_applied,omitempty"`          // Whether the seller filtered results based on the provided catalog. True if the
+	RefinementApplied      []map[string]any              `json:"refinement_applied,omitempty"`       // Seller's response to each change request in the refine array, matched by
+	Incomplete             []GetProductsIncompleteItem   `json:"incomplete,omitempty"`               // Declares what the seller could not finish within the buyer's time_budget or
+	FilterDiagnostics      *GetProductsFilterDiagnostics `json:"filter_diagnostics,omitempty"`       // Optional non-fatal diagnostic block describing how the request's `filters`
 	Pagination             *PaginationResponse           `json:"pagination,omitempty"`
-	WholesaleFeedVersion   string                        `json:"wholesale_feed_version,omitempty"` // Opaque token representing the version of the wholesale product feed state used t
-	PricingVersion         string                        `json:"pricing_version,omitempty"`        // Opaque token representing the version of the pricing layer, including product pr
-	CacheScope             string                        `json:"cache_scope,omitempty"`            // Declares whether the wholesale_feed_version and pricing_version on this response
-	Unchanged              *bool                         `json:"unchanged,omitempty"`              // Present and `true` ONLY on wholesale-mode responses when the request carried if_
+	WholesaleFeedVersion   string                        `json:"wholesale_feed_version,omitempty"` // Opaque token representing the version of the wholesale product feed state used
+	PricingVersion         string                        `json:"pricing_version,omitempty"`        // Opaque token representing the version of the pricing layer, including product
+	CacheScope             string                        `json:"cache_scope,omitempty"`            // Declares whether the wholesale_feed_version and pricing_version on this
+	Unchanged              *bool                         `json:"unchanged,omitempty"`              // Present and `true` ONLY on wholesale-mode responses when the request carried
 	Sandbox                *bool                         `json:"sandbox,omitempty"`                // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                           `json:"ext,omitempty"`
 }
 
-// CreateMediaBuyRequest — Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages
+// CreateMediaBuyRequest — Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide
 type CreateMediaBuyRequest struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`           // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`     // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey         string                  `json:"idempotency_key"`                  // Client-generated unique key for this request. If a request with the same idempot
-	PlanID                 string                  `json:"plan_id,omitempty"`                // Campaign governance plan identifier. Required when the account has governance_ag
-	Account                AccountReference        `json:"account"`                          // Account to bill for this media buy. Pass a natural key (brand, operator, optiona
-	ProposalID             string                  `json:"proposal_id,omitempty"`            // ID of a proposal from get_products to execute. When provided with total_budget,
-	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`           // Total budget for the media buy when executing a proposal. The publisher applies
-	Packages               []PackageInput          `json:"packages,omitempty"`               // Array of package configurations. Required when not using proposal_id. When execu
-	Brand                  BrandReference          `json:"brand"`                            // Brand reference for this media buy. Resolved to full brand identity at execution
-	AdvertiserIndustry     string                  `json:"advertiser_industry,omitempty"`    // Industry classification for this specific campaign. A brand may operate across m
-	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"`      // Override the account's default billing entity for this specific buy. When provid
-	IoAcceptance           *IOAcceptance           `json:"io_acceptance,omitempty"`          // Acceptance of an insertion order from a committed proposal. Required when the pr
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`           // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`     // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey         string                  `json:"idempotency_key"`                  // Client-generated unique key for this request. If a request with the same
+	PlanID                 string                  `json:"plan_id,omitempty"`                // Campaign governance plan identifier. Required when the account has
+	Account                AccountReference        `json:"account"`                          // Account to bill for this media buy. Pass a natural key (brand, operator
+	ProposalID             string                  `json:"proposal_id,omitempty"`            // ID of a proposal from get_products to execute. When provided with
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`           // Total budget for the media buy when executing a proposal. The publisher
+	Packages               []PackageInput          `json:"packages,omitempty"`               // Array of package configurations. Required when not using proposal_id. When
+	Brand                  BrandReference          `json:"brand"`                            // Brand reference for this media buy. Resolved to full brand identity at
+	AdvertiserIndustry     string                  `json:"advertiser_industry,omitempty"`    // Industry classification for this specific campaign. A brand may operate across
+	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"`      // Override the account's default billing entity for this specific buy. When
+	IoAcceptance           *IOAcceptance           `json:"io_acceptance,omitempty"`          // Acceptance of an insertion order from a committed proposal. Required when the
 	PoNumber               string                  `json:"po_number,omitempty"`              // Purchase order number for tracking
-	AgencyEstimateNumber   string                  `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number. Primary financial reference for broadca
+	AgencyEstimateNumber   string                  `json:"agency_estimate_number,omitempty"` // Agency estimate or authorization number. Primary financial reference for
 	StartTime              string                  `json:"start_time"`
 	EndTime                string                  `json:"end_time"`                           // Campaign end date/time in ISO 8601 format
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher wi
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async task status notifications. Publisher
 	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`        // Optional webhook configuration for automated reporting delivery
-	ArtifactWebhook        *ArtifactWebhookConfig  `json:"artifact_webhook,omitempty"`         // Optional webhook configuration for content artifact delivery. Used by governance
+	ArtifactWebhook        *ArtifactWebhookConfig  `json:"artifact_webhook,omitempty"`         // Optional webhook configuration for content artifact delivery. Used by
 	Context                any                     `json:"context,omitempty"`
 	Ext                    any                     `json:"ext,omitempty"`
 }
@@ -9378,96 +9378,96 @@ type CreateMediaBuyResponse = any
 // CreateMediaBuySuccess — Success response - media buy created successfully
 type CreateMediaBuySuccess struct {
 	MediaBuyID       string          `json:"media_buy_id"`                // Seller's unique identifier for the created media buy
-	Account          *Account        `json:"account,omitempty"`           // Account billed for this media buy. Includes advertiser, billing proxy (if any),
-	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Per-buy invoice recipient, echoed from the request when provided. Confirms the s
-	MediaBuyStatus   string          `json:"media_buy_status,omitempty"`  // Initial media buy status. Either 'pending_creatives' (awaiting creative assets),
+	Account          *Account        `json:"account,omitempty"`           // Account billed for this media buy. Includes advertiser, billing proxy (if
+	InvoiceRecipient *BusinessEntity `json:"invoice_recipient,omitempty"` // Per-buy invoice recipient, echoed from the request when provided. Confirms the
+	MediaBuyStatus   string          `json:"media_buy_status,omitempty"`  // Initial media buy status. Either 'pending_creatives' (awaiting creative
 	// Deprecated: DEPRECATED in 3.1, removed in 3.2 (#4906).
-	Status           string                    `json:"status,omitempty"`            // DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead. Top-l
-	ConfirmedAt      *string                   `json:"confirmed_at"`                // ISO 8601 timestamp when this media buy was committed by the seller. Stable after
+	Status           string                    `json:"status,omitempty"`            // DEPRECATED in 3.1, removed in 3.2 (#4906). Use `media_buy_status` instead.
+	ConfirmedAt      *string                   `json:"confirmed_at"`                // ISO 8601 timestamp when this media buy was committed by the seller. Stable
 	CreativeDeadline string                    `json:"creative_deadline,omitempty"` // ISO 8601 timestamp for creative upload deadline
-	Revision         int                       `json:"revision"`                    // Initial revision number for this media buy. Use in subsequent update_media_buy r
-	Currency         string                    `json:"currency,omitempty"`          // ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media b
-	TotalBudget      float64                   `json:"total_budget,omitempty"`      // Total budget amount across all packages, denominated in currency. Note: the crea
-	ValidActions     []string                  `json:"valid_actions,omitempty"`     // Flat-vocabulary actions the buyer can perform on this media buy after creation.
-	AvailableActions []MediaBuyAvailableAction `json:"available_actions,omitempty"` // Structured per-buy resolution of actions available immediately after creation. A
+	Revision         int                       `json:"revision"`                    // Initial revision number for this media buy. Use in subsequent update_media_buy
+	Currency         string                    `json:"currency,omitempty"`          // ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media
+	TotalBudget      float64                   `json:"total_budget,omitempty"`      // Total budget amount across all packages, denominated in currency. Note: the
+	ValidActions     []string                  `json:"valid_actions,omitempty"`     // Flat-vocabulary actions the buyer can perform on this media buy after
+	AvailableActions []MediaBuyAvailableAction `json:"available_actions,omitempty"` // Structured per-buy resolution of actions available immediately after creation.
 	Packages         []Package                 `json:"packages"`                    // Array of created packages with complete state information
-	PlannedDelivery  *PlannedDelivery          `json:"planned_delivery,omitempty"`  // The seller's interpreted delivery parameters. Describes what the seller will act
+	PlannedDelivery  *PlannedDelivery          `json:"planned_delivery,omitempty"`  // The seller's interpreted delivery parameters. Describes what the seller will
 	Sandbox          *bool                     `json:"sandbox,omitempty"`           // When true, this response contains simulated data from sandbox mode.
-	Context          any                       `json:"context,omitempty"`           // Opaque media-buy-level correlation data echoed unchanged from the create_media_b
+	Context          any                       `json:"context,omitempty"`           // Opaque media-buy-level correlation data echoed unchanged from the
 	Ext              any                       `json:"ext,omitempty"`
 }
 
 // CreateMediaBuyError — Error response - operation failed, no media buy created
 type CreateMediaBuyError struct {
 	Errors  []AdcpError `json:"errors"`            // Array of errors explaining why the operation failed
-	Context any         `json:"context,omitempty"` // Opaque media-buy-level correlation data echoed unchanged from the create_media_b
+	Context any         `json:"context,omitempty"` // Opaque media-buy-level correlation data echoed unchanged from the
 	Ext     any         `json:"ext,omitempty"`
 }
 
-// CreateMediaBuySubmitted — Async task envelope returned when the media buy cannot be confirmed before the response is emitted —
+// CreateMediaBuySubmitted — Async task envelope returned when the media buy cannot be confirmed before the response is emitted
 type CreateMediaBuySubmitted struct {
-	Status  string      `json:"status"`            // Task-level status literal. Discriminates this async envelope from the synchronou
-	TaskID  string      `json:"task_id"`           // Task handle the buyer uses with tasks/get, and that the seller references on pus
-	Message string      `json:"message,omitempty"` // Optional human-readable explanation of why the task is submitted — e.g., 'Awaiti
-	Errors  []AdcpError `json:"errors,omitempty"`  // Optional advisory errors accompanying the submitted envelope. Use only for non-b
-	Context any         `json:"context,omitempty"` // Opaque media-buy-level correlation data echoed unchanged from the create_media_b
+	Status  string      `json:"status"`            // Task-level status literal. Discriminates this async envelope from the
+	TaskID  string      `json:"task_id"`           // Task handle the buyer uses with tasks/get, and that the seller references on
+	Message string      `json:"message,omitempty"` // Optional human-readable explanation of why the task is submitted — e.g.
+	Errors  []AdcpError `json:"errors,omitempty"`  // Optional advisory errors accompanying the submitted envelope. Use only for
+	Context any         `json:"context,omitempty"` // Opaque media-buy-level correlation data echoed unchanged from the
 	Ext     any         `json:"ext,omitempty"`
 }
 
 // UpdateMediaBuyRequest — Request parameters for updating campaign and package settings
 type UpdateMediaBuyRequest struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`        // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`  // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account                AccountReference        `json:"account"`                       // Account that owns this media buy. Pass a natural key (brand, operator, optional
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`        // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`  // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account                AccountReference        `json:"account"`                       // Account that owns this media buy. Pass a natural key (brand, operator
 	MediaBuyID             string                  `json:"media_buy_id"`                  // Seller's ID of the media buy to update
-	Revision               int                     `json:"revision,omitempty"`            // Expected current revision for optimistic concurrency. Optional for backward comp
+	Revision               int                     `json:"revision,omitempty"`            // Expected current revision for optimistic concurrency. Optional for backward
 	Paused                 *bool                   `json:"paused,omitempty"`              // Pause/resume the entire media buy (true = paused, false = active)
-	Canceled               *bool                   `json:"canceled,omitempty"`            // Cancel the entire media buy. Cancellation is irreversible — canceled media buys
-	CancellationReason     string                  `json:"cancellation_reason,omitempty"` // Reason for cancellation. Sellers SHOULD store this and return it in subsequent g
+	Canceled               *bool                   `json:"canceled,omitempty"`            // Cancel the entire media buy. Cancellation is irreversible — canceled media
+	CancellationReason     string                  `json:"cancellation_reason,omitempty"` // Reason for cancellation. Sellers SHOULD store this and return it in subsequent
 	StartTime              string                  `json:"start_time,omitempty"`
 	EndTime                string                  `json:"end_time,omitempty"`                 // New end date/time in ISO 8601 format
 	Packages               []PackageUpdate         `json:"packages,omitempty"`                 // Package-specific updates for existing packages
-	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"`        // Update who receives the invoice for this buy. When provided, the seller invoices
-	NewPackages            []PackageInput          `json:"new_packages,omitempty"`             // New packages to add to this media buy. Uses the same schema as create_media_buy
-	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`        // Optional webhook configuration for automated reporting delivery. Updates the rep
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async update notifications. Publisher will se
-	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated idempotency key for safe retries. If an update fails without a
+	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"`        // Update who receives the invoice for this buy. When provided, the seller
+	NewPackages            []PackageInput          `json:"new_packages,omitempty"`             // New packages to add to this media buy. Uses the same schema as
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`        // Optional webhook configuration for automated reporting delivery. Updates the
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async update notifications. Publisher will
+	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated idempotency key for safe retries. If an update fails without
 	Context                any                     `json:"context,omitempty"`
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// GetMediaBuysRequest — Request parameters for retrieving media buy status, creative approval state, and optional delivery s
+// GetMediaBuysRequest — Request parameters for retrieving media buy status, creative approval state, and optional delivery
 type GetMediaBuysRequest struct {
-	AdcpVersion            string                `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                   `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account                *AccountReference     `json:"account,omitempty"`                  // Account to retrieve media buys for. When omitted, returns data across all access
-	MediaBuyIDs            []string              `json:"media_buy_ids,omitempty"`            // Array of media buy IDs to retrieve. When omitted, returns a paginated set of acc
-	StatusFilter           *MediaBuyStatusFilter `json:"status_filter,omitempty"`            // Filter by status. Can be a single status or array of statuses. Defaults to ["act
-	IncludeSnapshot        *bool                 `json:"include_snapshot,omitempty"`         // When true, include a near-real-time delivery snapshot for each package. Snapshot
-	IncludeHistory         int                   `json:"include_history,omitempty"`          // When present, include the last N revision history entries for each media buy (re
-	IncludeWebhookActivity *bool                 `json:"include_webhook_activity,omitempty"` // When true, each returned media buy includes a `webhook_activity` array describin
-	WebhookActivityLimit   int                   `json:"webhook_activity_limit,omitempty"`   // Maximum number of webhook delivery records to return per media buy, ordered most
-	Pagination             *PaginationRequest    `json:"pagination,omitempty"`               // Cursor-based pagination controls. Strongly recommended when querying broad scope
+	AdcpVersion            string                `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                   `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account                *AccountReference     `json:"account,omitempty"`                  // Account to retrieve media buys for. When omitted, returns data across all
+	MediaBuyIDs            []string              `json:"media_buy_ids,omitempty"`            // Array of media buy IDs to retrieve. When omitted, returns a paginated set of
+	StatusFilter           *MediaBuyStatusFilter `json:"status_filter,omitempty"`            // Filter by status. Can be a single status or array of statuses. Defaults to
+	IncludeSnapshot        *bool                 `json:"include_snapshot,omitempty"`         // When true, include a near-real-time delivery snapshot for each package.
+	IncludeHistory         int                   `json:"include_history,omitempty"`          // When present, include the last N revision history entries for each media buy
+	IncludeWebhookActivity *bool                 `json:"include_webhook_activity,omitempty"` // When true, each returned media buy includes a `webhook_activity` array
+	WebhookActivityLimit   int                   `json:"webhook_activity_limit,omitempty"`   // Maximum number of webhook delivery records to return per media buy, ordered
+	Pagination             *PaginationRequest    `json:"pagination,omitempty"`               // Cursor-based pagination controls. Strongly recommended when querying broad
 	Context                any                   `json:"context,omitempty"`
 	Ext                    any                   `json:"ext,omitempty"`
 }
 
-// GetMediaBuysResponse — Response payload for get_media_buys task. Returns media buy configuration, creative approval state,
+// GetMediaBuysResponse — Response payload for get_media_buys task. Returns media buy configuration, creative approval
 type GetMediaBuysResponse struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                     `json:"context,omitempty"`
-	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
-	MediaBuys              []MediaBuyData          `json:"media_buys"`                         // Array of media buys with status, creative approval state, and optional delivery
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	MediaBuys              []MediaBuyData          `json:"media_buys"`                         // Array of media buys with status, creative approval state, and optional
 	Errors                 []AdcpError             `json:"errors,omitempty"`                   // Task-specific errors (e.g., media buy not found)
 	Pagination             *PaginationResponse     `json:"pagination,omitempty"`               // Pagination metadata for the media_buys array.
 	Sandbox                *bool                   `json:"sandbox,omitempty"`                  // When true, this response contains simulated data from sandbox mode.
@@ -9476,71 +9476,71 @@ type GetMediaBuysResponse struct {
 
 // GetMediaBuyDeliveryRequest — Request parameters for retrieving comprehensive delivery metrics
 type GetMediaBuyDeliveryRequest struct {
-	AdcpVersion                  string                       `json:"adcp_version,omitempty"`                    // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion             int                          `json:"adcp_major_version,omitempty"`              // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account                      *AccountReference            `json:"account,omitempty"`                         // Filter delivery data to a specific account. When omitted, returns data across al
+	AdcpVersion                  string                       `json:"adcp_version,omitempty"`                    // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion             int                          `json:"adcp_major_version,omitempty"`              // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account                      *AccountReference            `json:"account,omitempty"`                         // Filter delivery data to a specific account. When omitted, returns data across
 	MediaBuyIDs                  []string                     `json:"media_buy_ids,omitempty"`                   // Array of media buy IDs to get delivery data for
 	StatusFilter                 *MediaBuyStatusFilter        `json:"status_filter,omitempty"`                   // Filter by status. Can be a single status or array of statuses
-	StartDate                    string                       `json:"start_date,omitempty"`                      // Start date for reporting period (YYYY-MM-DD). When omitted along with end_date,
-	EndDate                      string                       `json:"end_date,omitempty"`                        // End date for reporting period (YYYY-MM-DD). When omitted along with start_date,
-	IncludePackageDailyBreakdown *bool                        `json:"include_package_daily_breakdown,omitempty"` // When true, include daily_breakdown arrays within each package in by_package. Use
-	TimeGranularity              string                       `json:"time_granularity,omitempty"`                // Per-window slice granularity for the pull, using the same vocabulary as reportin
-	IncludeWindowBreakdown       *bool                        `json:"include_window_breakdown,omitempty"`        // When true, the response includes media_buy_deliveries[].windows[] — an array of
-	AttributionWindow            *DeliveryAttributionWindow   `json:"attribution_window,omitempty"`              // Attribution window to apply for conversion metrics. When provided, the seller re
-	ReportingDimensions          *DeliveryReportingDimensions `json:"reporting_dimensions,omitempty"`            // Request dimensional breakdowns in delivery reporting. Each key enables a specifi
+	StartDate                    string                       `json:"start_date,omitempty"`                      // Start date for reporting period (YYYY-MM-DD). When omitted along with
+	EndDate                      string                       `json:"end_date,omitempty"`                        // End date for reporting period (YYYY-MM-DD). When omitted along with
+	IncludePackageDailyBreakdown *bool                        `json:"include_package_daily_breakdown,omitempty"` // When true, include daily_breakdown arrays within each package in by_package.
+	TimeGranularity              string                       `json:"time_granularity,omitempty"`                // Per-window slice granularity for the pull, using the same vocabulary as
+	IncludeWindowBreakdown       *bool                        `json:"include_window_breakdown,omitempty"`        // When true, the response includes media_buy_deliveries[].windows[] — an array
+	AttributionWindow            *DeliveryAttributionWindow   `json:"attribution_window,omitempty"`              // Attribution window to apply for conversion metrics. When provided, the seller
+	ReportingDimensions          *DeliveryReportingDimensions `json:"reporting_dimensions,omitempty"`            // Request dimensional breakdowns in delivery reporting. Each key enables a
 	Context                      any                          `json:"context,omitempty"`
 	Ext                          any                          `json:"ext,omitempty"`
 }
 
 // GetMediaBuyDeliveryResponse — Response payload for get_media_buy_delivery task
 type GetMediaBuyDeliveryResponse struct {
-	AdcpVersion            string                    `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                       `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                    `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                    `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                       `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                    `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                       `json:"context,omitempty"`
-	TaskID                 string                    `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                    `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                    `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                    `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                     `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError                 `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                    `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any            `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
-	NotificationType       string                    `json:"notification_type,omitempty"`        // Type of webhook notification (only present in webhook deliveries): scheduled = r
-	PartialData            *bool                     `json:"partial_data,omitempty"`             // Indicates if any media buys in this webhook have missing/delayed data (only pres
-	UnavailableCount       int                       `json:"unavailable_count,omitempty"`        // Number of media buys with reporting_delayed or failed status (only present in we
+	TaskID                 string                    `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                    `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                    `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                    `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                     `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError                 `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                    `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any            `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	NotificationType       string                    `json:"notification_type,omitempty"`        // Type of webhook notification (only present in webhook deliveries): scheduled =
+	PartialData            *bool                     `json:"partial_data,omitempty"`             // Indicates if any media buys in this webhook have missing/delayed data (only
+	UnavailableCount       int                       `json:"unavailable_count,omitempty"`        // Number of media buys with reporting_delayed or failed status (only present in
 	SequenceNumber         int                       `json:"sequence_number,omitempty"`          // Sequential notification number (only present in webhook deliveries, starts at 1)
-	NextExpectedAt         string                    `json:"next_expected_at,omitempty"`         // ISO 8601 timestamp for next expected notification (only present in webhook deliv
+	NextExpectedAt         string                    `json:"next_expected_at,omitempty"`         // ISO 8601 timestamp for next expected notification (only present in webhook
 	ReportingPeriod        ReportingPeriod           `json:"reporting_period"`                   // Date range for the report. All periods use UTC timezone.
 	Currency               string                    `json:"currency"`                           // ISO 4217 currency code
-	AttributionWindow      *AttributionWindow        `json:"attribution_window,omitempty"`       // Attribution methodology and lookback windows used for conversion metrics in this
-	AggregatedTotals       *DeliveryAggregatedTotals `json:"aggregated_totals,omitempty"`        // Combined metrics across all returned media buys. Only included in API responses
-	MediaBuyDeliveries     []MediaBuyDelivery        `json:"media_buy_deliveries"`               // Array of delivery data for media buys. When used in webhook notifications, may c
-	Errors                 []AdcpError               `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., missing delivery data, reporting platfo
+	AttributionWindow      *AttributionWindow        `json:"attribution_window,omitempty"`       // Attribution methodology and lookback windows used for conversion metrics in
+	AggregatedTotals       *DeliveryAggregatedTotals `json:"aggregated_totals,omitempty"`        // Combined metrics across all returned media buys. Only included in API
+	MediaBuyDeliveries     []MediaBuyDelivery        `json:"media_buy_deliveries"`               // Array of delivery data for media buys. When used in webhook notifications, may
+	Errors                 []AdcpError               `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., missing delivery data, reporting
 	Sandbox                *bool                     `json:"sandbox,omitempty"`                  // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                       `json:"ext,omitempty"`
 }
 
 // ListCreativeFormatsRequest — Request parameters for discovering supported creative formats
 type ListCreativeFormatsRequest struct {
-	AdcpVersion           string             `json:"adcp_version,omitempty"`           // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion      int                `json:"adcp_major_version,omitempty"`     // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion           string             `json:"adcp_version,omitempty"`           // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion      int                `json:"adcp_major_version,omitempty"`     // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	FormatIDs             []FormatRef        `json:"format_ids,omitempty"`             // Return only these specific format IDs (e.g., from get_products response)
-	AssetTypes            []string           `json:"asset_types,omitempty"`            // Filter to formats that include these asset types. For third-party tags, search f
-	MaxWidth              int                `json:"max_width,omitempty"`              // Maximum width in pixels (inclusive). Returns formats where ANY render has width
-	MaxHeight             int                `json:"max_height,omitempty"`             // Maximum height in pixels (inclusive). Returns formats where ANY render has heigh
-	MinWidth              int                `json:"min_width,omitempty"`              // Minimum width in pixels (inclusive). Returns formats where ANY render has width
-	MinHeight             int                `json:"min_height,omitempty"`             // Minimum height in pixels (inclusive). Returns formats where ANY render has heigh
-	IsResponsive          *bool              `json:"is_responsive,omitempty"`          // Filter for responsive formats that adapt to container size. When true, returns f
+	AssetTypes            []string           `json:"asset_types,omitempty"`            // Filter to formats that include these asset types. For third-party tags, search
+	MaxWidth              int                `json:"max_width,omitempty"`              // Maximum width in pixels (inclusive). Returns formats where ANY render has
+	MaxHeight             int                `json:"max_height,omitempty"`             // Maximum height in pixels (inclusive). Returns formats where ANY render has
+	MinWidth              int                `json:"min_width,omitempty"`              // Minimum width in pixels (inclusive). Returns formats where ANY render has
+	MinHeight             int                `json:"min_height,omitempty"`             // Minimum height in pixels (inclusive). Returns formats where ANY render has
+	IsResponsive          *bool              `json:"is_responsive,omitempty"`          // Filter for responsive formats that adapt to container size. When true, returns
 	NameSearch            string             `json:"name_search,omitempty"`            // Search for formats by name (case-insensitive partial match)
-	PublisherDomain       string             `json:"publisher_domain,omitempty"`       // Filter to formats supported by the named publisher. Agents resolve via the three
-	PropertyID            string             `json:"property_id,omitempty"`            // Filter to formats supported on the named property within the publisher's catalog
+	PublisherDomain       string             `json:"publisher_domain,omitempty"`       // Filter to formats supported by the named publisher. Agents resolve via the
+	PropertyID            string             `json:"property_id,omitempty"`            // Filter to formats supported on the named property within the publisher's
 	WcagLevel             string             `json:"wcag_level,omitempty"`             // Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)
-	DisclosurePositions   []string           `json:"disclosure_positions,omitempty"`   // Filter to formats that support all of these disclosure positions. When a format
-	DisclosurePersistence []string           `json:"disclosure_persistence,omitempty"` // Filter to formats where each requested persistence mode is supported by at least
-	OutputFormatIDs       []FormatRef        `json:"output_format_ids,omitempty"`      // Filter to formats whose output_format_ids includes any of these format IDs. Retu
-	InputFormatIDs        []FormatRef        `json:"input_format_ids,omitempty"`       // Filter to formats whose input_format_ids includes any of these format IDs. Retur
+	DisclosurePositions   []string           `json:"disclosure_positions,omitempty"`   // Filter to formats that support all of these disclosure positions. When a
+	DisclosurePersistence []string           `json:"disclosure_persistence,omitempty"` // Filter to formats where each requested persistence mode is supported by at
+	OutputFormatIDs       []FormatRef        `json:"output_format_ids,omitempty"`      // Filter to formats whose output_format_ids includes any of these format IDs.
+	InputFormatIDs        []FormatRef        `json:"input_format_ids,omitempty"`       // Filter to formats whose input_format_ids includes any of these format IDs.
 	Pagination            *PaginationRequest `json:"pagination,omitempty"`
 	Context               any                `json:"context,omitempty"`
 	Ext                   any                `json:"ext,omitempty"`
@@ -9548,51 +9548,51 @@ type ListCreativeFormatsRequest struct {
 
 // ListCreativeFormatsResponse — Response payload for list_creative_formats task
 type ListCreativeFormatsResponse struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                     `json:"context,omitempty"`
-	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
-	Formats                []CreativeFormat        `json:"formats"`                            // Full format definitions for all formats this agent supports. Each format's autho
-	Source                 string                  `json:"source,omitempty"`                   // Which tier of the resolution order produced this `formats[]` list when the reque
-	CreativeAgents         []CreativeAgentRef      `json:"creative_agents,omitempty"`          // Optional: Creative agents that provide additional formats. Buyers can recursivel
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Formats                []CreativeFormat        `json:"formats"`                            // Full format definitions for all formats this agent supports. Each format's
+	Source                 string                  `json:"source,omitempty"`                   // Which tier of the resolution order produced this `formats[]` list when the
+	CreativeAgents         []CreativeAgentRef      `json:"creative_agents,omitempty"`          // Optional: Creative agents that provide additional formats. Buyers can
 	Errors                 []AdcpError             `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., format availability issues)
 	Pagination             *PaginationResponse     `json:"pagination,omitempty"`
 	Sandbox                *bool                   `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// SyncCatalogsRequest — Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations across
+// SyncCatalogsRequest — Request parameters for syncing catalog feeds with upsert semantics. Supports bulk operations
 type SyncCatalogsRequest struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated unique key for at-most-once execution. `catalog_id` gives resou
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated unique key for at-most-once execution. `catalog_id` gives
 	Account                AccountReference        `json:"account"`                            // Account that owns these catalogs.
-	Catalogs               []CatalogInput          `json:"catalogs,omitempty"`                 // Array of catalog feeds to sync (create or update). When omitted, the call is dis
-	CatalogIDs             []string                `json:"catalog_ids,omitempty"`              // Optional filter to limit sync scope to specific catalog IDs. When provided, only
-	DeleteMissing          *bool                   `json:"delete_missing,omitempty"`           // When true, buyer-managed catalogs on the account not included in this sync will
-	DryRun                 *bool                   `json:"dry_run,omitempty"`                  // When true, preview changes without applying them. Returns what would be created/
-	ValidationMode         string                  `json:"validation_mode,omitempty"`          // Validation strictness. 'strict' fails entire sync on any validation error. 'leni
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. Publisher will send
+	Catalogs               []CatalogInput          `json:"catalogs,omitempty"`                 // Array of catalog feeds to sync (create or update). When omitted, the call is
+	CatalogIDs             []string                `json:"catalog_ids,omitempty"`              // Optional filter to limit sync scope to specific catalog IDs. When provided
+	DeleteMissing          *bool                   `json:"delete_missing,omitempty"`           // When true, buyer-managed catalogs on the account not included in this sync
+	DryRun                 *bool                   `json:"dry_run,omitempty"`                  // When true, preview changes without applying them. Returns what would be
+	ValidationMode         string                  `json:"validation_mode,omitempty"`          // Validation strictness. 'strict' fails entire sync on any validation error.
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. Publisher will
 	Context                any                     `json:"context,omitempty"`
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// SyncEventSourcesRequest — Request parameters for configuring event sources on an account with upsert semantics. Existing event
+// SyncEventSourcesRequest — Request parameters for configuring event sources on an account with upsert semantics. Existing
 type SyncEventSourcesRequest struct {
-	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey   string             `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `event_source_id` gives
+	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey   string             `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `event_source_id`
 	Account          AccountReference   `json:"account"`                      // Account to configure event sources for.
-	EventSources     []EventSourceInput `json:"event_sources,omitempty"`      // Event sources to sync (create or update). When omitted, the call is discovery-on
+	EventSources     []EventSourceInput `json:"event_sources,omitempty"`      // Event sources to sync (create or update). When omitted, the call is
 	DeleteMissing    *bool              `json:"delete_missing,omitempty"`     // When true, event sources not included in this sync will be removed
 	Context          any                `json:"context,omitempty"`
 	Ext              any                `json:"ext,omitempty"`
@@ -9600,24 +9600,24 @@ type SyncEventSourcesRequest struct {
 
 // LogEventRequest — Request parameters for logging marketing events
 type LogEventRequest struct {
-	AdcpVersion      string           `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int              `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string           `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int              `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	EventSourceID    string           `json:"event_source_id"`              // Event source configured on the account via sync_event_sources
-	TestEventCode    string           `json:"test_event_code,omitempty"`    // Test event code for validation without affecting production data. Events with th
+	TestEventCode    string           `json:"test_event_code,omitempty"`    // Test event code for validation without affecting production data. Events with
 	Events           []map[string]any `json:"events"`                       // Events to log
-	IdempotencyKey   string           `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate event logging o
+	IdempotencyKey   string           `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate event logging
 	Context          any              `json:"context,omitempty"`
 	Ext              any              `json:"ext,omitempty"`
 }
 
 // ProvidePerformanceFeedbackRequest — Request payload for provide_performance_feedback task
 type ProvidePerformanceFeedbackRequest struct {
-	AdcpVersion       string        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion  int           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion       string        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion  int           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	MediaBuyID        string        `json:"media_buy_id"`                 // Seller's media buy identifier
-	IdempotencyKey    string        `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate feedback submis
+	IdempotencyKey    string        `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate feedback
 	MeasurementPeriod DatetimeRange `json:"measurement_period"`           // Time period for performance measurement
-	PerformanceIndex  float64       `json:"performance_index"`            // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expec
+	PerformanceIndex  float64       `json:"performance_index"`            // Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above
 	PackageID         string        `json:"package_id,omitempty"`         // Specific package within the media buy (if feedback is package-specific)
 	CreativeID        string        `json:"creative_id,omitempty"`        // Specific creative asset (if feedback is creative-specific)
 	MetricType        string        `json:"metric_type,omitempty"`        // The business metric being measured
@@ -9639,139 +9639,139 @@ type ProvidePerformanceFeedbackSuccess struct {
 
 // ProvidePerformanceFeedbackError — Error response - feedback rejected or could not be processed
 type ProvidePerformanceFeedbackError struct {
-	Errors  []AdcpError `json:"errors"` // Array of errors explaining why feedback was rejected (e.g., invalid measurement
+	Errors  []AdcpError `json:"errors"` // Array of errors explaining why feedback was rejected (e.g., invalid
 	Context any         `json:"context,omitempty"`
 	Ext     any         `json:"ext,omitempty"`
 }
 
-// BuildCreativeRequest — Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1) generatio
+// BuildCreativeRequest — Request to transform, generate, or retrieve a creative manifest. Supports three modes: (1)
 type BuildCreativeRequest struct {
-	AdcpVersion         string                      `json:"adcp_version,omitempty"`          // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion    int                         `json:"adcp_major_version,omitempty"`    // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Message             string                      `json:"message,omitempty"`               // Natural language instructions for the transformation or generation. For pure gen
-	CreativeManifest    *CreativeManifest           `json:"creative_manifest,omitempty"`     // Creative manifest to transform or generate from. For pure generation, this shoul
-	CreativeID          string                      `json:"creative_id,omitempty"`           // Reference to a creative in the agent's library. The creative agent resolves this
-	ConceptID           string                      `json:"concept_id,omitempty"`            // Creative concept containing the creative. Creative agents SHOULD assign globally
-	MediaBuyID          string                      `json:"media_buy_id,omitempty"`          // Media buy identifier for tag generation context. When the creative agent is also
-	PackageID           string                      `json:"package_id,omitempty"`            // Package identifier within the media buy. Used with media_buy_id when the creativ
-	TargetFormatID      *FormatRef                  `json:"target_format_id,omitempty"`      // Single format ID to generate. Mutually exclusive with target_format_ids. The for
-	TargetFormatIDs     []FormatRef                 `json:"target_format_ids,omitempty"`     // Array of format IDs to generate in a single call. Mutually exclusive with target
-	Account             *AccountReference           `json:"account,omitempty"`               // Account reference for pricing and billing. When present, the creative agent appl
-	Brand               *BrandReference             `json:"brand,omitempty"`                 // Brand reference for creative generation. Resolved to full brand identity (colors
-	Quality             string                      `json:"quality,omitempty"`               // Quality tier for generation. 'draft' produces fast, lower-fidelity output for it
-	ItemLimit           int                         `json:"item_limit,omitempty"`            // Maximum number of catalog items to use when generating. When a catalog asset con
-	IncludePreview      *bool                       `json:"include_preview,omitempty"`       // When true, requests the creative agent to include preview renders in the respons
-	PreviewInputs       []BuildCreativePreviewInput `json:"preview_inputs,omitempty"`        // Input sets for preview generation when include_preview is true. Each input set d
-	PreviewQuality      string                      `json:"preview_quality,omitempty"`       // Render quality for inline preview when include_preview is true. 'draft' produces
-	PreviewOutputFormat string                      `json:"preview_output_format,omitempty"` // Output format for preview renders when include_preview is true. 'url' returns pr
-	MacroValues         map[string]string           `json:"macro_values,omitempty"`          // Macro values to pre-substitute into the output manifest's assets. Keys are unive
-	IdempotencyKey      string                      `json:"idempotency_key"`                 // Client-generated unique key for this request. Prevents duplicate creative genera
+	AdcpVersion         string                      `json:"adcp_version,omitempty"`          // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion    int                         `json:"adcp_major_version,omitempty"`    // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Message             string                      `json:"message,omitempty"`               // Natural language instructions for the transformation or generation. For pure
+	CreativeManifest    *CreativeManifest           `json:"creative_manifest,omitempty"`     // Creative manifest to transform or generate from. For pure generation, this
+	CreativeID          string                      `json:"creative_id,omitempty"`           // Reference to a creative in the agent's library. The creative agent resolves
+	ConceptID           string                      `json:"concept_id,omitempty"`            // Creative concept containing the creative. Creative agents SHOULD assign
+	MediaBuyID          string                      `json:"media_buy_id,omitempty"`          // Media buy identifier for tag generation context. When the creative agent is
+	PackageID           string                      `json:"package_id,omitempty"`            // Package identifier within the media buy. Used with media_buy_id when the
+	TargetFormatID      *FormatRef                  `json:"target_format_id,omitempty"`      // Single format ID to generate. Mutually exclusive with target_format_ids. The
+	TargetFormatIDs     []FormatRef                 `json:"target_format_ids,omitempty"`     // Array of format IDs to generate in a single call. Mutually exclusive with
+	Account             *AccountReference           `json:"account,omitempty"`               // Account reference for pricing and billing. When present, the creative agent
+	Brand               *BrandReference             `json:"brand,omitempty"`                 // Brand reference for creative generation. Resolved to full brand identity
+	Quality             string                      `json:"quality,omitempty"`               // Quality tier for generation. 'draft' produces fast, lower-fidelity output for
+	ItemLimit           int                         `json:"item_limit,omitempty"`            // Maximum number of catalog items to use when generating. When a catalog asset
+	IncludePreview      *bool                       `json:"include_preview,omitempty"`       // When true, requests the creative agent to include preview renders in the
+	PreviewInputs       []BuildCreativePreviewInput `json:"preview_inputs,omitempty"`        // Input sets for preview generation when include_preview is true. Each input set
+	PreviewQuality      string                      `json:"preview_quality,omitempty"`       // Render quality for inline preview when include_preview is true. 'draft'
+	PreviewOutputFormat string                      `json:"preview_output_format,omitempty"` // Output format for preview renders when include_preview is true. 'url' returns
+	MacroValues         map[string]string           `json:"macro_values,omitempty"`          // Macro values to pre-substitute into the output manifest's assets. Keys are
+	IdempotencyKey      string                      `json:"idempotency_key"`                 // Client-generated unique key for this request. Prevents duplicate creative
 	Context             any                         `json:"context,omitempty"`
 	Ext                 any                         `json:"ext,omitempty"`
 }
 
-// SyncCreativesRequest — Request parameters for syncing creative assets with upsert semantics - supports bulk operations, sco
+// SyncCreativesRequest — Request parameters for syncing creative assets with upsert semantics - supports bulk operations
 type SyncCreativesRequest struct {
-	AdcpVersion            string                   `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                      `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion            string                   `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                      `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	Account                AccountReference         `json:"account"`                            // Account that owns these creatives.
 	Creatives              []CreativeInput          `json:"creatives"`                          // Array of creative assets to sync (create or update)
-	CreativeIDs            []string                 `json:"creative_ids,omitempty"`             // Optional filter to limit sync scope to specific creative IDs. When provided, onl
-	Assignments            []SyncCreativeAssignment `json:"assignments,omitempty"`              // Optional bulk assignment of creatives to packages. Each entry maps one creative
-	IdempotencyKey         string                   `json:"idempotency_key"`                    // Client-generated idempotency key for safe retries. If a sync fails without a res
-	DeleteMissing          *bool                    `json:"delete_missing,omitempty"`           // When true, creatives not included in this sync will be archived. Use with cautio
-	DryRun                 *bool                    `json:"dry_run,omitempty"`                  // When true, preview changes without applying them. Returns what would be created/
-	ValidationMode         string                   `json:"validation_mode,omitempty"`          // Validation strictness. 'strict' fails entire sync on any validation error. 'leni
-	PushNotificationConfig *PushNotificationConfig  `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. The agent will send
+	CreativeIDs            []string                 `json:"creative_ids,omitempty"`             // Optional filter to limit sync scope to specific creative IDs. When provided
+	Assignments            []SyncCreativeAssignment `json:"assignments,omitempty"`              // Optional bulk assignment of creatives to packages. Each entry maps one
+	IdempotencyKey         string                   `json:"idempotency_key"`                    // Client-generated idempotency key for safe retries. If a sync fails without a
+	DeleteMissing          *bool                    `json:"delete_missing,omitempty"`           // When true, creatives not included in this sync will be archived. Use with
+	DryRun                 *bool                    `json:"dry_run,omitempty"`                  // When true, preview changes without applying them. Returns what would be
+	ValidationMode         string                   `json:"validation_mode,omitempty"`          // Validation strictness. 'strict' fails entire sync on any validation error.
+	PushNotificationConfig *PushNotificationConfig  `json:"push_notification_config,omitempty"` // Optional webhook configuration for async sync notifications. The agent will
 	Context                any                      `json:"context,omitempty"`
 	Ext                    any                      `json:"ext,omitempty"`
 }
 
-// ListCreativesRequest — Request parameters for querying creative assets from a creative library with filtering, sorting, and
+// ListCreativesRequest — Request parameters for querying creative assets from a creative library with filtering, sorting
 type ListCreativesRequest struct {
-	AdcpVersion            string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion            string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	Filters                *CreativeFilters   `json:"filters,omitempty"`
 	Sort                   *ListCreativesSort `json:"sort,omitempty"` // Sorting parameters
 	Pagination             *PaginationRequest `json:"pagination,omitempty"`
 	IncludeAssignments     *bool              `json:"include_assignments,omitempty"`      // Include package assignment information in response
-	IncludeSnapshot        *bool              `json:"include_snapshot,omitempty"`         // Include a lightweight delivery snapshot per creative (lifetime impressions and l
+	IncludeSnapshot        *bool              `json:"include_snapshot,omitempty"`         // Include a lightweight delivery snapshot per creative (lifetime impressions and
 	IncludeItems           *bool              `json:"include_items,omitempty"`            // Include items for multi-asset formats like carousels and native ads
 	IncludeVariables       *bool              `json:"include_variables,omitempty"`        // Include dynamic content variable definitions (DCO slots) for each creative
-	IncludePricing         *bool              `json:"include_pricing,omitempty"`          // Include pricing_options on each creative. Requires account to be provided. When
-	IncludePurged          *bool              `json:"include_purged,omitempty"`           // Include soft-purged creative tombstones in the result set. When true, creatives
-	IncludeWebhookActivity *bool              `json:"include_webhook_activity,omitempty"` // Include recent webhook activity per creative. When true, each returned creative
-	WebhookActivityLimit   int                `json:"webhook_activity_limit,omitempty"`   // Maximum number of `webhook_activity[]` records to return per creative. Only mean
-	Account                *AccountReference  `json:"account,omitempty"`                  // Account reference for pricing and access. When provided with include_pricing, th
-	Fields                 []string           `json:"fields,omitempty"`                   // Specific fields to include in response (omit for all fields). The 'concept' valu
+	IncludePricing         *bool              `json:"include_pricing,omitempty"`          // Include pricing_options on each creative. Requires account to be provided.
+	IncludePurged          *bool              `json:"include_purged,omitempty"`           // Include soft-purged creative tombstones in the result set. When true
+	IncludeWebhookActivity *bool              `json:"include_webhook_activity,omitempty"` // Include recent webhook activity per creative. When true, each returned
+	WebhookActivityLimit   int                `json:"webhook_activity_limit,omitempty"`   // Maximum number of `webhook_activity[]` records to return per creative. Only
+	Account                *AccountReference  `json:"account,omitempty"`                  // Account reference for pricing and access. When provided with include_pricing
+	Fields                 []string           `json:"fields,omitempty"`                   // Specific fields to include in response (omit for all fields). The 'concept'
 	Context                any                `json:"context,omitempty"`
 	Ext                    any                `json:"ext,omitempty"`
 }
 
-// PreviewCreativeRequest — Request to generate previews of creative manifests. Uses request_type to select single, batch, or va
+// PreviewCreativeRequest — Request to generate previews of creative manifests. Uses request_type to select single, batch, or
 type PreviewCreativeRequest struct {
-	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	RequestType      string            `json:"request_type"`                 // Preview mode. 'single' previews one creative manifest. 'batch' previews multiple
-	CreativeManifest *CreativeManifest `json:"creative_manifest,omitempty"`  // Complete creative manifest with all required assets for the format. Required whe
-	FormatID         *FormatRef        `json:"format_id,omitempty"`          // Always a structured object {agent_url, id} — never a plain string. Format identi
-	Inputs           []any             `json:"inputs,omitempty"`             // Array of input sets for generating multiple preview variants. Each input set def
+	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	RequestType      string            `json:"request_type"`                 // Preview mode. 'single' previews one creative manifest. 'batch' previews
+	CreativeManifest *CreativeManifest `json:"creative_manifest,omitempty"`  // Complete creative manifest with all required assets for the format. Required
+	FormatID         *FormatRef        `json:"format_id,omitempty"`          // Always a structured object {agent_url, id} — never a plain string. Format
+	Inputs           []any             `json:"inputs,omitempty"`             // Array of input sets for generating multiple preview variants. Each input set
 	TemplateID       string            `json:"template_id,omitempty"`        // Specific template ID for custom format rendering. Used in single mode.
-	Quality          string            `json:"quality,omitempty"`            // Render quality. 'draft' produces fast, lower-fidelity renderings. 'production' p
-	OutputFormat     string            `json:"output_format,omitempty"`      // Output format. 'url' returns preview_url (iframe-embeddable URL), 'html' returns
-	ItemLimit        int               `json:"item_limit,omitempty"`         // Maximum number of catalog items to render per preview variant. Used in single mo
-	Requests         []any             `json:"requests,omitempty"`           // Array of preview requests (1-50 items). Required when request_type is 'batch'. E
-	VariantID        string            `json:"variant_id,omitempty"`         // Platform-assigned variant identifier from get_creative_delivery response. Requir
+	Quality          string            `json:"quality,omitempty"`            // Render quality. 'draft' produces fast, lower-fidelity renderings. 'production'
+	OutputFormat     string            `json:"output_format,omitempty"`      // Output format. 'url' returns preview_url (iframe-embeddable URL), 'html'
+	ItemLimit        int               `json:"item_limit,omitempty"`         // Maximum number of catalog items to render per preview variant. Used in single
+	Requests         []any             `json:"requests,omitempty"`           // Array of preview requests (1-50 items). Required when request_type is 'batch'.
+	VariantID        string            `json:"variant_id,omitempty"`         // Platform-assigned variant identifier from get_creative_delivery response.
 	CreativeID       string            `json:"creative_id,omitempty"`        // Creative identifier for context. Used in variant mode.
 	Context          any               `json:"context,omitempty"`
 	Ext              any               `json:"ext,omitempty"`
 }
 
-// GetSignalsRequest — Request parameters for discovering and refining signals. Use signal_spec for natural language discov
+// GetSignalsRequest — Request parameters for discovering and refining signals. Use signal_spec for natural language
 type GetSignalsRequest struct {
-	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	DiscoveryMode    string            `json:"discovery_mode,omitempty"`     // Declares caller intent for this request. 'brief' (default): semantic discovery —
-	Account          *AccountReference `json:"account,omitempty"`            // Account for this request. When provided, the signals agent returns per-account p
-	SignalSpec       string            `json:"signal_spec,omitempty"`        // Natural language description of the desired signals. When used alone, enables se
-	SignalRefs       []SignalRef       `json:"signal_refs,omitempty"`        // Specific signals to look up by reference. Returns exact matches for the requeste
+	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	DiscoveryMode    string            `json:"discovery_mode,omitempty"`     // Declares caller intent for this request. 'brief' (default): semantic discovery
+	Account          *AccountReference `json:"account,omitempty"`            // Account for this request. When provided, the signals agent returns per-account
+	SignalSpec       string            `json:"signal_spec,omitempty"`        // Natural language description of the desired signals. When used alone, enables
+	SignalRefs       []SignalRef       `json:"signal_refs,omitempty"`        // Specific signals to look up by reference. Returns exact matches for the
 	// Deprecated: DEPRECATED.
-	SignalIDs    []SignalID     `json:"signal_ids,omitempty"`   // DEPRECATED. Use signal_refs instead. Legacy exact lookup field using SignalId ob
-	Destinations []Destination  `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When omitted,
-	Countries    []string       `json:"countries,omitempty"`    // Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, n
+	SignalIDs    []SignalID     `json:"signal_ids,omitempty"`   // DEPRECATED. Use signal_refs instead. Legacy exact lookup field using SignalId
+	Destinations []Destination  `json:"destinations,omitempty"` // Filter signals to those activatable on specific agents/platforms. When
+	Countries    []string       `json:"countries,omitempty"`    // Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted
 	Filters      *SignalFilters `json:"filters,omitempty"`
-	Fields       []string       `json:"fields,omitempty"` // Specific signal fields to include in the response, aligned with get_products.fie
+	Fields       []string       `json:"fields,omitempty"` // Specific signal fields to include in the response, aligned with
 	// Deprecated: Use pagination.max_results instead.
-	MaxResults             int                `json:"max_results,omitempty"`               // DEPRECATED: Use pagination.max_results instead. When both fields are present, ag
-	Pagination             *PaginationRequest `json:"pagination,omitempty"`                // Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pa
-	IfWholesaleFeedVersion string             `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode get_signa
-	IfPricingVersion       string             `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_signals response. MUST only be sen
+	MaxResults             int                `json:"max_results,omitempty"`               // DEPRECATED: Use pagination.max_results instead. When both fields are present
+	Pagination             *PaginationRequest `json:"pagination,omitempty"`                // Pagination parameters. Use pagination.max_results (max: 100, default: 50) and
+	IfWholesaleFeedVersion string             `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode
+	IfPricingVersion       string             `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_signals response. MUST only be
 	Context                any                `json:"context,omitempty"`
 	Ext                    any                `json:"ext,omitempty"`
 }
 
 // GetSignalsResponse — Response payload for get_signals task
 type GetSignalsResponse struct {
-	AdcpVersion            string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                     `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                     `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                        `json:"context,omitempty"`
-	TaskID                 string                     `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                     `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                     `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                     `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                      `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError                  `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig    `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                     `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any             `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
+	TaskID                 string                     `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                     `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                     `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                     `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                      `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError                  `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig    `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                     `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any             `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
 	Signals                []SignalListing            `json:"signals,omitempty"`                  // Array of matching signals
 	Errors                 []AdcpError                `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., signal discovery or pricing issues)
-	Incomplete             []GetSignalsIncompleteItem `json:"incomplete,omitempty"`               // Declares what the agent could not finish within the caller's time_budget or due
-	WholesaleFeedVersion   string                     `json:"wholesale_feed_version,omitempty"`   // Opaque token representing the version of the wholesale signals feed state used t
-	PricingVersion         string                     `json:"pricing_version,omitempty"`          // Opaque token representing the version of the pricing layer. When the agent suppo
-	CacheScope             string                     `json:"cache_scope,omitempty"`              // Declares whether the wholesale_feed_version and pricing_version on this response
-	Unchanged              *bool                      `json:"unchanged,omitempty"`                // Present and `true` ONLY on wholesale-mode responses when the request carried if_
+	Incomplete             []GetSignalsIncompleteItem `json:"incomplete,omitempty"`               // Declares what the agent could not finish within the caller's time_budget or
+	WholesaleFeedVersion   string                     `json:"wholesale_feed_version,omitempty"`   // Opaque token representing the version of the wholesale signals feed state used
+	PricingVersion         string                     `json:"pricing_version,omitempty"`          // Opaque token representing the version of the pricing layer. When the agent
+	CacheScope             string                     `json:"cache_scope,omitempty"`              // Declares whether the wholesale_feed_version and pricing_version on this
+	Unchanged              *bool                      `json:"unchanged,omitempty"`                // Present and `true` ONLY on wholesale-mode responses when the request carried
 	Pagination             *PaginationResponse        `json:"pagination,omitempty"`
 	Sandbox                *bool                      `json:"sandbox,omitempty"` // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                        `json:"ext,omitempty"`
@@ -9779,27 +9779,27 @@ type GetSignalsResponse struct {
 
 // ActivateSignalRequest — Request parameters for activating or deactivating a signal on deployment targets
 type ActivateSignalRequest struct {
-	AdcpVersion          string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion     int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Action               string             `json:"action,omitempty"`             // Whether to activate or deactivate the signal. Deactivating removes the segment f
-	SignalAgentSegmentID string             `json:"signal_agent_segment_id"`      // Opaque activation handle returned in the signal_agent_segment_id field of each g
-	Destinations         []DestinationInput `json:"destinations"`                 // Target destination(s) for activation. If the authenticated caller matches one of
-	PricingOptionID      string             `json:"pricing_option_id,omitempty"`  // The pricing option selected from the signal's pricing_options in the get_signals
-	Account              *AccountReference  `json:"account,omitempty"`            // Account for this activation. Associates with a commercial relationship establish
-	IdempotencyKey       string             `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate activations on
+	AdcpVersion          string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion     int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Action               string             `json:"action,omitempty"`             // Whether to activate or deactivate the signal. Deactivating removes the segment
+	SignalAgentSegmentID string             `json:"signal_agent_segment_id"`      // Opaque activation handle returned in the signal_agent_segment_id field of each
+	Destinations         []DestinationInput `json:"destinations"`                 // Target destination(s) for activation. If the authenticated caller matches one
+	PricingOptionID      string             `json:"pricing_option_id,omitempty"`  // The pricing option selected from the signal's pricing_options in the
+	Account              *AccountReference  `json:"account,omitempty"`            // Account for this activation. Associates with a commercial relationship
+	IdempotencyKey       string             `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate activations
 	Context              any                `json:"context,omitempty"`
 	Ext                  any                `json:"ext,omitempty"`
 }
 
-// ComplyTestControllerRequest — Request payload for the comply_test_controller tool. Triggers seller-side state transitions for comp
+// ComplyTestControllerRequest — Request payload for the comply_test_controller tool. Triggers seller-side state transitions for
 type ComplyTestControllerRequest struct {
-	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Scenario         string `json:"scenario"`                     // Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force
+	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Scenario         string `json:"scenario"`                     // Test scenario to execute. 'list_scenarios' discovers supported scenarios.
 	Params           any    `json:"params,omitempty"`             // Scenario-specific parameters. Required for all scenarios except list_scenarios.
 	Context          any    `json:"context,omitempty"`
 	Ext              any    `json:"ext,omitempty"`
-	Account          any    `json:"account"` // Sandbox account assertion. The runner MUST set sandbox: true on every comply_tes
+	Account          any    `json:"account"` // Sandbox account assertion. The runner MUST set sandbox: true on every
 }
 
 // ComplyTestControllerResponse is a discriminated union — use the appropriate variant type.
@@ -9808,7 +9808,7 @@ type ComplyTestControllerResponse = any
 // ListScenariosSuccess — Lists which scenarios this seller's test controller supports
 type ListScenariosSuccess struct {
 	Success   bool     `json:"success"`
-	Scenarios []string `json:"scenarios"` // Scenarios this seller has implemented. Runners and sellers MUST accept unknown s
+	Scenarios []string `json:"scenarios"` // Scenarios this seller has implemented. Runners and sellers MUST accept unknown
 	Context   any      `json:"context,omitempty"`
 	Ext       any      `json:"ext,omitempty"`
 }
@@ -9823,7 +9823,7 @@ type StateTransitionSuccess struct {
 	Ext           any    `json:"ext,omitempty"`
 }
 
-// SimulationSuccess — A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains th
+// SimulationSuccess — A simulate_delivery or simulate_budget_spend scenario succeeded. For delivery: simulated contains
 type SimulationSuccess struct {
 	Success    bool           `json:"success"`
 	Simulated  map[string]any `json:"simulated"`            // Values injected or applied by this call. Shape depends on scenario.
@@ -9833,10 +9833,10 @@ type SimulationSuccess struct {
 	Ext        any            `json:"ext,omitempty"`
 }
 
-// ForcedDirectiveSuccess — A force_create_media_buy_arm directive was registered. The directive shapes the next create_media_bu
+// ForcedDirectiveSuccess — A force_create_media_buy_arm directive was registered. The directive shapes the next
 type ForcedDirectiveSuccess struct {
 	Success bool   `json:"success"`
-	Forced  any    `json:"forced"`            // Echo of the registered directive. The next create_media_buy call from this sandb
+	Forced  any    `json:"forced"`            // Echo of the registered directive. The next create_media_buy call from this
 	Message string `json:"message,omitempty"` // Human-readable acknowledgement.
 	Context any    `json:"context,omitempty"`
 	Ext     any    `json:"ext,omitempty"`
@@ -9850,7 +9850,7 @@ type SeedSuccess struct {
 	Ext     any    `json:"ext,omitempty"`
 }
 
-// ProvenanceAuditObservationsSuccess — A query_provenance_audit_observations scenario returned sandbox-recorded audit observations for a cr
+// ProvenanceAuditObservationsSuccess — A query_provenance_audit_observations scenario returned sandbox-recorded audit observations for a
 type ProvenanceAuditObservationsSuccess struct {
 	Success           bool               `json:"success"`
 	CreativeID        string             `json:"creative_id"`        // Creative ID whose audit observations were queried.
@@ -9859,32 +9859,32 @@ type ProvenanceAuditObservationsSuccess struct {
 	Ext               any                `json:"ext,omitempty"`
 }
 
-// UpstreamTrafficSuccess — A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the requ
+// UpstreamTrafficSuccess — A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the
 type UpstreamTrafficSuccess struct {
 	Success        bool                   `json:"success"`
-	RecordedCalls  []UpstreamRecordedCall `json:"recorded_calls"`      // Outbound HTTP calls caused by the requesting principal in the requested window,
-	TotalCount     int                    `json:"total_count"`         // Total calls in the requested window before any pagination — `recorded_calls.leng
-	Truncated      *bool                  `json:"truncated,omitempty"` // True when `total_count > recorded_calls.length`. Runners MAY raise the `limit` a
-	SinceTimestamp string                 `json:"since_timestamp"`     // Echo of the `since_timestamp` the runner requested (or the session-start timesta
+	RecordedCalls  []UpstreamRecordedCall `json:"recorded_calls"`      // Outbound HTTP calls caused by the requesting principal in the requested
+	TotalCount     int                    `json:"total_count"`         // Total calls in the requested window before any pagination —
+	Truncated      *bool                  `json:"truncated,omitempty"` // True when `total_count > recorded_calls.length`. Runners MAY raise the `limit`
+	SinceTimestamp string                 `json:"since_timestamp"`     // Echo of the `since_timestamp` the runner requested (or the session-start
 	Context        any                    `json:"context,omitempty"`
 	Ext            any                    `json:"ext,omitempty"`
 }
 
-// ControllerError — The scenario failed or could not produce a conformant response — invalid transition, unknown entity,
+// ControllerError — The scenario failed or could not produce a conformant response — invalid transition, unknown
 type ControllerError struct {
 	Success      bool    `json:"success"`
-	Error        string  `json:"error"`                   // Structured error code. `JCS_NON_FINITE_NUMBER` is reserved for digest-mode upstr
+	Error        string  `json:"error"`                   // Structured error code. `JCS_NON_FINITE_NUMBER` is reserved for digest-mode
 	ErrorDetail  string  `json:"error_detail,omitempty"`  // Human-readable explanation of the failure
 	CurrentState *string `json:"current_state,omitempty"` // Current state of the entity, or null if not found
 	Context      any     `json:"context,omitempty"`
 	Ext          any     `json:"ext,omitempty"`
 }
 
-// SyncPlansRequest — Push campaign plans to the governance agent. A plan defines the authorized parameters for a campaign
+// SyncPlansRequest — Push campaign plans to the governance agent. A plan defines the authorized parameters for a
 type SyncPlansRequest struct {
-	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	IdempotencyKey   string `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `plan_id` gives resource
+	AdcpVersion      string `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey   string `json:"idempotency_key"`              // Client-generated unique key for at-most-once execution. `plan_id` gives
 	Plans            []Plan `json:"plans"`                        // One or more campaign plans to sync.
 	Context          any    `json:"context,omitempty"`
 	Ext              any    `json:"ext,omitempty"`
@@ -9892,101 +9892,101 @@ type SyncPlansRequest struct {
 
 // SyncPlansResponse — Response from syncing campaign plans. Returns status and active validation categories for each plan.
 type SyncPlansResponse struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                     `json:"context,omitempty"`
-	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
 	Plans                  []SyncPlansPlan         `json:"plans"`                              // Status for each synced plan.
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
-// CheckGovernanceRequest — Universal governance check for campaign actions. The governance agent infers the check type from the
+// CheckGovernanceRequest — Universal governance check for campaign actions. The governance agent infers the check type from
 type CheckGovernanceRequest struct {
-	AdcpVersion         string                     `json:"adcp_version,omitempty"`         // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion    int                        `json:"adcp_major_version,omitempty"`   // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	PlanID              string                     `json:"plan_id"`                        // Campaign governance plan identifier. The plan uniquely scopes the account and op
+	AdcpVersion         string                     `json:"adcp_version,omitempty"`         // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion    int                        `json:"adcp_major_version,omitempty"`   // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	PlanID              string                     `json:"plan_id"`                        // Campaign governance plan identifier. The plan uniquely scopes the account and
 	Caller              string                     `json:"caller"`                         // URL of the agent making the request.
-	PurchaseType        string                     `json:"purchase_type,omitempty"`        // The type of financial commitment being checked. Determines which budget allocati
-	Tool                string                     `json:"tool,omitempty"`                 // The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activa
-	Payload             map[string]any             `json:"payload,omitempty"`              // The full tool arguments as they would be sent to the seller. Present on intent c
-	GovernanceContext   string                     `json:"governance_context,omitempty"`   // Governance context token from a prior check_governance response. Pass this on su
-	Phase               string                     `json:"phase,omitempty"`                // The phase of the governed action's lifecycle. 'purchase': initial commitment (cr
+	PurchaseType        string                     `json:"purchase_type,omitempty"`        // The type of financial commitment being checked. Determines which budget
+	Tool                string                     `json:"tool,omitempty"`                 // The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights'
+	Payload             map[string]any             `json:"payload,omitempty"`              // The full tool arguments as they would be sent to the seller. Present on intent
+	GovernanceContext   string                     `json:"governance_context,omitempty"`   // Governance context token from a prior check_governance response. Pass this on
+	Phase               string                     `json:"phase,omitempty"`                // The phase of the governed action's lifecycle. 'purchase': initial commitment
 	PlannedDelivery     *PlannedDelivery           `json:"planned_delivery,omitempty"`     // What the seller will actually deliver. Present on execution checks.
-	DeliveryMetrics     *GovernanceDeliveryMetrics `json:"delivery_metrics,omitempty"`     // Actual delivery performance data. MUST be present for 'delivery' phase. The gove
-	ModificationSummary string                     `json:"modification_summary,omitempty"` // Human-readable summary of what changed. SHOULD be present for 'modification' pha
-	InvoiceRecipient    *BusinessEntity            `json:"invoice_recipient,omitempty"`    // Invoice recipient from the purchase request. MUST be present when the tool paylo
+	DeliveryMetrics     *GovernanceDeliveryMetrics `json:"delivery_metrics,omitempty"`     // Actual delivery performance data. MUST be present for 'delivery' phase. The
+	ModificationSummary string                     `json:"modification_summary,omitempty"` // Human-readable summary of what changed. SHOULD be present for 'modification'
+	InvoiceRecipient    *BusinessEntity            `json:"invoice_recipient,omitempty"`    // Invoice recipient from the purchase request. MUST be present when the tool
 	Context             any                        `json:"context,omitempty"`
 	Ext                 any                        `json:"ext,omitempty"`
 }
 
-// CheckGovernanceResponse — Governance agent's response to a check request. Returns whether the action is approved under the gov
+// CheckGovernanceResponse — Governance agent's response to a check request. Returns whether the action is approved under the
 type CheckGovernanceResponse struct {
-	AdcpVersion         string                     `json:"adcp_version,omitempty"`         // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion    int                        `json:"adcp_major_version,omitempty"`   // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	CheckID             string                     `json:"check_id"`                       // Unique identifier for this governance check record. Use in report_plan_outcome t
-	Verdict             string                     `json:"verdict"`                        // Governance verdict: approved | denied | conditions. Renamed from `status` in 3.1
+	AdcpVersion         string                     `json:"adcp_version,omitempty"`         // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion    int                        `json:"adcp_major_version,omitempty"`   // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	CheckID             string                     `json:"check_id"`                       // Unique identifier for this governance check record. Use in report_plan_outcome
+	Verdict             string                     `json:"verdict"`                        // Governance verdict: approved | denied | conditions. Renamed from `status` in
 	PlanID              string                     `json:"plan_id"`                        // Echoed from request.
 	Explanation         string                     `json:"explanation"`                    // Human-readable explanation of the governance decision.
-	Findings            []CheckGovernanceFinding   `json:"findings,omitempty"`             // Specific issues found during the governance check. Present when verdict is 'deni
-	Conditions          []CheckGovernanceCondition `json:"conditions,omitempty"`           // Present when verdict is 'conditions'. Specific adjustments the caller must make.
-	ExpiresAt           string                     `json:"expires_at,omitempty"`           // When this approval expires. Present when verdict is 'approved' or 'conditions'.
-	NextCheck           string                     `json:"next_check,omitempty"`           // When the seller should next call check_governance with delivery metrics. Present
-	CategoriesEvaluated []string                   `json:"categories_evaluated,omitempty"` // Governance categories evaluated during this check. Each value is an **agent-inte
-	PoliciesEvaluated   []string                   `json:"policies_evaluated,omitempty"`   // Policy IDs evaluated during this check. Includes registry policy IDs (resolved v
-	Mode                string                     `json:"mode,omitempty"`                 // Governance enforcement mode active when this check was evaluated. Allows counter
-	GovernanceContext   string                     `json:"governance_context,omitempty"`   // Governance context token for this governed action. The buyer MUST attach this to
+	Findings            []CheckGovernanceFinding   `json:"findings,omitempty"`             // Specific issues found during the governance check. Present when verdict is
+	Conditions          []CheckGovernanceCondition `json:"conditions,omitempty"`           // Present when verdict is 'conditions'. Specific adjustments the caller must
+	ExpiresAt           string                     `json:"expires_at,omitempty"`           // When this approval expires. Present when verdict is 'approved' or
+	NextCheck           string                     `json:"next_check,omitempty"`           // When the seller should next call check_governance with delivery metrics.
+	CategoriesEvaluated []string                   `json:"categories_evaluated,omitempty"` // Governance categories evaluated during this check. Each value is an
+	PoliciesEvaluated   []string                   `json:"policies_evaluated,omitempty"`   // Policy IDs evaluated during this check. Includes registry policy IDs (resolved
+	Mode                string                     `json:"mode,omitempty"`                 // Governance enforcement mode active when this check was evaluated. Allows
+	GovernanceContext   string                     `json:"governance_context,omitempty"`   // Governance context token for this governed action. The buyer MUST attach this
 	Context             any                        `json:"context,omitempty"`
 	Ext                 any                        `json:"ext,omitempty"`
 }
 
-// ReportPlanOutcomeRequest — Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side agen
+// ReportPlanOutcomeRequest — Report the outcome of an action to the governance agent. Called by the orchestrator (buyer-side
 type ReportPlanOutcomeRequest struct {
-	AdcpVersion       string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion  int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	PlanID            string                     `json:"plan_id"`                      // The plan this outcome is for. The plan uniquely scopes the account and operator;
-	CheckID           string                     `json:"check_id,omitempty"`           // The check_id from check_governance. Links the outcome to the governance check th
-	IdempotencyKey    string                     `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate outcome reports
-	PurchaseType      string                     `json:"purchase_type,omitempty"`      // The type of financial commitment this outcome is for. Determines which budget al
+	AdcpVersion       string                     `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion  int                        `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	PlanID            string                     `json:"plan_id"`                      // The plan this outcome is for. The plan uniquely scopes the account and
+	CheckID           string                     `json:"check_id,omitempty"`           // The check_id from check_governance. Links the outcome to the governance check
+	IdempotencyKey    string                     `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate outcome
+	PurchaseType      string                     `json:"purchase_type,omitempty"`      // The type of financial commitment this outcome is for. Determines which budget
 	Outcome           string                     `json:"outcome"`                      // Outcome type.
 	SellerResponse    any                        `json:"seller_response,omitempty"`    // The seller's full response. Required when outcome is 'completed'.
 	Delivery          *ReportPlanOutcomeDelivery `json:"delivery,omitempty"`           // Delivery metrics. Required when outcome is 'delivery'.
 	Error             *ReportPlanOutcomeError    `json:"error,omitempty"`              // Error details. Required when outcome is 'failed'.
-	GovernanceContext string                     `json:"governance_context"`           // Opaque governance context from the check_governance response that authorized thi
+	GovernanceContext string                     `json:"governance_context"`           // Opaque governance context from the check_governance response that authorized
 	Context           any                        `json:"context,omitempty"`
 	Ext               any                        `json:"ext,omitempty"`
 }
 
-// ReportPlanOutcomeResponse — Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent) that
+// ReportPlanOutcomeResponse — Response from reporting an action outcome. Only returned to the orchestrator (buyer-side agent)
 type ReportPlanOutcomeResponse struct {
-	AdcpVersion      string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	OutcomeID        string                        `json:"outcome_id"`                   // Unique identifier for this outcome record.
-	OutcomeState     string                        `json:"outcome_state"`                // Outcome state. 'accepted' means state updated with no issues. 'findings' means i
-	CommittedBudget  float64                       `json:"committed_budget,omitempty"`   // Budget committed from this outcome. Present for 'completed' and 'failed' outcome
+	OutcomeState     string                        `json:"outcome_state"`                // Outcome state. 'accepted' means state updated with no issues. 'findings' means
+	CommittedBudget  float64                       `json:"committed_budget,omitempty"`   // Budget committed from this outcome. Present for 'completed' and 'failed'
 	Findings         []ReportPlanOutcomeFinding    `json:"findings,omitempty"`           // Issues detected. Present only when outcome_state is 'findings'.
 	PlanSummary      *ReportPlanOutcomePlanSummary `json:"plan_summary,omitempty"`       // Updated plan budget state. Present for 'completed' and 'failed' outcomes.
-	Replayed         *bool                         `json:"replayed,omitempty"`           // Set to true when this response was returned from the idempotency cache rather th
+	Replayed         *bool                         `json:"replayed,omitempty"`           // Set to true when this response was returned from the idempotency cache rather
 	Context          any                           `json:"context,omitempty"`
 	Ext              any                           `json:"ext,omitempty"`
 }
 
 // GetPlanAuditLogsRequest — Retrieve governance state and audit trail for one or more plans.
 type GetPlanAuditLogsRequest struct {
-	AdcpVersion        string   `json:"adcp_version,omitempty"`        // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion   int      `json:"adcp_major_version,omitempty"`  // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	PlanIDs            []string `json:"plan_ids,omitempty"`            // Plan IDs to retrieve. For a single plan, pass a one-element array. Plans uniquel
-	PortfolioPlanIDs   []string `json:"portfolio_plan_ids,omitempty"`  // Portfolio plan IDs. The governance agent expands each to its member_plan_ids and
-	GovernanceContexts []string `json:"governance_contexts,omitempty"` // Filter audit entries by governance context. Returns only checks and outcomes tha
-	PurchaseTypes      []string `json:"purchase_types,omitempty"`      // Filter audit entries by purchase type. Returns only checks and outcomes matching
+	AdcpVersion        string   `json:"adcp_version,omitempty"`        // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion   int      `json:"adcp_major_version,omitempty"`  // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	PlanIDs            []string `json:"plan_ids,omitempty"`            // Plan IDs to retrieve. For a single plan, pass a one-element array. Plans
+	PortfolioPlanIDs   []string `json:"portfolio_plan_ids,omitempty"`  // Portfolio plan IDs. The governance agent expands each to its member_plan_ids
+	GovernanceContexts []string `json:"governance_contexts,omitempty"` // Filter audit entries by governance context. Returns only checks and outcomes
+	PurchaseTypes      []string `json:"purchase_types,omitempty"`      // Filter audit entries by purchase type. Returns only checks and outcomes
 	IncludeEntries     *bool    `json:"include_entries,omitempty"`     // Include the full audit trail. Default: false.
 	Context            any      `json:"context,omitempty"`
 	Ext                any      `json:"ext,omitempty"`
@@ -9994,83 +9994,83 @@ type GetPlanAuditLogsRequest struct {
 
 // GetPlanAuditLogsResponse — Governance state and audit trail for one or more plans.
 type GetPlanAuditLogsResponse struct {
-	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across multiple
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
 	Context                any                     `json:"context,omitempty"`
-	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task requ
-	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in progre
-	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language explanation
-	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging, loggin
-	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather th
-	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer model
-	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST protocols).
-	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during check_g
-	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual ta
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
 	Plans                  []PlanAuditLog          `json:"plans"`                              // Audit data for each requested plan.
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
 // CreateCollectionListRequest — Request parameters for creating a new collection list
 type CreateCollectionListRequest struct {
-	AdcpVersion      string                 `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account          *AccountReference      `json:"account,omitempty"`            // Account that will own the list. Pass a natural key (brand, operator, optional sa
+	AdcpVersion      string                 `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account          *AccountReference      `json:"account,omitempty"`            // Account that will own the list. Pass a natural key (brand, operator, optional
 	Name             string                 `json:"name"`                         // Human-readable name for the list
 	Description      string                 `json:"description,omitempty"`        // Description of the list's purpose
-	BaseCollections  []BaseCollectionSource `json:"base_collections,omitempty"`   // Array of collection sources to evaluate. Each entry is a discriminated union: di
+	BaseCollections  []BaseCollectionSource `json:"base_collections,omitempty"`   // Array of collection sources to evaluate. Each entry is a discriminated union
 	Filters          *CollectionListFilters `json:"filters,omitempty"`            // Dynamic filters to apply when resolving the list
-	Brand            *BrandReference        `json:"brand,omitempty"`              // Brand reference. When provided, the agent automatically applies appropriate rule
-	IdempotencyKey   string                 `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate collection list
+	Brand            *BrandReference        `json:"brand,omitempty"`              // Brand reference. When provided, the agent automatically applies appropriate
+	IdempotencyKey   string                 `json:"idempotency_key"`              // Client-generated unique key for this request. Prevents duplicate collection
 	Context          any                    `json:"context,omitempty"`
 	Ext              any                    `json:"ext,omitempty"`
 }
 
 // GetCollectionListRequest — Request parameters for retrieving a collection list with resolved collections
 type GetCollectionListRequest struct {
-	AdcpVersion      string                       `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                          `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string                       `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                          `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	ListID           string                       `json:"list_id"`                      // ID of the collection list to retrieve
-	Account          *AccountReference            `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access to
+	Account          *AccountReference            `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access
 	Resolve          *bool                        `json:"resolve,omitempty"`            // Whether to apply filters and return resolved collections (default: true)
-	Pagination       *CollectionRequestPagination `json:"pagination,omitempty"`         // Pagination parameters. Uses higher limits than standard pagination because colle
+	Pagination       *CollectionRequestPagination `json:"pagination,omitempty"`         // Pagination parameters. Uses higher limits than standard pagination because
 	Context          any                          `json:"context,omitempty"`
 	Ext              any                          `json:"ext,omitempty"`
 }
 
 // UpdateCollectionListRequest — Request parameters for updating an existing collection list
 type UpdateCollectionListRequest struct {
-	AdcpVersion      string                 `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string                 `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                    `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	ListID           string                 `json:"list_id"`                      // ID of the collection list to update
-	Account          *AccountReference      `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access to
+	Account          *AccountReference      `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access
 	Name             string                 `json:"name,omitempty"`               // New name for the list
 	Description      string                 `json:"description,omitempty"`        // New description
-	BaseCollections  []BaseCollectionSource `json:"base_collections,omitempty"`   // Complete replacement for the base collections list (not a patch). Each entry is
+	BaseCollections  []BaseCollectionSource `json:"base_collections,omitempty"`   // Complete replacement for the base collections list (not a patch). Each entry
 	Filters          *CollectionListFilters `json:"filters,omitempty"`            // Complete replacement for the filters (not a patch)
 	Brand            *BrandReference        `json:"brand,omitempty"`              // Update brand reference. Resolved to full brand identity at execution time.
-	WebhookURL       string                 `json:"webhook_url,omitempty"`        // Update the webhook URL for list change notifications (set to empty string to rem
+	WebhookURL       string                 `json:"webhook_url,omitempty"`        // Update the webhook URL for list change notifications (set to empty string to
 	Context          any                    `json:"context,omitempty"`
 	Ext              any                    `json:"ext,omitempty"`
-	IdempotencyKey   string                 `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the sa
+	IdempotencyKey   string                 `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the
 }
 
 // DeleteCollectionListRequest — Request parameters for deleting a collection list
 type DeleteCollectionListRequest struct {
-	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
+	AdcpVersion      string            `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int               `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
 	ListID           string            `json:"list_id"`                      // ID of the collection list to delete
-	Account          *AccountReference `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access to
+	Account          *AccountReference `json:"account,omitempty"`            // Account that owns the list. Required when the authenticated agent has access
 	Context          any               `json:"context,omitempty"`
 	Ext              any               `json:"ext,omitempty"`
-	IdempotencyKey   string            `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the sa
+	IdempotencyKey   string            `json:"idempotency_key"` // Client-generated unique key for at-most-once execution. If a request with the
 }
 
 // ListCollectionListsRequest — Request parameters for listing collection lists
 type ListCollectionListsRequest struct {
-	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta").
-	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST con
-	Account          *AccountReference  `json:"account,omitempty"`            // Filter to lists owned by this account. When omitted, returns lists across all ac
+	AdcpVersion      string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Account          *AccountReference  `json:"account,omitempty"`            // Filter to lists owned by this account. When omitted, returns lists across all
 	NameContains     string             `json:"name_contains,omitempty"`      // Filter to lists whose name contains this string
 	Pagination       *PaginationRequest `json:"pagination,omitempty"`
 	Context          any                `json:"context,omitempty"`
@@ -10079,67 +10079,67 @@ type ListCollectionListsRequest struct {
 
 // --- Webhook payload types ---
 
-// MCPWebhookPayload — Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to the
+// MCPWebhookPayload — Standard envelope for HTTP-based push notifications (MCP). This defines the wire format sent to
 type MCPWebhookPayload struct {
-	IdempotencyKey string `json:"idempotency_key"`           // Sender-generated key stable across retries of the same webhook event. Publishers
-	NotificationID string `json:"notification_id,omitempty"` // Event-layer, per-state-event identifier. Stable across re-emissions of the same
-	OperationID    string `json:"operation_id"`              // Client-generated correlation identifier for the operation that produced this web
-	TaskID         string `json:"task_id"`                   // Unique identifier for this task. Use this to correlate webhook notifications wit
-	TaskType       string `json:"task_type"`                 // Type of AdCP operation that triggered this webhook. Enables webhook handlers to
-	Protocol       string `json:"protocol,omitempty"`        // AdCP protocol this task belongs to. Helps classify the operation type at a high
-	Status         string `json:"status"`                    // Current task status. Webhooks are triggered for status changes after initial sub
+	IdempotencyKey string `json:"idempotency_key"`           // Sender-generated key stable across retries of the same webhook event.
+	NotificationID string `json:"notification_id,omitempty"` // Event-layer, per-state-event identifier. Stable across re-emissions of the
+	OperationID    string `json:"operation_id"`              // Client-generated correlation identifier for the operation that produced this
+	TaskID         string `json:"task_id"`                   // Unique identifier for this task. Use this to correlate webhook notifications
+	TaskType       string `json:"task_type"`                 // Type of AdCP operation that triggered this webhook. Enables webhook handlers
+	Protocol       string `json:"protocol,omitempty"`        // AdCP protocol this task belongs to. Helps classify the operation type at a
+	Status         string `json:"status"`                    // Current task status. Webhooks are triggered for status changes after initial
 	Timestamp      string `json:"timestamp"`                 // ISO 8601 timestamp when this webhook was generated.
-	Message        string `json:"message,omitempty"`         // Human-readable summary of the current task state. Provides context about what ha
-	ContextID      string `json:"context_id,omitempty"`      // Session/conversation identifier. Use this to continue the conversation if input-
-	Token          string `json:"token,omitempty"`           // Authentication token echoed verbatim from [`PushNotificationConfig.token`](/sche
-	Result         any    `json:"result,omitempty"`          // Task-specific payload matching the status. For completed/failed, contains the fu
+	Message        string `json:"message,omitempty"`         // Human-readable summary of the current task state. Provides context about what
+	ContextID      string `json:"context_id,omitempty"`      // Session/conversation identifier. Use this to continue the conversation if
+	Token          string `json:"token,omitempty"`           // Authentication token echoed verbatim from
+	Result         any    `json:"result,omitempty"`          // Task-specific payload matching the status. For completed/failed, contains the
 }
 
-// CollectionListChangedWebhook — Webhook notification sent when a collection list's resolved collections change. Contains a summary o
+// CollectionListChangedWebhook — Webhook notification sent when a collection list's resolved collections change. Contains a summary
 type CollectionListChangedWebhook struct {
-	IdempotencyKey  string                   `json:"idempotency_key"`             // Sender-generated key stable across retries of the same webhook event. Governance
+	IdempotencyKey  string                   `json:"idempotency_key"`             // Sender-generated key stable across retries of the same webhook event.
 	Event           string                   `json:"event"`                       // The event type
 	ListID          string                   `json:"list_id"`                     // ID of the collection list that changed
 	ListName        string                   `json:"list_name,omitempty"`         // Name of the collection list
 	ChangeSummary   *CollectionChangeSummary `json:"change_summary,omitempty"`    // Summary of changes to the resolved list
 	ResolvedAt      string                   `json:"resolved_at"`                 // When the list was re-resolved
 	CacheValidUntil string                   `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
-	Signature       string                   `json:"signature"`                   // HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes} using
+	Signature       string                   `json:"signature"`                   // HMAC-SHA256 webhook signature over {unix_timestamp}.{raw_http_body_bytes}
 	Ext             any                      `json:"ext,omitempty"`
 }
 
-// PropertyListChangedWebhook — Webhook notification sent when a property list's resolved properties change. Contains a summary only
+// PropertyListChangedWebhook — Webhook notification sent when a property list's resolved properties change. Contains a summary
 type PropertyListChangedWebhook struct {
-	IdempotencyKey  string                 `json:"idempotency_key"`             // Sender-generated key stable across retries of the same webhook event. Governance
+	IdempotencyKey  string                 `json:"idempotency_key"`             // Sender-generated key stable across retries of the same webhook event.
 	Event           string                 `json:"event"`                       // The event type
 	ListID          string                 `json:"list_id"`                     // ID of the property list that changed
 	ListName        string                 `json:"list_name,omitempty"`         // Name of the property list
 	ChangeSummary   *PropertyChangeSummary `json:"change_summary,omitempty"`    // Summary of changes to the resolved list
 	ResolvedAt      string                 `json:"resolved_at"`                 // When the list was re-resolved
 	CacheValidUntil string                 `json:"cache_valid_until,omitempty"` // When the consumer should refresh from the governance agent
-	Signature       string                 `json:"signature"`                   // Cryptographic signature of the webhook payload, signed with the agent's private
+	Signature       string                 `json:"signature"`                   // Cryptographic signature of the webhook payload, signed with the agent's
 	Ext             any                    `json:"ext,omitempty"`
 }
 
-// ArtifactWebhookPayload — Payload sent by sales agents to orchestrators when pushing content artifacts for governance validati
+// ArtifactWebhookPayload — Payload sent by sales agents to orchestrators when pushing content artifacts for governance
 type ArtifactWebhookPayload struct {
-	IdempotencyKey string                     `json:"idempotency_key"`      // Sender-generated key stable across retries of the same webhook event. Sales agen
+	IdempotencyKey string                     `json:"idempotency_key"`      // Sender-generated key stable across retries of the same webhook event. Sales
 	MediaBuyID     string                     `json:"media_buy_id"`         // Media buy identifier these artifacts belong to
-	BatchID        string                     `json:"batch_id"`             // Unique identifier for this batch of artifacts. Use for deduplication and acknowl
+	BatchID        string                     `json:"batch_id"`             // Unique identifier for this batch of artifacts. Use for deduplication and
 	Timestamp      string                     `json:"timestamp"`            // When this batch was generated (ISO 8601)
 	Artifacts      []any                      `json:"artifacts"`            // Content artifacts from delivered impressions
 	Pagination     *ArtifactWebhookPagination `json:"pagination,omitempty"` // Pagination info when batching large artifact sets
 	Ext            any                        `json:"ext,omitempty"`
 }
 
-// RevocationNotification — Payload sent by a rights holder to a buyer's revocation_webhook when rights are revoked. The buyer m
+// RevocationNotification — Payload sent by a rights holder to a buyer's revocation_webhook when rights are revoked. The buyer
 type RevocationNotification struct {
-	IdempotencyKey string   `json:"idempotency_key"`        // Sender-generated key stable across retries of the same revocation notification.
+	IdempotencyKey string   `json:"idempotency_key"`        // Sender-generated key stable across retries of the same revocation
 	RightsID       string   `json:"rights_id"`              // The revoked rights grant identifier
 	BrandID        string   `json:"brand_id"`               // Brand identifier of the rights subject
 	Reason         string   `json:"reason"`                 // Human-readable reason for revocation
-	EffectiveAt    string   `json:"effective_at"`           // When the revocation takes effect. Immediate revocations use current time. Grace
-	RevokedUses    []string `json:"revoked_uses,omitempty"` // If present, only these uses are revoked (partial revocation). If absent, all use
+	EffectiveAt    string   `json:"effective_at"`           // When the revocation takes effect. Immediate revocations use current time.
+	RevokedUses    []string `json:"revoked_uses,omitempty"` // If present, only these uses are revoked (partial revocation). If absent, all
 	Context        any      `json:"context,omitempty"`
 	Ext            any      `json:"ext,omitempty"`
 }

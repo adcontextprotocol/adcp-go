@@ -1720,7 +1720,17 @@ ENUM_DIR = "enums"
 def safe_comment(text, max_len=80):
     """Sanitize text for embedding in a Go // comment. Strips newlines to
     prevent code injection via schema descriptions."""
-    return text.replace('\n', ' ').replace('\r', '')[:max_len].rstrip() if text else ''
+    if not text:
+        return ''
+    sanitized = re.sub(r'\s+', ' ', text.replace('\r', ' ')).strip()
+    if len(sanitized) <= max_len:
+        return sanitized
+
+    cutoff = sanitized[:max_len].rstrip()
+    word_end = cutoff.rfind(' ')
+    if word_end > 0:
+        return cutoff[:word_end].rstrip(' ,;:-')
+    return cutoff
 
 def deprecated_comment(prop):
     """Return the Go deprecation notice for a deprecated schema property."""

@@ -87,6 +87,21 @@ class GenerateMainTest(unittest.TestCase):
         self.assertIn("gofmt failed", err_out.getvalue())
 
 
+class CommentGenerationTest(unittest.TestCase):
+    def test_safe_comment_truncates_at_word_boundary(self):
+        comment = generate.safe_comment(
+            "Required for travel_time and radius methods.",
+            31,
+        )
+
+        self.assertEqual("Required for travel_time and", comment)
+
+    def test_safe_comment_collapses_newlines(self):
+        comment = generate.safe_comment("Line one.\nLine two.\r\nLine three.", 80)
+
+        self.assertEqual("Line one. Line two. Line three.", comment)
+
+
 class UnionHelperGenerationTest(unittest.TestCase):
     def setUp(self):
         self.original_union_schema_types = generate.UNION_SCHEMA_TYPES
