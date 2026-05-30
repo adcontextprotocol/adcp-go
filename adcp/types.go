@@ -512,10 +512,10 @@ type GovernanceAgent struct {
 }
 
 type ProductsData struct {
-	Products          []Product        `json:"products"`
-	RefinementApplied []map[string]any `json:"refinement_applied,omitempty"`
-	Sandbox           bool             `json:"sandbox,omitempty"`
-	Context           any              `json:"context,omitempty"`
+	Products          []Product                          `json:"products"`
+	RefinementApplied []GetProductsRefinementAppliedItem `json:"refinement_applied,omitempty"`
+	Sandbox           bool                               `json:"sandbox,omitempty"`
+	Context           any                                `json:"context,omitempty"`
 }
 
 // PricingOption is the flattened union of all variants in pricing-option.json.

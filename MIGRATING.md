@@ -104,6 +104,12 @@ be populated.
   `CreateMediaBuyResult` remains available as a deprecated alias for
   `CreateMediaBuyResponse`; new handler code should use
   `CreateMediaBuyResponse`.
+- Product refinement arrays are now typed:
+  `GetProductsRequest.Refine` is `[]adcp.GetProductsRefineItem`, and
+  `GetProductsResponse.RefinementApplied` is
+  `[]adcp.GetProductsRefinementAppliedItem` instead of `[]map[string]any`.
+  These are flattened structs for the schema's `scope`-keyed branches; populate
+  the fields that apply to the selected scope.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.

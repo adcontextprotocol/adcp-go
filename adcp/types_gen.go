@@ -7724,6 +7724,22 @@ type GetProductsFilterDiagnostics struct {
 	ExcludedBy      map[string]FilterExclusionDiagnostic `json:"excluded_by,omitempty"`      // Per-filter exclusion counts, keyed by the filter property name as it appears
 }
 
+type GetProductsRefineItem struct {
+	Scope      string `json:"scope,omitempty"`       // Change scoped to a specific proposal.
+	Ask        string `json:"ask,omitempty"`         // What the buyer is asking for on this proposal (e.g., 'shift more budget toward
+	ProductID  string `json:"product_id,omitempty"`  // Product ID from a previous get_products response.
+	Action     string `json:"action,omitempty"`      // 'include' (default): return this proposal with updated allocations and
+	ProposalID string `json:"proposal_id,omitempty"` // Proposal ID from a previous get_products response.
+}
+
+type GetProductsRefinementAppliedItem struct {
+	Scope      string `json:"scope,omitempty"`       // Echoes scope 'proposal' from the corresponding refine entry.
+	Status     string `json:"status,omitempty"`      // 'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled —
+	Notes      string `json:"notes,omitempty"`       // Seller explanation of what was done, what couldn't be done, or why.
+	ProductID  string `json:"product_id,omitempty"`  // Echoes product_id from the corresponding refine entry.
+	ProposalID string `json:"proposal_id,omitempty"` // Echoes proposal_id from the corresponding refine entry.
+}
+
 type FilterExclusionDiagnostic struct {
 	Count  int    `json:"count"`            // Number of products excluded by this filter, interpreted per the parent
 	Values []any  `json:"values,omitempty"` // Optional list of the specific filter values that contributed to exclusions
@@ -9344,58 +9360,58 @@ type ListAccountsResponse struct {
 
 // GetProductsRequest — Request parameters for discovering or refining advertising products. buying_mode declares the
 type GetProductsRequest struct {
-	AdcpVersion            string             `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion       int                `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	BuyingMode             string             `json:"buying_mode"`                        // Declares buyer intent for this request. 'brief': publisher curates product
-	Brief                  string             `json:"brief,omitempty"`                    // Natural language description of campaign requirements. Required when
-	Refine                 []map[string]any   `json:"refine,omitempty"`                   // Array of change requests for iterating on products and proposals from a
-	Brand                  *BrandReference    `json:"brand,omitempty"`                    // Brand reference for product discovery context. Resolved to full brand identity
-	Catalog                *Catalog           `json:"catalog,omitempty"`                  // Catalog of items the buyer wants to promote. The seller matches catalog items
-	Account                *AccountReference  `json:"account,omitempty"`                  // Account for product lookup. Returns products with pricing specific to this
-	PreferredDeliveryTypes []DeliveryType     `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike
-	Filters                *ProductFilters    `json:"filters,omitempty"`
-	PropertyList           *PropertyListRef   `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided
-	Fields                 []string           `json:"fields,omitempty"`        // Specific product fields to include in the response. When omitted, all fields
-	TimeBudget             *Duration          `json:"time_budget,omitempty"`   // Maximum time the buyer will commit to this request. The seller returns the
-	Pagination             *PaginationRequest `json:"pagination,omitempty"`
-	IfWholesaleFeedVersion string             `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode
-	IfPricingVersion       string             `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_products response. MUST only be
-	Context                any                `json:"context,omitempty"`
-	RequiredPolicies       []string           `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in
-	Ext                    any                `json:"ext,omitempty"`
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`             // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	BuyingMode             string                  `json:"buying_mode"`                        // Declares buyer intent for this request. 'brief': publisher curates product
+	Brief                  string                  `json:"brief,omitempty"`                    // Natural language description of campaign requirements. Required when
+	Refine                 []GetProductsRefineItem `json:"refine,omitempty"`                   // Array of change requests for iterating on products and proposals from a
+	Brand                  *BrandReference         `json:"brand,omitempty"`                    // Brand reference for product discovery context. Resolved to full brand identity
+	Catalog                *Catalog                `json:"catalog,omitempty"`                  // Catalog of items the buyer wants to promote. The seller matches catalog items
+	Account                *AccountReference       `json:"account,omitempty"`                  // Account for product lookup. Returns products with pricing specific to this
+	PreferredDeliveryTypes []DeliveryType          `json:"preferred_delivery_types,omitempty"` // Delivery types the buyer prefers, in priority order. Unlike
+	Filters                *ProductFilters         `json:"filters,omitempty"`
+	PropertyList           *PropertyListRef        `json:"property_list,omitempty"` // [AdCP 3.0] Reference to an externally managed property list. When provided
+	Fields                 []string                `json:"fields,omitempty"`        // Specific product fields to include in the response. When omitted, all fields
+	TimeBudget             *Duration               `json:"time_budget,omitempty"`   // Maximum time the buyer will commit to this request. The seller returns the
+	Pagination             *PaginationRequest      `json:"pagination,omitempty"`
+	IfWholesaleFeedVersion string                  `json:"if_wholesale_feed_version,omitempty"` // Opaque wholesale_feed_version token returned by a prior wholesale-mode
+	IfPricingVersion       string                  `json:"if_pricing_version,omitempty"`        // Opaque pricing_version token from a prior get_products response. MUST only be
+	Context                any                     `json:"context,omitempty"`
+	RequiredPolicies       []string                `json:"required_policies,omitempty"` // Registry policy IDs that the buyer requires to be enforced for products in
+	Ext                    any                     `json:"ext,omitempty"`
 }
 
 // GetProductsResponse — Response payload for get_products task
 type GetProductsResponse struct {
-	AdcpVersion            string                        `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion       int                           `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	ContextID              string                        `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
-	Context                any                           `json:"context,omitempty"`
-	TaskID                 string                        `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
-	Status                 TaskStatus                    `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
-	Message                string                        `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
-	Timestamp              string                        `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
-	Replayed               *bool                         `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
-	AdcpError              AdcpError                     `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
-	PushNotificationConfig *PushNotificationConfig       `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
-	GovernanceContext      string                        `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
-	Payload                map[string]any                `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
-	Products               []Product                     `json:"products,omitempty"`                 // Array of matching products
-	Extensions             map[string]any                `json:"extensions,omitempty"`               // Bundled platform-extension definitions referenced by any product in
-	Proposals              []Proposal                    `json:"proposals,omitempty"`                // Optional array of proposed media plans with budget allocations across
-	Errors                 []AdcpError                   `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., product filtering issues)
-	PropertyListApplied    *bool                         `json:"property_list_applied,omitempty"`    // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the
-	CatalogApplied         *bool                         `json:"catalog_applied,omitempty"`          // Whether the seller filtered results based on the provided catalog. True if the
-	RefinementApplied      []map[string]any              `json:"refinement_applied,omitempty"`       // Seller's response to each change request in the refine array, matched by
-	Incomplete             []GetProductsIncompleteItem   `json:"incomplete,omitempty"`               // Declares what the seller could not finish within the buyer's time_budget or
-	FilterDiagnostics      *GetProductsFilterDiagnostics `json:"filter_diagnostics,omitempty"`       // Optional non-fatal diagnostic block describing how the request's `filters`
-	Pagination             *PaginationResponse           `json:"pagination,omitempty"`
-	WholesaleFeedVersion   string                        `json:"wholesale_feed_version,omitempty"` // Opaque token representing the version of the wholesale product feed state used
-	PricingVersion         string                        `json:"pricing_version,omitempty"`        // Opaque token representing the version of the pricing layer, including product
-	CacheScope             string                        `json:"cache_scope,omitempty"`            // Declares whether the wholesale_feed_version and pricing_version on this
-	Unchanged              *bool                         `json:"unchanged,omitempty"`              // Present and `true` ONLY on wholesale-mode responses when the request carried
-	Sandbox                *bool                         `json:"sandbox,omitempty"`                // When true, this response contains simulated data from sandbox mode.
-	Ext                    any                           `json:"ext,omitempty"`
+	AdcpVersion            string                             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion       int                                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                             `json:"context_id,omitempty"`         // Session/conversation identifier for tracking related operations across
+	Context                any                                `json:"context,omitempty"`
+	TaskID                 string                             `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 TaskStatus                         `json:"status"`                             // Current task execution state. Indicates whether the task is completed, in
+	Message                string                             `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                             `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                              `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError                          `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig            `json:"push_notification_config,omitempty"` // Push notification configuration for async task updates (A2A and REST
+	GovernanceContext      string                             `json:"governance_context,omitempty"`       // Governance context token issued by the account's governance agent during
+	Payload                map[string]any                     `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Products               []Product                          `json:"products,omitempty"`                 // Array of matching products
+	Extensions             map[string]any                     `json:"extensions,omitempty"`               // Bundled platform-extension definitions referenced by any product in
+	Proposals              []Proposal                         `json:"proposals,omitempty"`                // Optional array of proposed media plans with budget allocations across
+	Errors                 []AdcpError                        `json:"errors,omitempty"`                   // Task-specific errors and warnings (e.g., product filtering issues)
+	PropertyListApplied    *bool                              `json:"property_list_applied,omitempty"`    // [AdCP 3.0] Indicates whether property_list filtering was applied. True if the
+	CatalogApplied         *bool                              `json:"catalog_applied,omitempty"`          // Whether the seller filtered results based on the provided catalog. True if the
+	RefinementApplied      []GetProductsRefinementAppliedItem `json:"refinement_applied,omitempty"`       // Seller's response to each change request in the refine array, matched by
+	Incomplete             []GetProductsIncompleteItem        `json:"incomplete,omitempty"`               // Declares what the seller could not finish within the buyer's time_budget or
+	FilterDiagnostics      *GetProductsFilterDiagnostics      `json:"filter_diagnostics,omitempty"`       // Optional non-fatal diagnostic block describing how the request's `filters`
+	Pagination             *PaginationResponse                `json:"pagination,omitempty"`
+	WholesaleFeedVersion   string                             `json:"wholesale_feed_version,omitempty"` // Opaque token representing the version of the wholesale product feed state used
+	PricingVersion         string                             `json:"pricing_version,omitempty"`        // Opaque token representing the version of the pricing layer, including product
+	CacheScope             string                             `json:"cache_scope,omitempty"`            // Declares whether the wholesale_feed_version and pricing_version on this
+	Unchanged              *bool                              `json:"unchanged,omitempty"`              // Present and `true` ONLY on wholesale-mode responses when the request carried
+	Sandbox                *bool                              `json:"sandbox,omitempty"`                // When true, this response contains simulated data from sandbox mode.
+	Ext                    any                                `json:"ext,omitempty"`
 }
 
 // CreateMediaBuyRequest — Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide

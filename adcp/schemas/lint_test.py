@@ -369,10 +369,39 @@ class InlineAdditionalPropertiesPolicyLintTest(unittest.TestCase):
         self.assertEqual("InlineShape", reports[0]["type"])
         self.assertEqual("shape.json#/properties/inline", reports[0]["schema"])
         self.assertEqual(
-            "closed inline type schema is not additionalProperties:false",
+            "closed inline type schema is not closed to additional properties",
             reports[0]["error"],
         )
         self.assertIn("OPEN_INLINE_SCHEMA_TYPES", reports[0]["remediation"])
+
+    def test_closed_inline_type_allows_closed_oneof_branches(self):
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "INLINE_SCHEMA_TYPES", {
+                "InlineShape": "shape.json#/properties/inline",
+            }),
+            mock.patch.object(lint.gen, "CLOSED_INLINE_SCHEMA_TYPES", frozenset({
+                "InlineShape",
+            })),
+            mock.patch.object(lint.gen, "OPEN_INLINE_SCHEMA_TYPES", frozenset()),
+            mock.patch.object(lint, "load_schema_spec", return_value={
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "properties": {"scope": {"const": "request"}},
+                        "additionalProperties": False,
+                    },
+                    {
+                        "type": "object",
+                        "properties": {"scope": {"const": "product"}},
+                        "additionalProperties": False,
+                    },
+                ],
+            }),
+        ):
+            reports = lint.validate_inline_additional_properties_policies()
+
+        self.assertEqual([], reports)
 
     def test_open_inline_type_fails_when_schema_becomes_closed(self):
         with (
@@ -394,7 +423,7 @@ class InlineAdditionalPropertiesPolicyLintTest(unittest.TestCase):
         self.assertEqual(1, len(reports))
         self.assertEqual("InlineShape", reports[0]["type"])
         self.assertEqual(
-            "open inline type schema is additionalProperties:false",
+            "open inline type schema is closed to additional properties",
             reports[0]["error"],
         )
         self.assertIn("CLOSED_INLINE_SCHEMA_TYPES", reports[0]["remediation"])
