@@ -1681,6 +1681,20 @@ class AutoRefDiscoveryTest(unittest.TestCase):
         self.assertEqual("PublisherPropertySelector", go_type)
         self.assertIsNone(reason)
 
+    def test_required_only_allof_branch_resolves_to_ref_type(self):
+        go_type, reason = generate.resolve_go_type_info({
+            "allOf": [
+                {"$ref": "/schemas/test/core/account.json"},
+                {
+                    "type": "object",
+                    "required": ["brand"],
+                },
+            ],
+        })
+
+        self.assertEqual("Account", go_type)
+        self.assertIsNone(reason)
+
     def test_structural_allof_without_named_inline_type_stays_unreviewed(self):
         go_type, reason = generate.resolve_go_type_info({
             "allOf": [

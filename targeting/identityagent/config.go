@@ -503,6 +503,9 @@ func (c Config) Validate() error {
 	if c.ResponseTTL <= 0 {
 		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))
 	}
+	if c.ResponseTTL > time.Duration(maxServeWindowSec)*time.Second {
+		errs = append(errs, fmt.Errorf("RESPONSE_TTL must be <= %ds", maxServeWindowSec))
+	}
 	if len(c.SupportedADCPMajorVersions) == 0 {
 		errs = append(errs, errors.New("SUPPORTED_ADCP_MAJOR_VERSIONS must declare at least one major version"))
 	}

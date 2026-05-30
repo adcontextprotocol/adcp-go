@@ -168,6 +168,12 @@ func TestIdentityHandlerUnsupportedMajorVersionIsGenericAndLogged(t *testing.T) 
 	assert.NotContains(t, logErr, "999")
 }
 
+func TestServeWindowSecondsClampsToSchemaMax(t *testing.T) {
+	assert.Equal(t, 299, serveWindowSeconds(299*time.Second))
+	assert.Equal(t, 300, serveWindowSeconds(300*time.Second))
+	assert.Equal(t, 300, serveWindowSeconds(10*time.Minute))
+}
+
 // TestBuildServiceRequest_NoCanonicalizer_PassesThroughUnchanged covers the
 // legacy code path: when the handler has neither a canonicalizer nor a
 // sealer, the request flows to service.Evaluate exactly as received — no

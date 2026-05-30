@@ -12,10 +12,13 @@ import (
 
 // CapabilitiesResponse builds a get_adcp_capabilities response.
 func CapabilitiesResponse(data *CapabilitiesData) (*mcp.CallToolResult, any, error) {
+	out := data
 	if data != nil && data.Status == "" {
-		data.Status = "completed"
+		copy := *data
+		copy.Status = "completed"
+		out = &copy
 	}
-	return buildResult("Agent capabilities retrieved", data), data, nil
+	return buildResult("Agent capabilities retrieved", out), out, nil
 }
 
 // ProductsResponse builds a get_products response.
