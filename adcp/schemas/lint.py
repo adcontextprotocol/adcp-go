@@ -367,6 +367,104 @@ def validate_inline_schema_specs():
     return reports
 
 
+def validate_inline_additional_properties_policies():
+    """Verify inline helper closure policies match their schemas.
+
+    Generated inline structs preserve only authored fields. A helper registered
+    as closed must stay backed by `additionalProperties: false`; helpers backed
+    by open schemas must be explicitly listed as open so the data-dropping risk
+    is visible during review.
+    """
+    reports = []
+    inline_types = set(gen.INLINE_SCHEMA_TYPES)
+    closed_types = set(gen.CLOSED_INLINE_SCHEMA_TYPES)
+    open_types = set(gen.OPEN_INLINE_SCHEMA_TYPES)
+    overlap = closed_types & open_types
+    for type_name in sorted(overlap):
+        reports.append({
+            'type': type_name,
+            'schema': gen.INLINE_SCHEMA_TYPES.get(type_name, '?'),
+            'error': 'inline type is listed as both closed and open',
+            'remediation': (
+                'keep the type only in CLOSED_INLINE_SCHEMA_TYPES if the schema '
+                'is closed, or only in OPEN_INLINE_SCHEMA_TYPES if unknown '
+                'properties are intentionally accepted by the schema'
+            ),
+        })
+
+    known_policy = closed_types | open_types
+    for type_name in sorted(inline_types - known_policy):
+        reports.append({
+            'type': type_name,
+            'schema': gen.INLINE_SCHEMA_TYPES[type_name],
+            'error': 'inline type is missing an additionalProperties policy',
+            'remediation': (
+                'add the type to CLOSED_INLINE_SCHEMA_TYPES when the schema has '
+                'additionalProperties:false; otherwise add it to '
+                'OPEN_INLINE_SCHEMA_TYPES and confirm unknown-field dropping is '
+                'acceptable for this helper'
+            ),
+        })
+    for type_name in sorted(known_policy - inline_types):
+        reports.append({
+            'type': type_name,
+            'schema': '?',
+            'error': 'inline additionalProperties policy references unknown type',
+            'remediation': (
+                'remove the stale policy entry or restore the matching '
+                'INLINE_SCHEMA_TYPES registration'
+            ),
+        })
+
+    for type_name in sorted(inline_types & (closed_types | open_types)):
+        schema_spec = gen.INLINE_SCHEMA_TYPES[type_name]
+        path_part = schema_spec.split('#', 1)[0]
+        schema_path = SCRIPT_DIR / path_part
+        if not schema_path.exists():
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': f'schema not found: {schema_path}',
+                'remediation': 'download schemas before running strict lint',
+            })
+            continue
+        try:
+            schema = load_schema_spec(schema_spec)
+        except SCHEMA_RESOLUTION_ERRORS as e:
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': f'could not resolve schema pointer: {e}',
+                'remediation': 'update or remove the stale inline schema pointer',
+            })
+            continue
+        is_closed = type_name in closed_types
+        if is_closed and schema.get('additionalProperties') is not False:
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': 'closed inline type schema is not additionalProperties:false',
+                'remediation': (
+                    'if the schema intentionally became open, move the type to '
+                    'OPEN_INLINE_SCHEMA_TYPES and review unknown-field dropping; '
+                    'otherwise fix the schema or stop generating this helper as '
+                    'a plain struct'
+                ),
+            })
+        if not is_closed and schema.get('additionalProperties') is False:
+            reports.append({
+                'type': type_name,
+                'schema': schema_spec,
+                'error': 'open inline type schema is additionalProperties:false',
+                'remediation': (
+                    'move the type to CLOSED_INLINE_SCHEMA_TYPES so future '
+                    'schema relaxation is caught, or confirm why this closed '
+                    'schema still needs an open policy'
+                ),
+            })
+    return reports
+
+
 def validate_shared_inline_overrides():
     """Verify shared inline helper types still match each reused schema shape."""
     reports = []
@@ -740,6 +838,7 @@ def main():
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
+    inline_additional_properties_errors = validate_inline_additional_properties_policies()
     shared_inline_errors = validate_shared_inline_overrides()
     union_schema_errors = validate_union_schema_specs()
     custom_wire_field_errors = validate_custom_wire_fields(
@@ -771,6 +870,7 @@ def main():
             'drift': reports,
             'no_schema_correspondent': no_schema,
             'inline_schema_errors': inline_schema_errors,
+            'inline_additional_properties_errors': inline_additional_properties_errors,
             'shared_inline_errors': shared_inline_errors,
             'union_schema_errors': union_schema_errors,
             'custom_wire_field_errors': custom_wire_field_errors,
@@ -784,6 +884,17 @@ def main():
                 print()
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error: {r["error"]}')
+            print()
+        if inline_additional_properties_errors:
+            print(
+                'Inline additionalProperties policy errors in '
+                f'{len(inline_additional_properties_errors)} type(s):'
+            )
+            for r in inline_additional_properties_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    error: {r["error"]}')
+                print(f'    fix:   {r["remediation"]}')
             print()
         if shared_inline_errors:
             print(f'Shared inline override errors in {len(shared_inline_errors)} type(s):')
@@ -854,6 +965,7 @@ def main():
 
     has_problems = (
         bool(inline_schema_errors)
+        or bool(inline_additional_properties_errors)
         or bool(shared_inline_errors)
         or bool(union_schema_errors)
         or bool(custom_wire_field_errors)

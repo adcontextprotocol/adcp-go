@@ -122,6 +122,80 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
         self.assertEqual([], reports)
 
 
+class InlineAdditionalPropertiesPolicyLintTest(unittest.TestCase):
+    def test_current_inline_additional_properties_policies_are_valid(self):
+        reports = lint.validate_inline_additional_properties_policies()
+
+        self.assertEqual([], reports)
+
+    def test_inline_type_missing_policy_is_reported(self):
+        with (
+            mock.patch.object(lint.gen, "INLINE_SCHEMA_TYPES", {"InlineShape": "shape.json"}),
+            mock.patch.object(lint.gen, "CLOSED_INLINE_SCHEMA_TYPES", frozenset()),
+            mock.patch.object(lint.gen, "OPEN_INLINE_SCHEMA_TYPES", frozenset()),
+        ):
+            reports = lint.validate_inline_additional_properties_policies()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual(
+            "inline type is missing an additionalProperties policy",
+            reports[0]["error"],
+        )
+        self.assertIn("CLOSED_INLINE_SCHEMA_TYPES", reports[0]["remediation"])
+
+    def test_closed_inline_type_fails_when_schema_becomes_open(self):
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "INLINE_SCHEMA_TYPES", {
+                "InlineShape": "shape.json#/properties/inline",
+            }),
+            mock.patch.object(lint.gen, "CLOSED_INLINE_SCHEMA_TYPES", frozenset({
+                "InlineShape",
+            })),
+            mock.patch.object(lint.gen, "OPEN_INLINE_SCHEMA_TYPES", frozenset()),
+            mock.patch.object(lint, "load_schema_spec", return_value={
+                "type": "object",
+                "additionalProperties": True,
+            }),
+        ):
+            reports = lint.validate_inline_additional_properties_policies()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual("shape.json#/properties/inline", reports[0]["schema"])
+        self.assertEqual(
+            "closed inline type schema is not additionalProperties:false",
+            reports[0]["error"],
+        )
+        self.assertIn("OPEN_INLINE_SCHEMA_TYPES", reports[0]["remediation"])
+
+    def test_open_inline_type_fails_when_schema_becomes_closed(self):
+        with (
+            mock.patch.object(lint.Path, "exists", return_value=True),
+            mock.patch.object(lint.gen, "INLINE_SCHEMA_TYPES", {
+                "InlineShape": "shape.json#/properties/inline",
+            }),
+            mock.patch.object(lint.gen, "CLOSED_INLINE_SCHEMA_TYPES", frozenset()),
+            mock.patch.object(lint.gen, "OPEN_INLINE_SCHEMA_TYPES", frozenset({
+                "InlineShape",
+            })),
+            mock.patch.object(lint, "load_schema_spec", return_value={
+                "type": "object",
+                "additionalProperties": False,
+            }),
+        ):
+            reports = lint.validate_inline_additional_properties_policies()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("InlineShape", reports[0]["type"])
+        self.assertEqual(
+            "open inline type schema is additionalProperties:false",
+            reports[0]["error"],
+        )
+        self.assertIn("CLOSED_INLINE_SCHEMA_TYPES", reports[0]["remediation"])
+
+
 class CustomWireFieldLintTest(unittest.TestCase):
     def test_current_custom_wire_fields_are_backed_by_methods(self):
         reports = lint.validate_custom_wire_fields(
