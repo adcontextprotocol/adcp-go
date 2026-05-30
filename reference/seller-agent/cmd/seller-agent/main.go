@@ -394,7 +394,7 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 	return buy, nil
 }
 
-func (b *backend) createMediaBuyResponse(input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
+func (b *backend) createMediaBuyResponse(input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResponse, error) {
 	b.mu.Lock()
 	if b.forced != nil {
 		forced := b.forced
@@ -856,7 +856,7 @@ func main() {
 				}
 				return data, nil
 			},
-			CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResult, error) {
+			CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResponse, error) {
 				return b.createMediaBuyResponse(input)
 			},
 			GetMediaBuys: func(_ context.Context, _ any, input *adcp.GetMediaBuysRequest) (*adcp.GetMediaBuysResponse, error) {

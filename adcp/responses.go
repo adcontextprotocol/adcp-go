@@ -26,17 +26,13 @@ func ProductsResponse(data *ProductsData) (*mcp.CallToolResult, any, error) {
 	return buildResult(fmt.Sprintf("Found %d products", len(data.Products)), data), data, nil
 }
 
-// CreateMediaBuyResult is implemented by generated create_media_buy response variants.
-type CreateMediaBuyResult interface {
-	createMediaBuyResult()
-}
-
-func (*CreateMediaBuySuccess) createMediaBuyResult()   {}
-func (*CreateMediaBuyError) createMediaBuyResult()     {}
-func (*CreateMediaBuySubmitted) createMediaBuyResult() {}
+// CreateMediaBuyResult is an alias for the generated create_media_buy response union.
+//
+// Deprecated: use CreateMediaBuyResponse.
+type CreateMediaBuyResult = CreateMediaBuyResponse
 
 // MediaBuyResponse builds a create_media_buy response.
-func MediaBuyResponse(data CreateMediaBuyResult) (*mcp.CallToolResult, any, error) {
+func MediaBuyResponse(data CreateMediaBuyResponse) (*mcp.CallToolResult, any, error) {
 	if data == nil {
 		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "media buy response is required"})
 	}
@@ -44,10 +40,16 @@ func MediaBuyResponse(data CreateMediaBuyResult) (*mcp.CallToolResult, any, erro
 	switch v := data.(type) {
 	case *CreateMediaBuySuccess:
 		return createMediaBuySuccessResponse(v)
+	case CreateMediaBuySuccess:
+		return createMediaBuySuccessResponse(&v)
 	case *CreateMediaBuyError:
 		return createMediaBuyErrorResponse(v)
+	case CreateMediaBuyError:
+		return createMediaBuyErrorResponse(&v)
 	case *CreateMediaBuySubmitted:
 		return createMediaBuySubmittedResponse(v)
+	case CreateMediaBuySubmitted:
+		return createMediaBuySubmittedResponse(&v)
 	default:
 		return Errorf("INVALID_REQUEST", ErrorOptions{
 			Message:    "create_media_buy response must be a generated create_media_buy response variant",

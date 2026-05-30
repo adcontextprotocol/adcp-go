@@ -101,6 +101,9 @@ be populated.
   `encoding/json` unmarshalling into these interface names is not supported;
   decode into a concrete variant when the branch is known, or into
   `json.RawMessage` first when branch selection depends on the payload.
+  `CreateMediaBuyResult` remains available as a deprecated alias for
+  `CreateMediaBuyResponse`; new handler code should use
+  `CreateMediaBuyResponse`.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.
