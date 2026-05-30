@@ -403,6 +403,14 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/get-products-response.json#/properties/filter_diagnostics",
     ),
     (
+        "GetProductsRefineItem",
+        "media-buy/get-products-request.json#/properties/refine/items",
+    ),
+    (
+        "GetProductsRefinementAppliedItem",
+        "media-buy/get-products-response.json#/properties/refinement_applied/items",
+    ),
+    (
         "FilterExclusionDiagnostic",
         "media-buy/get-products-response.json"
         "#/properties/filter_diagnostics/properties/excluded_by/additionalProperties",
@@ -1029,6 +1037,7 @@ INLINE_SCHEMA_TYPES = OrderedDict([
 # helper cannot silently default to data-dropping open-object semantics.
 CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'MetricQualifier',
+    'RequestedCommittedMetric',
     'ReportingVendorMetric',
     'RequiredVendorMetric',
     'CreativeAcceptedVerifier',
@@ -1096,6 +1105,8 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'CollectionRequestPagination',
     'CollectionChangeSummary',
     'PropertyChangeSummary',
+    'GetProductsRefineItem',
+    'GetProductsRefinementAppliedItem',
     'SyncGovernanceAgentResult',
     'ForcedDirective',
     'InstallmentDerivative',
@@ -1113,7 +1124,6 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
 OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'ForecastPointDimension',
     'ReachWindow',
-    'RequestedCommittedMetric',
     'ForecastViewability',
     'CreativeProvenanceRequirements',
     'ProvenanceEmbeddedProvenance',
@@ -1556,6 +1566,8 @@ INLINE_TYPE_HINTS = {
     ('GetCollectionListRequest', 'pagination'): '*CollectionRequestPagination',
     ('CollectionListChangedWebhook', 'change_summary'): '*CollectionChangeSummary',
     ('PropertyListChangedWebhook', 'change_summary'): '*PropertyChangeSummary',
+    ('GetProductsRequest', 'refine'): 'GetProductsRefineItem',
+    ('GetProductsResponse', 'refinement_applied'): 'GetProductsRefinementAppliedItem',
     ('ArtifactWebhookPayload', 'pagination'): '*ArtifactWebhookPagination',
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
     ('Product', 'product_card'): '*ProductCard',

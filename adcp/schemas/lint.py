@@ -367,6 +367,17 @@ def validate_inline_schema_specs():
     return reports
 
 
+def schema_is_closed_inline(schema):
+    if not isinstance(schema, dict):
+        return False
+    if schema.get('additionalProperties') is False:
+        return True
+    branches = schema.get('oneOf') or []
+    if branches:
+        return all(schema_is_closed_inline(branch) for branch in branches)
+    return False
+
+
 def validate_inline_additional_properties_policies():
     """Verify inline helper closure policies match their schemas.
 
@@ -439,11 +450,12 @@ def validate_inline_additional_properties_policies():
             })
             continue
         is_closed = type_name in closed_types
-        if is_closed and schema.get('additionalProperties') is not False:
+        schema_is_closed = schema_is_closed_inline(schema)
+        if is_closed and not schema_is_closed:
             reports.append({
                 'type': type_name,
                 'schema': schema_spec,
-                'error': 'closed inline type schema is not additionalProperties:false',
+                'error': 'closed inline type schema is not closed to additional properties',
                 'remediation': (
                     'if the schema intentionally became open, move the type to '
                     'OPEN_INLINE_SCHEMA_TYPES and review unknown-field dropping; '
@@ -451,11 +463,11 @@ def validate_inline_additional_properties_policies():
                     'a plain struct'
                 ),
             })
-        if not is_closed and schema.get('additionalProperties') is False:
+        if not is_closed and schema_is_closed:
             reports.append({
                 'type': type_name,
                 'schema': schema_spec,
-                'error': 'open inline type schema is additionalProperties:false',
+                'error': 'open inline type schema is closed to additional properties',
                 'remediation': (
                     'move the type to CLOSED_INLINE_SCHEMA_TYPES so future '
                     'schema relaxation is caught, or confirm why this closed '

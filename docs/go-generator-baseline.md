@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 4
+python3 generate.py --coverage-max-unreviewed-any 2
 ```
 
-The generator currently reports 215 generated dynamic `any` uses:
+The generator currently reports 213 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 4 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 2 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 4
+python3 generate.py --coverage-max-unreviewed-any 2
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -54,8 +54,6 @@ the new dynamic shape is reviewed in the same PR.
 
 | Surface | JSON field | Go type | Reason | Schema |
 | --- | --- | --- | --- | --- |
-| `GetProductsRequest.Refine` | `refine` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-request.json` |
-| `GetProductsResponse.RefinementApplied` | `refinement_applied` | `[]map[string]any` | `array_item:freeform_object` | `media-buy/get-products-response.json` |
 | `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
@@ -100,26 +98,17 @@ audit observations, wholesale-feed capability blocks, and the newly named
 inline delivery/reporting helper shapes.
 
 The rc.3 integration and subsequent generator passes reduced unreviewed
-generated `any` fallbacks from the 3.0.12 baseline of 15 to 4 while adding the
+generated `any` fallbacks from the 3.0.12 baseline of 15 to 2 while adding the
 3.1 protocol surface. The remaining items are intentionally tracked as
 generator work, not schema drift.
 
-### Schema Clarification
-
-One fallback comes from a schema without enough type information:
-
-- `ControllerError.CurrentState`
-
-These should usually be fixed in the protocol schema. A Go-only type override is
-acceptable only when the schema intent is clear and tested.
-
 ### Product Refinement Shapes
 
-`GetProductsRequest.Refine` and `GetProductsResponse.RefinementApplied` are
-currently unreviewed `[]map[string]any` fallbacks because each array item is an
-inline discriminated `oneOf` object. The schema branches are closed and keyed by
-`scope`; this is a generator gap for inline union/discriminator generation, not
-a protocol extension-point decision.
+`GetProductsRequest.Refine` and `GetProductsResponse.RefinementApplied` now use
+generated flattened structs for their inline `scope`-keyed `oneOf` items:
+`GetProductsRefineItem` and `GetProductsRefinementAppliedItem`. These structs
+preserve request-side `encoding/json` decoding while avoiding interface fields
+on tool inputs.
 
 ## Manual Ownership Baseline
 

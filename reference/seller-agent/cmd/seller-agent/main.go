@@ -844,11 +844,13 @@ func main() {
 				}
 				data := &adcp.ProductsData{Products: products}
 				if input.BuyingMode == "refine" && len(input.Refine) > 0 {
-					applied := make([]map[string]any, 0, len(input.Refine))
+					applied := make([]adcp.GetProductsRefinementAppliedItem, 0, len(input.Refine))
 					for _, ref := range input.Refine {
-						item := map[string]any{"scope": ref["scope"], "status": "applied"}
-						if productID, ok := ref["product_id"].(string); ok {
-							item["product_id"] = productID
+						item := adcp.GetProductsRefinementAppliedItem{
+							Scope:      ref.Scope,
+							Status:     "applied",
+							ProductID:  ref.ProductID,
+							ProposalID: ref.ProposalID,
 						}
 						applied = append(applied, item)
 					}
