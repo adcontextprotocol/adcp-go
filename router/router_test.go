@@ -150,7 +150,8 @@ func TestMergeIdentityResponses(t *testing.T) {
 	assert.True(t, eligible["pkg-3"], "pkg-3 should be eligible (listed by its provider)")
 	assert.Len(t, merged.EligiblePackageIDs, 3)
 
-	// TTL is the minimum across providers.
+	// Serve window is the minimum across providers so the merged response keeps
+	// the most restrictive buyer throttle.
 	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
@@ -497,6 +498,16 @@ func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 
 	require.Len(t, merged.EligiblePackageIDs, 3)
 	assert.Equal(t, 300, merged.ServeWindowSec)
+}
+
+func TestMergeIdentityResponses_UsesMostRestrictiveServeWindow(t *testing.T) {
+	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{
+		{EligiblePackageIDs: []string{"pkg-1"}, ServeWindowSec: 120},
+		{EligiblePackageIDs: []string{"pkg-2"}, ServeWindowSec: 45},
+		{EligiblePackageIDs: []string{"pkg-3"}, ServeWindowSec: 300},
+	})
+
+	assert.Equal(t, 45, merged.ServeWindowSec)
 }
 
 func TestRouterTimeout_ProviderExcluded(t *testing.T) {

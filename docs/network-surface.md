@@ -84,7 +84,7 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 5. Each identity agent verifies the signature, then evaluates: campaign freq cap → package freq cap → audience → intent score, returns TMPX token
 6. Router merges eligible package lists (union — packages are provider-specific)
 7. Router collects TMPX tokens into `tmpx_providers` map keyed by provider ID
-8. Response to publisher: eligible package ID list + TTL + provider-keyed TMPX tokens
+8. Response to publisher: eligible package ID list + `serve_window_sec` + provider-keyed TMPX tokens
 
 ### Exposure Tracking (TMPX)
 

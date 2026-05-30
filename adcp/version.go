@@ -66,13 +66,27 @@ func MajorFromADCPVersion(version string) (int, bool) {
 // selected for 3.x backward compatibility. If neither is present, the highest
 // supported release is selected.
 func NegotiateADCPVersion(requestedVersion string, requestedMajor int, supported []string) (string, bool) {
+	return negotiateADCPVersion(adcpVersionRequest{
+		version:       requestedVersion,
+		major:         requestedMajor,
+		majorProvided: requestedMajor != 0,
+	}, supported)
+}
+
+type adcpVersionRequest struct {
+	version       string
+	major         int
+	majorProvided bool
+}
+
+func negotiateADCPVersion(request adcpVersionRequest, supported []string) (string, bool) {
 	supportedReleases := parseSupportedADCPReleases(supported)
 	if len(supportedReleases) == 0 {
 		supportedReleases = parseSupportedADCPReleases(SupportedADCPVersions())
 	}
 
-	if strings.TrimSpace(requestedVersion) != "" {
-		requested, ok := parseADCPRelease(requestedVersion)
+	if strings.TrimSpace(request.version) != "" {
+		requested, ok := parseADCPRelease(request.version)
 		if !ok {
 			return "", false
 		}
@@ -84,8 +98,11 @@ func NegotiateADCPVersion(requestedVersion string, requestedMajor int, supported
 		return highestSupportedADCPRelease(supportedReleases, requested.major, &requested)
 	}
 
-	if requestedMajor != 0 {
-		return highestSupportedADCPRelease(supportedReleases, requestedMajor, nil)
+	if request.majorProvided {
+		if request.major < 1 {
+			return "", false
+		}
+		return highestSupportedADCPRelease(supportedReleases, request.major, nil)
 	}
 
 	return highestSupportedADCPRelease(supportedReleases, 0, nil)
