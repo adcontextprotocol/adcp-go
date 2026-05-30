@@ -398,7 +398,7 @@ type WebhookSigningCapabilities struct {
 	Supported          bool     `json:"supported"`
 	Profile            string   `json:"profile,omitempty"`
 	Algorithms         []string `json:"algorithms,omitempty"`
-	LegacyHMACFallback bool     `json:"legacy_hmac_fallback,omitempty"`
+	LegacyHMACFallback *bool    `json:"legacy_hmac_fallback,omitempty"`
 }
 
 // IdentityCapabilities declares operator identity posture — key-scoping and
@@ -406,7 +406,7 @@ type WebhookSigningCapabilities struct {
 // them to reason about blast radius and revocation latency at onboarding.
 type IdentityCapabilities struct {
 	BrandJSONURL             string                          `json:"brand_json_url,omitempty"`
-	PerPrincipalKeyIsolation bool                            `json:"per_principal_key_isolation,omitempty"`
+	PerPrincipalKeyIsolation *bool                           `json:"per_principal_key_isolation,omitempty"`
 	KeyOrigins               *IdentityKeyOrigins             `json:"key_origins,omitempty"`
 	CompromiseNotification   *IdentityCompromiseNotification `json:"compromise_notification,omitempty"`
 }
@@ -435,8 +435,8 @@ type IdentityKeyOrigins struct {
 // subscribes to the identity.compromise_notification webhook event on key
 // revocation due to known or suspected compromise.
 type IdentityCompromiseNotification struct {
-	Emits   bool `json:"emits,omitempty"`
-	Accepts bool `json:"accepts,omitempty"`
+	Emits   *bool `json:"emits,omitempty"`
+	Accepts *bool `json:"accepts,omitempty"`
 }
 
 // ComplianceTestingCapabilities declares supported comply_test_controller
@@ -1219,7 +1219,7 @@ type Deployment struct {
 	Platform                           string         `json:"platform,omitempty"`
 	AgentURL                           string         `json:"agent_url,omitempty"`
 	Account                            string         `json:"account,omitempty"`
-	IsLive                             bool           `json:"is_live"`
+	IsLive                             *bool          `json:"is_live,omitempty"`
 	ActivationKey                      *ActivationKey `json:"activation_key,omitempty"`
 	DeployedAt                         string         `json:"deployed_at,omitempty"`
 	EstimatedActivationDurationMinutes int            `json:"estimated_activation_duration_minutes,omitempty"`
@@ -1422,7 +1422,7 @@ type MeasurementWindow struct {
 	Description              string `json:"description,omitempty"`
 	DurationDays             int    `json:"duration_days"`
 	ExpectedAvailabilityDays int    `json:"expected_availability_days,omitempty"`
-	IsGuaranteeBasis         bool   `json:"is_guarantee_basis,omitempty"`
+	IsGuaranteeBasis         *bool  `json:"is_guarantee_basis,omitempty"`
 }
 
 // PerformanceStandard defines a rate threshold for a performance metric.

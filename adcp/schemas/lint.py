@@ -801,6 +801,72 @@ def optional_numeric_pointer_candidate(json_name, prop, required_set):
     )
 
 
+def optional_bool_pointer_candidate(json_name, prop, required_set):
+    """Return True when an optional boolean must preserve explicit false."""
+    if json_name in required_set:
+        return False
+    return prop.get('type') == 'boolean'
+
+
+def optional_bool_pointer_reports(go_structs):
+    """Find optional boolean fields that need pointers to preserve false."""
+    reports = []
+
+    for entry in gen.generated_schema_entries():
+        if entry['kind'] != 'struct':
+            continue
+        props = gen.schema_properties(entry['schema_obj'])
+        required_set = gen.schema_required_names(entry['schema_obj'])
+        for json_name, prop in props.items():
+            if not isinstance(prop, dict):
+                continue
+            if not optional_bool_pointer_candidate(json_name, prop, required_set):
+                continue
+            go_type, _ = gen.field_go_type_info(
+                entry['name'], json_name, prop, required_set,
+            )
+            # Generated optional booleans should already be pointers; this branch
+            # catches generator regressions before they reach types_gen.go.
+            if go_type == 'bool':
+                reports.append({
+                    'owner': 'generated',
+                    'type': entry['name'],
+                    'schema': entry['schema'],
+                    'json': json_name,
+                    'go_type': go_type,
+                    'description': prop.get('description', ''),
+                })
+
+    for type_name, go_fields in sorted(go_structs.items()):
+        schema_spec = resolve_schema_spec(type_name)
+        if schema_spec is None:
+            continue
+        try:
+            schema = load_schema_spec(schema_spec)
+        except SCHEMA_RESOLUTION_ERRORS:
+            continue
+        props = gen.schema_properties(schema)
+        required_set = gen.schema_required_names(schema)
+        fields_by_json = {tag: go_type for _, go_type, tag, _ in go_fields}
+        for json_name, prop in props.items():
+            if not isinstance(prop, dict):
+                continue
+            if not optional_bool_pointer_candidate(json_name, prop, required_set):
+                continue
+            go_type = fields_by_json.get(json_name)
+            if go_type == 'bool':
+                reports.append({
+                    'owner': 'hand-written',
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'json': json_name,
+                    'go_type': go_type,
+                    'description': prop.get('description', ''),
+                })
+
+    return reports
+
+
 def optional_numeric_pointer_reports(go_structs):
     """Find optional numeric fields that need pointers to preserve omission."""
     reports = []
@@ -992,6 +1058,7 @@ def main():
         go_structs,
         custom_json_methods,
     )
+    optional_bool_reports = optional_bool_pointer_reports(go_structs)
     optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
     hand_written_inline_schema_divergence = validate_hand_written_inline_schema_divergence()
     hand_written_inline_reports = validate_hand_written_inline_schema_specs(go_structs)
@@ -1025,6 +1092,7 @@ def main():
             'cross_type_inline_errors': cross_type_inline_errors,
             'union_schema_errors': union_schema_errors,
             'custom_wire_field_errors': custom_wire_field_errors,
+            'optional_bool_pointer': optional_bool_reports,
             'optional_numeric_pointer': optional_numeric_reports,
         }
         print(json.dumps(out, indent=2))
@@ -1136,6 +1204,18 @@ def main():
                 if r.get('missing_methods'):
                     print(f'    missing methods: {", ".join(r["missing_methods"])}')
             print()
+        if optional_bool_reports:
+            print(
+                'Optional boolean pointer issues in '
+                f'{len(optional_bool_reports)} field(s):'
+            )
+            for r in optional_bool_reports:
+                print()
+                print(f'  {r["type"]}.{r["json"]}  ({r["schema"]})')
+                print(f'    owner:   {r["owner"]}')
+                print(f'    Go type: {r["go_type"]}')
+                print('    fix:     use *bool so explicit false survives omitempty')
+            print()
         if optional_numeric_reports:
             print(
                 'Optional numeric pointer issues in '
@@ -1179,6 +1259,7 @@ def main():
         or bool(hand_written_inline_schema_divergence)
         or bool(union_schema_errors)
         or bool(custom_wire_field_errors)
+        or bool(optional_bool_reports)
         or bool(reports)
         or bool(optional_numeric_reports)
         or (args.strict and bool(no_schema))

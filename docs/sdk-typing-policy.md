@@ -78,6 +78,11 @@ Migration rule:
 - Avoid sweeping pointer changes across all generated response fields in one
   PR. Change request-side fields first, with round-trip tests, because those
   affect emitted wire payloads and MCP input schemas.
+- `adcp/schemas/lint.py --strict` enforces optional boolean pointers and flags
+  optional numeric pointer candidates when omission and explicit zero appear
+  semantically distinct. Numeric exceptions require a documented
+  `OPTIONAL_NUMERIC_SCALAR_OK` waiver in `adcp/schemas/lint.py`. Boolean
+  exceptions have no waiver; file an upstream schema clarification first.
 
 ## Enum Policy
 
