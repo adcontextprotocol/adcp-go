@@ -984,6 +984,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "creative/preview-creative-request.json#/properties/requests/items",
     ),
     (
+        "ForcedDirective",
+        "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced",
+    ),
+    (
         "ArtifactWebhookPagination",
         "content-standards/artifact-webhook-payload.json#/properties/pagination",
     ),
@@ -1093,6 +1097,7 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'CollectionChangeSummary',
     'PropertyChangeSummary',
     'SyncGovernanceAgentResult',
+    'ForcedDirective',
     'InstallmentDerivative',
     'ProductFilterMetro',
     'ProductFilterTrustedMatch',
@@ -1381,6 +1386,7 @@ INLINE_TYPE_HINTS = {
     ('PreviewCreativeRequest', 'inputs'): 'PreviewCreativeInput',
     ('PreviewCreativeRequest', 'requests'): 'PreviewCreativeBatchRequest',
     ('PreviewCreativeBatchRequest', 'inputs'): 'PreviewCreativeInput',
+    ('ForcedDirectiveSuccess', 'forced'): 'ForcedDirective',
     ('SyncPlansRequest', 'plans'): 'Plan',
     ('GetProductsResponse', 'proposals'): 'Proposal',
     ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',

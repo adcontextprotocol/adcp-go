@@ -87,6 +87,9 @@ be populated.
   `PreviewCreativeRequest.Requests` is now
   `[]adcp.PreviewCreativeBatchRequest` instead of `[]any`. Batch request
   `Inputs` also uses `[]adcp.PreviewCreativeInput`.
+- `ForcedDirectiveSuccess.Forced` is now `adcp.ForcedDirective` instead of
+  `any`. The reference seller now emits directive `message` at the response
+  top level, matching the schema, instead of inside `forced`.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.

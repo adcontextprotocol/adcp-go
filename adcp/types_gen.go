@@ -9152,6 +9152,12 @@ type PreviewCreativeBatchRequest struct {
 	ItemLimit        int                    `json:"item_limit,omitempty"`    // Maximum number of catalog items to render in this preview.
 }
 
+// ForcedDirective — Echo of the registered directive. The next create_media_buy call from this sandbox account will
+type ForcedDirective struct {
+	Arm    string `json:"arm"`               // Arm the seller will emit on the next create_media_buy response.
+	TaskID string `json:"task_id,omitempty"` // Echo of the registered task_id. Present only when arm is 'submitted' (the arm
+}
+
 // ArtifactWebhookPagination — Pagination info when batching large artifact sets
 type ArtifactWebhookPagination struct {
 	TotalArtifacts int `json:"total_artifacts,omitempty"` // Total artifacts in the delivery period
@@ -9875,11 +9881,11 @@ type SimulationSuccess struct {
 
 // ForcedDirectiveSuccess — A force_create_media_buy_arm directive was registered. The directive shapes the next
 type ForcedDirectiveSuccess struct {
-	Success bool   `json:"success"`
-	Forced  any    `json:"forced"`            // Echo of the registered directive. The next create_media_buy call from this
-	Message string `json:"message,omitempty"` // Human-readable acknowledgement.
-	Context any    `json:"context,omitempty"`
-	Ext     any    `json:"ext,omitempty"`
+	Success bool            `json:"success"`
+	Forced  ForcedDirective `json:"forced"`            // Echo of the registered directive. The next create_media_buy call from this
+	Message string          `json:"message,omitempty"` // Human-readable acknowledgement.
+	Context any             `json:"context,omitempty"`
+	Ext     any             `json:"ext,omitempty"`
 }
 
 // SeedSuccess — A seed_* scenario successfully pre-populated a fixture in the seller's test state
