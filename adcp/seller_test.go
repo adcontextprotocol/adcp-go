@@ -143,6 +143,15 @@ func TestDetectProtocolsEmitsOnlySchemaEnum(t *testing.T) {
 	}
 }
 
+func TestDetectProtocolsCoversRegisteredProtocolHandlers(t *testing.T) {
+	got := detectProtocols(Config{
+		SyncGovernance: func(context.Context, *SyncGovernanceRequest) ([]GovernanceResult, error) { return nil, nil },
+		SyncCreatives:  func(context.Context, *SyncCreativesRequest) ([]CreativeResult, error) { return nil, nil },
+	})
+
+	assert.ElementsMatch(t, []string{"governance", "creative"}, got)
+}
+
 func TestCapabilitiesResponseWireShape(t *testing.T) {
 	// Round-trip through JSON to verify the 3.0 wire shape: adcp.idempotency
 	// must be present as an object (not null), and media_buy blocks survive.
@@ -176,6 +185,20 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	require.True(t, ok)
 	models, _ := mb["supported_pricing_models"].([]any)
 	assert.Equal(t, []any{"cpm"}, models)
+}
+
+func TestCapabilitiesResponseDoesNotMutateInputStatus(t *testing.T) {
+	data := &CapabilitiesData{
+		SupportedProtocols: []string{"media_buy"},
+		ADCP:               &ADCPVersion{MajorVersions: []int{3}},
+	}
+
+	_, out, err := CapabilitiesResponse(data)
+	require.NoError(t, err)
+
+	assert.Empty(t, data.Status)
+	require.IsType(t, &CapabilitiesData{}, out)
+	assert.Equal(t, "completed", out.(*CapabilitiesData).Status)
 }
 
 func TestAttachContext(t *testing.T) {

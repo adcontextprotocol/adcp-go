@@ -2078,7 +2078,9 @@ def resolve_allof_go_type_info(branches, required=False):
         validation_only = True
         for branch in structural_branches:
             branch_props = set(schema_properties(branch).keys())
-            if not branch_props or not branch_props.issubset(ref_property_names):
+            if not branch_props:
+                continue
+            if not branch_props.issubset(ref_property_names):
                 validation_only = False
                 break
         if validation_only:

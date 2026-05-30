@@ -108,6 +108,45 @@ func TestCreateMediaBuy_ScrubsWriteOnlyInvoiceRecipientBank(t *testing.T) {
 	}
 }
 
+func TestMediaBuyCreateSuccess_EmitsNullForEmptyConfirmedAt(t *testing.T) {
+	buy := &adcp.MediaBuyData{
+		MediaBuyID: "mb-1",
+		Status:     string(adcp.MediaBuyStatusPendingCreatives),
+	}
+
+	raw, err := json.Marshal(mediaBuyCreateSuccess(buy))
+	if err != nil {
+		t.Fatalf("marshal create success: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal create success: %v", err)
+	}
+	if got, ok := wire["confirmed_at"]; !ok || got != nil {
+		t.Fatalf("empty confirmed_at should emit null, got %#v in %s", got, raw)
+	}
+}
+
+func TestMediaBuyCreateSuccess_IncludesConfirmedAtWhenSet(t *testing.T) {
+	buy := &adcp.MediaBuyData{
+		MediaBuyID:  "mb-1",
+		Status:      string(adcp.MediaBuyStatusActive),
+		ConfirmedAt: "2026-06-01T00:00:00Z",
+	}
+
+	raw, err := json.Marshal(mediaBuyCreateSuccess(buy))
+	if err != nil {
+		t.Fatalf("marshal create success: %v", err)
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatalf("unmarshal create success: %v", err)
+	}
+	if got := wire["confirmed_at"]; got != buy.ConfirmedAt {
+		t.Fatalf("confirmed_at = %#v, want %q", got, buy.ConfirmedAt)
+	}
+}
+
 // --- pending_creatives → active state transitions ---
 
 func TestPendingCreativesToActive_ViaSyncCreatives(t *testing.T) {

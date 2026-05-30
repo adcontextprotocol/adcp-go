@@ -139,6 +139,11 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "RESPONSE_TTL",
 		},
 		{
+			name:    "response ttl exceeds serve window max",
+			mutate:  func(c *Config) { c.ResponseTTL = 301 * time.Second },
+			wantErr: "RESPONSE_TTL must be <= 300s",
+		},
+		{
 			name:    "missing config url",
 			mutate:  func(c *Config) { c.IdentityConfig.URL = "" },
 			wantErr: "CONFIG_SOURCE_URL",

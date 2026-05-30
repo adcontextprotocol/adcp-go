@@ -444,8 +444,14 @@ func stampCreateMediaBuyResult(result CreateMediaBuyResult, sandbox bool, contex
 // supported_protocols value, so collection handlers do not affect this list.
 func detectProtocols(cfg Config) []string {
 	var protocols []string
-	if cfg.GetProducts != nil || cfg.CreateMediaBuy != nil {
+	if cfg.SyncAccounts != nil || cfg.GetProducts != nil || cfg.CreateMediaBuy != nil || cfg.GetMediaBuys != nil || cfg.GetDelivery != nil {
 		protocols = append(protocols, "media_buy")
+	}
+	if cfg.SyncGovernance != nil {
+		protocols = append(protocols, "governance")
+	}
+	if cfg.ListCreativeFormats != nil || cfg.SyncCreatives != nil {
+		protocols = append(protocols, "creative")
 	}
 	if cfg.GetSignals != nil || cfg.ActivateSignal != nil {
 		protocols = append(protocols, "signals")

@@ -674,12 +674,16 @@ func updateMediaBuyResult(buy *adcp.MediaBuyData, affected []adcp.Package, conte
 }
 
 func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
+	var confirmedAt *string
+	if buy.ConfirmedAt != "" {
+		confirmedAt = adcp.Ptr(buy.ConfirmedAt)
+	}
 	return &adcp.CreateMediaBuySuccess{
 		MediaBuyID:       buy.MediaBuyID,
 		Account:          buy.Account,
 		InvoiceRecipient: responseBusinessEntity(buy.InvoiceRecipient),
 		Status:           buy.Status,
-		ConfirmedAt:      adcp.Ptr(buy.ConfirmedAt),
+		ConfirmedAt:      confirmedAt,
 		CreativeDeadline: buy.CreativeDeadline,
 		Revision:         buy.Revision,
 		ValidActions:     buy.ValidActions,

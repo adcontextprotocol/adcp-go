@@ -32,6 +32,8 @@ type identityHandler struct {
 	logger                     *slog.Logger
 }
 
+const maxServeWindowSec = 300
+
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
 type IdentityHandlerConfig struct {
 	Service    *Service
@@ -83,6 +85,14 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 		recorder:                   cfg.Recorder,
 		logger:                     cfg.Logger,
 	}
+}
+
+func serveWindowSeconds(ttl time.Duration) int {
+	seconds := int(ttl.Seconds())
+	if seconds > maxServeWindowSec {
+		return maxServeWindowSec
+	}
+	return seconds
 }
 
 func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +152,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Type:               tmproto.TypeIdentityMatchResponse,
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{},
-			ServeWindowSec:     int(h.responseTTL.Seconds()),
+			ServeWindowSec:     serveWindowSeconds(h.responseTTL),
 		}) {
 			status = "write_error"
 		}
@@ -161,7 +171,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          result.RequestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     int(h.responseTTL.Seconds()),
+		ServeWindowSec:     serveWindowSeconds(h.responseTTL),
 	}
 	if h.tmpx != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()
