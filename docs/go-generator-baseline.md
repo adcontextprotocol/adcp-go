@@ -7,20 +7,20 @@ Command:
 ```bash
 cd adcp/schemas
 python3 generate.py --coverage-summary
-python3 generate.py --coverage-max-unreviewed-any 10
+python3 generate.py --coverage-max-unreviewed-any 9
 ```
 
-The generator currently reports 221 generated dynamic `any` uses:
+The generator currently reports 220 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
 | Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
-| Unreviewed generated `any` | 10 | CI baseline; every new unreviewed fallback is a regression |
+| Unreviewed generated `any` | 9 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
 
 ```bash
-python3 generate.py --coverage-max-unreviewed-any 10
+python3 generate.py --coverage-max-unreviewed-any 9
 ```
 
 Lower this number whenever a generator improvement removes an unreviewed
@@ -62,14 +62,13 @@ the new dynamic shape is reviewed in the same PR.
 | `ComplyTestControllerRequest.Params` | `params` | `any` | `inline_object` | `compliance/comply-test-controller-request.json` |
 | `ComplyTestControllerResponse` | n/a | `any` | `top_level_oneOf_alias` | `compliance/comply-test-controller-response.json` |
 | `ForcedDirectiveSuccess.Forced` | `forced` | `any` | `inline_object` | `compliance/comply-test-controller-response.json#/oneOf/3` |
-| `ReportPlanOutcomeRequest.SellerResponse` | `seller_response` | `any` | `inline_object` | `governance/report-plan-outcome-request.json` |
 | `ArtifactWebhookPayload.Artifacts` | `artifacts` | `[]any` | `array_item:inline_object` | `content-standards/artifact-webhook-payload.json` |
 
 ## Work Queues
 
 ### Inline Object Generation
 
-This is the largest generator gap: 4 unreviewed fallbacks are direct inline
+This is the largest generator gap: 3 unreviewed fallbacks are direct inline
 objects or arrays of inline objects. The generator needs stable naming for
 inline schemas, pointer handling for optional inline object fields, and collision
 detection across generated names.

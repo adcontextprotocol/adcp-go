@@ -1100,6 +1100,52 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	}
 }
 
+func TestReportPlanOutcomeSellerResponsePreservesExplicitZero(t *testing.T) {
+	req := ReportPlanOutcomeRequest{
+		PlanID:            "plan-1",
+		IdempotencyKey:    "idem-1",
+		Outcome:           "completed",
+		GovernanceContext: "ctx-1",
+		SellerResponse: Ptr(ReportPlanOutcomeSellerResponse{
+			SellerReference: "mb-1",
+			CommittedBudget: Ptr(0.0),
+			Packages: []ReportPlanOutcomeSellerPackage{{
+				Budget: Ptr(0.0),
+			}},
+		}),
+	}
+
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal report plan outcome request: %v", err)
+	}
+	body := string(raw)
+	for _, want := range []string{
+		`"committed_budget":0`,
+		`"budget":0`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("marshaled report plan outcome missing %s:\n%s", want, body)
+		}
+	}
+
+	var decoded ReportPlanOutcomeRequest
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal report plan outcome request: %v", err)
+	}
+	if decoded.SellerResponse == nil {
+		t.Fatal("seller_response did not round-trip")
+	}
+	if decoded.SellerResponse.CommittedBudget == nil || *decoded.SellerResponse.CommittedBudget != 0 {
+		t.Fatalf("committed_budget = %v, want pointer to 0", decoded.SellerResponse.CommittedBudget)
+	}
+	if len(decoded.SellerResponse.Packages) != 1 ||
+		decoded.SellerResponse.Packages[0].Budget == nil ||
+		*decoded.SellerResponse.Packages[0].Budget != 0 {
+		t.Fatalf("package budget did not round-trip as pointer to 0: %#v", decoded.SellerResponse.Packages)
+	}
+}
+
 func TestReportPlanOutcomeErrorRoundTrip(t *testing.T) {
 	req := ReportPlanOutcomeRequest{
 		PlanID:            "plan-1",
