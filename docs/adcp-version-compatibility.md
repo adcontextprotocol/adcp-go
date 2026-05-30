@@ -16,14 +16,14 @@ and servers.
 - Requests pinned to `3.0` are served as `3.0` even when the seller also
   supports `3.1`.
 - Requests pinned to a newer supported-minor prerelease can be served by the
-  matching stable release. For example, a `3.1-rc.3` request against a seller
+  matching stable release. For example, a `3.1-rc.4` request against a seller
   that supports `["3.0", "3.1"]` is served as `3.1`.
 - Requests pinned above the seller's support downshift to the highest supported
   release in the same major. For example, a `3.1` request against a `["3.0"]`
   seller is served as `3.0`.
 - Requests pinned to an unsupported major return `VERSION_UNSUPPORTED`.
 - Full semver build identifiers are normalized before use on the wire: for
-  example, `3.1.0-rc.3` becomes `3.1-rc.3`.
+  example, `3.1.0-rc.4` becomes `3.1-rc.4`.
 
 ## Go Usage
 
@@ -32,7 +32,7 @@ and servers.
 | `SupportedADCPVersions()` | Default seller `ADCPVersion.SupportedVersions` value. |
 | `DefaultADCPVersion()` | Highest SDK-supported 3.x release for unpinned responses. |
 | `VersionEnvelopeFor(version)` | Buyer-side helper for filling `AdcpVersion` and `AdcpMajorVersion` together. |
-| `NormalizeADCPVersion(version)` | Convert bundle/build versions such as `3.1.0-rc.3` to wire versions. |
+| `NormalizeADCPVersion(version)` | Convert bundle/build versions such as `3.1.0-rc.4` to wire versions. |
 | `NegotiateADCPVersion(requestedVersion, requestedMajor, supported)` | Seller-side compatibility resolution. |
 
 Buyer requests should set both fields through 3.x:

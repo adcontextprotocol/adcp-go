@@ -1,7 +1,7 @@
 # Go Generator Baseline
 
 Snapshot date: 2026-05-30
-Schema bundle: AdCP 3.1.0-rc.3
+Schema bundle: AdCP 3.1.0-rc.4
 Command:
 
 ```bash
@@ -10,11 +10,11 @@ python3 generate.py --coverage-summary
 python3 generate.py --coverage-max-unreviewed-any 2
 ```
 
-The generator currently reports 213 generated dynamic `any` uses:
+The generator currently reports 214 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 211 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Reviewed intentional `any` | 212 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
 | Unreviewed generated `any` | 2 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
@@ -86,18 +86,22 @@ No unreviewed unknown `$ref` fallbacks remain. Future unknown refs should be
 added to the generation graph unless the target schema is an intentionally open
 or union-shaped payload with a specific allowlist reason.
 
-## 3.1 RC3 Integration
+## 3.1 RC4 Integration
 
 Snapshot date: 2026-05-30
-Schema bundle: AdCP 3.1.0-rc.3
+Schema bundle: AdCP 3.1.0-rc.4
 
-The checked-in baseline now uses the rc.3 bundle. The generator owns the new
+The checked-in baseline now uses the rc.4 bundle. The generator owns the new
 named 3.1 schemas for account authorization, committed metrics, delivery metric
 aggregates, missing metrics, signal targeting, forecast dimensions, provenance
 audit observations, wholesale-feed capability blocks, and the newly named
 inline delivery/reporting helper shapes.
 
-The rc.3 integration and subsequent generator passes reduced unreviewed
+The rc.4 integration adds typed get-signals response rows for signal definition
+enrichment and signal coverage forecasts without raising the unreviewed `any`
+baseline.
+
+The 3.1 integration and subsequent generator passes reduced unreviewed
 generated `any` fallbacks from the 3.0.12 baseline of 15 to 2 while adding the
 3.1 protocol surface. The remaining items are intentionally tracked as
 generator work, not schema drift.
