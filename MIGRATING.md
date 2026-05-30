@@ -90,6 +90,17 @@ be populated.
 - `ForcedDirectiveSuccess.Forced` is now `adcp.ForcedDirective` instead of
   `any`. The reference seller now emits directive `message` at the response
   top level, matching the schema, instead of inside `forced`.
+- Top-level response unions are now closed interfaces instead of `any` aliases:
+  `SyncGovernanceResponse`, `CreateMediaBuyResponse`,
+  `ProvidePerformanceFeedbackResponse`, and `ComplyTestControllerResponse`.
+  Use the generated variant structs such as `CreateMediaBuySuccess`,
+  `CreateMediaBuyError`, and `CreateMediaBuySubmitted`. Code that assigned
+  arbitrary `map[string]any` values or custom dynamic wrapper types to these
+  response names should switch to a schema-owned variant or keep the value as
+  caller-owned dynamic JSON outside the generated response interface. Direct
+  `encoding/json` unmarshalling into these interface names is not supported;
+  decode into a concrete variant when the branch is known, or into
+  `json.RawMessage` first when branch selection depends on the payload.
 - `GetProductsResponse.Incomplete` is now
   `[]adcp.GetProductsIncompleteItem` instead of `[]any`. `EstimatedWait` is
   `*adcp.Duration`; use nil when the seller cannot estimate a retry interval.
