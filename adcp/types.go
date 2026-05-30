@@ -13,39 +13,57 @@ import "encoding/json"
 // other blocks are optional and set only when the relevant protocol is
 // supported.
 type CapabilitiesData struct {
-	ADCP                  *ADCPVersion                   `json:"adcp"`
-	SupportedProtocols    []string                       `json:"supported_protocols"`
-	Account               *AccountCapabilities           `json:"account,omitempty"`
-	MediaBuy              *MediaBuyCapabilities          `json:"media_buy,omitempty"`
-	Signals               *SignalsCapabilities           `json:"signals,omitempty"`
-	Governance            *GovernanceCapabilities        `json:"governance,omitempty"`
-	SponsoredIntelligence *SICapabilities                `json:"sponsored_intelligence,omitempty"`
-	Brand                 *BrandCapabilities             `json:"brand,omitempty"`
-	Creative              *CreativeCapabilities          `json:"creative,omitempty"`
-	RequestSigning        *RequestSigningCapabilities    `json:"request_signing,omitempty"`
-	WebhookSigning        *WebhookSigningCapabilities    `json:"webhook_signing,omitempty"`
-	Identity              *IdentityCapabilities          `json:"identity,omitempty"`
-	ComplianceTesting     *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
-	Specialisms           []string                       `json:"specialisms,omitempty"`
-	ExtensionsSupported   []string                       `json:"extensions_supported,omitempty"`
-	ExperimentalFeatures  []string                       `json:"experimental_features,omitempty"`
-	LastUpdated           string                         `json:"last_updated,omitempty"`
-	Errors                []AdcpError                    `json:"errors,omitempty"`
-	Context               any                            `json:"context,omitempty"`
-	Ext                   any                            `json:"ext,omitempty"`
+	AdcpVersion             string                         `json:"adcp_version,omitempty"`
+	AdcpMajorVersion        int                            `json:"adcp_major_version,omitempty"`
+	ContextID               string                         `json:"context_id,omitempty"`
+	TaskID                  string                         `json:"task_id,omitempty"`
+	Status                  string                         `json:"status"`
+	Message                 string                         `json:"message,omitempty"`
+	Timestamp               string                         `json:"timestamp,omitempty"`
+	Replayed                *bool                          `json:"replayed,omitempty"`
+	AdcpError               AdcpError                      `json:"adcp_error,omitempty"`
+	PushNotificationConfig  *PushNotificationConfig        `json:"push_notification_config,omitempty"`
+	GovernanceContext       string                         `json:"governance_context,omitempty"`
+	Payload                 map[string]any                 `json:"payload,omitempty"`
+	ADCP                    *ADCPVersion                   `json:"adcp"`
+	SupportedProtocols      []string                       `json:"supported_protocols"`
+	Account                 *AccountCapabilities           `json:"account,omitempty"`
+	MediaBuy                *MediaBuyCapabilities          `json:"media_buy,omitempty"`
+	Signals                 *SignalsCapabilities           `json:"signals,omitempty"`
+	Governance              *GovernanceCapabilities        `json:"governance,omitempty"`
+	SponsoredIntelligence   *SICapabilities                `json:"sponsored_intelligence,omitempty"`
+	Brand                   *BrandCapabilities             `json:"brand,omitempty"`
+	Creative                *CreativeCapabilities          `json:"creative,omitempty"`
+	RequestSigning          *RequestSigningCapabilities    `json:"request_signing,omitempty"`
+	WebhookSigning          *WebhookSigningCapabilities    `json:"webhook_signing,omitempty"`
+	Identity                *IdentityCapabilities          `json:"identity,omitempty"`
+	Measurement             any                            `json:"measurement,omitempty"`
+	ComplianceTesting       *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
+	Specialisms             []string                       `json:"specialisms,omitempty"`
+	ExtensionsSupported     []string                       `json:"extensions_supported,omitempty"`
+	ExperimentalFeatures    []string                       `json:"experimental_features,omitempty"`
+	WholesaleFeedVersioning *WholesaleFeedVersioningCaps   `json:"wholesale_feed_versioning,omitempty"`
+	LastUpdated             string                         `json:"last_updated,omitempty"`
+	Errors                  []AdcpError                    `json:"errors,omitempty"`
+	Context                 any                            `json:"context,omitempty"`
+	Ext                     any                            `json:"ext,omitempty"`
+	WholesaleFeedWebhooks   *WholesaleFeedWebhooksCaps     `json:"wholesale_feed_webhooks,omitempty"`
 }
 
 type ADCPVersion struct {
-	MajorVersions []int           `json:"major_versions"`
-	Idempotency   IdempotencyCaps `json:"idempotency"`
+	MajorVersions     []int           `json:"major_versions"`
+	SupportedVersions []string        `json:"supported_versions,omitempty"`
+	BuildVersion      string          `json:"build_version,omitempty"`
+	Idempotency       IdempotencyCaps `json:"idempotency"`
 }
 
 // IdempotencyCaps declares the seller's replay window for idempotency_key.
 // Minimum 3600 (1h); recommended 86400 (24h); maximum 604800 (7d).
 type IdempotencyCaps struct {
-	Supported         bool  `json:"supported"`
-	ReplayTTLSeconds  int   `json:"replay_ttl_seconds"`
-	AccountIDIsOpaque *bool `json:"account_id_is_opaque,omitempty"`
+	Supported          bool  `json:"supported"`
+	ReplayTTLSeconds   int   `json:"replay_ttl_seconds,omitempty"`
+	InFlightMaxSeconds *int  `json:"in_flight_max_seconds,omitempty"`
+	AccountIDIsOpaque  *bool `json:"account_id_is_opaque,omitempty"`
 }
 
 // AccountCapabilities describes how accounts are established and billed.
@@ -61,15 +79,31 @@ type AccountCapabilities struct {
 
 // MediaBuyCapabilities is the media_buy protocol capability block.
 type MediaBuyCapabilities struct {
-	SupportedPricingModels   []string                `json:"supported_pricing_models,omitempty"`
-	ReportingDeliveryMethods []string                `json:"reporting_delivery_methods,omitempty"`
-	OfflineDeliveryProtocols []string                `json:"offline_delivery_protocols,omitempty"`
-	Features                 map[string]any          `json:"features,omitempty"`
-	Execution                *MediaBuyExecution      `json:"execution,omitempty"`
-	AudienceTargeting        *AudienceTargetingCaps  `json:"audience_targeting,omitempty"`
-	ConversionTracking       *ConversionTrackingCaps `json:"conversion_tracking,omitempty"`
-	ContentStandards         *ContentStandardsCaps   `json:"content_standards,omitempty"`
-	Portfolio                *PortfolioCaps          `json:"portfolio,omitempty"`
+	SupportedPricingModels       []string                              `json:"supported_pricing_models,omitempty"`
+	BuyingModes                  []string                              `json:"buying_modes,omitempty"`
+	ReportingDeliveryMethods     []string                              `json:"reporting_delivery_methods,omitempty"`
+	OfflineDeliveryProtocols     []string                              `json:"offline_delivery_protocols,omitempty"`
+	SupportsProposals            *bool                                 `json:"supports_proposals,omitempty"`
+	PropagationSurfaces          []string                              `json:"propagation_surfaces,omitempty"`
+	CreativeApprovalMode         string                                `json:"creative_approval_mode,omitempty"`
+	Features                     map[string]any                        `json:"features,omitempty"`
+	Execution                    *MediaBuyExecution                    `json:"execution,omitempty"`
+	AudienceTargeting            *AudienceTargetingCaps                `json:"audience_targeting,omitempty"`
+	SupportedOptimizationMetrics []string                              `json:"supported_optimization_metrics,omitempty"`
+	VendorMetricOptimization     *MediaBuyVendorMetricOptimizationCaps `json:"vendor_metric_optimization,omitempty"`
+	ConversionTracking           *ConversionTrackingCaps               `json:"conversion_tracking,omitempty"`
+	FrequencyCapping             *FrequencyCappingCaps                 `json:"frequency_capping,omitempty"`
+	ContentStandards             *ContentStandardsCaps                 `json:"content_standards,omitempty"`
+	Portfolio                    *PortfolioCaps                        `json:"portfolio,omitempty"`
+}
+
+type MediaBuyVendorMetricOptimizationCaps struct {
+	SupportedTargets []string `json:"supported_targets,omitempty"`
+}
+
+type FrequencyCappingCaps struct {
+	SupportedPerUnits    []string `json:"supported_per_units,omitempty"`
+	SupportedWindowUnits []string `json:"supported_window_units,omitempty"`
 }
 
 // MediaBuyExecution describes technical execution capabilities for media buying.
@@ -166,7 +200,9 @@ type MatchingLatencyRange struct {
 // used on an optimization goal.
 type ConversionTrackingCaps struct {
 	MultiSourceEventDedup      *bool                     `json:"multi_source_event_dedup,omitempty"`
+	PerCreativeAttribution     *bool                     `json:"per_creative_attribution,omitempty"`
 	SupportedEventTypes        []string                  `json:"supported_event_types,omitempty"`
+	SupportedTargets           []string                  `json:"supported_targets,omitempty"`
 	SupportedUIDTypes          []string                  `json:"supported_uid_types,omitempty"`
 	SupportedHashedIdentifiers []string                  `json:"supported_hashed_identifiers,omitempty"`
 	SupportedActionSources     []string                  `json:"supported_action_sources,omitempty"`
@@ -210,6 +246,7 @@ type PortfolioCaps struct {
 // SignalsCapabilities is the signals protocol capability block.
 type SignalsCapabilities struct {
 	DataProviderDomains []string        `json:"data_provider_domains,omitempty"`
+	DiscoveryModes      []string        `json:"discovery_modes,omitempty"`
 	Features            map[string]bool `json:"features,omitempty"`
 }
 
@@ -327,19 +364,30 @@ type BrandCapabilities struct {
 
 // CreativeCapabilities is the creative protocol capability block.
 type CreativeCapabilities struct {
-	SupportsCompliance     *bool `json:"supports_compliance,omitempty"`
-	HasCreativeLibrary     *bool `json:"has_creative_library,omitempty"`
-	SupportsGeneration     *bool `json:"supports_generation,omitempty"`
-	SupportsTransformation *bool `json:"supports_transformation,omitempty"`
+	SupportsCompliance      *bool                     `json:"supports_compliance,omitempty"`
+	HasCreativeLibrary      *bool                     `json:"has_creative_library,omitempty"`
+	SupportsGeneration      *bool                     `json:"supports_generation,omitempty"`
+	SupportsTransformation  *bool                     `json:"supports_transformation,omitempty"`
+	SupportedFormats        []CreativeSupportedFormat `json:"supported_formats,omitempty"`
+	BillsThroughAdcp        *bool                     `json:"bills_through_adcp,omitempty"`
+	CanonicalCatalogVersion string                    `json:"canonical_catalog_version,omitempty"`
+}
+
+type CreativeSupportedFormat struct {
+	CapabilityID string                   `json:"capability_id,omitempty"`
+	Format       ProductFormatDeclaration `json:"format"`
 }
 
 // RequestSigningCapabilities declares RFC 9421 signing policy.
 type RequestSigningCapabilities struct {
-	Supported           bool     `json:"supported"`
-	CoversContentDigest string   `json:"covers_content_digest,omitempty"`
-	RequiredFor         []string `json:"required_for,omitempty"`
-	WarnFor             []string `json:"warn_for,omitempty"`
-	SupportedFor        []string `json:"supported_for,omitempty"`
+	Supported                   bool     `json:"supported"`
+	CoversContentDigest         string   `json:"covers_content_digest,omitempty"`
+	RequiredFor                 []string `json:"required_for,omitempty"`
+	WarnFor                     []string `json:"warn_for,omitempty"`
+	SupportedFor                []string `json:"supported_for,omitempty"`
+	ProtocolMethodsSupportedFor []string `json:"protocol_methods_supported_for,omitempty"`
+	ProtocolMethodsWarnFor      []string `json:"protocol_methods_warn_for,omitempty"`
+	ProtocolMethodsRequiredFor  []string `json:"protocol_methods_required_for,omitempty"`
 }
 
 // WebhookSigningCapabilities declares RFC 9421 webhook-signature policy —
@@ -357,9 +405,21 @@ type WebhookSigningCapabilities struct {
 // compromise-response controls. All fields advisory in 3.x; receivers use
 // them to reason about blast radius and revocation latency at onboarding.
 type IdentityCapabilities struct {
+	BrandJSONURL             string                          `json:"brand_json_url,omitempty"`
 	PerPrincipalKeyIsolation bool                            `json:"per_principal_key_isolation,omitempty"`
 	KeyOrigins               *IdentityKeyOrigins             `json:"key_origins,omitempty"`
 	CompromiseNotification   *IdentityCompromiseNotification `json:"compromise_notification,omitempty"`
+}
+
+type WholesaleFeedVersioningCaps struct {
+	Supported              bool  `json:"supported"`
+	PricingVersionSeparate *bool `json:"pricing_version_separate,omitempty"`
+	CacheScopeAccount      *bool `json:"cache_scope_account,omitempty"`
+}
+
+type WholesaleFeedWebhooksCaps struct {
+	Supported  bool     `json:"supported"`
+	EventTypes []string `json:"event_types,omitempty"`
 }
 
 // IdentityKeyOrigins maps signing-key purpose → publishing origin so

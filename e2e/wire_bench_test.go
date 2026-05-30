@@ -43,7 +43,7 @@ func TestWire_JSONCost(t *testing.T) {
 	idResp := tmproto.IdentityMatchResponse{
 		RequestID:          "bench-id-001",
 		EligiblePackageIDs: []string{"pkg-food-display", "pkg-tech-native", "pkg-family-safe"},
-		TTLSec:             300,
+		ServeWindowSec:     300,
 	}
 
 	const iterations = 100_000

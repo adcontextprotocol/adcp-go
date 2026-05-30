@@ -274,9 +274,12 @@ CORE_SCHEMAS = [
     "core/special.json",
     "core/talent.json",
     "core/ad-inventory-config.json",
+    "core/account-authorization.json",
+    "core/committed-metric.json",
     "core/installment-deadlines.json",
     "core/material-deadline.json",
     "core/duration.json",
+    "creative/audit-observation.json",
 ]
 
 # Schemas that are not standalone tool requests/responses, but are important
@@ -290,6 +293,146 @@ SUPPORT_SCHEMAS = [
 # toward making the Go SDK generator own composed/nested shapes instead of
 # relying on hand-written approximations.
 INLINE_SCHEMA_TYPES = OrderedDict([
+    (
+        "ForecastPointDimension",
+        "core/forecast-point-dimensions.json#/items",
+    ),
+    (
+        "ReachWindow",
+        "core/delivery-metrics.json#/properties/reach_window",
+    ),
+    (
+        "MetricQualifier",
+        "core/committed-metric.json#/oneOf/0/properties/qualifier",
+    ),
+    (
+        "RequestedCommittedMetric",
+        "media-buy/package-request.json#/properties/committed_metrics/items",
+    ),
+    (
+        "ForecastViewability",
+        "core/forecast-point.json#/properties/viewability",
+    ),
+    (
+        "ReportingVendorMetric",
+        "core/reporting-capabilities.json#/properties/vendor_metrics/items",
+    ),
+    (
+        "RequiredVendorMetric",
+        "core/product-filters.json#/properties/required_vendor_metrics/items",
+    ),
+    (
+        "CreativeProvenanceRequirements",
+        "core/creative-policy.json#/properties/provenance_requirements",
+    ),
+    (
+        "CreativeAcceptedVerifier",
+        "core/creative-policy.json#/properties/accepted_verifiers/items",
+    ),
+    (
+        "ProvenanceEmbeddedProvenance",
+        "core/provenance.json#/properties/embedded_provenance/items",
+    ),
+    (
+        "ProvenanceWatermark",
+        "core/provenance.json#/properties/watermarks/items",
+    ),
+    (
+        "ProvenanceVerifyAgent",
+        "core/provenance.json#/properties/embedded_provenance/items/properties/verify_agent",
+    ),
+    (
+        "SignalTaxonomy",
+        "core/signal-definition.json#/properties/taxonomy",
+    ),
+    (
+        "SignalTaxonomyValue",
+        "core/signal-definition.json#/properties/taxonomy/properties/values/items",
+    ),
+    (
+        "SignalTaxonomyValueMapping",
+        "core/signal-definition.json#/properties/taxonomy/properties/value_mappings/items",
+    ),
+    (
+        "SignalOnboarder",
+        "core/signal-definition.json#/properties/onboarder",
+    ),
+    (
+        "SignalModeling",
+        "core/signal-definition.json#/properties/modeling",
+    ),
+    (
+        "SignalModelingSeedSource",
+        "core/signal-definition.json#/properties/modeling/properties/seed_source",
+    ),
+    (
+        "SignalModelingDisclosure",
+        "core/signal-modeling-disclosure.json",
+    ),
+    (
+        "SignalModelingDisclosureJurisdiction",
+        "core/signal-modeling-disclosure.json#/properties/jurisdictions/items",
+    ),
+    (
+        "SignalDataSubjectRights",
+        "core/signal-definition.json#/properties/data_subject_rights",
+    ),
+    (
+        "SignalDataSubjectRightsChannel",
+        "core/signal-definition.json#/properties/data_subject_rights/properties/channels/items",
+    ),
+    (
+        "DeliveryWindow",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/windows/items",
+    ),
+    (
+        "DeliveryWindowPackage",
+        "media-buy/get-media-buy-delivery-response.json"
+        "#/properties/media_buy_deliveries/items/properties/windows/items/properties/by_package/items",
+    ),
+    (
+        "ProductCardSpecification",
+        "core/product.json#/properties/product_card_detailed/properties/specifications/items",
+    ),
+    (
+        "GetProductsFilterDiagnostics",
+        "media-buy/get-products-response.json#/properties/filter_diagnostics",
+    ),
+    (
+        "FilterExclusionDiagnostic",
+        "media-buy/get-products-response.json"
+        "#/properties/filter_diagnostics/properties/excluded_by/additionalProperties",
+    ),
+    (
+        "CapabilitiesWholesaleFeedVersioning",
+        "protocol/get-adcp-capabilities-response.json#/properties/wholesale_feed_versioning",
+    ),
+    (
+        "CapabilitiesWholesaleFeedWebhooks",
+        "protocol/get-adcp-capabilities-response.json#/properties/wholesale_feed_webhooks",
+    ),
+    (
+        "GetSignalsIncompleteItem",
+        "signals/get-signals-response.json#/properties/incomplete/items",
+    ),
+    (
+        "AuditObservationDetails",
+        "creative/audit-observation.json#/properties/details",
+    ),
+    (
+        "AuditObservationClaimedValue",
+        "creative/audit-observation.json#/properties/details/properties/claimed_value",
+    ),
+    (
+        "UpstreamRecordedCall",
+        "compliance/comply-test-controller-response.json#/oneOf/6/properties/recorded_calls/items",
+    ),
+    (
+        "IdentifierMatchProof",
+        "compliance/comply-test-controller-response.json"
+        "#/oneOf/6/properties/recorded_calls/items/properties/identifier_match_proofs/items",
+    ),
     (
         "KeywordTargetUpdate",
         "media-buy/package-update.json#/properties/keyword_targets_add/items",
@@ -851,6 +994,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
 # INLINE_TYPE_HINTS for sibling schema pointers. lint.py verifies these siblings
 # keep the same property set before we keep reusing a single Go type.
 SHARED_INLINE_OVERRIDES = {
+    "MetricQualifier": [
+        "core/delivery-metric-aggregate.json#/oneOf/0/properties/qualifier",
+        "core/missing-metric.json#/oneOf/0/properties/qualifier",
+    ],
     "DeliveryReportingDimension": [
         "media-buy/get-media-buy-delivery-request.json"
         "#/properties/reporting_dimensions/properties/device_type",
@@ -1024,6 +1171,7 @@ INLINE_TYPE_HINTS = {
     ('GetMediaBuyDeliveryResponse', 'media_buy_deliveries'): 'MediaBuyDelivery',
     ('Product', 'delivery_measurement'): '*ProductDeliveryMeasurement',
     ('Product', 'catalog_match'): '*ProductCatalogMatch',
+    ('Product', 'signal_targeting_options'): 'ProductSignalTargetingOption',
     ('Account', 'credit_limit'): '*AccountCreditLimit',
     ('Account', 'setup'): '*AccountSetup',
     ('Account', 'governance_agents'): 'AccountGovernanceAgent',
@@ -1047,13 +1195,24 @@ INLINE_TYPE_HINTS = {
     ('PushNotificationConfig', 'authentication'): '*LegacyWebhookAuthentication',
     ('ReportingWebhook', 'authentication'): 'LegacyWebhookAuthentication',
     ('Package', 'cancellation'): '*PackageCancellation',
+    ('Package', 'committed_metrics'): 'CommittedMetric',
     ('CreativeFormat', 'accessibility'): '*CreativeFormatAccessibility',
     ('CreativeFormat', 'supported_macros'): 'string',
     ('Signal', 'range'): '*SignalRange',
     # 3.1 forward-compatible hints for auto-discovered referenced schemas.
     ('SignalListing', 'range'): '*SignalRange',
+    ('ProductSignalTargetingOption', 'range'): '*SignalRange',
+    ('PackageSignalTargeting', 'min_value'): '*float64',
+    ('PackageSignalTargeting', 'max_value'): '*float64',
+    ('SignalTargetingExpression', 'min_value'): '*float64',
+    ('SignalTargetingExpression', 'max_value'): '*float64',
+    ('SignalTargetingRules', 'min_selected_signals'): '*int',
+    ('CommittedMetric', 'qualifier'): '*MetricQualifier',
+    ('DeliveryMetricAggregate', 'qualifier'): '*MetricQualifier',
+    ('MissingMetric', 'qualifier'): '*MetricQualifier',
     ('NotificationConfig', 'authentication'): '*LegacyWebhookAuthentication',
     ('DeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
+    ('DeliveryTotals', 'reach_window'): '*ReachWindow',
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
     ('PlannedDelivery', 'geo'): '*PlannedDeliveryGeo',
     ('CreativeBrief', 'messaging'): '*CreativeBriefMessaging',
@@ -1063,7 +1222,10 @@ INLINE_TYPE_HINTS = {
     ('PolicyCategoryDefinition', 'regulatory_frameworks'): 'PolicyRegulatoryFramework',
     ('UserMatch', 'uids'): 'UserMatchUID',
     ('MediaBuyDeliveryTotals', 'quartile_data'): '*DeliveryQuartileData',
+    ('MediaBuyDeliveryTotals', 'reach_window'): '*ReachWindow',
     ('PackageDelivery', 'quartile_data'): '*DeliveryQuartileData',
+    ('PackageDelivery', 'reach_window'): '*ReachWindow',
+    ('PackageDelivery', 'missing_metrics'): 'MissingMetric',
     ('CreateMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
     ('CreateMediaBuyRequest', 'io_acceptance'): '*IOAcceptance',
     ('CreateMediaBuyRequest', 'artifact_webhook'): '*ArtifactWebhookConfig',
@@ -1143,7 +1305,7 @@ INLINE_TYPE_HINTS = {
     ('PlanAuditDriftThresholds', 'escalation_rate_min'): '*float64',
     ('PlanAuditDriftThresholds', 'auto_approval_rate_max'): '*float64',
     ('PlanAuditDriftThresholds', 'human_override_rate_max'): '*float64',
-    ('PlanAuditEntry', 'status'): 'GovernanceDecision',
+    ('PlanAuditEntry', 'verdict'): '*GovernanceDecision',
     ('PlanAuditEntry', 'mode'): 'GovernanceMode',
     ('PlanAuditEntry', 'findings'): 'PlanAuditFinding',
     ('PlanAuditEntry', 'outcome'): 'OutcomeType',
@@ -1163,6 +1325,12 @@ INLINE_TYPE_HINTS = {
     ('RightsConstraint', 'rights_agent'): 'RightsAgentRef',
     ('Product', 'product_card'): '*ProductCard',
     ('Product', 'product_card_detailed'): '*ProductCardDetailed',
+    ('ProductFilters', 'required_vendor_metrics'): 'RequiredVendorMetric',
+    ('ForecastPoint', 'dimensions'): '[]ForecastPointDimension',
+    ('ForecastPoint', 'viewability'): '*ForecastViewability',
+    ('ReportingCapabilities', 'vendor_metrics'): 'ReportingVendorMetric',
+    ('CreativePolicy', 'provenance_requirements'): '*CreativeProvenanceRequirements',
+    ('CreativePolicy', 'accepted_verifiers'): 'CreativeAcceptedVerifier',
     ('CreativeFormat', 'format_card'): '*CreativeFormatCard',
     ('CreativeFormat', 'format_card_detailed'): '*CreativeFormatCardDetailed',
     ('CreativeAsset', 'provenance'): '*Provenance',
@@ -1172,6 +1340,10 @@ INLINE_TYPE_HINTS = {
     ('Provenance', 'c2pa'): '*ProvenanceC2PA',
     ('Provenance', 'disclosure'): '*ProvenanceDisclosure',
     ('Provenance', 'verification'): 'ProvenanceVerification',
+    ('Provenance', 'embedded_provenance'): 'ProvenanceEmbeddedProvenance',
+    ('Provenance', 'watermarks'): 'ProvenanceWatermark',
+    ('ProvenanceEmbeddedProvenance', 'verify_agent'): '*ProvenanceVerifyAgent',
+    ('ProvenanceWatermark', 'verify_agent'): '*ProvenanceVerifyAgent',
     ('ProvenanceDisclosure', 'jurisdictions'): 'ProvenanceDisclosureJurisdiction',
     ('ProvenanceDisclosureJurisdiction', 'render_guidance'): '*ProvenanceDisclosureRenderGuidance',
     ('Product', 'installments'): 'Installment',
@@ -1202,6 +1374,16 @@ INLINE_TYPE_HINTS = {
     ('ProductFilterGeoProximity', 'geometry'): '*ProductFilterGeometry',
     ('SignalTargeting', 'min_value'): '*float64',
     ('SignalTargeting', 'max_value'): '*float64',
+    ('Signal', 'taxonomy'): '*SignalTaxonomy',
+    ('Signal', 'onboarder'): '*SignalOnboarder',
+    ('Signal', 'modeling'): '*SignalModeling',
+    ('Signal', 'data_subject_rights'): '*SignalDataSubjectRights',
+    ('SignalTaxonomy', 'values'): 'SignalTaxonomyValue',
+    ('SignalTaxonomy', 'value_mappings'): 'SignalTaxonomyValueMapping',
+    ('SignalModeling', 'seed_source'): '*SignalModelingSeedSource',
+    ('SignalModeling', 'disclosure'): '*SignalModelingDisclosure',
+    ('SignalModelingDisclosure', 'jurisdictions'): 'SignalModelingDisclosureJurisdiction',
+    ('SignalDataSubjectRights', 'channels'): 'SignalDataSubjectRightsChannel',
     ('PriceBreakdown', 'adjustments'): 'PriceAdjustment',
     ('CreativeFormat', 'disclosure_capabilities'): 'CreativeFormatDisclosureCapability',
     ('CreativeAsset', 'inputs'): 'CreativeAssetInput',
@@ -1215,7 +1397,10 @@ INLINE_TYPE_HINTS = {
     ('MediaBuyDeliveryTotals', 'dooh_metrics'): '*DeliveryDOOHMetrics',
     ('MediaBuyDeliveryTotals', 'viewability'): '*DeliveryViewability',
     ('MediaBuyDeliveryTotals', 'by_action_source'): 'DeliveryActionSourceMetrics',
+    ('MediaBuyDelivery', 'windows'): 'DeliveryWindow',
     ('MediaBuyDelivery', 'daily_breakdown'): 'MediaBuyDailyBreakdown',
+    ('DeliveryWindow', 'by_package'): 'DeliveryWindowPackage',
+    ('DeliveryWindow', 'totals'): '*DeliveryTotals',
     ('PackageDelivery', 'by_event_type'): 'DeliveryEventTypeMetrics',
     ('PackageDelivery', 'dooh_metrics'): '*DeliveryDOOHMetrics',
     ('PackageDelivery', 'viewability'): '*DeliveryViewability',
@@ -1229,6 +1414,7 @@ INLINE_TYPE_HINTS = {
     ('PackageDelivery', 'by_audience'): 'PackageAudienceDelivery',
     ('PackageDelivery', 'by_placement'): 'PackagePlacementDelivery',
     ('PackageDelivery', 'daily_breakdown'): 'PackageDailyBreakdown',
+    ('ProductCardDetailed', 'specifications'): 'ProductCardSpecification',
     ('GetAdcpCapabilitiesResponse', 'adcp'): 'ADCPVersion',
     ('GetAdcpCapabilitiesResponse', 'account'): 'AccountCapabilities',
     ('GetAdcpCapabilitiesResponse', 'media_buy'): 'MediaBuyCapabilities',
@@ -1241,6 +1427,25 @@ INLINE_TYPE_HINTS = {
     ('GetAdcpCapabilitiesResponse', 'webhook_signing'): 'WebhookSigningCapabilities',
     ('GetAdcpCapabilitiesResponse', 'identity'): 'IdentityCapabilities',
     ('GetAdcpCapabilitiesResponse', 'compliance_testing'): 'ComplianceTestingCapabilities',
+    ('GetAdcpCapabilitiesResponse', 'wholesale_feed_versioning'): '*CapabilitiesWholesaleFeedVersioning',
+    ('GetAdcpCapabilitiesResponse', 'wholesale_feed_webhooks'): '*CapabilitiesWholesaleFeedWebhooks',
+    ('ListAccountsResponse', 'accounts'): 'AccountWithAuthorization',
+    ('AccountWithAuthorization', 'credit_limit'): '*AccountCreditLimit',
+    ('AccountWithAuthorization', 'setup'): '*AccountSetup',
+    ('AccountWithAuthorization', 'governance_agents'): 'AccountGovernanceAgent',
+    ('AccountWithAuthorization', 'reporting_bucket'): '*ReportingBucket',
+    ('AccountWithAuthorization', 'authorization'): '*AccountAuthorization',
+    ('PackageInput', 'committed_metrics'): 'RequestedCommittedMetric',
+    ('RequestedCommittedMetric', 'qualifier'): '*MetricQualifier',
+    ('DeliveryAggregatedTotals', 'metric_aggregates'): 'DeliveryMetricAggregate',
+    ('GetProductsResponse', 'filter_diagnostics'): '*GetProductsFilterDiagnostics',
+    ('GetProductsFilterDiagnostics', 'excluded_by'): 'map[string]FilterExclusionDiagnostic',
+    ('GetSignalsResponse', 'incomplete'): 'GetSignalsIncompleteItem',
+    ('ProvenanceAuditObservationsSuccess', 'audit_observations'): 'AuditObservation',
+    ('AuditObservation', 'details'): '*AuditObservationDetails',
+    ('AuditObservationDetails', 'claimed_value'): 'AuditObservationClaimedValue',
+    ('UpstreamTrafficSuccess', 'recorded_calls'): 'UpstreamRecordedCall',
+    ('UpstreamRecordedCall', 'identifier_match_proofs'): 'IdentifierMatchProof',
     # format.json: renders[] and assets[] are oneOf items. Map to hand-written
     # Render/AssetSlot so reference-agent code can keep using typed literals.
     ('CreativeFormat', 'renders'): 'Render',
@@ -1277,6 +1482,7 @@ for _delivery_metric_type in (
     'PackageDevicePlatformDelivery',
     'PackageAudienceDelivery',
     'PackagePlacementDelivery',
+    'DeliveryWindowPackage',
 ):
     INLINE_TYPE_HINTS.update({
         (_delivery_metric_type, 'by_event_type'): 'DeliveryEventTypeMetrics',
@@ -1284,6 +1490,7 @@ for _delivery_metric_type in (
         (_delivery_metric_type, 'dooh_metrics'): '*DeliveryDOOHMetrics',
         (_delivery_metric_type, 'viewability'): '*DeliveryViewability',
         (_delivery_metric_type, 'by_action_source'): 'DeliveryActionSourceMetrics',
+        (_delivery_metric_type, 'reach_window'): '*ReachWindow',
     })
 
 # Initial allowlist for generated `any` fallbacks that are intentional protocol
@@ -1292,6 +1499,7 @@ for _delivery_metric_type in (
 INTENTIONAL_ANY_FIELD_NAMES = {
     'context',
     'ext',
+    'payload',
 }
 
 INTENTIONAL_ANY_FIELDS = {
@@ -1318,6 +1526,16 @@ INTENTIONAL_ANY_FIELDS = {
     ('ProductFormatDeclaration', 'params'): 'canonical format parameters are schema-specific',
     ('VendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
     ('ForecastVendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
+    ('Package', 'params'): 'package params are product/seller-specific',
+    ('PackageInput', 'params'): 'package params are product/seller-specific',
+    ('PerformanceFeedback', 'metric'): 'performance feedback metric payloads are metric-specific',
+    ('ForecastPointDimension', 'signal_value'): 'forecast signal dimension values are signal-type-specific',
+    ('AuditObservationDetails', 'observed_value'): 'audit observation values may be boolean, number, string, or null',
+    ('AccountAuthorization', 'scope_name'): 'scope names are standard or custom-prefixed strings',
+    ('GetAdcpCapabilitiesResponse', 'measurement'): 'measurement capabilities are vendor catalog payloads',
+    ('GetProductsResponse', 'extensions'): 'response extensions are seller-defined extension payloads',
+    ('FilterExclusionDiagnostic', 'values'): 'filter diagnostic values are filter-specific strings or objects',
+    ('ComplyTestControllerRequest', 'account'): 'compliance controller account selectors are scenario-specific',
 }
 
 # Enum schemas
@@ -1827,6 +2045,7 @@ def resolve_allof_go_type_info(branches, required=False):
         return resolve_go_type_info(branches[0], required)
 
     ref_types = []
+    ref_property_names = set()
     structural_branches = []
     for branch in branches:
         if not isinstance(branch, dict):
@@ -1842,12 +2061,25 @@ def resolve_allof_go_type_info(branches, required=False):
             if reason:
                 return 'any', f'allOf_ref:{reason}'
             ref_types.append(go_type)
+            ref_schema = resolve_ref_schema(branch['$ref'])
+            if ref_schema:
+                ref_property_names.update(schema_properties(ref_schema).keys())
             continue
         if schema_properties(branch):
             structural_branches.append(branch)
 
     if len(ref_types) == 1 and not structural_branches:
         return ref_types[0], None
+
+    if len(ref_types) == 1 and structural_branches:
+        validation_only = True
+        for branch in structural_branches:
+            branch_props = set(schema_properties(branch).keys())
+            if not branch_props or not branch_props.issubset(ref_property_names):
+                validation_only = False
+                break
+        if validation_only:
+            return ref_types[0], None
 
     if not ref_types and len(structural_branches) == 1:
         return resolve_go_type_info(structural_branches[0], required)
@@ -1886,6 +2118,20 @@ def resolve_go_type_info(prop, required=False):
         return resolve_allof_go_type_info(prop.get('allOf', []), required)
 
     typ = prop.get('type', '')
+    if isinstance(typ, list):
+        non_null_types = [t for t in typ if t != 'null']
+        if len(non_null_types) == 1:
+            nested = dict(prop)
+            nested['type'] = non_null_types[0]
+            go_type, reason = resolve_go_type_info(nested, required)
+            if not (
+                go_type.startswith('*') or
+                go_type.startswith('[]') or
+                go_type.startswith('map[')
+            ):
+                go_type = f'*{go_type}'
+            return go_type, reason
+        return 'any', 'union'
 
     if typ == 'string':
         return 'string', None

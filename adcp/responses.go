@@ -12,6 +12,9 @@ import (
 
 // CapabilitiesResponse builds a get_adcp_capabilities response.
 func CapabilitiesResponse(data *CapabilitiesData) (*mcp.CallToolResult, any, error) {
+	if data != nil && data.Status == "" {
+		data.Status = "completed"
+	}
 	return buildResult("Agent capabilities retrieved", data), data, nil
 }
 

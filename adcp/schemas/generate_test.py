@@ -1391,7 +1391,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "PlanAuditEntry",
             plan_audit_entry_schema,
         )
-        self.assertIn("Status *GovernanceDecision `json:\"status,omitempty\"`", plan_audit_entry_generated)
+        self.assertIn("Verdict *GovernanceDecision `json:\"verdict,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Mode *GovernanceMode `json:\"mode,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Findings []PlanAuditFinding `json:\"findings,omitempty\"`", plan_audit_entry_generated)
         self.assertIn("Outcome *OutcomeType `json:\"outcome,omitempty\"`", plan_audit_entry_generated)

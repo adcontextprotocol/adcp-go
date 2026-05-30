@@ -55,7 +55,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 		resp := tmproto.IdentityMatchResponse{
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{"pkg-1"},
-			TTLSec:             300,
+			ServeWindowSec:     300,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
@@ -72,7 +72,7 @@ func TestIdentityMatch_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.EligiblePackageIDs, 1)
 	assert.Equal(t, "pkg-1", resp.EligiblePackageIDs[0])
-	assert.Equal(t, 300, resp.TTLSec)
+	assert.Equal(t, 300, resp.ServeWindowSec)
 }
 
 func TestContextMatch_ErrorResponse(t *testing.T) {
@@ -161,7 +161,7 @@ func TestActivate_HappyPath(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				RequestID:          "id-1",
 				EligiblePackageIDs: []string{"pkg-food"},
-				TTLSec:             60,
+				ServeWindowSec:     60,
 			})
 		}
 	}))
@@ -263,7 +263,7 @@ func TestActivate_MultiPackage(t *testing.T) {
 		case "/tmp/identity":
 			_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
 				EligiblePackageIDs: []string{"pkg-a", "pkg-b", "pkg-c"},
-				TTLSec:             120,
+				ServeWindowSec:     120,
 			})
 		}
 	}))

@@ -439,8 +439,8 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		if resp.Tmpx != "" {
 			tmpx = resp.Tmpx
 		}
-		if minTTL < 0 || resp.TTLSec < minTTL {
-			minTTL = resp.TTLSec
+		if minTTL < 0 || resp.ServeWindowSec < minTTL {
+			minTTL = resp.ServeWindowSec
 		}
 		for _, pkgID := range resp.EligiblePackageIDs {
 			eligibleSet[pkgID] = struct{}{}
@@ -461,7 +461,7 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
-		TTLSec:             minTTL,
+		ServeWindowSec:     minTTL,
 		Tmpx:               tmpx,
 	}
 	return merged

@@ -722,14 +722,27 @@ func TestValidActions_CoversEveryKnownMediaBuyValidAction(t *testing.T) {
 		reason    string
 	}
 	expected := map[adcp.MediaBuyValidAction]expectation{
-		adcp.MediaBuyValidActionPause:          {supported: true, reason: "active buys can pause"},
-		adcp.MediaBuyValidActionResume:         {supported: true, reason: "paused buys can resume"},
-		adcp.MediaBuyValidActionCancel:         {supported: true, reason: "non-terminal buys can cancel"},
-		adcp.MediaBuyValidActionUpdatePackages: {supported: true, reason: "package creative/targeting updates are implemented"},
-		adcp.MediaBuyValidActionSyncCreatives:  {supported: true, reason: "creative assignment flow is implemented"},
-		adcp.MediaBuyValidActionUpdateBudget:   {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
-		adcp.MediaBuyValidActionUpdateDates:    {reason: "unsupported: no date-update path in the reference implementation"},
-		adcp.MediaBuyValidActionAddPackages:    {reason: "unsupported: no post-create package-add path in the reference implementation"},
+		adcp.MediaBuyValidActionPause:                     {supported: true, reason: "active buys can pause"},
+		adcp.MediaBuyValidActionResume:                    {supported: true, reason: "paused buys can resume"},
+		adcp.MediaBuyValidActionCancel:                    {supported: true, reason: "non-terminal buys can cancel"},
+		adcp.MediaBuyValidActionUpdatePackages:            {supported: true, reason: "package creative/targeting updates are implemented"},
+		adcp.MediaBuyValidActionSyncCreatives:             {supported: true, reason: "creative assignment flow is implemented"},
+		adcp.MediaBuyValidActionUpdateBudget:              {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
+		adcp.MediaBuyValidActionUpdateDates:               {reason: "unsupported: no date-update path in the reference implementation"},
+		adcp.MediaBuyValidActionAddPackages:               {reason: "unsupported: no post-create package-add path in the reference implementation"},
+		adcp.MediaBuyValidActionExtendFlight:              {reason: "unsupported: no date-update path in the reference implementation"},
+		adcp.MediaBuyValidActionShortenFlight:             {reason: "unsupported: no date-update path in the reference implementation"},
+		adcp.MediaBuyValidActionUpdateFlightDates:         {reason: "unsupported: no date-update path in the reference implementation"},
+		adcp.MediaBuyValidActionIncreaseBudget:            {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
+		adcp.MediaBuyValidActionDecreaseBudget:            {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
+		adcp.MediaBuyValidActionReallocateBudget:          {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
+		adcp.MediaBuyValidActionUpdateTargeting:           {reason: "unsupported: reference seller exposes the legacy update_packages action for package edits"},
+		adcp.MediaBuyValidActionUpdatePacing:              {reason: "unsupported: no pacing-update path in the reference implementation"},
+		adcp.MediaBuyValidActionUpdateFrequencyCaps:       {reason: "unsupported: no frequency-cap update path in the reference implementation"},
+		adcp.MediaBuyValidActionReplaceCreative:           {reason: "unsupported: reference seller exposes sync_creatives/update_packages for creative assignment edits"},
+		adcp.MediaBuyValidActionUpdateCreativeAssignments: {reason: "unsupported: reference seller exposes sync_creatives/update_packages for creative assignment edits"},
+		adcp.MediaBuyValidActionRemoveCreative:            {reason: "unsupported: reference seller exposes sync_creatives/update_packages for creative assignment edits"},
+		adcp.MediaBuyValidActionRemovePackages:            {reason: "unsupported: no post-create package-remove path in the reference implementation"},
 	}
 
 	exposed := map[adcp.MediaBuyValidAction]bool{}

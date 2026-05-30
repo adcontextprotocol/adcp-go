@@ -142,7 +142,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Type:               tmproto.TypeIdentityMatchResponse,
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{},
-			TTLSec:             int(h.responseTTL.Seconds()),
+			ServeWindowSec:     int(h.responseTTL.Seconds()),
 		}) {
 			status = "write_error"
 		}
@@ -161,7 +161,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          result.RequestID,
 		EligiblePackageIDs: eligible,
-		TTLSec:             int(h.responseTTL.Seconds()),
+		ServeWindowSec:     int(h.responseTTL.Seconds()),
 	}
 	if h.tmpx != nil && len(eligible) > 0 {
 		tmpxStart := time.Now()
