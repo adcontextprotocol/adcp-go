@@ -31,10 +31,11 @@ type StateTransition struct {
 
 // SimulateDeliveryParams contains delivery simulation parameters.
 type SimulateDeliveryParams struct {
-	Impressions   int            `json:"impressions,omitempty"`
-	Clicks        int            `json:"clicks,omitempty"`
-	ReportedSpend *ReportedSpend `json:"reported_spend,omitempty"`
-	Conversions   int            `json:"conversions,omitempty"`
+	Impressions   int                  `json:"impressions,omitempty"`
+	Clicks        int                  `json:"clicks,omitempty"`
+	ReportedSpend *ReportedSpend       `json:"reported_spend,omitempty"`
+	Conversions   int                  `json:"conversions,omitempty"`
+	Viewability   *DeliveryViewability `json:"viewability,omitempty"`
 }
 
 // ReportedSpend is the spend amount and currency.

@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  ADCP_SDK_VERSION: "7.11.0"
+  ADCP_SDK_VERSION: "8.1.0-beta.18"
 
 jobs:
   test:
