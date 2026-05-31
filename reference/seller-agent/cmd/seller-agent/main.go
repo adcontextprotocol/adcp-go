@@ -4,10 +4,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -122,11 +125,15 @@ type backend struct {
 }
 
 type creativeRecord struct {
-	ID       string
-	Name     string
-	FormatID *adcp.FormatRef
-	Status   string
-	Assets   map[string]any
+	ID              string
+	Name            string
+	FormatID        *adcp.FormatRef
+	Status          string
+	PreviousStatus  string
+	StatusUpdatedAt string
+	ImpairmentSeq   uint64
+	RejectionReason string
+	Assets          map[string]any
 }
 
 type forceArm struct {
@@ -137,6 +144,7 @@ type forceArm struct {
 type deliveryState struct {
 	Impressions, Clicks int
 	Spend               float64
+	Viewability         *adcp.DeliveryViewability
 }
 
 func (b *backend) seedProduct(productID string, fixture map[string]any) {
@@ -168,7 +176,26 @@ func (b *backend) seedProduct(productID string, fixture map[string]any) {
 			}
 		}
 	}
-	product := newProduct(productID, productID, "Seeded storyboard product.", deliveryType, channels, formatIDs, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", FixedPrice: adcp.Ptr(10.0), Currency: "USD"}})
+	name, _ := fixture["name"].(string)
+	if name == "" {
+		name = productID
+	}
+	description, _ := fixture["description"].(string)
+	if description == "" {
+		description = "Seeded storyboard product."
+	}
+	product := newProduct(productID, name, description, deliveryType, channels, formatIDs, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", FixedPrice: adcp.Ptr(10.0), Currency: "USD"}})
+	if raw, ok := fixture["metric_optimization"].(map[string]any); ok {
+		product.MetricOptimization = &adcp.ProductMetricOptimization{
+			SupportedMetrics: stringsFromAny(raw["supported_metrics"]),
+		}
+	}
+	if raw, ok := fixture["allowed_actions"]; ok {
+		var allowed []adcp.ProductAllowedAction
+		if decodeAny(raw, &allowed) == nil {
+			product.AllowedActions = allowed
+		}
+	}
 	b.products[productID] = &product
 }
 
@@ -205,6 +232,9 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	if !ok {
 		return errorResult("MEDIA_BUY_NOT_FOUND", "Media buy not found.", input.Context)
 	}
+	if result, out, err, handled := b.enforceAvailableAction(buy, input); handled {
+		return result, out, err
+	}
 	if input.Canceled != nil && *input.Canceled {
 		if buy.Status == "canceled" {
 			return errorResult("NOT_CANCELLABLE", "Media buy is already canceled.", input.Context)
@@ -217,7 +247,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		buy.Cancellation = map[string]any{"reason": input.CancellationReason, "canceled_by": "buyer", "canceled_at": now}
 		buy.Revision++
 		buy.UpdatedAt = now
-		decorateMediaBuy(buy)
+		b.refreshMediaBuy(buy)
 		return updateMediaBuyResult(buy, packagesForCreateSuccess(buy.Packages), input.Context)
 	}
 	if input.Paused != nil {
@@ -233,7 +263,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		} else {
 			buy.Status = "active"
 		}
-		decorateMediaBuy(buy)
+		b.refreshMediaBuy(buy)
 	}
 	if input.InvoiceRecipient != nil {
 		buy.InvoiceRecipient = responseBusinessEntity(input.InvoiceRecipient)
@@ -267,11 +297,14 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 		if upd.TargetingOverlay != nil {
 			buy.Packages[i].TargetingOverlay = upd.TargetingOverlay
 		}
+		if upd.Budget != nil {
+			buy.Packages[i].Budget = *upd.Budget
+		}
 		if len(upd.CreativeAssignments) > 0 {
 			buy.Packages[i].CreativeAssignments = upd.CreativeAssignments
 			if buy.Status == "pending_creatives" {
 				buy.Status = "active"
-				decorateMediaBuy(buy)
+				b.refreshMediaBuy(buy)
 			}
 		}
 		affected = append(affected, buy.Packages[i].Package)
@@ -281,6 +314,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 	}
 	buy.Revision++
 	buy.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	b.refreshMediaBuy(buy)
 	return updateMediaBuyResult(buy, affected, input.Context)
 }
 
@@ -363,6 +397,7 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 				MeasurementTerms:     p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
 				TargetingOverlay:    p.TargetingOverlay,
 				CreativeAssignments: p.CreativeAssignments,
+				Context:             p.Context,
 			},
 		})
 	}
@@ -385,8 +420,10 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Revision:         1,
+		Context:          input.Context,
 	}
 	decorateMediaBuy(buy)
+	b.refreshMediaBuy(buy)
 	b.mediaBuys[id] = buy
 	for _, pkg := range pkgs {
 		b.delivery[pkg.PackageID] = &deliveryState{}
@@ -421,8 +458,15 @@ func (b *backend) syncCreatives(input *adcp.SyncCreativesRequest) ([]adcp.Creati
 		if _, exists := b.creatives[c.CreativeID]; exists {
 			action = "updated"
 		}
-		b.creatives[c.CreativeID] = &creativeRecord{ID: c.CreativeID, Name: c.Name, FormatID: c.FormatID, Status: "approved", Assets: c.Assets}
-		results = append(results, adcp.CreativeResult{CreativeID: c.CreativeID, Action: action, Status: "approved"})
+		now := time.Now().UTC().Format(time.RFC3339)
+		previousStatus := ""
+		var impairmentSeq uint64
+		if existing := b.creatives[c.CreativeID]; existing != nil {
+			previousStatus = existing.Status
+			impairmentSeq = existing.ImpairmentSeq
+		}
+		b.creatives[c.CreativeID] = &creativeRecord{ID: c.CreativeID, Name: c.Name, FormatID: c.FormatID, Status: "approved", PreviousStatus: previousStatus, StatusUpdatedAt: now, ImpairmentSeq: impairmentSeq, Assets: c.Assets}
+		results = append(results, adcp.CreativeResult{CreativeID: c.CreativeID, Action: action})
 	}
 	for _, assign := range input.Assignments {
 		if assign.CreativeID == "" || assign.PackageID == "" {
@@ -438,7 +482,7 @@ func (b *backend) syncCreatives(input *adcp.SyncCreativesRequest) ([]adcp.Creati
 					})
 					if buy.Status == "pending_creatives" {
 						buy.Status = "active"
-						decorateMediaBuy(buy)
+						b.refreshMediaBuy(buy)
 						buy.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 						buy.Revision++
 					}
@@ -469,6 +513,7 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 		pkgDel := make([]adcp.PackageDelivery, 0)
 		var totImps, totClicks int
 		var totSpend float64
+		var totalViewability *adcp.DeliveryViewability
 		for _, pkg := range buy.Packages {
 			ds := b.delivery[pkg.PackageID]
 			if ds == nil {
@@ -482,12 +527,14 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 				PricingModel: "cpm",
 				Rate:         10,
 				Currency:     "USD",
+				Viewability:  cloneViewability(ds.Viewability),
 			})
 			totImps += ds.Impressions
 			totClicks += ds.Clicks
 			totSpend += ds.Spend
+			totalViewability = combineViewability(totalViewability, ds.Viewability)
 		}
-		deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.MediaBuyDeliveryTotals{Impressions: float64(totImps), Clicks: float64(totClicks), Spend: totSpend}, ByPackage: pkgDel})
+		deliveries = append(deliveries, adcp.MediaBuyDelivery{MediaBuyID: mbID, Status: buy.Status, Totals: adcp.MediaBuyDeliveryTotals{Impressions: float64(totImps), Clicks: float64(totClicks), Spend: totSpend, Viewability: totalViewability}, ByPackage: pkgDel})
 	}
 	return &adcp.DeliveryData{ReportingPeriod: adcp.ReportingPeriod{Start: now.Add(-24 * time.Hour).Format(time.RFC3339), End: now.Format(time.RFC3339)}, Currency: "USD", MediaBuyDeliveries: deliveries}, nil
 }
@@ -518,10 +565,11 @@ func (b *backend) forceMediaBuyStatus(mediaBuyID, status, _ string) (*adcp.State
 		return nil, fmt.Errorf("INVALID_TRANSITION")
 	}
 	buy.Status = status
+	b.refreshMediaBuy(buy)
 	return &adcp.StateTransition{Success: true, PreviousState: prev, CurrentState: status}, nil
 }
 
-func (b *backend) forceCreativeStatus(creativeID, status, _ string) (*adcp.StateTransition, error) {
+func (b *backend) forceCreativeStatus(creativeID, status, rejectionReason string) (*adcp.StateTransition, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -530,7 +578,18 @@ func (b *backend) forceCreativeStatus(creativeID, status, _ string) (*adcp.State
 		return nil, fmt.Errorf("NOT_FOUND")
 	}
 	prev := creative.Status
+	now := time.Now().UTC().Format(time.RFC3339)
+	creative.PreviousStatus = prev
 	creative.Status = status
+	creative.StatusUpdatedAt = now
+	if status == "rejected" {
+		if prev != "rejected" {
+			creative.ImpairmentSeq++
+		}
+		creative.RejectionReason = rejectionReason
+	} else {
+		creative.RejectionReason = ""
+	}
 	return &adcp.StateTransition{Success: true, PreviousState: prev, CurrentState: status}, nil
 }
 
@@ -553,6 +612,7 @@ func (b *backend) simulateDelivery(mediaBuyID string, p adcp.SimulateDeliveryPar
 	baseImps, extraImps := p.Impressions/count, p.Impressions%count
 	baseClicks, extraClicks := p.Clicks/count, p.Clicks%count
 	totalBudget := mediaBuyBudget(buy)
+	totalImpressions := p.Impressions
 	for i, pkg := range buy.Packages {
 		ds := b.delivery[pkg.PackageID]
 		if ds == nil {
@@ -570,6 +630,7 @@ func (b *backend) simulateDelivery(mediaBuyID string, p adcp.SimulateDeliveryPar
 		ds.Impressions += imps
 		ds.Clicks += clicks
 		ds.Spend += weightedSpend(spend, pkg.Budget, totalBudget, count)
+		ds.Viewability = combineViewability(ds.Viewability, shareViewability(p.Viewability, imps, totalImpressions, count))
 	}
 	return &adcp.SimulationResult{Success: true, Simulated: map[string]any{"impressions": p.Impressions, "clicks": p.Clicks, "spend": spend}}, nil
 }
@@ -616,6 +677,315 @@ func weightedSpend(spend, packageBudget, totalBudget float64, packageCount int) 
 		return spend / float64(packageCount)
 	}
 	return spend * (packageBudget / totalBudget)
+}
+
+func stringsFromAny(raw any) []string {
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func sortProducts(products []adcp.Product, brief string) {
+	query := strings.ToLower(brief)
+	sort.SliceStable(products, func(i, j int) bool {
+		left := productBriefScore(products[i], query)
+		right := productBriefScore(products[j], query)
+		if left != right {
+			return left > right
+		}
+		return products[i].ProductID < products[j].ProductID
+	})
+}
+
+func productBriefScore(product adcp.Product, query string) int {
+	if query == "" {
+		return 0
+	}
+	score := 0
+	if len(product.AllowedActions) > 0 && !strings.Contains(query, "available action") && !strings.Contains(query, "allowed action") {
+		score -= 20
+	}
+	candidates := []string{
+		product.ProductID,
+		strings.ReplaceAll(product.ProductID, "_", " "),
+		product.Name,
+		product.Description,
+	}
+	for _, candidate := range candidates {
+		candidate = strings.ToLower(candidate)
+		if candidate != "" && strings.Contains(query, candidate) {
+			score += 10
+		}
+		for _, word := range strings.Fields(candidate) {
+			if len(word) > 2 && strings.Contains(query, word) {
+				score++
+			}
+		}
+	}
+	return score
+}
+
+func shareViewability(v *adcp.DeliveryViewability, impressions, totalImpressions, packageCount int) *adcp.DeliveryViewability {
+	if v == nil {
+		return nil
+	}
+	share := 1.0
+	if totalImpressions > 0 {
+		share = float64(impressions) / float64(totalImpressions)
+	} else if packageCount > 0 {
+		share = 1 / float64(packageCount)
+	}
+	out := *v
+	out.MeasurableImpressions *= share
+	out.ViewableImpressions *= share
+	if out.MeasurableImpressions > 0 {
+		out.ViewableRate = out.ViewableImpressions / out.MeasurableImpressions
+	}
+	return &out
+}
+
+func cloneViewability(v *adcp.DeliveryViewability) *adcp.DeliveryViewability {
+	if v == nil {
+		return nil
+	}
+	out := *v
+	return &out
+}
+
+func combineViewability(a, b *adcp.DeliveryViewability) *adcp.DeliveryViewability {
+	if b == nil {
+		return cloneViewability(a)
+	}
+	if a == nil {
+		return cloneViewability(b)
+	}
+	out := *a
+	totalMeasurable := a.MeasurableImpressions + b.MeasurableImpressions
+	if totalMeasurable > 0 {
+		out.ViewedSeconds = ((a.ViewedSeconds * a.MeasurableImpressions) + (b.ViewedSeconds * b.MeasurableImpressions)) / totalMeasurable
+	}
+	out.MeasurableImpressions = totalMeasurable
+	out.ViewableImpressions = a.ViewableImpressions + b.ViewableImpressions
+	if totalMeasurable > 0 {
+		out.ViewableRate = out.ViewableImpressions / totalMeasurable
+	}
+	if out.Standard == "" {
+		out.Standard = b.Standard
+	}
+	if out.Vendor == nil {
+		out.Vendor = b.Vendor
+	}
+	return &out
+}
+
+func decodeAny(in any, out any) error {
+	b, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
+}
+
+func (b *backend) availableActionsForBuy(buy *adcp.MediaBuyData) []adcp.MediaBuyAvailableAction {
+	seen := make(map[string]bool)
+	var actions []adcp.MediaBuyAvailableAction
+	for _, pkg := range buy.Packages {
+		product := b.products[pkg.ProductID]
+		if product == nil {
+			continue
+		}
+		for _, allowed := range product.AllowedActions {
+			mode, ok := resolvedActionMode(allowed)
+			if seen[string(allowed.Action)] || !actionAllowedForStatus(allowed, buy.Status) || !actionAllowedForBuyStatus(allowed.Action, buy.Status) || !ok {
+				continue
+			}
+			seen[string(allowed.Action)] = true
+			actions = append(actions, adcp.MediaBuyAvailableAction{
+				Action:   allowed.Action,
+				Mode:     mode,
+				Sla:      allowed.Sla,
+				TermsRef: allowed.TermsRef,
+			})
+		}
+	}
+	return actions
+}
+
+func actionAllowedForStatus(action adcp.ProductAllowedAction, status string) bool {
+	if len(action.AllowedStatuses) == 0 {
+		return true
+	}
+	for _, allowed := range action.AllowedStatuses {
+		if string(allowed) == status {
+			return true
+		}
+	}
+	return false
+}
+
+func actionAllowedForBuyStatus(action adcp.MediaBuyValidAction, status string) bool {
+	if status == "" {
+		return false
+	}
+	switch action {
+	case adcp.MediaBuyValidActionCancel, adcp.MediaBuyValidActionPause, adcp.MediaBuyValidActionResume, adcp.MediaBuyValidActionSyncCreatives, adcp.MediaBuyValidActionUpdatePackages:
+		return hasValidAction(status, string(action))
+	case adcp.MediaBuyValidActionIncreaseBudget, adcp.MediaBuyValidActionDecreaseBudget, adcp.MediaBuyValidActionReallocateBudget, adcp.MediaBuyValidActionUpdateBudget,
+		adcp.MediaBuyValidActionUpdateTargeting, adcp.MediaBuyValidActionUpdatePacing, adcp.MediaBuyValidActionUpdateFrequencyCaps,
+		adcp.MediaBuyValidActionReplaceCreative, adcp.MediaBuyValidActionUpdateCreativeAssignments, adcp.MediaBuyValidActionRemoveCreative:
+		return hasValidAction(status, string(adcp.MediaBuyValidActionUpdatePackages))
+	case adcp.MediaBuyValidActionExtendFlight, adcp.MediaBuyValidActionShortenFlight, adcp.MediaBuyValidActionUpdateFlightDates, adcp.MediaBuyValidActionUpdateDates:
+		return adcp.MediaBuyStatus(status) != adcp.MediaBuyStatusCanceled &&
+			adcp.MediaBuyStatus(status) != adcp.MediaBuyStatusCompleted &&
+			adcp.MediaBuyStatus(status) != adcp.MediaBuyStatusRejected
+	default:
+		return false
+	}
+}
+
+func resolvedActionMode(action adcp.ProductAllowedAction) (adcp.MediaBuyActionMode, bool) {
+	preferred := []adcp.MediaBuyActionMode{
+		adcp.MediaBuyActionModeSelfServe,
+		adcp.MediaBuyActionModeConditionalSelfServe,
+		adcp.MediaBuyActionModeRequiresApproval,
+	}
+	for _, want := range preferred {
+		for _, mode := range action.Modes {
+			if mode == want {
+				return mode, true
+			}
+		}
+	}
+	if len(action.Modes) == 0 {
+		return "", false
+	}
+	return action.Modes[0], true
+}
+
+func actionModeAllowsDirectUpdate(mode adcp.MediaBuyActionMode) bool {
+	return mode == adcp.MediaBuyActionModeSelfServe || mode == adcp.MediaBuyActionModeConditionalSelfServe
+}
+
+func (b *backend) buyUsesStructuredActions(buy *adcp.MediaBuyData) bool {
+	for _, pkg := range buy.Packages {
+		product := b.products[pkg.ProductID]
+		if product != nil && len(product.AllowedActions) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *backend) productActionForPackage(pkg adcp.PackageStatus, action adcp.MediaBuyValidAction) (adcp.ProductAllowedAction, bool) {
+	product := b.products[pkg.ProductID]
+	if product == nil {
+		return adcp.ProductAllowedAction{}, false
+	}
+	for _, allowed := range product.AllowedActions {
+		if allowed.Action == action {
+			return allowed, true
+		}
+	}
+	return adcp.ProductAllowedAction{}, false
+}
+
+func (b *backend) enforceAvailableAction(buy *adcp.MediaBuyData, input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error, bool) {
+	action := b.attemptedAction(buy, input)
+	if action == "" || !b.buyUsesStructuredActions(buy) {
+		return nil, nil, nil, false
+	}
+	available := b.availableActionsForBuy(buy)
+	targets := b.targetPackagesForAction(buy, input, action)
+	if len(targets) == 0 {
+		targets = buy.Packages
+	}
+	for _, pkg := range targets {
+		allowed, ok := b.productActionForPackage(pkg, action)
+		if !ok {
+			return actionNotAllowedResult(action, "not_supported_on_product", "terminal", available, input.Context)
+		}
+		if !actionAllowedForStatus(allowed, buy.Status) || !actionAllowedForBuyStatus(action, buy.Status) {
+			return actionNotAllowedResult(action, "wrong_status", "correctable", available, input.Context)
+		}
+		mode, ok := resolvedActionMode(allowed)
+		if !ok || !actionModeAllowsDirectUpdate(mode) {
+			return actionNotAllowedResult(action, "mode_mismatch", "correctable", available, input.Context)
+		}
+	}
+	return nil, nil, nil, false
+}
+
+func (b *backend) attemptedAction(buy *adcp.MediaBuyData, input adcp.UpdateMediaBuyRequest) adcp.MediaBuyValidAction {
+	if input.Canceled != nil && *input.Canceled {
+		return adcp.MediaBuyValidActionCancel
+	}
+	if input.Paused != nil {
+		if *input.Paused {
+			return adcp.MediaBuyValidActionPause
+		}
+		return adcp.MediaBuyValidActionResume
+	}
+	if input.EndTime != "" {
+		return adcp.MediaBuyValidActionExtendFlight
+	}
+	if len(input.Packages) == 0 {
+		return ""
+	}
+	packageBudget := make(map[string]float64, len(buy.Packages))
+	for _, pkg := range buy.Packages {
+		packageBudget[pkg.PackageID] = pkg.Budget
+	}
+	for _, pkg := range input.Packages {
+		if pkg.Budget == nil {
+			continue
+		}
+		current, ok := packageBudget[pkg.PackageID]
+		if !ok {
+			continue
+		}
+		if *pkg.Budget > current {
+			return adcp.MediaBuyValidActionIncreaseBudget
+		}
+		if *pkg.Budget < current {
+			return adcp.MediaBuyValidActionDecreaseBudget
+		}
+	}
+	return ""
+}
+
+func (b *backend) targetPackagesForAction(buy *adcp.MediaBuyData, input adcp.UpdateMediaBuyRequest, action adcp.MediaBuyValidAction) []adcp.PackageStatus {
+	if action != adcp.MediaBuyValidActionIncreaseBudget && action != adcp.MediaBuyValidActionDecreaseBudget {
+		return nil
+	}
+	packageIndex := make(map[string]adcp.PackageStatus, len(buy.Packages))
+	for _, pkg := range buy.Packages {
+		packageIndex[pkg.PackageID] = pkg
+	}
+	targets := make([]adcp.PackageStatus, 0, len(input.Packages))
+	for _, update := range input.Packages {
+		if update.Budget == nil {
+			continue
+		}
+		pkg, ok := packageIndex[update.PackageID]
+		if !ok {
+			continue
+		}
+		switch {
+		case action == adcp.MediaBuyValidActionIncreaseBudget && *update.Budget > pkg.Budget:
+			targets = append(targets, pkg)
+		case action == adcp.MediaBuyValidActionDecreaseBudget && *update.Budget < pkg.Budget:
+			targets = append(targets, pkg)
+		}
+	}
+	return targets
 }
 
 func (b *backend) handleCustomScenario(scenario string, params map[string]any) (any, error) {
@@ -671,6 +1041,9 @@ func updateMediaBuyResult(buy *adcp.MediaBuyData, affected []adcp.Package, conte
 		"sandbox":             true,
 		"context":             context,
 	}
+	if len(buy.AvailableActions) > 0 {
+		out["available_actions"] = buy.AvailableActions
+	}
 	if buy.Cancellation != nil {
 		out["cancellation"] = buy.Cancellation
 	}
@@ -687,12 +1060,17 @@ func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
 		Account:          buy.Account,
 		InvoiceRecipient: responseBusinessEntity(buy.InvoiceRecipient),
 		Status:           buy.Status,
+		MediaBuyStatus:   buy.Status,
 		ConfirmedAt:      confirmedAt,
 		CreativeDeadline: buy.CreativeDeadline,
 		Revision:         buy.Revision,
+		Currency:         buy.Currency,
+		TotalBudget:      buy.TotalBudget,
 		ValidActions:     buy.ValidActions,
+		AvailableActions: buy.AvailableActions,
 		Packages:         packagesForCreateSuccess(buy.Packages),
 		Sandbox:          adcp.Bool(true),
+		Context:          buy.Context,
 		Ext:              buy.Ext,
 	}
 }
@@ -707,10 +1085,97 @@ func packagesForCreateSuccess(statuses []adcp.PackageStatus) []adcp.Package {
 
 func decorateMediaBuy(buy *adcp.MediaBuyData) {
 	buy.Currency = "USD"
+	if buy.Health == "" {
+		buy.Health = string(adcp.MediaBuyHealthOk)
+	}
 	buy.ValidActions = validActions(buy.Status)
 	buy.InvoiceRecipient = responseBusinessEntity(buy.InvoiceRecipient)
 	// Response envelope fields are typed; do not smuggle them through ext.
 	buy.Ext = nil
+}
+
+func (b *backend) refreshMediaBuy(buy *adcp.MediaBuyData) {
+	decorateMediaBuy(buy)
+	buy.TotalBudget = mediaBuyBudget(buy)
+	buy.AvailableActions = b.availableActionsForBuy(buy)
+	if len(buy.AvailableActions) == 0 {
+		buy.AvailableActions = nil
+	}
+}
+
+func (b *backend) decorateMediaBuySnapshot(buy *adcp.MediaBuyData) {
+	b.refreshMediaBuy(buy)
+	buy.Impairments = b.impairmentsForBuy(buy)
+	if len(buy.Impairments) > 0 {
+		buy.Health = string(adcp.MediaBuyHealthImpaired)
+	} else {
+		buy.Health = string(adcp.MediaBuyHealthOk)
+		buy.Impairments = nil
+	}
+}
+
+func (b *backend) impairmentsForBuy(buy *adcp.MediaBuyData) []adcp.Impairment {
+	type creativeImpairment struct {
+		creative *creativeRecord
+		packages []string
+	}
+	byCreative := make(map[string]*creativeImpairment)
+	order := make([]string, 0)
+	for _, pkg := range buy.Packages {
+		hasServiceableCreative := false
+		rejectedAssignments := make([]adcp.CreativeAssignment, 0, len(pkg.CreativeAssignments))
+		for _, assignment := range pkg.CreativeAssignments {
+			creative, ok := b.creatives[assignment.CreativeID]
+			if !ok || creative.Status != "rejected" {
+				if ok && creative.Status == "approved" {
+					hasServiceableCreative = true
+				}
+				continue
+			}
+			rejectedAssignments = append(rejectedAssignments, assignment)
+		}
+		if hasServiceableCreative || len(rejectedAssignments) == 0 {
+			continue
+		}
+		for _, assignment := range rejectedAssignments {
+			creative := b.creatives[assignment.CreativeID]
+			entry := byCreative[assignment.CreativeID]
+			if entry == nil {
+				entry = &creativeImpairment{creative: creative}
+				byCreative[assignment.CreativeID] = entry
+				order = append(order, assignment.CreativeID)
+			}
+			entry.packages = append(entry.packages, pkg.PackageID)
+		}
+	}
+
+	impairments := make([]adcp.Impairment, 0, len(order))
+	for _, creativeID := range order {
+		entry := byCreative[creativeID]
+		reason := entry.creative.RejectionReason
+		if reason == "" {
+			reason = "Creative rejected."
+		}
+		observedAt := entry.creative.StatusUpdatedAt
+		if observedAt == "" {
+			observedAt = time.Now().UTC().Format(time.RFC3339)
+		}
+		impairments = append(impairments, adcp.Impairment{
+			ImpairmentID: fmt.Sprintf("impairment-creative-%s-%d", creativeID, entry.creative.ImpairmentSeq),
+			ResourceType: "creative",
+			ResourceID:   creativeID,
+			PackageIDs:   entry.packages,
+			Transition: adcp.ImpairmentTransition{
+				From: entry.creative.PreviousStatus,
+				To:   string(adcp.ImpairmentOfflineStateRejected),
+			},
+			ReasonCode:  string(adcp.ImpairmentReasonCodeContentRejected),
+			Reason:      reason,
+			ObservedAt:  observedAt,
+			Remediation: "Assign an approved replacement creative.",
+		})
+	}
+	return impairments
 }
 
 func validActions(status string) []string {
@@ -762,6 +1227,33 @@ func errorResult(code, message string, context any) (*mcp.CallToolResult, any, e
 	result, outAny, err := adcp.Result(out, message)
 	result.IsError = true
 	return result, outAny, err
+}
+
+func actionNotAllowedResult(action adcp.MediaBuyValidAction, reason, recovery string, available []adcp.MediaBuyAvailableAction, context any) (*mcp.CallToolResult, any, error, bool) {
+	message := "Action is not currently allowed."
+	details := map[string]any{
+		"attempted_action":            string(action),
+		"reason":                      reason,
+		"currently_available_actions": available,
+	}
+	out := map[string]any{
+		"adcp_error": map[string]any{
+			"code":     "ACTION_NOT_ALLOWED",
+			"message":  message,
+			"recovery": recovery,
+			"details":  details,
+		},
+		"errors": []map[string]any{{
+			"code":     "ACTION_NOT_ALLOWED",
+			"message":  message,
+			"recovery": recovery,
+			"details":  details,
+		}},
+		"context": context,
+	}
+	result, outAny, err := adcp.Result(out, message)
+	result.IsError = true
+	return result, outAny, err, true
 }
 
 func main() {
@@ -842,7 +1334,8 @@ func main() {
 				for _, product := range b.products {
 					products = append(products, *product)
 				}
-				data := &adcp.ProductsData{Products: products}
+				sortProducts(products, input.Brief)
+				data := &adcp.ProductsData{Products: products, CacheScope: "public"}
 				if input.BuyingMode == "refine" && len(input.Refine) > 0 {
 					applied := make([]adcp.GetProductsRefinementAppliedItem, 0, len(input.Refine))
 					for _, ref := range input.Refine {
@@ -854,7 +1347,7 @@ func main() {
 						}
 						applied = append(applied, item)
 					}
-					return &adcp.ProductsData{Products: products, RefinementApplied: applied}, nil
+					return &adcp.ProductsData{Products: products, RefinementApplied: applied, CacheScope: "public"}, nil
 				}
 				return data, nil
 			},
@@ -869,14 +1362,14 @@ func main() {
 					for _, id := range input.MediaBuyIDs {
 						if buy, ok := b.mediaBuys[id]; ok {
 							item := *buy
-							decorateMediaBuy(&item)
+							b.decorateMediaBuySnapshot(&item)
 							buys = append(buys, item)
 						}
 					}
 				} else {
 					for _, buy := range b.mediaBuys {
 						item := *buy
-						decorateMediaBuy(&item)
+						b.decorateMediaBuySnapshot(&item)
 						buys = append(buys, item)
 					}
 				}

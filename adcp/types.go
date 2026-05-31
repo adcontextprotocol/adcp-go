@@ -512,10 +512,14 @@ type GovernanceAgent struct {
 }
 
 type ProductsData struct {
-	Products          []Product                          `json:"products"`
-	RefinementApplied []GetProductsRefinementAppliedItem `json:"refinement_applied,omitempty"`
-	Sandbox           bool                               `json:"sandbox,omitempty"`
-	Context           any                                `json:"context,omitempty"`
+	Products             []Product                          `json:"products"`
+	RefinementApplied    []GetProductsRefinementAppliedItem `json:"refinement_applied,omitempty"`
+	WholesaleFeedVersion string                             `json:"wholesale_feed_version,omitempty"`
+	PricingVersion       string                             `json:"pricing_version,omitempty"`
+	CacheScope           string                             `json:"cache_scope,omitempty"`
+	Unchanged            *bool                              `json:"unchanged,omitempty"`
+	Sandbox              bool                               `json:"sandbox,omitempty"`
+	Context              any                                `json:"context,omitempty"`
 }
 
 // PricingOption is the flattened union of all variants in pricing-option.json.
@@ -971,24 +975,48 @@ type MediaBuyListItem struct {
 
 // MediaBuyData is one item in a get_media_buys response.
 type MediaBuyData struct {
-	MediaBuyID       string                 `json:"media_buy_id"`
-	Account          *Account               `json:"account,omitempty"`
-	Status           string                 `json:"status"`
-	Currency         string                 `json:"currency"`
-	TotalBudget      float64                `json:"total_budget"`
-	StartTime        string                 `json:"start_time,omitempty"`
-	EndTime          string                 `json:"end_time,omitempty"`
-	InvoiceRecipient *BusinessEntity        `json:"invoice_recipient,omitempty"`
-	ConfirmedAt      string                 `json:"confirmed_at,omitempty"`
-	Cancellation     any                    `json:"cancellation,omitempty"`
-	CreativeDeadline string                 `json:"creative_deadline,omitempty"`
-	Revision         int                    `json:"revision,omitempty"`
-	CreatedAt        string                 `json:"created_at,omitempty"`
-	UpdatedAt        string                 `json:"updated_at,omitempty"`
-	ValidActions     []string               `json:"valid_actions,omitempty"`
-	History          []MediaBuyHistoryEntry `json:"history,omitempty"`
-	Packages         []PackageStatus        `json:"packages"`
-	Ext              any                    `json:"ext,omitempty"`
+	MediaBuyID       string                    `json:"media_buy_id"`
+	Account          *Account                  `json:"account,omitempty"`
+	Status           string                    `json:"status"`
+	Health           string                    `json:"health,omitempty"`
+	Impairments      []Impairment              `json:"impairments,omitempty"`
+	AvailableActions []MediaBuyAvailableAction `json:"available_actions,omitempty"`
+	Currency         string                    `json:"currency"`
+	TotalBudget      float64                   `json:"total_budget"`
+	StartTime        string                    `json:"start_time,omitempty"`
+	EndTime          string                    `json:"end_time,omitempty"`
+	InvoiceRecipient *BusinessEntity           `json:"invoice_recipient,omitempty"`
+	ConfirmedAt      string                    `json:"confirmed_at,omitempty"`
+	Cancellation     any                       `json:"cancellation,omitempty"`
+	CreativeDeadline string                    `json:"creative_deadline,omitempty"`
+	Revision         int                       `json:"revision,omitempty"`
+	CreatedAt        string                    `json:"created_at,omitempty"`
+	UpdatedAt        string                    `json:"updated_at,omitempty"`
+	ValidActions     []string                  `json:"valid_actions,omitempty"`
+	History          []MediaBuyHistoryEntry    `json:"history,omitempty"`
+	Packages         []PackageStatus           `json:"packages"`
+	Context          any                       `json:"context,omitempty"`
+	Ext              any                       `json:"ext,omitempty"`
+}
+
+// ImpairmentTransition records the resource status change that opened an
+// impairment.
+type ImpairmentTransition struct {
+	From string `json:"from,omitempty"`
+	To   string `json:"to"`
+}
+
+// Impairment is an open upstream dependency state that affects a media buy.
+type Impairment struct {
+	ImpairmentID string               `json:"impairment_id"`
+	ResourceType string               `json:"resource_type"`
+	ResourceID   string               `json:"resource_id"`
+	PackageIDs   []string             `json:"package_ids"`
+	Transition   ImpairmentTransition `json:"transition"`
+	ReasonCode   string               `json:"reason_code"`
+	Reason       string               `json:"reason,omitempty"`
+	ObservedAt   string               `json:"observed_at"`
+	Remediation  string               `json:"remediation,omitempty"`
 }
 
 // MarshalJSON preserves an explicitly empty valid_actions array. In the protocol,
@@ -1070,6 +1098,9 @@ func (p PackageStatus) MarshalJSON() ([]byte, error) {
 	}
 	if p.TargetingOverlay != nil {
 		out["targeting_overlay"] = p.TargetingOverlay
+	}
+	if p.Context != nil {
+		out["context"] = p.Context
 	}
 	if p.Ext != nil {
 		out["ext"] = p.Ext

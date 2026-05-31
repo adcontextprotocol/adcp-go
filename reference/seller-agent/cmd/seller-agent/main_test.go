@@ -33,6 +33,12 @@ func mustCreateBuy(t *testing.T, b *backend, withCreatives bool) *adcp.MediaBuyD
 	return buy
 }
 
+func structuredProduct(id string, actions ...adcp.ProductAllowedAction) *adcp.Product {
+	product := newProduct(id, id, "structured action test product", "guaranteed", []string{"display"}, []adcp.FormatRef{{AgentURL: "http://test", ID: "display_300x250"}}, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", Currency: "USD", FixedPrice: adcp.Ptr(10.0)}})
+	product.AllowedActions = actions
+	return &product
+}
+
 // --- create_media_buy ---
 
 func TestCreateMediaBuy_WithoutCreatives(t *testing.T) {
@@ -342,6 +348,187 @@ func TestUpdateMediaBuy_UnsupportedActionsReturnInvalidAction(t *testing.T) {
 				t.Fatalf("want INVALID_ACTION, got %q", got)
 			}
 		})
+	}
+}
+
+func TestUpdateMediaBuy_RefreshesAvailableActionsAndTotalBudget(t *testing.T) {
+	b := newTestBackend()
+	b.products["structured-budget"] = structuredProduct("structured-budget",
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionDecreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}, AllowedStatuses: []adcp.MediaBuyStatus{adcp.MediaBuyStatusActive}},
+	)
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		Packages: []adcp.PackageInput{{
+			ProductID:            "structured-budget",
+			PricingOptionID:      "default",
+			Budget:               1000,
+			CreativeAssignments:  []adcp.CreativeAssignment{{CreativeID: "cr-budget"}},
+			AgencyEstimateNumber: "estimate-1",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+	if buy.Status != string(adcp.MediaBuyStatusActive) {
+		t.Fatalf("pre-condition: want active buy, got %s", buy.Status)
+	}
+
+	newBudget := 1500.0
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{
+		MediaBuyID: buy.MediaBuyID,
+		Packages: []adcp.PackageUpdate{{
+			PackageID: buy.Packages[0].PackageID,
+			Budget:    &newBudget,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("updateMediaBuy: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("budget increase returned error result: %s", resultErrorCode(t, result))
+	}
+	updated := b.mediaBuys[buy.MediaBuyID]
+	if updated.TotalBudget != newBudget {
+		t.Fatalf("TotalBudget = %v, want %v", updated.TotalBudget, newBudget)
+	}
+	if updated.Packages[0].Budget != newBudget {
+		t.Fatalf("package budget = %v, want %v", updated.Packages[0].Budget, newBudget)
+	}
+	if len(updated.AvailableActions) != 2 {
+		t.Fatalf("available actions were not refreshed for active status: %#v", updated.AvailableActions)
+	}
+}
+
+func TestUpdateMediaBuy_AvailableActionsResolveTargetPackageRules(t *testing.T) {
+	b := newTestBackend()
+	b.products["budget-self-serve"] = structuredProduct("budget-self-serve",
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
+	)
+	b.products["budget-approval"] = structuredProduct("budget-approval",
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval}},
+	)
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		Packages: []adcp.PackageInput{
+			{ProductID: "budget-self-serve", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
+			{ProductID: "budget-approval", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+
+	newBudget := 1250.0
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{
+		MediaBuyID: buy.MediaBuyID,
+		Packages: []adcp.PackageUpdate{{
+			PackageID: buy.Packages[1].PackageID,
+			Budget:    &newBudget,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("updateMediaBuy: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected approval-routed package budget increase to be rejected")
+	}
+	if got := resultErrorCode(t, result); got != "ACTION_NOT_ALLOWED" {
+		t.Fatalf("want ACTION_NOT_ALLOWED, got %q", got)
+	}
+}
+
+func TestUpdateMediaBuy_AvailableActionsAllowSecondSelfServeModeAndResume(t *testing.T) {
+	b := newTestBackend()
+	b.products["pause-resume"] = structuredProduct("pause-resume",
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionPause, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval, adcp.MediaBuyActionModeSelfServe}},
+		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionResume, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeConditionalSelfServe}},
+	)
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		Packages: []adcp.PackageInput{{ProductID: "pause-resume", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-pause"}}}},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+
+	paused := true
+	result, _, err := b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Paused: &paused})
+	if err != nil {
+		t.Fatalf("pause update: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("pause should honor self_serve even when it is not first mode: %s", resultErrorCode(t, result))
+	}
+	if b.mediaBuys[buy.MediaBuyID].AvailableActions[0].Action != adcp.MediaBuyValidActionResume {
+		t.Fatalf("paused buy should refresh to resume action, got %#v", b.mediaBuys[buy.MediaBuyID].AvailableActions)
+	}
+
+	paused = false
+	result, _, err = b.updateMediaBuy(adcp.UpdateMediaBuyRequest{MediaBuyID: buy.MediaBuyID, Paused: &paused})
+	if err != nil {
+		t.Fatalf("resume update: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("resume should allow conditional_self_serve: %s", resultErrorCode(t, result))
+	}
+	if b.mediaBuys[buy.MediaBuyID].Status != string(adcp.MediaBuyStatusActive) {
+		t.Fatalf("want resumed active status, got %s", b.mediaBuys[buy.MediaBuyID].Status)
+	}
+}
+
+func TestImpairmentsRequireMaterialCreativeImpactAndNewReopenID(t *testing.T) {
+	b := newTestBackend()
+	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
+		Packages: []adcp.PackageInput{{
+			ProductID:       "premium-display",
+			PricingOptionID: "pd-cpm-15",
+			Budget:          1000,
+			CreativeAssignments: []adcp.CreativeAssignment{
+				{CreativeID: "cr-primary"},
+				{CreativeID: "cr-backup"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("createMediaBuy: %v", err)
+	}
+	_, _ = b.syncCreatives(&adcp.SyncCreativesRequest{Creatives: []adcp.CreativeInput{
+		{CreativeID: "cr-primary", Name: "Primary"},
+		{CreativeID: "cr-backup", Name: "Backup"},
+	}})
+	if _, err := b.forceCreativeStatus("cr-primary", "rejected", "primary rejected"); err != nil {
+		t.Fatalf("forceCreativeStatus rejected: %v", err)
+	}
+	snapshot := *buy
+	b.decorateMediaBuySnapshot(&snapshot)
+	if len(snapshot.Impairments) != 0 {
+		t.Fatalf("backup creative keeps package serviceable; got impairments %#v", snapshot.Impairments)
+	}
+
+	buy.Packages[0].CreativeAssignments = []adcp.CreativeAssignment{{CreativeID: "cr-primary"}}
+	snapshot = *buy
+	b.decorateMediaBuySnapshot(&snapshot)
+	if len(snapshot.Impairments) != 1 {
+		t.Fatalf("want one impairment when only assigned creative is rejected, got %#v", snapshot.Impairments)
+	}
+	firstID := snapshot.Impairments[0].ImpairmentID
+
+	if _, err := b.forceCreativeStatus("cr-primary", "approved", ""); err != nil {
+		t.Fatalf("forceCreativeStatus approved: %v", err)
+	}
+	snapshot = *buy
+	b.decorateMediaBuySnapshot(&snapshot)
+	if len(snapshot.Impairments) != 0 {
+		t.Fatalf("approved creative should close impairment, got %#v", snapshot.Impairments)
+	}
+	if _, err := b.forceCreativeStatus("cr-primary", "rejected", "reopened rejection"); err != nil {
+		t.Fatalf("forceCreativeStatus rejected again: %v", err)
+	}
+	snapshot = *buy
+	b.decorateMediaBuySnapshot(&snapshot)
+	if len(snapshot.Impairments) != 1 {
+		t.Fatalf("want reopened impairment, got %#v", snapshot.Impairments)
+	}
+	if snapshot.Impairments[0].ImpairmentID == firstID {
+		t.Fatalf("reopened impairment reused id %q", firstID)
 	}
 }
 
