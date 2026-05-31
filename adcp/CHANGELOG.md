@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.0.0...adcp-v2.0.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **reference-seller:** pass 8.1 storyboard gate ([82c9187](https://github.com/adcontextprotocol/adcp-go/commit/82c918704452049b1223563bc2fa76b58757798e))
+
 ## [2.0.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v1.0.0...adcp-v2.0.0) (2026-05-30)
 
 
