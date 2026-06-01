@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 
 func TestAgentIndex_CRUD(t *testing.T) {
 	idx := NewAgentIndex()
+	ctx := context.Background()
 
 	p := &AgentProfile{
 		AgentURL:      "https://agent.example.com",
@@ -19,8 +21,7 @@ func TestAgentIndex_CRUD(t *testing.T) {
 		HasTMP:        true,
 	}
 
-	idx.Put(p)
-
+	require.NoError(t, idx.Put(ctx, p))
 	require.Equal(t, 1, idx.Count(), "count after put")
 
 	got, ok := idx.Get("https://agent.example.com")
@@ -33,22 +34,28 @@ func TestAgentIndex_CRUD(t *testing.T) {
 		Channels:      []string{"ctv", "display"},
 		PropertyCount: 100,
 	}
-	idx.Put(p2)
+	require.NoError(t, idx.Put(ctx, p2))
 	assert.Equal(t, 1, idx.Count(), "count after update")
 	got, _ = idx.Get("https://agent.example.com")
 	assert.Equal(t, 100, got.PropertyCount, "property_count after update")
 
 	// Remove
-	assert.True(t, idx.Remove("https://agent.example.com"), "Remove returned false for existing agent")
-	assert.False(t, idx.Remove("https://agent.example.com"), "Remove returned true for already-removed agent")
+	_, existed := idx.Get("https://agent.example.com")
+	assert.True(t, existed, "should exist before remove")
+	require.NoError(t, idx.Remove(ctx, "https://agent.example.com"))
+	_, existed = idx.Get("https://agent.example.com")
+	assert.False(t, existed, "should not exist after remove")
+	// Idempotent: removing again is a no-op error-free.
+	require.NoError(t, idx.Remove(ctx, "https://agent.example.com"))
 	assert.Equal(t, 0, idx.Count(), "count after remove")
 }
 
 func TestAgentIndex_List(t *testing.T) {
 	idx := NewAgentIndex()
+	ctx := context.Background()
 
-	idx.Put(&AgentProfile{AgentURL: "https://a.com"})
-	idx.Put(&AgentProfile{AgentURL: "https://b.com"})
+	require.NoError(t, idx.Put(ctx, &AgentProfile{AgentURL: "https://a.com"}))
+	require.NoError(t, idx.Put(ctx, &AgentProfile{AgentURL: "https://b.com"}))
 
 	list := idx.List()
 	require.Len(t, list, 2)
@@ -62,17 +69,18 @@ func TestAgentIndex_GetMissing(t *testing.T) {
 
 func TestAgentIndex_Concurrent(t *testing.T) {
 	idx := NewAgentIndex()
+	ctx := context.Background()
 	var wg sync.WaitGroup
 
 	for i := range 100 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			idx.Put(&AgentProfile{AgentURL: "https://agent.com"})
+			_ = idx.Put(ctx, &AgentProfile{AgentURL: "https://agent.com"})
 			idx.Get("https://agent.com")
 			idx.List()
 			if n%3 == 0 {
-				idx.Remove("https://agent.com")
+				_ = idx.Remove(ctx, "https://agent.com")
 			}
 		}(i)
 	}

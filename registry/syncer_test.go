@@ -315,7 +315,7 @@ func TestSyncer_CursorExpiredClearsAndRebootstraps(t *testing.T) {
 
 	agents := NewAgentIndex()
 	// Pre-populate with stale data that should be cleared on re-bootstrap
-	agents.Put(&AgentProfile{AgentURL: "https://stale.com"})
+	_ = agents.Put(context.Background(), &AgentProfile{AgentURL: "https://stale.com"})
 
 	store := &MemoryCursorStore{cursor: "old-expired-cursor"}
 

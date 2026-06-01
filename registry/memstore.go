@@ -2,13 +2,14 @@ package registry
 
 import (
 	"context"
+	"strings"
 	"sync"
 )
 
 // MemoryStore is an in-memory implementation of Store. It is useful in
-// tests and as a reference for the contract that real backends must
-// satisfy. Not intended for production: a process restart loses all
-// state, which defeats the purpose of attaching a Store.
+// tests and as a reference for the contract real backends must satisfy.
+// Not intended for production: a process restart loses all state, which
+// defeats the purpose of attaching a Store.
 type MemoryStore struct {
 	mu         sync.Mutex
 	cursor     string
@@ -17,6 +18,8 @@ type MemoryStore struct {
 	// auth keyed by agent_url → "publisher_domain|authorization_type" → entry
 	auth map[string]map[string]AuthorizationEntry
 }
+
+var _ Store = (*MemoryStore)(nil)
 
 // NewMemoryStore creates an empty MemoryStore.
 func NewMemoryStore() *MemoryStore {
@@ -72,6 +75,9 @@ func (m *MemoryStore) LoadProperties(_ context.Context) ([]Property, error) {
 }
 
 func (m *MemoryStore) PutAuth(_ context.Context, e AuthorizationEntry) error {
+	if err := ValidatePublisherDomain(e.PublisherDomain); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	byKey, ok := m.auth[e.AgentURL]
@@ -84,6 +90,9 @@ func (m *MemoryStore) PutAuth(_ context.Context, e AuthorizationEntry) error {
 }
 
 func (m *MemoryStore) RemoveAuthEntry(_ context.Context, agentURL, publisherDomain string) error {
+	if err := ValidatePublisherDomain(publisherDomain); err != nil {
+		return err
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	byKey, ok := m.auth[agentURL]
@@ -92,7 +101,7 @@ func (m *MemoryStore) RemoveAuthEntry(_ context.Context, agentURL, publisherDoma
 	}
 	prefix := publisherDomain + "|"
 	for k := range byKey {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
+		if strings.HasPrefix(k, prefix) {
 			delete(byKey, k)
 		}
 	}
@@ -119,7 +128,7 @@ func (m *MemoryStore) ClearAuth(_ context.Context) error {
 func (m *MemoryStore) LoadAuth(_ context.Context) ([]AuthorizationEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []AuthorizationEntry
+	out := make([]AuthorizationEntry, 0)
 	for _, byKey := range m.auth {
 		for _, e := range byKey {
 			out = append(out, cloneAuthEntry(e))
@@ -161,9 +170,8 @@ func (m *MemoryStore) LoadAgents(_ context.Context) ([]AgentProfile, error) {
 
 // authFieldKey is the canonical encoding used by every Store backend so
 // the (publisher_domain, authorization_type) tuple round-trips through
-// HSET/HDEL/HSCAN field names. Both components are restricted to ASCII
-// in practice (DNS names; a fixed set of enum-like strings) so the `|`
-// separator is unambiguous.
+// HSET/HDEL/HSCAN field names. publisher_domain is validated by
+// ValidatePublisherDomain to ensure '|' is unambiguous as a separator.
 func authFieldKey(publisherDomain, authorizationType string) string {
 	return publisherDomain + "|" + authorizationType
 }

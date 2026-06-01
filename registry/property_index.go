@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // Property represents a property in the registry catalog.
@@ -20,14 +21,21 @@ type Property struct {
 // writes from the sync loop.
 //
 // When an optional Store is attached via WithStore, every mutation
-// dual-writes to that store. Persistence failures are logged but never
-// block the in-memory update — the feed cursor must keep advancing.
+// dual-writes to that store. The in-memory map is always updated; if
+// the persistent write fails, the mutator returns the error so the
+// caller (Syncer) can refuse to advance the feed cursor.
+//
+// Quiescence invariant: callers must not mutate the index between
+// WithStore and the first Hydrate / Syncer.Run. Doing so produces
+// undefined state because Hydrate's loader does not coordinate with
+// in-flight Puts.
 type PropertyIndex struct {
 	mu       sync.RWMutex
 	byID     map[string]*Property
 	byRID    map[uint64]*Property
 	byDomain map[string]string // domain → property_id
 	store    Store
+	hydrated atomic.Bool
 	log      *slog.Logger
 }
 
@@ -41,17 +49,18 @@ func NewPropertyIndex() *PropertyIndex {
 	}
 }
 
-// WithStore enables dual-write persistence and hydration. Pass nil to
-// detach. Returns the receiver for chaining.
+// WithStore enables dual-write persistence and hydration. Must be
+// called once before any mutation; concurrent calls with mutators
+// produce undefined state.
 func (idx *PropertyIndex) WithStore(s Store) *PropertyIndex {
-	idx.mu.Lock()
-	defer idx.mu.Unlock()
 	idx.store = s
 	return idx
 }
 
-// Put inserts or updates a property, maintaining all indexes.
-func (idx *PropertyIndex) Put(p *Property) {
+// Put inserts or updates a property, maintaining all indexes. Returns
+// an error only when the persistent store rejected the write; the
+// in-memory update always succeeds.
+func (idx *PropertyIndex) Put(ctx context.Context, p *Property) error {
 	idx.mu.Lock()
 	store := idx.store
 	if existing, ok := idx.byID[p.PropertyID]; ok {
@@ -68,40 +77,41 @@ func (idx *PropertyIndex) Put(p *Property) {
 	}
 	idx.mu.Unlock()
 
-	if store != nil {
-		if err := store.PutProperty(context.Background(), p); err != nil {
-			idx.log.Error("persist PutProperty failed", "property_id", p.PropertyID, "error", err)
-		}
+	if store == nil {
+		return nil
 	}
+	if !idx.hydrated.Load() {
+		idx.log.Warn("Put before Hydrate; persisted state may be inconsistent",
+			"property_id", p.PropertyID)
+	}
+	if err := store.PutProperty(ctx, cp); err != nil {
+		idx.log.Error("persist PutProperty failed", "property_id", p.PropertyID, "error", err)
+		return err
+	}
+	return nil
 }
 
-// Remove deletes a property from all indexes. Returns true if it existed.
-func (idx *PropertyIndex) Remove(propertyID string) bool {
+// Remove deletes a property from all indexes.
+func (idx *PropertyIndex) Remove(ctx context.Context, propertyID string) error {
 	idx.mu.Lock()
 	store := idx.store
-	existing, ok := idx.byID[propertyID]
-	if !ok {
-		idx.mu.Unlock()
-		if store != nil {
-			if err := store.RemoveProperty(context.Background(), propertyID); err != nil {
-				idx.log.Error("persist RemoveProperty failed", "property_id", propertyID, "error", err)
-			}
+	if existing, ok := idx.byID[propertyID]; ok {
+		delete(idx.byID, existing.PropertyID)
+		delete(idx.byRID, existing.PropertyRID)
+		if existing.Domain != "" {
+			delete(idx.byDomain, existing.Domain)
 		}
-		return false
-	}
-	delete(idx.byID, existing.PropertyID)
-	delete(idx.byRID, existing.PropertyRID)
-	if existing.Domain != "" {
-		delete(idx.byDomain, existing.Domain)
 	}
 	idx.mu.Unlock()
 
-	if store != nil {
-		if err := store.RemoveProperty(context.Background(), propertyID); err != nil {
-			idx.log.Error("persist RemoveProperty failed", "property_id", propertyID, "error", err)
-		}
+	if store == nil {
+		return nil
 	}
-	return true
+	if err := store.RemoveProperty(ctx, propertyID); err != nil {
+		idx.log.Error("persist RemoveProperty failed", "property_id", propertyID, "error", err)
+		return err
+	}
+	return nil
 }
 
 // LookupByID returns a copy of a property by its string ID.
@@ -146,8 +156,9 @@ func (idx *PropertyIndex) PropertyRID(propertyID string) uint64 {
 }
 
 // Clear removes all entries from the index. When a Store is attached,
-// the corresponding namespace is also wiped.
-func (idx *PropertyIndex) Clear() {
+// the corresponding namespace is also wiped. Memory is cleared
+// regardless of the persistent store result.
+func (idx *PropertyIndex) Clear(ctx context.Context) error {
 	idx.mu.Lock()
 	store := idx.store
 	idx.byID = make(map[string]*Property)
@@ -155,11 +166,14 @@ func (idx *PropertyIndex) Clear() {
 	idx.byDomain = make(map[string]string)
 	idx.mu.Unlock()
 
-	if store != nil {
-		if err := store.ClearProperties(context.Background()); err != nil {
-			idx.log.Error("persist ClearProperties failed", "error", err)
-		}
+	if store == nil {
+		return nil
 	}
+	if err := store.ClearProperties(ctx); err != nil {
+		idx.log.Error("persist ClearProperties failed", "error", err)
+		return err
+	}
+	return nil
 }
 
 // Count returns the number of properties in the index.
@@ -169,18 +183,22 @@ func (idx *PropertyIndex) Count() int {
 	return len(idx.byID)
 }
 
-// Hydrate loads persisted properties into the in-memory maps. No-op when
-// no Store is attached. Existing in-memory entries are replaced; entries
-// not present in the store are left untouched (full reset uses Clear).
+// Hydrate loads persisted properties into the in-memory maps. No-op
+// when no Store is attached, and idempotent: calling twice is a no-op
+// the second time. Hydration runs under the write lock so it does not
+// race with feed-loop applies — but quiescence is the caller's
+// responsibility for any non-feed-loop writer.
 func (idx *PropertyIndex) Hydrate(ctx context.Context) error {
-	idx.mu.RLock()
-	store := idx.store
-	idx.mu.RUnlock()
-	if store == nil {
+	if idx.store == nil {
+		idx.hydrated.Store(true)
 		return nil
 	}
-	props, err := store.LoadProperties(ctx)
+	if !idx.hydrated.CompareAndSwap(false, true) {
+		return nil
+	}
+	props, err := idx.store.LoadProperties(ctx)
 	if err != nil {
+		idx.hydrated.Store(false)
 		return err
 	}
 	idx.mu.Lock()

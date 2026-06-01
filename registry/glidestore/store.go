@@ -6,6 +6,10 @@
 // Only a single standalone Valkey endpoint is supported — the registry
 // dataset is small relative to targeting/audience workloads and clusters
 // add complexity without a clear benefit.
+//
+// The caller owns the GLIDE client and is responsible for authentication
+// (ACL or password), TLS, connection pooling, and timeouts. This package
+// adds no second configuration surface.
 package glidestore
 
 import (
@@ -13,7 +17,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 
 	glide "github.com/valkey-io/valkey-glide/go/v2"
 	"github.com/valkey-io/valkey-glide/go/v2/models"
@@ -26,8 +32,13 @@ var _ registry.Store = (*Store)(nil)
 
 // DefaultKeyPrefix is the namespace prefix prepended to every key Store
 // touches. Override with Options.KeyPrefix when sharing a Valkey
-// instance between environments.
+// instance between environments — two stores using the default prefix
+// against the same Valkey will collide silently.
 const DefaultKeyPrefix = "adcp:registry"
+
+// defaultPrefixWarned ensures the default-prefix warning fires once per
+// process even if many Stores are constructed.
+var defaultPrefixWarned sync.Once
 
 // Options configures a Store.
 type Options struct {
@@ -52,6 +63,12 @@ func New(client *glide.Client, opts Options) *Store {
 	prefix := opts.KeyPrefix
 	if prefix == "" {
 		prefix = DefaultKeyPrefix
+		defaultPrefixWarned.Do(func() {
+			slog.Default().Warn(
+				"glidestore: using default KeyPrefix; two stores on the same Valkey will collide silently",
+				"key_prefix", DefaultKeyPrefix,
+			)
+		})
 	}
 	count := opts.ScanCount
 	if count == 0 {
@@ -65,27 +82,20 @@ func New(client *glide.Client, opts Options) *Store {
 func (s *Store) cursorKey() string     { return s.keyPrefix + ":cursor" }
 func (s *Store) propertiesKey() string { return s.keyPrefix + ":properties" }
 func (s *Store) agentsKey() string     { return s.keyPrefix + ":agents" }
+
+// authKey embeds agentURL directly. agentURL must not influence any
+// SCAN MATCH pattern (it does not — patterns are static) since glob
+// metacharacters like '*' '?' '[' would otherwise be interpreted. Del
+// and HGetAll on this key take it as an exact string so URLs are safe.
 func (s *Store) authKey(agentURL string) string {
 	return s.keyPrefix + ":auth:" + agentURL
 }
 func (s *Store) authMatchPattern() string { return s.keyPrefix + ":auth:*" }
 
-// authField is the field name within an auth hash. The publisher domain
-// and authorization type round-trip through HSET/HSCAN field names, so
-// the encoding must be unambiguous and reversible.
+// authField is the field name within an auth hash. registry.ValidatePublisherDomain
+// guarantees publisher_domain contains no '|' so the separator is unambiguous.
 func authField(publisherDomain, authorizationType string) string {
 	return publisherDomain + "|" + authorizationType
-}
-
-// parseAuthField recovers the (publisherDomain, authorizationType) pair
-// from a hash field name. Returns ok=false on malformed input rather
-// than panicking so a stray key in the namespace can't crash hydration.
-func parseAuthField(field string) (publisherDomain, authorizationType string, ok bool) {
-	i := strings.IndexByte(field, '|')
-	if i < 0 {
-		return "", "", false
-	}
-	return field[:i], field[i+1:], true
 }
 
 // --- cursor ---
@@ -205,8 +215,11 @@ func (s *Store) LoadAgents(ctx context.Context) ([]registry.AgentProfile, error)
 // --- authorizations ---
 
 func (s *Store) PutAuth(ctx context.Context, e registry.AuthorizationEntry) error {
-	if e.AgentURL == "" || e.PublisherDomain == "" || e.AuthorizationType == "" {
-		return errors.New("glidestore: PutAuth requires agent_url, publisher_domain, authorization_type")
+	if e.AgentURL == "" || e.AuthorizationType == "" {
+		return errors.New("glidestore: PutAuth requires agent_url and authorization_type")
+	}
+	if err := registry.ValidatePublisherDomain(e.PublisherDomain); err != nil {
+		return err
 	}
 	blob, err := json.Marshal(e)
 	if err != nil {
@@ -218,13 +231,18 @@ func (s *Store) PutAuth(ctx context.Context, e registry.AuthorizationEntry) erro
 }
 
 func (s *Store) RemoveAuthEntry(ctx context.Context, agentURL, publisherDomain string) error {
-	if agentURL == "" || publisherDomain == "" {
+	if agentURL == "" {
 		return nil
 	}
+	if err := registry.ValidatePublisherDomain(publisherDomain); err != nil {
+		return err
+	}
 	key := s.authKey(agentURL)
-	// Find every authorization_type field for this domain. The dataset
-	// per agent is small (≤4 auth types per domain in practice), so HKEYS
-	// is fine.
+	// HKEYS returns every (domain, type) pair for this agent. A
+	// heavily-authorized agent can have hundreds of pairs across many
+	// domains, but the per-agent fan-out is small relative to the
+	// global namespace and Valkey handles HKEYS on a single hash without
+	// blocking other slots.
 	fields, err := s.client.HKeys(ctx, key)
 	if err != nil {
 		return err
@@ -251,6 +269,10 @@ func (s *Store) RemoveAuthAgent(ctx context.Context, agentURL string) error {
 	return err
 }
 
+// ClearAuth wipes the auth namespace via SCAN+DEL. This is not atomic:
+// a concurrent process applying feed events mid-Clear can leave
+// partially-cleared state. The Syncer's cursor-expired path is the only
+// expected caller, and it serializes Clear against the feed loop.
 func (s *Store) ClearAuth(ctx context.Context) error {
 	return s.scanKeys(ctx, s.authMatchPattern(), func(batch []string) error {
 		if len(batch) == 0 {
@@ -317,7 +339,6 @@ func (s *Store) hscanHash(ctx context.Context, key string, onPair func(field, va
 		if err != nil {
 			return err
 		}
-		// HSCAN returns field/value pairs interleaved in Data.
 		if len(res.Data)%2 != 0 {
 			return fmt.Errorf("glidestore: HSCAN %s returned odd-length data (%d)", key, len(res.Data))
 		}

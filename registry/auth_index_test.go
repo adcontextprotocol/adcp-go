@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"context"
 	"sort"
 	"sync"
 	"testing"
@@ -12,7 +13,7 @@ import (
 func TestAuthIndex_AddAndCheck(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{
+	_ = idx.Add(context.Background(), AuthorizationEntry{
 		AgentURL:          "https://agent1.example.com",
 		PublisherDomain:   "pub.com",
 		AuthorizationType: "publisher_properties",
@@ -27,13 +28,13 @@ func TestAuthIndex_AddAndCheck(t *testing.T) {
 func TestAuthIndex_MultipleEntries(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{
+	_ = idx.Add(context.Background(), AuthorizationEntry{
 		AgentURL:          "https://agent1.example.com",
 		PublisherDomain:   "pub.com",
 		AuthorizationType: "property_ids",
 		PropertyIDs:       []string{"prop-a"},
 	})
-	idx.Add(AuthorizationEntry{
+	_ = idx.Add(context.Background(), AuthorizationEntry{
 		AgentURL:          "https://agent1.example.com",
 		PublisherDomain:   "pub.com",
 		AuthorizationType: "publisher_properties",
@@ -47,14 +48,14 @@ func TestAuthIndex_MultipleEntries(t *testing.T) {
 func TestAuthIndex_DeduplicatesByType(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{
+	_ = idx.Add(context.Background(), AuthorizationEntry{
 		AgentURL:          "https://agent1.example.com",
 		PublisherDomain:   "pub.com",
 		AuthorizationType: "property_ids",
 		PropertyIDs:       []string{"prop-a"},
 	})
 	// Same agent+domain+type: should replace, not append
-	idx.Add(AuthorizationEntry{
+	_ = idx.Add(context.Background(), AuthorizationEntry{
 		AgentURL:          "https://agent1.example.com",
 		PublisherDomain:   "pub.com",
 		AuthorizationType: "property_ids",
@@ -71,9 +72,9 @@ func TestAuthIndex_DeduplicatesByType(t *testing.T) {
 func TestAuthIndex_ReverseIndex(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent2.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "other.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent2.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "other.com", AuthorizationType: "publisher_properties"})
 
 	agents := idx.GetAuthorizedAgents("pub.com")
 	sort.Strings(agents)
@@ -91,10 +92,10 @@ func TestAuthIndex_ReverseIndex(t *testing.T) {
 func TestAuthIndex_RemoveEntry(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "other.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "other.com", AuthorizationType: "publisher_properties"})
 
-	idx.RemoveEntry("https://agent1.com", "pub.com")
+	_ = idx.RemoveEntry(context.Background(), "https://agent1.com", "pub.com")
 
 	assert.False(t, idx.Check("https://agent1.com", "pub.com"), "should no longer be authorized for pub.com")
 	assert.True(t, idx.Check("https://agent1.com", "other.com"), "should still be authorized for other.com")
@@ -104,11 +105,11 @@ func TestAuthIndex_RemoveEntry(t *testing.T) {
 func TestAuthIndex_RemoveAgent(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub1.com", AuthorizationType: "publisher_properties"})
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub2.com", AuthorizationType: "publisher_properties"})
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent2.com", PublisherDomain: "pub1.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub1.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub2.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent2.com", PublisherDomain: "pub1.com", AuthorizationType: "publisher_properties"})
 
-	idx.RemoveAgent("https://agent1.com")
+	_ = idx.RemoveAgent(context.Background(), "https://agent1.com")
 
 	assert.False(t, idx.Check("https://agent1.com", "pub1.com"), "agent1 should be fully removed")
 	assert.False(t, idx.Check("https://agent1.com", "pub2.com"), "agent1 should be fully removed")
@@ -126,7 +127,7 @@ func TestAuthIndex_RemoveAgent(t *testing.T) {
 func TestAuthIndex_GetEntries_ReturnsCopy(t *testing.T) {
 	idx := NewAuthIndex()
 
-	idx.Add(AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
+	_ = idx.Add(context.Background(), AuthorizationEntry{AgentURL: "https://agent1.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"})
 
 	entries := idx.GetEntries("https://agent1.com", "pub.com")
 	entries[0].AuthorizationType = "mutated"
@@ -144,7 +145,7 @@ func TestAuthIndex_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			idx.Add(AuthorizationEntry{
+			_ = idx.Add(context.Background(), AuthorizationEntry{
 				AgentURL:          "https://agent.com",
 				PublisherDomain:   "pub.com",
 				AuthorizationType: "publisher_properties",
@@ -152,7 +153,7 @@ func TestAuthIndex_Concurrent(t *testing.T) {
 			idx.Check("https://agent.com", "pub.com")
 			idx.GetAuthorizedAgents("pub.com")
 			if n%3 == 0 {
-				idx.RemoveEntry("https://agent.com", "pub.com")
+				_ = idx.RemoveEntry(context.Background(), "https://agent.com", "pub.com")
 			}
 		}(i)
 	}

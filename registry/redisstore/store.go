@@ -5,6 +5,10 @@
 //
 // Only a single standalone endpoint is supported — the registry dataset
 // is small and clusters add complexity without a clear benefit here.
+//
+// The caller owns the go-redis client and is responsible for
+// authentication, TLS, connection pooling, and timeouts. This package
+// adds no second configuration surface.
 package redisstore
 
 import (
@@ -12,7 +16,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/redis/go-redis/v9"
 
@@ -21,8 +27,12 @@ import (
 
 var _ registry.Store = (*Store)(nil)
 
-// DefaultKeyPrefix is the namespace prefix prepended to every key.
+// DefaultKeyPrefix is the namespace prefix prepended to every key. Two
+// stores using the default prefix against the same Valkey/Redis will
+// collide silently; set Options.KeyPrefix per environment.
 const DefaultKeyPrefix = "adcp:registry"
+
+var defaultPrefixWarned sync.Once
 
 // Options configures a Store.
 type Options struct {
@@ -47,6 +57,12 @@ func New(client redis.UniversalClient, opts Options) *Store {
 	prefix := opts.KeyPrefix
 	if prefix == "" {
 		prefix = DefaultKeyPrefix
+		defaultPrefixWarned.Do(func() {
+			slog.Default().Warn(
+				"redisstore: using default KeyPrefix; two stores on the same Valkey/Redis will collide silently",
+				"key_prefix", DefaultKeyPrefix,
+			)
+		})
 	}
 	count := opts.ScanCount
 	if count == 0 {
@@ -58,11 +74,18 @@ func New(client redis.UniversalClient, opts Options) *Store {
 func (s *Store) cursorKey() string     { return s.keyPrefix + ":cursor" }
 func (s *Store) propertiesKey() string { return s.keyPrefix + ":properties" }
 func (s *Store) agentsKey() string     { return s.keyPrefix + ":agents" }
+
+// authKey embeds agentURL directly. Exact-match commands (HSET/HDEL/Del/HSCAN)
+// treat it as a literal string, so URL characters do not affect routing.
+// SCAN MATCH patterns are static, so URL glob-metacharacters do not influence
+// them either.
 func (s *Store) authKey(agentURL string) string {
 	return s.keyPrefix + ":auth:" + agentURL
 }
 func (s *Store) authMatchPattern() string { return s.keyPrefix + ":auth:*" }
 
+// authField composes the hash field name. registry.ValidatePublisherDomain
+// guarantees publisher_domain contains no '|' so the separator is unambiguous.
 func authField(publisherDomain, authorizationType string) string {
 	return publisherDomain + "|" + authorizationType
 }
@@ -174,8 +197,11 @@ func (s *Store) LoadAgents(ctx context.Context) ([]registry.AgentProfile, error)
 // --- authorizations ---
 
 func (s *Store) PutAuth(ctx context.Context, e registry.AuthorizationEntry) error {
-	if e.AgentURL == "" || e.PublisherDomain == "" || e.AuthorizationType == "" {
-		return errors.New("redisstore: PutAuth requires agent_url, publisher_domain, authorization_type")
+	if e.AgentURL == "" || e.AuthorizationType == "" {
+		return errors.New("redisstore: PutAuth requires agent_url and authorization_type")
+	}
+	if err := registry.ValidatePublisherDomain(e.PublisherDomain); err != nil {
+		return err
 	}
 	blob, err := json.Marshal(e)
 	if err != nil {
@@ -186,8 +212,11 @@ func (s *Store) PutAuth(ctx context.Context, e registry.AuthorizationEntry) erro
 }
 
 func (s *Store) RemoveAuthEntry(ctx context.Context, agentURL, publisherDomain string) error {
-	if agentURL == "" || publisherDomain == "" {
+	if agentURL == "" {
 		return nil
+	}
+	if err := registry.ValidatePublisherDomain(publisherDomain); err != nil {
+		return err
 	}
 	key := s.authKey(agentURL)
 	fields, err := s.client.HKeys(ctx, key).Result()
@@ -214,6 +243,9 @@ func (s *Store) RemoveAuthAgent(ctx context.Context, agentURL string) error {
 	return s.client.Del(ctx, s.authKey(agentURL)).Err()
 }
 
+// ClearAuth wipes the auth namespace via SCAN+DEL. Not atomic; serialise
+// against the feed loop. The Syncer's cursor-expired path is the only
+// expected caller.
 func (s *Store) ClearAuth(ctx context.Context) error {
 	return s.scanKeys(ctx, s.authMatchPattern(), func(batch []string) error {
 		if len(batch) == 0 {
