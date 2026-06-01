@@ -59,7 +59,23 @@ func NewSyncer(client *Client, properties *PropertyIndex, auth *AuthIndex, agent
 }
 
 // Run starts the sync loop. It blocks until ctx is cancelled.
+//
+// Each index with an attached Store is hydrated before the feed loop
+// begins so a saved cursor resumes against populated memory rather than
+// empty maps. Hydration failures are logged and the loop continues — a
+// degraded run that re-fetches from the feed is preferable to refusing
+// to start.
 func (s *Syncer) Run(ctx context.Context) error {
+	if err := s.properties.Hydrate(ctx); err != nil {
+		s.log.Error("property index hydrate failed", "error", err)
+	}
+	if err := s.auth.Hydrate(ctx); err != nil {
+		s.log.Error("auth index hydrate failed", "error", err)
+	}
+	if err := s.agents.Hydrate(ctx); err != nil {
+		s.log.Error("agent index hydrate failed", "error", err)
+	}
+
 	cursorVal, err := s.cursor.Load(ctx)
 	if err != nil {
 		return err
