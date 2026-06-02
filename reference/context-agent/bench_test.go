@@ -135,7 +135,6 @@ func BenchmarkValkeyLookup(b *testing.B) {
 		_ = store.SetAdd(ctx, "url:blocklist:pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
 	}
 
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		urlHash := targeting.HashURL(fmt.Sprintf("article:content-%d", i%20000))

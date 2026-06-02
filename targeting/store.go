@@ -5,8 +5,11 @@ import (
 	"time"
 )
 
-// ContextStore is the storage backend the ContextEngine reads and writes.
-// Implementations wrap Valkey or an in-memory mock.
+// ContextStore is the read surface the ContextEngine consults at evaluation
+// time. Write primitives for the targeting topic data (set-element add /
+// remove / key delete) are not on this interface — they live on
+// targeting/topicstore so writers depend on a smaller surface than the
+// engine.
 type ContextStore interface {
 	// SetIsMember checks if member is in the set at key.
 	SetIsMember(ctx context.Context, key, member string) (bool, error)
@@ -33,16 +36,4 @@ type ContextStore interface {
 	// With a non-zero TTL, atomicity is implementation-defined; callers must not
 	// assume that all keys land together.
 	MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error
-
-	// SetAdd adds members to the set at key, creating the key if it does
-	// not exist. Empty member lists are a no-op.
-	SetAdd(ctx context.Context, key string, members ...string) error
-
-	// SetRemove removes members from the set at key. Missing members are
-	// silently skipped. Empty member lists are a no-op.
-	SetRemove(ctx context.Context, key string, members ...string) error
-
-	// Del deletes one or more keys. Missing keys are silently skipped.
-	// Empty key lists are a no-op.
-	Del(ctx context.Context, keys ...string) error
 }

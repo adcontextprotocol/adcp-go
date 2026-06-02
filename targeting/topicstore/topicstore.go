@@ -1,9 +1,9 @@
-// Package topicstore wraps targeting.ContextStore with taxonomy-aware key
-// construction for content topics. Topics in TMP are taxonomy-scoped: the
-// topic id "632" means "Food & Drink" under IAB Content Taxonomy 3.0 but
-// something different under a publisher's custom taxonomy. Without taxonomy
-// in the storage key, cross-taxonomy collisions would silently produce wrong
-// matches.
+// Package topicstore owns taxonomy-aware key construction for the TMP
+// context-engine's content-topic data. Topics in TMP are taxonomy-scoped:
+// the topic id "632" means "Food & Drink" under IAB Content Taxonomy 3.0
+// but something different under a publisher's custom taxonomy. Without
+// taxonomy in the storage key, cross-taxonomy collisions would silently
+// produce wrong matches.
 //
 // Two surfaces:
 //
@@ -16,6 +16,26 @@
 //     artifact ∩ package intersection. The engine also uses NamespaceTopic
 //     to convert raw topic ids into the taxonomy-qualified form the
 //     in-memory ResolvedPackages.TopicIndex is keyed on.
+//
+// # Lifecycle and TTL
+//
+// SetArtifactTopics and SetPackageTopics ship as full-replace primitives
+// implemented as Del+SAdd against the same key — two storage operations,
+// not atomic, with a transient zero-state window readers may observe
+// between them. Two common writer patterns avoid the race:
+//
+//   - Monotonic writers (add-only via AddArtifactTopics / AddPackageTopics)
+//     plus an out-of-band reaper that removes stale entries on a slower
+//     cadence than the read path. Recommended for high-churn artifact
+//     pipelines.
+//   - Idempotent writers that re-emit the full topic set every refresh and
+//     accept the transient zero-state as acceptable noise. Recommended for
+//     low-churn package configuration.
+//
+// TTL on topic keys is not exposed: artifact data is expected to be either
+// long-lived (URL-keyed, refreshed on classifier re-runs) or managed
+// out-of-band by the writer. Deployments that need automatic expiry should
+// implement it in their writer pipeline rather than relying on key TTL.
 package topicstore
 
 import (
@@ -23,7 +43,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // Taxonomy identifies a topic taxonomy. Source is the publishing
@@ -40,8 +59,11 @@ type Taxonomy struct {
 }
 
 // Validate returns an error if the taxonomy cannot be safely serialized
-// into a Valkey key. Empty Source or characters that would break key
-// parsing (colons, slashes, whitespace) are rejected.
+// into a Valkey key. Source must be non-empty and drawn from the allowlist
+// [a-zA-Z0-9_.-]; an allowlist closes the Valkey-key injection vector for
+// deployments that ever feed a Taxonomy.Source value from an untrusted
+// origin (request payload, dynamic config) without re-validating
+// downstream.
 func (t Taxonomy) Validate() error {
 	if t.Source == "" {
 		return errors.New("topicstore: taxonomy.source must be non-empty")
@@ -49,8 +71,15 @@ func (t Taxonomy) Validate() error {
 	if t.ID < 0 {
 		return errors.New("topicstore: taxonomy.id must be non-negative")
 	}
-	if strings.ContainsAny(t.Source, ":\n\r\t /\\") {
-		return fmt.Errorf("topicstore: taxonomy.source %q contains invalid characters", t.Source)
+	for _, r := range t.Source {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-' || r == '.':
+		default:
+			return fmt.Errorf("topicstore: taxonomy.source %q contains invalid character %q (allowed: [a-zA-Z0-9_.-])", t.Source, r)
+		}
 	}
 	return nil
 }
@@ -96,27 +125,40 @@ func NamespaceTopics(tax Taxonomy, topics []string) []string {
 	return out
 }
 
-// Store is the subset of targeting.ContextStore that topicstore needs.
-// Declared here so writers can depend on the smaller surface without
-// pulling in the rest of the targeting package.
-type Store interface {
-	SetMembers(ctx context.Context, key string) ([]string, error)
-	SetIntersect(ctx context.Context, keys ...string) ([]string, error)
+// WriterStore is the minimal Valkey-side surface a Writer needs. Production
+// stores (redisstore, glidestore, MockStore) all satisfy it directly; the
+// engine's targeting.ContextStore deliberately does not require these
+// methods so the read path stays decoupled from the write path.
+type WriterStore interface {
 	SetAdd(ctx context.Context, key string, members ...string) error
 	SetRemove(ctx context.Context, key string, members ...string) error
 	Del(ctx context.Context, keys ...string) error
+}
+
+// ReaderStore is the minimal Valkey-side surface a Reader needs. It is a
+// subset of targeting.ContextStore.
+type ReaderStore interface {
+	SetMembers(ctx context.Context, key string) ([]string, error)
+	SetIntersect(ctx context.Context, keys ...string) ([]string, error)
+}
+
+// Store is the union of ReaderStore and WriterStore for callers that want
+// both. Concrete backends satisfy it automatically.
+type Store interface {
+	ReaderStore
+	WriterStore
 }
 
 // Writer writes artifact and package topic data. Callers construct one via
 // NewWriter and use the Set/Add/Remove methods rather than building Valkey
 // keys themselves.
 type Writer struct {
-	store Store
+	store WriterStore
 }
 
 // NewWriter returns a Writer that persists topic data to the supplied
 // store. A nil store returns an error.
-func NewWriter(store Store) (*Writer, error) {
+func NewWriter(store WriterStore) (*Writer, error) {
 	if store == nil {
 		return nil, errors.New("topicstore: store is required")
 	}
@@ -238,15 +280,49 @@ func (w *Writer) RemovePackage(ctx context.Context, tax Taxonomy, pkgID string) 
 	return w.store.Del(ctx, PackageKey(tax, pkgID))
 }
 
+// SetArtifactTopicsBatch replaces the artifact-topic sets for many refs
+// under tax in one call. byRef maps the artifact ref to the new topics
+// (empty / nil slice deletes the key). Stops on the first underlying
+// error so partial state is observable on failure — callers SHOULD retry
+// idempotently. Pipelining across the entries is a future optimization;
+// today the implementation is a sequential loop over SetArtifactTopics.
+func (w *Writer) SetArtifactTopicsBatch(ctx context.Context, tax Taxonomy, byRef map[string][]string) error {
+	if err := tax.Validate(); err != nil {
+		return err
+	}
+	for ref, topics := range byRef {
+		if err := w.SetArtifactTopics(ctx, tax, ref, topics); err != nil {
+			return fmt.Errorf("topicstore: artifact %q: %w", ref, err)
+		}
+	}
+	return nil
+}
+
+// SetPackageTopicsBatch replaces the package-topic sets for many packages
+// under tax in one call. byPkg maps the package id to its new targeted
+// topics (empty / nil slice deletes the key). Same failure shape as
+// SetArtifactTopicsBatch.
+func (w *Writer) SetPackageTopicsBatch(ctx context.Context, tax Taxonomy, byPkg map[string][]string) error {
+	if err := tax.Validate(); err != nil {
+		return err
+	}
+	for pkgID, topics := range byPkg {
+		if err := w.SetPackageTopics(ctx, tax, pkgID, topics); err != nil {
+			return fmt.Errorf("topicstore: package %q: %w", pkgID, err)
+		}
+	}
+	return nil
+}
+
 // Reader reads artifact and package topic data. The engine and the resolver
 // hold a Reader; production writers (classifier pipelines, media-buy sync)
 // hold a Writer.
 type Reader struct {
-	store Store
+	store ReaderStore
 }
 
 // NewReader returns a Reader backed by store.
-func NewReader(store Store) (*Reader, error) {
+func NewReader(store ReaderStore) (*Reader, error) {
 	if store == nil {
 		return nil, errors.New("topicstore: store is required")
 	}

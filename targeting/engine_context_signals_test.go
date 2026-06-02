@@ -2,6 +2,7 @@ package targeting
 
 import (
 	"context"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -21,23 +22,10 @@ type countingStore struct {
 }
 
 func (c *countingStore) SetMembers(ctx context.Context, key string) ([]string, error) {
-	if c.prefix == "" || containsSubstring(key, c.prefix) {
+	if c.prefix == "" || strings.Contains(key, c.prefix) {
 		c.hits.Add(1)
 	}
 	return c.ContextStore.SetMembers(ctx, key)
-}
-
-func containsSubstring(s, sub string) bool {
-	return len(sub) <= len(s) && (s == sub || indexOf(s, sub) >= 0)
-}
-
-func indexOf(s, sub string) int {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }
 
 // resolvedFromConfigs builds a minimal ResolvedPackages whose ContextConfigs
@@ -261,7 +249,11 @@ func TestContextResolved_MultiTaxonomyIsolation(t *testing.T) {
 	assert.Equal(t, "pkg-food", resp.Offers[0].PackageID, "only the IAB-side package should activate")
 }
 
-func TestContextResolved_NoTopicTargetsBypassesUnion(t *testing.T) {
+// TestContextResolved_ShortCircuitsWhenOnlyPackageIsNonTopicTargets
+// verifies the short-circuit fires when the request asks about a package
+// that has no TopicTargets rule — `publisherCoversTopicTargets` returns
+// true vacuously and no artifact-topic lookups happen.
+func TestContextResolved_ShortCircuitsWhenOnlyPackageIsNonTopicTargets(t *testing.T) {
 	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
 	base := NewMockStore()
 	store := &countingStore{ContextStore: base, prefix: "topics:artifact:"}
@@ -293,5 +285,154 @@ func TestContextResolved_NoTopicTargetsBypassesUnion(t *testing.T) {
 	resp, err := engine.EvaluateContextResolved(context.Background(), resolved, req)
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1)
-	assert.Equal(t, int32(0), store.hits.Load(), "non-TopicTargets package must not trigger artifact-topic Valkey lookups")
+	assert.Equal(t, int32(0), store.hits.Load(), "no TopicTargets package in the request → no artifact-topic Valkey lookups")
+}
+
+// TestContextResolved_EmptyAcceptedTaxonomies_FailsClosed pins the
+// fail-closed semantic the ContextEngineConfig doc promises. A package
+// configured with TopicTargets must NOT activate if the deployment
+// declares no accepted taxonomies — even when there's no topic input on
+// the request that would normally trigger the vacuous-pass path.
+func TestContextResolved_EmptyAcceptedTaxonomies_FailsClosed(t *testing.T) {
+	store := NewMockStore()
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID: "test",
+		Store:      store,
+		Properties: PropertyList{Global: NewMapBitmap("1")},
+		// AcceptedTaxonomies intentionally empty.
+	})
+	resolved := &ResolvedPackages{
+		ContextConfigs: map[string]*PackageContextConfig{
+			"pkg-food": {PackageID: "pkg-food", TopicTargets: true},
+		},
+	}
+
+	req := &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-food"},
+	}
+
+	resp, err := engine.EvaluateContextResolved(context.Background(), resolved, req)
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "TopicTargets package must fail-closed when no taxonomies are configured")
+}
+
+// TestContextResolved_RogueTaxonomyPlusRealArtifact verifies the subtle
+// case where the publisher mis-declared a taxonomy on ContextSignals AND
+// also sent legitimate artifact refs whose stored topics match. The rogue
+// ContextSignals.Topics is silently dropped (not in accepted set), but
+// the artifact lookup still runs under the accepted taxonomy and the
+// package activates from artifact-side data alone.
+func TestContextResolved_RogueTaxonomyPlusRealArtifact(t *testing.T) {
+	accepted := topicstore.Taxonomy{Source: "iab", ID: 7}
+	base := NewMockStore()
+	w, err := topicstore.NewWriter(base)
+	require.NoError(t, err)
+	require.NoError(t, w.SetArtifactTopics(context.Background(), accepted, "article:pasta", []string{"632"}))
+
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID:         "test",
+		Store:              base,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		AcceptedTaxonomies: []topicstore.Taxonomy{accepted},
+	})
+	resolved := resolvedFromConfigs(accepted, map[string][]string{
+		"pkg-food": {"632"},
+	})
+
+	req := &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "1",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:   []string{"pkg-food"},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "rogue",
+			TaxonomyID:     99,
+			Topics:         []string{"anything"},
+		},
+	}
+
+	resp, err := engine.EvaluateContextResolved(context.Background(), resolved, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1, "rogue ContextSignals must not poison legitimate artifact-side match")
+}
+
+// TestContext_NonResolvedPath_PublisherTopicsHonored covers item 3 from
+// review: the non-resolved EvaluateContext path must consume
+// ContextSignals.Topics when the declared taxonomy is accepted, in
+// addition to the artifact-side SetIntersect path. Without artifact refs
+// in the request, only publisher topics drive the match.
+func TestContext_NonResolvedPath_PublisherTopicsHonored(t *testing.T) {
+	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
+	store := NewMockStore()
+	ctx := context.Background()
+	w, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, w.SetPackageTopics(ctx, tax, "pkg-food", []string{"632", "640"}))
+
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID:         "test",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		AcceptedTaxonomies: []topicstore.Taxonomy{tax},
+	})
+
+	req := &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-food"},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "iab",
+			TaxonomyID:     7,
+			Topics:         []string{"632"},
+		},
+	}
+
+	resp, err := engine.EvaluateContext(ctx, req)
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1, "non-resolved path must honor ContextSignals.Topics for accepted taxonomies")
+}
+
+// TestContext_NonResolvedPath_EmptyAcceptedTaxonomies_FailsClosed mirrors
+// the resolved-path fail-closed test for the non-resolved engine path.
+func TestContext_NonResolvedPath_EmptyAcceptedTaxonomies_FailsClosed(t *testing.T) {
+	store := NewMockStore()
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID: "test",
+		Store:      store,
+		Properties: PropertyList{Global: NewMapBitmap("1")},
+		Packages:   []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		// AcceptedTaxonomies intentionally empty.
+	})
+
+	req := &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "1",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:x"}},
+		PackageIDs:   []string{"pkg-food"},
+	}
+
+	resp, err := engine.EvaluateContext(context.Background(), req)
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "TopicTargets package must fail-closed when no taxonomies are configured on the non-resolved path")
+}
+
+// TestContext_NewContextEngine_DefensiveCopiesAcceptedTaxonomies makes
+// sure the slice the caller passes in cannot be mutated post-construction
+// to silently change engine behavior.
+func TestContext_NewContextEngine_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
+	caller := []topicstore.Taxonomy{{Source: "iab", ID: 7}}
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID:         "test",
+		Store:              NewMockStore(),
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		AcceptedTaxonomies: caller,
+	})
+	caller[0] = topicstore.Taxonomy{Source: "rogue", ID: 99}
+
+	assert.True(t, engine.acceptsTaxonomy(topicstore.Taxonomy{Source: "iab", ID: 7}),
+		"engine must keep its own copy; post-construction mutation must not reach in")
+	assert.False(t, engine.acceptsTaxonomy(topicstore.Taxonomy{Source: "rogue", ID: 99}))
 }
