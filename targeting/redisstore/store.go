@@ -357,6 +357,53 @@ func (s *Store) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	return out, nil
 }
 
+// SetAdd executes SADD for the given key+members. Returns ErrReadOnly when
+// the store is a shadow replica. Empty member lists are a no-op.
+func (s *Store) SetAdd(ctx context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	args := make([]any, len(members))
+	for i, m := range members {
+		args[i] = m
+	}
+	return s.client.SAdd(ctx, key, args...).Err()
+}
+
+// SetRemove executes SREM for the given key+members. Returns ErrReadOnly
+// when the store is a shadow replica. Empty member lists are a no-op.
+// Missing keys and members are silently treated as no-ops by Valkey.
+func (s *Store) SetRemove(ctx context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	args := make([]any, len(members))
+	for i, m := range members {
+		args[i] = m
+	}
+	return s.client.SRem(ctx, key, args...).Err()
+}
+
+// Del executes DEL for the supplied keys. Returns ErrReadOnly when the
+// store is a shadow replica. Empty key lists are a no-op. In cluster mode
+// every key must hash to the same slot; callers either co-locate via
+// `{hashtag}` or call Del once per key.
+func (s *Store) Del(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	return mapCrossSlotErr(s.client.Del(ctx, keys...).Err())
+}
+
 func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error {
 	if len(kvs) == 0 {
 		return nil

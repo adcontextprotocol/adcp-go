@@ -7,6 +7,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -99,10 +100,18 @@ func ResolvePackages(ctx context.Context, store ContextStore, sellerID, property
 // This is the cacheable entry point — call once, cache the result, use for
 // many requests. Loads all configs and builds all indexes.
 //
+// taxonomies enumerates the topic taxonomies this deployment accepts. The
+// resolver fetches `topics:package:{src}:{id}:{pkg}` once per (package,
+// taxonomy) and stores the results in TopicIndex keyed by the namespaced
+// form `topicstore.NamespaceTopic(tax, topic)` so artifact-topic lookups
+// can join against it without per-taxonomy index lookups at eval time. An
+// empty taxonomies slice means topic-targeting data is not loaded — every
+// TopicTargets package will be skipped by the engine.
+//
 // Identity configs are no longer loaded here; callers wanting identity gating
 // populate ResolvedPackages.IdentityConfigs from the identityconfig.Service
 // keyed by (seller_agent_url, package_id).
-func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, country string, now time.Time) (*ResolvedPackages, error) {
+func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, country string, taxonomies []topicstore.Taxonomy, now time.Time) (*ResolvedPackages, error) {
 	pkgs, err := ResolvePackages(ctx, store, sellerID, propertyID, country, now)
 	if err != nil {
 		return nil, err
@@ -133,9 +142,12 @@ func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, coun
 			}
 		}
 
-		topics, _ := store.SetMembers(ctx, "topics:package:"+pkgID)
-		for _, topic := range topics {
-			topicIdx[topic] = append(topicIdx[topic], pkgID)
+		for _, tax := range taxonomies {
+			topics, _ := store.SetMembers(ctx, topicstore.PackageKey(tax, pkgID))
+			for _, topic := range topics {
+				ns := topicstore.NamespaceTopic(tax, topic)
+				topicIdx[ns] = append(topicIdx[ns], pkgID)
+			}
 		}
 
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLBlocklist {

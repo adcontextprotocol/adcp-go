@@ -13,11 +13,15 @@ import (
 	"github.com/adcontextprotocol/adcp-go/router"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmpclient"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// e2eTaxonomy is the taxonomy fixture used across the end-to-end stack.
+var e2eTaxonomy = topicstore.Taxonomy{Source: "e2e", ID: 1}
 
 // testStack holds all components for an integration test.
 type testStack struct {
@@ -32,12 +36,15 @@ func setupStack(t *testing.T) *testStack {
 
 	store := targeting.NewMockStore()
 
-	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.recipes")
-	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
-	store.SetAdd("topics:package:pkg-tech", "technology.gadgets", "technology.reviews")
-	store.SetAdd("topics:artifact:article:cpu-review", "technology.reviews", "technology.hardware")
+	ctx := context.Background()
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-food", []string{"food.cooking", "food.recipes"}))
+	require.NoError(t, writer.SetArtifactTopics(ctx, e2eTaxonomy, "article:pasta", []string{"food.cooking", "food.italian"}))
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-tech", []string{"technology.gadgets", "technology.reviews"}))
+	require.NoError(t, writer.SetArtifactTopics(ctx, e2eTaxonomy, "article:cpu-review", []string{"technology.reviews", "technology.hardware"}))
 
-	store.SetAdd("url:blocklist:pkg-family", targeting.HashURL("article:adult-content"))
+	require.NoError(t, store.SetAdd(ctx, "url:blocklist:pkg-family", targeting.HashURL("article:adult-content")))
 
 	contextEngine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "integration-context",
@@ -50,6 +57,7 @@ func setupStack(t *testing.T) *testStack {
 			{PackageID: "pkg-tech", TopicTargets: true, EmitSegments: []string{"technology"}},
 			{PackageID: "pkg-family", URLBlocklist: true},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{e2eTaxonomy},
 	})
 
 	audSvc := audience.New(audience.NewMockStore())
@@ -280,11 +288,14 @@ func TestIntegration_PropertyBitmapFilter(t *testing.T) {
 
 func TestIntegration_Mediation(t *testing.T) {
 	store := targeting.NewMockStore()
+	ctx := context.Background()
 
-	store.SetAdd("topics:package:pkg-olive-oil", "food.cooking", "food.ingredients")
-	store.SetAdd("topics:package:pkg-cookware", "food.cooking", "food.kitchen")
-	store.SetAdd("topics:package:pkg-wine", "food.cooking", "food.beverage")
-	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-olive-oil", []string{"food.cooking", "food.ingredients"}))
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-cookware", []string{"food.cooking", "food.kitchen"}))
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-wine", []string{"food.cooking", "food.beverage"}))
+	require.NoError(t, writer.SetArtifactTopics(ctx, e2eTaxonomy, "article:pasta", []string{"food.cooking", "food.italian"}))
 
 	audSvc := audience.New(audience.NewMockStore())
 	require.NoError(t, audSvc.Upsert(context.Background(), audience.AudienceUpsert{
@@ -337,6 +348,7 @@ func TestIntegration_Mediation(t *testing.T) {
 				EmitSegments: []string{"food", "beverage"},
 			},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{e2eTaxonomy},
 	})
 
 	cookingFans := &targeting.SegmentRule{AnyOf: []string{"cooking_fans"}}
@@ -443,9 +455,12 @@ func TestIntegration_Mediation(t *testing.T) {
 
 func TestIntegration_MultiDealMediation(t *testing.T) {
 	store := targeting.NewMockStore()
+	ctx := context.Background()
 
-	store.SetAdd("topics:package:pkg-premium-food", "food.cooking", "food.recipes")
-	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetPackageTopics(ctx, e2eTaxonomy, "pkg-premium-food", []string{"food.cooking", "food.recipes"}))
+	require.NoError(t, writer.SetArtifactTopics(ctx, e2eTaxonomy, "article:pasta", []string{"food.cooking", "food.italian"}))
 
 	marshalBrand := func(name, domain string) json.RawMessage {
 		b, _ := json.Marshal(map[string]string{"name": name, "advertiser_domain": domain})
@@ -480,6 +495,7 @@ func TestIntegration_MultiDealMediation(t *testing.T) {
 				},
 			},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{e2eTaxonomy},
 	})
 
 	identityEngine := targeting.NewIdentityEngine(targeting.IdentityEngineConfig{})

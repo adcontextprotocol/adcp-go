@@ -33,4 +33,16 @@ type ContextStore interface {
 	// With a non-zero TTL, atomicity is implementation-defined; callers must not
 	// assume that all keys land together.
 	MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error
+
+	// SetAdd adds members to the set at key, creating the key if it does
+	// not exist. Empty member lists are a no-op.
+	SetAdd(ctx context.Context, key string, members ...string) error
+
+	// SetRemove removes members from the set at key. Missing members are
+	// silently skipped. Empty member lists are a no-op.
+	SetRemove(ctx context.Context, key string, members ...string) error
+
+	// Del deletes one or more keys. Missing keys are silently skipped.
+	// Empty key lists are a no-op.
+	Del(ctx context.Context, keys ...string) error
 }

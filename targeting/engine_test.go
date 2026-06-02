@@ -6,10 +6,35 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// testTaxonomy is the taxonomy fixture used across context-engine tests.
+// Chosen to be distinct from any real taxonomy so cross-contamination from
+// production data would be obvious; the engine treats Source/ID as opaque
+// regardless of the value.
+var testTaxonomy = topicstore.Taxonomy{Source: "test", ID: 1}
+
+// seedPackageTopics is a small helper that pushes a package's targeted
+// topics into store under testTaxonomy. Cuts the noise on every test that
+// would otherwise repeat the writer construction boilerplate.
+func seedPackageTopics(t *testing.T, store *MockStore, pkgID string, topics ...string) {
+	t.Helper()
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetPackageTopics(context.Background(), testTaxonomy, pkgID, topics))
+}
+
+// seedArtifactTopics is the artifact-side twin of seedPackageTopics.
+func seedArtifactTopics(t *testing.T, store *MockStore, ref string, topics ...string) {
+	t.Helper()
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetArtifactTopics(context.Background(), testTaxonomy, ref, topics))
+}
 
 func setupContextEngine(t *testing.T) (*ContextEngine, *MockStore) {
 	t.Helper()
@@ -137,14 +162,15 @@ func TestContext_PerPackageTargeting(t *testing.T) {
 
 func TestContext_TopicMatch(t *testing.T) {
 	store := NewMockStore()
-	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.baking")
-	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
+	seedPackageTopics(t, store, "pkg-food", "food.cooking", "food.baking")
+	seedArtifactTopics(t, store, "article:pasta", "food.cooking", "food.italian")
 
 	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("10")},
-		Packages:   []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		ProviderID:         "test-provider",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("10")},
+		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
@@ -159,14 +185,15 @@ func TestContext_TopicMatch(t *testing.T) {
 
 func TestContext_TopicMiss(t *testing.T) {
 	store := NewMockStore()
-	store.SetAdd("topics:package:pkg-food", "food.cooking")
-	store.SetAdd("topics:artifact:article:cpu", "technology.hardware")
+	seedPackageTopics(t, store, "pkg-food", "food.cooking")
+	seedArtifactTopics(t, store, "article:cpu", "technology.hardware")
 
 	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("10")},
-		Packages:   []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		ProviderID:         "test-provider",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("10")},
+		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
@@ -182,7 +209,7 @@ func TestContext_TopicMiss(t *testing.T) {
 func TestContext_URLBlocklist(t *testing.T) {
 	store := NewMockStore()
 	blockedHash := HashURL("article:controversial")
-	store.SetAdd("url:blocklist:pkg-family", blockedHash)
+	require.NoError(t, store.SetAdd(context.Background(), "url:blocklist:pkg-family", blockedHash))
 
 	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
@@ -204,7 +231,7 @@ func TestContext_URLBlocklist(t *testing.T) {
 func TestContext_URLAllowlist(t *testing.T) {
 	store := NewMockStore()
 	allowedHash := HashURL("article:safe-content")
-	store.SetAdd("url:allowlist:pkg-premium", allowedHash)
+	require.NoError(t, store.SetAdd(context.Background(), "url:allowlist:pkg-premium", allowedHash))
 
 	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
@@ -234,9 +261,9 @@ func TestContext_URLAllowlist(t *testing.T) {
 
 func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 	store := NewMockStore()
-	store.SetAdd("topics:package:pkg-food", "food.cooking")
-	store.SetAdd("topics:package:pkg-tech", "technology.reviews")
-	store.SetAdd("topics:artifact:article:pasta", "food.cooking", "food.italian")
+	seedPackageTopics(t, store, "pkg-food", "food.cooking")
+	seedPackageTopics(t, store, "pkg-tech", "technology.reviews")
+	seedArtifactTopics(t, store, "article:pasta", "food.cooking", "food.italian")
 
 	engine := NewContextEngine(ContextEngineConfig{
 		ProviderID: "test-provider",
@@ -246,6 +273,7 @@ func TestContext_MultiplePackages_MixedResults(t *testing.T) {
 			{PackageID: "pkg-food", TopicTargets: true},
 			{PackageID: "pkg-tech", TopicTargets: true},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
 	})
 
 	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{

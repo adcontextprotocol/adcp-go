@@ -14,7 +14,7 @@ type ResolvedPackages struct {
 
 	// Context indexes (zero Store calls at eval time).
 	PropertyIndex     map[string][]string            // propertyRID → packageIDs
-	TopicIndex        map[string][]string            // topic → packageIDs
+	TopicIndex        map[string][]string            // topicstore.NamespaceTopic(tax,topic) → packageIDs
 	URLBlocklistIndex map[string][]string            // urlHash → packageIDs that block it
 	URLAllowlists     map[string]map[string]struct{} // pkgID → set of allowed urlHashes
 

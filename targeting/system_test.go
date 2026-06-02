@@ -8,8 +8,11 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+var systemTaxonomy = topicstore.Taxonomy{Source: "system", ID: 1}
 
 // TestSystem_EndToEnd runs a realistic scenario at scale and reports
 // a complete breakdown of latency, memory, Store calls, and throughput
@@ -59,6 +62,7 @@ func TestSystem_EndToEnd(t *testing.T) {
 		segments[i] = fmt.Sprintf("seg-%d", i)
 	}
 
+	ctx := context.Background()
 	for i, pkgID := range allPkgIDs {
 		store.SetPackageContextConfig(pkgID, PackageContextConfig{
 			PackageID:    pkgID,
@@ -70,11 +74,11 @@ func TestSystem_EndToEnd(t *testing.T) {
 		})
 
 		for tp := range topicsPerPkg {
-			store.SetAdd("topics:package:"+pkgID, fmt.Sprintf("topic-%d", (i*3+tp)%50))
+			_ = store.SetAdd(ctx, topicstore.PackageKey(systemTaxonomy, pkgID), fmt.Sprintf("topic-%d", (i*3+tp)%50))
 		}
 
 		for bl := range blocklistPerPkg {
-			store.SetAdd("url:blocklist:"+pkgID, HashURL(fmt.Sprintf("blocked-%d-%d", i, bl)))
+			_ = store.SetAdd(ctx, "url:blocklist:"+pkgID, HashURL(fmt.Sprintf("blocked-%d-%d", i, bl)))
 		}
 
 	}
@@ -96,14 +100,14 @@ func TestSystem_EndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store.SetAdd("topics:artifact:article:food", "topic-0", "topic-1", "topic-2")
+	_ = store.SetAdd(ctx, topicstore.ArtifactKey(systemTaxonomy, "article:food"), "topic-0", "topic-1", "topic-2")
 
 	var m1, m2 runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&m1)
 
 	resolveStart := time.Now()
-	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
+	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", []topicstore.Taxonomy{systemTaxonomy}, now)
 	resolveTime := time.Since(resolveStart)
 	if err != nil {
 		t.Fatal(err)
@@ -127,23 +131,26 @@ func TestSystem_EndToEnd(t *testing.T) {
 	}
 
 	staticEngine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "bench",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("1")},
-		Packages:   staticPkgs,
+		ProviderID:         "bench",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		Packages:           staticPkgs,
+		AcceptedTaxonomies: []topicstore.Taxonomy{systemTaxonomy},
 	})
 
 	dynamicEngine := NewContextEngine(ContextEngineConfig{
-		ProviderID:      "bench",
-		Store:           store,
-		Properties:      PropertyList{Global: NewMapBitmap("1")},
-		DynamicPackages: true,
+		ProviderID:         "bench",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		DynamicPackages:    true,
+		AcceptedTaxonomies: []topicstore.Taxonomy{systemTaxonomy},
 	})
 
 	resolvedCtxEngine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "bench",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("1")},
+		ProviderID:         "bench",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		AcceptedTaxonomies: []topicstore.Taxonomy{systemTaxonomy},
 	})
 	identityEngine := NewIdentityEngine(IdentityEngineConfig{
 		Audience: audSvc,

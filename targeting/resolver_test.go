@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -171,13 +172,16 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	})
 
 	// Topic data.
-	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.recipes")
-	store.SetAdd("topics:package:pkg-tech", "tech.gadgets", "tech.reviews")
+	tax := topicstore.Taxonomy{Source: "test", ID: 1}
+	writer, err := topicstore.NewWriter(store)
+	require.NoError(t, err)
+	require.NoError(t, writer.SetPackageTopics(context.Background(), tax, "pkg-food", []string{"food.cooking", "food.recipes"}))
+	require.NoError(t, writer.SetPackageTopics(context.Background(), tax, "pkg-tech", []string{"tech.gadgets", "tech.reviews"}))
 
 	// URL blocklist.
-	store.SetAdd("url:blocklist:pkg-food", HashURL("article:bad"))
+	require.NoError(t, store.SetAdd(context.Background(), "url:blocklist:pkg-food", HashURL("article:bad")))
 
-	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
+	resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", []topicstore.Taxonomy{tax}, now)
 	require.NoError(t, err)
 
 	// Check packages resolved.
@@ -189,11 +193,11 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	require.Len(t, resolved.PropertyIndex["4"], 1)
 	assert.Equal(t, "pkg-tech", resolved.PropertyIndex["4"][0])
 
-	// TopicIndex.
-	require.Len(t, resolved.TopicIndex["food.cooking"], 1)
-	assert.Equal(t, "pkg-food", resolved.TopicIndex["food.cooking"][0])
-	require.Len(t, resolved.TopicIndex["tech.gadgets"], 1)
-	assert.Equal(t, "pkg-tech", resolved.TopicIndex["tech.gadgets"][0])
+	// TopicIndex: namespaced under the taxonomy used at resolve time.
+	require.Len(t, resolved.TopicIndex[topicstore.NamespaceTopic(tax, "food.cooking")], 1)
+	assert.Equal(t, "pkg-food", resolved.TopicIndex[topicstore.NamespaceTopic(tax, "food.cooking")][0])
+	require.Len(t, resolved.TopicIndex[topicstore.NamespaceTopic(tax, "tech.gadgets")], 1)
+	assert.Equal(t, "pkg-tech", resolved.TopicIndex[topicstore.NamespaceTopic(tax, "tech.gadgets")][0])
 
 	// URLBlocklistIndex.
 	badHash := HashURL("article:bad")
@@ -207,7 +211,10 @@ func TestResolve_BuildsIndexes(t *testing.T) {
 	assert.True(t, resolved.IsURLBlocked("pkg-food", badHash))
 	assert.False(t, resolved.IsURLBlocked("pkg-tech", badHash))
 
-	candidates := resolved.TopicCandidates([]string{"food.cooking", "tech.gadgets"})
+	candidates := resolved.TopicCandidates([]string{
+		topicstore.NamespaceTopic(tax, "food.cooking"),
+		topicstore.NamespaceTopic(tax, "tech.gadgets"),
+	})
 	assert.Len(t, candidates, 2)
 }
 
