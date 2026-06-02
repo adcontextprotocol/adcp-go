@@ -395,6 +395,39 @@ func TestContext_NonResolvedPath_PublisherTopicsHonored(t *testing.T) {
 	assert.Len(t, resp.Offers, 1, "non-resolved path must honor ContextSignals.Topics for accepted taxonomies")
 }
 
+// TestContext_NonResolvedPath_RogueOnlySource_FailsClosed pins the
+// fail-closed shape on the non-resolved path when the publisher's
+// ContextSignals.Topics is the only topic source AND its taxonomy is
+// not accepted. The package's TopicTargets contract requires a real
+// match; the rogue-declared topics are dropped and no Valkey data is
+// reachable, so the package must not activate.
+func TestContext_NonResolvedPath_RogueOnlySource_FailsClosed(t *testing.T) {
+	accepted := topicstore.Taxonomy{Source: "iab", ID: 7}
+	store := NewMockStore()
+	engine := NewContextEngine(ContextEngineConfig{
+		ProviderID:         "test",
+		Store:              store,
+		Properties:         PropertyList{Global: NewMapBitmap("1")},
+		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
+		AcceptedTaxonomies: []topicstore.Taxonomy{accepted},
+	})
+
+	req := &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "1",
+		PackageIDs:  []string{"pkg-food"},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "rogue",
+			TaxonomyID:     99,
+			Topics:         []string{"anything"},
+		},
+	}
+
+	resp, err := engine.EvaluateContext(context.Background(), req)
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "non-resolved path must fail-closed when rogue ContextSignals is the only topic source")
+}
+
 // TestContext_NonResolvedPath_EmptyAcceptedTaxonomies_FailsClosed mirrors
 // the resolved-path fail-closed test for the non-resolved engine path.
 func TestContext_NonResolvedPath_EmptyAcceptedTaxonomies_FailsClosed(t *testing.T) {

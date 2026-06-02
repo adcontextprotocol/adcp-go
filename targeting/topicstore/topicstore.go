@@ -286,6 +286,10 @@ func (w *Writer) RemovePackage(ctx context.Context, tax Taxonomy, pkgID string) 
 // error so partial state is observable on failure — callers SHOULD retry
 // idempotently. Pipelining across the entries is a future optimization;
 // today the implementation is a sequential loop over SetArtifactTopics.
+//
+// Iteration order is Go map iteration order (randomized). On a partial
+// failure, which entries landed before the error is non-deterministic
+// across runs; retry the whole batch rather than diffing.
 func (w *Writer) SetArtifactTopicsBatch(ctx context.Context, tax Taxonomy, byRef map[string][]string) error {
 	if err := tax.Validate(); err != nil {
 		return err
@@ -300,8 +304,9 @@ func (w *Writer) SetArtifactTopicsBatch(ctx context.Context, tax Taxonomy, byRef
 
 // SetPackageTopicsBatch replaces the package-topic sets for many packages
 // under tax in one call. byPkg maps the package id to its new targeted
-// topics (empty / nil slice deletes the key). Same failure shape as
-// SetArtifactTopicsBatch.
+// topics (empty / nil slice deletes the key). Same partial-failure shape
+// as SetArtifactTopicsBatch — non-deterministic iteration order means
+// callers retry the whole batch on error rather than diffing.
 func (w *Writer) SetPackageTopicsBatch(ctx context.Context, tax Taxonomy, byPkg map[string][]string) error {
 	if err := tax.Validate(); err != nil {
 		return err

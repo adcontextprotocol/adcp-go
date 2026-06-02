@@ -132,6 +132,13 @@ func (e *ContextEngine) publisherTopics(req *tmproto.ContextMatchRequest) []stri
 // nil when no usable publisher topics are present. The non-resolved
 // engine path uses this to perform an in-memory join against each
 // candidate package's stored topic set per accepted taxonomy.
+//
+// The TMP wire today carries exactly one (TaxonomySource, TaxonomyID)
+// pair per ContextSignals, so the returned map has at most one entry.
+// The map shape is forward-compat for a future spec extension that
+// would let a publisher disclose topics under multiple taxonomies in a
+// single request; downstream callers handle multi-entry input without
+// further changes.
 func (e *ContextEngine) publisherTopicsByTaxonomy(req *tmproto.ContextMatchRequest) map[topicstore.Taxonomy][]string {
 	cs := req.ContextSignals
 	if cs == nil || len(cs.Topics) == 0 {
@@ -288,7 +295,7 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 
 		if topicTargets {
 			if len(e.acceptedTaxonomies) == 0 {
-				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(ctx, StageTopicNoTaxonomy, false)
 				continue
 			}
 			if haveTopicSource {
@@ -380,14 +387,14 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 		// Fail-closed per (artifact, taxonomy): a Valkey hiccup for one
 		// taxonomy under-matches that taxonomy but does not poison the
 		// rest of the eval. StageTopicMatch error metric + structured
-		// log so on-call can correlate underrmatch incidents to
+		// log so on-call can correlate under-match incidents to
 		// upstream errors.
 		for _, artifact := range artifactRefs {
 			for _, tax := range e.acceptedTaxonomies {
 				topics, err := e.store.SetMembers(ctx, topicstore.ArtifactKey(tax, artifact))
 				if err != nil {
 					e.metrics.StoreError(ctx, StageTopicMatch, err)
-					slog.Warn("topicstore: artifact-topic lookup failed; under-matching this taxonomy",
+					slog.Warn("topicstore: artifact-topic lookup failed; under-match for this taxonomy",
 						"request_id", req.RequestID,
 						"artifact", artifact,
 						"taxonomy", tax.String(),
@@ -446,7 +453,7 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 			// supplied a topic source the engine couldn't use, so the
 			// package's required-match contract stays in force.
 			if len(e.acceptedTaxonomies) == 0 {
-				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+				e.metrics.ContextEvaluated(ctx, StageTopicNoTaxonomy, false)
 				continue
 			}
 			cs := req.ContextSignals
