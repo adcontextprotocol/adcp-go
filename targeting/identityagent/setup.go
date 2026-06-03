@@ -122,6 +122,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	if err := metricsProvider.RegisterOpenConnectionsObserver(tracker.Open); err != nil {
 		return fmt.Errorf("register open-connections observer: %w", err)
 	}
+	if err := metricsProvider.RegisterConfigEntriesObserver(func() int64 {
+		return int64(bundle.configSvc.Len())
+	}); err != nil {
+		return fmt.Errorf("register config-entries observer: %w", err)
+	}
 
 	registry := newShutdownRegistry(logger, metricsProvider.Recorder)
 	registry.add("identity-config", func(_ context.Context) error {
@@ -313,6 +318,9 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	configSvc, err := identityconfig.New(source, cfg.IdentityConfig.RefreshInterval,
 		identityconfig.WithStartConfig(startConfigFor(cfg.IdentityConfig)),
 		identityconfig.WithLogger(logger),
+		identityconfig.WithRefreshObserver(func(outcome string) {
+			recorder.ConfigRefresh(context.Background(), outcome)
+		}),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init identityconfig service: %w", err)

@@ -173,6 +173,36 @@ func (m *MetricsProvider) RegisterOpenConnectionsObserver(observerFn func() int6
 	return nil
 }
 
+// RegisterConfigEntriesObserver registers an OTEL ObservableGauge named
+// "<namespace>_config_entries" whose value is read from observerFn each
+// time the Prometheus exporter scrapes. Intended source is
+// identityconfig.Service.Len — the number of (sellerAgentURL, packageID)
+// entries currently held in the in-memory snapshot. A flat-line or
+// dropping value over time, paired with refresh errors, is a strong
+// signal the snapshot has gone stale or empty. No-op when metrics are
+// disabled.
+//
+// observerFn is invoked from arbitrary goroutines on the exporter's
+// schedule; it must be safe to call concurrently and should be cheap.
+func (m *MetricsProvider) RegisterConfigEntriesObserver(observerFn func() int64) error {
+	if m == nil || m.meterProvider == nil || observerFn == nil {
+		return nil
+	}
+	meter := m.meterProvider.Meter("identity-agent")
+	gauge, err := meter.Int64ObservableGauge(fmt.Sprintf("%s_config_entries", m.namespace))
+	if err != nil {
+		return fmt.Errorf("register config_entries gauge: %w", err)
+	}
+	_, err = meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		o.ObserveInt64(gauge, observerFn())
+		return nil
+	}, gauge)
+	if err != nil {
+		return fmt.Errorf("register config_entries callback: %w", err)
+	}
+	return nil
+}
+
 // otelRecorder is the production Recorder. It uses an OTEL meter with the
 // Prometheus exporter to surface metrics on the Prometheus registry the
 // /metrics handler reads from.
