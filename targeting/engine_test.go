@@ -239,6 +239,44 @@ func TestContext_StorageError_FailsClosed(t *testing.T) {
 	})
 }
 
+// TestContext_DeadlineMidLoop_ReturnsContextError pins the per-iteration
+// ctx.Err() check: a request whose ctx cancels after the first package
+// is evaluated must propagate the cancel as an error rather than
+// swallow it and return 200/empty. The handler maps the error to 504;
+// if the engine instead returns nil, the handler returns 200 and buyer
+// telemetry can't tell timeouts from no-match.
+func TestContext_DeadlineMidLoop_ReturnsContextError(t *testing.T) {
+	base := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-2"})
+	ctx, cancel := context.WithCancel(context.Background())
+	storage := &cancelOnConfigStorage{ContextStorage: base, cancel: cancel}
+
+	engine := newEngine(t, storage)
+	_, err := engine.Evaluate(ctx, &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10",
+		PackageIDs: []string{"pkg-1", "pkg-2"},
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// cancelOnConfigStorage cancels the supplied context the first time
+// ContextConfig is called, simulating a deadline that trips
+// mid-evaluation.
+type cancelOnConfigStorage struct {
+	targeting.ContextStorage
+	cancel    context.CancelFunc
+	cancelled bool
+}
+
+func (c *cancelOnConfigStorage) ContextConfig(ctx context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
+	if !c.cancelled {
+		c.cancelled = true
+		c.cancel()
+	}
+	return c.ContextStorage.ContextConfig(ctx, packageID)
+}
+
 type errInjectStorage struct {
 	targeting.ContextStorage
 	urlBlockedErr    bool

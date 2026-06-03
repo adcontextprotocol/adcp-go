@@ -125,6 +125,23 @@ func TestConfigValidate_PprofOKWithAdminPort(t *testing.T) {
 	require.NoError(t, cfg.Validate())
 }
 
+func TestConfigValidate_MetricsRequiresAdminPort(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Metrics.Enabled = true
+	cfg.AdminPort = 0
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ADMIN_PORT")
+	assert.Contains(t, err.Error(), "/metrics")
+}
+
+func TestConfigValidate_MetricsOKWithAdminPort(t *testing.T) {
+	cfg := baseValidConfig()
+	cfg.Metrics.Enabled = true
+	cfg.AdminPort = 9090
+	require.NoError(t, cfg.Validate())
+}
+
 func TestConfigValidate_CacheSizesRequiredWhenEnabled(t *testing.T) {
 	cases := []struct {
 		name   string

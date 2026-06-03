@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 )
@@ -175,13 +176,25 @@ type Reader interface {
 }
 
 // NewReader returns a direct Reader that issues one Valkey round-trip
-// per call. Wrap with WithCache when reuse is expected.
+// per call. Wrap with WithCache when reuse is expected. Decode failures
+// during ActivePackages log a Warn through slog.Default; callers that
+// want a different logger should use NewReaderWithLogger.
 func NewReader(store Store) Reader {
-	return &reader{store: store}
+	return NewReaderWithLogger(store, nil)
+}
+
+// NewReaderWithLogger is NewReader with an explicit slog.Logger. A nil
+// logger falls back to slog.Default.
+func NewReaderWithLogger(store Store, logger *slog.Logger) Reader {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &reader{store: store, logger: logger}
 }
 
 type reader struct {
-	store Store
+	store  Store
+	logger *slog.Logger
 }
 
 func (r *reader) MediaBuyIDsForSeller(ctx context.Context, sellerAgentURL string) ([]string, error) {
@@ -226,12 +239,23 @@ func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID,
 		return nil, err
 	}
 	var out []MediaBuyPackage
-	for _, raw := range values {
+	for i, raw := range values {
 		if raw == "" {
 			continue
 		}
 		var mb MediaBuy
 		if err := json.Unmarshal([]byte(raw), &mb); err != nil {
+			// Silent skip masks corruption: a malformed payload
+			// surfaces as "missing offers" with no metric or log,
+			// which is impossible to debug from the outside. The
+			// loop continues so one bad record can't sink the
+			// whole seller, but the corruption is now visible.
+			id := ""
+			if i < len(ids) {
+				id = ids[i]
+			}
+			r.logger.Warn("mediabuystore: skipping corrupt media-buy payload",
+				"media_buy_id", id, "error", err)
 			continue
 		}
 		if !isActive(mb, now) || !matchesGeo(mb, country) || !matchesProperty(mb, propertyID) {

@@ -17,12 +17,11 @@ import (
 // buildBundle to either a direct reader or a cache-wrapped reader,
 // depending on the master + per-domain enable flags in CacheConfig.
 type storage struct {
-	mediaBuys     mediabuystore.Reader
-	pkgConfigs    pkgconfigstore.Reader
-	urlLists      urlliststore.Reader
-	topics        *topicstore.Reader
-	suppressions  *suppressionstore.Snapshot
-	acceptedTaxes []topicstore.Taxonomy
+	mediaBuys    mediabuystore.Reader
+	pkgConfigs   pkgconfigstore.Reader
+	urlLists     urlliststore.Reader
+	topics       *topicstore.Reader
+	suppressions *suppressionstore.Snapshot
 }
 
 func (s *storage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]string, error) {
@@ -79,7 +78,6 @@ func buildStorage(
 	urlListStore urlliststore.Store,
 	topicStore topicstore.Store,
 	suppressSnap *suppressionstore.Snapshot,
-	taxes []topicstore.Taxonomy,
 	cacheCfg CacheConfig,
 ) (*storage, error) {
 	mediaBuys := mediabuystore.NewReader(mediaBuyStore)
@@ -122,11 +120,10 @@ func buildStorage(
 	}
 
 	return &storage{
-		mediaBuys:     mediaBuys,
-		pkgConfigs:    pkgConfigs,
-		urlLists:      urlLists,
-		topics:        topics,
-		suppressions:  suppressSnap,
-		acceptedTaxes: taxes,
+		mediaBuys:    mediaBuys,
+		pkgConfigs:   pkgConfigs,
+		urlLists:     urlLists,
+		topics:       topics,
+		suppressions: suppressSnap,
 	}, nil
 }

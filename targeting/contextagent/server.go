@@ -17,15 +17,15 @@ import (
 
 // ServerConfig packages the inputs for NewServer.
 type ServerConfig struct {
-	Port            int
-	ContextHandler  http.Handler
-	KeyStore        tmproto.KeyStore
-	OwnEndpointURL  string
-	RequireSig      bool
-	Registry        *prometheus.Registry
-	IsRunning       func() bool
-	Version         string
-	PprofEnabled    bool
+	Port           int
+	ContextHandler http.Handler
+	KeyStore       tmproto.KeyStore
+	OwnEndpointURL string
+	RequireSig     bool
+	Registry       *prometheus.Registry
+	IsRunning      func() bool
+	Version        string
+	PprofEnabled   bool
 
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
@@ -44,7 +44,28 @@ type ServerConfig struct {
 
 	StrictContentType bool
 
+	// LivenessChecks runs in /live; any check returning a non-nil
+	// error flips /live from 200 to 503 with the joined error
+	// messages in the response body. Intended for "the agent is up
+	// but the data plane is broken" signals (e.g. suppression
+	// snapshot is N consecutive refreshes behind). /health stays
+	// purely about process readiness — the orchestrator decides
+	// which one to probe.
+	LivenessChecks []LivenessCheck
+
+	// Recorder observes request lifecycle, panics, and store errors.
+	// nil → noop.
+	Recorder Recorder
+
 	Logger *slog.Logger
+}
+
+// LivenessCheck is one named predicate consulted by /live. Name is
+// included in the response when Fn returns an error so an operator can
+// see which subsystem is degraded without reading agent logs.
+type LivenessCheck struct {
+	Name string
+	Fn   func() error
 }
 
 // NewServer builds the *http.Server for /context and /health. When
@@ -55,10 +76,10 @@ type ServerConfig struct {
 func NewServer(cfg ServerConfig) *http.Server {
 	mux := http.NewServeMux()
 
-	// Middleware order (outermost first): strict Content-Type runs
-	// before signature verification so a wrong/missing CT short-
-	// circuits with 415 without the verifier reading + decoding +
-	// signing a body it's about to reject anyway.
+	// Middleware order (outermost first): request-metrics records
+	// status + latency; strict Content-Type rejects bad CT with 415;
+	// signature verification is innermost so a 415 short-circuits
+	// before we ever read or sign the body.
 	ctxHandler := cfg.ContextHandler
 	if cfg.KeyStore != nil {
 		ctxHandler = tmproto.VerifyContextMatchHandler(ctxHandler, tmproto.VerifyOptions{
@@ -71,6 +92,8 @@ func NewServer(cfg ServerConfig) *http.Server {
 	if cfg.StrictContentType {
 		ctxHandler = contentTypeJSON(ctxHandler)
 	}
+	ctxHandler = requestMetricsMiddleware(ctxHandler, cfg.Recorder)
+	ctxHandler = recoverMiddleware(ctxHandler, cfg.Recorder, cfg.Logger)
 	mux.Handle("POST /context", ctxHandler)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -83,7 +106,7 @@ func NewServer(cfg ServerConfig) *http.Server {
 
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           mux,
+		Handler:           recoverMiddleware(mux, cfg.Recorder, cfg.Logger),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -94,16 +117,18 @@ func NewServer(cfg ServerConfig) *http.Server {
 
 // AdminServerConfig packages the inputs for NewAdminServer.
 type AdminServerConfig struct {
-	Port           int
-	Registry       *prometheus.Registry
-	Version        string
-	IsRunning      func() bool
-	PprofEnabled   bool
+	Port              int
+	Registry          *prometheus.Registry
+	Version           string
+	IsRunning         func() bool
+	PprofEnabled      bool
 	ReadHeaderTimeout time.Duration
 	ReadTimeout       time.Duration
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	MaxHeaderBytes    int
+	LivenessChecks    []LivenessCheck
+	Recorder          Recorder
 	Logger            *slog.Logger
 }
 
@@ -112,14 +137,15 @@ type AdminServerConfig struct {
 func NewAdminServer(cfg AdminServerConfig) *http.Server {
 	mux := http.NewServeMux()
 	mountAdmin(mux, ServerConfig{
-		Registry:     cfg.Registry,
-		Version:      cfg.Version,
-		IsRunning:    cfg.IsRunning,
-		PprofEnabled: cfg.PprofEnabled,
+		Registry:       cfg.Registry,
+		Version:        cfg.Version,
+		IsRunning:      cfg.IsRunning,
+		PprofEnabled:   cfg.PprofEnabled,
+		LivenessChecks: cfg.LivenessChecks,
 	})
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           mux,
+		Handler:           recoverMiddleware(mux, cfg.Recorder, cfg.Logger),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -130,13 +156,34 @@ func NewAdminServer(cfg AdminServerConfig) *http.Server {
 
 func mountAdmin(mux *http.ServeMux, cfg ServerConfig) {
 	mux.HandleFunc("GET /live", func(w http.ResponseWriter, _ *http.Request) {
-		status := "ok"
-		code := http.StatusOK
+		// Drain order: shutting-down beats degraded-liveness because
+		// the orchestrator should stop sending traffic before it
+		// considers recycling the pod.
 		if cfg.IsRunning != nil && !cfg.IsRunning() {
-			status = "shutting_down"
-			code = http.StatusServiceUnavailable
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status": "shutting_down", "version": cfg.Version,
+			})
+			return
 		}
-		writeJSON(w, code, map[string]string{"status": status, "version": cfg.Version})
+		degraded := map[string]string{}
+		for _, check := range cfg.LivenessChecks {
+			if check.Fn == nil {
+				continue
+			}
+			if err := check.Fn(); err != nil {
+				degraded[check.Name] = err.Error()
+			}
+		}
+		if len(degraded) > 0 {
+			body := map[string]any{
+				"status":   "degraded",
+				"version":  cfg.Version,
+				"failures": degraded,
+			}
+			writeJSON(w, http.StatusServiceUnavailable, body)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": cfg.Version})
 	})
 	if cfg.Registry != nil {
 		mux.Handle("GET /metrics", promhttp.HandlerFor(cfg.Registry, promhttp.HandlerOpts{}))

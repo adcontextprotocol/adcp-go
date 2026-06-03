@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/netutil"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
@@ -21,6 +20,15 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/suppressionstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// SuppressionStaleThreshold is the consecutive-failure count at which
+// /live flips to 503 for the suppression-snapshot liveness check. With
+// the default 5-minute refresh interval, 6 consecutive failures means
+// ~30 minutes of running on the snapshot the agent had at the last
+// success — long enough that an operator wants the pod recycled rather
+// than continuing to serve traffic with a kill-switch list that may
+// no longer be authoritative.
+const SuppressionStaleThreshold = 6
 
 // Run executes the agent lifecycle: build dependencies, start the
 // HTTP server, then block until SIGINT/SIGTERM and run an orderly
@@ -31,9 +39,13 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	registry := prometheus.NewRegistry()
+	metricsProvider, err := BuildMetrics(cfg.Metrics)
+	if err != nil {
+		return fmt.Errorf("build metrics provider: %w", err)
+	}
+	recorder := metricsProvider.Recorder
 
-	bundle, err := buildBundle(ctx, cfg, logger)
+	bundle, err := buildBundle(ctx, cfg, recorder, logger)
 	if err != nil {
 		return fmt.Errorf("build bundle: %w", err)
 	}
@@ -44,6 +56,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		RequestBodyLimit:           int64(cfg.RequestBodyLimitBytes),
 		ResponseTTL:                cfg.ResponseTTL,
 		SupportedADCPMajorVersions: cfg.SupportedADCPMajorVersions,
+		Recorder:                   recorder,
 		Logger:                     logger,
 	})
 
@@ -55,6 +68,18 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		return errors.New("TMP_OWN_ENDPOINT_URL is required when signature verification is enabled")
 	}
 
+	liveness := []LivenessCheck{
+		{
+			Name: "suppression_snapshot",
+			Fn: func() error {
+				if f := bundle.suppressionSnap.ConsecutiveFailures(); f >= SuppressionStaleThreshold {
+					return fmt.Errorf("suppression snapshot has not refreshed in %d consecutive attempts", f)
+				}
+				return nil
+			},
+		},
+	}
+
 	var running atomic.Bool
 	srv := NewServer(ServerConfig{
 		Port:              cfg.HTTPPort,
@@ -62,7 +87,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		KeyStore:          bundle.keystore,
 		OwnEndpointURL:    cfg.TMP.OwnEndpointURL,
 		RequireSig:        requireSig,
-		Registry:          registry,
+		Registry:          metricsProvider.Registry,
 		IsRunning:         running.Load,
 		Version:           version,
 		PprofEnabled:      cfg.Pprof.Enabled,
@@ -74,6 +99,8 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		RequestBodyLimit:  int64(cfg.RequestBodyLimitBytes),
 		AdminPort:         cfg.AdminPort,
 		StrictContentType: cfg.StrictContentType,
+		LivenessChecks:    liveness,
+		Recorder:          recorder,
 		Logger:            logger,
 	})
 
@@ -81,7 +108,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	if cfg.AdminPort > 0 {
 		adminSrv = NewAdminServer(AdminServerConfig{
 			Port:              cfg.AdminPort,
-			Registry:          registry,
+			Registry:          metricsProvider.Registry,
 			Version:           version,
 			IsRunning:         running.Load,
 			PprofEnabled:      cfg.Pprof.Enabled,
@@ -90,8 +117,23 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 			WriteTimeout:      cfg.HTTPWriteTimeout,
 			IdleTimeout:       cfg.HTTPIdleTimeout,
 			MaxHeaderBytes:    cfg.MaxHeaderBytes,
+			LivenessChecks:    liveness,
+			Recorder:          recorder,
 			Logger:            logger,
 		})
+	}
+
+	tracker := &connTracker{}
+	if err := metricsProvider.RegisterOpenConnectionsObserver(tracker.Open); err != nil {
+		return fmt.Errorf("register open-connections observer: %w", err)
+	}
+	if err := metricsProvider.RegisterSuppressionSnapshotObservers(
+		func() int64 { return int64(bundle.suppressionSnap.ConsecutiveFailures()) },
+		func() int64 { return bundle.suppressionSnap.LastSuccessfulRefresh().Unix() },
+		func() int64 { p, _ := bundle.suppressionSnap.Sizes(); return int64(p) },
+		func() int64 { _, g := bundle.suppressionSnap.Sizes(); return int64(g) },
+	); err != nil {
+		return fmt.Errorf("register suppression observers: %w", err)
 	}
 
 	quit := make(chan os.Signal, 1)
@@ -101,14 +143,17 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", srv.Addr, err)
 	}
-	ln := netutil.LimitListener(baseLn, cfg.MaxOpenConnections)
+	// Compose: raw listener → LimitListener (caps concurrent accepts)
+	// → trackingListener (counts opens for the open_connections gauge).
+	limitedLn := netutil.LimitListener(baseLn, cfg.MaxOpenConnections)
+	ln := &trackingListener{Listener: limitedLn, tracker: tracker}
 
 	serverErr := make(chan error, 2)
-	go func() {
+	safeGo(logger, recorder, "http-server", func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
-	}()
+	})
 	if adminSrv != nil {
 		// Admin listener gets its own bounded concurrency so a
 		// misbehaving Prometheus scraper / pprof poller can't
@@ -131,11 +176,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 			return fmt.Errorf("listen admin %s: %w", adminSrv.Addr, err)
 		}
 		boundedAdmin := netutil.LimitListener(adminLn, cfg.MaxOpenConnections)
-		go func() {
+		safeGo(logger, recorder, "admin-http-server", func() {
 			if err := adminSrv.Serve(boundedAdmin); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				serverErr <- err
 			}
-		}()
+		})
 	}
 
 	running.Store(true)
@@ -185,6 +230,9 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 			shutdownErrs = append(shutdownErrs, fmt.Errorf("valkey: %w", err))
 		}
 	}
+	if err := metricsProvider.Shutdown(shutdownCtx); err != nil {
+		shutdownErrs = append(shutdownErrs, fmt.Errorf("metrics: %w", err))
+	}
 
 	return errors.Join(startupErr, errors.Join(shutdownErrs...))
 }
@@ -194,11 +242,12 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 type bundle struct {
 	engine           *targeting.ContextEngine
 	keystore         tmproto.KeyStore
+	suppressionSnap  *suppressionstore.Snapshot
 	valkeyCloser     interface{ Close() error }
 	cancelBackground context.CancelFunc
 }
 
-func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle, error) {
+func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (*bundle, error) {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 
 	// Valkey backend. *redisstore.Store satisfies every per-domain
@@ -241,7 +290,6 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 		rawStore,
 		rawStore,
 		suppressSnap,
-		cfg.AcceptedTaxonomies,
 		cfg.Cache,
 	)
 	if err != nil {
@@ -253,19 +301,16 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 	if len(cfg.PropertyRIDs) == 0 {
 		logger.Warn("PROPERTY_RIDS is empty; every inbound request will short-circuit on the global property bitmap. Wire up the registry feed before serving traffic.")
 	}
-	// TODO(metrics-adapter): wire engine Metrics through a
-	// prommetrics-backed adapter so engine stage outcomes land in the
-	// agent's /metrics. Identity-agent's metricsProvider pattern is
-	// the template; not in this PR's scope.
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         cfg.ProviderID,
 		SellerAgentURL:     cfg.SellerAgentURL,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap(cfg.PropertyRIDs...)},
 		Storage:            storage,
 		AcceptedTaxonomies: cfg.AcceptedTaxonomies,
+		Metrics:            newTargetingMetricsAdapter(recorder),
 	})
 
-	keystore, err := buildKeyStore(bgCtx, cfg.TMP, logger)
+	keystore, err := buildKeyStore(bgCtx, cfg.TMP, recorder, logger)
 	if err != nil {
 		_ = valkeyCloser.Close()
 		cancelBg()
@@ -275,14 +320,17 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 	return &bundle{
 		engine:           engine,
 		keystore:         keystore,
+		suppressionSnap:  suppressSnap,
 		valkeyCloser:     valkeyCloser,
 		cancelBackground: cancelBg,
 	}, nil
 }
 
 // buildKeyStore wires up the TMP signature key store from
-// TMPConfig.RegistryURL.
-func buildKeyStore(ctx context.Context, cfg TMPConfig, logger *slog.Logger) (tmproto.KeyStore, error) {
+// TMPConfig.RegistryURL. The background refresh runs under safeGo so a
+// panic in the upstream library is captured and reported instead of
+// taking the process down.
+func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger *slog.Logger) (tmproto.KeyStore, error) {
 	if cfg.RegistryURL == "" {
 		if !cfg.AllowUnsigned {
 			return nil, errors.New("TMP_REGISTRY_URL is required when signature verification is enabled")
@@ -296,12 +344,18 @@ func buildKeyStore(ctx context.Context, cfg TMPConfig, logger *slog.Logger) (tmp
 	fetchCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if _, err := ks.Refresh(fetchCtx); err != nil {
+		if recorder != nil {
+			recorder.KeystoreRefresh(ctx, OutcomeError)
+		}
 		return nil, fmt.Errorf("initial registry fetch: %w", err)
 	}
-	go func() {
+	if recorder != nil {
+		recorder.KeystoreRefresh(ctx, OutcomePass)
+	}
+	safeGo(logger, recorder, "keystore-refresh", func() {
 		if err := ks.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Warn("registry keystore Run terminated", "error", err)
+			logger.Error("registry keystore Run terminated", "error", err)
 		}
-	}()
+	})
 	return ks, nil
 }

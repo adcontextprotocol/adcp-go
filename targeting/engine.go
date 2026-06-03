@@ -255,6 +255,14 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	var segments []string
 
 	for _, pkgID := range candidatePkgIDs {
+		// Bail at the top of every iteration so a deadline that fires
+		// mid-eval surfaces as 504 instead of a 200/empty-offers
+		// response that hides timeouts from buyer telemetry. Storage
+		// calls inside the loop body do their own ctx-error mapping
+		// in the handler; this check covers the gap between iterations.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		cfg, ok, err := e.storage.ContextConfig(ctx, pkgID)
 		if err != nil {
 			e.metrics.StoreError(ctx, "context_config", err)

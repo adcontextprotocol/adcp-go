@@ -379,6 +379,17 @@ func (c Config) Validate() error {
 	if c.AdminPort == 0 && c.Pprof.Enabled {
 		errs = append(errs, errors.New("PPROF_ENABLED=true requires ADMIN_PORT > 0 — refusing to mount pprof on the public /context listener"))
 	}
+	if c.AdminPort == 0 && c.Metrics.Enabled {
+		// /metrics on the public listener exposes internal histograms
+		// (per-stage latencies, store_error rates) to anyone who can
+		// reach the request port. The publisher router and any other
+		// inbound TMP peer reach that port, so leaving /metrics on it
+		// is an unauthenticated information disclosure path — including
+		// a timing oracle on signature-verification outcomes. Force the
+		// operator to either split observability onto ADMIN_PORT or
+		// keep METRICS_ENABLED=false.
+		errs = append(errs, errors.New("METRICS_ENABLED=true requires ADMIN_PORT > 0 — refusing to mount /metrics on the public /context listener"))
+	}
 	if c.SuppressionRefreshInterval <= 0 {
 		errs = append(errs, errors.New("SUPPRESSION_REFRESH_INTERVAL must be positive"))
 	}
@@ -617,7 +628,12 @@ func lookupTaxonomies(name string) ([]topicstore.Taxonomy, error) {
 		if p == "" {
 			continue
 		}
-		colon := strings.LastIndex(p, ":")
+		// Split on the first ':' rather than the last so a source
+		// containing an unexpected ':' surfaces as a Taxonomy.Validate
+		// rejection ("invalid character") naming the bad source,
+		// instead of a non-integer-id error blaming the segment after
+		// the last colon.
+		colon := strings.Index(p, ":")
 		if colon < 1 || colon == len(p)-1 {
 			return nil, fmt.Errorf("%s: %q is not in source:id form", name, p)
 		}

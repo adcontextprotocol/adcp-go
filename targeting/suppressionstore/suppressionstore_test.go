@@ -91,6 +91,21 @@ func TestService_RejectsNonPositiveTTL(t *testing.T) {
 	assert.Error(t, svc.SuppressGeo(ctx, providerID, "US", 0))
 }
 
+func TestSnapshot_HealthAccessors(t *testing.T) {
+	ctx := context.Background()
+	store := suppressionstore.NewMockStore()
+	snap, _ := suppressionstore.NewSnapshot(suppressionstore.SnapshotConfig{Store: store, ProviderID: providerID})
+
+	// Pre-load.
+	assert.Equal(t, 0, snap.ConsecutiveFailures())
+	assert.True(t, snap.LastSuccessfulRefresh().IsZero())
+
+	// Successful load: failures reset, timestamp set.
+	require.NoError(t, snap.Load(ctx))
+	assert.Equal(t, 0, snap.ConsecutiveFailures())
+	assert.False(t, snap.LastSuccessfulRefresh().IsZero())
+}
+
 func TestSnapshot_ExpiredKeysAreSkipped(t *testing.T) {
 	ctx := context.Background()
 	store := suppressionstore.NewMockStore()

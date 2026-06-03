@@ -2,6 +2,7 @@ package pkgconfigstore
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
@@ -39,12 +40,60 @@ type cachedReader struct {
 
 func (c *cachedReader) Get(ctx context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
 	if hit, ok := c.entries.Get(packageID); ok {
-		return hit.Config, hit.Present, nil
+		return clonePackageContextConfig(hit.Config), hit.Present, nil
 	}
 	cfg, present, err := c.inner.Get(ctx, packageID)
 	if err != nil {
 		return nil, false, err
 	}
 	c.entries.Add(packageID, cachedEntry{Config: cfg, Present: present})
-	return cfg, present, nil
+	return clonePackageContextConfig(cfg), present, nil
+}
+
+// clonePackageContextConfig returns an independent copy of cfg with
+// every slice / map / json.RawMessage field freshly allocated so a
+// caller mutating an Offer, a PropertyRID, or any other contained
+// slice/map cannot poison the cached pointer that subsequent requests
+// receive. Returns nil when cfg is nil (negative-cache hit).
+func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.PackageContextConfig {
+	if cfg == nil {
+		return nil
+	}
+	out := *cfg
+	if len(cfg.PropertyRIDs) > 0 {
+		out.PropertyRIDs = append([]string(nil), cfg.PropertyRIDs...)
+	}
+	if len(cfg.EmitSegments) > 0 {
+		out.EmitSegments = append([]string(nil), cfg.EmitSegments...)
+	}
+	if len(cfg.Offers) > 0 {
+		out.Offers = make([]targeting.OfferConfigJSON, len(cfg.Offers))
+		for i, o := range cfg.Offers {
+			out.Offers[i] = o
+			if len(o.Brand) > 0 {
+				out.Offers[i].Brand = append(json.RawMessage(nil), o.Brand...)
+			}
+			if len(o.Macros) > 0 {
+				macros := make(map[string]string, len(o.Macros))
+				for k, v := range o.Macros {
+					macros[k] = v
+				}
+				out.Offers[i].Macros = macros
+			}
+		}
+	}
+	if len(cfg.Brand) > 0 {
+		out.Brand = append(json.RawMessage(nil), cfg.Brand...)
+	}
+	if len(cfg.CreativeManifest) > 0 {
+		out.CreativeManifest = append(json.RawMessage(nil), cfg.CreativeManifest...)
+	}
+	if len(cfg.Macros) > 0 {
+		macros := make(map[string]string, len(cfg.Macros))
+		for k, v := range cfg.Macros {
+			macros[k] = v
+		}
+		out.Macros = macros
+	}
+	return &out
 }

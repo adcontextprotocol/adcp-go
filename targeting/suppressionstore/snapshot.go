@@ -20,6 +20,16 @@ type Snapshot struct {
 	providerID string
 	snap       atomic.Pointer[snapData]
 	logger     *slog.Logger
+
+	// consecutiveFailures and lastRefreshUnix expose the refresh-loop's
+	// health to observability code (admin /live, /metrics gauges).
+	// consecutiveFailures counts uninterrupted refresh failures since the
+	// last success; resets to 0 on every successful Load. lastRefreshUnix
+	// is the Unix-second timestamp of the most recent successful Load,
+	// independent of whether the snapshot already had data from an
+	// earlier refresh.
+	consecutiveFailures atomic.Int64
+	lastRefreshUnix     atomic.Int64
 }
 
 type snapData struct {
@@ -61,7 +71,10 @@ func NewSnapshot(cfg SnapshotConfig) (*Snapshot, error) {
 
 // Load pulls every suppression key for the configured provider and
 // installs a fresh snapshot. Errors are returned; the existing
-// snapshot stays in place on failure.
+// snapshot stays in place on failure. On success, resets the
+// consecutive-failure counter and stamps the last-refresh timestamp
+// so observability surfaces (ConsecutiveFailures, LastRefresh) see the
+// recovery immediately.
 func (s *Snapshot) Load(ctx context.Context) error {
 	properties, geos, err := LoadAll(ctx, s.store, s.providerID)
 	if err != nil {
@@ -75,11 +88,14 @@ func (s *Snapshot) Load(ctx context.Context) error {
 	for _, g := range geos {
 		gSet[g] = struct{}{}
 	}
+	now := time.Now()
 	s.snap.Store(&snapData{
 		properties: pSet,
 		geos:       gSet,
-		loadedAt:   time.Now(),
+		loadedAt:   now,
 	})
+	s.lastRefreshUnix.Store(now.Unix())
+	s.consecutiveFailures.Store(0)
 	return nil
 }
 
@@ -108,29 +124,30 @@ func (s *Snapshot) refreshLoop(ctx context.Context, refresh time.Duration) {
 	// at WARN on every failure produces 12/h at the 5-minute default
 	// and worse at aggressive intervals, drowning real signals.
 	// Suppress repeated identical failures and emit one summary
-	// every consecutiveFailureLogStride retries instead.
+	// every consecutiveFailureLogStride retries instead. The counter
+	// itself is mirrored onto s.consecutiveFailures so observability
+	// gauges and admin /live can surface the same number.
 	const consecutiveFailureLogStride = 12
-	var consecutiveFailures int
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			priorFailures := s.consecutiveFailures.Load()
 			if err := s.Load(ctx); err != nil {
-				consecutiveFailures++
-				if consecutiveFailures == 1 || consecutiveFailures%consecutiveFailureLogStride == 0 {
+				failures := s.consecutiveFailures.Add(1)
+				if failures == 1 || failures%consecutiveFailureLogStride == 0 {
 					s.logger.Warn("suppressionstore: refresh failed; keeping previous snapshot",
 						"provider_id", s.providerID,
-						"consecutive_failures", consecutiveFailures,
+						"consecutive_failures", failures,
 						"error", err)
 				}
 				continue
 			}
-			if consecutiveFailures > 0 {
+			if priorFailures > 0 {
 				s.logger.Info("suppressionstore: refresh recovered",
 					"provider_id", s.providerID,
-					"recovered_after_failures", consecutiveFailures)
-				consecutiveFailures = 0
+					"recovered_after_failures", priorFailures)
 			}
 		}
 	}
@@ -184,4 +201,24 @@ func (s *Snapshot) Sizes() (int, int) {
 		return 0, 0
 	}
 	return len(d.properties), len(d.geos)
+}
+
+// ConsecutiveFailures returns the number of refresh failures since
+// the last successful Load. Zero immediately after a successful
+// refresh; grows by one per failed refresh attempt. /live can 503
+// when this crosses a configurable threshold so the orchestrator
+// recycles a pod that has lost its connection to Valkey.
+func (s *Snapshot) ConsecutiveFailures() int {
+	return int(s.consecutiveFailures.Load())
+}
+
+// LastSuccessfulRefresh returns the wall-clock time of the most
+// recent successful Load. The zero time means no successful load
+// has occurred (Snapshot constructed but Start/Load never called).
+func (s *Snapshot) LastSuccessfulRefresh() time.Time {
+	unix := s.lastRefreshUnix.Load()
+	if unix == 0 {
+		return time.Time{}
+	}
+	return time.Unix(unix, 0)
 }

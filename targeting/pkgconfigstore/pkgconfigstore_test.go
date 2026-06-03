@@ -42,6 +42,44 @@ func TestReader_AbsentReturnsOkFalse(t *testing.T) {
 	assert.Nil(t, cfg)
 }
 
+func TestCache_HitClonesConfigToIsolateCallers(t *testing.T) {
+	ctx := context.Background()
+	store := pkgconfigstore.NewMockStore()
+	svc, err := pkgconfigstore.NewService(store)
+	require.NoError(t, err)
+	require.NoError(t, svc.Put(ctx, &targeting.PackageContextConfig{
+		PackageID:    "pkg-shared",
+		PropertyRIDs: []string{"rid-1"},
+		EmitSegments: []string{"food"},
+		Offers: []targeting.OfferConfigJSON{
+			{DealID: "deal-A", Macros: map[string]string{"k": "v"}},
+		},
+		Macros: map[string]string{"global": "g1"},
+	}))
+	r := pkgconfigstore.WithCache(pkgconfigstore.NewReader(store), pkgconfigstore.CacheConfig{Size: 8, TTL: time.Minute})
+
+	first, ok, err := r.Get(ctx, "pkg-shared")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	// Mutate every reference-typed field the cache could share.
+	first.PropertyRIDs[0] = "MUTATED"
+	first.EmitSegments[0] = "MUTATED"
+	first.Offers[0].DealID = "MUTATED"
+	first.Offers[0].Macros["k"] = "MUTATED"
+	first.Macros["global"] = "MUTATED"
+
+	second, ok, err := r.Get(ctx, "pkg-shared")
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	assert.Equal(t, "rid-1", second.PropertyRIDs[0], "cache hit must not surface caller mutation")
+	assert.Equal(t, "food", second.EmitSegments[0])
+	assert.Equal(t, "deal-A", second.Offers[0].DealID)
+	assert.Equal(t, "v", second.Offers[0].Macros["k"])
+	assert.Equal(t, "g1", second.Macros["global"])
+}
+
 func TestCache_NegativeCachesMisses(t *testing.T) {
 	ctx := context.Background()
 	base := pkgconfigstore.NewMockStore()

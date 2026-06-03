@@ -13,13 +13,19 @@ import (
 )
 
 
-// HandlerConfig packages the inputs for NewHandler.
+// HandlerConfig packages the inputs for NewHandler. Recorder is
+// accepted for symmetry with identity-agent and future per-stage
+// instrumentation; request lifecycle is observed by
+// requestMetricsMiddleware, so the handler itself only consults
+// recorder for outcomes the middleware can't see (e.g. unknown
+// adcp_major_version rejected before any engine call).
 type HandlerConfig struct {
 	Engine                     *targeting.ContextEngine
 	RequestTimeout             time.Duration
 	RequestBodyLimit           int64
 	ResponseTTL                time.Duration
 	SupportedADCPMajorVersions []int
+	Recorder                   Recorder
 	Logger                     *slog.Logger
 }
 
@@ -28,6 +34,10 @@ func NewHandler(cfg HandlerConfig) http.Handler {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = slog.Default()
+	}
+	recorder := cfg.Recorder
+	if recorder == nil {
+		recorder = noopRecorder{}
 	}
 	supported := make(map[int]struct{}, len(cfg.SupportedADCPMajorVersions))
 	for _, v := range cfg.SupportedADCPMajorVersions {
@@ -39,6 +49,7 @@ func NewHandler(cfg HandlerConfig) http.Handler {
 		requestBodyLimit: cfg.RequestBodyLimit,
 		responseTTL:      cfg.ResponseTTL,
 		supportedVers:    supported,
+		recorder:         recorder,
 		logger:           logger,
 	}
 }
@@ -49,6 +60,7 @@ type handler struct {
 	requestBodyLimit int64
 	responseTTL      time.Duration
 	supportedVers    map[int]struct{}
+	recorder         Recorder
 	logger           *slog.Logger
 }
 
