@@ -104,15 +104,33 @@ func (s *Snapshot) Start(ctx context.Context, refresh time.Duration) error {
 func (s *Snapshot) refreshLoop(ctx context.Context, refresh time.Duration) {
 	ticker := time.NewTicker(refresh)
 	defer ticker.Stop()
+	// During a sustained Valkey outage every tick will fail; logging
+	// at WARN on every failure produces 12/h at the 5-minute default
+	// and worse at aggressive intervals, drowning real signals.
+	// Suppress repeated identical failures and emit one summary
+	// every consecutiveFailureLogStride retries instead.
+	const consecutiveFailureLogStride = 12
+	var consecutiveFailures int
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			if err := s.Load(ctx); err != nil {
-				s.logger.Warn("suppressionstore: refresh failed; keeping previous snapshot",
+				consecutiveFailures++
+				if consecutiveFailures == 1 || consecutiveFailures%consecutiveFailureLogStride == 0 {
+					s.logger.Warn("suppressionstore: refresh failed; keeping previous snapshot",
+						"provider_id", s.providerID,
+						"consecutive_failures", consecutiveFailures,
+						"error", err)
+				}
+				continue
+			}
+			if consecutiveFailures > 0 {
+				s.logger.Info("suppressionstore: refresh recovered",
 					"provider_id", s.providerID,
-					"error", err)
+					"recovered_after_failures", consecutiveFailures)
+				consecutiveFailures = 0
 			}
 		}
 	}

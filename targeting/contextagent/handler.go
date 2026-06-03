@@ -58,8 +58,6 @@ type handler struct {
 	logger           *slog.Logger
 }
 
-const maxServeWindowSec = 300
-
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, "", tmproto.ErrorCodeInvalidRequest, "POST required", http.StatusMethodNotAllowed)
@@ -102,10 +100,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.engine.Evaluate(ctx, &req)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "request deadline exceeded", http.StatusGatewayTimeout)
-			return
-		}
+		// targeting.ContextEngine.Evaluate today returns nil error on
+		// every code path (storage errors degrade to under-match via
+		// metrics, not request failure). The branch exists in case a
+		// future engine extension propagates a real error.
 		h.logger.Error("context engine returned error",
 			"request_id", req.RequestID, "error", err)
 		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusInternalServerError)
@@ -119,11 +117,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Signals:   result.Signals,
 	}
 	if h.responseTTL > 0 {
-		ttlSec := int(h.responseTTL.Seconds())
-		if ttlSec > maxServeWindowSec {
-			ttlSec = maxServeWindowSec
-		}
-		resp.CacheTTL = ttlSec
+		// ContextMatchResponse.cache_ttl has no spec-level maximum,
+		// only a 5-minute default the router applies when omitted.
+		// Don't borrow IdentityMatchResponse's 300s serve_window_sec
+		// cap — that's a buyer-asserted serve throttle, a different
+		// concept on a different message type.
+		resp.CacheTTL = int(h.responseTTL.Seconds())
 	}
 
 	w.Header().Set("Content-Type", "application/json")

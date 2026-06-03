@@ -200,12 +200,20 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 
 	candidatePkgIDs := req.PackageIDs
 	if len(candidatePkgIDs) == 0 {
-		pkgs, err := e.storage.ActivePackages(ctx, e.sellerAgentURL, req.PropertyID, country, e.now())
-		if err != nil {
-			e.metrics.StoreError(ctx, "active_packages", err)
-			return &ContextResult{RequestID: req.RequestID}, nil
-		}
-		candidatePkgIDs = pkgs
+		// TMP spec (tmproto.ContextMatchRequest doc): when PackageIDs
+		// is omitted the provider evaluates "all eligible packages for
+		// this placement". The storage layer today only filters media
+		// buys by (seller, property, country) — not by placement_id —
+		// so returning every active package would cross-leak inventory
+		// between placements on the same property. Until the
+		// mediabuy / pkgconfig schema carries a placement_id filter
+		// and the writer pipelines populate it, refuse the implicit-
+		// fallback path: callers MUST send PackageIDs explicitly.
+		//
+		// TODO(placement-implicit): extend mediabuystore.MediaBuyPackage
+		// with PlacementIDs and filter at the read path.
+		e.metrics.ContextEvaluated(ctx, "placement_implicit_unsupported", false)
+		return &ContextResult{RequestID: req.RequestID}, nil
 	}
 
 	artifactRefs := extractArtifactRefURLs(req)

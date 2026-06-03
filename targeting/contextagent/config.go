@@ -365,8 +365,15 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("TMP_OWN_ENDPOINT_URL is required unless TMP_ALLOW_UNSIGNED=true"))
 		}
 	}
-	if !c.Valkey.Enabled {
+	// Only emit "VALKEY_SHARDS is required" when no value at all was
+	// supplied; if the env was set but malformed, the parser already
+	// surfaced a more specific error and stacking "required" on top
+	// would mislead the operator.
+	if !c.Valkey.Enabled && os.Getenv("VALKEY_SHARDS") == "" {
 		errs = append(errs, errors.New("VALKEY_SHARDS is required"))
+	}
+	if c.AdminPort == 0 && c.Pprof.Enabled {
+		errs = append(errs, errors.New("PPROF_ENABLED=true requires ADMIN_PORT > 0 — refusing to mount pprof on the public /context listener"))
 	}
 	if c.SuppressionRefreshInterval <= 0 {
 		errs = append(errs, errors.New("SUPPRESSION_REFRESH_INTERVAL must be positive"))

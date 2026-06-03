@@ -39,17 +39,39 @@ func GeoKey(providerID, country string) string {
 	return "suppress:" + providerID + ":geo:" + country
 }
 
+// propertyKeyPrefix returns the literal key segment that prefixes every
+// property suppression for providerID. SCAN patterns are built by
+// appending '*' to this; LoadAll strips it from each returned key to
+// recover the bare property_rid.
+func propertyKeyPrefix(providerID string) string {
+	return "suppress:" + providerID + ":property:"
+}
+
+// geoKeyPrefix is the geo-side equivalent of propertyKeyPrefix.
+func geoKeyPrefix(providerID string) string {
+	return "suppress:" + providerID + ":geo:"
+}
+
 // PropertyPrefix returns the SCAN pattern matching every property
 // suppression for a provider.
 func PropertyPrefix(providerID string) string {
-	return "suppress:" + providerID + ":property:*"
+	return propertyKeyPrefix(providerID) + "*"
 }
 
 // GeoPrefix returns the SCAN pattern matching every geo suppression for
 // a provider.
 func GeoPrefix(providerID string) string {
-	return "suppress:" + providerID + ":geo:*"
+	return geoKeyPrefix(providerID) + "*"
 }
+
+// MaxSuppressionTTL caps the duration a single suppression call can
+// install. A multi-decade TTL on a kill switch is a footgun — there
+// is no proactive cleanup of suppression keys outside the operator's
+// own discipline, so a typo on the TTL would lock out a property /
+// country until someone notices. Operators that genuinely need
+// longer suppressions should re-issue or escalate to a registry-level
+// change.
+const MaxSuppressionTTL = 30 * 24 * time.Hour
 
 // Service is the write surface for suppressions. Both methods require
 // a positive TTL — a suppression with no expiry is operationally
@@ -67,8 +89,7 @@ func NewService(store Store) (*Service, error) {
 }
 
 // SuppressProperty installs a property suppression for the duration.
-// ttl MUST be positive — a permanent suppression should be done via a
-// distinct mechanism (e.g., removing the property from the registry).
+// ttl MUST be positive and at most MaxSuppressionTTL.
 func (s *Service) SuppressProperty(ctx context.Context, providerID, propertyRID string, ttl time.Duration) error {
 	if providerID == "" {
 		return errors.New("suppressionstore: provider_id is required")
@@ -79,11 +100,14 @@ func (s *Service) SuppressProperty(ctx context.Context, providerID, propertyRID 
 	if ttl <= 0 {
 		return errors.New("suppressionstore: ttl must be positive")
 	}
+	if ttl > MaxSuppressionTTL {
+		return fmt.Errorf("suppressionstore: ttl %v exceeds MaxSuppressionTTL %v", ttl, MaxSuppressionTTL)
+	}
 	return s.store.Set(ctx, PropertyKey(providerID, propertyRID), "1", ttl)
 }
 
-// SuppressGeo installs a geo suppression for the duration. ttl MUST be
-// positive (same reasoning as SuppressProperty).
+// SuppressGeo installs a geo suppression for the duration. ttl MUST
+// be positive and at most MaxSuppressionTTL.
 func (s *Service) SuppressGeo(ctx context.Context, providerID, country string, ttl time.Duration) error {
 	if providerID == "" {
 		return errors.New("suppressionstore: provider_id is required")
@@ -93,6 +117,9 @@ func (s *Service) SuppressGeo(ctx context.Context, providerID, country string, t
 	}
 	if ttl <= 0 {
 		return errors.New("suppressionstore: ttl must be positive")
+	}
+	if ttl > MaxSuppressionTTL {
+		return fmt.Errorf("suppressionstore: ttl %v exceeds MaxSuppressionTTL %v", ttl, MaxSuppressionTTL)
 	}
 	return s.store.Set(ctx, GeoKey(providerID, country), "1", ttl)
 }
@@ -135,10 +162,8 @@ func LoadAll(ctx context.Context, store Store, providerID string) (properties, g
 	if err != nil {
 		return nil, nil, fmt.Errorf("suppressionstore: scan geo keys: %w", err)
 	}
-	propertyPrefix := PropertyPrefix(providerID)
-	propertyPrefix = propertyPrefix[:len(propertyPrefix)-1] // drop trailing '*'
-	geoPrefix := GeoPrefix(providerID)
-	geoPrefix = geoPrefix[:len(geoPrefix)-1]
+	propertyPrefix := propertyKeyPrefix(providerID)
+	geoPrefix := geoKeyPrefix(providerID)
 
 	properties = make([]string, 0, len(propertyKeys))
 	for _, k := range propertyKeys {

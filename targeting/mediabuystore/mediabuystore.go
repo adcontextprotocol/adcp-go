@@ -93,7 +93,7 @@ func (s *Service) Put(ctx context.Context, mb MediaBuy) error {
 		return errors.New("mediabuystore: media_buy_id is required")
 	}
 	if mb.SellerAgentURL == "" {
-		return errors.New("mediabuystore: seller_id is required")
+		return errors.New("mediabuystore: seller_agent_url is required")
 	}
 	payload, err := json.Marshal(mb)
 	if err != nil {

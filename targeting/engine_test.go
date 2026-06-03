@@ -3,7 +3,6 @@ package targeting_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/contextstorage"
@@ -76,7 +75,15 @@ func TestContext_GeoSuppressed(t *testing.T) {
 	assert.Empty(t, resp.Offers)
 }
 
-func TestContext_ActivePackagesFromStorage(t *testing.T) {
+// TestContext_ImplicitFallback_ReturnsEmpty pins the deliberate
+// fail-closed behavior when a request omits PackageIDs. The TMP spec
+// expects the provider to evaluate every active package for the
+// placement, but storage today doesn't filter by placement_id —
+// returning every seller-property-country active package would
+// cross-leak inventory between placements on the same property. Until
+// the storage layer carries placement filtering, the engine returns
+// empty offers and emits a metric.
+func TestContext_ImplicitFallback_ReturnsEmpty(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-a"}).
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-b"}).
@@ -88,10 +95,11 @@ func TestContext_ActivePackagesFromStorage(t *testing.T) {
 		PropertyRID: "10",
 		PropertyID:  "pub-1",
 		Geo:         map[string]any{"country": "US"},
-		// No PackageIDs — engine resolves from storage.
+		// No PackageIDs — must fail-closed until placement filtering lands.
 	})
 	require.NoError(t, err)
-	assert.Len(t, resp.Offers, 2)
+	assert.Empty(t, resp.Offers,
+		"implicit-fallback path must return empty offers to avoid cross-leak between placements on the same property")
 }
 
 func TestContext_TopicMatchViaArtifact(t *testing.T) {
@@ -292,37 +300,7 @@ func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
 		"engine must hold its own copy of AcceptedTaxonomies; rogue:99 was configured at construction time")
 }
 
-func TestContext_NowOverrideUsedForActivePackages(t *testing.T) {
-	// Verifies the engine forwards its Now() output to
-	// storage.ActivePackages. The in-memory storage doesn't model dates
-	// (its ActivePackages key ignores `now`), so we use a custom
-	// storage that asserts the passed time.
-	probe := &nowProbeStorage{InMemory: *contextstorage.NewInMemory()}
-	probe.WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"})
-
-	frozen := time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC)
-	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
-		ProviderID:         testProviderID,
-		SellerAgentURL:     testSeller,
-		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
-		Storage:            probe,
-		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
-		Now:                func() time.Time { return frozen },
-	})
-
-	_, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID: "r", PropertyRID: "10",
-	})
-	require.NoError(t, err)
-	assert.Equal(t, frozen, probe.lastNow)
-}
-
-type nowProbeStorage struct {
-	contextstorage.InMemory
-	lastNow time.Time
-}
-
-func (p *nowProbeStorage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]string, error) {
-	p.lastNow = now
-	return p.InMemory.ActivePackages(ctx, sellerAgentURL, propertyID, country, now)
-}
+// The Now override on ContextEngineConfig is reserved for the future
+// placement-aware ActivePackages call: until that path returns
+// non-empty, the engine never calls Now(). Re-add a probe test when
+// the implicit-fallback path is implemented.

@@ -71,6 +71,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		WriteTimeout:      cfg.HTTPWriteTimeout,
 		IdleTimeout:       cfg.HTTPIdleTimeout,
 		MaxHeaderBytes:    cfg.MaxHeaderBytes,
+		RequestBodyLimit:  int64(cfg.RequestBodyLimitBytes),
 		AdminPort:         cfg.AdminPort,
 		StrictContentType: cfg.StrictContentType,
 		Logger:            logger,
@@ -109,8 +110,19 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		}
 	}()
 	if adminSrv != nil {
+		// Admin listener gets its own bounded concurrency so a
+		// misbehaving Prometheus scraper / pprof poller can't
+		// exhaust the FD budget independently of the main listener.
+		// Reuse MaxOpenConnections — operators tune the main agent's
+		// budget, and the admin surface is much lower-volume so the
+		// same ceiling is conservative.
+		adminLn, err := net.Listen("tcp", adminSrv.Addr)
+		if err != nil {
+			return fmt.Errorf("listen admin %s: %w", adminSrv.Addr, err)
+		}
+		boundedAdmin := netutil.LimitListener(adminLn, cfg.MaxOpenConnections)
 		go func() {
-			if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			if err := adminSrv.Serve(boundedAdmin); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				serverErr <- err
 			}
 		}()

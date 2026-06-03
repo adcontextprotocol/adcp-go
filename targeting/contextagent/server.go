@@ -3,6 +3,7 @@ package contextagent
 import (
 	"encoding/json"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/http/pprof"
 	"strconv"
@@ -32,6 +33,13 @@ type ServerConfig struct {
 	IdleTimeout       time.Duration
 	MaxHeaderBytes    int
 
+	// RequestBodyLimit caps the bytes the verifier reads from the
+	// signed request before computing the signature. Must match the
+	// body limit the inner handler enforces, otherwise a signed
+	// request between the verifier limit and the handler limit gets
+	// silently truncated and rejected as malformed JSON.
+	RequestBodyLimit int64
+
 	AdminPort int
 
 	StrictContentType bool
@@ -47,16 +55,21 @@ type ServerConfig struct {
 func NewServer(cfg ServerConfig) *http.Server {
 	mux := http.NewServeMux()
 
+	// Middleware order (outermost first): strict Content-Type runs
+	// before signature verification so a wrong/missing CT short-
+	// circuits with 415 without the verifier reading + decoding +
+	// signing a body it's about to reject anyway.
 	ctxHandler := cfg.ContextHandler
-	if cfg.StrictContentType {
-		ctxHandler = contentTypeJSON(ctxHandler)
-	}
 	if cfg.KeyStore != nil {
 		ctxHandler = tmproto.VerifyContextMatchHandler(ctxHandler, tmproto.VerifyOptions{
 			KeyStore:         cfg.KeyStore,
 			OwnEndpointURL:   cfg.OwnEndpointURL,
 			RequireSignature: cfg.RequireSig,
+			BodyLimit:        cfg.RequestBodyLimit,
 		})
+	}
+	if cfg.StrictContentType {
+		ctxHandler = contentTypeJSON(ctxHandler)
 	}
 	mux.Handle("POST /context", ctxHandler)
 
@@ -140,12 +153,12 @@ func mountAdmin(mux *http.ServeMux, cfg ServerConfig) {
 func contentTypeJSON(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			ct := r.Header.Get("Content-Type")
-			// Strict mode rejects empty AND wrong Content-Type;
-			// otherwise a client that omits the header would slip
-			// past the type check entirely. Allow charset suffixes
-			// ("application/json; charset=utf-8").
-			if len(ct) < len("application/json") || ct[:len("application/json")] != "application/json" {
+			// RFC 7231 §3.1.1.1 makes media types case-insensitive.
+			// mime.ParseMediaType lowercases the type/subtype while
+			// trimming the charset / boundary parameters this check
+			// doesn't care about.
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "application/json" {
 				writeError(w, "", tmproto.ErrorCodeInvalidRequest, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
 				return
 			}
