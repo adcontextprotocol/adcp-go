@@ -528,3 +528,155 @@ func TestService_GetBeforeStartReturnsNil(t *testing.T) {
 	_, present := svc.Lookup("seller", "pkg")
 	assert.False(t, present)
 }
+
+// outcomeRecorder collects refresh outcomes for assertion. Safe for
+// concurrent use from the refresh goroutine.
+type outcomeRecorder struct {
+	mu  sync.Mutex
+	out []string
+}
+
+func (r *outcomeRecorder) record(outcome string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.out = append(r.out, outcome)
+}
+
+func (r *outcomeRecorder) snapshot() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.out))
+	copy(out, r.out)
+	return out
+}
+
+func TestService_RefreshObserverEmitsOnInitialLoad(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", nil, time.Unix(1, 0))
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, time.Hour, WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	assert.Equal(t, []string{RefreshOutcomeSuccess}, rec.snapshot(),
+		"a successful initial load should emit exactly one success outcome")
+}
+
+func TestService_RefreshObserverEmitsErrorOnInitialLoadFailure(t *testing.T) {
+	src := newMemorySource()
+	src.setLoadAllError(errors.New("boom"))
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, time.Hour, WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.Error(t, svc.Start(context.Background()))
+
+	assert.Equal(t, []string{RefreshOutcomeError}, rec.snapshot(),
+		"a failed fail-fast initial load should emit exactly one error outcome")
+}
+
+func TestService_RefreshObserverEmitsOnDelta(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", nil, time.Unix(100, 0))
+	src.queueDelta(Delta{
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-2"}, TargetSegments: nil}},
+		LastUpdatedAt: time.Unix(200, 0),
+	})
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, 10*time.Millisecond, WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	require.Eventually(t, func() bool {
+		return len(rec.snapshot()) >= 2
+	}, time.Second, 5*time.Millisecond, "observer should fire for both initial load and delta")
+
+	outcomes := rec.snapshot()
+	require.GreaterOrEqual(t, len(outcomes), 2)
+	assert.Equal(t, RefreshOutcomeSuccess, outcomes[0], "initial load is success")
+	assert.Equal(t, RefreshOutcomeSuccess, outcomes[1], "delta is success")
+}
+
+func TestService_RefreshObserverEmitsErrorOnDeltaFailure(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", nil, time.Unix(100, 0))
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, 10*time.Millisecond, WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	// Initial load succeeded — flip the source into failure mode and
+	// wait for at least one delta tick to land an error outcome.
+	src.mu.Lock()
+	src.loadUpdatedAfterErr = errors.New("delta boom")
+	src.mu.Unlock()
+
+	require.Eventually(t, func() bool {
+		for _, o := range rec.snapshot() {
+			if o == RefreshOutcomeError {
+				return true
+			}
+		}
+		return false
+	}, time.Second, 5*time.Millisecond, "observer should fire with an error outcome after a delta failure")
+}
+
+func TestService_RefreshObserverPanicDoesNotCrashLoop(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", nil, time.Unix(1, 0))
+
+	var calls atomic.Int64
+	svc, err := New(src, 10*time.Millisecond, WithRefreshObserver(func(string) {
+		calls.Add(1)
+		panic("observer is buggy")
+	}))
+	require.NoError(t, err)
+	// Initial load runs the observer once and panics inside; Start must
+	// still return successfully because the panic is recovered in
+	// notifyRefresh.
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	require.Eventually(t, func() bool {
+		return calls.Load() >= 2
+	}, time.Second, 5*time.Millisecond, "refresh loop should keep ticking through observer panics")
+}
+
+func TestService_LenReflectsSnapshot(t *testing.T) {
+	src := newMemorySource()
+	src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
+	src.put("seller", "pkg-2", &targeting.SegmentRule{AnyOf: []string{"b"}}, time.Unix(1, 0))
+	src.put("other", "pkg-3", nil, time.Unix(1, 0))
+
+	svc, err := New(src, 10*time.Millisecond)
+	require.NoError(t, err)
+	// Pre-Start: empty snapshot is installed by the constructor.
+	assert.Equal(t, 0, svc.Len())
+
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	assert.Equal(t, 3, svc.Len(), "Len should reflect every (seller, package) entry loaded")
+
+	// Queue a delta that adds one entry and removes another.
+	src.queueDelta(Delta{
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-4"}, TargetSegments: nil}},
+		Removed:       []Key{{SellerAgentURL: "seller", PackageID: "pkg-1"}},
+		LastUpdatedAt: time.Unix(200, 0),
+	})
+
+	// 3 entries before, 3 after (one upsert + one remove). Wait for the
+	// upsert to land — Len alone can't distinguish pre- from post-delta.
+	require.Eventually(t, func() bool {
+		_, present := svc.Lookup("seller", "pkg-4")
+		return present
+	}, time.Second, 5*time.Millisecond, "delta refresh should land")
+	assert.Equal(t, 3, svc.Len(), "Len should still reflect every entry after an upsert+remove delta")
+	assert.Nil(t, svc.Get("seller", "pkg-1"), "removed entry should not be readable")
+}

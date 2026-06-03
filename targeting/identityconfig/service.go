@@ -18,10 +18,11 @@ import (
 // each refresh constructs a new immutable snapshot and CAS-installs it via
 // atomic.Pointer.
 type Service struct {
-	source   Source
-	interval time.Duration
-	start    StartConfig
-	logger   *slog.Logger
+	source          Source
+	interval        time.Duration
+	start           StartConfig
+	logger          *slog.Logger
+	refreshObserver func(outcome string)
 
 	snap atomic.Pointer[snapshotData]
 
@@ -30,6 +31,14 @@ type Service struct {
 	running bool
 	done    chan struct{}
 }
+
+// Refresh outcomes reported to a WithRefreshObserver callback. Stable values
+// suitable for use as Prometheus label values; new outcomes may be added in
+// the future, so callers should not treat the set as exhaustive.
+const (
+	RefreshOutcomeSuccess = "success"
+	RefreshOutcomeError   = "error"
+)
 
 // snapshotData is the immutable view installed by every refresh. Readers
 // hold the pointer for the duration of their lookup; writers build a new
@@ -78,6 +87,24 @@ func WithLogger(logger *slog.Logger) Option {
 	return func(s *Service) {
 		if logger != nil {
 			s.logger = logger
+		}
+	}
+}
+
+// WithRefreshObserver registers a callback invoked once per refresh attempt,
+// covering both the initial load (including each retry in StartModeRetry) and
+// every periodic delta refresh. The outcome argument is one of the
+// RefreshOutcome* constants and is suitable for use as a Prometheus label
+// value.
+//
+// The callback runs synchronously on the goroutine that performed the
+// refresh. Implementations must be cheap and non-blocking — a blocked
+// callback delays the refresh loop and, on the initial-load path, delays
+// pod startup. Passing nil is a no-op.
+func WithRefreshObserver(fn func(outcome string)) Option {
+	return func(s *Service) {
+		if fn != nil {
+			s.refreshObserver = fn
 		}
 	}
 }
@@ -136,6 +163,13 @@ func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 // Useful for telemetry and health checks.
 func (s *Service) LastUpdatedAt() time.Time {
 	return s.snap.Load().lastUpdatedAt
+}
+
+// Len returns the number of (sellerAgentURL, packageID) entries in the
+// currently installed snapshot. Safe to call concurrently with refreshes.
+// Useful as an observable-gauge value source for telemetry.
+func (s *Service) Len() int {
+	return len(s.snap.Load().byKey)
 }
 
 // Start begins periodic refresh in a background goroutine. The initial
@@ -240,9 +274,11 @@ func (s *Service) initialLoad(ctx context.Context) error {
 func (s *Service) loadAllOnce(ctx context.Context) error {
 	snap, err := s.source.LoadAll(ctx)
 	if err != nil {
+		s.notifyRefresh(RefreshOutcomeError)
 		return fmt.Errorf("identityconfig: load all: %w", err)
 	}
 	s.snap.Store(buildSnapshot(snap))
+	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
 }
 
@@ -322,6 +358,7 @@ func (s *Service) refreshDelta(ctx context.Context) error {
 	current := s.snap.Load()
 	delta, err := s.source.LoadUpdatedAfter(ctx, current.lastUpdatedAt)
 	if err != nil {
+		s.notifyRefresh(RefreshOutcomeError)
 		return err
 	}
 	if len(delta.Upserted) == 0 && len(delta.Removed) == 0 {
@@ -333,10 +370,28 @@ func (s *Service) refreshDelta(ctx context.Context) error {
 			updated.lastUpdatedAt = delta.LastUpdatedAt
 			s.snap.Store(&updated)
 		}
+		s.notifyRefresh(RefreshOutcomeSuccess)
 		return nil
 	}
 	s.snap.Store(applyDelta(current, delta))
+	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
+}
+
+// notifyRefresh invokes the configured refresh-observer callback, if any.
+// Panics in the callback are recovered and logged so a buggy observer can
+// never bring the refresh loop down.
+func (s *Service) notifyRefresh(outcome string) {
+	if s.refreshObserver == nil {
+		return
+	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.logger.Error("identityconfig: refresh observer panicked",
+				"outcome", outcome, "panic", fmt.Sprintf("%v", rec))
+		}
+	}()
+	s.refreshObserver(outcome)
 }
 
 // emptySnapshot returns a zero-value snapshotData with non-nil maps.
