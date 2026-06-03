@@ -34,7 +34,7 @@ const SuppressionStaleThreshold = 6
 // HTTP server, then block until SIGINT/SIGTERM and run an orderly
 // shutdown. Returns non-nil only when startup fails or shutdown
 // surfaces errors.
-func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) error {
+func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (retErr error) {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
@@ -43,6 +43,21 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	if err != nil {
 		return fmt.Errorf("build metrics provider: %w", err)
 	}
+	// Tear the metrics provider down on any startup-path return.
+	// Without this, a buildBundle failure or any later registration
+	// error leaks the OTEL meter provider's background flush
+	// goroutine and the Prometheus registry. The success path
+	// neutralizes the defer by setting metricsCleanupRan; the regular
+	// shutdown sequence below then calls Shutdown explicitly.
+	metricsCleanupRan := false
+	defer func() {
+		if retErr == nil || metricsCleanupRan {
+			return
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = metricsProvider.Shutdown(shutdownCtx)
+	}()
 	recorder := metricsProvider.Recorder
 
 	bundle, err := buildBundle(ctx, cfg, recorder, logger)
@@ -233,6 +248,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 	if err := metricsProvider.Shutdown(shutdownCtx); err != nil {
 		shutdownErrs = append(shutdownErrs, fmt.Errorf("metrics: %w", err))
 	}
+	metricsCleanupRan = true
 
 	return errors.Join(startupErr, errors.Join(shutdownErrs...))
 }
@@ -291,6 +307,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		rawStore,
 		suppressSnap,
 		cfg.Cache,
+		logger,
 	)
 	if err != nil {
 		_ = valkeyCloser.Close()

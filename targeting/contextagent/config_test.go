@@ -208,6 +208,12 @@ func TestLookupTaxonomies(t *testing.T) {
 		{"no-colon", nil, false},
 		{"iab:not-an-int", nil, false},
 		{"ia/b:1", nil, false}, // Taxonomy.Validate rejects slash
+		// First-colon split (not last): a source segment with an
+		// embedded ':' surfaces as a non-integer-id error blaming the
+		// trailing portion (which contains the ':'), not as a
+		// successful parse that silently absorbs the trailing
+		// characters into the id field.
+		{"iab:7:extra", nil, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.raw, func(t *testing.T) {

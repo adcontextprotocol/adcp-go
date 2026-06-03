@@ -46,8 +46,17 @@ func (c *cachedReader) Get(ctx context.Context, packageID string) (*targeting.Pa
 	if err != nil {
 		return nil, false, err
 	}
-	c.entries.Add(packageID, cachedEntry{Config: cfg, Present: present})
-	return clonePackageContextConfig(cfg), present, nil
+	// Defense-in-depth: clone before insert too. The current direct
+	// reader unmarshals a fresh struct on every call, so the pointer
+	// returned by inner.Get is already exclusive to this call. A
+	// future intermediated reader (e.g. another layer of caching, a
+	// pool of decoded configs) could break that exclusivity and let
+	// our caller's mutation race with our own stored pointer. Clone
+	// both directions so the cache contract is "never share pointers"
+	// regardless of what inner does.
+	stored := clonePackageContextConfig(cfg)
+	c.entries.Add(packageID, cachedEntry{Config: stored, Present: present})
+	return clonePackageContextConfig(stored), present, nil
 }
 
 // clonePackageContextConfig returns an independent copy of cfg with

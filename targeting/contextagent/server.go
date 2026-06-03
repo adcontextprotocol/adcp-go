@@ -92,8 +92,14 @@ func NewServer(cfg ServerConfig) *http.Server {
 	if cfg.StrictContentType {
 		ctxHandler = contentTypeJSON(ctxHandler)
 	}
-	ctxHandler = requestMetricsMiddleware(ctxHandler, cfg.Recorder)
+	// Middleware order applied (innermost → outermost):
+	//   inner verifier → contentTypeJSON → recoverMiddleware → requestMetricsMiddleware
+	// Request flow at runtime is the reverse: metrics first (so the
+	// deferred RequestCompleted observes the final status), then
+	// recover (so a panic in the inner chain becomes a 500 the
+	// metrics middleware can see), then the verifier / handler.
 	ctxHandler = recoverMiddleware(ctxHandler, cfg.Recorder, cfg.Logger)
+	ctxHandler = requestMetricsMiddleware(ctxHandler, cfg.Recorder)
 	mux.Handle("POST /context", ctxHandler)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -104,6 +110,15 @@ func NewServer(cfg ServerConfig) *http.Server {
 		mountAdmin(mux, cfg)
 	}
 
+	// One recoverMiddleware on /context (inside ctxHandler) and a
+	// second one wrapping the mux. The inner catches /context panics
+	// and writes the tmproto.ErrorResponse JSON shape callers expect;
+	// the outer is the safety net for /health and the operator
+	// endpoints (/live, /metrics, /debug/pprof) when AdminPort == 0,
+	// which the inner never sees. A panic in /health is a contract
+	// violation either way (the spec defines only "ok" / "not ready"
+	// bodies); writing a generic JSON 500 beats the default net/http
+	// stack trace.
 	return &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
 		Handler:           recoverMiddleware(mux, cfg.Recorder, cfg.Logger),

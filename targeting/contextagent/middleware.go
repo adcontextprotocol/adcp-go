@@ -85,6 +85,13 @@ func (w *recordingResponseWriter) Write(b []byte) (int, error) {
 // RequestCompleted on exit, with a status label derived from the final
 // HTTP status. The handler chain owns the body and status codes; this
 // wrapper just observes them.
+//
+// Operator PromQL note: in-flight requests are
+// `<ns>_requests_started_total - sum(<ns>_request_duration_seconds_count)`
+// summed across statuses, because RequestCompleted feeds the histogram
+// (whose `_count` series counts samples), not a paired completed
+// counter. Pairing the two metrics is intentional: histogram samples
+// give per-status latency, the started counter gives unlabeled inflow.
 func requestMetricsMiddleware(next http.Handler, recorder Recorder) http.Handler {
 	if recorder == nil {
 		recorder = noopRecorder{}
@@ -93,14 +100,25 @@ func requestMetricsMiddleware(next http.Handler, recorder Recorder) http.Handler
 		recorder.RequestStarted(r.Context())
 		start := time.Now()
 		rw := &recordingResponseWriter{ResponseWriter: w}
+		// Defer the completion record so a downstream panic (caught
+		// by the inner recoverMiddleware, which writes the 500 to rw)
+		// still observes a final status. Without the defer, a panic
+		// would skip RequestCompleted entirely and operators would
+		// see RequestStarted climb without a matching completion —
+		// looking like a stuck request instead of a recovered panic.
+		defer func() {
+			recorder.RequestCompleted(r.Context(), statusFromHTTPCode(rw.status), time.Since(start))
+		}()
 		next.ServeHTTP(rw, r)
-		recorder.RequestCompleted(r.Context(), statusFromHTTPCode(rw.status), time.Since(start))
 	})
 }
 
 // statusFromHTTPCode maps an HTTP status to one of the bounded
-// request-status labels. 0 (handler never wrote a header) is treated as
-// 200 because net/http would synthesize one on Write.
+// request-status labels. 0 (handler never wrote a header) is treated
+// as 200 because net/http would synthesize one on Write. 1xx and 3xx
+// also fall through to StatusOK — neither can happen on this server's
+// request path today, and labelling a stray 3xx as "ok" beats inventing
+// a new label.
 func statusFromHTTPCode(code int) string {
 	switch {
 	case code == 0, code >= 200 && code < 300:

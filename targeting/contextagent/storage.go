@@ -2,6 +2,7 @@ package contextagent
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
@@ -79,8 +80,9 @@ func buildStorage(
 	topicStore topicstore.Store,
 	suppressSnap *suppressionstore.Snapshot,
 	cacheCfg CacheConfig,
+	logger *slog.Logger,
 ) (*storage, error) {
-	mediaBuys := mediabuystore.NewReader(mediaBuyStore)
+	mediaBuys := mediabuystore.NewReaderWithLogger(mediaBuyStore, logger)
 	if cacheCfg.Enabled && cacheCfg.MediaBuy.Enabled {
 		mediaBuys = mediabuystore.WithCache(mediaBuys, mediabuystore.CacheConfig{
 			SellerSetSize: cacheCfg.MediaBuy.SellerSetSize,

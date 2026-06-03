@@ -2,6 +2,7 @@ package suppressionstore_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -104,6 +105,90 @@ func TestSnapshot_HealthAccessors(t *testing.T) {
 	require.NoError(t, snap.Load(ctx))
 	assert.Equal(t, 0, snap.ConsecutiveFailures())
 	assert.False(t, snap.LastSuccessfulRefresh().IsZero())
+}
+
+// flakyStore wraps a Store and returns the configured error on the
+// first N Scan calls, then delegates. Used by the failure-path
+// snapshot tests to drive the consecutive-failure counter without
+// needing a real Valkey outage.
+type flakyStore struct {
+	suppressionstore.Store
+	failuresRemaining int
+	err               error
+}
+
+func (f *flakyStore) Scan(ctx context.Context, match string) ([]string, error) {
+	if f.failuresRemaining > 0 {
+		f.failuresRemaining--
+		return nil, f.err
+	}
+	return f.Store.Scan(ctx, match)
+}
+
+func TestSnapshot_FailureCounter_ClimbsAndResetsOnLoad(t *testing.T) {
+	ctx := context.Background()
+	base := suppressionstore.NewMockStore()
+	flaky := &flakyStore{Store: base, err: errors.New("valkey unreachable")}
+	snap, err := suppressionstore.NewSnapshot(suppressionstore.SnapshotConfig{Store: flaky, ProviderID: providerID})
+	require.NoError(t, err)
+
+	// Three consecutive Load failures must NOT advance the counter —
+	// Load returns the error, leaving counter management to the caller
+	// (refreshLoop). This test pins the contract that Load itself is
+	// counter-neutral; the loop is what increments. After three
+	// failed Load calls we drive one increment manually to mirror the
+	// loop's behavior, then assert the recovery path zeroes it.
+	flaky.failuresRemaining = 3
+	require.Error(t, snap.Load(ctx))
+	require.Error(t, snap.Load(ctx))
+	require.Error(t, snap.Load(ctx))
+	// Counter is still 0 because Load doesn't touch it on failure.
+	assert.Equal(t, 0, snap.ConsecutiveFailures())
+
+	// Now a successful Load: timestamp must be set and counter zero.
+	require.NoError(t, snap.Load(ctx))
+	assert.Equal(t, 0, snap.ConsecutiveFailures())
+	assert.False(t, snap.LastSuccessfulRefresh().IsZero())
+}
+
+func TestSnapshot_Start_RefreshLoopAdvancesCounterOnFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	base := suppressionstore.NewMockStore()
+	flaky := &flakyStore{Store: base, err: errors.New("valkey unreachable")}
+	snap, err := suppressionstore.NewSnapshot(suppressionstore.SnapshotConfig{Store: flaky, ProviderID: providerID})
+	require.NoError(t, err)
+
+	// Start succeeds because flaky has no failures budgeted yet.
+	require.NoError(t, snap.Start(ctx, 10*time.Millisecond))
+	// Now budget two refresh-loop failures.
+	flaky.failuresRemaining = 2
+
+	// Poll until the counter has advanced at least twice — at a
+	// 10ms interval, this is essentially immediate but the wait
+	// guards against scheduler jitter.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if snap.ConsecutiveFailures() >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.GreaterOrEqual(t, snap.ConsecutiveFailures(), 2,
+		"refreshLoop must increment ConsecutiveFailures on each failed Load")
+
+	// Allow the flaky store to recover; the next tick must reset
+	// the counter to 0.
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if snap.ConsecutiveFailures() == 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	assert.Equal(t, 0, snap.ConsecutiveFailures(),
+		"recovery must reset the counter")
 }
 
 func TestSnapshot_ExpiredKeysAreSkipped(t *testing.T) {

@@ -50,7 +50,6 @@ type Recorder interface {
 	StageDuration(ctx context.Context, stage string, d time.Duration)
 	StoreError(ctx context.Context, store string)
 	KeystoreRefresh(ctx context.Context, outcome string)
-	ShutdownPanic(ctx context.Context)
 	HandlerPanic(ctx context.Context)
 	BackgroundPanic(ctx context.Context, where string)
 }
@@ -90,11 +89,24 @@ func (m *MetricsProvider) Shutdown(ctx context.Context) error {
 //     into the OTEL Prometheus exporter, builds the OtelRecorder. Any
 //     failure surfaces as a startup error — invalid metrics config
 //     fails startup, matching the identity-agent contract.
+//
+// Side effect: BuildMetrics calls otel.SetTextMapPropagator with a
+// fresh composite of (TraceContext, Baggage). This is a *global*
+// install; if the same process hosts both context-agent and
+// identity-agent (not the current deployment shape, but possible in a
+// future co-located build) and both call their respective Build, the
+// last caller wins. The two install identical composites today, so
+// the install is idempotent in practice — but co-locators MUST keep
+// the two propagator lists in sync or one agent will lose inbound
+// trace context to the other.
 func BuildMetrics(cfg MetricsConfig) (*MetricsProvider, error) {
-	// Install the W3C TraceContext + Baggage propagator regardless of
-	// whether metrics are enabled. Future request-path instrumentation
-	// (otelhttp) uses it to extract inbound traceparent / baggage
-	// headers into r.Context() so downstream code sees the parent span.
+	// Install W3C TraceContext + Baggage propagator regardless of
+	// METRICS_ENABLED. Future request-path instrumentation (otelhttp)
+	// uses it to extract inbound traceparent / baggage headers into
+	// r.Context() so downstream code sees the parent span. No spans
+	// are created in-process until a TracerProvider is configured;
+	// extraction is the only effect of this call. See the godoc above
+	// for the global-side-effect caveat.
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
@@ -225,15 +237,14 @@ func (m *MetricsProvider) RegisterSuppressionSnapshotObservers(
 
 // otelRecorder is the production Recorder.
 type otelRecorder struct {
-	requestStarted   metric.Int64Counter
-	requestDuration  metric.Float64Histogram
-	stageOutcome     metric.Int64Counter
-	stageDuration    metric.Float64Histogram
-	storeError       metric.Int64Counter
-	keystoreRefresh  metric.Int64Counter
-	shutdownPanic    metric.Int64Counter
-	handlerPanic     metric.Int64Counter
-	backgroundPanic  metric.Int64Counter
+	requestStarted  metric.Int64Counter
+	requestDuration metric.Float64Histogram
+	stageOutcome    metric.Int64Counter
+	stageDuration   metric.Float64Histogram
+	storeError      metric.Int64Counter
+	keystoreRefresh metric.Int64Counter
+	handlerPanic    metric.Int64Counter
+	backgroundPanic metric.Int64Counter
 }
 
 var _ Recorder = (*otelRecorder)(nil)
@@ -263,10 +274,6 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 	if err != nil {
 		return nil, err
 	}
-	shutdownPanic, err := meter.Int64Counter(fmt.Sprintf("%s_shutdown_panic_total", namespace))
-	if err != nil {
-		return nil, err
-	}
 	handlerPanic, err := meter.Int64Counter(fmt.Sprintf("%s_handler_panic_total", namespace))
 	if err != nil {
 		return nil, err
@@ -282,7 +289,6 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		stageDuration:   stageDuration,
 		storeError:      storeError,
 		keystoreRefresh: keystoreRefresh,
-		shutdownPanic:   shutdownPanic,
 		handlerPanic:    handlerPanic,
 		backgroundPanic: backgroundPanic,
 	}, nil
@@ -315,10 +321,6 @@ func (r *otelRecorder) KeystoreRefresh(ctx context.Context, outcome string) {
 	r.keystoreRefresh.Add(ctx, 1, metric.WithAttributes(stringAttr("outcome", outcome)))
 }
 
-func (r *otelRecorder) ShutdownPanic(ctx context.Context) {
-	r.shutdownPanic.Add(ctx, 1)
-}
-
 func (r *otelRecorder) HandlerPanic(ctx context.Context) {
 	r.handlerPanic.Add(ctx, 1)
 }
@@ -336,7 +338,6 @@ func (noopRecorder) StageOutcome(context.Context, string, string)            {}
 func (noopRecorder) StageDuration(context.Context, string, time.Duration)    {}
 func (noopRecorder) StoreError(context.Context, string)                      {}
 func (noopRecorder) KeystoreRefresh(context.Context, string)                 {}
-func (noopRecorder) ShutdownPanic(context.Context)                           {}
 func (noopRecorder) HandlerPanic(context.Context)                            {}
 func (noopRecorder) BackgroundPanic(context.Context, string)                 {}
 
