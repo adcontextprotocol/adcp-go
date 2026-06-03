@@ -1,6 +1,11 @@
 package registry
 
-import "sync"
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+)
 
 // AuthorizationEntry represents a single authorization grant from a publisher
 // to an agent, as declared in adagents.json.
@@ -20,10 +25,19 @@ type AuthorizationEntry struct {
 //
 // Primary index: agent_url → publisher_domain → []AuthorizationEntry
 // Reverse index: publisher_domain → set[agent_url]
+//
+// When a Store is attached via WithStore, every mutation dual-writes.
+// The in-memory state is updated regardless; persistence failures are
+// returned so the Syncer can refuse to advance the feed cursor — auth
+// is load-bearing in a way property and agent state are not, since a
+// missed revoke leaves a permanently-trusted grant.
 type AuthIndex struct {
-	mu      sync.RWMutex
-	primary map[string]map[string][]AuthorizationEntry // agent → domain → entries
-	reverse map[string]map[string]struct{}             // domain → set of agents
+	mu       sync.RWMutex
+	primary  map[string]map[string][]AuthorizationEntry // agent → domain → entries
+	reverse  map[string]map[string]struct{}             // domain → set of agents
+	store    Store
+	hydrated atomic.Bool
+	log      *slog.Logger
 }
 
 // NewAuthIndex creates an empty authorization index.
@@ -31,15 +45,23 @@ func NewAuthIndex() *AuthIndex {
 	return &AuthIndex{
 		primary: make(map[string]map[string][]AuthorizationEntry),
 		reverse: make(map[string]map[string]struct{}),
+		log:     slog.Default().With("component", "registry-auth-index"),
 	}
+}
+
+// WithStore enables dual-write persistence and hydration. Must be
+// called once before any mutation.
+func (idx *AuthIndex) WithStore(s Store) *AuthIndex {
+	idx.store = s
+	return idx
 }
 
 // Add inserts an authorization entry into both indexes. If an entry with
 // the same agent, domain, and authorization type already exists, it is
 // replaced rather than duplicated.
-func (idx *AuthIndex) Add(entry AuthorizationEntry) {
+func (idx *AuthIndex) Add(ctx context.Context, entry AuthorizationEntry) error {
 	idx.mu.Lock()
-	defer idx.mu.Unlock()
+	store := idx.store
 
 	cp := cloneAuthEntry(entry)
 
@@ -49,7 +71,6 @@ func (idx *AuthIndex) Add(entry AuthorizationEntry) {
 		idx.primary[cp.AgentURL] = byDomain
 	}
 
-	// Dedup: replace existing entry with same authorization type.
 	entries := byDomain[cp.PublisherDomain]
 	replaced := false
 	for i, e := range entries {
@@ -64,18 +85,36 @@ func (idx *AuthIndex) Add(entry AuthorizationEntry) {
 	}
 	byDomain[cp.PublisherDomain] = entries
 
-	agents, ok := idx.reverse[entry.PublisherDomain]
+	agents, ok := idx.reverse[cp.PublisherDomain]
 	if !ok {
 		agents = make(map[string]struct{})
-		idx.reverse[entry.PublisherDomain] = agents
+		idx.reverse[cp.PublisherDomain] = agents
 	}
-	agents[entry.AgentURL] = struct{}{}
+	agents[cp.AgentURL] = struct{}{}
+	idx.mu.Unlock()
+
+	if store == nil {
+		return nil
+	}
+	if !idx.hydrated.Load() {
+		idx.log.Warn("Add before Hydrate; persisted state may be inconsistent",
+			"agent_url", cp.AgentURL, "publisher_domain", cp.PublisherDomain)
+	}
+	if err := store.PutAuth(ctx, cp); err != nil {
+		idx.log.Error("persist PutAuth failed",
+			"agent_url", cp.AgentURL, "publisher_domain", cp.PublisherDomain, "error", err)
+		return err
+	}
+	return nil
 }
 
-// RemoveEntry removes all authorization entries for an agent+domain pair.
-func (idx *AuthIndex) RemoveEntry(agentURL, publisherDomain string) {
+// RemoveEntry removes all authorization entries for an agent+domain
+// pair across every authorization_type. The registry feed's
+// authorization.revoked event carries no type, so per-type removal has
+// no caller.
+func (idx *AuthIndex) RemoveEntry(ctx context.Context, agentURL, publisherDomain string) error {
 	idx.mu.Lock()
-	defer idx.mu.Unlock()
+	store := idx.store
 
 	if byDomain, ok := idx.primary[agentURL]; ok {
 		delete(byDomain, publisherDomain)
@@ -90,36 +129,65 @@ func (idx *AuthIndex) RemoveEntry(agentURL, publisherDomain string) {
 			delete(idx.reverse, publisherDomain)
 		}
 	}
+	idx.mu.Unlock()
+
+	if store == nil {
+		return nil
+	}
+	if err := store.RemoveAuthEntry(ctx, agentURL, publisherDomain); err != nil {
+		idx.log.Error("persist RemoveAuthEntry failed",
+			"agent_url", agentURL, "publisher_domain", publisherDomain, "error", err)
+		return err
+	}
+	return nil
 }
 
 // RemoveAgent removes all authorization entries for an agent across all domains.
-func (idx *AuthIndex) RemoveAgent(agentURL string) {
+func (idx *AuthIndex) RemoveAgent(ctx context.Context, agentURL string) error {
 	idx.mu.Lock()
-	defer idx.mu.Unlock()
+	store := idx.store
 
-	byDomain, ok := idx.primary[agentURL]
-	if !ok {
-		return
-	}
-
-	for domain := range byDomain {
-		if agents, ok := idx.reverse[domain]; ok {
-			delete(agents, agentURL)
-			if len(agents) == 0 {
-				delete(idx.reverse, domain)
+	if byDomain, ok := idx.primary[agentURL]; ok {
+		for domain := range byDomain {
+			if agents, ok := idx.reverse[domain]; ok {
+				delete(agents, agentURL)
+				if len(agents) == 0 {
+					delete(idx.reverse, domain)
+				}
 			}
 		}
+		delete(idx.primary, agentURL)
 	}
+	idx.mu.Unlock()
 
-	delete(idx.primary, agentURL)
+	if store == nil {
+		return nil
+	}
+	if err := store.RemoveAuthAgent(ctx, agentURL); err != nil {
+		idx.log.Error("persist RemoveAuthAgent failed", "agent_url", agentURL, "error", err)
+		return err
+	}
+	return nil
 }
 
-// Clear removes all entries from the index.
-func (idx *AuthIndex) Clear() {
+// Clear removes all entries from the index. When a Store is attached,
+// the corresponding namespace is also wiped. Memory is cleared
+// regardless of the persistent store result.
+func (idx *AuthIndex) Clear(ctx context.Context) error {
 	idx.mu.Lock()
-	defer idx.mu.Unlock()
+	store := idx.store
 	idx.primary = make(map[string]map[string][]AuthorizationEntry)
 	idx.reverse = make(map[string]map[string]struct{})
+	idx.mu.Unlock()
+
+	if store == nil {
+		return nil
+	}
+	if err := store.ClearAuth(ctx); err != nil {
+		idx.log.Error("persist ClearAuth failed", "error", err)
+		return err
+	}
+	return nil
 }
 
 // Check returns whether agentURL has any authorization for publisherDomain.
@@ -180,4 +248,52 @@ func (idx *AuthIndex) Count() int {
 		}
 	}
 	return n
+}
+
+// Hydrate loads persisted authorization entries into memory. No-op when
+// no Store is attached. Idempotent: subsequent calls are no-ops.
+func (idx *AuthIndex) Hydrate(ctx context.Context) error {
+	if idx.store == nil {
+		idx.hydrated.Store(true)
+		return nil
+	}
+	if !idx.hydrated.CompareAndSwap(false, true) {
+		return nil
+	}
+	entries, err := idx.store.LoadAuth(ctx)
+	if err != nil {
+		idx.hydrated.Store(false)
+		return err
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	for _, entry := range entries {
+		cp := cloneAuthEntry(entry)
+		byDomain, ok := idx.primary[cp.AgentURL]
+		if !ok {
+			byDomain = make(map[string][]AuthorizationEntry)
+			idx.primary[cp.AgentURL] = byDomain
+		}
+		existing := byDomain[cp.PublisherDomain]
+		replaced := false
+		for i, e := range existing {
+			if e.AuthorizationType == cp.AuthorizationType {
+				existing[i] = cp
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			existing = append(existing, cp)
+		}
+		byDomain[cp.PublisherDomain] = existing
+
+		agents, ok := idx.reverse[cp.PublisherDomain]
+		if !ok {
+			agents = make(map[string]struct{})
+			idx.reverse[cp.PublisherDomain] = agents
+		}
+		agents[cp.AgentURL] = struct{}{}
+	}
+	return nil
 }

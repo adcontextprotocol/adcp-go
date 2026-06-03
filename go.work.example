@@ -11,6 +11,8 @@ use (
 	./internal/generate
 	./reference/context-agent
 	./registry
+	./registry/glidestore
+	./registry/redisstore
 	./targeting/prommetrics
 	./targeting/valkeystore
 )
