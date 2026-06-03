@@ -1,0 +1,72 @@
+package targeting
+
+import (
+	"context"
+	"time"
+
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
+)
+
+// ContextStorage is the data surface the context engine consults at
+// request time. Implementations decide how data is fetched and cached;
+// the engine treats every call as "ask the storage, trust the answer."
+//
+// Two implementations ship with this repo:
+//
+//   - targeting/contextstorage.InMemory — a snapshot-style impl backed by
+//     plain maps; used by engine tests, the reference agent, and any
+//     embedder that wants to build a ContextStorage by hand.
+//   - targeting/contextagent's bundle — the production impl. Layers a
+//     per-domain Service (mediabuystore, pkgconfigstore, urlliststore,
+//     suppressionstore, topicstore) optionally wrapped in an LRU cache
+//     decorator. The engine never sees those packages directly.
+//
+// All methods are called from request hot paths and MUST respect the
+// passed context. Returning a non-nil error is a "this lookup failed"
+// signal; the engine fails-closed on the affected dimension for the
+// current request (under-match) and continues, mirroring how the
+// pre-storage engine handled per-key Valkey errors.
+type ContextStorage interface {
+	// ActivePackages returns the package IDs the deployment offers for the
+	// given (sellerAgentURL, propertyID, country) tuple at `now`. Used
+	// when the inbound request omits PackageIDs. An empty result means
+	// the deployment has no matching inventory.
+	ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]string, error)
+
+	// ContextConfig returns the package's context-side configuration.
+	// `ok == false` (with err == nil) means no config is stored for that
+	// package — the engine skips it.
+	ContextConfig(ctx context.Context, packageID string) (cfg *PackageContextConfig, ok bool, err error)
+
+	// ArtifactTopics returns the raw topic ids stored for `ref` under
+	// `tax`. The engine namespaces them via topicstore.NamespaceTopic
+	// before joining; storage returns the un-namespaced ids it has on
+	// hand. nil (with err == nil) means no topics are stored.
+	ArtifactTopics(ctx context.Context, tax topicstore.Taxonomy, ref string) ([]string, error)
+
+	// PackageTopics returns the raw topic ids `packageID` targets under
+	// `tax`. Same shape as ArtifactTopics.
+	PackageTopics(ctx context.Context, tax topicstore.Taxonomy, packageID string) ([]string, error)
+
+	// URLBlocked reports whether `urlHash` is in `packageID`'s blocklist.
+	// false (with err == nil) covers both "no blocklist configured" and
+	// "blocklist exists but hash absent"; the caller distinguishes via
+	// PackageContextConfig.URLBlocklist.
+	URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error)
+
+	// URLAllowed reports whether `urlHash` is in `packageID`'s allowlist.
+	// Returns false when the hash is absent OR when no allowlist is
+	// configured; the caller distinguishes via
+	// PackageContextConfig.URLAllowlist.
+	URLAllowed(ctx context.Context, packageID, urlHash string) (bool, error)
+
+	// IsPropertySuppressed reports whether `propertyRID` is currently
+	// suppressed for `providerID`. Suppressions are deployment-scoped
+	// kill switches; a true return short-circuits the entire request.
+	IsPropertySuppressed(ctx context.Context, providerID, propertyRID string) (bool, error)
+
+	// IsGeoSuppressed reports whether `country` is currently suppressed
+	// for `providerID`. Same kill-switch semantics as
+	// IsPropertySuppressed.
+	IsGeoSuppressed(ctx context.Context, providerID, country string) (bool, error)
+}

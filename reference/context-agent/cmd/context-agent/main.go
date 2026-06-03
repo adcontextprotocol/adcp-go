@@ -1,3 +1,10 @@
+// Command context-agent (reference) is a minimal-config TMP context-match
+// service intended for local development, integration tests, and the
+// AGENTS.md walkthrough — NOT for production. The production agent
+// lives at cmd/context-agent and reads its configuration from the
+// environment with operational safeguards (LRU caches, suppression
+// refresh, structured shutdown, image-signing CI). This reference
+// stays optimized for "small Dockerfile + one ./reference run" loops.
 package main
 
 import (
@@ -12,16 +19,17 @@ import (
 	"os"
 	"time"
 
-	contextagent "github.com/adcontextprotocol/adcp-go/reference/context-agent"
+	contextagentref "github.com/adcontextprotocol/adcp-go/reference/context-agent"
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/contextstorage"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// referenceTaxonomy is the demo taxonomy the reference agent seeds with. A
-// real deployment configures its accepted taxonomies via env / flag and
-// matches the writers that populate its Valkey instance.
+// referenceTaxonomy is the demo taxonomy the reference agent seeds with.
+// A real deployment configures its accepted taxonomies via env and
+// matches the writers that populate its storage.
 var referenceTaxonomy = topicstore.Taxonomy{Source: "reference", ID: 1}
 
 var version = "dev"
@@ -30,13 +38,12 @@ func main() {
 	addr := flag.String("addr", "", "Listen address")
 	registryFile := flag.String("registry", "", "Path to registry snapshot JSON file")
 	registryURL := flag.String("registry-url", "", "URL of the router's /registry/snapshot endpoint for signing-key discovery")
-	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/context requests without a TMP signature. Default is deny — TMP signing is normative in the spec. Use only for migration windows or local dev.")
-	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL (must match the router's provider registration). Required for signature verification (default).")
+	allowUnsigned := flag.Bool("allow-unsigned", false, "Accept /tmp/context requests without a TMP signature.")
+	ownEndpointURL := flag.String("own-endpoint-url", "", "This provider's registered endpoint URL.")
 	flag.Parse()
 
 	flagSet := setFlags()
 
-	// Resolve config: flags > env vars > defaults.
 	listenAddr := resolveAddr(*addr)
 	regFile := resolveRegistry(*registryFile, flagSet["registry"])
 	regURL := resolveString(*registryURL, flagSet["registry-url"], "TMP_CONTEXT_REGISTRY_URL")
@@ -53,8 +60,7 @@ func main() {
 
 	metrics := prommetrics.New()
 
-	// Load property registry.
-	registry := contextagent.NewPropertyRegistry()
+	registry := contextagentref.NewPropertyRegistry()
 	if regFile != "" {
 		if err := registry.LoadFromFile(regFile); err != nil {
 			slog.Error("Failed to load registry", "path", regFile, "error", err)
@@ -63,39 +69,35 @@ func main() {
 		slog.Info("Loaded properties from registry", "count", registry.Len())
 	}
 
-	// Build global property bitmap from registry.
-	tc := contextagent.NewTargetingConfig()
+	tc := contextagentref.NewTargetingConfig()
 	for _, rid := range registry.AllRIDs() {
 		tc.AddProperties(rid)
 	}
 
-	// Seed sample data in mock store.
-	store := targeting.NewMockStore()
-	seedCtx := context.Background()
-	writer, wErr := topicstore.NewWriter(store)
-	if wErr != nil {
-		slog.Error("topicstore writer init failed", "error", wErr)
-		os.Exit(1)
-	}
-	if err := writer.SetPackageTopics(seedCtx, referenceTaxonomy, "pkg-display-0041", []string{"food.cooking", "food.recipes", "lifestyle.home"}); err != nil {
-		slog.Error("seed package topics failed", "error", err)
-		os.Exit(1)
-	}
-	if err := writer.SetPackageTopics(seedCtx, referenceTaxonomy, "pkg-native-0078", []string{"technology.gadgets", "technology.reviews"}); err != nil {
-		slog.Error("seed package topics failed", "error", err)
-		os.Exit(1)
-	}
+	// Seed the in-memory storage with two demo packages and a matching
+	// artifact-topic fixture so a curl against /tmp/context shows
+	// non-empty offers without standing up Valkey.
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{
+			PackageID:    "pkg-display-0041",
+			TopicTargets: true,
+			EmitSegments: []string{"food", "lifestyle"},
+		}).
+		WithPackage(&targeting.PackageContextConfig{
+			PackageID:    "pkg-native-0078",
+			TopicTargets: true,
+			URLBlocklist: true,
+			EmitSegments: []string{"technology"},
+		}).
+		WithPackageTopics(referenceTaxonomy, "pkg-display-0041", []string{"food.cooking", "food.recipes", "lifestyle.home"}).
+		WithPackageTopics(referenceTaxonomy, "pkg-native-0078", []string{"technology.gadgets", "technology.reviews"})
 
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "reference-context-agent",
-		Store:      store,
+		Storage:    storage,
 		Metrics:    metrics,
 		Properties: targeting.PropertyList{
 			Global: tc.PropertyBitmap,
-		},
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-display-0041", TopicTargets: true, EmitSegments: []string{"food", "lifestyle"}},
-			{PackageID: "pkg-native-0078", TopicTargets: true, URLBlocklist: true, EmitSegments: []string{"technology"}},
 		},
 		AcceptedTaxonomies: []topicstore.Taxonomy{referenceTaxonomy},
 	})
@@ -108,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 	if requireSig && ownURL == "" {
-		slog.Error("--own-endpoint-url is required when signature verification is enabled (default)")
+		slog.Error("--own-endpoint-url is required when signature verification is enabled")
 		os.Exit(1)
 	}
 	if !requireSig {
@@ -137,9 +139,9 @@ func main() {
 			return
 		}
 
-		result, err := engine.EvaluateContext(r.Context(), &req)
+		result, err := engine.Evaluate(r.Context(), &req)
 		if err != nil {
-			slog.Error("EvaluateContext failed", "request_id", req.RequestID, "error", err)
+			slog.Error("Evaluate failed", "request_id", req.RequestID, "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 				RequestID: req.RequestID,
@@ -184,7 +186,7 @@ func main() {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	slog.Info("Context Agent starting", "addr", listenAddr, "version", version)
+	slog.Info("Context Agent (reference) starting", "addr", listenAddr, "version", version)
 	if err := srv.ListenAndServe(); err != nil {
 		slog.Error("listen error", "error", err)
 		os.Exit(1)
@@ -230,7 +232,7 @@ func setFlags() map[string]bool {
 func buildKeyStore(runCtx context.Context, registryURL string, requireSignature bool) (tmproto.KeyStore, error) {
 	if registryURL == "" {
 		if requireSignature {
-			return nil, errors.New("--registry-url (or TMP_CONTEXT_REGISTRY_URL) is required for signature verification (default); pass --allow-unsigned to opt out")
+			return nil, errors.New("--registry-url is required for signature verification; pass --allow-unsigned to opt out")
 		}
 		return nil, nil
 	}

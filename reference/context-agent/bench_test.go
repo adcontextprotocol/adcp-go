@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/contextstorage"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
+	"github.com/adcontextprotocol/adcp-go/targeting/urlliststore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -59,18 +61,11 @@ func BenchmarkSignatureVerify(b *testing.B) {
 
 // BenchmarkFullPipeline tests complete context evaluation with bitmap + topic match.
 func BenchmarkFullPipeline(b *testing.B) {
-	store := targeting.NewMockStore()
-	ctx := context.Background()
-	writer, err := topicstore.NewWriter(store)
-	if err != nil {
-		b.Fatal(err)
-	}
-	if err := writer.SetPackageTopics(ctx, benchTaxonomy, "pkg-food", []string{"food.cooking", "food.baking", "food.italian"}); err != nil {
-		b.Fatal(err)
-	}
-	if err := writer.SetArtifactTopics(ctx, benchTaxonomy, "article:pasta-recipe", []string{"food.cooking", "food.italian"}); err != nil {
-		b.Fatal(err)
-	}
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-tech", TopicTargets: true}).
+		WithPackageTopics(benchTaxonomy, "pkg-food", []string{"food.cooking", "food.baking", "food.italian"}).
+		WithArtifactTopics(benchTaxonomy, "article:pasta-recipe", []string{"food.cooking", "food.italian"})
 
 	bm := NewSetBitmap()
 	for i := 1; i <= 1000; i++ {
@@ -78,15 +73,9 @@ func BenchmarkFullPipeline(b *testing.B) {
 	}
 
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
-		ProviderID: "bench-provider",
-		Store:      store,
-		Properties: targeting.PropertyList{
-			Global: bm,
-		},
-		Packages: []targeting.PackageConfig{
-			{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true},
-			{PackageID: "pkg-tech", TopicTargets: true},
-		},
+		ProviderID:         "bench-provider",
+		Storage:            storage,
+		Properties:         targeting.PropertyList{Global: bm},
 		AcceptedTaxonomies: []topicstore.Taxonomy{benchTaxonomy},
 	})
 
@@ -97,9 +86,10 @@ func BenchmarkFullPipeline(b *testing.B) {
 		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	}
 
+	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = engine.EvaluateContext(ctx, req)
+		_, _ = engine.Evaluate(ctx, req)
 	}
 }
 
@@ -127,18 +117,21 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	}
 }
 
-// BenchmarkValkeyLookup tests URL pattern check using mock store.
-func BenchmarkValkeyLookup(b *testing.B) {
-	store := targeting.NewMockStore()
+// BenchmarkURLLookup tests URL block-set membership through the
+// urlliststore reader (mock backing store).
+func BenchmarkURLLookup(b *testing.B) {
+	store := urlliststore.NewMockStore()
+	svc, _ := urlliststore.NewService(store)
 	ctx := context.Background()
 	for i := range 10000 {
-		_ = store.SetAdd(ctx, "url:blocklist:pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
+		_ = svc.AddToBlocklist(ctx, "pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
 	}
+	r := urlliststore.NewReader(store)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		urlHash := targeting.HashURL(fmt.Sprintf("article:content-%d", i%20000))
-		_, _ = store.SetIsMember(ctx, "url:blocklist:pkg-1", urlHash)
+		_, _ = r.IsBlocked(ctx, "pkg-1", urlHash)
 	}
 }
 

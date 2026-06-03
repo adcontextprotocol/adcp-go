@@ -127,7 +127,7 @@ func NamespaceTopics(tax Taxonomy, topics []string) []string {
 
 // WriterStore is the minimal Valkey-side surface a Writer needs. Production
 // stores (redisstore, glidestore, MockStore) all satisfy it directly; the
-// engine's targeting.ContextStore deliberately does not require these
+// engine's read interface deliberately does not require these
 // methods so the read path stays decoupled from the write path.
 type WriterStore interface {
 	SetAdd(ctx context.Context, key string, members ...string) error
@@ -136,7 +136,7 @@ type WriterStore interface {
 }
 
 // ReaderStore is the minimal Valkey-side surface a Reader needs. It is a
-// subset of targeting.ContextStore.
+// subset of read interface.
 type ReaderStore interface {
 	SetMembers(ctx context.Context, key string) ([]string, error)
 	SetIntersect(ctx context.Context, keys ...string) ([]string, error)

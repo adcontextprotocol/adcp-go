@@ -79,14 +79,12 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/clusterslot"
 )
 
 var (
-	_ targeting.ContextStore = (*Store)(nil)
-	_ fcap.Store             = (*Store)(nil)
+	_ fcap.Store = (*Store)(nil)
 )
 
 // ErrReadOnly is returned by every write method when Store is in
@@ -402,6 +400,70 @@ func (s *Store) Del(ctx context.Context, keys ...string) error {
 		return ErrReadOnly
 	}
 	return mapCrossSlotErr(s.client.Del(ctx, keys...).Err())
+}
+
+// Scan returns every key matching `match` by iterating SCAN. Used by
+// suppressionstore to rebuild the in-memory snapshot; not a hot-path
+// operation.
+//
+// Cluster mode is load-bearing for correctness: go-redis's SCAN on a
+// *redis.ClusterClient routes to a single arbitrary master unless the
+// pattern carries a `{hashtag}`. The suppression patterns
+// (`suppress:{provider_id}:property:*`) have no hashtag, so a naive
+// SCAN would silently miss every key on every other master. This
+// implementation fans across masters via ForEachMaster and unions.
+func (s *Store) Scan(ctx context.Context, match string) ([]string, error) {
+	if s.shadow() {
+		var out []string
+		for _, c := range s.shards {
+			keys, err := scanAll(ctx, c, match)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, keys...)
+		}
+		return out, nil
+	}
+	if cluster, ok := s.client.(*redis.ClusterClient); ok {
+		var (
+			mu  sync.Mutex
+			out []string
+		)
+		err := cluster.ForEachMaster(ctx, func(ctx context.Context, c *redis.Client) error {
+			keys, err := scanAll(ctx, c, match)
+			if err != nil {
+				return err
+			}
+			mu.Lock()
+			out = append(out, keys...)
+			mu.Unlock()
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	return scanAll(ctx, s.client, match)
+}
+
+func scanAll(ctx context.Context, c redis.Cmdable, match string) ([]string, error) {
+	var (
+		out    []string
+		cursor uint64
+	)
+	for {
+		keys, next, err := c.Scan(ctx, cursor, match, 256).Result()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, keys...)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Duration) error {

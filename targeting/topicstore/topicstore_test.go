@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,7 +60,7 @@ func TestKeyShapes_DistinctAcrossTaxonomies(t *testing.T) {
 }
 
 func TestWriter_SetArtifactTopics_Roundtrip(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, err := topicstore.NewWriter(store)
 	require.NoError(t, err)
 	r, err := topicstore.NewReader(store)
@@ -77,7 +76,7 @@ func TestWriter_SetArtifactTopics_Roundtrip(t *testing.T) {
 }
 
 func TestWriter_SetArtifactTopics_ReplacesPrevious(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, _ := topicstore.NewWriter(store)
 	r, _ := topicstore.NewReader(store)
 	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
@@ -91,7 +90,7 @@ func TestWriter_SetArtifactTopics_ReplacesPrevious(t *testing.T) {
 }
 
 func TestWriter_AddRemovePackageTopics(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, _ := topicstore.NewWriter(store)
 	r, _ := topicstore.NewReader(store)
 	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
@@ -112,7 +111,7 @@ func TestWriter_AddRemovePackageTopics(t *testing.T) {
 }
 
 func TestReader_IntersectArtifactPackage(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, _ := topicstore.NewWriter(store)
 	r, _ := topicstore.NewReader(store)
 	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
@@ -131,7 +130,7 @@ func TestReader_IntersectArtifactPackage(t *testing.T) {
 // produce an intersection — the key-shape distinction enforces taxonomy
 // isolation at the storage layer.
 func TestReader_IntersectArtifactPackage_CrossTaxonomyDisjoint(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, _ := topicstore.NewWriter(store)
 	r, _ := topicstore.NewReader(store)
 	ctx := context.Background()
@@ -165,7 +164,7 @@ func TestWriter_NilStoreRejected(t *testing.T) {
 }
 
 func TestWriter_InvalidInputs(t *testing.T) {
-	store := targeting.NewMockStore()
+	store := topicstore.NewMockStore()
 	w, _ := topicstore.NewWriter(store)
 	tax := topicstore.Taxonomy{Source: "iab", ID: 7}
 	bad := topicstore.Taxonomy{}

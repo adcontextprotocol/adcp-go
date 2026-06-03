@@ -29,14 +29,12 @@ import (
 	"github.com/valkey-io/valkey-glide/go/v2/options"
 	"github.com/valkey-io/valkey-glide/go/v2/pipeline"
 
-	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/clusterslot"
 )
 
 var (
-	_ targeting.ContextStore = (*Store)(nil)
-	_ fcap.Store             = (*Store)(nil)
+	_ fcap.Store = (*Store)(nil)
 )
 
 // ErrReadOnly is returned by every write method when Store is in
