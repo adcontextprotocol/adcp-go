@@ -3,6 +3,7 @@ package suppressionstore_test
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -108,19 +109,24 @@ func TestSnapshot_HealthAccessors(t *testing.T) {
 }
 
 // flakyStore wraps a Store and returns the configured error on the
-// first N Scan calls, then delegates. Used by the failure-path
-// snapshot tests to drive the consecutive-failure counter without
-// needing a real Valkey outage.
+// first N Scan calls, then delegates. failuresRemaining is atomic so
+// the test goroutine can stage failures while the refresh-loop
+// goroutine consumes them without a data race.
 type flakyStore struct {
 	suppressionstore.Store
-	failuresRemaining int
+	failuresRemaining atomic.Int64
 	err               error
 }
 
 func (f *flakyStore) Scan(ctx context.Context, match string) ([]string, error) {
-	if f.failuresRemaining > 0 {
-		f.failuresRemaining--
-		return nil, f.err
+	for {
+		remaining := f.failuresRemaining.Load()
+		if remaining <= 0 {
+			break
+		}
+		if f.failuresRemaining.CompareAndSwap(remaining, remaining-1) {
+			return nil, f.err
+		}
 	}
 	return f.Store.Scan(ctx, match)
 }
@@ -138,7 +144,7 @@ func TestSnapshot_FailureCounter_ClimbsAndResetsOnLoad(t *testing.T) {
 	// counter-neutral; the loop is what increments. After three
 	// failed Load calls we drive one increment manually to mirror the
 	// loop's behavior, then assert the recovery path zeroes it.
-	flaky.failuresRemaining = 3
+	flaky.failuresRemaining.Store(3)
 	require.Error(t, snap.Load(ctx))
 	require.Error(t, snap.Load(ctx))
 	require.Error(t, snap.Load(ctx))
@@ -163,7 +169,7 @@ func TestSnapshot_Start_RefreshLoopAdvancesCounterOnFailure(t *testing.T) {
 	// Start succeeds because flaky has no failures budgeted yet.
 	require.NoError(t, snap.Start(ctx, 10*time.Millisecond))
 	// Now budget two refresh-loop failures.
-	flaky.failuresRemaining = 2
+	flaky.failuresRemaining.Store(2)
 
 	// Poll until the counter has advanced at least twice — at a
 	// 10ms interval, this is essentially immediate but the wait
