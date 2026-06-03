@@ -103,6 +103,15 @@ type TMPConfig struct {
 type ValkeyBlock struct {
 	Enabled bool
 
+	// ShardsSupplied is true when VALKEY_SHARDS was set on the
+	// environment, even if it failed to parse. Lets Validate
+	// distinguish "operator forgot to set the shards" from "operator
+	// set them but the JSON is malformed" so it doesn't pile a
+	// generic "required" error on top of the parser's specific one.
+	// Hand-constructed Config{} for tests should set this when they
+	// want Validate to think the env was supplied.
+	ShardsSupplied bool
+
 	Mode     string
 	Shards   map[string]string
 	Username string
@@ -369,7 +378,7 @@ func (c Config) Validate() error {
 	// supplied; if the env was set but malformed, the parser already
 	// surfaced a more specific error and stacking "required" on top
 	// would mislead the operator.
-	if !c.Valkey.Enabled && os.Getenv("VALKEY_SHARDS") == "" {
+	if !c.Valkey.Enabled && !c.Valkey.ShardsSupplied {
 		errs = append(errs, errors.New("VALKEY_SHARDS is required"))
 	}
 	if c.AdminPort == 0 && c.Pprof.Enabled {
@@ -501,17 +510,18 @@ func loadValkeyBlockFromEnv() (ValkeyBlock, error) {
 	errs = appendErr(errs, err)
 
 	return ValkeyBlock{
-		Enabled:      len(shards) > 0,
-		Mode:         mode,
-		Shards:       shards,
-		Username:     strings.TrimSpace(os.Getenv("VALKEY_USERNAME")),
-		Password:     os.Getenv("VALKEY_PASSWORD"),
-		DB:           db,
-		TLS:          tlsOn,
-		DialTimeout:  dial,
-		ReadTimeout:  rt,
-		WriteTimeout: wt,
-		PoolSize:     pool,
+		Enabled:        len(shards) > 0,
+		ShardsSupplied: os.Getenv("VALKEY_SHARDS") != "",
+		Mode:           mode,
+		Shards:         shards,
+		Username:       strings.TrimSpace(os.Getenv("VALKEY_USERNAME")),
+		Password:       os.Getenv("VALKEY_PASSWORD"),
+		DB:             db,
+		TLS:            tlsOn,
+		DialTimeout:    dial,
+		ReadTimeout:    rt,
+		WriteTimeout:   wt,
+		PoolSize:       pool,
 	}, errors.Join(errs...)
 }
 

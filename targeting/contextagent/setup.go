@@ -118,6 +118,16 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) e
 		// same ceiling is conservative.
 		adminLn, err := net.Listen("tcp", adminSrv.Addr)
 		if err != nil {
+			// Tear down the main listener + background goroutines +
+			// Valkey closer the same way the steady-state shutdown
+			// path does — otherwise this return leaks the active
+			// main listener and the keystore / suppression refresh
+			// goroutines.
+			_ = srv.Shutdown(context.Background())
+			bundle.cancelBackground()
+			if bundle.valkeyCloser != nil {
+				_ = bundle.valkeyCloser.Close()
+			}
 			return fmt.Errorf("listen admin %s: %w", adminSrv.Addr, err)
 		}
 		boundedAdmin := netutil.LimitListener(adminLn, cfg.MaxOpenConnections)
@@ -243,9 +253,12 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 	if len(cfg.PropertyRIDs) == 0 {
 		logger.Warn("PROPERTY_RIDS is empty; every inbound request will short-circuit on the global property bitmap. Wire up the registry feed before serving traffic.")
 	}
+	// TODO(metrics-adapter): wire engine Metrics through a
+	// prommetrics-backed adapter so engine stage outcomes land in the
+	// agent's /metrics. Identity-agent's metricsProvider pattern is
+	// the template; not in this PR's scope.
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         cfg.ProviderID,
-		SellerAgentURL:     cfg.SellerAgentURL,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap(cfg.PropertyRIDs...)},
 		Storage:            storage,
 		AcceptedTaxonomies: cfg.AcceptedTaxonomies,

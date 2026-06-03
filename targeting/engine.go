@@ -18,15 +18,19 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
+// GeoCountryKey is the ContextMatchRequest.Geo map key carrying the
+// ISO 3166-1 alpha-2 country code. Hoisted to a constant so a future
+// move to a typed Geo struct is a single grep target.
+const GeoCountryKey = "country"
+
 // ContextEngine evaluates context-match requests. The storage backend
 // supplies every piece of data the engine consults at request time;
 // caching, persistence, and refresh policy live in the storage impl, not
 // here.
 type ContextEngine struct {
-	providerID     string
-	sellerAgentURL string
-	properties     PropertyList
-	storage        ContextStorage
+	providerID string
+	properties PropertyList
+	storage    ContextStorage
 
 	// acceptedTaxonomies enumerates the topic taxonomies this deployment
 	// trusts. A publisher's ContextSignals.Topics are unioned into the
@@ -41,7 +45,6 @@ type ContextEngine struct {
 	acceptedTaxonomies []topicstore.Taxonomy
 	acceptedSet        map[topicstore.Taxonomy]struct{}
 
-	now     func() time.Time
 	metrics Metrics
 }
 
@@ -52,12 +55,6 @@ type ContextEngineConfig struct {
 	// tmproto.ProviderRegistration.ProviderID). Stable for the engine's
 	// lifetime; rotate by restarting with a new value.
 	ProviderID string
-
-	// SellerAgentURL is the seller_agent_url this deployment represents,
-	// already in the canonical form used by writers. Used to look up
-	// media buys when an inbound request omits PackageIDs. Same
-	// byte-for-byte string match convention as identityconfig.Service.
-	SellerAgentURL string
 
 	// Properties is the registry-derived global (and optionally
 	// per-package) property bitmap. Requests whose property_rid is not
@@ -81,10 +78,6 @@ type ContextEngineConfig struct {
 	// accepted. Those topics are silently dropped.
 	AcceptedTaxonomies []topicstore.Taxonomy
 
-	// Now returns the current time. Overridable for tests; defaults to
-	// time.Now when nil.
-	Now func() time.Time
-
 	Metrics Metrics // nil = noop
 }
 
@@ -96,10 +89,6 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	if metrics == nil {
 		metrics = noopMetrics{}
 	}
-	now := cfg.Now
-	if now == nil {
-		now = time.Now
-	}
 	acceptedSlice := make([]topicstore.Taxonomy, len(cfg.AcceptedTaxonomies))
 	copy(acceptedSlice, cfg.AcceptedTaxonomies)
 	acceptedSet := make(map[topicstore.Taxonomy]struct{}, len(acceptedSlice))
@@ -108,12 +97,10 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	}
 	return &ContextEngine{
 		providerID:         cfg.ProviderID,
-		sellerAgentURL:     cfg.SellerAgentURL,
 		properties:         cfg.Properties,
 		storage:            cfg.Storage,
 		acceptedTaxonomies: acceptedSlice,
 		acceptedSet:        acceptedSet,
-		now:                now,
 		metrics:            metrics,
 	}
 }
@@ -157,19 +144,26 @@ type ContextResult struct {
 //
 //  1. Global property bitmap pre-filter.
 //  2. Property / geo suppression checks via the storage.
-//  3. Determine the candidate package set: req.PackageIDs when present,
-//     otherwise storage.ActivePackages for this seller/property/country.
+//  3. Candidate package set = req.PackageIDs. The TMP wire contemplates
+//     "evaluate every active package for this placement" when
+//     PackageIDs is omitted, but the storage layer doesn't carry
+//     placement_id filtering today — so the implicit-fallback path
+//     fail-closes (empty offers + placement_implicit_unsupported
+//     metric) to avoid cross-leaking inventory between placements on
+//     the same property.
 //  4. Per package: load context config, check per-package property
 //     bitmap, check URL block/allow lists, check topic match (publisher
 //     topics short-circuited first, then per-artifact / per-taxonomy
 //     storage lookups).
 //
 // Storage errors on any per-package dimension are recorded via
-// StoreError and the package fails that dimension's check; the request
-// continues evaluating the rest of its packages. A suppression error at
-// the top of the pipeline is logged and the request continues — the
-// alternative would be denying every request during a partial storage
-// outage, which is the wrong fail mode for a kill switch.
+// StoreError and fail-closed for that package — the package's
+// dimension check returns false and the package is skipped. The
+// request continues evaluating the rest of its packages. A suppression
+// error at the top of the pipeline is logged and the request
+// continues — the alternative would be denying every request during a
+// partial storage outage, which is the wrong fail mode for a kill
+// switch you can't otherwise un-stick.
 func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 	evalStart := time.Now()
 	rid := req.PropertyRID
@@ -186,7 +180,7 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 		e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
-	country, _ := req.Geo["country"].(string)
+	country, _ := req.Geo[GeoCountryKey].(string)
 	if country != "" {
 		geoSuppressed, err := e.storage.IsGeoSuppressed(ctx, e.providerID, country)
 		if err != nil {
@@ -248,8 +242,13 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 		if cfg.URLBlocklist || cfg.URLAllowlist {
 			blocked, err := e.checkURLFilter(ctx, artifactRefs, pkgID, cfg)
 			if err != nil {
+				// Fail-closed: URL block/allow lists are brand-safety
+				// filters. A transient Valkey error must skip the
+				// package, not let it activate without the filter.
 				e.metrics.StoreError(ctx, StageURLFilter, err)
-			} else if blocked {
+				continue
+			}
+			if blocked {
 				e.metrics.ContextEvaluated(ctx, StageURLFilter, false)
 				continue
 			}
@@ -263,8 +262,13 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 			if haveTopicSource {
 				matched, err := e.checkTopicMatch(ctx, pkgID, artifactRefs, pubTopicsByTax)
 				if err != nil {
+					// Fail-closed: a Valkey error here means we cannot
+					// prove the package's targeted topics match the
+					// artifact, so it must not activate.
 					e.metrics.StoreError(ctx, StageTopicMatch, err)
-				} else if !matched {
+					continue
+				}
+				if !matched {
 					e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
 					continue
 				}

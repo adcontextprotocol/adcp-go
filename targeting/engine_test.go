@@ -23,7 +23,6 @@ func newEngine(t *testing.T, storage targeting.ContextStorage, opts ...func(*tar
 	t.Helper()
 	cfg := targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
-		SellerAgentURL:     testSeller,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("1", "2", "3", "10", "20", "30")},
 		Storage:            storage,
 		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
@@ -175,6 +174,69 @@ func TestContext_RogueTaxonomyOnlySource_FailClosed(t *testing.T) {
 		"rogue ContextSignals taxonomy with no artifact refs must fail-closed (publisher attempted a topic source but engine couldn't use it)")
 }
 
+// TestContext_StorageError_FailsClosed pins the safety-relevant
+// contract that a Valkey blip on URL filter or topic match causes the
+// affected package to be skipped, not to slip past the brand-safety
+// filter. The previous behavior recorded a metric and fell through,
+// which let a transient outage match packages their blocklist should
+// have blocked.
+func TestContext_StorageError_FailsClosed(t *testing.T) {
+	t.Run("url_blocklist_error", func(t *testing.T) {
+		base := contextstorage.NewInMemory().
+			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", URLBlocklist: true})
+		storage := &errInjectStorage{ContextStorage: base, urlBlockedErr: true}
+		engine := newEngine(t, storage)
+		resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+			RequestID: "r", PropertyRID: "10",
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:any"}},
+			PackageIDs:   []string{"pkg-1"},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, resp.Offers, "URL filter Valkey error must fail-closed, not let the package activate")
+	})
+	t.Run("topic_match_error", func(t *testing.T) {
+		base := contextstorage.NewInMemory().
+			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", TopicTargets: true})
+		storage := &errInjectStorage{ContextStorage: base, packageTopicsErr: true}
+		engine := newEngine(t, storage)
+		resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+			RequestID: "r", PropertyRID: "10",
+			PackageIDs: []string{"pkg-1"},
+			ContextSignals: &tmproto.ContextSignals{
+				TaxonomySource: "test", TaxonomyID: 1, Topics: []string{"food"},
+			},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, resp.Offers, "topic match Valkey error must fail-closed")
+	})
+}
+
+type errInjectStorage struct {
+	targeting.ContextStorage
+	urlBlockedErr    bool
+	packageTopicsErr bool
+}
+
+func (e *errInjectStorage) URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error) {
+	if e.urlBlockedErr {
+		return false, errInjected
+	}
+	return e.ContextStorage.URLBlocked(ctx, packageID, urlHash)
+}
+
+func (e *errInjectStorage) PackageTopics(ctx context.Context, tax topicstore.Taxonomy, packageID string) ([]string, error) {
+	if e.packageTopicsErr {
+		return nil, errInjected
+	}
+	return e.ContextStorage.PackageTopics(ctx, tax, packageID)
+}
+
+var errInjected = injectedError("injected")
+
+type injectedError string
+
+func (e injectedError) Error() string { return string(e) }
+
 func TestContext_URLBlocklist(t *testing.T) {
 	urlHash := targeting.HashURL("article:bad")
 	storage := contextstorage.NewInMemory().
@@ -265,7 +327,6 @@ func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
 	caller := []topicstore.Taxonomy{{Source: "iab", ID: 7}}
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
-		SellerAgentURL:     testSeller,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
 		Storage:            contextstorage.NewInMemory(),
 		AcceptedTaxonomies: caller,
@@ -280,7 +341,6 @@ func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
 		WithPackageTopics(topicstore.Taxonomy{Source: "iab", ID: 7}, "pkg-1", []string{"632"})
 	engine = targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
-		SellerAgentURL:     testSeller,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
 		Storage:            storage,
 		AcceptedTaxonomies: caller, // caller mutated to "rogue:99"

@@ -12,12 +12,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-const (
-	// geoCountryKey is the ContextMatchRequest.Geo map key carrying the
-	// ISO 3166-1 alpha-2 country code. Hoisted to a constant so any
-	// future move to a typed Geo struct is a single grep / replace.
-	geoCountryKey = "country"
-)
 
 // HandlerConfig packages the inputs for NewHandler.
 type HandlerConfig struct {

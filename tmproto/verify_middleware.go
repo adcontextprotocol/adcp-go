@@ -3,6 +3,7 @@ package tmproto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,8 +68,13 @@ func (o *VerifyOptions) logger() *slog.Logger {
 // VerifiedContextMatchFromContext.
 func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, opts.bodyLimit()))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.bodyLimit()))
 		if err != nil {
+			var mb *http.MaxBytesError
+			if errors.As(err, &mb) {
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				return
+			}
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
 			return
 		}
@@ -109,8 +115,13 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 // signature verification.
 func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, opts.bodyLimit()))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.bodyLimit()))
 		if err != nil {
+			var mb *http.MaxBytesError
+			if errors.As(err, &mb) {
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				return
+			}
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
 			return
 		}

@@ -7,11 +7,10 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
 )
 
-// CacheConfig sizes the URL membership cache. One LRU holds tuples of
-// (packageID, hash) → blocked/allowed verdicts. The same cache size /
-// TTL covers both blocklist and allowlist verdicts; callers that need
-// separate sizing can construct two readers and wire them in
-// independently.
+// CacheConfig sizes the URL membership cache. The wrapper holds two
+// internal LRUs — one for blocked-verdicts, one for allowed-verdicts —
+// each sized at Size and each with TTL. Memory footprint is therefore
+// roughly 2 × Size cache entries, not Size.
 type CacheConfig struct {
 	Size int
 	TTL  time.Duration
