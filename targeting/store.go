@@ -5,8 +5,11 @@ import (
 	"time"
 )
 
-// ContextStore is the storage backend the ContextEngine reads and writes.
-// Implementations wrap Valkey or an in-memory mock.
+// ContextStore is the read surface the ContextEngine consults at evaluation
+// time. Write primitives for the targeting topic data (set-element add /
+// remove / key delete) are not on this interface — they live on
+// targeting/topicstore so writers depend on a smaller surface than the
+// engine.
 type ContextStore interface {
 	// SetIsMember checks if member is in the set at key.
 	SetIsMember(ctx context.Context, key, member string) (bool, error)

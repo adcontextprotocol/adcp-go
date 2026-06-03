@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -162,15 +163,16 @@ func TestMeasure_TargetingScale(t *testing.T) {
 	t.Log("")
 	store := targeting.NewMockStore()
 
+	ctx := context.Background()
 	for _, n := range []int{100, 1000, 10_000, 100_000} {
 		key := fmt.Sprintf("set:seg-%d", n)
 		for i := range n {
-			store.SetAdd(key, fmt.Sprintf("token-hash-%d", i))
+			_ = store.SetAdd(ctx, key, fmt.Sprintf("token-hash-%d", i))
 		}
 		start := time.Now()
 		const lookups = 100_000
 		for i := range lookups {
-			store.SetIsMember(nil, key, fmt.Sprintf("token-hash-%d", i%n))
+			_, _ = store.SetIsMember(ctx, key, fmt.Sprintf("token-hash-%d", i%n))
 		}
 		elapsed := time.Since(start)
 		t.Logf("  %6d members: %v per lookup", n, elapsed/lookups)

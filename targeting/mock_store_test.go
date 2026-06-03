@@ -13,8 +13,8 @@ func TestMockStore_SetOperations(t *testing.T) {
 	ctx := context.Background()
 	s := NewMockStore()
 
-	s.SetAdd("colors", "red", "green", "blue")
-	s.SetAdd("warm", "red", "orange", "yellow")
+	require.NoError(t, s.SetAdd(ctx, "colors", "red", "green", "blue"))
+	require.NoError(t, s.SetAdd(ctx, "warm", "red", "orange", "yellow"))
 
 	t.Run("IsMember", func(t *testing.T) {
 		ok, err := s.SetIsMember(ctx, "colors", "red")
@@ -39,7 +39,7 @@ func TestMockStore_SetOperations(t *testing.T) {
 	})
 
 	t.Run("Intersect_NoOverlap", func(t *testing.T) {
-		s.SetAdd("cold", "blue", "purple")
+		require.NoError(t, s.SetAdd(ctx, "cold", "blue", "purple"))
 		result, err := s.SetIntersect(ctx, "warm", "cold")
 		require.NoError(t, err)
 		assert.Empty(t, result)

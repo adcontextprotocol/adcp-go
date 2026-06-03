@@ -22,9 +22,9 @@ type PackageConfig struct {
 
 	// Context dimensions (evaluated during EvaluateContext).
 	PropertyList Bitmap // Per-package property bitmap. Nil = all properties pass.
-	URLBlocklist bool   // If true, check "url:blocklist:{pkg}" in Store.
-	URLAllowlist bool   // If true, check "url:allowlist:{pkg}" in Store.
-	TopicTargets bool   // If true, check "topics:package:{pkg}" in Store.
+	URLBlocklist bool   // If true, the engine consults the package's URL blocklist set.
+	URLAllowlist bool   // If true, the engine consults the package's URL allowlist set.
+	TopicTargets bool   // If true, the engine consults the package's targeted topic set under each accepted taxonomy (see topicstore).
 
 	// Identity dimensions are served by the in-memory
 	// identityconfig.Service, keyed by (seller_agent_url, package_id).

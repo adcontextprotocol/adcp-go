@@ -20,8 +20,11 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+var integrationTaxonomy = topicstore.Taxonomy{Source: "integration", ID: 1}
 
 // startValkey9 spins up a Valkey 9 container and returns a connected glide client.
 // Skips the test when Docker isn't available locally.
@@ -273,9 +276,9 @@ func TestIntegration_Engine_EvaluateContext_AgainstRealValkey(t *testing.T) {
 	client, store := startValkey9(t)
 	ctx := context.Background()
 
-	_, err := client.SAdd(ctx, "topics:package:pkg-food", []string{"food.cooking", "food.recipes"})
+	_, err := client.SAdd(ctx, topicstore.PackageKey(integrationTaxonomy, "pkg-food"), []string{"food.cooking", "food.recipes"})
 	require.NoError(t, err)
-	_, err = client.SAdd(ctx, "topics:artifact:article:pasta", []string{"food.cooking", "food.italian"})
+	_, err = client.SAdd(ctx, topicstore.ArtifactKey(integrationTaxonomy, "article:pasta"), []string{"food.cooking", "food.italian"})
 	require.NoError(t, err)
 	_, err = client.SAdd(ctx, "url:blocklist:pkg-family", []string{targeting.HashURL("article:adult-content")})
 	require.NoError(t, err)
@@ -288,6 +291,7 @@ func TestIntegration_Engine_EvaluateContext_AgainstRealValkey(t *testing.T) {
 			{PackageID: "pkg-food", TopicTargets: true},
 			{PackageID: "pkg-family", URLBlocklist: true},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{integrationTaxonomy},
 	})
 
 	t.Run("TopicMatch", func(t *testing.T) {

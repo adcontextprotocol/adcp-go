@@ -6,8 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+var scaleTaxonomy = topicstore.Taxonomy{Source: "scale", ID: 1}
 
 // TestScale_PropertyBitmap measures property bitmap lookup at increasing scale.
 func TestScale_PropertyBitmap(t *testing.T) {
@@ -54,17 +57,20 @@ func TestScale_TopicSetSize(t *testing.T) {
 
 	for _, n := range []int{10, 100, 1_000, 10_000} {
 		store := NewMockStore()
+		ctx := context.Background()
 
+		pkgKey := topicstore.PackageKey(scaleTaxonomy, "pkg-1")
 		for i := range n {
-			store.SetAdd("topics:package:pkg-1", fmt.Sprintf("topic-%d", i))
+			_ = store.SetAdd(ctx, pkgKey, fmt.Sprintf("topic-%d", i))
 		}
-		store.SetAdd("topics:artifact:article:test", fmt.Sprintf("topic-%d", n-1))
+		_ = store.SetAdd(ctx, topicstore.ArtifactKey(scaleTaxonomy, "article:test"), fmt.Sprintf("topic-%d", n-1))
 
 		engine := NewContextEngine(ContextEngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap("1")},
-			Packages:   []PackageConfig{{PackageID: "pkg-1", TopicTargets: true}},
+			ProviderID:         "bench",
+			Store:              store,
+			Properties:         PropertyList{Global: NewMapBitmap("1")},
+			Packages:           []PackageConfig{{PackageID: "pkg-1", TopicTargets: true}},
+			AcceptedTaxonomies: []topicstore.Taxonomy{scaleTaxonomy},
 		})
 
 		req := &tmproto.ContextMatchRequest{
@@ -94,8 +100,9 @@ func TestScale_URLBlocklistSize(t *testing.T) {
 	for _, n := range []int{100, 1_000, 10_000, 100_000} {
 		store := NewMockStore()
 
+		ctx := context.Background()
 		for i := range n {
-			store.SetAdd("url:blocklist:pkg-1", HashURL(fmt.Sprintf("article:blocked-%d", i)))
+			_ = store.SetAdd(ctx, "url:blocklist:pkg-1", HashURL(fmt.Sprintf("article:blocked-%d", i)))
 		}
 
 		engine := NewContextEngine(ContextEngineConfig{
@@ -131,6 +138,7 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 
 	for _, numPkgs := range []int{1, 10, 50, 100, 500} {
 		store := NewMockStore()
+		ctx := context.Background()
 
 		var staticPkgs []PackageConfig
 		var pkgIDs []string
@@ -138,26 +146,28 @@ func TestScale_DynamicVsStatic(t *testing.T) {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			staticPkgs = append(staticPkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
-			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
+			_ = store.SetAdd(ctx, topicstore.PackageKey(scaleTaxonomy, pkgID), "food.cooking")
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
 				TopicTargets: true,
 			})
 		}
-		store.SetAdd("topics:artifact:article:food", "food.cooking")
+		_ = store.SetAdd(ctx, topicstore.ArtifactKey(scaleTaxonomy, "article:food"), "food.cooking")
 
 		staticEngine := NewContextEngine(ContextEngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap("1")},
-			Packages:   staticPkgs,
+			ProviderID:         "bench",
+			Store:              store,
+			Properties:         PropertyList{Global: NewMapBitmap("1")},
+			Packages:           staticPkgs,
+			AcceptedTaxonomies: []topicstore.Taxonomy{scaleTaxonomy},
 		})
 
 		dynamicEngine := NewContextEngine(ContextEngineConfig{
-			ProviderID:      "bench",
-			Store:           store,
-			Properties:      PropertyList{Global: NewMapBitmap("1")},
-			DynamicPackages: true,
+			ProviderID:         "bench",
+			Store:              store,
+			Properties:         PropertyList{Global: NewMapBitmap("1")},
+			DynamicPackages:    true,
+			AcceptedTaxonomies: []topicstore.Taxonomy{scaleTaxonomy},
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
@@ -234,6 +244,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 
 	for _, numPkgs := range []int{10, 50, 100, 500} {
 		store := NewMockStore()
+		ctx := context.Background()
 		now := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
 		var mbPkgs []MediaBuyPackage
@@ -243,7 +254,7 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			mbPkgs = append(mbPkgs, MediaBuyPackage{PackageID: pkgID, MediaBuyID: "mb-1"})
 			pkgIDs = append(pkgIDs, pkgID)
 
-			store.SetAdd("topics:package:"+pkgID, "food.cooking")
+			_ = store.SetAdd(ctx, topicstore.PackageKey(scaleTaxonomy, pkgID), "food.cooking")
 			store.SetPackageContextConfig(pkgID, PackageContextConfig{
 				PackageID:    pkgID,
 				TopicTargets: true,
@@ -256,18 +267,19 @@ func TestScale_ResolvedVsDynamic(t *testing.T) {
 			Countries: []string{"US"}, PropertyIDs: []string{"pub-1"},
 			Packages: mbPkgs,
 		})
-		store.SetAdd("topics:artifact:article:food", "food.cooking")
+		_ = store.SetAdd(ctx, topicstore.ArtifactKey(scaleTaxonomy, "article:food"), "food.cooking")
 
-		resolved, err := Resolve(context.Background(), store, "seller-1", "pub-1", "US", now)
+		resolved, err := Resolve(ctx, store, "seller-1", "pub-1", "US", []topicstore.Taxonomy{scaleTaxonomy}, now)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		engine := NewContextEngine(ContextEngineConfig{
-			ProviderID:      "bench",
-			Store:           store,
-			Properties:      PropertyList{Global: NewMapBitmap("1")},
-			DynamicPackages: true,
+			ProviderID:         "bench",
+			Store:              store,
+			Properties:         PropertyList{Global: NewMapBitmap("1")},
+			DynamicPackages:    true,
+			AcceptedTaxonomies: []topicstore.Taxonomy{scaleTaxonomy},
 		})
 
 		ctxReq := &tmproto.ContextMatchRequest{
@@ -306,6 +318,7 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 
 	for _, numPkgs := range []int{1, 5, 10, 25, 50} {
 		store := NewMockStore()
+		ctx := context.Background()
 
 		var pkgs []PackageConfig
 		var pkgIDs []string
@@ -314,17 +327,18 @@ func TestScale_PackagesPerRequest(t *testing.T) {
 			pkgID := fmt.Sprintf("pkg-%d", i)
 			pkgs = append(pkgs, PackageConfig{PackageID: pkgID, TopicTargets: true})
 			pkgIDs = append(pkgIDs, pkgID)
-			store.SetAdd(fmt.Sprintf("topics:package:%s", pkgID), "food.cooking")
+			_ = store.SetAdd(ctx, topicstore.PackageKey(scaleTaxonomy, pkgID), "food.cooking")
 			idCfg := PackageIdentityConfig{}
 			idConfigs[pkgID] = &idCfg
 		}
-		store.SetAdd("topics:artifact:article:food", "food.cooking")
+		_ = store.SetAdd(ctx, topicstore.ArtifactKey(scaleTaxonomy, "article:food"), "food.cooking")
 
 		ctxEngine := NewContextEngine(ContextEngineConfig{
-			ProviderID: "bench",
-			Store:      store,
-			Properties: PropertyList{Global: NewMapBitmap("1")},
-			Packages:   pkgs,
+			ProviderID:         "bench",
+			Store:              store,
+			Properties:         PropertyList{Global: NewMapBitmap("1")},
+			Packages:           pkgs,
+			AcceptedTaxonomies: []topicstore.Taxonomy{scaleTaxonomy},
 		})
 		idEngine := NewIdentityEngine(IdentityEngineConfig{})
 

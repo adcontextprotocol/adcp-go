@@ -35,8 +35,14 @@ func NewMockStore() *MockStore {
 	}
 }
 
-// SetAdd adds members to a set. Test helper, not part of Store interface.
-func (m *MockStore) SetAdd(key string, members ...string) {
+// SetAdd adds members to a set, creating the key if it does not exist.
+// Satisfies targeting.ContextStore. The unused ctx and unconditional nil
+// return keep the in-memory mock signature-compatible with the Valkey
+// implementations.
+func (m *MockStore) SetAdd(_ context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s, ok := m.sets[key]
@@ -47,6 +53,43 @@ func (m *MockStore) SetAdd(key string, members ...string) {
 	for _, member := range members {
 		s[member] = struct{}{}
 	}
+	return nil
+}
+
+// SetRemove removes members from a set. Missing members are silently
+// skipped. Satisfies targeting.ContextStore.
+func (m *MockStore) SetRemove(_ context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sets[key]
+	if !ok {
+		return nil
+	}
+	for _, member := range members {
+		delete(s, member)
+	}
+	if len(s) == 0 {
+		delete(m.sets, key)
+	}
+	return nil
+}
+
+// Del deletes one or more keys from both the set and string spaces.
+// Missing keys are silently skipped. Satisfies targeting.ContextStore.
+func (m *MockStore) Del(_ context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, k := range keys {
+		delete(m.sets, k)
+		delete(m.strings, k)
+	}
+	return nil
 }
 
 // SetMediaBuy stores a media buy and adds it to the seller's set. Test helper.

@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+var benchTaxonomy = topicstore.Taxonomy{Source: "bench", ID: 1}
 
 // BenchmarkBitmapCheck tests the string-set bitmap Contains() with 50K properties, targeting 1K.
 func BenchmarkBitmapCheck(b *testing.B) {
@@ -57,8 +60,17 @@ func BenchmarkSignatureVerify(b *testing.B) {
 // BenchmarkFullPipeline tests complete context evaluation with bitmap + topic match.
 func BenchmarkFullPipeline(b *testing.B) {
 	store := targeting.NewMockStore()
-	store.SetAdd("topics:package:pkg-food", "food.cooking", "food.baking", "food.italian")
-	store.SetAdd("topics:artifact:article:pasta-recipe", "food.cooking", "food.italian")
+	ctx := context.Background()
+	writer, err := topicstore.NewWriter(store)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := writer.SetPackageTopics(ctx, benchTaxonomy, "pkg-food", []string{"food.cooking", "food.baking", "food.italian"}); err != nil {
+		b.Fatal(err)
+	}
+	if err := writer.SetArtifactTopics(ctx, benchTaxonomy, "article:pasta-recipe", []string{"food.cooking", "food.italian"}); err != nil {
+		b.Fatal(err)
+	}
 
 	bm := NewSetBitmap()
 	for i := 1; i <= 1000; i++ {
@@ -75,6 +87,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 			{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true},
 			{PackageID: "pkg-tech", TopicTargets: true},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{benchTaxonomy},
 	})
 
 	req := &tmproto.ContextMatchRequest{
@@ -84,7 +97,6 @@ func BenchmarkFullPipeline(b *testing.B) {
 		PackageIDs:   []string{"pkg-food", "pkg-tech"},
 	}
 
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = engine.EvaluateContext(ctx, req)
@@ -118,11 +130,11 @@ func BenchmarkRegistryLoad(b *testing.B) {
 // BenchmarkValkeyLookup tests URL pattern check using mock store.
 func BenchmarkValkeyLookup(b *testing.B) {
 	store := targeting.NewMockStore()
+	ctx := context.Background()
 	for i := range 10000 {
-		store.SetAdd("url:blocklist:pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
+		_ = store.SetAdd(ctx, "url:blocklist:pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
 	}
 
-	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		urlHash := targeting.HashURL(fmt.Sprintf("article:content-%d", i%20000))

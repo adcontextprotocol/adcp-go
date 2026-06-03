@@ -6,13 +6,20 @@ import (
 )
 
 // Evaluation stage constants.
+//
+// StageTopicNoTaxonomy is emitted instead of StageTopicMatch when a
+// TopicTargets package is short-circuited because the engine has no
+// accepted taxonomies configured. The separate label lets on-call
+// distinguish a configuration drop (no taxonomies declared) from a
+// genuine miss (taxonomy declared, no matching topic) in dashboards.
 const (
-	StagePropertyBitmap = "property_bitmap"
-	StageSuppression    = "suppression"
-	StageSignature      = "signature"
-	StageURLFilter      = "url_filter"
-	StageTopicMatch     = "topic_match"
-	StageAudience       = "audience"
+	StagePropertyBitmap  = "property_bitmap"
+	StageSuppression     = "suppression"
+	StageSignature       = "signature"
+	StageURLFilter       = "url_filter"
+	StageTopicMatch      = "topic_match"
+	StageTopicNoTaxonomy = "topic_no_taxonomy"
+	StageAudience        = "audience"
 )
 
 // Metrics receives instrumentation callbacks from the targeting engine.

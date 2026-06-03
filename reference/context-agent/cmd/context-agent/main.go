@@ -15,8 +15,14 @@ import (
 	contextagent "github.com/adcontextprotocol/adcp-go/reference/context-agent"
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/prommetrics"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// referenceTaxonomy is the demo taxonomy the reference agent seeds with. A
+// real deployment configures its accepted taxonomies via env / flag and
+// matches the writers that populate its Valkey instance.
+var referenceTaxonomy = topicstore.Taxonomy{Source: "reference", ID: 1}
 
 var version = "dev"
 
@@ -65,8 +71,20 @@ func main() {
 
 	// Seed sample data in mock store.
 	store := targeting.NewMockStore()
-	store.SetAdd("topics:package:pkg-display-0041", "food.cooking", "food.recipes", "lifestyle.home")
-	store.SetAdd("topics:package:pkg-native-0078", "technology.gadgets", "technology.reviews")
+	seedCtx := context.Background()
+	writer, wErr := topicstore.NewWriter(store)
+	if wErr != nil {
+		slog.Error("topicstore writer init failed", "error", wErr)
+		os.Exit(1)
+	}
+	if err := writer.SetPackageTopics(seedCtx, referenceTaxonomy, "pkg-display-0041", []string{"food.cooking", "food.recipes", "lifestyle.home"}); err != nil {
+		slog.Error("seed package topics failed", "error", err)
+		os.Exit(1)
+	}
+	if err := writer.SetPackageTopics(seedCtx, referenceTaxonomy, "pkg-native-0078", []string{"technology.gadgets", "technology.reviews"}); err != nil {
+		slog.Error("seed package topics failed", "error", err)
+		os.Exit(1)
+	}
 
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID: "reference-context-agent",
@@ -79,6 +97,7 @@ func main() {
 			{PackageID: "pkg-display-0041", TopicTargets: true, EmitSegments: []string{"food", "lifestyle"}},
 			{PackageID: "pkg-native-0078", TopicTargets: true, URLBlocklist: true, EmitSegments: []string{"technology"}},
 		},
+		AcceptedTaxonomies: []topicstore.Taxonomy{referenceTaxonomy},
 	})
 
 	keystoreCtx, keystoreCancel := context.WithCancel(context.Background())

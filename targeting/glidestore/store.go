@@ -293,6 +293,46 @@ func (s *Store) MSet(ctx context.Context, kvs map[string]string, ttl time.Durati
 	return err
 }
 
+// SetAdd executes SADD for the given key+members. Returns ErrReadOnly when
+// the store is a shadow replica. Empty member lists are a no-op.
+func (s *Store) SetAdd(ctx context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	_, err := s.client.SAdd(ctx, key, members)
+	return err
+}
+
+// SetRemove executes SREM for the given key+members. Returns ErrReadOnly
+// when the store is a shadow replica. Empty member lists are a no-op.
+// Missing keys and members are silently treated as no-ops by Valkey.
+func (s *Store) SetRemove(ctx context.Context, key string, members ...string) error {
+	if len(members) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	_, err := s.client.SRem(ctx, key, members)
+	return err
+}
+
+// Del executes DEL for the supplied keys. Returns ErrReadOnly when the
+// store is a shadow replica. Empty key lists are a no-op.
+func (s *Store) Del(ctx context.Context, keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	if s.shadow() {
+		return ErrReadOnly
+	}
+	_, err := s.client.Del(ctx, keys)
+	return err
+}
+
 // --- fcap.Store ---
 
 func (s *Store) SetFields(ctx context.Context, key string, fields map[string]string, expireAt time.Time) error {

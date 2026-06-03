@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -99,10 +101,25 @@ func ResolvePackages(ctx context.Context, store ContextStore, sellerID, property
 // This is the cacheable entry point — call once, cache the result, use for
 // many requests. Loads all configs and builds all indexes.
 //
+// taxonomies enumerates the topic taxonomies this deployment accepts. The
+// resolver fetches `topics:package:{src}:{id}:{pkg}` once per (package,
+// taxonomy) and stores the results in TopicIndex keyed by the namespaced
+// form `topicstore.NamespaceTopic(tax, topic)` so artifact-topic lookups
+// can join against it without per-taxonomy index lookups at eval time. An
+// empty taxonomies slice means topic-targeting data is not loaded — every
+// TopicTargets package will be skipped by the engine.
+//
+// Errors from per-(package, taxonomy) topic loads, URL-blocklist loads,
+// and URL-allowlist loads are recorded via structured log but do not fail
+// the resolve. The affected slice of the in-memory index will be missing
+// the corresponding entries until the cache is refreshed — a fail-closed
+// partial degradation rather than a hard error that would block every
+// request against the cached ResolvedPackages.
+//
 // Identity configs are no longer loaded here; callers wanting identity gating
 // populate ResolvedPackages.IdentityConfigs from the identityconfig.Service
 // keyed by (seller_agent_url, package_id).
-func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, country string, now time.Time) (*ResolvedPackages, error) {
+func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, country string, taxonomies []topicstore.Taxonomy, now time.Time) (*ResolvedPackages, error) {
 	pkgs, err := ResolvePackages(ctx, store, sellerID, propertyID, country, now)
 	if err != nil {
 		return nil, err
@@ -133,20 +150,38 @@ func Resolve(ctx context.Context, store ContextStore, sellerID, propertyID, coun
 			}
 		}
 
-		topics, _ := store.SetMembers(ctx, "topics:package:"+pkgID)
-		for _, topic := range topics {
-			topicIdx[topic] = append(topicIdx[topic], pkgID)
+		for _, tax := range taxonomies {
+			topics, err := store.SetMembers(ctx, topicstore.PackageKey(tax, pkgID))
+			if err != nil {
+				slog.Warn("topicstore: package-topic load failed; under-indexing this taxonomy",
+					"package_id", pkgID,
+					"taxonomy", tax.String(),
+					"error", err)
+				continue
+			}
+			for _, topic := range topics {
+				ns := topicstore.NamespaceTopic(tax, topic)
+				topicIdx[ns] = append(topicIdx[ns], pkgID)
+			}
 		}
 
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLBlocklist {
-			blocked, _ := store.SetMembers(ctx, "url:blocklist:"+pkgID)
+			blocked, err := store.SetMembers(ctx, "url:blocklist:"+pkgID)
+			if err != nil {
+				slog.Warn("targeting: url-blocklist load failed; under-indexing this package",
+					"package_id", pkgID, "error", err)
+			}
 			for _, hash := range blocked {
 				urlBlockIdx[hash] = append(urlBlockIdx[hash], pkgID)
 			}
 		}
 
 		if cc := ctxConfigs[pkgID]; cc != nil && cc.URLAllowlist {
-			allowed, _ := store.SetMembers(ctx, "url:allowlist:"+pkgID)
+			allowed, err := store.SetMembers(ctx, "url:allowlist:"+pkgID)
+			if err != nil {
+				slog.Warn("targeting: url-allowlist load failed; allowlist not applied for this package",
+					"package_id", pkgID, "error", err)
+			}
 			if len(allowed) > 0 {
 				set := make(map[string]struct{}, len(allowed))
 				for _, hash := range allowed {

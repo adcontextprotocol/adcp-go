@@ -14,9 +14,11 @@ package targeting
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -31,6 +33,19 @@ type ContextEngine struct {
 	packages        map[string]PackageConfig
 	dynamicPackages bool
 
+	// acceptedTaxonomies enumerates the topic taxonomies this deployment
+	// trusts. A publisher's ContextSignals.Topics are unioned into the
+	// engine's topic set only when (TaxonomySource, TaxonomyID) is in this
+	// list; Valkey topic lookups happen once per accepted taxonomy per
+	// artifact. Empty disables topic targeting: every TopicTargets package
+	// fails the topic check rather than passing through vacuously, so a
+	// deployment cannot accidentally match on unscoped data.
+	//
+	// acceptedSet is the map form of acceptedTaxonomies for O(1) lookup;
+	// the slice keeps the iteration order callers configured.
+	acceptedTaxonomies []topicstore.Taxonomy
+	acceptedSet        map[topicstore.Taxonomy]struct{}
+
 	metrics Metrics
 }
 
@@ -40,11 +55,29 @@ type ContextEngineConfig struct {
 	Store           ContextStore
 	Properties      PropertyList
 	Packages        []PackageConfig
-	DynamicPackages bool    // When true, load package configs from Store at eval time.
-	Metrics         Metrics // nil = noop
+	DynamicPackages bool // When true, load package configs from Store at eval time.
+
+	// AcceptedTaxonomies enumerates the topic taxonomies this deployment
+	// trusts on inbound ContextSignals and consults on Valkey artifact /
+	// package topic lookups. Empty disables topic targeting: every
+	// TopicTargets package fails the topic check (fail-closed) — a
+	// deployment that wants topic targeting MUST declare at least one
+	// accepted taxonomy.
+	//
+	// A publisher who sends ContextSignals.Topics with an empty
+	// TaxonomySource gets a Taxonomy{Source: ""} key that
+	// Taxonomy.Validate rejects and that no deployment can configure as
+	// accepted. Those topics are silently dropped; deployments that need
+	// to honor untagged topics must agree out-of-band with publishers on
+	// a default Source value to send.
+	AcceptedTaxonomies []topicstore.Taxonomy
+
+	Metrics Metrics // nil = noop
 }
 
-// NewContextEngine creates a context-match engine.
+// NewContextEngine creates a context-match engine. The caller's
+// cfg.AcceptedTaxonomies slice is copied so post-construction mutation
+// cannot reach into engine state.
 func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	pkgMap := make(map[string]PackageConfig, len(cfg.Packages))
 	for _, p := range cfg.Packages {
@@ -54,14 +87,68 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	if metrics == nil {
 		metrics = noopMetrics{}
 	}
-	return &ContextEngine{
-		providerID:      cfg.ProviderID,
-		store:           cfg.Store,
-		properties:      cfg.Properties,
-		packages:        pkgMap,
-		dynamicPackages: cfg.DynamicPackages,
-		metrics:         metrics,
+	acceptedSlice := make([]topicstore.Taxonomy, len(cfg.AcceptedTaxonomies))
+	copy(acceptedSlice, cfg.AcceptedTaxonomies)
+	acceptedSet := make(map[topicstore.Taxonomy]struct{}, len(acceptedSlice))
+	for _, t := range acceptedSlice {
+		acceptedSet[t] = struct{}{}
 	}
+	return &ContextEngine{
+		providerID:         cfg.ProviderID,
+		store:              cfg.Store,
+		properties:         cfg.Properties,
+		packages:           pkgMap,
+		dynamicPackages:    cfg.DynamicPackages,
+		acceptedTaxonomies: acceptedSlice,
+		acceptedSet:        acceptedSet,
+		metrics:            metrics,
+	}
+}
+
+// acceptsTaxonomy reports whether tax is configured as accepted.
+func (e *ContextEngine) acceptsTaxonomy(tax topicstore.Taxonomy) bool {
+	_, ok := e.acceptedSet[tax]
+	return ok
+}
+
+// publisherTopics returns the namespaced topic strings derived from
+// req.ContextSignals when its declared taxonomy is in the engine's
+// accepted set. Returns nil when ContextSignals is absent, has no topics,
+// or declares a taxonomy the engine does not trust.
+func (e *ContextEngine) publisherTopics(req *tmproto.ContextMatchRequest) []string {
+	cs := req.ContextSignals
+	if cs == nil || len(cs.Topics) == 0 {
+		return nil
+	}
+	tax := topicstore.Taxonomy{Source: cs.TaxonomySource, ID: cs.TaxonomyID}
+	if !e.acceptsTaxonomy(tax) {
+		return nil
+	}
+	return topicstore.NamespaceTopics(tax, cs.Topics)
+}
+
+// publisherTopicsByTaxonomy returns ContextSignals.Topics grouped by the
+// declared taxonomy when that taxonomy is in the accepted set. Returns
+// nil when no usable publisher topics are present. The non-resolved
+// engine path uses this to perform an in-memory join against each
+// candidate package's stored topic set per accepted taxonomy.
+//
+// The TMP wire today carries exactly one (TaxonomySource, TaxonomyID)
+// pair per ContextSignals, so the returned map has at most one entry.
+// The map shape is forward-compat for a future spec extension that
+// would let a publisher disclose topics under multiple taxonomies in a
+// single request; downstream callers handle multi-entry input without
+// further changes.
+func (e *ContextEngine) publisherTopicsByTaxonomy(req *tmproto.ContextMatchRequest) map[topicstore.Taxonomy][]string {
+	cs := req.ContextSignals
+	if cs == nil || len(cs.Topics) == 0 {
+		return nil
+	}
+	tax := topicstore.Taxonomy{Source: cs.TaxonomySource, ID: cs.TaxonomyID}
+	if !e.acceptsTaxonomy(tax) {
+		return nil
+	}
+	return map[topicstore.Taxonomy][]string{tax: cs.Topics}
 }
 
 // IdentityEngine evaluates identity-match requests. It reads pre-resolved
@@ -138,6 +225,9 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
 	artifactRefs := extractArtifactRefURLs(req)
+	pubTopicsByTax := e.publisherTopicsByTaxonomy(req)
+	cs := req.ContextSignals
+	haveTopicSource := len(artifactRefs) > 0 || (cs != nil && len(cs.Topics) > 0)
 
 	var dynCtxConfigs map[string]*PackageContextConfig
 	if e.dynamicPackages {
@@ -204,13 +294,23 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 		}
 
 		if topicTargets {
-			matched, err := e.checkTopicMatch(ctx, artifactRefs, pkgID)
-			if err != nil {
-				e.metrics.StoreError(ctx, StageTopicMatch, err)
-			} else if !matched {
-				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+			if len(e.acceptedTaxonomies) == 0 {
+				e.metrics.ContextEvaluated(ctx, StageTopicNoTaxonomy, false)
 				continue
 			}
+			if haveTopicSource {
+				matched, err := e.checkTopicMatch(ctx, artifactRefs, pubTopicsByTax, pkgID)
+				if err != nil {
+					e.metrics.StoreError(ctx, StageTopicMatch, err)
+				} else if !matched {
+					e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+					continue
+				}
+			}
+			// haveTopicSource == false: the publisher disclosed no
+			// topics at all (no artifact_refs, no ContextSignals.Topics)
+			// — the package passes the topic check vacuously, matching
+			// the resolved path.
 		}
 
 		e.metrics.ContextEvaluated(ctx, "", true)
@@ -233,6 +333,22 @@ func (e *ContextEngine) EvaluateContext(ctx context.Context, req *tmproto.Contex
 // EvaluateContextResolved evaluates context using pre-built indexes.
 // Minimal Store calls: only suppression checks and artifact→topic resolution.
 // All targeting lookups (property, topic, URL) are in-memory.
+//
+// Topic resolution is taxonomy-scoped: the engine namespaces every topic id
+// by its (TaxonomySource, TaxonomyID) before joining against TopicIndex, so
+// the id "632" under IAB Content Taxonomy 3.0 never cross-matches with the
+// same string under a different taxonomy. ContextSignals.Topics is unioned
+// into the artifact-topic set when its declared taxonomy is in the
+// engine's accepted set. When publisher-provided topics already activate
+// every topic-targeted package in the request, the per-artifact Valkey
+// SMEMBERS lookups are skipped entirely.
+//
+// Errors from per-(artifact, taxonomy) SMEMBERS lookups are recorded via
+// StoreError + structured log and the loop continues to the next
+// taxonomy; the affected taxonomy effectively under-matches for the
+// request while the rest still evaluate. There is no overall "stop on
+// first error" — a partial Valkey outage degrades match coverage rather
+// than failing the whole request.
 func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
 	evalStart := time.Now()
 	rid := req.PropertyRID
@@ -252,22 +368,51 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 
 	artifactRefs := extractArtifactRefURLs(req)
 
-	var artifactTopics []string
-	for _, artifact := range artifactRefs {
-		topics, err := e.store.SetMembers(ctx, "topics:artifact:"+artifact)
-		if err != nil {
-			e.metrics.StoreError(ctx, StageTopicMatch, err)
-		} else {
-			artifactTopics = append(artifactTopics, topics...)
+	// Seed artifact topics from publisher-provided ContextSignals when the
+	// declared taxonomy is accepted. These count as topics for every
+	// artifact in the request (the publisher classifies the placement, not
+	// a per-ref view) and are also the only topic input for the
+	// no-artifact / ephemeral-content case.
+	pubTopics := e.publisherTopics(req)
+	artifactTopics := make([]string, 0, len(pubTopics))
+	artifactTopics = append(artifactTopics, pubTopics...)
+
+	// Short-circuit: skip the Valkey SMEMBERS round-trips entirely when
+	// publisher topics already produce a candidate hit for every
+	// TopicTargets package in the request. The fallback path runs when at
+	// least one such package still lacks a candidate.
+	topicCandidates := resolved.TopicCandidates(artifactTopics)
+	needArtifactLookup := len(artifactRefs) > 0 && !publisherCoversTopicTargets(req.PackageIDs, resolved, topicCandidates)
+	if needArtifactLookup {
+		// Fail-closed per (artifact, taxonomy): a Valkey hiccup for one
+		// taxonomy under-matches that taxonomy but does not poison the
+		// rest of the eval. StageTopicMatch error metric + structured
+		// log so on-call can correlate under-match incidents to
+		// upstream errors.
+		for _, artifact := range artifactRefs {
+			for _, tax := range e.acceptedTaxonomies {
+				topics, err := e.store.SetMembers(ctx, topicstore.ArtifactKey(tax, artifact))
+				if err != nil {
+					e.metrics.StoreError(ctx, StageTopicMatch, err)
+					slog.Warn("topicstore: artifact-topic lookup failed; under-match for this taxonomy",
+						"request_id", req.RequestID,
+						"artifact", artifact,
+						"taxonomy", tax.String(),
+						"error", err)
+					continue
+				}
+				for _, t := range topics {
+					artifactTopics = append(artifactTopics, topicstore.NamespaceTopic(tax, t))
+				}
+			}
 		}
+		topicCandidates = resolved.TopicCandidates(artifactTopics)
 	}
 
 	var artifactHashes []string
 	for _, artifact := range artifactRefs {
 		artifactHashes = append(artifactHashes, HashURL(artifact))
 	}
-
-	topicCandidates := resolved.TopicCandidates(artifactTopics)
 
 	var offers []tmproto.Offer
 	var segments []string
@@ -285,14 +430,39 @@ func (e *ContextEngine) EvaluateContextResolved(ctx context.Context, resolved *R
 			}
 		}
 
-		if cfg.TopicTargets && len(artifactRefs) > 0 {
-			if len(topicCandidates) == 0 {
-				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+		if cfg.TopicTargets {
+			// Topic-source matrix the gate below enforces:
+			//
+			//   AcceptedTax | artifact_refs | cs.Topics | outcome
+			//   ------------+---------------+-----------+----------
+			//   empty       | (any)         | (any)     | fail-closed
+			//   non-empty   | none          | none      | vacuous pass
+			//   non-empty   | none          | rogue-tax | fail (only
+			//                                            source was
+			//                                            rejected)
+			//   non-empty   | none          | accepted  | match required
+			//   non-empty   | present       | (any)     | match required
+			//                                            (rogue cs.Topics
+			//                                            silently ignored;
+			//                                            artifact lookups
+			//                                            still run)
+			//
+			// The fail-on-rogue-only-source case is what prevents a
+			// publisher from earning free activations by mis-declaring
+			// their taxonomy on an otherwise empty request — they
+			// supplied a topic source the engine couldn't use, so the
+			// package's required-match contract stays in force.
+			if len(e.acceptedTaxonomies) == 0 {
+				e.metrics.ContextEvaluated(ctx, StageTopicNoTaxonomy, false)
 				continue
 			}
-			if _, ok := topicCandidates[pkgID]; !ok {
-				e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
-				continue
+			cs := req.ContextSignals
+			haveTopicSource := len(artifactRefs) > 0 || (cs != nil && len(cs.Topics) > 0)
+			if haveTopicSource {
+				if _, ok := topicCandidates[pkgID]; !ok {
+					e.metrics.ContextEvaluated(ctx, StageTopicMatch, false)
+					continue
+				}
 			}
 		}
 
@@ -471,21 +641,77 @@ func (e *ContextEngine) checkURLFilter(ctx context.Context, artifacts []string, 
 	return false, nil
 }
 
-// checkTopicMatch checks if artifacts have topic overlap with a package.
-func (e *ContextEngine) checkTopicMatch(ctx context.Context, artifacts []string, pkgID string) (bool, error) {
-	if len(artifacts) == 0 {
-		return true, nil
+// checkTopicMatch returns true when at least one accepted taxonomy yields
+// a topic overlap between (publisher topics ∪ artifact topics) and the
+// package's stored topic set. Callers must verify upstream that there is
+// at least one topic source (artifact refs or accepted ContextSignals
+// topics) before calling — when both sources are empty, the caller should
+// treat the topic check as vacuously passing rather than invoking this
+// helper, which would otherwise return false.
+//
+// pubTopicsByTax may be nil when the request had no usable publisher
+// topics; in that case only the artifact branch runs.
+func (e *ContextEngine) checkTopicMatch(ctx context.Context, artifacts []string, pubTopicsByTax map[topicstore.Taxonomy][]string, pkgID string) (bool, error) {
+	if len(e.acceptedTaxonomies) == 0 {
+		return false, nil
 	}
-	for _, artifact := range artifacts {
-		intersection, err := e.store.SetIntersect(ctx, "topics:package:"+pkgID, "topics:artifact:"+artifact)
+
+	// Publisher-topic branch: one SMEMBERS per (taxonomy carrying
+	// publisher topics) and an in-memory join. Short-circuits as soon as
+	// any taxonomy produces overlap.
+	for tax, pubTopics := range pubTopicsByTax {
+		pkgTopics, err := e.store.SetMembers(ctx, topicstore.PackageKey(tax, pkgID))
 		if err != nil {
 			return false, err
 		}
-		if len(intersection) > 0 {
-			return true, nil
+		if len(pkgTopics) == 0 {
+			continue
+		}
+		pkgSet := make(map[string]struct{}, len(pkgTopics))
+		for _, t := range pkgTopics {
+			pkgSet[t] = struct{}{}
+		}
+		for _, t := range pubTopics {
+			if _, ok := pkgSet[t]; ok {
+				return true, nil
+			}
+		}
+	}
+
+	// Artifact-topic branch: one SINTER per (artifact, taxonomy).
+	for _, artifact := range artifacts {
+		for _, tax := range e.acceptedTaxonomies {
+			intersection, err := e.store.SetIntersect(ctx,
+				topicstore.PackageKey(tax, pkgID),
+				topicstore.ArtifactKey(tax, artifact))
+			if err != nil {
+				return false, err
+			}
+			if len(intersection) > 0 {
+				return true, nil
+			}
 		}
 	}
 	return false, nil
+}
+
+// publisherCoversTopicTargets reports whether topicCandidates (built from
+// publisher-provided topics alone) already places every TopicTargets
+// package in pkgIDs into the candidate set. When true, the engine can
+// skip per-artifact Valkey SMEMBERS lookups: union semantics guarantee
+// that adding artifact topics can only grow the candidate set, never
+// remove a package that publisher topics already satisfied.
+func publisherCoversTopicTargets(pkgIDs []string, resolved *ResolvedPackages, candidates map[string]struct{}) bool {
+	for _, pkgID := range pkgIDs {
+		cfg := resolved.ContextConfigs[pkgID]
+		if cfg == nil || !cfg.TopicTargets {
+			continue
+		}
+		if _, ok := candidates[pkgID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // buildOffers returns one or more Offers for an activated package.
