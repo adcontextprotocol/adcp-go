@@ -218,7 +218,7 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 		Logger:     logger,
 	})
 	if err != nil {
-		valkeyCloser.Close()
+		_ = valkeyCloser.Close()
 		cancelBg()
 		return nil, fmt.Errorf("suppression snapshot: %w", err)
 	}
@@ -230,7 +230,7 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 		// to start so the orchestrator restarts the pod and tries
 		// again, rather than entering a silently-degraded steady
 		// state.
-		valkeyCloser.Close()
+		_ = valkeyCloser.Close()
 		cancelBg()
 		return nil, fmt.Errorf("suppression initial load: %w", err)
 	}
@@ -245,7 +245,7 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 		cfg.Cache,
 	)
 	if err != nil {
-		valkeyCloser.Close()
+		_ = valkeyCloser.Close()
 		cancelBg()
 		return nil, fmt.Errorf("storage: %w", err)
 	}
@@ -266,7 +266,7 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 
 	keystore, err := buildKeyStore(bgCtx, cfg.TMP, logger)
 	if err != nil {
-		valkeyCloser.Close()
+		_ = valkeyCloser.Close()
 		cancelBg()
 		return nil, fmt.Errorf("keystore: %w", err)
 	}

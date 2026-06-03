@@ -82,7 +82,7 @@ func buildStorage(
 	taxes []topicstore.Taxonomy,
 	cacheCfg CacheConfig,
 ) (*storage, error) {
-	var mediaBuys mediabuystore.Reader = mediabuystore.NewReader(mediaBuyStore)
+	mediaBuys := mediabuystore.NewReader(mediaBuyStore)
 	if cacheCfg.Enabled && cacheCfg.MediaBuy.Enabled {
 		mediaBuys = mediabuystore.WithCache(mediaBuys, mediabuystore.CacheConfig{
 			SellerSetSize: cacheCfg.MediaBuy.SellerSetSize,
@@ -92,7 +92,7 @@ func buildStorage(
 		})
 	}
 
-	var pkgConfigs pkgconfigstore.Reader = pkgconfigstore.NewReader(pkgConfigStore)
+	pkgConfigs := pkgconfigstore.NewReader(pkgConfigStore)
 	if cacheCfg.Enabled && cacheCfg.PkgConfig.Enabled {
 		pkgConfigs = pkgconfigstore.WithCache(pkgConfigs, pkgconfigstore.CacheConfig{
 			Size: cacheCfg.PkgConfig.Size,
@@ -100,7 +100,7 @@ func buildStorage(
 		})
 	}
 
-	var urlLists urlliststore.Reader = urlliststore.NewReader(urlListStore)
+	urlLists := urlliststore.NewReader(urlListStore)
 	if cacheCfg.Enabled && cacheCfg.URLList.Enabled {
 		urlLists = urlliststore.WithCache(urlLists, urlliststore.CacheConfig{
 			Size: cacheCfg.URLList.Size,

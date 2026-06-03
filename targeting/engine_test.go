@@ -322,30 +322,27 @@ func TestContext_EmitSegments(t *testing.T) {
 
 // TestContext_DefensiveCopiesAcceptedTaxonomies pins that
 // post-construction mutation of the caller's slice cannot reach the
-// engine's state.
+// engine's state. The engine is constructed with caller=[iab:7]; the
+// caller then flips the slice element to a rogue taxonomy. A request
+// whose ContextSignals declares the original iab:7 must still
+// activate, because the engine should be holding its own copy.
 func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
 	caller := []topicstore.Taxonomy{{Source: "iab", ID: 7}}
-	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
-		ProviderID:         testProviderID,
-		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
-		Storage:            contextstorage.NewInMemory(),
-		AcceptedTaxonomies: caller,
-	})
-	caller[0] = topicstore.Taxonomy{Source: "rogue", ID: 99}
-
-	// Indirect verification: a request whose ContextSignals declares
-	// "iab:7" must still activate a TopicTargets package, because the
-	// engine has its own copy.
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", TopicTargets: true}).
 		WithPackageTopics(topicstore.Taxonomy{Source: "iab", ID: 7}, "pkg-1", []string{"632"})
-	engine = targeting.NewContextEngine(targeting.ContextEngineConfig{
+
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
 		Storage:            storage,
-		AcceptedTaxonomies: caller, // caller mutated to "rogue:99"
+		AcceptedTaxonomies: caller,
 	})
-	caller[0] = topicstore.Taxonomy{Source: "iab", ID: 7} // change back AFTER construction
+
+	// Mutate the caller's slice in place AFTER construction. If the
+	// engine kept the slice by reference, the iab:7 entry would now
+	// read as rogue:99 and the assertion below would fail-closed.
+	caller[0] = topicstore.Taxonomy{Source: "rogue", ID: 99}
 
 	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:   "r",
@@ -356,8 +353,8 @@ func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers,
-		"engine must hold its own copy of AcceptedTaxonomies; rogue:99 was configured at construction time")
+	assert.Len(t, resp.Offers, 1,
+		"engine must hold its own copy of AcceptedTaxonomies; post-construction caller mutation must not reach engine state")
 }
 
 // The Now override on ContextEngineConfig is reserved for the future

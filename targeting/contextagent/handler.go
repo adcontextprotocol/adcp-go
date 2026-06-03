@@ -59,7 +59,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body := http.MaxBytesReader(w, r.Body, h.requestBodyLimit)
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	var req tmproto.ContextMatchRequest
 	if err := json.NewDecoder(body).Decode(&req); err != nil {

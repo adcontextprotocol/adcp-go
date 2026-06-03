@@ -115,7 +115,7 @@ type ValkeyBlock struct {
 	Mode     string
 	Shards   map[string]string
 	Username string
-	Password string
+	Password string //nolint:gosec // G117 false positive: the field name describes purpose; the value is intentionally a secret.
 	DB       int
 	TLS      bool
 
