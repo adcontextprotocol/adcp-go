@@ -155,6 +155,14 @@ func (s *Syncer) Run(ctx context.Context) error {
 		persistFailed := false
 		for _, event := range resp.Events {
 			if err := s.applyEvent(ctx, event); err != nil {
+				var invalidDomain *InvalidDomainError
+				if errors.As(err, &invalidDomain) {
+					// Permanent error: same input will fail forever.
+					// Drop the event and let the cursor advance.
+					s.log.Warn("dropping event with permanent error",
+						"event_id", event.EventID, "event_type", event.EventType, "error", err)
+					continue
+				}
 				s.log.Error("event persist failed; cursor will not advance until retry",
 					"event_id", event.EventID, "event_type", event.EventType, "error", err)
 				persistFailed = true
@@ -253,6 +261,14 @@ func (s *Syncer) applyEvent(ctx context.Context, event FeedEvent) error {
 			s.log.Warn("authorization event missing required fields", "event_id", event.EventID)
 			return nil
 		}
+		if err := ValidatePublisherDomain(entry.PublisherDomain); err != nil {
+			// Permanent validation failure: dropping is the only progress
+			// path. Returning the error would block the cursor and the
+			// same event would re-deliver forever.
+			s.log.Warn("dropping authorization event with invalid publisher_domain",
+				"event_id", event.EventID, "publisher_domain", entry.PublisherDomain, "error", err)
+			return nil
+		}
 		return s.auth.Add(ctx, entry)
 
 	case "authorization.revoked":
@@ -266,6 +282,11 @@ func (s *Syncer) applyEvent(ctx context.Context, event FeedEvent) error {
 		}
 		if revoke.AgentURL == "" || revoke.PublisherDomain == "" {
 			s.log.Warn("revocation event missing required fields", "event_id", event.EventID)
+			return nil
+		}
+		if err := ValidatePublisherDomain(revoke.PublisherDomain); err != nil {
+			s.log.Warn("dropping revocation event with invalid publisher_domain",
+				"event_id", event.EventID, "publisher_domain", revoke.PublisherDomain, "error", err)
 			return nil
 		}
 		return s.auth.RemoveEntry(ctx, revoke.AgentURL, revoke.PublisherDomain)

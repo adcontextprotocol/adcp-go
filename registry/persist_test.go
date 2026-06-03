@@ -374,6 +374,69 @@ func TestSyncer_CursorExpiredClearFailureKeepsCursor(t *testing.T) {
 	assert.Equal(t, "old-expired-cursor", cur, "cursor must not be wiped while Clear is failing")
 }
 
+// TestSyncer_InvalidPublisherDomainDoesNotBlockCursor proves that a
+// feed event with a publisher_domain containing '|' (or any other
+// encoding-illegal byte) is dropped at the boundary: it never reaches
+// memory, it never reaches the Store, and the cursor advances past it
+// instead of looping forever on the same un-persistable event.
+func TestSyncer_InvalidPublisherDomainDoesNotBlockCursor(t *testing.T) {
+	store := NewMemoryStore()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(FeedResponse{
+			Events: []FeedEvent{
+				{
+					EventID: "bad-1", EventType: "authorization.granted",
+					EntityType: "authorization", EntityID: "https://agent.com:foo|bar",
+					Payload: mustMarshal(AuthorizationEntry{
+						AgentURL: "https://agent.com", PublisherDomain: "foo|bar",
+						AuthorizationType: "publisher_properties",
+					}),
+					Actor: "test",
+				},
+				{
+					EventID: "good-1", EventType: "authorization.granted",
+					EntityType: "authorization", EntityID: "https://agent.com:ok.example.com",
+					Payload: mustMarshal(AuthorizationEntry{
+						AgentURL: "https://agent.com", PublisherDomain: "ok.example.com",
+						AuthorizationType: "publisher_properties",
+					}),
+					Actor: "test",
+				},
+			},
+			Cursor: strPtr("good-1"), HasMore: false,
+		})
+	}))
+	defer srv.Close()
+
+	props := NewPropertyIndex().WithStore(store)
+	auth := NewAuthIndex().WithStore(store)
+	agents := NewAgentIndex().WithStore(store)
+	syncer := NewSyncer(NewClient(srv.URL, "test"), props, auth, agents, store, SyncerConfig{PollInterval: 20 * time.Millisecond})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	go func() { _ = syncer.Run(ctx) }()
+
+	// The bad event must be dropped at the boundary — memory is never
+	// poisoned. The good event must apply and the cursor must advance.
+	waitFor(t, func() bool {
+		c, _ := store.Load(context.Background())
+		return c == "good-1"
+	})
+
+	assert.False(t, auth.Check("https://agent.com", "foo|bar"),
+		"bad event must never reach memory")
+	assert.True(t, auth.Check("https://agent.com", "ok.example.com"),
+		"good event must apply")
+
+	persisted, err := store.LoadAuth(context.Background())
+	require.NoError(t, err)
+	require.Len(t, persisted, 1)
+	assert.Equal(t, "ok.example.com", persisted[0].PublisherDomain)
+}
+
 func TestValidatePublisherDomain(t *testing.T) {
 	cases := []struct {
 		name    string
