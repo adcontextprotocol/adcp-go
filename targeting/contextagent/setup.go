@@ -259,6 +259,7 @@ func buildBundle(ctx context.Context, cfg Config, logger *slog.Logger) (*bundle,
 	// the template; not in this PR's scope.
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         cfg.ProviderID,
+		SellerAgentURL:     cfg.SellerAgentURL,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap(cfg.PropertyRIDs...)},
 		Storage:            storage,
 		AcceptedTaxonomies: cfg.AcceptedTaxonomies,

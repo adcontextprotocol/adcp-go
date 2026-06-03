@@ -25,8 +25,8 @@ type storage struct {
 	acceptedTaxes []topicstore.Taxonomy
 }
 
-func (s *storage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]string, error) {
-	pkgs, err := s.mediaBuys.ActivePackages(ctx, sellerAgentURL, propertyID, country, now)
+func (s *storage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]string, error) {
+	pkgs, err := s.mediaBuys.ActivePackages(ctx, sellerAgentURL, propertyID, country, placementID, now)
 	if err != nil {
 		return nil, err
 	}

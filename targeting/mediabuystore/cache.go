@@ -90,7 +90,7 @@ func (c *cachedReader) MediaBuy(ctx context.Context, mediaBuyID string) (MediaBu
 	return mb, present, nil
 }
 
-func (c *cachedReader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]MediaBuyPackage, error) {
+func (c *cachedReader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]MediaBuyPackage, error) {
 	ids, err := c.MediaBuyIDsForSeller(ctx, sellerAgentURL)
 	if err != nil {
 		return nil, err
@@ -119,7 +119,11 @@ func (c *cachedReader) ActivePackages(ctx context.Context, sellerAgentURL, prope
 		if !isActive(mb, now) || !matchesGeo(mb, country) || !matchesProperty(mb, propertyID) {
 			continue
 		}
-		out = append(out, mb.Packages...)
+		for _, pkg := range mb.Packages {
+			if matchesPlacement(pkg, placementID) {
+				out = append(out, pkg)
+			}
+		}
 	}
 	if orphans {
 		c.sellers.Remove(sellerAgentURL)

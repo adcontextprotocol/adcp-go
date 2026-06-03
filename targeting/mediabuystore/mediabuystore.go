@@ -36,10 +36,19 @@ type MediaBuy struct {
 }
 
 // MediaBuyPackage names one of the packages within a media buy.
+//
+// PlacementIDs scopes the package to a subset of the publisher's
+// adagents.json placement registry: at request time the package is
+// eligible only when req.PlacementID is in this list. An empty
+// (or nil) PlacementIDs is the permissive default — the package
+// serves any placement on its media buy's properties. Same shape as
+// Countries / PropertyIDs on MediaBuy: empty list means "all,"
+// non-empty restricts.
 type MediaBuyPackage struct {
-	PackageID  string   `json:"package_id"`
-	MediaBuyID string   `json:"media_buy_id"`
-	FormatIDs  []string `json:"format_ids,omitempty"`
+	PackageID    string   `json:"package_id"`
+	MediaBuyID   string   `json:"media_buy_id"`
+	FormatIDs    []string `json:"format_ids,omitempty"`
+	PlacementIDs []string `json:"placement_ids,omitempty"`
 }
 
 // Store is the minimal Valkey surface this package consumes. Production
@@ -140,10 +149,20 @@ type Reader interface {
 	MediaBuy(ctx context.Context, mediaBuyID string) (mb MediaBuy, ok bool, err error)
 
 	// ActivePackages returns the packages from the seller's media buys
-	// that are active (date-window, country, property) at `now`. Equivalent
-	// to ResolvePackages in the pre-refactor engine, but goes through
-	// the Reader interface so caches and direct readers behave identically.
-	ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]MediaBuyPackage, error)
+	// that are eligible at `now` for the given (propertyID, country,
+	// placementID) tuple. A package is eligible iff:
+	//
+	//   - its media buy's date window contains `now`;
+	//   - its media buy's Countries either is empty or includes country;
+	//   - its media buy's PropertyIDs either is empty or includes propertyID;
+	//   - the package's PlacementIDs either is empty or includes placementID.
+	//
+	// An empty placementID short-circuits the placement check — useful
+	// for callers that have not yet plumbed placement_id through, but
+	// production callers MUST pass req.PlacementID so cross-placement
+	// leakage between different ad opportunities on the same property
+	// cannot happen.
+	ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]MediaBuyPackage, error)
 }
 
 // NewReader returns a direct Reader that issues one Valkey round-trip
@@ -181,7 +200,7 @@ func (r *reader) MediaBuy(ctx context.Context, mediaBuyID string) (MediaBuy, boo
 	return mb, true, nil
 }
 
-func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]MediaBuyPackage, error) {
+func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]MediaBuyPackage, error) {
 	ids, err := r.MediaBuyIDsForSeller(ctx, sellerAgentURL)
 	if err != nil {
 		return nil, err
@@ -209,7 +228,11 @@ func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID,
 		if !isActive(mb, now) || !matchesGeo(mb, country) || !matchesProperty(mb, propertyID) {
 			continue
 		}
-		out = append(out, mb.Packages...)
+		for _, pkg := range mb.Packages {
+			if matchesPlacement(pkg, placementID) {
+				out = append(out, pkg)
+			}
+		}
 	}
 	return out, nil
 }
@@ -249,4 +272,15 @@ func matchesProperty(mb MediaBuy, propertyID string) bool {
 		return true
 	}
 	return slices.Contains(mb.PropertyIDs, propertyID)
+}
+
+// matchesPlacement reports whether pkg is eligible to serve
+// placementID. An empty placementID skips the check (compatibility for
+// callers that have not yet plumbed PlacementID); empty PlacementIDs
+// on the package means the package serves any placement.
+func matchesPlacement(pkg MediaBuyPackage, placementID string) bool {
+	if placementID == "" || len(pkg.PlacementIDs) == 0 {
+		return true
+	}
+	return slices.Contains(pkg.PlacementIDs, placementID)
 }

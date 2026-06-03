@@ -62,7 +62,7 @@ func TestIntegration_ContextStores_Shadow(t *testing.T) {
 
 		r := mediabuystore.NewReader(store)
 		now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-		pkgs, err := r.ActivePackages(context.Background(), seller, "", "", now)
+		pkgs, err := r.ActivePackages(context.Background(), seller, "", "", "", now)
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 		assert.Equal(t, "pkg-a", pkgs[0].PackageID)
@@ -201,7 +201,7 @@ func runContextStoresSuite(t *testing.T, store *Store, seller, providerID string
 			Packages: []mediabuystore.MediaBuyPackage{{PackageID: "pkg-a"}},
 		}))
 		now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-		pkgs, err := mediabuystore.NewReader(store).ActivePackages(ctx, seller, "", "", now)
+		pkgs, err := mediabuystore.NewReader(store).ActivePackages(ctx, seller, "", "", "", now)
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 		assert.Equal(t, "pkg-a", pkgs[0].PackageID)

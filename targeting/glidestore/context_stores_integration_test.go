@@ -49,7 +49,7 @@ func TestIntegration_GlideContextStores_Shadow(t *testing.T) {
 		seedGlideSetAdd(t, clients, mediabuystore.SellerSetKey(seller), "mb-1")
 
 		now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-		pkgs, err := mediabuystore.NewReader(store).ActivePackages(context.Background(), seller, "", "", now)
+		pkgs, err := mediabuystore.NewReader(store).ActivePackages(context.Background(), seller, "", "", "", now)
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 		assert.Equal(t, "pkg-a", pkgs[0].PackageID)
@@ -121,7 +121,7 @@ func runGlideContextStoresSuite(t *testing.T, store *Store, seller, providerID s
 			Packages: []mediabuystore.MediaBuyPackage{{PackageID: "pkg-a"}},
 		}))
 		now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-		pkgs, err := mediabuystore.NewReader(store).ActivePackages(ctx, seller, "", "", now)
+		pkgs, err := mediabuystore.NewReader(store).ActivePackages(ctx, seller, "", "", "", now)
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 		assert.Equal(t, "pkg-a", pkgs[0].PackageID)

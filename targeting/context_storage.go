@@ -27,11 +27,22 @@ import (
 // current request (under-match) and continues, mirroring how the
 // pre-storage engine handled per-key Valkey errors.
 type ContextStorage interface {
-	// ActivePackages returns the package IDs the deployment offers for the
-	// given (sellerAgentURL, propertyID, country) tuple at `now`. Used
-	// when the inbound request omits PackageIDs. An empty result means
-	// the deployment has no matching inventory.
-	ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country string, now time.Time) ([]string, error)
+	// ActivePackages returns the package IDs the deployment offers for
+	// the given (sellerAgentURL, propertyID, country, placementID)
+	// tuple at `now` — i.e., every package whose media buy is active
+	// (date / geo / property) and that itself is willing to serve the
+	// placement.
+	//
+	// The engine consults this on every request, not only when
+	// req.PackageIDs is omitted. When req.PackageIDs IS present the
+	// engine intersects this set with the inbound list, per the TMP
+	// spec's "intersection of registered active set and package_ids"
+	// rule (see IdentityMatchRequest.PackageIDs docstring in
+	// tmproto/types_gen.go — the principle applies to context-match
+	// too). Skipping this step would let a stale PackageContextConfig
+	// for an expired media buy still produce offers if a publisher
+	// names it explicitly.
+	ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]string, error)
 
 	// ContextConfig returns the package's context-side configuration.
 	// `ok == false` (with err == nil) means no config is stored for that

@@ -35,7 +35,7 @@ func TestService_PutAndReadActivePackages(t *testing.T) {
 	}))
 
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	pkgs, err := r.ActivePackages(ctx, sellerURL, "pub-1", "US", now)
+	pkgs, err := r.ActivePackages(ctx, sellerURL, "pub-1", "US", "", now)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 2)
 	assert.Equal(t, "pkg-a", pkgs[0].PackageID)
@@ -63,7 +63,7 @@ func TestService_DateFilters(t *testing.T) {
 	}))
 
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", now)
+	pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "", now)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1)
 	assert.Equal(t, "pkg-current", pkgs[0].PackageID)
@@ -88,15 +88,56 @@ func TestService_GeoAndPropertyFilters(t *testing.T) {
 
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 
-	pkgs, err := r.ActivePackages(ctx, sellerURL, "pub-1", "GB", now)
+	pkgs, err := r.ActivePackages(ctx, sellerURL, "pub-1", "GB", "", now)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1, "GB filters out the US-only buy; pub-1 keeps the pub-1-only buy")
 	assert.Equal(t, "pkg-pub1", pkgs[0].PackageID)
 
-	pkgs, err = r.ActivePackages(ctx, sellerURL, "pub-2", "US", now)
+	pkgs, err = r.ActivePackages(ctx, sellerURL, "pub-2", "US", "", now)
 	require.NoError(t, err)
 	require.Len(t, pkgs, 1, "pub-2 filters out the pub-1-only buy; US keeps the US-only buy")
 	assert.Equal(t, "pkg-us", pkgs[0].PackageID)
+}
+
+// TestService_PlacementFilter pins the per-package PlacementIDs gating:
+// empty list means "any placement"; non-empty means "only these."
+func TestService_PlacementFilter(t *testing.T) {
+	ctx := context.Background()
+	svc, r, _ := writerAndReader(t)
+
+	require.NoError(t, svc.Put(ctx, mediabuystore.MediaBuy{
+		MediaBuyID: "mb-mixed", SellerAgentURL: sellerURL,
+		StartDate: "2026-01-01", EndDate: "2026-12-31",
+		Packages: []mediabuystore.MediaBuyPackage{
+			{PackageID: "pkg-anywhere"},
+			{PackageID: "pkg-home-only", PlacementIDs: []string{"placement-home"}},
+			{PackageID: "pkg-footer-only", PlacementIDs: []string{"placement-footer"}},
+		},
+	}))
+
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "placement-home", now)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"pkg-anywhere", "pkg-home-only"}, packageIDs(pkgs),
+		"placement-home returns the unscoped package and the home-scoped one")
+
+	pkgs, err = r.ActivePackages(ctx, sellerURL, "", "", "placement-footer", now)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"pkg-anywhere", "pkg-footer-only"}, packageIDs(pkgs))
+
+	pkgs, err = r.ActivePackages(ctx, sellerURL, "", "", "", now)
+	require.NoError(t, err)
+	assert.Len(t, pkgs, 3,
+		"empty placementID short-circuits the placement check (compatibility for callers that haven't plumbed it through)")
+}
+
+func packageIDs(pkgs []mediabuystore.MediaBuyPackage) []string {
+	out := make([]string, len(pkgs))
+	for i, p := range pkgs {
+		out[i] = p.PackageID
+	}
+	return out
 }
 
 func TestService_Remove(t *testing.T) {
@@ -112,7 +153,7 @@ func TestService_Remove(t *testing.T) {
 	require.NoError(t, svc.Remove(ctx, sellerURL, "mb-1"))
 
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
-	pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", now)
+	pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "", now)
 	require.NoError(t, err)
 	assert.Empty(t, pkgs)
 }
@@ -167,7 +208,7 @@ func TestCache_PositiveCaching(t *testing.T) {
 
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	for range 4 {
-		pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", now)
+		pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "", now)
 		require.NoError(t, err)
 		require.Len(t, pkgs, 1)
 	}

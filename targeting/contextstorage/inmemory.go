@@ -53,12 +53,15 @@ func (s *InMemory) WithPackage(cfg *targeting.PackageContextConfig) *InMemory {
 }
 
 // WithActivePackages registers the package IDs ActivePackages should
-// return for the given seller / property / country tuple. The `now`
-// argument the engine passes is ignored — the in-memory impl doesn't
-// model date filtering; callers register the already-filtered package
-// set for the scenario they want to exercise.
-func (s *InMemory) WithActivePackages(sellerAgentURL, propertyID, country string, packageIDs []string) *InMemory {
-	s.activePackages[activeKey(sellerAgentURL, propertyID, country)] = append([]string(nil), packageIDs...)
+// return for the given (seller, property, country, placement) tuple.
+// The `now` argument the engine passes is ignored — the in-memory
+// impl doesn't model date filtering; callers register the
+// already-filtered package set for the scenario they want to exercise.
+//
+// An empty placementID matches any inbound placement (engine tests
+// that don't care about placement scoping can leave it blank).
+func (s *InMemory) WithActivePackages(sellerAgentURL, propertyID, country, placementID string, packageIDs []string) *InMemory {
+	s.activePackages[activeKey(sellerAgentURL, propertyID, country, placementID)] = append([]string(nil), packageIDs...)
 	return s
 }
 
@@ -122,8 +125,21 @@ func (s *InMemory) WithSuppressedGeo(providerID, country string) *InMemory {
 
 // --- ContextStorage ---
 
-func (s *InMemory) ActivePackages(_ context.Context, sellerAgentURL, propertyID, country string, _ time.Time) ([]string, error) {
-	return append([]string(nil), s.activePackages[activeKey(sellerAgentURL, propertyID, country)]...), nil
+// ActivePackages returns the package IDs registered for the tuple via
+// WithActivePackages. When no explicit registration exists for the
+// tuple, it falls back to every package supplied via WithPackage —
+// the test-friendly default for the many tests that don't care about
+// active-set scoping but still need the engine's active-set lookup
+// to find their package.
+func (s *InMemory) ActivePackages(_ context.Context, sellerAgentURL, propertyID, country, placementID string, _ time.Time) ([]string, error) {
+	if ids, ok := s.activePackages[activeKey(sellerAgentURL, propertyID, country, placementID)]; ok {
+		return append([]string(nil), ids...), nil
+	}
+	out := make([]string, 0, len(s.configs))
+	for id := range s.configs {
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 func (s *InMemory) ContextConfig(_ context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
@@ -175,6 +191,6 @@ func (s *InMemory) IsGeoSuppressed(_ context.Context, providerID, country string
 	return ok, nil
 }
 
-func activeKey(seller, property, country string) string {
-	return seller + "|" + property + "|" + country
+func activeKey(seller, property, country, placement string) string {
+	return seller + "|" + property + "|" + country + "|" + placement
 }

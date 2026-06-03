@@ -23,6 +23,7 @@ func newEngine(t *testing.T, storage targeting.ContextStorage, opts ...func(*tar
 	t.Helper()
 	cfg := targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
+		SellerAgentURL:     testSeller,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("1", "2", "3", "10", "20", "30")},
 		Storage:            storage,
 		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
@@ -74,31 +75,58 @@ func TestContext_GeoSuppressed(t *testing.T) {
 	assert.Empty(t, resp.Offers)
 }
 
-// TestContext_ImplicitFallback_ReturnsEmpty pins the deliberate
-// fail-closed behavior when a request omits PackageIDs. The TMP spec
-// expects the provider to evaluate every active package for the
-// placement, but storage today doesn't filter by placement_id —
-// returning every seller-property-country active package would
-// cross-leak inventory between placements on the same property. Until
-// the storage layer carries placement filtering, the engine returns
-// empty offers and emits a metric.
-func TestContext_ImplicitFallback_ReturnsEmpty(t *testing.T) {
+// TestContext_ImplicitFallback_ResolvesFromActiveSet pins the spec
+// behavior when PackageIDs is omitted: the engine evaluates every
+// active package for the (seller, property, country, placement)
+// tuple — per TMP `ContextMatchRequest.PackageIDs` doc ("the common
+// case"). The active set comes from the provider's own
+// `ActivePackages` storage, not the request.
+func TestContext_ImplicitFallback_ResolvesFromActiveSet(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-a"}).
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-b"}).
-		WithActivePackages(testSeller, "pub-1", "US", []string{"pkg-a", "pkg-b"})
+		WithActivePackages(testSeller, "pub-1", "US", "placement-1", []string{"pkg-a", "pkg-b"})
 
 	engine := newEngine(t, storage)
 	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:   "r",
 		PropertyRID: "10",
 		PropertyID:  "pub-1",
+		PlacementID: "placement-1",
 		Geo:         map[string]any{"country": "US"},
-		// No PackageIDs — must fail-closed until placement filtering lands.
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers,
-		"implicit-fallback path must return empty offers to avoid cross-leak between placements on the same property")
+	assert.Len(t, resp.Offers, 2,
+		"implicit-fallback path must serve the full active set for the placement")
+}
+
+// TestContext_ExplicitPackageIDs_IntersectsWithActiveSet pins the
+// "intersection of registered active set and package_ids" rule from
+// the TMP spec. A publisher naming a package that's not in the
+// provider's active set must NOT cause it to activate — even if the
+// package has a cached PackageContextConfig (e.g., from a previously-
+// active media buy that has since expired).
+func TestContext_ExplicitPackageIDs_IntersectsWithActiveSet(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-active"}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-expired"}). // config cached
+		WithActivePackages(testSeller, "pub-1", "US", "placement-1", []string{"pkg-active"})
+		// pkg-expired intentionally NOT in active set — its media buy ended.
+
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
+		PropertyID:  "pub-1",
+		PlacementID: "placement-1",
+		Geo:         map[string]any{"country": "US"},
+		PackageIDs:  []string{"pkg-active", "pkg-expired", "pkg-unknown"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Offers, 1,
+		"only packages in the intersection of req.PackageIDs and the active set may activate")
+	assert.Equal(t, "pkg-active", resp.Offers[0].PackageID,
+		"stale PackageContextConfig must NOT serve offers on an expired media buy")
 }
 
 func TestContext_TopicMatchViaArtifact(t *testing.T) {

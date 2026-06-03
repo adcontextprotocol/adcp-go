@@ -28,9 +28,11 @@ const GeoCountryKey = "country"
 // caching, persistence, and refresh policy live in the storage impl, not
 // here.
 type ContextEngine struct {
-	providerID string
-	properties PropertyList
-	storage    ContextStorage
+	providerID     string
+	sellerAgentURL string
+	properties     PropertyList
+	storage        ContextStorage
+	now            func() time.Time
 
 	// acceptedTaxonomies enumerates the topic taxonomies this deployment
 	// trusts. A publisher's ContextSignals.Topics are unioned into the
@@ -56,6 +58,12 @@ type ContextEngineConfig struct {
 	// lifetime; rotate by restarting with a new value.
 	ProviderID string
 
+	// SellerAgentURL is the canonicalized seller_agent_url this
+	// deployment represents. Required: the engine passes it to
+	// Storage.ActivePackages on every request so the active-set
+	// resolution is scoped to this deployment's inventory.
+	SellerAgentURL string
+
 	// Properties is the registry-derived global (and optionally
 	// per-package) property bitmap. Requests whose property_rid is not
 	// in Properties.Global short-circuit before any storage lookup.
@@ -78,6 +86,10 @@ type ContextEngineConfig struct {
 	// accepted. Those topics are silently dropped.
 	AcceptedTaxonomies []topicstore.Taxonomy
 
+	// Now is the clock the engine uses for media-buy date filtering.
+	// Defaults to time.Now; overridable for tests.
+	Now func() time.Time
+
 	Metrics Metrics // nil = noop
 }
 
@@ -95,10 +107,16 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	for _, t := range acceptedSlice {
 		acceptedSet[t] = struct{}{}
 	}
+	now := cfg.Now
+	if now == nil {
+		now = time.Now
+	}
 	return &ContextEngine{
 		providerID:         cfg.ProviderID,
+		sellerAgentURL:     cfg.SellerAgentURL,
 		properties:         cfg.Properties,
 		storage:            cfg.Storage,
+		now:                now,
 		acceptedTaxonomies: acceptedSlice,
 		acceptedSet:        acceptedSet,
 		metrics:            metrics,
@@ -144,14 +162,19 @@ type ContextResult struct {
 //
 //  1. Global property bitmap pre-filter.
 //  2. Property / geo suppression checks via the storage.
-//  3. Candidate package set = req.PackageIDs. The TMP wire contemplates
-//     "evaluate every active package for this placement" when
-//     PackageIDs is omitted, but the storage layer doesn't carry
-//     placement_id filtering today — so the implicit-fallback path
-//     fail-closes (empty offers + placement_implicit_unsupported
-//     metric) to avoid cross-leaking inventory between placements on
-//     the same property.
-//  4. Per package: load context config, check per-package property
+//  3. Resolve the active package set from Storage.ActivePackages for
+//     this seller / property / country / placement at e.now(). This
+//     happens on EVERY request — not only when req.PackageIDs is
+//     omitted — because the request's PackageIDs list is a publisher-
+//     supplied restriction, not a substitute for the provider's
+//     authoritative active inventory. A stale PackageContextConfig for
+//     an expired media buy must not produce offers just because a
+//     publisher names it.
+//  4. Resolve the candidate set: when req.PackageIDs is present, the
+//     intersection of the active set and req.PackageIDs (per the TMP
+//     spec's "intersection of registered active set and package_ids"
+//     rule); when omitted, the full active set.
+//  5. Per package: load context config, check per-package property
 //     bitmap, check URL block/allow lists, check topic match (publisher
 //     topics short-circuited first, then per-artifact / per-taxonomy
 //     storage lookups).
@@ -192,21 +215,17 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	}
 	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
-	candidatePkgIDs := req.PackageIDs
+	activePkgIDs, err := e.storage.ActivePackages(ctx, e.sellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
+	if err != nil {
+		// Fail-closed: without the active-set we can't honor the
+		// "intersection of active set and req.PackageIDs" contract,
+		// and serving on a possibly-expired buy is worse than
+		// returning no offers for this request.
+		e.metrics.StoreError(ctx, "active_packages", err)
+		return &ContextResult{RequestID: req.RequestID}, nil
+	}
+	candidatePkgIDs := candidateSet(activePkgIDs, req.PackageIDs)
 	if len(candidatePkgIDs) == 0 {
-		// TMP spec (tmproto.ContextMatchRequest doc): when PackageIDs
-		// is omitted the provider evaluates "all eligible packages for
-		// this placement". The storage layer today only filters media
-		// buys by (seller, property, country) — not by placement_id —
-		// so returning every active package would cross-leak inventory
-		// between placements on the same property. Until the
-		// mediabuy / pkgconfig schema carries a placement_id filter
-		// and the writer pipelines populate it, refuse the implicit-
-		// fallback path: callers MUST send PackageIDs explicitly.
-		//
-		// TODO(placement-implicit): extend mediabuystore.MediaBuyPackage
-		// with PlacementIDs and filter at the read path.
-		e.metrics.ContextEvaluated(ctx, "placement_implicit_unsupported", false)
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}
 
@@ -394,6 +413,31 @@ func (e *ContextEngine) checkTopicMatch(ctx context.Context, pkgID string, artif
 		}
 	}
 	return false, nil
+}
+
+// candidateSet returns the engine's candidate package id list for a
+// request. When the publisher's PackageIDs is non-empty, the result is
+// the intersection of activeIDs and requested, preserving the order
+// of `requested` and silently dropping ids that the provider does not
+// have registered as active (per the TMP spec on
+// IdentityMatchRequest.PackageIDs — same principle applies to
+// context-match). When `requested` is empty the result is `activeIDs`
+// unchanged.
+func candidateSet(activeIDs, requested []string) []string {
+	if len(requested) == 0 {
+		return activeIDs
+	}
+	active := make(map[string]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		active[id] = struct{}{}
+	}
+	out := make([]string, 0, len(requested))
+	for _, id := range requested {
+		if _, ok := active[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // hasOverlap reports whether the two slices share any element. Both
