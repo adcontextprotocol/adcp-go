@@ -61,8 +61,16 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body := http.MaxBytesReader(w, r.Body, h.requestBodyLimit)
 	defer func() { _ = body.Close() }()
 
+	// DisallowUnknownFields enforces the schema's
+	// additionalProperties: false invariant on ContextMatchRequest.
+	// The signed-request path is covered by the verifier's strict
+	// decode in tmproto.VerifyContextMatchHandler; this branch
+	// closes the unsigned/dev path so silently-accepted extension
+	// fields can't slip past either gate.
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
 	var req tmproto.ContextMatchRequest
-	if err := json.NewDecoder(body).Decode(&req); err != nil {
+	if err := dec.Decode(&req); err != nil {
 		var mb *http.MaxBytesError
 		if errors.As(err, &mb) {
 			writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body too large", http.StatusRequestEntityTooLarge)
@@ -94,10 +102,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.engine.Evaluate(ctx, &req)
 	if err != nil {
-		// targeting.ContextEngine.Evaluate today returns nil error on
-		// every code path (storage errors degrade to under-match via
-		// metrics, not request failure). The branch exists in case a
-		// future engine extension propagates a real error.
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "request deadline exceeded", http.StatusGatewayTimeout)
+			return
+		}
 		h.logger.Error("context engine returned error",
 			"request_id", req.RequestID, "error", err)
 		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusInternalServerError)
@@ -130,9 +138,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // by net/http.
 func writeError(w http.ResponseWriter, requestID string, code tmproto.ErrorCode, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
-	if status > 0 {
-		w.WriteHeader(status)
-	}
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 		Type:      tmproto.TypeError,
 		RequestID: requestID,

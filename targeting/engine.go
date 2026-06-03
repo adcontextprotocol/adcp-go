@@ -188,6 +188,13 @@ type ContextResult struct {
 // partial storage outage, which is the wrong fail mode for a kill
 // switch you can't otherwise un-stick.
 func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchRequest) (*ContextResult, error) {
+	if err := ctx.Err(); err != nil {
+		// The handler's per-request deadline already fired before the
+		// engine ran anything. Surface the timeout so the handler can
+		// distinguish it from "evaluated, no offers" (200 with empty
+		// offers, which is also a legal TMP response).
+		return nil, err
+	}
 	evalStart := time.Now()
 	rid := req.PropertyRID
 
@@ -217,10 +224,14 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 
 	activePkgIDs, err := e.storage.ActivePackages(ctx, e.sellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
 	if err != nil {
-		// Fail-closed: without the active-set we can't honor the
-		// "intersection of active set and req.PackageIDs" contract,
-		// and serving on a possibly-expired buy is worse than
-		// returning no offers for this request.
+		// A context timeout here means the request budget is gone;
+		// surface it so the handler returns 504. Any other storage
+		// error fails-closed for the request (no active-set → can't
+		// honor the intersection contract; serving on a
+		// possibly-expired buy is worse than empty offers).
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
 		e.metrics.StoreError(ctx, "active_packages", err)
 		return &ContextResult{RequestID: req.RequestID}, nil
 	}

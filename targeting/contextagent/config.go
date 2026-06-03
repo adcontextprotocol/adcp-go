@@ -42,7 +42,6 @@ type Config struct {
 	ResponseTTL time.Duration
 
 	StrictContentType bool
-	AccessLogEnabled  bool
 
 	AdminPort int
 
@@ -209,7 +208,6 @@ const (
 	defaultMaxOpenConnections    = 1024
 	defaultResponseTTL           = 60 * time.Second
 	defaultStrictContentType     = true
-	defaultAccessLogEnabled      = false
 	defaultAdminPort             = 0
 	defaultLogLevel              = "info"
 	defaultSuppressionRefresh    = 5 * time.Minute
@@ -264,8 +262,6 @@ func LoadConfigFromEnv() (Config, error) {
 	errs = appendErr(errs, err)
 	strictCT, err := lookupBool("STRICT_CONTENT_TYPE", defaultStrictContentType)
 	errs = appendErr(errs, err)
-	accessLog, err := lookupBool("ACCESS_LOG_ENABLED", defaultAccessLogEnabled)
-	errs = appendErr(errs, err)
 	adminPort, err := lookupInt("ADMIN_PORT", defaultAdminPort)
 	errs = appendErr(errs, err)
 	responseTTL, err := lookupDuration("RESPONSE_TTL", defaultResponseTTL)
@@ -308,7 +304,6 @@ func LoadConfigFromEnv() (Config, error) {
 		MaxOpenConnections:         maxConns,
 		ResponseTTL:                responseTTL,
 		StrictContentType:          strictCT,
-		AccessLogEnabled:           accessLog,
 		AdminPort:                  adminPort,
 		SupportedADCPMajorVersions: supportedVers,
 		LogLevel:                   strings.TrimSpace(os.Getenv("LOG_LEVEL")),

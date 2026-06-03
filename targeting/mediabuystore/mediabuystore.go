@@ -95,8 +95,17 @@ func NewService(store Store) (*Service, error) {
 
 // Put writes (or replaces) one media buy. The media-buy ID is added to
 // the seller's set and the JSON payload is stored at the buy's key.
-// SellerAgentURL, MediaBuyID, and (canonicalized) seller_agent_url MUST be
-// non-empty; everything else is preserved verbatim.
+// SellerAgentURL and MediaBuyID MUST be non-empty; everything else is
+// preserved verbatim.
+//
+// Atomicity: Put performs two writes (the per-buy Set, then the
+// seller-set SAdd). A crash between them leaves an orphan — either an
+// indexed id whose payload is missing (the cached Reader self-heals
+// this by evicting the seller-set on the next lookup; see
+// cache.go), or a payload whose seller-set entry is missing
+// (silent: ActivePackages will not surface it). Writers that need
+// stricter consistency should retry idempotently after a failure, or
+// call the underlying Store under their own MULTI / pipeline.
 func (s *Service) Put(ctx context.Context, mb MediaBuy) error {
 	if mb.MediaBuyID == "" {
 		return errors.New("mediabuystore: media_buy_id is required")

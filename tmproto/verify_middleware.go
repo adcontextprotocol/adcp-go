@@ -63,9 +63,8 @@ func (o *VerifyOptions) logger() *slog.Logger {
 }
 
 // VerifyContextMatchHandler wraps an HTTP handler with TMP context-match
-// signature verification. The handler is invoked with the original request body
-// re-attached so it can decode normally; the parsed request is also exposed via
-// VerifiedContextMatchFromContext.
+// signature verification. The handler is invoked with the original request
+// body re-attached so it can decode normally.
 func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.bodyLimit()))
