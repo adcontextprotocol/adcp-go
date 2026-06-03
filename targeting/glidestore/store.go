@@ -26,6 +26,7 @@ import (
 	"time"
 
 	glide "github.com/valkey-io/valkey-glide/go/v2"
+	"github.com/valkey-io/valkey-glide/go/v2/models"
 	"github.com/valkey-io/valkey-glide/go/v2/options"
 	"github.com/valkey-io/valkey-glide/go/v2/pipeline"
 
@@ -329,6 +330,43 @@ func (s *Store) Del(ctx context.Context, keys ...string) error {
 	}
 	_, err := s.client.Del(ctx, keys)
 	return err
+}
+
+// Scan returns every key matching `match` by iterating SCAN. Used by
+// suppressionstore at startup and on periodic refresh. In shadow
+// mode the call fans across every shard and unions the results;
+// glidestore does not currently wire *glide.ClusterClient (see the
+// package doc) so the standalone branch covers single-node only.
+func (s *Store) Scan(ctx context.Context, match string) ([]string, error) {
+	if s.shadow() {
+		var out []string
+		for _, c := range s.shards {
+			keys, err := glideScanAll(ctx, c, match)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, keys...)
+		}
+		return out, nil
+	}
+	return glideScanAll(ctx, s.client, match)
+}
+
+func glideScanAll(ctx context.Context, c *glide.Client, match string) ([]string, error) {
+	var out []string
+	opts := *options.NewScanOptions().SetMatch(match).SetCount(256)
+	cursor := models.NewCursor()
+	for {
+		res, err := c.ScanWithOptions(ctx, cursor, opts)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, res.Data...)
+		if res.Cursor.IsFinished() {
+			return out, nil
+		}
+		cursor = res.Cursor
+	}
 }
 
 // --- fcap.Store ---
