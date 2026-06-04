@@ -45,14 +45,23 @@ var validUIDTypes = map[UIDType]struct{}{
 // MaxIDLength caps identifier fields to prevent oversized store keys.
 const MaxIDLength = 256
 
-// validateSafeID checks that an ID does not contain characters that could
-// cause Store key injection (colons, slashes, newlines) and is within length limits.
+// validateSafeID checks that an ID does not contain characters that
+// could cause Store key injection (`:`, `/`, `\`) or terminal / log
+// injection (any C0 control 0x00–0x1F or DEL 0x7F: CR/LF/TAB/NUL/BEL/
+// CSI/...), and is within length limits. Used on every wire-supplied
+// identifier the agent persists, echoes in logs, or routes through
+// SafeRequestIDForEcho.
 func validateSafeID(field, value string) error {
 	if len(value) > MaxIDLength {
 		return fmt.Errorf("%s exceeds maximum length of %d", field, MaxIDLength)
 	}
-	if strings.ContainsAny(value, ":\n\r\t/\\") {
+	if strings.ContainsAny(value, ":/\\") {
 		return fmt.Errorf("%s contains invalid characters", field)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7F {
+			return fmt.Errorf("%s contains invalid characters", field)
+		}
 	}
 	return nil
 }

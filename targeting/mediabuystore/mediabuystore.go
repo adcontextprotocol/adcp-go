@@ -258,15 +258,16 @@ func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID,
 			// which is impossible to debug from the outside. The
 			// loop continues so one bad record can't sink the
 			// whole seller, but the corruption is now visible.
-			// Wrap with ErrCorruptPayload to mirror Reader.MediaBuy
-			// so downstream metric / log adapters can classify
-			// corruption uniformly across both call paths.
+			// `reason` carries the sentinel-equivalent tag so log
+			// processors can classify uniformly across the direct
+			// and cached paths without allocating a wrapped error
+			// per skipped record.
 			id := ""
 			if i < len(ids) {
 				id = ids[i]
 			}
 			r.logger.Warn("mediabuystore: skipping corrupt media-buy payload",
-				"media_buy_id", id, "error", fmt.Errorf("%w: %w", err, ErrCorruptPayload))
+				"media_buy_id", id, "reason", "corrupt_payload", "error", err.Error())
 			continue
 		}
 		if !isActive(mb, now) || !matchesGeo(mb, country) || !matchesProperty(mb, propertyID) {

@@ -128,7 +128,7 @@ func (c *cachedReader) ActivePackages(ctx context.Context, sellerAgentURL, prope
 			// to the right metric / response code.
 			if errors.Is(err, ErrCorruptPayload) {
 				c.logger.Warn("mediabuystore: skipping corrupt media-buy payload",
-					"media_buy_id", id, "error", err)
+					"media_buy_id", id, "reason", "corrupt_payload", "error", err.Error())
 				continue
 			}
 			return nil, err

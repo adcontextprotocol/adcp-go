@@ -105,6 +105,30 @@ func TestSafeRequestIDForEcho(t *testing.T) {
 	assert.Empty(t, SafeRequestIDForEcho(strings.Repeat("a", MaxIDLength+1)))
 }
 
+// TestSafeRequestIDForEcho_RejectsC0AndDEL pins the contract that
+// SafeRequestIDForEcho strips every C0 control (0x00–0x1F) and DEL
+// (0x7F). slog's text handler does not escape control bytes, so a
+// malicious request_id containing NUL / BEL / ANSI CSI escape sequences
+// could otherwise hijack an operator's terminal when viewing raw logs.
+func TestSafeRequestIDForEcho_RejectsC0AndDEL(t *testing.T) {
+	cases := map[string]string{
+		"NUL":      "\x00",
+		"BEL":      "\x07",
+		"backspace": "\x08",
+		"VT":       "\x0B",
+		"FF":       "\x0C",
+		"SO":       "\x0E",
+		"ANSI_CSI": "\x1B[2J",
+		"DEL":      "\x7F",
+	}
+	for name, sentinel := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Empty(t, SafeRequestIDForEcho("req-"+sentinel+"id"),
+				"control byte must blank the echo")
+		})
+	}
+}
+
 func TestValidateIdentityRequest_AllValidUIDTypes(t *testing.T) {
 	types := []UIDType{
 		UIDTypeRampID, UIDTypeRampIDDerived, UIDTypeID5, UIDTypeUID2,

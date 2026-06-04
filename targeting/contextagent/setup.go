@@ -43,6 +43,35 @@ const SuppressionStaleThreshold = 6
 // 2× their interval.
 const SuppressionStaleMaxAge = 30 * time.Minute
 
+// checkSuppressionLiveness is the testable predicate behind the
+// /live "suppression_snapshot" check. Returns nil when the snapshot
+// is healthy; otherwise a non-nil error whose message explains which
+// threshold tripped so the /live response body identifies the
+// degraded dimension without an operator having to read the agent's
+// logs.
+//
+// failures is bundle.suppressionSnap.ConsecutiveFailures().
+// lastRefresh is bundle.suppressionSnap.LastSuccessfulRefresh().
+// now is injected so tests don't depend on wall-clock time; production
+// passes time.Now().
+//
+// The lastRefresh.IsZero() guard is defense-in-depth against a future
+// Snapshot constructor that returns before running the synchronous
+// initial Load. Today Start guarantees lastRefresh is non-zero by the
+// time this is reachable, but treating an unloaded snapshot as
+// "healthy" if anything were to change would be silently fail-open on
+// a kill switch — exactly the failure mode this whole liveness path
+// exists to prevent. Keep the guard.
+func checkSuppressionLiveness(failures int, lastRefresh, now time.Time) error {
+	if failures >= SuppressionStaleThreshold {
+		return fmt.Errorf("suppression snapshot has not refreshed in %d consecutive attempts", failures)
+	}
+	if !lastRefresh.IsZero() && now.Sub(lastRefresh) > SuppressionStaleMaxAge {
+		return fmt.Errorf("suppression snapshot last refreshed %s ago (>%s)", now.Sub(lastRefresh).Round(time.Second), SuppressionStaleMaxAge)
+	}
+	return nil
+}
+
 // Run executes the agent lifecycle: build dependencies, start the
 // HTTP server, then block until SIGINT/SIGTERM and run an orderly
 // shutdown. Returns non-nil only when startup fails or shutdown
@@ -100,21 +129,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 		{
 			Name: "suppression_snapshot",
 			Fn: func() error {
-				if f := bundle.suppressionSnap.ConsecutiveFailures(); f >= SuppressionStaleThreshold {
-					return fmt.Errorf("suppression snapshot has not refreshed in %d consecutive attempts", f)
-				}
-				// Belt-and-braces age check: catches the case where
-				// the refresh-loop goroutine exits without ever
-				// touching the failure counter (e.g. a future plumbing
-				// change cancels its ctx). LastSuccessfulRefresh is
-				// the zero time before the first Load, which Start
-				// already guarantees has completed before reaching
-				// here.
-				last := bundle.suppressionSnap.LastSuccessfulRefresh()
-				if !last.IsZero() && time.Since(last) > SuppressionStaleMaxAge {
-					return fmt.Errorf("suppression snapshot last refreshed %s ago (>%s)", time.Since(last).Round(time.Second), SuppressionStaleMaxAge)
-				}
-				return nil
+				return checkSuppressionLiveness(
+					bundle.suppressionSnap.ConsecutiveFailures(),
+					bundle.suppressionSnap.LastSuccessfulRefresh(),
+					time.Now(),
+				)
 			},
 		},
 	}
@@ -194,6 +213,16 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 	// Buffered non-blocking send so a panic in Serve cannot deadlock
 	// the recover defer if the main loop has already consumed an
 	// error from the same channel.
+	//
+	// Best-effort by design: if BOTH Serve goroutines panic
+	// simultaneously and the main loop has already taken one error
+	// from the channel, the second push hits the default branch and
+	// the synthetic error is dropped. That is acceptable because the
+	// panic itself has already been logged at ERROR + recorded on
+	// recorder.BackgroundPanic by safeGoWithPanicSink's recover
+	// defer — the log / metric pair is the source of truth, the
+	// channel push is just how we cause the main loop to begin
+	// orderly shutdown faster than waiting for SIGTERM.
 	pushServerErr := func(err error) {
 		select {
 		case serverErr <- err:
