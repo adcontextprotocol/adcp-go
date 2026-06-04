@@ -84,12 +84,12 @@ func buildStorage(
 ) (*storage, error) {
 	mediaBuys := mediabuystore.NewReaderWithLogger(mediaBuyStore, logger)
 	if cacheCfg.Enabled && cacheCfg.MediaBuy.Enabled {
-		mediaBuys = mediabuystore.WithCache(mediaBuys, mediabuystore.CacheConfig{
+		mediaBuys = mediabuystore.WithCacheAndLogger(mediaBuys, mediabuystore.CacheConfig{
 			SellerSetSize: cacheCfg.MediaBuy.SellerSetSize,
 			SellerSetTTL:  cacheCfg.MediaBuy.SellerSetTTL,
 			MediaBuySize:  cacheCfg.MediaBuy.MediaBuySize,
 			MediaBuyTTL:   cacheCfg.MediaBuy.MediaBuyTTL,
-		})
+		}, logger)
 	}
 
 	pkgConfigs := pkgconfigstore.NewReader(pkgConfigStore)

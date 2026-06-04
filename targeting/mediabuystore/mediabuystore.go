@@ -27,13 +27,13 @@ import (
 
 // MediaBuy is the persisted record describing an active media buy.
 type MediaBuy struct {
-	MediaBuyID  string            `json:"media_buy_id"`
+	MediaBuyID     string            `json:"media_buy_id"`
 	SellerAgentURL string            `json:"seller_agent_url"`
-	StartDate   string            `json:"start_date"`   // YYYY-MM-DD
-	EndDate     string            `json:"end_date"`     // YYYY-MM-DD
-	Countries   []string          `json:"countries"`    // empty = all countries
-	PropertyIDs []string          `json:"property_ids"` // empty = all seller properties
-	Packages    []MediaBuyPackage `json:"packages"`
+	StartDate      string            `json:"start_date"`   // YYYY-MM-DD
+	EndDate        string            `json:"end_date"`     // YYYY-MM-DD
+	Countries      []string          `json:"countries"`    // empty = all countries
+	PropertyIDs    []string          `json:"property_ids"` // empty = all seller properties
+	Packages       []MediaBuyPackage `json:"packages"`
 }
 
 // MediaBuyPackage names one of the packages within a media buy.
@@ -51,6 +51,14 @@ type MediaBuyPackage struct {
 	FormatIDs    []string `json:"format_ids,omitempty"`
 	PlacementIDs []string `json:"placement_ids,omitempty"`
 }
+
+// ErrCorruptPayload is the sentinel returned (wrapped) by Reader.MediaBuy
+// when the stored JSON for a media buy fails to unmarshal. Callers that
+// iterate over multiple buys (ActivePackages) check for this sentinel
+// and skip the bad record; single-buy lookups SHOULD surface the error.
+// Aligns the cached and direct reader's behavior on corruption: one
+// bad payload cannot sink the whole seller in either path.
+var ErrCorruptPayload = errors.New("mediabuystore: corrupt media-buy payload")
 
 // Store is the minimal Valkey surface this package consumes. Production
 // backends (redisstore, glidestore) satisfy it; tests use the in-memory
@@ -217,7 +225,7 @@ func (r *reader) MediaBuy(ctx context.Context, mediaBuyID string) (MediaBuy, boo
 	}
 	var mb MediaBuy
 	if err := json.Unmarshal([]byte(raw), &mb); err != nil {
-		return MediaBuy{}, false, fmt.Errorf("mediabuystore: decode media buy %q: %w", mediaBuyID, err)
+		return MediaBuy{}, false, fmt.Errorf("decode media buy %q: %w: %w", mediaBuyID, err, ErrCorruptPayload)
 	}
 	return mb, true, nil
 }
@@ -250,12 +258,15 @@ func (r *reader) ActivePackages(ctx context.Context, sellerAgentURL, propertyID,
 			// which is impossible to debug from the outside. The
 			// loop continues so one bad record can't sink the
 			// whole seller, but the corruption is now visible.
+			// Wrap with ErrCorruptPayload to mirror Reader.MediaBuy
+			// so downstream metric / log adapters can classify
+			// corruption uniformly across both call paths.
 			id := ""
 			if i < len(ids) {
 				id = ids[i]
 			}
 			r.logger.Warn("mediabuystore: skipping corrupt media-buy payload",
-				"media_buy_id", id, "error", err)
+				"media_buy_id", id, "error", fmt.Errorf("%w: %w", err, ErrCorruptPayload))
 			continue
 		}
 		if !isActive(mb, now) || !matchesGeo(mb, country) || !matchesProperty(mb, propertyID) {

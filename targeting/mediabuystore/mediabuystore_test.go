@@ -217,6 +217,56 @@ func TestCache_PositiveCaching(t *testing.T) {
 		"media buy fetched once (via either MGet or Get path)")
 }
 
+// TestCorruptPayload_AlignedSkipAcrossPaths pins the contract that one
+// corrupt JSON record skips one media buy in BOTH the direct and
+// cached reader's ActivePackages — not abort the seller in one path
+// and skip in the other. Reader.MediaBuy still returns
+// ErrCorruptPayload for direct single-buy lookups; only the iteration
+// path coalesces it to "skip".
+func TestCorruptPayload_AlignedSkipAcrossPaths(t *testing.T) {
+	ctx := context.Background()
+	base := mediabuystore.NewMockStore()
+	svc, err := mediabuystore.NewService(base)
+	require.NoError(t, err)
+	require.NoError(t, svc.Put(ctx, mediabuystore.MediaBuy{
+		MediaBuyID: "mb-good", SellerAgentURL: sellerURL,
+		StartDate: "2026-01-01", EndDate: "2026-12-31",
+		Packages: []mediabuystore.MediaBuyPackage{{PackageID: "pkg-good"}},
+	}))
+	// Plant a corrupt payload that the seller-set still references.
+	require.NoError(t, base.Set(ctx, mediabuystore.MediaBuyKey("mb-bad"), "{not-json", 0))
+	require.NoError(t, base.SetAdd(ctx, mediabuystore.SellerSetKey(sellerURL), "mb-bad"))
+
+	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("direct_reader_skips_corrupt", func(t *testing.T) {
+		r := mediabuystore.NewReader(base)
+		pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "", now)
+		require.NoError(t, err, "one bad payload must not sink the whole seller")
+		require.Len(t, pkgs, 1)
+		assert.Equal(t, "pkg-good", pkgs[0].PackageID)
+	})
+
+	t.Run("cached_reader_skips_corrupt", func(t *testing.T) {
+		r := mediabuystore.WithCache(mediabuystore.NewReader(base), mediabuystore.CacheConfig{
+			SellerSetSize: 8, SellerSetTTL: time.Minute,
+			MediaBuySize: 8, MediaBuyTTL: time.Minute,
+		})
+		pkgs, err := r.ActivePackages(ctx, sellerURL, "", "", "", now)
+		require.NoError(t, err, "cached path must align with direct: skip, not abort")
+		require.Len(t, pkgs, 1)
+		assert.Equal(t, "pkg-good", pkgs[0].PackageID)
+	})
+
+	t.Run("single_buy_lookup_surfaces_ErrCorruptPayload", func(t *testing.T) {
+		r := mediabuystore.NewReader(base)
+		_, _, err := r.MediaBuy(ctx, "mb-bad")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, mediabuystore.ErrCorruptPayload,
+			"single-buy lookup must surface the sentinel so callers can classify")
+	})
+}
+
 // countingStore wraps a mediabuystore.Store and tallies calls; used to
 // assert how the cache wrapper interacts with the underlying store.
 type countingStore struct {

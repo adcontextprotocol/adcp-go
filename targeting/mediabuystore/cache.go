@@ -2,6 +2,8 @@ package mediabuystore
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
@@ -30,15 +32,27 @@ type CacheConfig struct {
 // WithCache wraps r in an LRU cache layered on the two underlying read
 // keys (seller-set and per-buy record). Negative results are cached
 // under the same TTL so a miss does not re-hit the backing store on
-// every request.
+// every request. Decode errors during ActivePackages log a Warn through
+// slog.Default; callers that want a different logger should use
+// WithCacheAndLogger.
 func WithCache(r Reader, cfg CacheConfig) Reader {
+	return WithCacheAndLogger(r, cfg, nil)
+}
+
+// WithCacheAndLogger is WithCache with an explicit slog.Logger. A nil
+// logger falls back to slog.Default.
+func WithCacheAndLogger(r Reader, cfg CacheConfig, logger *slog.Logger) Reader {
 	if r == nil {
 		return nil
 	}
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &cachedReader{
-		inner:    r,
-		sellers:  lru.NewLRU[string, cachedSellerSet](cfg.SellerSetSize, nil, cfg.SellerSetTTL),
-		buys:     lru.NewLRU[string, cachedMediaBuy](cfg.MediaBuySize, nil, cfg.MediaBuyTTL),
+		inner:   r,
+		logger:  logger,
+		sellers: lru.NewLRU[string, cachedSellerSet](cfg.SellerSetSize, nil, cfg.SellerSetTTL),
+		buys:    lru.NewLRU[string, cachedMediaBuy](cfg.MediaBuySize, nil, cfg.MediaBuyTTL),
 	}
 }
 
@@ -54,6 +68,7 @@ type cachedMediaBuy struct {
 
 type cachedReader struct {
 	inner   Reader
+	logger  *slog.Logger
 	sellers *lru.LRU[string, cachedSellerSet]
 	buys    *lru.LRU[string, cachedMediaBuy]
 }
@@ -105,6 +120,17 @@ func (c *cachedReader) ActivePackages(ctx context.Context, sellerAgentURL, prope
 	for _, id := range ids {
 		mb, ok, err := c.MediaBuy(ctx, id)
 		if err != nil {
+			// Align with the direct reader: a corrupt JSON payload
+			// skips one buy and logs, instead of sinking the whole
+			// seller. Reader.MediaBuy wraps decode errors with
+			// ErrCorruptPayload; everything else (transport,
+			// canceled ctx) still propagates so the engine can map
+			// to the right metric / response code.
+			if errors.Is(err, ErrCorruptPayload) {
+				c.logger.Warn("mediabuystore: skipping corrupt media-buy payload",
+					"media_buy_id", id, "error", err)
+				continue
+			}
 			return nil, err
 		}
 		if !ok {

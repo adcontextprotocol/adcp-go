@@ -171,9 +171,12 @@ type ContextResult struct {
 //     an expired media buy must not produce offers just because a
 //     publisher names it.
 //  4. Resolve the candidate set: when req.PackageIDs is present, the
-//     intersection of the active set and req.PackageIDs (per the TMP
-//     spec's "intersection of registered active set and package_ids"
-//     rule); when omitted, the full active set.
+//     intersection of the active set and req.PackageIDs (by analogy
+//     to IdentityMatchRequest.PackageIDs, which the AdCP spec documents
+//     as "intersection of registered active set and package_ids" —
+//     ContextMatchRequest.PackageIDs is not currently spelled out in
+//     the spec, but the same provider-controls-the-active-set
+//     principle applies); when omitted, the full active set.
 //  5. Per package: load context config, check per-package property
 //     bitmap, check URL block/allow lists, check topic match (publisher
 //     topics short-circuited first, then per-artifact / per-taxonomy
