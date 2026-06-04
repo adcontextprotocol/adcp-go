@@ -3,6 +3,7 @@ package tmproto
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,12 +24,28 @@ type VerifyOptions struct {
 	// handler with a warning log line — useful only for migration windows.
 	RequireSignature bool
 
+	// BodyLimit caps the bytes the verifier will read off the wire
+	// before computing the signature. Zero falls back to a 64 KiB
+	// default sized for identity-match payloads; agents whose downstream
+	// handler accepts larger bodies (context-match's 256 KiB artifact
+	// payloads) must raise this to match — io.LimitReader silently
+	// truncates on overflow and the truncated body fails JSON decode,
+	// which surfaces as "invalid request body" rather than "too large".
+	BodyLimit int64
+
 	// Logger receives verification outcomes. Defaults to slog.Default().
 	Logger *slog.Logger
 
 	// Now optionally returns the wall-clock time the verifier compares against
 	// the daily epoch. Defaults to time.Now.
 	Now func() time.Time
+}
+
+func (o *VerifyOptions) bodyLimit() int64 {
+	if o.BodyLimit > 0 {
+		return o.BodyLimit
+	}
+	return 64 * 1024
 }
 
 func (o *VerifyOptions) now() time.Time {
@@ -46,13 +63,17 @@ func (o *VerifyOptions) logger() *slog.Logger {
 }
 
 // VerifyContextMatchHandler wraps an HTTP handler with TMP context-match
-// signature verification. The handler is invoked with the original request body
-// re-attached so it can decode normally; the parsed request is also exposed via
-// VerifiedContextMatchFromContext.
+// signature verification. The handler is invoked with the original request
+// body re-attached so it can decode normally.
 func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.bodyLimit()))
 		if err != nil {
+			var mb *http.MaxBytesError
+			if errors.As(err, &mb) {
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				return
+			}
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
 			return
 		}
@@ -93,8 +114,13 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 // signature verification.
 func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, opts.bodyLimit()))
 		if err != nil {
+			var mb *http.MaxBytesError
+			if errors.As(err, &mb) {
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				return
+			}
 			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
 			return
 		}

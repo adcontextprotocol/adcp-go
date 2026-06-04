@@ -1,111 +1,46 @@
-package targeting
+package targeting_test
 
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/audience"
+	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/contextstorage"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// testTaxonomy is the taxonomy fixture used across context-engine tests.
-// Chosen to be distinct from any real taxonomy so cross-contamination from
-// production data would be obvious; the engine treats Source/ID as opaque
-// regardless of the value.
+const (
+	testProviderID = "test-provider"
+	testSeller     = "https://seller.example.com/agent"
+)
+
 var testTaxonomy = topicstore.Taxonomy{Source: "test", ID: 1}
 
-// seedPackageTopics is a small helper that pushes a package's targeted
-// topics into store under testTaxonomy. Cuts the noise on every test that
-// would otherwise repeat the writer construction boilerplate.
-func seedPackageTopics(t *testing.T, store *MockStore, pkgID string, topics ...string) {
+func newEngine(t *testing.T, storage targeting.ContextStorage, opts ...func(*targeting.ContextEngineConfig)) *targeting.ContextEngine {
 	t.Helper()
-	writer, err := topicstore.NewWriter(store)
-	require.NoError(t, err)
-	require.NoError(t, writer.SetPackageTopics(context.Background(), testTaxonomy, pkgID, topics))
-}
-
-// seedArtifactTopics is the artifact-side twin of seedPackageTopics.
-func seedArtifactTopics(t *testing.T, store *MockStore, ref string, topics ...string) {
-	t.Helper()
-	writer, err := topicstore.NewWriter(store)
-	require.NoError(t, err)
-	require.NoError(t, writer.SetArtifactTopics(context.Background(), testTaxonomy, ref, topics))
-}
-
-func setupContextEngine(t *testing.T) (*ContextEngine, *MockStore) {
-	t.Helper()
-	store := NewMockStore()
-	props := PropertyList{
-		Global: NewMapBitmap("1", "2", "3", "4", "5"),
+	cfg := targeting.ContextEngineConfig{
+		ProviderID:         testProviderID,
+		SellerAgentURL:     testSeller,
+		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("1", "2", "3", "10", "20", "30")},
+		Storage:            storage,
+		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
 	}
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: props,
-		Packages: []PackageConfig{
-			{PackageID: "pkg-1"},
-			{PackageID: "pkg-2"},
-		},
-	})
-	return engine, store
-}
-
-// identityFixture wraps every dependency a per-test identity scenario needs
-// to construct without a tuple of return values.
-type identityFixture struct {
-	Engine   *IdentityEngine
-	Store    *MockStore
-	Audience *audience.Service
-	Resolved *ResolvedPackages
-}
-
-func setupIdentityEngine(t *testing.T) *identityFixture {
-	t.Helper()
-	store := NewMockStore()
-	audSvc := audience.New(audience.NewMockStore())
-	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-
-	resolved := &ResolvedPackages{
-		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
-			"pkg-display-002": {},
-			"pkg-no-segments": {},
-		},
+	for _, opt := range opts {
+		opt(&cfg)
 	}
-
-	engine := NewIdentityEngine(IdentityEngineConfig{
-		Audience: audSvc,
-	})
-	store.Now = func() time.Time { return now }
-	return &identityFixture{
-		Engine:   engine,
-		Store:    store,
-		Audience: audSvc,
-		Resolved: resolved,
-	}
+	return targeting.NewContextEngine(cfg)
 }
 
-// --- Context Tests ---
+func TestContext_GlobalPropertyMiss(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"})
+	engine := newEngine(t, storage)
 
-func TestContext_BitmapPreFilter_Targeted(t *testing.T) {
-	engine, _ := setupContextEngine(t)
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "test-1",
-		PropertyRID: "1",
-		PackageIDs:  []string{"pkg-1"},
-	})
-	require.NoError(t, err)
-	assert.Len(t, resp.Offers, 1)
-}
-
-func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
-	engine, _ := setupContextEngine(t)
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "test-2",
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
 		PropertyRID: "999",
 		PackageIDs:  []string{"pkg-1"},
 	})
@@ -113,359 +48,382 @@ func TestContext_BitmapPreFilter_NotTargeted(t *testing.T) {
 	assert.Empty(t, resp.Offers)
 }
 
-func TestContext_PropertySuppression(t *testing.T) {
-	engine, _ := setupContextEngine(t)
-	ctx := context.Background()
-	_ = engine.SuppressProperty(ctx, "2", time.Hour)
+func TestContext_PropertySuppressed(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"}).
+		WithSuppressedProperty(testProviderID, "10")
+	engine := newEngine(t, storage)
 
-	resp, err := engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:   "test-3",
-		PropertyRID: "2",
-		PackageIDs:  []string{"pkg-1"},
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10", PackageIDs: []string{"pkg-1"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers for suppressed property")
+	assert.Empty(t, resp.Offers, "suppressed property must short-circuit before any package activates")
 }
 
-func TestContext_PerPackageTargeting(t *testing.T) {
-	store := NewMockStore()
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{
-			Global:    NewMapBitmap("1", "3"),
-			ByPackage: map[string]Bitmap{"pkg-scoped": NewMapBitmap("3")},
-		},
-		Packages: []PackageConfig{
-			{PackageID: "pkg-scoped"},
-		},
-	})
+func TestContext_GeoSuppressed(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"}).
+		WithSuppressedGeo(testProviderID, "RU")
+	engine := newEngine(t, storage)
 
-	ctx := context.Background()
-
-	resp, err := engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:   "test-4a",
-		PropertyRID: "1",
-		PackageIDs:  []string{"pkg-scoped"},
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10", PackageIDs: []string{"pkg-1"},
+		Geo: map[string]any{"country": "RU"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers (property not in package bitmap)")
+	assert.Empty(t, resp.Offers)
+}
 
-	resp, err = engine.EvaluateContext(ctx, &tmproto.ContextMatchRequest{
-		RequestID:   "test-4b",
-		PropertyRID: "3",
-		PackageIDs:  []string{"pkg-scoped"},
+// TestContext_ImplicitFallback_ResolvesFromActiveSet pins the spec
+// behavior when PackageIDs is omitted: the engine evaluates every
+// active package for the (seller, property, country, placement)
+// tuple — per TMP `ContextMatchRequest.PackageIDs` doc ("the common
+// case"). The active set comes from the provider's own
+// `ActivePackages` storage, not the request.
+func TestContext_ImplicitFallback_ResolvesFromActiveSet(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-a"}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-b"}).
+		WithActivePackages(testSeller, "pub-1", "US", "placement-1", []string{"pkg-a", "pkg-b"})
+
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
+		PropertyID:  "pub-1",
+		PlacementID: "placement-1",
+		Geo:         map[string]any{"country": "US"},
+	})
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 2,
+		"implicit-fallback path must serve the full active set for the placement")
+}
+
+// TestContext_ExplicitPackageIDs_IntersectsWithActiveSet pins the
+// "intersection of registered active set and package_ids" rule from
+// the TMP spec. A publisher naming a package that's not in the
+// provider's active set must NOT cause it to activate — even if the
+// package has a cached PackageContextConfig (e.g., from a previously-
+// active media buy that has since expired).
+func TestContext_ExplicitPackageIDs_IntersectsWithActiveSet(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-active"}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-expired"}). // config cached
+		WithActivePackages(testSeller, "pub-1", "US", "placement-1", []string{"pkg-active"})
+		// pkg-expired intentionally NOT in active set — its media buy ended.
+
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
+		PropertyID:  "pub-1",
+		PlacementID: "placement-1",
+		Geo:         map[string]any{"country": "US"},
+		PackageIDs:  []string{"pkg-active", "pkg-expired", "pkg-unknown"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Offers, 1,
+		"only packages in the intersection of req.PackageIDs and the active set may activate")
+	assert.Equal(t, "pkg-active", resp.Offers[0].PackageID,
+		"stale PackageContextConfig must NOT serve offers on an expired media buy")
+}
+
+func TestContext_TopicMatchViaArtifact(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true}).
+		WithPackageTopics(testTaxonomy, "pkg-food", []string{"food.cooking"}).
+		WithArtifactTopics(testTaxonomy, "article:pasta", []string{"food.cooking", "food.italian"})
+
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "10",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
+		PackageIDs:   []string{"pkg-food"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 1)
 }
 
-func TestContext_TopicMatch(t *testing.T) {
-	store := NewMockStore()
-	seedPackageTopics(t, store, "pkg-food", "food.cooking", "food.baking")
-	seedArtifactTopics(t, store, "article:pasta", "food.cooking", "food.italian")
+func TestContext_TopicMatchViaContextSignals(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true}).
+		WithPackageTopics(testTaxonomy, "pkg-food", []string{"food.cooking"})
 
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID:         "test-provider",
-		Store:              store,
-		Properties:         PropertyList{Global: NewMapBitmap("10")},
-		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
-		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
-	})
-
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-topic",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food"},
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
+		PackageIDs:  []string{"pkg-food"},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "test",
+			TaxonomyID:     1,
+			Topics:         []string{"food.cooking"},
+		},
 	})
 	require.NoError(t, err)
-	assert.Len(t, resp.Offers, 1, "expected 1 offer (topic match)")
+	assert.Len(t, resp.Offers, 1, "publisher-provided topics under accepted taxonomy must activate")
 }
 
-func TestContext_TopicMiss(t *testing.T) {
-	store := NewMockStore()
-	seedPackageTopics(t, store, "pkg-food", "food.cooking")
-	seedArtifactTopics(t, store, "article:cpu", "technology.hardware")
+func TestContext_TopicTargets_EmptyAcceptedTaxonomies_FailClosed(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true})
 
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID:         "test-provider",
-		Store:              store,
-		Properties:         PropertyList{Global: NewMapBitmap("10")},
-		Packages:           []PackageConfig{{PackageID: "pkg-food", TopicTargets: true}},
-		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
+	engine := newEngine(t, storage, func(cfg *targeting.ContextEngineConfig) {
+		cfg.AcceptedTaxonomies = nil
 	})
 
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-topic-miss",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:cpu"}},
-		PackageIDs:   []string{"pkg-food"},
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10", PackageIDs: []string{"pkg-food"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers (topic mismatch)")
+	assert.Empty(t, resp.Offers, "TopicTargets package must fail-closed with no taxonomies configured")
 }
+
+func TestContext_RogueTaxonomyOnlySource_FailClosed(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true}).
+		WithPackageTopics(testTaxonomy, "pkg-food", []string{"food.cooking"})
+
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
+		PackageIDs:  []string{"pkg-food"},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "rogue",
+			TaxonomyID:     99,
+			Topics:         []string{"food.cooking"},
+		},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers,
+		"rogue ContextSignals taxonomy with no artifact refs must fail-closed (publisher attempted a topic source but engine couldn't use it)")
+}
+
+// TestContext_StorageError_FailsClosed pins the safety-relevant
+// contract that a Valkey blip on URL filter or topic match causes the
+// affected package to be skipped, not to slip past the brand-safety
+// filter. The previous behavior recorded a metric and fell through,
+// which let a transient outage match packages their blocklist should
+// have blocked.
+func TestContext_StorageError_FailsClosed(t *testing.T) {
+	t.Run("url_blocklist_error", func(t *testing.T) {
+		base := contextstorage.NewInMemory().
+			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", URLBlocklist: true})
+		storage := &errInjectStorage{ContextStorage: base, urlBlockedErr: true}
+		engine := newEngine(t, storage)
+		resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+			RequestID: "r", PropertyRID: "10",
+			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:any"}},
+			PackageIDs:   []string{"pkg-1"},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, resp.Offers, "URL filter Valkey error must fail-closed, not let the package activate")
+	})
+	t.Run("topic_match_error", func(t *testing.T) {
+		base := contextstorage.NewInMemory().
+			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", TopicTargets: true})
+		storage := &errInjectStorage{ContextStorage: base, packageTopicsErr: true}
+		engine := newEngine(t, storage)
+		resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+			RequestID: "r", PropertyRID: "10",
+			PackageIDs: []string{"pkg-1"},
+			ContextSignals: &tmproto.ContextSignals{
+				TaxonomySource: "test", TaxonomyID: 1, Topics: []string{"food"},
+			},
+		})
+		require.NoError(t, err)
+		assert.Empty(t, resp.Offers, "topic match Valkey error must fail-closed")
+	})
+}
+
+// TestContext_DeadlineMidLoop_ReturnsContextError pins the per-iteration
+// ctx.Err() check: a request whose ctx cancels after the first package
+// is evaluated must propagate the cancel as an error rather than
+// swallow it and return 200/empty. The handler maps the error to 504;
+// if the engine instead returns nil, the handler returns 200 and buyer
+// telemetry can't tell timeouts from no-match.
+func TestContext_DeadlineMidLoop_ReturnsContextError(t *testing.T) {
+	base := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1"}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-2"})
+	ctx, cancel := context.WithCancel(context.Background())
+	storage := &cancelOnConfigStorage{ContextStorage: base, cancel: cancel}
+
+	engine := newEngine(t, storage)
+	_, err := engine.Evaluate(ctx, &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10",
+		PackageIDs: []string{"pkg-1", "pkg-2"},
+	})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// cancelOnConfigStorage cancels the supplied context the first time
+// ContextConfig is called, simulating a deadline that trips
+// mid-evaluation.
+type cancelOnConfigStorage struct {
+	targeting.ContextStorage
+	cancel    context.CancelFunc
+	cancelled bool
+}
+
+func (c *cancelOnConfigStorage) ContextConfig(ctx context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
+	if !c.cancelled {
+		c.cancelled = true
+		c.cancel()
+	}
+	return c.ContextStorage.ContextConfig(ctx, packageID)
+}
+
+type errInjectStorage struct {
+	targeting.ContextStorage
+	urlBlockedErr    bool
+	packageTopicsErr bool
+}
+
+func (e *errInjectStorage) URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error) {
+	if e.urlBlockedErr {
+		return false, errInjected
+	}
+	return e.ContextStorage.URLBlocked(ctx, packageID, urlHash)
+}
+
+func (e *errInjectStorage) PackageTopics(ctx context.Context, tax topicstore.Taxonomy, packageID string) ([]string, error) {
+	if e.packageTopicsErr {
+		return nil, errInjected
+	}
+	return e.ContextStorage.PackageTopics(ctx, tax, packageID)
+}
+
+var errInjected = injectedError("injected")
+
+type injectedError string
+
+func (e injectedError) Error() string { return string(e) }
 
 func TestContext_URLBlocklist(t *testing.T) {
-	store := NewMockStore()
-	blockedHash := HashURL("article:controversial")
-	require.NoError(t, store.SetAdd(context.Background(), "url:blocklist:pkg-family", blockedHash))
+	urlHash := targeting.HashURL("article:bad")
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-family", URLBlocklist: true}).
+		WithURLBlocked("pkg-family", urlHash)
 
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("20")},
-		Packages:   []PackageConfig{{PackageID: "pkg-family", URLBlocklist: true}},
-	})
-
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-block",
-		PropertyRID:  "20",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:controversial"}},
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "10",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:bad"}},
 		PackageIDs:   []string{"pkg-family"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers (URL blocked)")
+	assert.Empty(t, resp.Offers)
 }
 
 func TestContext_URLAllowlist(t *testing.T) {
-	store := NewMockStore()
-	allowedHash := HashURL("article:safe-content")
-	require.NoError(t, store.SetAdd(context.Background(), "url:allowlist:pkg-premium", allowedHash))
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-curated", URLAllowlist: true}).
+		WithURLAllowed("pkg-curated", targeting.HashURL("article:safe"))
 
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("20")},
-		Packages:   []PackageConfig{{PackageID: "pkg-premium", URLAllowlist: true}},
-	})
+	engine := newEngine(t, storage)
 
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-allow-hit",
-		PropertyRID:  "20",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe-content"}},
-		PackageIDs:   []string{"pkg-premium"},
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "10",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe"}},
+		PackageIDs:   []string{"pkg-curated"},
 	})
 	require.NoError(t, err)
-	assert.Len(t, resp.Offers, 1, "expected 1 offer (URL in allowlist)")
+	assert.Len(t, resp.Offers, 1)
 
-	resp, err = engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-allow-miss",
-		PropertyRID:  "20",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:other-content"}},
-		PackageIDs:   []string{"pkg-premium"},
+	resp, err = engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "10",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:not-allowed"}},
+		PackageIDs:   []string{"pkg-curated"},
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers (URL not in allowlist)")
+	assert.Empty(t, resp.Offers)
 }
 
-func TestContext_MultiplePackages_MixedResults(t *testing.T) {
-	store := NewMockStore()
-	seedPackageTopics(t, store, "pkg-food", "food.cooking")
-	seedPackageTopics(t, store, "pkg-tech", "technology.reviews")
-	seedArtifactTopics(t, store, "article:pasta", "food.cooking", "food.italian")
+func TestContext_PerPackagePropertyTargeting(t *testing.T) {
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{
+			PackageID:    "pkg-scoped",
+			PropertyRIDs: []string{"20"},
+		})
 
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("30")},
-		Packages: []PackageConfig{
-			{PackageID: "pkg-food", TopicTargets: true},
-			{PackageID: "pkg-tech", TopicTargets: true},
-		},
-		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
-	})
+	engine := newEngine(t, storage)
 
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "test-multi",
-		PropertyRID:  "30",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:pasta"}},
-		PackageIDs:   []string{"pkg-food", "pkg-tech"},
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10", PackageIDs: []string{"pkg-scoped"},
 	})
 	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "property not in per-package list → no match")
 
-	matched := map[string]bool{}
-	for _, o := range resp.Offers {
-		matched[o.PackageID] = true
-	}
-	assert.True(t, matched["pkg-food"], "pkg-food should match")
-	assert.False(t, matched["pkg-tech"], "pkg-tech should not match")
+	resp, err = engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "20", PackageIDs: []string{"pkg-scoped"},
+	})
+	require.NoError(t, err)
+	assert.Len(t, resp.Offers, 1)
 }
 
 func TestContext_EmitSegments(t *testing.T) {
-	store := NewMockStore()
-	engine := NewContextEngine(ContextEngineConfig{
-		ProviderID: "test-provider",
-		Store:      store,
-		Properties: PropertyList{Global: NewMapBitmap("1")},
-		Packages: []PackageConfig{
-			{PackageID: "pkg-1", EmitSegments: []string{"sports_lovers", "premium_audience"}},
-		},
-	})
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{
+			PackageID:    "pkg-1",
+			EmitSegments: []string{"food", "premium"},
+		})
 
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "test-segments",
-		PropertyRID: "1",
-		PackageIDs:  []string{"pkg-1"},
+	engine := newEngine(t, storage)
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: "10", PackageIDs: []string{"pkg-1"},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, resp.Signals, "expected signals with segments")
+	require.NotNil(t, resp.Signals)
 	segs, ok := resp.Signals["segments"].([]string)
-	require.True(t, ok, "segments should be []string, got %v", resp.Signals["segments"])
-	assert.Len(t, segs, 2)
+	require.True(t, ok)
+	assert.ElementsMatch(t, []string{"food", "premium"}, segs)
 }
 
-func TestContext_RequestIDPreserved(t *testing.T) {
-	engine, _ := setupContextEngine(t)
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "preserve-me",
-		PropertyRID: "999",
+// TestContext_DefensiveCopiesAcceptedTaxonomies pins that
+// post-construction mutation of the caller's slice cannot reach the
+// engine's state. The engine is constructed with caller=[iab:7]; the
+// caller then flips the slice element to a rogue taxonomy. A request
+// whose ContextSignals declares the original iab:7 must still
+// activate, because the engine should be holding its own copy.
+func TestContext_DefensiveCopiesAcceptedTaxonomies(t *testing.T) {
+	caller := []topicstore.Taxonomy{{Source: "iab", ID: 7}}
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", TopicTargets: true}).
+		WithPackageTopics(topicstore.Taxonomy{Source: "iab", ID: 7}, "pkg-1", []string{"632"})
+
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
+		ProviderID:         testProviderID,
+		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("10")},
+		Storage:            storage,
+		AcceptedTaxonomies: caller,
+	})
+
+	// Mutate the caller's slice in place AFTER construction. If the
+	// engine kept the slice by reference, the iab:7 entry would now
+	// read as rogue:99 and the assertion below would fail-closed.
+	caller[0] = topicstore.Taxonomy{Source: "rogue", ID: 99}
+
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:   "r",
+		PropertyRID: "10",
 		PackageIDs:  []string{"pkg-1"},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, "preserve-me", resp.RequestID)
-}
-
-func TestContext_UnknownPackageSkipped(t *testing.T) {
-	engine, _ := setupContextEngine(t)
-	resp, err := engine.EvaluateContext(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "test-unknown-pkg",
-		PropertyRID: "1",
-		PackageIDs:  []string{"pkg-unknown"},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "expected 0 offers for unknown package")
-}
-
-// --- Identity Tests (segment gating only; fcap is handled by fcap.Service) ---
-
-func TestIdentity_AudienceMatch(t *testing.T) {
-	f := setupIdentityEngine(t)
-	ctx := context.Background()
-	require.NoError(t, f.Audience.Upsert(ctx, audience.AudienceUpsert{
-		AudienceID: "cooking",
-		Add:        []audience.Member{{UserToken: "user-abc"}},
-	}))
-
-	resp, err := f.Engine.EvaluateIdentityResolved(ctx, f.Resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-audience-hit",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-display-001"},
-	})
-	require.NoError(t, err)
-	assert.True(t, resp.Eligibility[0].Eligible)
-}
-
-func TestIdentity_AudienceNotInSegment(t *testing.T) {
-	f := setupIdentityEngine(t)
-	resp, _ := f.Engine.EvaluateIdentityResolved(context.Background(), f.Resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-audience",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-display-001"},
-	})
-	assert.False(t, resp.Eligibility[0].Eligible, "should not be eligible (not in segment)")
-}
-
-func TestIdentity_NoSegmentTargeting(t *testing.T) {
-	f := setupIdentityEngine(t)
-	resp, _ := f.Engine.EvaluateIdentityResolved(context.Background(), f.Resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-no-seg",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-no-segments"},
-	})
-	assert.True(t, resp.Eligibility[0].Eligible, "package with no segment targeting should always be eligible")
-}
-
-func TestIdentity_UnknownPackage(t *testing.T) {
-	f := setupIdentityEngine(t)
-	resp, _ := f.Engine.EvaluateIdentityResolved(context.Background(), f.Resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-unknown",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-unknown"},
-	})
-	assert.True(t, resp.Eligibility[0].Eligible, "unknown package with no identity config should be eligible")
-}
-
-func TestIdentity_EmptyRuleEligibleWithoutAudience(t *testing.T) {
-	// A non-nil but empty SegmentRule references no segments — it should
-	// match every user, even when the engine has no audience.Service to
-	// resolve membership against.
-	engine := NewIdentityEngine(IdentityEngineConfig{
-		// Audience intentionally nil.
-	})
-	resolved := &ResolvedPackages{
-		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-empty-rule": {TargetSegments: &SegmentRule{}},
+		ContextSignals: &tmproto.ContextSignals{
+			TaxonomySource: "iab", TaxonomyID: 7, Topics: []string{"632"},
 		},
-	}
-	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-empty",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-empty-rule"},
 	})
 	require.NoError(t, err)
-	require.Len(t, resp.Eligibility, 1)
-	assert.True(t, resp.Eligibility[0].Eligible, "empty rule should match without audience.Service")
+	assert.Len(t, resp.Offers, 1,
+		"engine must hold its own copy of AcceptedTaxonomies; post-construction caller mutation must not reach engine state")
 }
 
-func TestIdentity_NonEmptyRuleRejectedWithoutAudience(t *testing.T) {
-	// A rule with clauses needs audience data to evaluate. With no
-	// audience.Service configured, packages carrying such rules must be
-	// rejected — segment data is not reachable.
-	engine := NewIdentityEngine(IdentityEngineConfig{})
-	resolved := &ResolvedPackages{
-		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-targeted": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking_fans"}}},
-		},
-	}
-	resp, err := engine.EvaluateIdentityResolved(context.Background(), resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "id-targeted",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-targeted"},
-	})
-	require.NoError(t, err)
-	require.Len(t, resp.Eligibility, 1)
-	assert.False(t, resp.Eligibility[0].Eligible, "non-empty rule must be rejected without audience.Service")
-}
-
-func TestIdentity_RequestIDPreserved(t *testing.T) {
-	f := setupIdentityEngine(t)
-	resp, _ := f.Engine.EvaluateIdentityResolved(context.Background(), f.Resolved, &tmproto.IdentityMatchRequest{
-		RequestID:  "keep-this",
-		Identities: []tmproto.IdentityToken{{UserToken: "user-abc"}},
-		PackageIDs: []string{"pkg-no-segments"},
-	})
-	assert.Equal(t, "keep-this", resp.RequestID)
-}
-
-// TestIdentity_MultiIdentitySegmentUnion exercises the segment fan-out across
-// multiple identities for the same user: memberships are unioned, and a
-// package targeting any one of the merged segments matches.
-func TestIdentity_MultiIdentitySegmentUnion(t *testing.T) {
-	f := setupIdentityEngine(t)
-	ctx := context.Background()
-
-	// One identity carries "cooking", another carries "home".
-	require.NoError(t, f.Audience.UpsertBatch(ctx, []audience.AudienceUpsert{
-		{AudienceID: "cooking", Add: []audience.Member{{UserToken: "uid-cooking", Score: 1.0}}},
-		{AudienceID: "home", Add: []audience.Member{{UserToken: "uid-home", Score: 1.0}}},
-	}))
-
-	// pkg-display-001 targets {"cooking", "home"}; either segment alone is enough.
-	resolved := &ResolvedPackages{
-		IdentityConfigs: map[string]*PackageIdentityConfig{
-			"pkg-display-001": {TargetSegments: &SegmentRule{AnyOf: []string{"cooking", "home"}}},
-		},
-	}
-
-	resp, err := f.Engine.EvaluateIdentityResolved(ctx, resolved, &tmproto.IdentityMatchRequest{
-		RequestID: "multi-id",
-		Identities: []tmproto.IdentityToken{
-			{UserToken: "uid-cooking"},
-			{UserToken: "uid-home"},
-		},
-		PackageIDs: []string{"pkg-display-001"},
-	})
-	require.NoError(t, err)
-	assert.True(t, resp.Eligibility[0].Eligible, "merged profile (cooking + home) should match pkg-display-001")
-}
+// The Now override on ContextEngineConfig is reserved for the future
+// placement-aware ActivePackages call: until that path returns
+// non-empty, the engine never calls Now(). Re-add a probe test when
+// the implicit-fallback path is implemented.
