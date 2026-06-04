@@ -47,8 +47,12 @@ const MaxIDLength = 256
 
 // validateSafeID checks that an ID does not contain characters that
 // could cause Store key injection (`:`, `/`, `\`) or terminal / log
-// injection (any C0 control 0x00–0x1F or DEL 0x7F: CR/LF/TAB/NUL/BEL/
-// CSI/...), and is within length limits. Used on every wire-supplied
+// injection (any C0 control 0x00–0x1F or DEL 0x7F: NUL, BEL, BS, TAB,
+// LF, VT, FF, CR, ESC, ...), and is within length limits. The 7-bit
+// ESC (0x1B) is the introducer of ANSI escape sequences such as
+// "\x1B[2J" (clear screen), so catching ESC blocks the relevant
+// terminal-injection vector even though the strict C1 CSI byte
+// (0x9B) is not in the C0 range. Used on every wire-supplied
 // identifier the agent persists, echoes in logs, or routes through
 // SafeRequestIDForEcho.
 func validateSafeID(field, value string) error {

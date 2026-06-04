@@ -5,9 +5,9 @@
 //
 // Storage keys:
 //
-//   - "url:blocklist:{package_id}" → SET of Blake3 URL hashes (caller
-//     hashes via targeting.HashURL before insertion)
-//   - "url:allowlist:{package_id}" → SET of Blake3 URL hashes
+//   - "url:blocklist:{package_id}" → SET of URL hashes (caller hashes
+//     via targeting.HashURL — see that godoc for the interop contract)
+//   - "url:allowlist:{package_id}" → SET of URL hashes
 package urlliststore
 
 import (

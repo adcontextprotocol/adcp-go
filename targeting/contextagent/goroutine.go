@@ -61,8 +61,8 @@ func safeGoWithPanicSink(logger *slog.Logger, recorder Recorder, where string, o
 
 // panicAsError coerces a recovered panic value to an error so it can
 // be %w-wrapped. Errors pass through unchanged; everything else
-// (strings, integers, struct values) becomes an errors.New whose text
-// matches fmt's default formatting.
+// (strings, integers, struct values) becomes an error whose Error()
+// text is fmt's default %v formatting of the value.
 func panicAsError(rec any) error {
 	if err, ok := rec.(error); ok {
 		return err

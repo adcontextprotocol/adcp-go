@@ -247,8 +247,12 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 			// it via Shutdown so in-flight requests don't see a
 			// torn-down keystore / Valkey pool. teardownBundle then
 			// closes the bundle's background goroutines and Valkey
-			// pool so this return doesn't leak them.
-			_ = srv.Shutdown(context.Background())
+			// pool so this return doesn't leak them. Bound the
+			// drain by cfg.ShutdownTimeout so an in-flight accept
+			// can't block this fast-fail path indefinitely.
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+			_ = srv.Shutdown(shutdownCtx)
+			cancel()
 			teardownBundle(bundle)
 			return fmt.Errorf("listen admin %s: %w", adminSrv.Addr, err)
 		}

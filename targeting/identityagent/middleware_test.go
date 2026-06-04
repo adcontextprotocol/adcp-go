@@ -113,6 +113,38 @@ func TestRequestIDMiddleware_MissingHeaderNoEcho(t *testing.T) {
 	assert.Empty(t, rr.Header().Get("X-Request-ID"), "response should not echo a missing request id")
 }
 
+func TestRequestIDMiddleware_UnsafeHeaderBlanked(t *testing.T) {
+	// net/http strips CR/LF/NUL from inbound header values but leaves
+	// other C0 controls (BEL/BS/ESC/DEL) intact. Without SafeRequestIDForEcho
+	// at the middleware, those bytes would round-trip into the response
+	// header and into r.Context() — and from there into operator logs.
+	cases := []string{
+		"req-\x07-bel",
+		"req-\x08-bs",
+		"req-\x1B[2J-csi",
+		"req-\x7F-del",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			var sawCtxID string
+			inner := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				sawCtxID = requestIDFromRequest(r)
+			})
+			h := requestIDMiddleware(inner)
+
+			req := httptest.NewRequest(http.MethodPost, "/identity", nil)
+			req.Header.Set("X-Request-ID", raw)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+
+			assert.Empty(t, rr.Header().Get("X-Request-ID"),
+				"unsafe header must not echo into response")
+			assert.Empty(t, sawCtxID,
+				"unsafe header must not appear on the request context")
+		})
+	}
+}
+
 func TestAccessLogMiddleware_Disabled(t *testing.T) {
 	var captured bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&captured, nil))
