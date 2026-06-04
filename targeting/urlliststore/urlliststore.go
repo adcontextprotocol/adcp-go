@@ -5,9 +5,13 @@
 //
 // Storage keys:
 //
-//   - "url:blocklist:{package_id}" → SET of URL hashes (caller hashes
-//     via targeting.HashURL — see that godoc for the interop contract)
-//   - "url:allowlist:{package_id}" → SET of URL hashes
+//   - "url:blocklist:{package_id}" → SET of AdCP `url_hash` values
+//     (Blake3-256 over the spec-canonical URL, standard base64; see
+//     tmproto.HashURL). The same hash shape publishers send on the
+//     wire as ArtifactRefTypeURLHash — a pre-hashed url_hash
+//     artifact-ref is byte-identical to the storage key, so the
+//     engine does not re-hash it.
+//   - "url:allowlist:{package_id}" → SET of url_hash values
 package urlliststore
 
 import (
@@ -33,8 +37,10 @@ func BlocklistKey(packageID string) string { return "url:blocklist:" + packageID
 func AllowlistKey(packageID string) string { return "url:allowlist:" + packageID }
 
 // Service is the write surface for per-package URL lists. Writers
-// supply already-hashed values (via targeting.HashURL); the package
-// itself is hash-agnostic.
+// supply already-hashed values (via tmproto.HashURL); the package
+// itself is hash-agnostic but operators MUST use the same hashing
+// function on both write and read sides — see tmproto.HashURL for
+// the AdCP-spec interop contract.
 type Service struct {
 	store Store
 }
