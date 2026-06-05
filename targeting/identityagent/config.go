@@ -126,7 +126,7 @@ type TMPXConfig struct {
 // /identity is silently dropped from the TMPX wire (other UID types are
 // unaffected). Timeout and DialTimeout default to 2s / 1s respectively
 // when zero. The sidecar is assumed to be reachable in the same network
-// trust boundary as the agent (matching rtdp) so no auth is sent.
+// trust boundary as the agent, so no auth is sent.
 type LiveRampSidecarConfig struct {
 	URL         string
 	Timeout     time.Duration

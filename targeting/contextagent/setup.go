@@ -76,10 +76,16 @@ func checkSuppressionLiveness(failures int, lastRefresh, now time.Time) error {
 // HTTP server, then block until SIGINT/SIGTERM and run an orderly
 // shutdown. Returns non-nil only when startup fails or shutdown
 // surfaces errors.
-func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (retErr error) {
+//
+// Options inject dependencies the package cannot construct from env
+// alone — for example, a registry-fed property bitmap (see
+// WithPropertyGlobal). Each option is optional; unset values fall back
+// to the env-derived defaults on cfg.
+func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, opts ...Option) (retErr error) {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
+	runOpts := applyOptions(opts)
 
 	metricsProvider, err := BuildMetrics(cfg.Metrics)
 	if err != nil {
@@ -102,7 +108,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 	}()
 	recorder := metricsProvider.Recorder
 
-	bundle, err := buildBundle(ctx, cfg, recorder, logger)
+	bundle, err := buildBundle(ctx, cfg, runOpts, recorder, logger)
 	if err != nil {
 		return fmt.Errorf("build bundle: %w", err)
 	}
@@ -137,6 +143,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 			},
 		},
 	}
+	liveness = append(liveness, runOpts.livenessChecks...)
 
 	var running atomic.Bool
 	srv := NewServer(ServerConfig{
@@ -349,7 +356,7 @@ func teardownBundle(b *bundle) {
 	}
 }
 
-func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (*bundle, error) {
+func buildBundle(ctx context.Context, cfg Config, opts runOptions, recorder Recorder, logger *slog.Logger) (*bundle, error) {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 
 	// Valkey backend. *redisstore.Store satisfies every per-domain
@@ -392,6 +399,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		rawStore,
 		rawStore,
 		suppressSnap,
+		rawStore,
 		cfg.Cache,
 		logger,
 	)
@@ -401,13 +409,17 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("storage: %w", err)
 	}
 
-	if len(cfg.PropertyRIDs) == 0 {
-		logger.Warn("PROPERTY_RIDS is empty; every inbound request will short-circuit on the global property bitmap. Wire up the registry feed before serving traffic.")
+	propertyGlobal := opts.propertyGlobal
+	if propertyGlobal == nil {
+		if len(cfg.PropertyRIDs) == 0 {
+			logger.Warn("PROPERTY_RIDS is empty and no property bitmap was injected; every inbound request will short-circuit on the global property bitmap. Wire up the registry feed (REGISTRY_ENABLED=true) or populate PROPERTY_RIDS before serving traffic.")
+		}
+		propertyGlobal = targeting.NewMapBitmap(cfg.PropertyRIDs...)
 	}
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         cfg.ProviderID,
 		SellerAgentURL:     cfg.SellerAgentURL,
-		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap(cfg.PropertyRIDs...)},
+		Properties:         targeting.PropertyList{Global: propertyGlobal},
 		Storage:            storage,
 		AcceptedTaxonomies: cfg.AcceptedTaxonomies,
 		Metrics:            newTargetingMetricsAdapter(recorder),

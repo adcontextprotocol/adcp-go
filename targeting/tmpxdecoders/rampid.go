@@ -29,12 +29,12 @@ var ErrLiveRampNoMapping = liveramp.ErrNoMapping
 var ErrDropFromSeal = errors.New("tmpxdecoders: drop from seal")
 
 // RampID decodes a LiveRamp env identifier into the binary form TMPX
-// packs into its plaintext. The sidecar's Scope3-mapped value is used as
-// the binary token directly, matching rtdp's treatment of the field — the
-// sidecar is the source of truth for the bytes that flow downstream. If
-// the mapped string isn't the byte length TMPX expects for RampID
-// (currently 32), the agent's selectEntries surfaces that mismatch as an
-// explicit error and omits TMPX from the response.
+// packs into its plaintext. The sidecar's platform-mapped value is
+// used as the binary token directly — the sidecar is the source of
+// truth for the bytes that flow downstream. If the mapped string
+// isn't the byte length TMPX expects for RampID (currently 32), the
+// agent's selectEntries surfaces that mismatch as an explicit error
+// and omits TMPX from the response.
 type RampID struct {
 	Client LiveRampClient
 }

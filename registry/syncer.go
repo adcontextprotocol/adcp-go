@@ -16,6 +16,15 @@ type SyncerConfig struct {
 	FeedLimit      int           // events per page during steady-state (default 1000)
 	BootstrapLimit int           // events per page during initial catchup (default 10000)
 	EventTypes     []string      // optional type filter globs
+
+	// OnSuccessfulPoll, when non-nil, is invoked after every poll
+	// iteration that fetches AND persists cleanly (zero-event polls
+	// included). Callers use it as a liveness beacon — `count` is
+	// the number of events applied by this iteration, useful for
+	// distinguishing a quiescent feed from a stalled one. The hook
+	// MUST be cheap and non-blocking; the loop holds no lock around
+	// the call but waits for it to return.
+	OnSuccessfulPoll func(count int)
 }
 
 func (c *SyncerConfig) defaults() {
@@ -193,6 +202,10 @@ func (s *Syncer) Run(ctx context.Context) error {
 		}
 
 		backoff = time.Second
+
+		if s.config.OnSuccessfulPoll != nil {
+			s.config.OnSuccessfulPoll(len(resp.Events))
+		}
 
 		if resp.HasMore {
 			continue

@@ -3,6 +3,7 @@ package targeting
 import (
 	"encoding/json"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -23,6 +24,13 @@ type PackageContextConfig struct {
 	TopicTargets     bool               `json:"topic_targets,omitempty"`
 	PropertyRIDs     []string           `json:"property_rids,omitempty"`
 	EmitSegments     []string           `json:"emit_segments,omitempty"`
+
+	// ContextSignals gates the package on context-attribute signal
+	// targeting. Nil or empty profile passes vacuously. Restricted to
+	// context attributes — see signalstore.AllowedKeyTypes;
+	// identity-keyed cfgs are rejected by signalstore.Profile.Validate.
+	ContextSignals   *signalstore.Profile `json:"context_signals,omitempty"`
+
 	Offers           []OfferConfigJSON  `json:"offers,omitempty"`
 	Brand            json.RawMessage    `json:"brand,omitempty"`
 	Price            tmproto.OfferPrice `json:"price"`

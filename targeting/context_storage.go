@@ -47,6 +47,14 @@ type ContextStorage interface {
 	// ContextConfig returns the package's context-side configuration.
 	// `ok == false` (with err == nil) means no config is stored for that
 	// package — the engine skips it.
+	//
+	// Storage implementations MAY also implement an optional
+	// `ContextConfigs(ctx, []string) ([]*PackageContextConfig, error)`
+	// method that returns every requested package's config in a
+	// single round-trip; the engine feature-detects that method to
+	// collapse per-package fetches into one MGet when planning
+	// signal-targeting lookups. Implementations that do not provide
+	// it fall back to repeated ContextConfig calls.
 	ContextConfig(ctx context.Context, packageID string) (cfg *PackageContextConfig, ok bool, err error)
 
 	// ArtifactTopics returns the raw topic ids stored for `ref` under
@@ -80,4 +88,11 @@ type ContextStorage interface {
 	// for `providerID`. Same kill-switch semantics as
 	// IsPropertySuppressed.
 	IsGeoSuppressed(ctx context.Context, providerID, country string) (bool, error)
+
+	// SignalMGet fetches the raw CSV-encoded signal-id strings stored
+	// at each requested signal:* key. The returned slice is aligned 1:1
+	// with the input; empty string at index i means "missing key".
+	// Used by the engine to evaluate context-attribute signal targeting
+	// in a single round-trip across every candidate package per request.
+	SignalMGet(ctx context.Context, keys ...string) ([]string, error)
 }

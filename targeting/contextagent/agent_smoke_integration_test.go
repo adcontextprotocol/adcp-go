@@ -60,7 +60,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 	metricsProvider, err := BuildMetrics(cfg.Metrics)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = metricsProvider.Shutdown(ctx) })
-	bundle, err := buildBundle(ctx, cfg, metricsProvider.Recorder, logger)
+	bundle, err := buildBundle(ctx, cfg, runOptions{}, metricsProvider.Recorder, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { teardownBundle(bundle) })
 

@@ -23,6 +23,14 @@ type storage struct {
 	urlLists     urlliststore.Reader
 	topics       *topicstore.Reader
 	suppressions *suppressionstore.Snapshot
+	signals      signalMGet
+}
+
+// signalMGet is the slice of redisstore.Store the engine uses for
+// context-signal lookups. Single MGet per request, fan-out across
+// shadow shards / cluster slots happens inside the implementation.
+type signalMGet interface {
+	MGet(ctx context.Context, keys ...string) ([]string, error)
 }
 
 func (s *storage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID, country, placementID string, now time.Time) ([]string, error) {
@@ -44,6 +52,10 @@ func (s *storage) ActivePackages(ctx context.Context, sellerAgentURL, propertyID
 
 func (s *storage) ContextConfig(ctx context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
 	return s.pkgConfigs.Get(ctx, packageID)
+}
+
+func (s *storage) ContextConfigs(ctx context.Context, packageIDs []string) ([]*targeting.PackageContextConfig, error) {
+	return s.pkgConfigs.MGet(ctx, packageIDs)
 }
 
 func (s *storage) ArtifactTopics(ctx context.Context, tax topicstore.Taxonomy, ref string) ([]string, error) {
@@ -70,15 +82,26 @@ func (s *storage) IsGeoSuppressed(ctx context.Context, providerID, country strin
 	return s.suppressions.IsGeoSuppressed(ctx, providerID, country)
 }
 
+func (s *storage) SignalMGet(ctx context.Context, keys ...string) ([]string, error) {
+	if s.signals == nil || len(keys) == 0 {
+		return nil, nil
+	}
+	return s.signals.MGet(ctx, keys...)
+}
+
 // buildStorage assembles a storage from the supplied per-domain stores
 // and cache configuration. Caches activate only when the master switch
-// AND the per-domain switch are both true.
+// AND the per-domain switch are both true. signalStore is the MGet
+// surface for the signal:* keyspace; nil disables context-signal
+// targeting (the engine then skips every package whose ContextSignals
+// profile is non-empty as a fail-closed safety measure).
 func buildStorage(
 	mediaBuyStore mediabuystore.Store,
 	pkgConfigStore pkgconfigstore.Store,
 	urlListStore urlliststore.Store,
 	topicStore topicstore.Store,
 	suppressSnap *suppressionstore.Snapshot,
+	signalStore signalMGet,
 	cacheCfg CacheConfig,
 	logger *slog.Logger,
 ) (*storage, error) {
@@ -127,5 +150,6 @@ func buildStorage(
 		urlLists:     urlLists,
 		topics:       topics,
 		suppressions: suppressSnap,
+		signals:      signalStore,
 	}, nil
 }

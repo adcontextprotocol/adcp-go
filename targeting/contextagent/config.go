@@ -68,10 +68,11 @@ type Config struct {
 	// the top of every request. A request whose property_rid is not in
 	// this list short-circuits before any storage lookup.
 	//
-	// TODO(context-agent-followup): replace with a registry.Syncer
-	// hookup that hydrates the bitmap from registry/persist Store
-	// (PR #358). This static env is a stopgap that lets the agent run
-	// end-to-end without the registry feed wired in.
+	// Static fallback: this list is used only when the binary entry
+	// point does not inject a bitmap via WithPropertyGlobal. The
+	// production wiring in cmd/context-agent feeds a live
+	// registry.PropertyIndex through that option when REGISTRY_ENABLED
+	// is true; PropertyRIDs covers stand-alone / smoke deployments.
 	PropertyRIDs []string
 
 	// SuppressionRefreshInterval is how often the agent re-scans
