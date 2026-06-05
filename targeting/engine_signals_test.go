@@ -37,7 +37,7 @@ func TestContext_SignalAnyOf_MatchesActivates(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
 				SignalID:      "us-traffic",
 			}},
@@ -47,7 +47,7 @@ func TestContext_SignalAnyOf_MatchesActivates(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
 			"us-traffic",
 		)
 	engine := newEngine(t, storage)
@@ -65,7 +65,7 @@ func TestContext_SignalAnyOf_NoMatchSkips(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
 				SignalID:      "premium",
 			}},
@@ -76,7 +76,7 @@ func TestContext_SignalAnyOf_NoMatchSkips(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
 			"other-segment",
 		)
 	engine := newEngine(t, storage)
@@ -95,7 +95,7 @@ func TestContext_SignalNoneOf_BlocksMatch(t *testing.T) {
 		ContextSignals: signalProfile(
 			nil,
 			[]signalstore.Cfg{{
-				SignalOwnerID: 9,
+				SignalOwnerID: "9",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
 				SignalID:      "blocked-geo",
 			}},
@@ -104,7 +104,7 @@ func TestContext_SignalNoneOf_BlocksMatch(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(9, []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
+			signalstore.Key("9", []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
 			"blocked-geo",
 		)
 	engine := newEngine(t, storage)
@@ -122,7 +122,7 @@ func TestContext_SignalInvalidKeyType_FailsClosed(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 1,
+				SignalOwnerID: "1",
 				KeyTypes:      []signalstore.KeyType{"eid"}, // identity key, rejected
 				SignalID:      "audience-x",
 			}},
@@ -143,7 +143,7 @@ func TestContext_SignalDedupAcrossPackages(t *testing.T) {
 	// Two packages target the same (owner, key_type, value, signal_id).
 	// Only one MGet should be issued, both packages should pass.
 	shared := signalstore.Cfg{
-		SignalOwnerID: 5,
+		SignalOwnerID: "5",
 		KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
 		SignalID:      "co-shared",
 	}
@@ -157,7 +157,7 @@ func TestContext_SignalDedupAcrossPackages(t *testing.T) {
 			ContextSignals: signalProfile([]signalstore.Cfg{shared}, nil),
 		}).
 		WithSignalValue(
-			signalstore.Key(5, []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
+			signalstore.Key("5", []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
 			"co-shared",
 		)
 	engine := newEngine(t, storage)
@@ -191,7 +191,7 @@ func TestContext_SignalMGetError_FailsClosed(t *testing.T) {
 		PackageID: "pkg-gated",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 1,
+				SignalOwnerID: "1",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
 				SignalID:      "us-traffic",
 			}},
@@ -222,7 +222,7 @@ func TestContext_SignalTopicTaxonomyNamespacing(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeTopic},
 				SignalID:      "sports",
 			}},
@@ -233,7 +233,7 @@ func TestContext_SignalTopicTaxonomyNamespacing(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeTopic}, []string{"iab:7:632"}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeTopic}, []string{"iab:7:632"}),
 			"sports",
 		)
 	engine := newEngine(t, storage, func(c *targeting.ContextEngineConfig) {
@@ -257,7 +257,7 @@ func TestContext_SignalTopicUnacceptedTaxonomyDrops(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeTopic},
 				SignalID:      "sports",
 			}},
@@ -270,7 +270,7 @@ func TestContext_SignalTopicUnacceptedTaxonomyDrops(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeTopic}, []string{"iab:7:632"}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeTopic}, []string{"iab:7:632"}),
 			"sports",
 		)
 	engine := newEngine(t, storage)
@@ -296,7 +296,7 @@ func TestContext_SignalCommaValueDropped(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCustom},
 				SignalID:      "x",
 			}},
@@ -307,7 +307,7 @@ func TestContext_SignalCommaValueDropped(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeCustom}, []string{"a,b"}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeCustom}, []string{"a,b"}),
 			"x",
 		)
 	engine := newEngine(t, storage)
@@ -331,7 +331,7 @@ func TestContext_SignalURLHashFromRawURL(t *testing.T) {
 		PackageID: "pkg-a",
 		ContextSignals: signalProfile(
 			[]signalstore.Cfg{{
-				SignalOwnerID: 7,
+				SignalOwnerID: "7",
 				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeURLHash},
 				SignalID:      "premium-content",
 			}},
@@ -341,7 +341,7 @@ func TestContext_SignalURLHashFromRawURL(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(cfg).
 		WithSignalValue(
-			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeURLHash}, []string{hash}),
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeURLHash}, []string{hash}),
 			"premium-content",
 		)
 	engine := newEngine(t, storage)

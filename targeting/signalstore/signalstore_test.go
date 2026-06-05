@@ -10,13 +10,13 @@ import (
 )
 
 func TestKeyFormat(t *testing.T) {
-	got := Key(42, []KeyType{KeyTypeURLHash}, []string{"abc"})
+	got := Key("42", []KeyType{KeyTypeURLHash}, []string{"abc"})
 	want := "signal:42:url_hash:abc"
 	if got != want {
 		t.Fatalf("Key single = %q, want %q", got, want)
 	}
 
-	got = Key(123, []KeyType{KeyTypeURLHash, KeyTypeCountry}, []string{"h1", "US"})
+	got = Key("123", []KeyType{KeyTypeURLHash, KeyTypeCountry}, []string{"h1", "US"})
 	want = "signal:123:url_hash,country:h1,US"
 	if got != want {
 		t.Fatalf("Key combo = %q, want %q", got, want)
@@ -24,17 +24,17 @@ func TestKeyFormat(t *testing.T) {
 }
 
 func TestKey_EmptyOrMismatchedReturnsEmpty(t *testing.T) {
-	if got := Key(1, nil, nil); got != "" {
+	if got := Key("1", nil, nil); got != "" {
 		t.Fatalf("Key(empty) = %q, want empty", got)
 	}
-	if got := Key(1, []KeyType{KeyTypeURLHash}, []string{"a", "b"}); got != "" {
+	if got := Key("1", []KeyType{KeyTypeURLHash}, []string{"a", "b"}); got != "" {
 		t.Fatalf("Key(mismatched) = %q, want empty", got)
 	}
 }
 
 func TestCfgValidate_RejectsIdentityKeyType(t *testing.T) {
 	cfg := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyType("eid")},
 		SignalID:      "seg-1",
 	}
@@ -55,7 +55,7 @@ func TestCfgValidate_RejectsRawURL(t *testing.T) {
 	// with the Valkey key delimiter, so the writer must only key on
 	// url_hash. This test pins that decision.
 	cfg := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyType("url")},
 		SignalID:      "seg-1",
 	}
@@ -69,8 +69,8 @@ func TestCfgValidate_RejectsEmpty(t *testing.T) {
 		name string
 		cfg  Cfg
 	}{
-		{"missing signal id", Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeURLHash}}},
-		{"empty key types", Cfg{SignalOwnerID: 1, SignalID: "seg-1"}},
+		{"missing signal id", Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}}},
+		{"empty key types", Cfg{SignalOwnerID: "1", SignalID: "seg-1"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,8 +84,8 @@ func TestCfgValidate_RejectsEmpty(t *testing.T) {
 func TestProfileValidate_LocatesBadEntry(t *testing.T) {
 	p := Profile{
 		AnyOf: []Cfg{
-			{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "ok"},
-			{SignalOwnerID: 2, KeyTypes: []KeyType{KeyType("email")}, SignalID: "bad"},
+			{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "ok"},
+			{SignalOwnerID: "2", KeyTypes: []KeyType{KeyType("email")}, SignalID: "bad"},
 		},
 	}
 	err := p.Validate()
@@ -102,7 +102,7 @@ func TestProfileValidate_LocatesBadEntry(t *testing.T) {
 
 func TestExpandKeys_CartesianProduct(t *testing.T) {
 	cfg := Cfg{
-		SignalOwnerID: 7,
+		SignalOwnerID: "7",
 		KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
 		SignalID:      "premium",
 	}
@@ -129,7 +129,7 @@ func TestExpandKeys_CartesianProduct(t *testing.T) {
 
 func TestExpandKeys_MissingKeyTypeYieldsNilNilNoError(t *testing.T) {
 	cfg := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
 		SignalID:      "x",
 	}
@@ -144,7 +144,7 @@ func TestExpandKeys_MissingKeyTypeYieldsNilNilNoError(t *testing.T) {
 
 func TestExpandKeys_DisallowedKeyTypeIsErrCfgUnsafe(t *testing.T) {
 	cfg := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyType("eid")}, // identity
 		SignalID:      "x",
 	}
@@ -161,7 +161,7 @@ func TestExpandKeys_CapTripIsErrCfgUnsafe(t *testing.T) {
 		vals[i] = fmt.Sprintf("v%d", i)
 	}
 	cfg := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
 		SignalID:      "x",
 	}
@@ -173,9 +173,9 @@ func TestExpandKeys_CapTripIsErrCfgUnsafe(t *testing.T) {
 }
 
 func TestMatchProfile_AnyOfAndNoneOf(t *testing.T) {
-	any1 := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "sports"}
-	any2 := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "news"}
-	none1 := Cfg{SignalOwnerID: 2, KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "blocked"}
+	any1 := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "sports"}
+	any2 := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "news"}
+	none1 := Cfg{SignalOwnerID: "2", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "blocked"}
 
 	data := LookupData{KeyTypeURLHash: {"hash-a"}}
 
@@ -195,7 +195,7 @@ func TestMatchProfile_AnyOfAndNoneOf(t *testing.T) {
 			name:    "any_of with one match passes",
 			profile: Profile{AnyOf: []Cfg{any1, any2}},
 			fetched: map[string][]string{
-				Key(1, []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"sports"},
+				Key("1", []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"sports"},
 			},
 			wantOK: true,
 		},
@@ -209,8 +209,8 @@ func TestMatchProfile_AnyOfAndNoneOf(t *testing.T) {
 			name:    "none_of match rejects even when any_of passes",
 			profile: Profile{AnyOf: []Cfg{any1}, NoneOf: []Cfg{none1}},
 			fetched: map[string][]string{
-				Key(1, []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"sports"},
-				Key(2, []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"blocked"},
+				Key("1", []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"sports"},
+				Key("2", []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"blocked"},
 			},
 			wantOK: false,
 		},
@@ -224,7 +224,7 @@ func TestMatchProfile_AnyOfAndNoneOf(t *testing.T) {
 			name:    "only none_of, match rejects",
 			profile: Profile{NoneOf: []Cfg{none1}},
 			fetched: map[string][]string{
-				Key(2, []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"blocked"},
+				Key("2", []KeyType{KeyTypeURLHash}, []string{"hash-a"}): {"blocked"},
 			},
 			wantOK: false,
 		},
@@ -252,12 +252,12 @@ func TestMatchProfile_NoneOfCapTripFailsClosed(t *testing.T) {
 		vals[i] = fmt.Sprintf("v%d", i)
 	}
 	none := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
 		SignalID:      "brand-unsafe",
 	}
 	any1 := Cfg{
-		SignalOwnerID: 1,
+		SignalOwnerID: "1",
 		KeyTypes:      []KeyType{KeyTypeURLHash},
 		SignalID:      "sports",
 	}
@@ -268,7 +268,7 @@ func TestMatchProfile_NoneOfCapTripFailsClosed(t *testing.T) {
 	}
 	// Pretend any_of matches.
 	fetched := map[string][]string{
-		Key(1, []KeyType{KeyTypeURLHash}, []string{"v0"}): {"sports"},
+		Key("1", []KeyType{KeyTypeURLHash}, []string{"v0"}): {"sports"},
 	}
 	pass, err := profile.MatchProfile(data, fetched)
 	if !errors.Is(err, ErrCfgUnsafe) {
@@ -280,8 +280,8 @@ func TestMatchProfile_NoneOfCapTripFailsClosed(t *testing.T) {
 }
 
 func TestPlanLookup_DedupsAcrossPackages(t *testing.T) {
-	shared := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us-traffic"}
-	other := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "ca-only"}
+	shared := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us-traffic"}
+	other := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "ca-only"}
 	p1 := &Profile{AnyOf: []Cfg{shared}}
 	p2 := &Profile{AnyOf: []Cfg{shared, other}}
 	data := LookupData{KeyTypeCountry: {"US"}}
@@ -296,8 +296,8 @@ func TestPlanLookup_DedupsAcrossPackages(t *testing.T) {
 }
 
 func TestPlanLookup_PropagatesCfgError(t *testing.T) {
-	bad := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyType("eid")}, SignalID: "x"}
-	good := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us"}
+	bad := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyType("eid")}, SignalID: "x"}
+	good := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us"}
 	p := &Profile{AnyOf: []Cfg{good, bad}}
 	_, err := PlanLookup([]*Profile{p}, LookupData{KeyTypeCountry: {"US"}, KeyType("eid"): {"v"}})
 	if !errors.Is(err, ErrCfgUnsafe) {
@@ -356,7 +356,7 @@ func TestMaxKeysPerCfgExposed(t *testing.T) {
 }
 
 func TestProfileValidate_RejectsTooManyCfgs(t *testing.T) {
-	ok := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
+	ok := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
 	p := &Profile{}
 	for i := 0; i < maxCfgsPerProfile+1; i++ {
 		p.AnyOf = append(p.AnyOf, ok)
@@ -368,7 +368,7 @@ func TestProfileValidate_RejectsTooManyCfgs(t *testing.T) {
 }
 
 func TestProfileValidate_AllowsMaxCfgs(t *testing.T) {
-	ok := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
+	ok := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
 	p := &Profile{}
 	for i := 0; i < maxCfgsPerProfile; i++ {
 		p.AnyOf = append(p.AnyOf, ok)
@@ -390,9 +390,9 @@ func TestPlanLookup_RequestWideCapFailsClosed(t *testing.T) {
 	// 64*64 = 4096 keys per cfg (right at maxKeysPerCfg). Distinct owner
 	// per cfg keeps keys un-deduped, so 17 cfgs > 65536 keys.
 	profiles := make([]*Profile, 0, 32)
-	for owner := uint64(0); owner < 32; owner++ {
+	for owner := 0; owner < 32; owner++ {
 		profiles = append(profiles, &Profile{AnyOf: []Cfg{{
-			SignalOwnerID: owner,
+			SignalOwnerID: strconv.Itoa(owner),
 			KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
 			SignalID:      "x",
 		}}})

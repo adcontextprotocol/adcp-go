@@ -114,7 +114,7 @@ func TestService_PutRejectsInvalidContextSignals(t *testing.T) {
 		PackageID: "pkg-1",
 		ContextSignals: &signalstore.Profile{
 			AnyOf: []signalstore.Cfg{
-				{SignalOwnerID: 1, KeyTypes: []signalstore.KeyType{"eid"}, SignalID: "x"},
+				{SignalOwnerID: "1", KeyTypes: []signalstore.KeyType{"eid"}, SignalID: "x"},
 			},
 		},
 	})

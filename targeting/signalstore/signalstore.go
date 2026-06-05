@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 )
 
@@ -103,17 +102,23 @@ func IsAllowed(kt KeyType) bool {
 // Cfg is one signal-targeting entry attached to a package.
 // SignalOwnerID is the public identifier of the entity that owns the
 // signal definitions; the writer encodes it verbatim into the Valkey
-// key prefix. Public API never uses any other name for this field.
+// key prefix. It is a free-form string so the owner identifier can be
+// numeric, a UUID, or an agent URL without a type change — a numeric
+// owner is still byte-compatible with a writer that formats the same
+// decimal digits. Public API never uses any other name for this field.
 type Cfg struct {
-	SignalOwnerID uint64    `json:"signal_owner_id"`
+	SignalOwnerID string    `json:"signal_owner_id"`
 	KeyTypes      []KeyType `json:"key_types"`
 	SignalID      string    `json:"signal_id"`
 }
 
 // Validate checks the cfg is well-formed under the context-match
-// restriction (at least one key_type, all in AllowedKeyTypes, signal
-// id non-empty).
+// restriction (owner + signal id non-empty, at least one key_type, all
+// in AllowedKeyTypes).
 func (c Cfg) Validate() error {
+	if c.SignalOwnerID == "" {
+		return errors.New("signalstore: signal_owner_id is required")
+	}
 	if c.SignalID == "" {
 		return errors.New("signalstore: signal_id is required")
 	}
@@ -177,18 +182,18 @@ func (p *Profile) IsEmpty() bool {
 type LookupData map[KeyType][]string
 
 // Key composes the Valkey key for one (owner, keyTypes, values) tuple.
-// keyTypes and values MUST be the same length and non-empty; callers
-// that hand in mismatched or empty slices get an empty string back so
-// a downstream MGet skips the malformed key instead of fetching the
-// degenerate `signal:0::` shape.
-func Key(ownerID uint64, keyTypes []KeyType, values []string) string {
-	if len(keyTypes) == 0 || len(keyTypes) != len(values) {
+// ownerID, keyTypes, and values MUST be non-empty and keyTypes/values
+// the same length; callers that hand in an empty owner, mismatched, or
+// empty slices get an empty string back so a downstream MGet skips the
+// malformed key instead of fetching a degenerate `signal::` shape.
+func Key(ownerID string, keyTypes []KeyType, values []string) string {
+	if ownerID == "" || len(keyTypes) == 0 || len(keyTypes) != len(values) {
 		return ""
 	}
 	var b strings.Builder
-	b.Grow(len(keyPrefix) + 24 + len(keyTypes)*8 + len(values)*16)
+	b.Grow(len(keyPrefix) + len(ownerID) + 1 + len(keyTypes)*8 + len(values)*16)
 	b.WriteString(keyPrefix)
-	b.WriteString(strconv.FormatUint(ownerID, 10))
+	b.WriteString(ownerID)
 	b.WriteByte(':')
 	for i, kt := range keyTypes {
 		if i > 0 {
