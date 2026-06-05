@@ -251,7 +251,7 @@ func (s *Syncer) applyEvent(ctx context.Context, event FeedEvent) error {
 			s.log.Warn("bad property event payload", "event_id", event.EventID, "error", err)
 			return nil
 		}
-		if p.PropertyID == "" || p.PropertyRID == 0 {
+		if p.PropertyID == "" || p.PropertyRID == "" {
 			s.log.Warn("property event missing required fields", "event_id", event.EventID,
 				"property_id", p.PropertyID, "property_rid", p.PropertyRID)
 			return nil

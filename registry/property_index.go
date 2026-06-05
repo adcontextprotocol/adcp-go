@@ -8,9 +8,14 @@ import (
 )
 
 // Property represents a property in the registry catalog.
+//
+// PropertyRID is the catalog-assigned UUID v7 (per the AdCP property
+// registry catalog spec) — globally unique, stable forever, and the
+// shared key for TMP matching. PropertyID is the publisher-controlled
+// adagents.json slug, which is only unique within one publisher's file.
 type Property struct {
 	PropertyID   string   `json:"property_id"`
-	PropertyRID  uint64   `json:"property_rid"`
+	PropertyRID  string   `json:"property_rid"`
 	PropertyType string   `json:"property_type"`
 	Domain       string   `json:"domain"`
 	Placements   []string `json:"placements,omitempty"`
@@ -32,7 +37,7 @@ type Property struct {
 type PropertyIndex struct {
 	mu       sync.RWMutex
 	byID     map[string]*Property
-	byRID    map[uint64]*Property
+	byRID    map[string]*Property
 	byDomain map[string]string // domain → property_id
 	store    Store
 	hydrated atomic.Bool
@@ -43,7 +48,7 @@ type PropertyIndex struct {
 func NewPropertyIndex() *PropertyIndex {
 	return &PropertyIndex{
 		byID:     make(map[string]*Property),
-		byRID:    make(map[uint64]*Property),
+		byRID:    make(map[string]*Property),
 		byDomain: make(map[string]string),
 		log:      slog.Default().With("component", "registry-property-index"),
 	}
@@ -71,7 +76,9 @@ func (idx *PropertyIndex) Put(ctx context.Context, p *Property) error {
 	}
 	cp := cloneProperty(p)
 	idx.byID[cp.PropertyID] = cp
-	idx.byRID[cp.PropertyRID] = cp
+	if cp.PropertyRID != "" {
+		idx.byRID[cp.PropertyRID] = cp
+	}
 	if cp.Domain != "" {
 		idx.byDomain[cp.Domain] = cp.PropertyID
 	}
@@ -125,8 +132,8 @@ func (idx *PropertyIndex) LookupByID(propertyID string) (Property, bool) {
 	return *p, true
 }
 
-// LookupByRID returns a copy of a property by its integer registry ID.
-func (idx *PropertyIndex) LookupByRID(rid uint64) (Property, bool) {
+// LookupByRID returns a copy of a property by its UUID-v7 registry ID.
+func (idx *PropertyIndex) LookupByRID(rid string) (Property, bool) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	p, ok := idx.byRID[rid]
@@ -144,15 +151,15 @@ func (idx *PropertyIndex) LookupByDomain(domain string) (string, bool) {
 	return id, ok
 }
 
-// PropertyRID returns the integer registry ID for a property_id.
-// Returns 0 if not found.
-func (idx *PropertyIndex) PropertyRID(propertyID string) uint64 {
+// PropertyRID returns the UUID-v7 registry ID for a property_id.
+// Returns "" if not found.
+func (idx *PropertyIndex) PropertyRID(propertyID string) string {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	if p, ok := idx.byID[propertyID]; ok {
 		return p.PropertyRID
 	}
-	return 0
+	return ""
 }
 
 // Clear removes all entries from the index. When a Store is attached,
@@ -162,7 +169,7 @@ func (idx *PropertyIndex) Clear(ctx context.Context) error {
 	idx.mu.Lock()
 	store := idx.store
 	idx.byID = make(map[string]*Property)
-	idx.byRID = make(map[uint64]*Property)
+	idx.byRID = make(map[string]*Property)
 	idx.byDomain = make(map[string]string)
 	idx.mu.Unlock()
 
@@ -213,7 +220,9 @@ func (idx *PropertyIndex) Hydrate(ctx context.Context) error {
 		}
 		cp := cloneProperty(p)
 		idx.byID[cp.PropertyID] = cp
-		idx.byRID[cp.PropertyRID] = cp
+		if cp.PropertyRID != "" {
+			idx.byRID[cp.PropertyRID] = cp
+		}
 		if cp.Domain != "" {
 			idx.byDomain[cp.Domain] = cp.PropertyID
 		}

@@ -18,13 +18,13 @@ func TestSyncer_AppliesPropertyEvents(t *testing.T) {
 		{
 			EventID: "019414a0-0000-7000-0000-000000000001", EventType: "property.created",
 			EntityType: "property", EntityID: "pub1.example.com/home",
-			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: 1001, PropertyType: "website", Domain: "example.com"}),
+			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: "0190a1b2-c3d4-7e5f-8a9b-000000001001", PropertyType: "website", Domain: "example.com"}),
 			Actor: "pipeline:crawler",
 		},
 		{
 			EventID: "019414a0-0000-7000-0000-000000000002", EventType: "property.updated",
 			EntityType: "property", EntityID: "pub1.example.com/home",
-			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: 1001, PropertyType: "website", Domain: "example.com", Placements: []string{"top"}}),
+			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: "0190a1b2-c3d4-7e5f-8a9b-000000001001", PropertyType: "website", Domain: "example.com", Placements: []string{"top"}}),
 			Actor: "pipeline:crawler",
 		},
 	}
@@ -46,12 +46,12 @@ func TestSyncer_AppliesPropertyEvents(t *testing.T) {
 
 	p, ok := props.LookupByID("pub1.example.com/home")
 	require.True(t, ok, "property not found")
-	assert.Equal(t, uint64(1001), p.PropertyRID)
+	assert.Equal(t, "0190a1b2-c3d4-7e5f-8a9b-000000001001", p.PropertyRID)
 	require.Len(t, p.Placements, 1)
 	assert.Equal(t, "top", p.Placements[0])
 
 	// Reverse lookup: RID → property
-	p2, ok := props.LookupByRID(1001)
+	p2, ok := props.LookupByRID("0190a1b2-c3d4-7e5f-8a9b-000000001001")
 	require.True(t, ok, "reverse lookup by RID failed")
 	assert.Equal(t, "pub1.example.com/home", p2.PropertyID)
 }
@@ -61,7 +61,7 @@ func TestSyncer_AppliesPropertyRemoved(t *testing.T) {
 		{
 			events: []FeedEvent{
 				{EventID: "e1", EventType: "property.created", EntityType: "property", EntityID: "prop1",
-					Payload: mustMarshal(Property{PropertyID: "prop1", PropertyRID: 100, Domain: "example.com"}), Actor: "test"},
+					Payload: mustMarshal(Property{PropertyID: "prop1", PropertyRID: "100", Domain: "example.com"}), Actor: "test"},
 			},
 			cursor: strPtr("e1"), hasMore: true,
 		},
@@ -86,7 +86,7 @@ func TestSyncer_AppliesPropertyRemoved(t *testing.T) {
 
 	waitFor(t, func() bool { return props.Count() == 0 })
 
-	_, ok := props.LookupByRID(100)
+	_, ok := props.LookupByRID("100")
 	assert.False(t, ok, "removed property should not be in RID index")
 }
 
@@ -95,9 +95,9 @@ func TestSyncer_AppliesPropertyMerged(t *testing.T) {
 		{
 			events: []FeedEvent{
 				{EventID: "e1", EventType: "property.created", EntityType: "property", EntityID: "alias-prop",
-					Payload: mustMarshal(Property{PropertyID: "alias-prop", PropertyRID: 100, Domain: "alias.com"}), Actor: "test"},
+					Payload: mustMarshal(Property{PropertyID: "alias-prop", PropertyRID: "100", Domain: "alias.com"}), Actor: "test"},
 				{EventID: "e2", EventType: "property.created", EntityType: "property", EntityID: "canonical-prop",
-					Payload: mustMarshal(Property{PropertyID: "canonical-prop", PropertyRID: 200, Domain: "canonical.com"}), Actor: "test"},
+					Payload: mustMarshal(Property{PropertyID: "canonical-prop", PropertyRID: "200", Domain: "canonical.com"}), Actor: "test"},
 			},
 			cursor: strPtr("e2"), hasMore: true,
 		},
@@ -125,7 +125,7 @@ func TestSyncer_AppliesPropertyMerged(t *testing.T) {
 	// Alias should be removed
 	_, ok := props.LookupByID("alias-prop")
 	assert.False(t, ok, "alias property should be removed after merge")
-	_, ok = props.LookupByRID(100)
+	_, ok = props.LookupByRID("100")
 	assert.False(t, ok, "alias RID should be removed after merge")
 
 	// Canonical should remain

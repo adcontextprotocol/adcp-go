@@ -11,7 +11,7 @@ import (
 // is invoked once per cleanly-completed poll, including the
 // zero-event poll the feed server returns after all pages drain.
 func TestSyncer_OnSuccessfulPollFires(t *testing.T) {
-	rid := uint64(7)
+	rid := "0190a1b2-c3d4-7e5f-8a9b-000000000007"
 	pages := []feedPage{
 		{
 			events: []FeedEvent{

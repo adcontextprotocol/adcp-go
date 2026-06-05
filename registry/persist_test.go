@@ -23,13 +23,13 @@ func TestPropertyIndex_DualWrite(t *testing.T) {
 	idx := NewPropertyIndex().WithStore(store)
 	require.NoError(t, idx.Hydrate(context.Background()))
 
-	p := &Property{PropertyID: "pub1.example.com/home", PropertyRID: 1001, Domain: "example.com"}
+	p := &Property{PropertyID: "pub1.example.com/home", PropertyRID: "1001", Domain: "example.com"}
 	require.NoError(t, idx.Put(context.Background(), p))
 
 	persisted, err := store.LoadProperties(context.Background())
 	require.NoError(t, err)
 	require.Len(t, persisted, 1)
-	assert.Equal(t, uint64(1001), persisted[0].PropertyRID)
+	assert.Equal(t, "1001", persisted[0].PropertyRID)
 
 	require.NoError(t, idx.Remove(context.Background(), "pub1.example.com/home"))
 
@@ -41,15 +41,15 @@ func TestPropertyIndex_DualWrite(t *testing.T) {
 func TestPropertyIndex_HydrateLoadsFromStore(t *testing.T) {
 	store := NewMemoryStore()
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "pub1", PropertyRID: 1001, Domain: "example.com"}))
+		&Property{PropertyID: "pub1", PropertyRID: "1001", Domain: "example.com"}))
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "pub2", PropertyRID: 1002, Domain: "two.example.com"}))
+		&Property{PropertyID: "pub2", PropertyRID: "1002", Domain: "two.example.com"}))
 
 	idx := NewPropertyIndex().WithStore(store)
 	require.NoError(t, idx.Hydrate(context.Background()))
 
 	assert.Equal(t, 2, idx.Count())
-	p, ok := idx.LookupByRID(1001)
+	p, ok := idx.LookupByRID("1001")
 	require.True(t, ok)
 	assert.Equal(t, "pub1", p.PropertyID)
 
@@ -61,14 +61,14 @@ func TestPropertyIndex_HydrateLoadsFromStore(t *testing.T) {
 func TestPropertyIndex_HydrateIsIdempotent(t *testing.T) {
 	store := NewMemoryStore()
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "p1", PropertyRID: 1, Domain: "example.com"}))
+		&Property{PropertyID: "p1", PropertyRID: "1", Domain: "example.com"}))
 
 	idx := NewPropertyIndex().WithStore(store)
 	require.NoError(t, idx.Hydrate(context.Background()))
 	// Mutating the store after first Hydrate must not affect a second
 	// Hydrate call.
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "p2", PropertyRID: 2, Domain: "two.example.com"}))
+		&Property{PropertyID: "p2", PropertyRID: "2", Domain: "two.example.com"}))
 	require.NoError(t, idx.Hydrate(context.Background()))
 
 	assert.Equal(t, 1, idx.Count(), "second Hydrate must be a no-op")
@@ -78,8 +78,8 @@ func TestPropertyIndex_ClearWipesStore(t *testing.T) {
 	store := NewMemoryStore()
 	idx := NewPropertyIndex().WithStore(store)
 	require.NoError(t, idx.Hydrate(context.Background()))
-	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p1", PropertyRID: 1, Domain: "a"}))
-	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p2", PropertyRID: 2, Domain: "b"}))
+	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p1", PropertyRID: "1", Domain: "a"}))
+	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p2", PropertyRID: "2", Domain: "b"}))
 
 	require.NoError(t, idx.Clear(context.Background()))
 
@@ -168,7 +168,7 @@ func TestAgentIndex_DualWrite(t *testing.T) {
 func TestSyncer_HydratesBeforeFeedLoop(t *testing.T) {
 	store := NewMemoryStore()
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "pre-seeded", PropertyRID: 999, Domain: "old.example.com"}))
+		&Property{PropertyID: "pre-seeded", PropertyRID: "999", Domain: "old.example.com"}))
 	require.NoError(t, store.PutAgent(context.Background(),
 		&AgentProfile{AgentURL: "https://pre-seeded.agent"}))
 	require.NoError(t, store.Save(context.Background(), "cursor-past-events"))
@@ -190,7 +190,7 @@ func TestSyncer_HydratesBeforeFeedLoop(t *testing.T) {
 
 	waitFor(t, func() bool { return props.Count() == 1 && agents.Count() == 1 })
 
-	p, ok := props.LookupByRID(999)
+	p, ok := props.LookupByRID("999")
 	require.True(t, ok, "hydrated property should be looked up by RID")
 	assert.Equal(t, "pre-seeded", p.PropertyID)
 }
@@ -201,7 +201,7 @@ func TestSyncer_HydratesBeforeFeedLoop(t *testing.T) {
 func TestSyncer_CursorExpiredWipesPersistentStore(t *testing.T) {
 	store := NewMemoryStore()
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "stale", PropertyRID: 1, Domain: "stale.example.com"}))
+		&Property{PropertyID: "stale", PropertyRID: "1", Domain: "stale.example.com"}))
 	require.NoError(t, store.Save(context.Background(), "old-expired-cursor"))
 
 	var callCount atomic.Int32
@@ -216,7 +216,7 @@ func TestSyncer_CursorExpiredWipesPersistentStore(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(FeedResponse{
 			Events: []FeedEvent{
 				{EventID: "fresh", EventType: "property.created", EntityType: "property", EntityID: "fresh-prop",
-					Payload: mustMarshal(Property{PropertyID: "fresh-prop", PropertyRID: 2, Domain: "fresh.example.com"}), Actor: "test"},
+					Payload: mustMarshal(Property{PropertyID: "fresh-prop", PropertyRID: "2", Domain: "fresh.example.com"}), Actor: "test"},
 			},
 			Cursor: strPtr("fresh"), HasMore: false,
 		})
@@ -245,7 +245,7 @@ func TestSyncer_CursorExpiredWipesPersistentStore(t *testing.T) {
 
 func TestPropertyIndex_NoStoreIsNoop(t *testing.T) {
 	idx := NewPropertyIndex()
-	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p1", PropertyRID: 1, Domain: "a"}))
+	require.NoError(t, idx.Put(context.Background(), &Property{PropertyID: "p1", PropertyRID: "1", Domain: "a"}))
 	assert.Equal(t, 1, idx.Count())
 	require.NoError(t, idx.Remove(context.Background(), "p1"))
 	assert.Equal(t, 0, idx.Count())
@@ -292,7 +292,7 @@ func TestSyncer_PersistFailureBlocksCursor(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(FeedResponse{
 			Events: []FeedEvent{
 				{EventID: "e1", EventType: "property.created", EntityType: "property", EntityID: "p1",
-					Payload: mustMarshal(Property{PropertyID: "p1", PropertyRID: 1, Domain: "example.com"}), Actor: "test"},
+					Payload: mustMarshal(Property{PropertyID: "p1", PropertyRID: "1", Domain: "example.com"}), Actor: "test"},
 			},
 			Cursor: strPtr("e1"), HasMore: false,
 		})
@@ -342,7 +342,7 @@ func TestSyncer_PersistFailureBlocksCursor(t *testing.T) {
 func TestSyncer_CursorExpiredClearFailureKeepsCursor(t *testing.T) {
 	store := newFailingStore()
 	require.NoError(t, store.PutProperty(context.Background(),
-		&Property{PropertyID: "stale", PropertyRID: 1, Domain: "stale.example.com"}))
+		&Property{PropertyID: "stale", PropertyRID: "1", Domain: "stale.example.com"}))
 	require.NoError(t, store.Save(context.Background(), "old-expired-cursor"))
 
 	var callCount atomic.Int32

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -239,10 +238,11 @@ func (b *registryBundle) PropertyBitmap() targeting.Bitmap {
 
 // registryPropertyBitmap wraps a registry.PropertyIndex as a
 // targeting.Bitmap. The engine passes the inbound request's
-// property_rid string; the adapter looks it up against both lookup
-// dimensions the index exposes so callers can match either the
-// human-readable property_id slug or the numeric registry RID without
-// the engine having to know which is which.
+// property_rid — the catalog-assigned UUID v7 that is the shared key
+// for TMP matching — and the adapter resolves it against the index's
+// RID dimension. property_id (the publisher slug) is intentionally not
+// consulted: the spec routes matching on property_rid, and a slug is
+// only unique within one publisher's adagents.json.
 type registryPropertyBitmap struct {
 	idx *registry.PropertyIndex
 }
@@ -251,14 +251,7 @@ func (b *registryPropertyBitmap) Contains(rid string) bool {
 	if b == nil || b.idx == nil || rid == "" {
 		return false
 	}
-	if _, ok := b.idx.LookupByID(rid); ok {
-		return true
-	}
-	n, err := strconv.ParseUint(rid, 10, 64)
-	if err != nil {
-		return false
-	}
-	_, ok := b.idx.LookupByRID(n)
+	_, ok := b.idx.LookupByRID(rid)
 	return ok
 }
 

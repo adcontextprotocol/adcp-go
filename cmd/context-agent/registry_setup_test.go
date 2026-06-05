@@ -8,12 +8,13 @@ import (
 	"github.com/adcontextprotocol/adcp-go/registry"
 )
 
-func TestRegistryPropertyBitmap_LookupModes(t *testing.T) {
+func TestRegistryPropertyBitmap_MatchesByRID(t *testing.T) {
+	const rid = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b"
 	idx := registry.NewPropertyIndex()
 	ctx := context.Background()
 	if err := idx.Put(ctx, &registry.Property{
 		PropertyID:  "cnn-homepage",
-		PropertyRID: 42,
+		PropertyRID: rid,
 		Domain:      "cnn.com",
 	}); err != nil {
 		t.Fatalf("seed property: %v", err)
@@ -26,12 +27,10 @@ func TestRegistryPropertyBitmap_LookupModes(t *testing.T) {
 		rid    string
 		expect bool
 	}{
-		{"matches by string property_id", "cnn-homepage", true},
-		{"matches by numeric property_rid", "42", true},
-		{"missing string property_id", "fox-homepage", false},
-		{"missing numeric property_rid", "999", false},
+		{"matches the UUID-v7 property_rid", rid, true},
+		{"does not match the property_id slug", "cnn-homepage", false},
+		{"missing rid", "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff", false},
 		{"empty input is never a match", "", false},
-		{"non-numeric and not a known slug is rejected", "abc-def", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
