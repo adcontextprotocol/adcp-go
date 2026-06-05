@@ -8,8 +8,11 @@ require (
 )
 
 require (
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
+	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
 replace (

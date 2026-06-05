@@ -124,13 +124,13 @@ func BenchmarkURLLookup(b *testing.B) {
 	svc, _ := urlliststore.NewService(store)
 	ctx := context.Background()
 	for i := range 10000 {
-		_ = svc.AddToBlocklist(ctx, "pkg-1", targeting.HashURL(fmt.Sprintf("article:content-%d", i)))
+		_ = svc.AddToBlocklist(ctx, "pkg-1", tmproto.HashURL(fmt.Sprintf("article:content-%d", i)))
 	}
 	r := urlliststore.NewReader(store)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		urlHash := targeting.HashURL(fmt.Sprintf("article:content-%d", i%20000))
+		urlHash := tmproto.HashURL(fmt.Sprintf("article:content-%d", i%20000))
 		_, _ = r.IsBlocked(ctx, "pkg-1", urlHash)
 	}
 }

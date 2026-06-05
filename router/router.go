@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,13 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+// MaxRequestBodyBytes caps an inbound request body the router reads
+// before validating + fan-out. Sized to match the verifier's
+// identity-match default (tmproto.VerifyOptions BodyLimit); raise here
+// AND in the per-agent verifier config if you ever ship larger
+// request shapes.
+const MaxRequestBodyBytes = 64 * 1024
 
 // FanOutMetrics is called during fan-out to record provider exclusions.
 type FanOutMetrics interface {
@@ -128,8 +136,13 @@ func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderH
 
 // HandleContextMatch processes a context match request.
 func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
+	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, MaxRequestBodyBytes))
 	if err != nil {
+		var mb *http.MaxBytesError
+		if errors.As(err, &mb) {
+			r.writeErrorStatus(w, "", http.StatusRequestEntityTooLarge, tmproto.ErrorCodeInvalidRequest, "request body too large")
+			return
+		}
 		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
@@ -188,8 +201,13 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 
 // HandleIdentityMatch processes an identity match request.
 func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(req.Body, 64*1024)) // 64KB max
+	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, MaxRequestBodyBytes))
 	if err != nil {
+		var mb *http.MaxBytesError
+		if errors.As(err, &mb) {
+			r.writeErrorStatus(w, "", http.StatusRequestEntityTooLarge, tmproto.ErrorCodeInvalidRequest, "request body too large")
+			return
+		}
 		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
@@ -499,6 +517,23 @@ func (r *Router) writeError(w http.ResponseWriter, requestID string, code tmprot
 	case tmproto.ErrorCodeProviderUnavailable:
 		status = http.StatusServiceUnavailable
 	}
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(tmproto.ErrorResponse{
+		Type:      tmproto.TypeError,
+		RequestID: requestID,
+		Code:      code,
+		Message:   message,
+	}); err != nil {
+		r.logger.Debug("failed to write error response", "error", err)
+	}
+}
+
+// writeErrorStatus writes an error response with an explicit HTTP
+// status, bypassing writeError's code → status mapping. Used for body
+// admission errors (413 Request Entity Too Large) where the status is
+// driven by the wire-level fault rather than a TMP error-code enum.
+func (r *Router) writeErrorStatus(w http.ResponseWriter, requestID string, status int, code tmproto.ErrorCode, message string) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(tmproto.ErrorResponse{
 		Type:      tmproto.TypeError,

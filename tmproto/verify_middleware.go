@@ -26,11 +26,18 @@ type VerifyOptions struct {
 
 	// BodyLimit caps the bytes the verifier will read off the wire
 	// before computing the signature. Zero falls back to a 64 KiB
-	// default sized for identity-match payloads; agents whose downstream
-	// handler accepts larger bodies (context-match's 256 KiB artifact
-	// payloads) must raise this to match — io.LimitReader silently
-	// truncates on overflow and the truncated body fails JSON decode,
-	// which surfaces as "invalid request body" rather than "too large".
+	// default sized for identity-match payloads; agents whose
+	// downstream handler accepts larger bodies (context-match's 256
+	// KiB artifact payloads) must raise BodyLimit to match.
+	//
+	// Implementation: the verifier reads through http.MaxBytesReader,
+	// which is fail-loud — a body exceeding the cap surfaces as
+	// http.MaxBytesError and the verifier returns 413 Request Entity
+	// Too Large. MUST NOT be replaced with io.LimitReader: that one
+	// silently truncates at the cap and the verifier would then sign
+	// the truncated bytes, opening a "verifier signs over partial
+	// payload" gap that the handler's downstream decode would then
+	// reject as "invalid request body" rather than "too large".
 	BodyLimit int64
 
 	// Logger receives verification outcomes. Defaults to slog.Default().
@@ -89,7 +96,7 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 		if headerErr != nil {
 			if !opts.RequireSignature {
 				opts.logger().Warn("tmp signature missing — accepting unsigned",
-					"path", r.URL.Path, "request_id", parsed.RequestID)
+					"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID))
 				replayBody(r, body)
 				next.ServeHTTP(w, r)
 				return
@@ -100,7 +107,7 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 
 		if err := VerifyContextMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp context-match signature rejected",
-				"path", r.URL.Path, "request_id", parsed.RequestID, "kid", kid, "error", err)
+				"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID), "kid", kid, "error", err)
 			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
 			return
 		}
@@ -136,7 +143,7 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 		if headerErr != nil {
 			if !opts.RequireSignature {
 				opts.logger().Warn("tmp signature missing — accepting unsigned",
-					"path", r.URL.Path, "request_id", parsed.RequestID)
+					"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID))
 				replayBody(r, body)
 				next.ServeHTTP(w, r)
 				return
@@ -147,7 +154,7 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 
 		if err := VerifyIdentityMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp identity-match signature rejected",
-				"path", r.URL.Path, "request_id", parsed.RequestID, "kid", kid, "error", err)
+				"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID), "kid", kid, "error", err)
 			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
 			return
 		}

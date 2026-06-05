@@ -30,6 +30,48 @@ import (
 // no longer be authoritative.
 const SuppressionStaleThreshold = 6
 
+// SuppressionStaleMaxAge is the upper bound on how old the in-memory
+// suppression snapshot can be before /live flips to 503, independent
+// of the consecutive-failure counter. Covers the failure mode where
+// the refresh-loop goroutine exits cleanly (e.g. its context is
+// cancelled by a future plumbing change) without ever incrementing
+// ConsecutiveFailures — in that scenario the snapshot freezes
+// forever and the counter-only check reports healthy. 30 minutes
+// matches the failure-count threshold's effective coverage at the
+// default 5-minute refresh interval; an operator running with a
+// longer SUPPRESSION_REFRESH_INTERVAL should keep this longer than
+// 2× their interval.
+const SuppressionStaleMaxAge = 30 * time.Minute
+
+// checkSuppressionLiveness is the testable predicate behind the
+// /live "suppression_snapshot" check. Returns nil when the snapshot
+// is healthy; otherwise a non-nil error whose message explains which
+// threshold tripped so the /live response body identifies the
+// degraded dimension without an operator having to read the agent's
+// logs.
+//
+// failures is bundle.suppressionSnap.ConsecutiveFailures().
+// lastRefresh is bundle.suppressionSnap.LastSuccessfulRefresh().
+// now is injected so tests don't depend on wall-clock time; production
+// passes time.Now().
+//
+// The lastRefresh.IsZero() guard is defense-in-depth against a future
+// Snapshot constructor that returns before running the synchronous
+// initial Load. Today Start guarantees lastRefresh is non-zero by the
+// time this is reachable, but treating an unloaded snapshot as
+// "healthy" if anything were to change would be silently fail-open on
+// a kill switch — exactly the failure mode this whole liveness path
+// exists to prevent. Keep the guard.
+func checkSuppressionLiveness(failures int, lastRefresh, now time.Time) error {
+	if failures >= SuppressionStaleThreshold {
+		return fmt.Errorf("suppression snapshot has not refreshed in %d consecutive attempts", failures)
+	}
+	if !lastRefresh.IsZero() && now.Sub(lastRefresh) > SuppressionStaleMaxAge {
+		return fmt.Errorf("suppression snapshot last refreshed %s ago (>%s)", now.Sub(lastRefresh).Round(time.Second), SuppressionStaleMaxAge)
+	}
+	return nil
+}
+
 // Run executes the agent lifecycle: build dependencies, start the
 // HTTP server, then block until SIGINT/SIGTERM and run an orderly
 // shutdown. Returns non-nil only when startup fails or shutdown
@@ -87,10 +129,11 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 		{
 			Name: "suppression_snapshot",
 			Fn: func() error {
-				if f := bundle.suppressionSnap.ConsecutiveFailures(); f >= SuppressionStaleThreshold {
-					return fmt.Errorf("suppression snapshot has not refreshed in %d consecutive attempts", f)
-				}
-				return nil
+				return checkSuppressionLiveness(
+					bundle.suppressionSnap.ConsecutiveFailures(),
+					bundle.suppressionSnap.LastSuccessfulRefresh(),
+					time.Now(),
+				)
 			},
 		},
 	}
@@ -140,6 +183,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 
 	tracker := &connTracker{}
 	if err := metricsProvider.RegisterOpenConnectionsObserver(tracker.Open); err != nil {
+		teardownBundle(bundle)
 		return fmt.Errorf("register open-connections observer: %w", err)
 	}
 	if err := metricsProvider.RegisterSuppressionSnapshotObservers(
@@ -148,6 +192,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 		func() int64 { p, _ := bundle.suppressionSnap.Sizes(); return int64(p) },
 		func() int64 { _, g := bundle.suppressionSnap.Sizes(); return int64(g) },
 	); err != nil {
+		teardownBundle(bundle)
 		return fmt.Errorf("register suppression observers: %w", err)
 	}
 
@@ -156,6 +201,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 
 	baseLn, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
+		teardownBundle(bundle)
 		return fmt.Errorf("listen %s: %w", srv.Addr, err)
 	}
 	// Compose: raw listener → LimitListener (caps concurrent accepts)
@@ -164,9 +210,28 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 	ln := &trackingListener{Listener: limitedLn, tracker: tracker}
 
 	serverErr := make(chan error, 2)
-	safeGo(logger, recorder, "http-server", func() {
+	// Buffered non-blocking send so a panic in Serve cannot deadlock
+	// the recover defer if the main loop has already consumed an
+	// error from the same channel.
+	//
+	// Best-effort by design: if BOTH Serve goroutines panic
+	// simultaneously and the main loop has already taken one error
+	// from the channel, the second push hits the default branch and
+	// the synthetic error is dropped. That is acceptable because the
+	// panic itself has already been logged at ERROR + recorded on
+	// recorder.BackgroundPanic by safeGoWithPanicSink's recover
+	// defer — the log / metric pair is the source of truth, the
+	// channel push is just how we cause the main loop to begin
+	// orderly shutdown faster than waiting for SIGTERM.
+	pushServerErr := func(err error) {
+		select {
+		case serverErr <- err:
+		default:
+		}
+	}
+	safeGoWithPanicSink(logger, recorder, "http-server", pushServerErr, func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- err
+			pushServerErr(err)
 		}
 	})
 	if adminSrv != nil {
@@ -178,22 +243,23 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) (
 		// same ceiling is conservative.
 		adminLn, err := net.Listen("tcp", adminSrv.Addr)
 		if err != nil {
-			// Tear down the main listener + background goroutines +
-			// Valkey closer the same way the steady-state shutdown
-			// path does — otherwise this return leaks the active
-			// main listener and the keystore / suppression refresh
-			// goroutines.
-			_ = srv.Shutdown(context.Background())
-			bundle.cancelBackground()
-			if bundle.valkeyCloser != nil {
-				_ = bundle.valkeyCloser.Close()
-			}
+			// The main server is already serving on baseLn — drain
+			// it via Shutdown so in-flight requests don't see a
+			// torn-down keystore / Valkey pool. teardownBundle then
+			// closes the bundle's background goroutines and Valkey
+			// pool so this return doesn't leak them. Bound the
+			// drain by cfg.ShutdownTimeout so an in-flight accept
+			// can't block this fast-fail path indefinitely.
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+			_ = srv.Shutdown(shutdownCtx)
+			cancel()
+			teardownBundle(bundle)
 			return fmt.Errorf("listen admin %s: %w", adminSrv.Addr, err)
 		}
 		boundedAdmin := netutil.LimitListener(adminLn, cfg.MaxOpenConnections)
-		safeGo(logger, recorder, "admin-http-server", func() {
+		safeGoWithPanicSink(logger, recorder, "admin-http-server", pushServerErr, func() {
 			if err := adminSrv.Serve(boundedAdmin); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				serverErr <- err
+				pushServerErr(err)
 			}
 		})
 	}
@@ -261,6 +327,26 @@ type bundle struct {
 	suppressionSnap  *suppressionstore.Snapshot
 	valkeyCloser     interface{ Close() error }
 	cancelBackground context.CancelFunc
+}
+
+// teardownBundle releases the background goroutines and the Valkey
+// pool a successful buildBundle constructs. Used on every Run
+// early-return path between buildBundle success and the steady-state
+// shutdown sequence so a startup-time failure (observer registration,
+// listener bind) does not leak the keystore-refresh goroutine, the
+// suppression-refresh goroutine, or the Valkey connection pool.
+// Idempotent: safe to call once per Run invocation; the steady-state
+// shutdown path inlines the same steps and does not call this.
+func teardownBundle(b *bundle) {
+	if b == nil {
+		return
+	}
+	if b.cancelBackground != nil {
+		b.cancelBackground()
+	}
+	if b.valkeyCloser != nil {
+		_ = b.valkeyCloser.Close()
+	}
 }
 
 func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (*bundle, error) {

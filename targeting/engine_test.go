@@ -303,8 +303,33 @@ type injectedError string
 
 func (e injectedError) Error() string { return string(e) }
 
+// TestContext_URLBlocklist_AcceptsURLHashArtifactRef pins the
+// publisher-side `url_hash` wire format: the engine MUST use a
+// pre-hashed url_hash artifact-ref directly as the SISMEMBER lookup
+// key, with no re-hashing. Same storage key shape as a `url` ref
+// hashed via tmproto.HashURL, so both flow into the same Valkey set.
+func TestContext_URLBlocklist_AcceptsURLHashArtifactRef(t *testing.T) {
+	urlHash := tmproto.HashURL("https://oakwood.example/article")
+	storage := contextstorage.NewInMemory().
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-family", URLBlocklist: true}).
+		WithURLBlocked("pkg-family", urlHash)
+
+	engine := newEngine(t, storage)
+	// Publisher sends the hash directly via ArtifactRefTypeURLHash.
+	// The engine MUST treat the wire value as the storage key with
+	// no further hashing.
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID:    "r",
+		PropertyRID:  "10",
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURLHash, Value: urlHash}},
+		PackageIDs:   []string{"pkg-family"},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "pre-hashed url_hash artifact-ref must hit the same blocklist a hashed url ref would")
+}
+
 func TestContext_URLBlocklist(t *testing.T) {
-	urlHash := targeting.HashURL("article:bad")
+	urlHash := tmproto.HashURL("article:bad")
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-family", URLBlocklist: true}).
 		WithURLBlocked("pkg-family", urlHash)
@@ -323,7 +348,7 @@ func TestContext_URLBlocklist(t *testing.T) {
 func TestContext_URLAllowlist(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-curated", URLAllowlist: true}).
-		WithURLAllowed("pkg-curated", targeting.HashURL("article:safe"))
+		WithURLAllowed("pkg-curated", tmproto.HashURL("article:safe"))
 
 	engine := newEngine(t, storage)
 

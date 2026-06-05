@@ -43,7 +43,7 @@ func recoverMiddleware(next http.Handler, recorder Recorder, logger *slog.Logger
 			logger.Error("handler panic",
 				"path", r.URL.Path,
 				"method", r.Method,
-				"request_id", requestIDFromRequest(r),
+				"request_id", tmproto.SafeRequestIDForEcho(requestIDFromRequest(r)),
 				"error", fmt.Sprintf("%v", rec),
 				"stack", string(debug.Stack()),
 			)
@@ -72,13 +72,19 @@ var panicResponseBody = func() []byte {
 // middleware) can read it without re-parsing headers.
 type requestIDContextKey struct{}
 
-// requestIDMiddleware reads X-Request-ID from the inbound request, echoes
-// it on the response, and stamps it onto r.Context() under
-// requestIDContextKey{}. An empty/missing header is left as the empty
-// string — the agent does not synthesize an ID, which is the buyer's job.
+// requestIDMiddleware reads X-Request-ID from the inbound request,
+// validates it through the same allowlist body-field request_ids
+// must pass (validateSafeID via SafeRequestIDForEcho), echoes the
+// sanitized value on the response, and stamps it onto r.Context()
+// under requestIDContextKey{}. An empty / missing / unsafe header is
+// dropped — both the echo and the context value are blank — so a
+// malicious caller cannot smuggle control bytes (NUL / BEL / ESC /
+// CSI / DEL) past the agent into operator logs or downstream
+// services that re-echo the value. The agent does not synthesize a
+// substitute ID; assigning one is the buyer's job.
 func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get(requestIDHeader)
+		id := tmproto.SafeRequestIDForEcho(r.Header.Get(requestIDHeader))
 		if id != "" {
 			w.Header().Set(requestIDHeader, id)
 			r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, id))
@@ -87,15 +93,19 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// requestIDFromRequest returns the X-Request-ID stamped onto r.Context() by
-// requestIDMiddleware, falling back to the inbound header for callers that
-// run before the middleware (e.g. recoverMiddleware in some compositions).
-// Returns "" when no ID is available.
+// requestIDFromRequest returns the X-Request-ID stamped onto
+// r.Context() by requestIDMiddleware, falling back to the raw inbound
+// header for callers that run before the middleware (e.g.
+// recoverMiddleware in some compositions). Returns "" when no ID is
+// available or the available value fails SafeRequestIDForEcho — the
+// fallback path is sanitized so a panicking handler whose chain
+// hasn't reached the requestID middleware yet still cannot inject
+// control bytes into the panic log.
 func requestIDFromRequest(r *http.Request) string {
 	if v, ok := r.Context().Value(requestIDContextKey{}).(string); ok && v != "" {
 		return v
 	}
-	return r.Header.Get(requestIDHeader)
+	return tmproto.SafeRequestIDForEcho(r.Header.Get(requestIDHeader))
 }
 
 // contentTypeMiddleware rejects any /identity request whose Content-Type is
