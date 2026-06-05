@@ -2,6 +2,7 @@ package contextagent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -83,8 +84,16 @@ func (s *storage) IsGeoSuppressed(ctx context.Context, providerID, country strin
 }
 
 func (s *storage) SignalMGet(ctx context.Context, keys ...string) ([]string, error) {
-	if s.signals == nil || len(keys) == 0 {
+	if len(keys) == 0 {
 		return nil, nil
+	}
+	if s.signals == nil {
+		// No signal store wired but a profile produced keys to fetch.
+		// Returning (nil, nil) would let DecodeValues yield an empty map
+		// and a none_of-only profile would pass vacuously — fail-open on
+		// a brand-safety gate. Surface an error so the engine fails the
+		// package closed, matching buildStorage's documented contract.
+		return nil, errors.New("contextagent: signal store not configured")
 	}
 	return s.signals.MGet(ctx, keys...)
 }

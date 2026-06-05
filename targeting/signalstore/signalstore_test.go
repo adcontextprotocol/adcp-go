@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -351,5 +352,59 @@ func TestAllowedKeyTypes_StableSet(t *testing.T) {
 func TestMaxKeysPerCfgExposed(t *testing.T) {
 	if MaxKeysPerCfg() <= 0 {
 		t.Fatalf("MaxKeysPerCfg must be positive, got %d", MaxKeysPerCfg())
+	}
+}
+
+func TestProfileValidate_RejectsTooManyCfgs(t *testing.T) {
+	ok := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
+	p := &Profile{}
+	for i := 0; i < maxCfgsPerProfile+1; i++ {
+		p.AnyOf = append(p.AnyOf, ok)
+	}
+	err := p.Validate()
+	if !errors.Is(err, ErrCfgUnsafe) {
+		t.Fatalf("expected ErrCfgUnsafe for oversized profile, got %v", err)
+	}
+}
+
+func TestProfileValidate_AllowsMaxCfgs(t *testing.T) {
+	ok := Cfg{SignalOwnerID: 1, KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
+	p := &Profile{}
+	for i := 0; i < maxCfgsPerProfile; i++ {
+		p.AnyOf = append(p.AnyOf, ok)
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatalf("profile at the cfg limit must validate, got %v", err)
+	}
+}
+
+func TestPlanLookup_RequestWideCapFailsClosed(t *testing.T) {
+	// Each cfg expands to ~32 keys (1 url_hash value would be 1; use a
+	// value set per dimension to multiply). Spread enough distinct cfgs
+	// across owners so the deduped plan crosses maxKeysPerPlan.
+	data := LookupData{KeyTypeURLHash: make([]string, 64), KeyTypeCountry: make([]string, 64)}
+	for i := 0; i < 64; i++ {
+		data[KeyTypeURLHash][i] = "h" + strconv.Itoa(i)
+		data[KeyTypeCountry][i] = "c" + strconv.Itoa(i)
+	}
+	// 64*64 = 4096 keys per cfg (right at maxKeysPerCfg). Distinct owner
+	// per cfg keeps keys un-deduped, so 17 cfgs > 65536 keys.
+	profiles := make([]*Profile, 0, 32)
+	for owner := uint64(0); owner < 32; owner++ {
+		profiles = append(profiles, &Profile{AnyOf: []Cfg{{
+			SignalOwnerID: owner,
+			KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},
+			SignalID:      "x",
+		}}})
+	}
+	_, err := PlanLookup(profiles, data)
+	if !errors.Is(err, ErrCfgUnsafe) {
+		t.Fatalf("expected ErrCfgUnsafe when the request-wide plan exceeds the cap, got %v", err)
+	}
+}
+
+func TestMaxKeysPerPlanExposed(t *testing.T) {
+	if MaxKeysPerPlan() < MaxKeysPerCfg() {
+		t.Fatalf("MaxKeysPerPlan (%d) should be >= MaxKeysPerCfg (%d)", MaxKeysPerPlan(), MaxKeysPerCfg())
 	}
 }

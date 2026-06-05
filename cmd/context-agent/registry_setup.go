@@ -87,6 +87,15 @@ func buildRegistry(ctx context.Context, cfg registryConfig, logger *slog.Logger)
 		return nil, fmt.Errorf("unsupported registry backend %q", cfg.Backend)
 	}
 
+	// A file-backed cursor overrides the backend's own cursor store.
+	// With the memory backend (no persistent index) this means a
+	// restart resumes from the saved cursor against an EMPTY index and
+	// catches up incrementally from there, rather than re-bootstrapping
+	// the full feed — the index only holds entities the feed emits
+	// after the resumed cursor. Pair a file cursor with the redis
+	// backend (which persists the index too) when a true warm resume is
+	// wanted; the memory + file-cursor combination is for resuming a
+	// feed position without paying for a persistent index.
 	if cfg.CursorPath != "" {
 		cursorStore = registry.NewFileCursorStore(cfg.CursorPath)
 	}
@@ -150,18 +159,23 @@ func (b *registryBundle) runSyncer(ctx context.Context) {
 	defer close(b.syncDone)
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("registry sync goroutine panic: %v\n%s", r, debug.Stack())
-			b.logger.Error("registry sync goroutine panicked",
-				"recover", r,
-				"stack", string(debug.Stack()),
-			)
+			stack := debug.Stack()
+			err := fmt.Errorf("registry sync goroutine panic: %v\n%s", r, stack)
+			if b.logger != nil {
+				b.logger.Error("registry sync goroutine panicked",
+					"recover", r,
+					"stack", string(stack),
+				)
+			}
 			b.syncErr.Store(&err)
 		}
 	}()
 
 	err := b.syncer.Run(ctx)
 	if err != nil && !errors.Is(err, context.Canceled) {
-		b.logger.Error("registry sync loop exited", "error", err)
+		if b.logger != nil {
+			b.logger.Error("registry sync loop exited", "error", err)
+		}
 		b.syncErr.Store(&err)
 	}
 }

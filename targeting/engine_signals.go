@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
@@ -93,7 +94,18 @@ func (e *ContextEngine) extractSignalLookupData(req *tmproto.ContextMatchRequest
 // appendUnique adds v to data[kt] iff it is not already present.
 // Deduplication keeps cartesian expansion bounded when the request
 // repeats the same value across multiple artifact_refs.
+//
+// Values containing the reserved ',' separator are dropped: the
+// signal:* key encodes the value tuple comma-joined (see
+// signalstore.Key), so a request value carrying a comma could shift the
+// parse and shadow a legitimately-written compound-tuple key. The
+// writer uses the same Key() encoding and so could never have written a
+// key for a comma-bearing value anyway, making the drop a no-op for any
+// value that could legitimately match.
 func appendUnique(data signalstore.LookupData, kt signalstore.KeyType, v string) {
+	if strings.ContainsRune(v, ',') {
+		return
+	}
 	for _, existing := range data[kt] {
 		if existing == v {
 			return

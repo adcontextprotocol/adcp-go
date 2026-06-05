@@ -135,11 +135,22 @@ type Profile struct {
 	NoneOf []Cfg `json:"none_of,omitempty"`
 }
 
+// maxCfgsPerProfile bounds how many cfgs one package's profile may
+// carry across any_of + none_of combined. A profile is operator/
+// writer-supplied config, not request data, so the ceiling is generous;
+// it exists so a single malformed config cannot drive an unbounded
+// cartesian at request time.
+const maxCfgsPerProfile = 256
+
 // Validate runs Cfg.Validate over every entry so a single misconfigured
-// cfg surfaces with location context.
+// cfg surfaces with location context, and rejects profiles that exceed
+// maxCfgsPerProfile.
 func (p *Profile) Validate() error {
 	if p == nil {
 		return nil
+	}
+	if n := len(p.AnyOf) + len(p.NoneOf); n > maxCfgsPerProfile {
+		return fmt.Errorf("profile has %d cfgs, exceeds %d: %w", n, maxCfgsPerProfile, ErrCfgUnsafe)
 	}
 	for i, c := range p.AnyOf {
 		if err := c.Validate(); err != nil {
@@ -322,47 +333,57 @@ func (p *Profile) MatchProfile(data LookupData, fetched map[string][]string) (bo
 	return false, nil
 }
 
+// maxKeysPerPlan bounds the total deduped keys one request's MGet may
+// span across every candidate package's profile. maxKeysPerCfg already
+// caps a single cfg, but N candidate packages each expanding near the
+// per-cfg cap could otherwise plan an unbounded fan-out; this is the
+// request-wide backstop. A plan that exceeds it fails closed with
+// ErrCfgUnsafe so the engine drops every package with a profile.
+const maxKeysPerPlan = 65536
+
+// MaxKeysPerPlan returns the request-wide key-plan limit.
+func MaxKeysPerPlan() int { return maxKeysPerPlan }
+
 // PlanLookup walks every profile, expands its cfgs against data, and
 // returns the deduped list of keys to MGet. An ErrCfgUnsafe from any
-// cfg's ExpandKeys aborts the plan and returns (nil, err); the
-// engine then fails-closed for every candidate with a non-empty
-// profile (matching the engine's pattern on Valkey errors elsewhere
-// in the request path).
+// cfg's ExpandKeys — or a deduped key count exceeding maxKeysPerPlan —
+// aborts the plan and returns (nil, err); the engine then fails-closed
+// for every candidate with a non-empty profile (matching the engine's
+// pattern on Valkey errors elsewhere in the request path).
 func PlanLookup(profiles []*Profile, data LookupData) ([]string, error) {
 	if len(profiles) == 0 || len(data) == 0 {
 		return nil, nil
 	}
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 8)
+	add := func(cfgs []Cfg) error {
+		for _, c := range cfgs {
+			keys, err := c.ExpandKeys(data)
+			if err != nil {
+				return err
+			}
+			for _, k := range keys {
+				if _, dup := seen[k]; dup {
+					continue
+				}
+				seen[k] = struct{}{}
+				out = append(out, k)
+				if len(out) > maxKeysPerPlan {
+					return fmt.Errorf("plan exceeds %d keys: %w", maxKeysPerPlan, ErrCfgUnsafe)
+				}
+			}
+		}
+		return nil
+	}
 	for _, p := range profiles {
 		if p.IsEmpty() {
 			continue
 		}
-		for _, c := range p.AnyOf {
-			keys, err := c.ExpandKeys(data)
-			if err != nil {
-				return nil, err
-			}
-			for _, k := range keys {
-				if _, dup := seen[k]; dup {
-					continue
-				}
-				seen[k] = struct{}{}
-				out = append(out, k)
-			}
+		if err := add(p.AnyOf); err != nil {
+			return nil, err
 		}
-		for _, c := range p.NoneOf {
-			keys, err := c.ExpandKeys(data)
-			if err != nil {
-				return nil, err
-			}
-			for _, k := range keys {
-				if _, dup := seen[k]; dup {
-					continue
-				}
-				seen[k] = struct{}{}
-				out = append(out, k)
-			}
+		if err := add(p.NoneOf); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil

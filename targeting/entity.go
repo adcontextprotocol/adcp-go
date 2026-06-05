@@ -29,6 +29,15 @@ type PackageContextConfig struct {
 	// targeting. Nil or empty profile passes vacuously. Restricted to
 	// context attributes — see signalstore.AllowedKeyTypes;
 	// identity-keyed cfgs are rejected by signalstore.Profile.Validate.
+	//
+	// Topic cfgs key on a namespaced value, NOT the bare topic id: the
+	// engine prefixes each topic with its taxonomy as
+	// "{taxonomy_source}:{taxonomy_id}:{topic_id}" (the
+	// topicstore.Taxonomy.String() form) so the same topic id under
+	// different taxonomies stays distinct. The spec carries the
+	// taxonomy once on the ContextSignals envelope rather than per
+	// topic, so anyone authoring these cfgs out-of-band MUST apply the
+	// same prefix to a topic cfg's stored signal value.
 	ContextSignals   *signalstore.Profile `json:"context_signals,omitempty"`
 
 	Offers           []OfferConfigJSON  `json:"offers,omitempty"`

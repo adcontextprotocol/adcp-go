@@ -287,6 +287,39 @@ func TestContext_SignalTopicUnacceptedTaxonomyDrops(t *testing.T) {
 	assert.Empty(t, resp.Offers, "topics from unaccepted taxonomy must not contribute to signal lookup")
 }
 
+func TestContext_SignalCommaValueDropped(t *testing.T) {
+	// A custom artifact-ref value containing the reserved ',' separator
+	// must not feed the signal lookup — the writer could never have
+	// keyed it (same Key() encoding), so the cfg gets no match data and
+	// the any_of package is skipped rather than risking a shadowed key.
+	cfg := &targeting.PackageContextConfig{
+		PackageID: "pkg-a",
+		ContextSignals: signalProfile(
+			[]signalstore.Cfg{{
+				SignalOwnerID: 7,
+				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCustom},
+				SignalID:      "x",
+			}},
+			nil,
+		),
+	}
+	// Seed the key that WOULD match if the comma value were used verbatim.
+	storage := contextstorage.NewInMemory().
+		WithPackage(cfg).
+		WithSignalValue(
+			signalstore.Key(7, []signalstore.KeyType{signalstore.KeyTypeCustom}, []string{"a,b"}),
+			"x",
+		)
+	engine := newEngine(t, storage)
+
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: signalsTestRID, PackageIDs: []string{"pkg-a"},
+		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeCustom, Value: "a,b"}},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, resp.Offers, "comma-bearing value must be dropped from the lookup, leaving any_of unmatched")
+}
+
 func TestContext_SignalURLHashFromRawURL(t *testing.T) {
 	// `url` artifact refs must project onto KeyTypeURLHash so the
 	// writer (which only keys hashes) is reachable from publishers
