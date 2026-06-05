@@ -314,10 +314,10 @@ func (p *Profile) MatchProfile(data LookupData, fetched map[string][]string) (bo
 	if p.IsEmpty() {
 		return true, nil
 	}
-	for _, c := range p.NoneOf {
+	for i, c := range p.NoneOf {
 		matched, err := c.Matches(data, fetched)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("none_of[%d] (owner %q): %w", i, c.SignalOwnerID, err)
 		}
 		if matched {
 			return false, nil
@@ -326,10 +326,10 @@ func (p *Profile) MatchProfile(data LookupData, fetched map[string][]string) (bo
 	if len(p.AnyOf) == 0 {
 		return true, nil
 	}
-	for _, c := range p.AnyOf {
+	for i, c := range p.AnyOf {
 		matched, err := c.Matches(data, fetched)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("any_of[%d] (owner %q): %w", i, c.SignalOwnerID, err)
 		}
 		if matched {
 			return true, nil
@@ -350,11 +350,20 @@ const maxKeysPerPlan = 65536
 func MaxKeysPerPlan() int { return maxKeysPerPlan }
 
 // PlanLookup walks every profile, expands its cfgs against data, and
-// returns the deduped list of keys to MGet. An ErrCfgUnsafe from any
-// cfg's ExpandKeys — or a deduped key count exceeding maxKeysPerPlan —
-// aborts the plan and returns (nil, err); the engine then fails-closed
-// for every candidate with a non-empty profile (matching the engine's
-// pattern on Valkey errors elsewhere in the request path).
+// returns the deduped list of keys to MGet.
+//
+// Per-cfg isolation: a cfg whose ExpandKeys returns ErrCfgUnsafe (a
+// disallowed key type or a per-cfg cartesian cap trip) is skipped here
+// rather than aborting the whole plan — a single malformed cfg in one
+// package must not blackhole every signal-gated package in the
+// request. The package owning the bad cfg still fails closed
+// independently at match time, when MatchProfile re-runs ExpandKeys
+// and surfaces the error for just that package.
+//
+// The one hard abort is the request-wide cap: if the deduped key count
+// exceeds maxKeysPerPlan, PlanLookup returns (nil, ErrCfgUnsafe) and
+// the engine fails closed for every candidate with a profile. That is
+// a request-level DoS backstop, not attributable to a single package.
 func PlanLookup(profiles []*Profile, data LookupData) ([]string, error) {
 	if len(profiles) == 0 || len(data) == 0 {
 		return nil, nil
@@ -365,7 +374,9 @@ func PlanLookup(profiles []*Profile, data LookupData) ([]string, error) {
 		for _, c := range cfgs {
 			keys, err := c.ExpandKeys(data)
 			if err != nil {
-				return err
+				// Skip the unsafe cfg; its package fails closed at
+				// match time via MatchProfile. Do not abort the plan.
+				continue
 			}
 			for _, k := range keys {
 				if _, dup := seen[k]; dup {

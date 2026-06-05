@@ -139,6 +139,50 @@ func TestContext_SignalInvalidKeyType_FailsClosed(t *testing.T) {
 	assert.Empty(t, resp.Offers, "invalid key_type in profile must fail-closed for the package")
 }
 
+func TestContext_SignalUnsafeCfgIsolatedToItsPackage(t *testing.T) {
+	// One package carries a profile with a disallowed (identity) key
+	// type; another package is well-formed. The bad package must fail
+	// closed WITHOUT blackholing the good one — per-package isolation.
+	badPkg := &targeting.PackageContextConfig{
+		PackageID: "pkg-bad",
+		ContextSignals: signalProfile(
+			[]signalstore.Cfg{{
+				SignalOwnerID: "1",
+				KeyTypes:      []signalstore.KeyType{"eid"}, // identity, rejected
+				SignalID:      "audience-x",
+			}},
+			nil,
+		),
+	}
+	goodPkg := &targeting.PackageContextConfig{
+		PackageID: "pkg-good",
+		ContextSignals: signalProfile(
+			[]signalstore.Cfg{{
+				SignalOwnerID: "7",
+				KeyTypes:      []signalstore.KeyType{signalstore.KeyTypeCountry},
+				SignalID:      "us-traffic",
+			}},
+			nil,
+		),
+	}
+	storage := contextstorage.NewInMemory().
+		WithPackage(badPkg).
+		WithPackage(goodPkg).
+		WithSignalValue(
+			signalstore.Key("7", []signalstore.KeyType{signalstore.KeyTypeCountry}, []string{"US"}),
+			"us-traffic",
+		)
+	engine := newEngine(t, storage)
+
+	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+		RequestID: "r", PropertyRID: signalsTestRID,
+		PackageIDs: []string{"pkg-bad", "pkg-good"},
+		Geo:        map[string]any{"country": "US"},
+	})
+	require.NoError(t, err)
+	require.Len(t, resp.Offers, 1, "the well-formed package must still serve despite the sibling's unsafe cfg")
+}
+
 func TestContext_SignalDedupAcrossPackages(t *testing.T) {
 	// Two packages target the same (owner, key_type, value, signal_id).
 	// Only one MGet should be issued, both packages should pass.

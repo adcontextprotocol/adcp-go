@@ -295,13 +295,39 @@ func TestPlanLookup_DedupsAcrossPackages(t *testing.T) {
 	}
 }
 
-func TestPlanLookup_PropagatesCfgError(t *testing.T) {
+func TestPlanLookup_SkipsUnsafeCfgInsteadOfAborting(t *testing.T) {
+	// A bad cfg (disallowed key type) in one package must NOT abort the
+	// whole plan — its keys are skipped so the safe cfg's keys still
+	// get planned. Per-package fail-closed is handled at match time by
+	// MatchProfile, verified at the engine level.
 	bad := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyType("eid")}, SignalID: "x"}
-	good := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us"}
-	p := &Profile{AnyOf: []Cfg{good, bad}}
-	_, err := PlanLookup([]*Profile{p}, LookupData{KeyTypeCountry: {"US"}, KeyType("eid"): {"v"}})
+	good := Cfg{SignalOwnerID: "2", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us"}
+	badProfile := &Profile{AnyOf: []Cfg{bad}}
+	goodProfile := &Profile{AnyOf: []Cfg{good}}
+
+	keys, err := PlanLookup([]*Profile{badProfile, goodProfile}, LookupData{KeyTypeCountry: {"US"}, KeyType("eid"): {"v"}})
+	if err != nil {
+		t.Fatalf("a single unsafe cfg must not abort the plan, got %v", err)
+	}
+	want := Key("2", []KeyType{KeyTypeCountry}, []string{"US"})
+	if len(keys) != 1 || keys[0] != want {
+		t.Fatalf("expected only the safe cfg's key %q, got %v", want, keys)
+	}
+}
+
+func TestMatchProfile_UnsafeCfgErrorNamesOwnerAndIndex(t *testing.T) {
+	// The match-time error must identify the offending cfg so the engine
+	// log pinpoints it. Owner "99" at any_of[1].
+	p := &Profile{AnyOf: []Cfg{
+		{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "ok"},
+		{SignalOwnerID: "99", KeyTypes: []KeyType{KeyType("eid")}, SignalID: "bad"},
+	}}
+	_, err := p.MatchProfile(LookupData{KeyTypeCountry: {"US"}, KeyType("eid"): {"v"}}, map[string][]string{})
 	if !errors.Is(err, ErrCfgUnsafe) {
-		t.Fatalf("expected ErrCfgUnsafe to propagate from PlanLookup, got %v", err)
+		t.Fatalf("expected ErrCfgUnsafe, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `any_of[1]`) || !strings.Contains(err.Error(), `owner "99"`) {
+		t.Fatalf("error must name the offending index and owner, got %v", err)
 	}
 }
 
