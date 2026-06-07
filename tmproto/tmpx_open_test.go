@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ecdh"
 	"crypto/rand"
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -51,16 +52,49 @@ func TestOpenTamperFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SealTmpx: %v", err)
 	}
-	b := []byte(wire)
-	last := len(b) - 1
-	if b[last] == 'A' {
-		b[last] = 'B'
-	} else {
-		b[last] = 'A'
+	dot := strings.IndexByte(wire, '.')
+	payload, err := base64.RawURLEncoding.DecodeString(wire[dot+1:])
+	if err != nil {
+		t.Fatalf("decode sealed payload: %v", err)
 	}
-	if _, _, err := OpenTmpx(skR, nil, string(b)); err == nil {
+	payload[len(payload)-1] ^= 0x01
+	tampered := wire[:dot+1] + base64.RawURLEncoding.EncodeToString(payload)
+	if _, _, err := OpenTmpx(skR, nil, tampered); err == nil {
 		t.Fatal("expected Open to fail on tampered ciphertext, got nil error")
 	}
+}
+
+// TestOpenRejectsNonCanonicalBase64 confirms Open rejects alternate raw
+// base64url spellings that decode to the same bytes under Go's non-strict
+// decoder. The final quantum can carry unused low bits; accepting those would
+// allow multiple wire strings for one TMPX token.
+func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
+	skR := newX25519(t)
+	wire, err := SealTmpx(TmpxRecipient{Kid: "k1", PublicKey: skR.PublicKey()}, nil, []byte("hello"))
+	if err != nil {
+		t.Fatalf("SealTmpx: %v", err)
+	}
+	dot := strings.IndexByte(wire, '.')
+	wantPayload, err := base64.RawURLEncoding.DecodeString(wire[dot+1:])
+	if err != nil {
+		t.Fatalf("decode sealed payload: %v", err)
+	}
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	for _, c := range alphabet {
+		alias := wire[:len(wire)-1] + string(c)
+		if alias == wire {
+			continue
+		}
+		gotPayload, err := base64.RawURLEncoding.DecodeString(alias[dot+1:])
+		if err != nil || !bytes.Equal(gotPayload, wantPayload) {
+			continue
+		}
+		if _, _, err := OpenTmpx(skR, nil, alias); err == nil {
+			t.Fatal("expected Open to reject non-canonical base64url payload, got nil error")
+		}
+		return
+	}
+	t.Fatal("test setup did not find a non-canonical base64url alias")
 }
 
 // TestOpenWrongKeyFails confirms Open fails under a different recipient key.

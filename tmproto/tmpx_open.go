@@ -37,7 +37,7 @@ func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte,
 		return nil, "", errors.New("tmproto: tmpx wire string missing valid kid prefix")
 	}
 	kid = wire[:dot]
-	payload, err := base64.RawURLEncoding.DecodeString(wire[dot+1:])
+	payload, err := base64.RawURLEncoding.Strict().DecodeString(wire[dot+1:])
 	if err != nil {
 		return nil, "", fmt.Errorf("tmproto: tmpx base64url decode: %w", err)
 	}
