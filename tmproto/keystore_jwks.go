@@ -231,6 +231,12 @@ func parseJWKS(b []byte, logger *slog.Logger) (map[string]*SigningKey, *encRecip
 			}
 			signing[k.Kid] = &k
 		case adcpUseTmpxEncrypt:
+			if err := validateTmpxKid(k.Kid); err != nil {
+				if logger != nil {
+					logger.Warn("jwks encryption key skipped", "kid", k.Kid, "error", err)
+				}
+				continue
+			}
 			pk, err := decodeX25519FromJWK(&k)
 			if err != nil {
 				if logger != nil {

@@ -176,14 +176,33 @@ func TmpxWireSize(kidLen, entriesBytes int) int {
 
 func isASCIIUpper(b byte) bool { return b >= 'A' && b <= 'Z' }
 
+func validateTmpxKid(kid string) error {
+	if len(kid) == 0 || len(kid) > TmpxMaxKidLen {
+		return errors.New("tmproto: tmpx kid must be 1..8 URL-safe chars")
+	}
+	for i := 0; i < len(kid); i++ {
+		if !isTmpxKidChar(kid[i]) {
+			return errors.New("tmproto: tmpx kid must be 1..8 URL-safe chars")
+		}
+	}
+	return nil
+}
+
+func isTmpxKidChar(b byte) bool {
+	return (b >= 'A' && b <= 'Z') ||
+		(b >= 'a' && b <= 'z') ||
+		(b >= '0' && b <= '9') ||
+		b == '-' || b == '_'
+}
+
 // SealTmpx HPKE-encrypts plaintext under recipient's X25519 public key and
 // returns the wire-format string `kid.b64url(enc||ct)` per spec.
 //
 // info is bound into the HPKE key schedule and is left empty in the spec —
 // callers should pass nil unless the buyer profile defines a value.
 func SealTmpx(recipient TmpxRecipient, info, plaintext []byte) (string, error) {
-	if recipient.Kid == "" || len(recipient.Kid) > TmpxMaxKidLen {
-		return "", errors.New("tmproto: tmpx kid must be 1..8 chars")
+	if err := validateTmpxKid(recipient.Kid); err != nil {
+		return "", err
 	}
 	if recipient.PublicKey == nil {
 		return "", errors.New("tmproto: tmpx recipient public key required")
