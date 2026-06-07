@@ -6,7 +6,8 @@ package tmproto
 //
 // SealTmpx shipped without an in-package Open (round-trip verification used a
 // test-only helper); OpenTmpx promotes that to a usable receiver API for any
-// party that decrypts a TMPX token (e.g. the tracking endpoint, conformance tests).
+// trusted party that decrypts a TMPX token (e.g. buyer-side receiver code and
+// conformance tests).
 
 import (
 	"crypto/ecdh"
@@ -18,13 +19,45 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// OpenTmpx reverses SealTmpx. It parses the wire-format string
+const tmpxMaxPayloadBytes = 32 + TmpxHeaderBytes + 255*(1+48) + chacha20poly1305.Overhead
+
+// TmpxKid returns the kid prefix from a TMPX wire token so receivers can look up
+// the matching X25519 private key before calling OpenTmpx.
+func TmpxKid(wire string) (string, error) {
+	kid, _, err := splitTmpxWire(wire)
+	return kid, err
+}
+
+func splitTmpxWire(wire string) (kid, payload string, err error) {
+	if len(wire) > TmpxMaxWireBytes {
+		return "", "", errors.New("tmproto: tmpx wire string exceeds maximum")
+	}
+	dot := strings.IndexByte(wire, '.')
+	if dot <= 0 || dot > TmpxMaxKidLen {
+		return "", "", errors.New("tmproto: tmpx wire string missing valid kid prefix")
+	}
+	kid = wire[:dot]
+	if err := validateTmpxKid(kid); err != nil {
+		return "", "", errors.New("tmproto: tmpx wire string missing valid kid prefix")
+	}
+	return kid, wire[dot+1:], nil
+}
+
+// OpenTmpx decrypts a TMPX wire token produced by SealTmpx. It parses
 // `kid.b64url_no_pad(enc || ciphertext)`, HPKE-opens it under the recipient's
 // X25519 private key, and returns the recovered plaintext plus the parsed kid.
 //
-// The caller resolves which private key to use from the kid out of band (a
-// keystore lookup); OpenTmpx does not consult a keystore. `info` MUST match the
-// value passed to SealTmpx (nil per the spec default).
+// TMPX uses HPKE mode_base: a successful open proves only that the ciphertext
+// was formed for skR, not that the identity agent created it. Callers MUST
+// authenticate the enclosing request or channel before using the plaintext to
+// mutate exposure, billing, or frequency-cap state. OpenTmpx is safe for
+// trusted internal receivers and conformance tooling; it is not a complete
+// public tracking-endpoint primitive by itself.
+//
+// The caller resolves which private key to use from the kid out of band (for
+// example via TmpxKid and a keystore lookup); OpenTmpx does not consult a
+// keystore. `info` MUST match the value passed to SealTmpx (nil per the spec
+// default).
 func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte, kid string, err error) {
 	if skR == nil {
 		return nil, "", errors.New("tmproto: tmpx recipient private key required")
@@ -32,23 +65,25 @@ func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte,
 	if skR.Curve() != ecdh.X25519() {
 		return nil, "", errors.New("tmproto: tmpx recipient private key must be X25519")
 	}
-	dot := strings.IndexByte(wire, '.')
-	if dot <= 0 || dot > TmpxMaxKidLen {
-		return nil, "", errors.New("tmproto: tmpx wire string missing valid kid prefix")
-	}
-	kid = wire[:dot]
-	payload, err := base64.RawURLEncoding.Strict().DecodeString(wire[dot+1:])
+	kid, payloadText, err := splitTmpxWire(wire)
 	if err != nil {
-		return nil, "", fmt.Errorf("tmproto: tmpx base64url decode: %w", err)
+		return nil, "", err
+	}
+	if base64.RawURLEncoding.DecodedLen(len(payloadText)) > tmpxMaxPayloadBytes {
+		return nil, kid, errors.New("tmproto: tmpx payload too large")
+	}
+	payload, err := base64.RawURLEncoding.Strict().DecodeString(payloadText)
+	if err != nil {
+		return nil, kid, fmt.Errorf("tmproto: tmpx base64url decode: %w", err)
 	}
 	// payload = enc (32-byte X25519 ephemeral public key) || ciphertext+tag.
 	if len(payload) < 32+chacha20poly1305.Overhead {
-		return nil, "", errors.New("tmproto: tmpx payload too short")
+		return nil, kid, errors.New("tmproto: tmpx payload too short")
 	}
 	enc, ct := payload[:32], payload[32:]
 	pt, err := hpkeOpenBase(skR, enc, info, nil, ct)
 	if err != nil {
-		return nil, "", err
+		return nil, kid, err
 	}
 	return pt, kid, nil
 }

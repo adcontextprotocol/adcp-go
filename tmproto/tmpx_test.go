@@ -277,6 +277,14 @@ func TestSealTmpxKidValidation(t *testing.T) {
 	} else {
 		assertErrorOmits(t, err, "abcdefghi", "9")
 	}
+	for _, kid := range []string{"a.b", "bad kid", "bad/kid"} {
+		rcp.Kid = kid
+		if _, err := SealTmpx(rcp, nil, []byte("x")); err == nil {
+			t.Errorf("kid %q must be rejected", kid)
+		} else {
+			assertErrorOmits(t, err, kid)
+		}
+	}
 }
 
 func TestLabeledExpandRejectsOutOfRangeLengthWithoutEcho(t *testing.T) {

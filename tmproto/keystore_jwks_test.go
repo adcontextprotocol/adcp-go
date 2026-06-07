@@ -85,6 +85,27 @@ func TestJWKSStore_PicksMostRecentEncryptionKeyByIAT(t *testing.T) {
 	}
 }
 
+func TestJWKSStore_SkipsEncryptionKeyWithInvalidTmpxKid(t *testing.T) {
+	enc := mustGenerateEncKey(t)
+	body, _ := json.Marshal(map[string]any{
+		"keys": []map[string]any{
+			{"kid": "bad.kid", "kty": "OKP", "crv": "X25519", "x": enc.b64x, "use": "enc", "alg": JWKSAlgEncryptionDHKEMX25519, "adcp_use": "tmpx-encrypt", "iat": 100},
+		},
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	ks := newJWKSStoreOnTestServer(t, srv)
+	if err := ks.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ks.CurrentEncryptionRecipient(); ok {
+		t.Fatal("invalid TMPX encryption kid must be skipped")
+	}
+}
+
 func TestJWKSStore_SkipsKeysWithWrongAlgOrCurve(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"keys": []map[string]any{

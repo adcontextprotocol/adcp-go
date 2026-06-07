@@ -97,6 +97,43 @@ func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
 	t.Fatal("test setup did not find a non-canonical base64url alias")
 }
 
+func TestTmpxKid(t *testing.T) {
+	skR := newX25519(t)
+	wire, err := SealTmpx(TmpxRecipient{Kid: "k1", PublicKey: skR.PublicKey()}, nil, []byte("hello"))
+	if err != nil {
+		t.Fatalf("SealTmpx: %v", err)
+	}
+	kid, err := TmpxKid(wire)
+	if err != nil {
+		t.Fatalf("TmpxKid: %v", err)
+	}
+	if kid != "k1" {
+		t.Fatalf("kid = %q, want k1", kid)
+	}
+	if _, err := TmpxKid("bad*kid.payload"); err == nil {
+		t.Fatal("expected invalid kid prefix to fail")
+	}
+}
+
+func TestOpenReturnsKidOnPayloadError(t *testing.T) {
+	skR := newX25519(t)
+	_, kid, err := OpenTmpx(skR, nil, "k1.A")
+	if err == nil {
+		t.Fatal("expected base64 error")
+	}
+	if kid != "k1" {
+		t.Fatalf("kid = %q, want k1", kid)
+	}
+}
+
+func TestOpenRejectsOversizedWireBeforeDecode(t *testing.T) {
+	skR := newX25519(t)
+	wire := "k1." + strings.Repeat("A", TmpxMaxWireBytes)
+	if _, _, err := OpenTmpx(skR, nil, wire); err == nil {
+		t.Fatal("expected oversized wire to fail")
+	}
+}
+
 // TestOpenWrongKeyFails confirms Open fails under a different recipient key.
 func TestOpenWrongKeyFails(t *testing.T) {
 	skR := newX25519(t)
