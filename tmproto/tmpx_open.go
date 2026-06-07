@@ -1,0 +1,133 @@
+package tmproto
+
+// tmpx_open.go is the receiver side of TMPX: it reverses SealTmpx. The buyer
+// cluster master holds the X25519 recipient private key and opens the token to
+// recover the resolved identity tokens for impression-time frequency state.
+//
+// SealTmpx shipped without an in-package Open (round-trip verification used a
+// test-only helper); OpenTmpx promotes that to a usable receiver API for any
+// party that decrypts a TMPX token (e.g. the tracking endpoint, conformance tests).
+
+import (
+	"crypto/ecdh"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"strings"
+
+	"golang.org/x/crypto/chacha20poly1305"
+)
+
+// OpenTmpx reverses SealTmpx. It parses the wire-format string
+// `kid.b64url_no_pad(enc || ciphertext)`, HPKE-opens it under the recipient's
+// X25519 private key, and returns the recovered plaintext plus the parsed kid.
+//
+// The caller resolves which private key to use from the kid out of band (a
+// keystore lookup); OpenTmpx does not consult a keystore. `info` MUST match the
+// value passed to SealTmpx (nil per the spec default).
+func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte, kid string, err error) {
+	if skR == nil {
+		return nil, "", errors.New("tmproto: tmpx recipient private key required")
+	}
+	if skR.Curve() != ecdh.X25519() {
+		return nil, "", errors.New("tmproto: tmpx recipient private key must be X25519")
+	}
+	dot := strings.IndexByte(wire, '.')
+	if dot <= 0 || dot > TmpxMaxKidLen {
+		return nil, "", errors.New("tmproto: tmpx wire string missing valid kid prefix")
+	}
+	kid = wire[:dot]
+	payload, err := base64.RawURLEncoding.DecodeString(wire[dot+1:])
+	if err != nil {
+		return nil, "", fmt.Errorf("tmproto: tmpx base64url decode: %w", err)
+	}
+	// payload = enc (32-byte X25519 ephemeral public key) || ciphertext+tag.
+	if len(payload) < 32+chacha20poly1305.Overhead {
+		return nil, "", errors.New("tmproto: tmpx payload too short")
+	}
+	enc, ct := payload[:32], payload[32:]
+	pt, err := hpkeOpenBase(skR, enc, info, nil, ct)
+	if err != nil {
+		return nil, "", err
+	}
+	return pt, kid, nil
+}
+
+// hpkeOpenBase is the inverse of hpkeSealBase: single-shot HPKE Open in
+// mode_base for suite (DHKEM(X25519, HKDF-SHA256), HKDF-SHA256,
+// ChaCha20-Poly1305). enc is the 32-byte encapsulated KEM key (sender's
+// ephemeral X25519 public key); ct is the AEAD ciphertext+tag.
+func hpkeOpenBase(skR *ecdh.PrivateKey, enc, info, aad, ct []byte) ([]byte, error) {
+	pkE, err := ecdh.X25519().NewPublicKey(enc)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: hpke open: parse enc: %w", err)
+	}
+
+	// DHKEM Decap: dh = DH(skR, pkE); kem_context = enc || pkRm (same byte
+	// order the sender used in Encap).
+	dh, err := skR.ECDH(pkE)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: hpke open: ecdh: %w", err)
+	}
+	pkRBytes := skR.PublicKey().Bytes()
+
+	suiteID := buildHPKESuiteID(hpkeKEMX25519HKDFSHA256, hpkeKDFHKDFSHA256, hpkeAEADChaCha20Poly)
+	kemSuiteID := buildHPKEKEMSuiteID(hpkeKEMX25519HKDFSHA256)
+
+	kemContext := make([]byte, 0, len(enc)+len(pkRBytes))
+	kemContext = append(kemContext, enc...)
+	kemContext = append(kemContext, pkRBytes...)
+	sharedSecret, err := dhkemExtractAndExpand(dh, kemContext, kemSuiteID, hpkeNh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Key schedule (mode_base: empty psk / psk_id) — identical to Seal.
+	pskIDHash, err := labeledExtract(nil, []byte("psk_id_hash"), nil, suiteID)
+	if err != nil {
+		return nil, err
+	}
+	infoHash, err := labeledExtract(nil, []byte("info_hash"), info, suiteID)
+	if err != nil {
+		return nil, err
+	}
+	keyScheduleContext := make([]byte, 0, 1+len(pskIDHash)+len(infoHash))
+	keyScheduleContext = append(keyScheduleContext, hpkeModeBase)
+	keyScheduleContext = append(keyScheduleContext, pskIDHash...)
+	keyScheduleContext = append(keyScheduleContext, infoHash...)
+
+	secret, err := labeledExtract(sharedSecret, []byte("secret"), nil, suiteID)
+	if err != nil {
+		return nil, err
+	}
+	key, err := labeledExpand(secret, []byte("key"), keyScheduleContext, hpkeNk, suiteID)
+	if err != nil {
+		return nil, err
+	}
+	baseNonce, err := labeledExpand(secret, []byte("base_nonce"), keyScheduleContext, hpkeNn, suiteID)
+	if err != nil {
+		return nil, err
+	}
+
+	aead, err := chacha20poly1305.New(key)
+	if err != nil {
+		return nil, err
+	}
+	// Single-shot: sequence number 0, so the per-message nonce equals base_nonce.
+	pt, err := aead.Open(nil, baseNonce, ct, aad)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: hpke open (auth/decrypt failed): %w", err)
+	}
+	return pt, nil
+}
+
+// LoadX25519PrivateKey parses 32 raw bytes into an ecdh.PrivateKey — the
+// receiver-side mirror of LoadX25519PublicKey, used to load the recipient key a
+// kid maps to.
+func LoadX25519PrivateKey(b []byte) (*ecdh.PrivateKey, error) {
+	sk, err := ecdh.X25519().NewPrivateKey(b)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: parse X25519 private key: %w", err)
+	}
+	return sk, nil
+}

@@ -12,64 +12,7 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/crypto/chacha20poly1305"
 )
-
-// hpkeOpenBase is a test-only HPKE Open in mode_base for the TMPX cipher
-// suite — used for roundtrip verification. Mirrors hpkeSealBase but recipient
-// uses skR with the encapsulated pkE.
-func hpkeOpenBase(skR *ecdh.PrivateKey, enc, info, aad, ct []byte) ([]byte, error) {
-	pkE, err := ecdh.X25519().NewPublicKey(enc)
-	if err != nil {
-		return nil, err
-	}
-	dh, err := skR.ECDH(pkE)
-	if err != nil {
-		return nil, err
-	}
-
-	pkRBytes := skR.PublicKey().Bytes()
-	suiteID := buildHPKESuiteID(hpkeKEMX25519HKDFSHA256, hpkeKDFHKDFSHA256, hpkeAEADChaCha20Poly)
-	kemSuiteID := buildHPKEKEMSuiteID(hpkeKEMX25519HKDFSHA256)
-
-	kemContext := append([]byte{}, enc...)
-	kemContext = append(kemContext, pkRBytes...)
-	sharedSecret, err := dhkemExtractAndExpand(dh, kemContext, kemSuiteID, hpkeNh)
-	if err != nil {
-		return nil, err
-	}
-
-	pskIDHash, err := labeledExtract(nil, []byte("psk_id_hash"), nil, suiteID)
-	if err != nil {
-		return nil, err
-	}
-	infoHash, err := labeledExtract(nil, []byte("info_hash"), info, suiteID)
-	if err != nil {
-		return nil, err
-	}
-	keyScheduleContext := append([]byte{hpkeModeBase}, pskIDHash...)
-	keyScheduleContext = append(keyScheduleContext, infoHash...)
-
-	secret, err := labeledExtract(sharedSecret, []byte("secret"), nil, suiteID)
-	if err != nil {
-		return nil, err
-	}
-	key, err := labeledExpand(secret, []byte("key"), keyScheduleContext, hpkeNk, suiteID)
-	if err != nil {
-		return nil, err
-	}
-	baseNonce, err := labeledExpand(secret, []byte("base_nonce"), keyScheduleContext, hpkeNn, suiteID)
-	if err != nil {
-		return nil, err
-	}
-
-	aead, err := chacha20poly1305.New(key)
-	if err != nil {
-		return nil, err
-	}
-	return aead.Open(nil, baseNonce, ct, aad)
-}
 
 // TestHPKERFC9180A3Vector validates the implementation against the test
 // vector in RFC 9180 Appendix A.3 (mode_base, KEM=DHKEM(X25519,HKDF-SHA256),
