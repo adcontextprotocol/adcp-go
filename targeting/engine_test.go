@@ -23,7 +23,6 @@ func newEngine(t *testing.T, storage targeting.ContextStorage, opts ...func(*tar
 	t.Helper()
 	cfg := targeting.ContextEngineConfig{
 		ProviderID:         testProviderID,
-		SellerAgentURL:     testSeller,
 		Properties:         targeting.PropertyList{Global: targeting.NewMapBitmap("1", "2", "3", "10", "20", "30")},
 		Storage:            storage,
 		AcceptedTaxonomies: []topicstore.Taxonomy{testTaxonomy},
@@ -89,11 +88,12 @@ func TestContext_ImplicitFallback_ResolvesFromActiveSet(t *testing.T) {
 
 	engine := newEngine(t, storage)
 	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "r",
-		PropertyRID: "10",
-		PropertyID:  "pub-1",
-		PlacementID: "placement-1",
-		Geo:         map[string]any{"country": "US"},
+		RequestID:      "r",
+		PropertyRID:    "10",
+		PropertyID:     "pub-1",
+		PlacementID:    "placement-1",
+		SellerAgentURL: testSeller,
+		Geo:            map[string]any{"country": "US"},
 	})
 	require.NoError(t, err)
 	assert.Len(t, resp.Offers, 2,
@@ -115,12 +115,13 @@ func TestContext_ExplicitPackageIDs_IntersectsWithActiveSet(t *testing.T) {
 
 	engine := newEngine(t, storage)
 	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:   "r",
-		PropertyRID: "10",
-		PropertyID:  "pub-1",
-		PlacementID: "placement-1",
-		Geo:         map[string]any{"country": "US"},
-		PackageIDs:  []string{"pkg-active", "pkg-expired", "pkg-unknown"},
+		RequestID:      "r",
+		PropertyRID:    "10",
+		PropertyID:     "pub-1",
+		PlacementID:    "placement-1",
+		SellerAgentURL: testSeller,
+		Geo:            map[string]any{"country": "US"},
+		PackageIDs:     []string{"pkg-active", "pkg-expired", "pkg-unknown"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Offers, 1,

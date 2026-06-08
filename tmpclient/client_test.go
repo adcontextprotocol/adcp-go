@@ -35,11 +35,12 @@ func TestContextMatch_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	resp, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "ctx-1",
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "top-banner",
-		PackageIDs:   []string{"pkg-1"},
+		RequestID:      "ctx-1",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "top-banner",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-1"},
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.Offers, 1)
@@ -88,11 +89,12 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "err-1",
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
+		RequestID:      "err-1",
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-1"},
 	})
 	require.Error(t, err)
 	var tmpErr *TMPError
@@ -130,10 +132,11 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
-		PropertyID:   "prop-1",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "banner",
-		PackageIDs:   []string{"pkg-1"},
+		PropertyID:     "prop-1",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "banner",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-1"},
 		// RequestID intentionally empty.
 	})
 	require.NoError(t, err)

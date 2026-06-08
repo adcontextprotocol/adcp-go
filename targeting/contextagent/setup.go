@@ -275,7 +275,6 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 	logger.Info("context agent started",
 		"addr", srv.Addr,
 		"version", version,
-		"seller_agent_url", cfg.SellerAgentURL,
 		"provider_id", cfg.ProviderID,
 	)
 
@@ -418,7 +417,6 @@ func buildBundle(ctx context.Context, cfg Config, opts runOptions, recorder Reco
 	}
 	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{
 		ProviderID:         cfg.ProviderID,
-		SellerAgentURL:     cfg.SellerAgentURL,
 		Properties:         targeting.PropertyList{Global: propertyGlobal},
 		Storage:            storage,
 		AcceptedTaxonomies: cfg.AcceptedTaxonomies,

@@ -111,14 +111,15 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	idReqID := c.genRequestID()
 
 	ctxReq := &tmproto.ContextMatchRequest{
-		Type:         tmproto.TypeContextMatchRequest,
-		RequestID:    ctxReqID,
-		PropertyID:   params.PropertyID,
-		PropertyType: params.PropertyType,
-		PlacementID:  params.PlacementID,
-		Geo:          params.Geo,
-		ArtifactRefs: params.ArtifactRefs,
-		PackageIDs:   params.PackageIDs,
+		Type:           tmproto.TypeContextMatchRequest,
+		RequestID:      ctxReqID,
+		PropertyID:     params.PropertyID,
+		PropertyType:   params.PropertyType,
+		PlacementID:    params.PlacementID,
+		SellerAgentURL: params.SellerAgentURL,
+		Geo:            params.Geo,
+		ArtifactRefs:   params.ArtifactRefs,
+		PackageIDs:     params.PackageIDs,
 	}
 
 	idReq := &tmproto.IdentityMatchRequest{

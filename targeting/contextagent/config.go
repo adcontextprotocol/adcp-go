@@ -53,11 +53,6 @@ type Config struct {
 	// suppressionstore) and emitted on logs / metrics.
 	ProviderID string
 
-	// SellerAgentURL is the canonicalized seller_agent_url this
-	// deployment represents. Same byte-for-byte string match as
-	// identityconfig.
-	SellerAgentURL string
-
 	// AcceptedTaxonomies enumerates the topic taxonomies the engine
 	// trusts on inbound ContextSignals and consults on Valkey lookups.
 	// Required: an empty list fails-closed on every TopicTargets
@@ -309,7 +304,6 @@ func LoadConfigFromEnv() (Config, error) {
 		SupportedADCPMajorVersions: supportedVers,
 		LogLevel:                   strings.TrimSpace(os.Getenv("LOG_LEVEL")),
 		ProviderID:                 strings.TrimSpace(os.Getenv("PROVIDER_ID")),
-		SellerAgentURL:             strings.TrimSpace(os.Getenv("SELLER_AGENT_URL")),
 		AcceptedTaxonomies:         taxonomies,
 		PropertyRIDs:               propertyRIDs,
 		SuppressionRefreshInterval: suppressionRefresh,
@@ -358,9 +352,6 @@ func (c Config) Validate() error {
 	}
 	if c.ProviderID == "" {
 		errs = append(errs, errors.New("PROVIDER_ID is required"))
-	}
-	if c.SellerAgentURL == "" {
-		errs = append(errs, errors.New("SELLER_AGENT_URL is required"))
 	}
 	if !c.TMP.AllowUnsigned {
 		if c.TMP.RegistryURL == "" {

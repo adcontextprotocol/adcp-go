@@ -185,6 +185,7 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 		"property_id": "pub-oakwood",
 		"property_type": "website",
 		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"package_ids": ["pkg-1"]
 	}`
 

@@ -30,9 +30,13 @@ type ActivateParams struct {
 	ArtifactRefs []tmproto.ArtifactRef
 	PackageIDs   []string
 
+	// Seller agent endpoint URL; required on both the context-match and
+	// identity-match wire contracts. The provider resolves the active package
+	// set it has synced for this seller against it.
+	SellerAgentURL string
+
 	// Identity match inputs.
-	SellerAgentURL string // Seller agent endpoint URL; required by the identity-match wire contract.
-	UserToken      string
+	UserToken string
 	UIDType        tmproto.UIDType
 	Consent        map[string]any
 	Country        string // ISO 3166-1 alpha-2 routing directive for identity match

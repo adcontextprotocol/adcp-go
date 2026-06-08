@@ -29,12 +29,13 @@ func testRouter(providers []ProviderConfig) *Router {
 
 func TestValidateContextRequest_Valid(t *testing.T) {
 	req := &tmproto.ContextMatchRequest{
-		Type:         tmproto.TypeContextMatchRequest,
-		RequestID:    "ctx-001",
-		PropertyID:   "pub-oakwood",
-		PropertyType: tmproto.PropertyTypeWebsite,
-		PlacementID:  "sidebar-300x250",
-		PackageIDs:   []string{"pkg-1"},
+		Type:           tmproto.TypeContextMatchRequest,
+		RequestID:      "ctx-001",
+		PropertyID:     "pub-oakwood",
+		PropertyType:   tmproto.PropertyTypeWebsite,
+		PlacementID:    "sidebar-300x250",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-1"},
 	}
 	assert.NoError(t, ValidateContextRequest(req))
 }
@@ -178,6 +179,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"package_ids": ["pkg-1"]
 	}`
 
@@ -305,12 +307,13 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	})
 
 	cm := tmproto.ContextMatchRequest{
-		Type:         tmproto.TypeContextMatchRequest,
-		RequestID:    "ctx-strip",
-		PropertyID:   "pub-test",
-		PropertyType: "website",
-		PlacementID:  "main",
-		PackageIDs:   []string{"pkg-1"},
+		Type:           tmproto.TypeContextMatchRequest,
+		RequestID:      "ctx-strip",
+		PropertyID:     "pub-test",
+		PropertyType:   "website",
+		PlacementID:    "main",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-1"},
 		Artifact: &tmproto.Artifact{
 			Assets: tmproto.Assets{
 				func() *tmproto.ImageAsset {
@@ -541,6 +544,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
 		"package_ids": ["pkg-1"]
 	}`
 

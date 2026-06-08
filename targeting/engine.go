@@ -30,11 +30,10 @@ const GeoCountryKey = "country"
 // caching, persistence, and refresh policy live in the storage impl, not
 // here.
 type ContextEngine struct {
-	providerID     string
-	sellerAgentURL string
-	properties     PropertyList
-	storage        ContextStorage
-	now            func() time.Time
+	providerID string
+	properties PropertyList
+	storage    ContextStorage
+	now        func() time.Time
 
 	// acceptedTaxonomies enumerates the topic taxonomies this deployment
 	// trusts. A publisher's ContextSignals.Topics are unioned into the
@@ -59,12 +58,6 @@ type ContextEngineConfig struct {
 	// tmproto.ProviderRegistration.ProviderID). Stable for the engine's
 	// lifetime; rotate by restarting with a new value.
 	ProviderID string
-
-	// SellerAgentURL is the canonicalized seller_agent_url this
-	// deployment represents. Required: the engine passes it to
-	// Storage.ActivePackages on every request so the active-set
-	// resolution is scoped to this deployment's inventory.
-	SellerAgentURL string
 
 	// Properties is the registry-derived global (and optionally
 	// per-package) property bitmap. Requests whose property_rid is not
@@ -115,7 +108,6 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	}
 	return &ContextEngine{
 		providerID:         cfg.ProviderID,
-		sellerAgentURL:     cfg.SellerAgentURL,
 		properties:         cfg.Properties,
 		storage:            cfg.Storage,
 		now:                now,
@@ -227,7 +219,7 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	}
 	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
-	activePkgIDs, err := e.storage.ActivePackages(ctx, e.sellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
+	activePkgIDs, err := e.storage.ActivePackages(ctx, req.SellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
 	if err != nil {
 		// A context timeout here means the request budget is gone;
 		// surface it so the handler returns 504. Any other storage
