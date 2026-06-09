@@ -78,6 +78,132 @@ func TestValidateIdentityRequest(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "duplicate uid_type+user_token rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.Identities = []IdentityToken{
+					{UserToken: "tok", UIDType: UIDTypeUID2},
+					{UserToken: "tok", UIDType: UIDTypeUID2, Attestation: sampleAttestation()},
+				}
+			},
+			wantErr: "duplicates an earlier (uid_type, user_token) pair",
+		},
+		{
+			name: "same token different uid_type accepted",
+			mutate: func(r *IdentityMatchRequest) {
+				r.Identities = []IdentityToken{
+					{UserToken: "tok", UIDType: UIDTypeUID2},
+					{UserToken: "tok", UIDType: UIDTypeID5},
+				}
+			},
+		},
+		{
+			name:   "valid attestation accepted",
+			mutate: func(r *IdentityMatchRequest) { r.Identities[0].Attestation = sampleAttestation() },
+		},
+		{
+			name: "attestation missing issuer rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Issuer = nil
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "attestation.issuer is required",
+		},
+		{
+			name: "attestation missing scheme rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Scheme = ""
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "attestation.scheme is required",
+		},
+		{
+			name: "attestation missing proof rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Proof = nil
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "attestation.proof is required",
+		},
+		{
+			name: "attestation empty claims rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Claims = nil
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "attestation.claims must not be empty",
+		},
+		{
+			name: "attestation too many claims rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Claims = make([]AttestationClaim, MaxAttestationClaims+1)
+				for i := range a.Claims {
+					a.Claims[i] = AttestationClaim("c" + string(rune('a'+i)))
+				}
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "attestation.claims exceeds maximum of 16",
+		},
+		{
+			name: "attestation duplicate claims rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Claims = []AttestationClaim{AttestationClaimUniqueHuman, AttestationClaimUniqueHuman}
+				r.Identities[0].Attestation = a
+			},
+			wantErr: "duplicate",
+		},
+		{
+			name: "attestation unrecognized claim accepted (additive set)",
+			mutate: func(r *IdentityMatchRequest) {
+				a := sampleAttestation()
+				a.Claims = []AttestationClaim{AttestationClaim("age_over_25")}
+				r.Identities[0].Attestation = a
+			},
+		},
+		{
+			name: "too many sealed_credentials rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.SealedCredentials = make([]SealedCredential, MaxSealedCredentials+1)
+				for i := range r.SealedCredentials {
+					r.SealedCredentials[i] = SealedCredential{AudienceKID: "k" + string(rune('a'+i)), Payload: "p"}
+				}
+			},
+			wantErr: "sealed_credentials exceeds maximum of 8",
+		},
+		{
+			name: "sealed_credential missing audience_kid rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.SealedCredentials = []SealedCredential{{Payload: "p"}}
+			},
+			wantErr: "audience_kid is required",
+		},
+		{
+			name: "sealed_credential oversized audience_kid rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.SealedCredentials = []SealedCredential{{AudienceKID: strings.Repeat("a", MaxAudienceKIDLength+1), Payload: "p"}}
+			},
+			wantErr: "audience_kid exceeds",
+		},
+		{
+			name: "sealed_credential missing payload rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.SealedCredentials = []SealedCredential{{AudienceKID: "k1"}}
+			},
+			wantErr: "payload is required",
+		},
+		{
+			name: "sealed_credential oversized payload rejected",
+			mutate: func(r *IdentityMatchRequest) {
+				r.SealedCredentials = []SealedCredential{{AudienceKID: "k1", Payload: strings.Repeat("a", MaxSealedCredentialPayload+1)}}
+			},
+			wantErr: "payload exceeds",
+		},
 	}
 
 	for _, tc := range cases {

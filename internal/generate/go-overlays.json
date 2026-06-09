@@ -42,6 +42,7 @@
     "ContextMatchRequest.artifact_refs": {"type": "[]ArtifactRef"},
     "ContextMatchRequest.context_signals": {"type": "ContextSignals", "pointer": true},
     "IdentityMatchRequest.identities": {"type": "[]IdentityToken"},
+    "IdentityMatchRequest.sealed_credentials": {"type": "[]SealedCredential"},
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
     "ErrorResponse.code": {"type": "ErrorCode"}
