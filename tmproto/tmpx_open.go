@@ -21,15 +21,23 @@ import (
 
 const tmpxMaxPayloadBytes = 32 + TmpxHeaderBytes + 255*(1+48) + chacha20poly1305.Overhead
 
+// TmpxSealedMaxWireBytes bounds a sealed-credential TMPX wire string. The
+// top-level sealed_credentials carrier (network-as-RP / Mechanism B) reuses
+// the TMPX envelope FORMAT but carries an attestation, which the AdCP
+// verified-identity schema caps at 8192 base64 chars — far larger than the
+// identity-token wire budget (TmpxMaxWireBytes, sized for ~3 opaque tokens).
+// Receivers MUST still bound count and size to prevent DoS amplification.
+const TmpxSealedMaxWireBytes = TmpxMaxKidLen + 1 + 8192
+
 // TmpxKid returns the kid prefix from a TMPX wire token so receivers can look up
 // the matching X25519 private key before calling OpenTmpx.
 func TmpxKid(wire string) (string, error) {
-	kid, _, err := splitTmpxWire(wire)
+	kid, _, err := splitTmpxWire(wire, TmpxMaxWireBytes)
 	return kid, err
 }
 
-func splitTmpxWire(wire string) (kid, payload string, err error) {
-	if len(wire) > TmpxMaxWireBytes {
+func splitTmpxWire(wire string, maxWire int) (kid, payload string, err error) {
+	if len(wire) > maxWire {
 		return "", "", errors.New("tmproto: tmpx wire string exceeds maximum")
 	}
 	dot := strings.IndexByte(wire, '.')
@@ -59,13 +67,35 @@ func splitTmpxWire(wire string) (kid, payload string, err error) {
 // keystore. `info` MUST match the value passed to SealTmpx (nil per the spec
 // default).
 func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte, kid string, err error) {
+	return openTmpxWire(skR, info, wire, TmpxMaxWireBytes)
+}
+
+// OpenSealedCredential opens a sealed_credentials entry — an attestation
+// sealed in the TMPX envelope format and addressed to a specific audience_kid.
+// It is identical to OpenTmpx except it permits the larger sealed-credential
+// size budget (TmpxSealedMaxWireBytes) the AdCP verified-identity schema
+// defines, rather than the identity-token wire bound.
+//
+// Like OpenTmpx, a successful open proves only that the ciphertext was sealed
+// to skR — never that the attestation inside is true. Callers MUST verify the
+// attestation (issuer proof, signal_binding freshness, relying_party_id
+// provenance, expiry) before trusting any claim.
+func OpenSealedCredential(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte, kid string, err error) {
+	return openTmpxWire(skR, info, wire, TmpxSealedMaxWireBytes)
+}
+
+// openTmpxWire is the shared TMPX-envelope open, parameterized by the maximum
+// permitted wire length so the identity-token path (OpenTmpx) and the
+// larger sealed-credential path (OpenSealedCredential) share one
+// implementation with distinct size budgets.
+func openTmpxWire(skR *ecdh.PrivateKey, info []byte, wire string, maxWire int) (plaintext []byte, kid string, err error) {
 	if skR == nil {
 		return nil, "", errors.New("tmproto: tmpx recipient private key required")
 	}
 	if skR.Curve() != ecdh.X25519() {
 		return nil, "", errors.New("tmproto: tmpx recipient private key must be X25519")
 	}
-	kid, payloadText, err := splitTmpxWire(wire)
+	kid, payloadText, err := splitTmpxWire(wire, maxWire)
 	if err != nil {
 		return nil, "", err
 	}

@@ -22,11 +22,23 @@ import (
 // Stage labels for the request pipeline. Values are bounded for low
 // cardinality.
 const (
-	StageResolve  = "resolve"
-	StageFCap     = "fcap"
-	StageAudience = "audience"
-	StageRequest  = "request"
-	StageTMPX     = "tmpx"
+	StageResolve          = "resolve"
+	StageFCap             = "fcap"
+	StageAudience         = "audience"
+	StageRequest          = "request"
+	StageTMPX             = "tmpx"
+	StageVerifiedIdentity = "verified_identity"
+)
+
+// Verified-identity drop reasons. Each corresponds to one rejection branch in
+// the verified-identity stage; cardinality is bounded by this constant set
+// plus the targeting.PreCheck* reasons (malformed, no_binding, expired,
+// rp_mismatch) reused as labels. A non-zero verifier_error rate distinguishes
+// "verifier down/misconfigured" from organic absence (no metric ticks).
+const (
+	VIDropOpenFailed    = "open_failed"      // HPKE open / plaintext decode failed
+	VIDropVerifierError = "verifier_error"   // verifier returned an error (treat as absent)
+	VIDropMalformedSeal = "malformed_sealed" // sealed_credentials entry missing audience_kid/payload
 )
 
 // Outcome labels paired with stages. Bounded to a fixed set.
@@ -69,6 +81,12 @@ type Recorder interface {
 	// LiveRamp outage (TmpxDropDecoderError on rampid) or no RampIDs in
 	// inbound traffic (no metric ticks).
 	TmpxIdentityDrop(ctx context.Context, reason, uidType string)
+
+	// VerifiedIdentityDrop records one attestation/sealed-credential dropped
+	// from the verified-identity stage, by reason. A verifier_error rate
+	// makes a down/unwired verifier observable instead of indistinguishable
+	// from organic absence (the spike's silent-degradation blast radius).
+	VerifiedIdentityDrop(ctx context.Context, reason string)
 }
 
 // MetricsProvider wires together a Prometheus registry, an OTEL meter
@@ -207,16 +225,17 @@ func (m *MetricsProvider) RegisterConfigEntriesObserver(observerFn func() int64)
 // Prometheus exporter to surface metrics on the Prometheus registry the
 // /metrics handler reads from.
 type otelRecorder struct {
-	requestStarted    metric.Int64Counter
-	requestDuration   metric.Float64Histogram
-	stageOutcome      metric.Int64Counter
-	stageDuration     metric.Float64Histogram
-	storeError        metric.Int64Counter
-	configRefresh     metric.Int64Counter
-	shutdownPanic     metric.Int64Counter
-	handlerPanic      metric.Int64Counter
-	backgroundPanic   metric.Int64Counter
-	tmpxIdentityDrop  metric.Int64Counter
+	requestStarted       metric.Int64Counter
+	requestDuration      metric.Float64Histogram
+	stageOutcome         metric.Int64Counter
+	stageDuration        metric.Float64Histogram
+	storeError           metric.Int64Counter
+	configRefresh        metric.Int64Counter
+	shutdownPanic        metric.Int64Counter
+	handlerPanic         metric.Int64Counter
+	backgroundPanic      metric.Int64Counter
+	tmpxIdentityDrop     metric.Int64Counter
+	verifiedIdentityDrop metric.Int64Counter
 }
 
 var _ Recorder = (*otelRecorder)(nil)
@@ -272,17 +291,23 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 	if err != nil {
 		return nil, err
 	}
+	verifiedIdentityDrop, err := meter.Int64Counter(
+		fmt.Sprintf("%s_verified_identity_drops_total", namespace))
+	if err != nil {
+		return nil, err
+	}
 	return &otelRecorder{
-		requestStarted:   requestStarted,
-		requestDuration:  requestDuration,
-		stageOutcome:     stageOutcome,
-		stageDuration:    stageDuration,
-		storeError:       storeError,
-		configRefresh:    configRefresh,
-		shutdownPanic:    shutdownPanic,
-		handlerPanic:     handlerPanic,
-		backgroundPanic:  backgroundPanic,
-		tmpxIdentityDrop: tmpxIdentityDrop,
+		requestStarted:       requestStarted,
+		requestDuration:      requestDuration,
+		stageOutcome:         stageOutcome,
+		stageDuration:        stageDuration,
+		storeError:           storeError,
+		configRefresh:        configRefresh,
+		shutdownPanic:        shutdownPanic,
+		handlerPanic:         handlerPanic,
+		backgroundPanic:      backgroundPanic,
+		tmpxIdentityDrop:     tmpxIdentityDrop,
+		verifiedIdentityDrop: verifiedIdentityDrop,
 	}, nil
 }
 
@@ -332,6 +357,10 @@ func (r *otelRecorder) TmpxIdentityDrop(ctx context.Context, reason, uidType str
 	))
 }
 
+func (r *otelRecorder) VerifiedIdentityDrop(ctx context.Context, reason string) {
+	r.verifiedIdentityDrop.Add(ctx, 1, metric.WithAttributes(stringAttr("reason", reason)))
+}
+
 // noopRecorder is used when metrics are disabled or in tests. Every method
 // is a no-op.
 type noopRecorder struct{}
@@ -346,6 +375,7 @@ func (noopRecorder) ShutdownPanic(context.Context)                           {}
 func (noopRecorder) HandlerPanic(context.Context)                            {}
 func (noopRecorder) BackgroundPanic(context.Context, string)                 {}
 func (noopRecorder) TmpxIdentityDrop(context.Context, string, string)        {}
+func (noopRecorder) VerifiedIdentityDrop(context.Context, string)            {}
 
 // targetingMetricsAdapter projects the agent's Recorder onto the
 // targeting.Metrics interface the IdentityEngine wants. The engine emits

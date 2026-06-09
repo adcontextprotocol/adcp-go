@@ -114,5 +114,18 @@ func (r *SegmentRule) Matches(userSegments map[string]struct{}) bool {
 // service.
 type PackageIdentityConfig struct {
 	TargetSegments *SegmentRule
-}
 
+	// RequiresVerifiedIdentity, when true, makes the package ineligible
+	// unless a verified attestation is present for the request (fail-closed).
+	// This is a presence gate only; the required age threshold (if any) is
+	// resolved per (package, geo) through the Service's AgeResolver, not
+	// stored here, so age policy can change without re-publishing package
+	// config.
+	//
+	// The eligibility engine honors this field today. Populating it from the
+	// identityconfig snapshot (a new identityconfig.Entry field + carrying it
+	// through Lookup/GetBySeller, which currently index only *SegmentRule) is
+	// a follow-up; until then the age gate via AgeResolver is the live
+	// verified-identity gate.
+	RequiresVerifiedIdentity bool
+}
