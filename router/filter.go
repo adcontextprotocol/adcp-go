@@ -49,6 +49,43 @@ func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfi
 	return true
 }
 
+// filterIdentitiesForProvider returns the subset of identities whose uid_type
+// the provider declared — minimum-necessary forwarding, so a provider never
+// receives identity tokens for types it cannot resolve. An empty provider
+// UIDTypes list matches anything, so the full set is returned. The result is
+// always a subset of the input: the router never adds, substitutes, or
+// transforms identity tokens.
+func filterIdentitiesForProvider(ids []tmproto.IdentityToken, p *ProviderConfig) []tmproto.IdentityToken {
+	if len(p.UIDTypes) == 0 {
+		return ids
+	}
+	out := make([]tmproto.IdentityToken, 0, len(ids))
+	for _, id := range ids {
+		if slices.Contains(p.UIDTypes, string(id.UIDType)) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// filterSealedCredentialsForProvider returns only the sealed credentials whose
+// audience_kid this provider holds a key for. Entries addressed to other
+// audiences are never forwarded — sealed credentials are routed to their owner,
+// not broadcast — so the result is nil when the provider declares no audience
+// keys or none of the entries match.
+func filterSealedCredentialsForProvider(creds []tmproto.SealedCredential, p *ProviderConfig) []tmproto.SealedCredential {
+	if len(creds) == 0 || len(p.AudienceKIDs) == 0 {
+		return nil
+	}
+	out := make([]tmproto.SealedCredential, 0, len(creds))
+	for _, sc := range creds {
+		if slices.Contains(p.AudienceKIDs, sc.AudienceKID) {
+			out = append(out, sc)
+		}
+	}
+	return out
+}
+
 func matchesProperty(propertyID, propertyRID, propertyType string, p *ProviderConfig) bool {
 	// Check exclusions first (by slug)
 	for _, pattern := range p.ExcludePropertyIDs {

@@ -43,6 +43,14 @@ type ProviderConfig struct {
 	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 codes this provider serves
 	UIDTypes  []string `json:"uid_types,omitempty"` // Identity types this provider can resolve
 
+	// Verified-identity attestation (experimental, trusted_match.verified_identity).
+	// HPKE key ids this provider can open. The router forwards a
+	// sealed_credentials[] entry only to the provider whose AudienceKIDs
+	// contains the entry's audience_kid — never broadcast — so a network-scoped
+	// credential reaches only its owning audience. A provider that declares none
+	// receives no sealed credentials.
+	AudienceKIDs []string `json:"audience_kids,omitempty"`
+
 	Timeout time.Duration `json:"timeout"`
 }
 

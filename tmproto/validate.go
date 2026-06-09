@@ -27,6 +27,17 @@ const (
 	MaxIdentitiesPerRequest = 3
 )
 
+// Bounds on the experimental verified-identity attestation surface
+// (trusted_match.verified_identity). Receivers MUST bound attestation and
+// sealed-credential count and size to prevent DoS amplification; these mirror
+// the maxItems / maxLength constraints in the TMP schema.
+const (
+	MaxSealedCredentials       = 8
+	MaxSealedCredentialPayload = 8192
+	MaxAudienceKIDLength       = 128
+	MaxAttestationClaims       = 16
+)
+
 // validUIDTypes is the closed set of identifier types the TMP schema allows
 // on identity-match identities. Drawn from /schemas/enums/uid-type.json.
 var validUIDTypes = map[UIDType]struct{}{
@@ -168,6 +179,13 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if len(req.Identities) > MaxIdentitiesPerRequest {
 		return fmt.Errorf("identities exceeds maximum of %d", MaxIdentitiesPerRequest)
 	}
+	// Duplicate (uid_type, user_token) pairs MUST NOT appear. Rejecting them
+	// keeps the signed identities set byte-aligned with the forwarded set: the
+	// signing hash collapses duplicates, so allowing two entries with the same
+	// (uid_type, user_token) but different attestation would let the second
+	// entry's attestation ride along unsigned.
+	type identityKey struct{ uid, token string }
+	seen := make(map[identityKey]struct{}, len(req.Identities))
 	for i, id := range req.Identities {
 		if id.UserToken == "" {
 			return fmt.Errorf("identities[%d].user_token is required", i)
@@ -180,6 +198,16 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		}
 		if _, ok := validUIDTypes[id.UIDType]; !ok {
 			return fmt.Errorf("identities[%d].uid_type is not a recognized TMP identity type", i)
+		}
+		k := identityKey{string(id.UIDType), id.UserToken}
+		if _, dup := seen[k]; dup {
+			return fmt.Errorf("identities[%d] duplicates an earlier (uid_type, user_token) pair", i)
+		}
+		seen[k] = struct{}{}
+		if id.Attestation != nil {
+			if err := validateAttestation(i, id.Attestation); err != nil {
+				return err
+			}
 		}
 	}
 	if req.Country != "" {
@@ -195,6 +223,56 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		if err := validateSafeID("package_id", id); err != nil {
 			return err
 		}
+	}
+	if len(req.SealedCredentials) > MaxSealedCredentials {
+		return fmt.Errorf("sealed_credentials exceeds maximum of %d", MaxSealedCredentials)
+	}
+	for i, sc := range req.SealedCredentials {
+		if sc.AudienceKID == "" {
+			return fmt.Errorf("sealed_credentials[%d].audience_kid is required", i)
+		}
+		if len(sc.AudienceKID) > MaxAudienceKIDLength {
+			return fmt.Errorf("sealed_credentials[%d].audience_kid exceeds %d bytes", i, MaxAudienceKIDLength)
+		}
+		if sc.Payload == "" {
+			return fmt.Errorf("sealed_credentials[%d].payload is required", i)
+		}
+		if len(sc.Payload) > MaxSealedCredentialPayload {
+			return fmt.Errorf("sealed_credentials[%d].payload exceeds %d bytes", i, MaxSealedCredentialPayload)
+		}
+	}
+	return nil
+}
+
+// validateAttestation checks the structural and DoS-bound constraints on a
+// per-identity attestation. It deliberately does NOT verify the proof, the
+// signal binding, relying-party provenance, or expiry — those are the
+// receiving buyer's job (see docs/trusted-match/specification.mdx §Verified
+// Identity Attestation conformance). Nor does it reject unrecognized claim
+// values: the claim set is additive, so an older receiver must tolerate a
+// newer threshold rather than rejecting the whole request.
+func validateAttestation(i int, a *Attestation) error {
+	if len(a.Issuer) == 0 {
+		return fmt.Errorf("identities[%d].attestation.issuer is required", i)
+	}
+	if a.Scheme == "" {
+		return fmt.Errorf("identities[%d].attestation.scheme is required", i)
+	}
+	if len(a.Proof) == 0 {
+		return fmt.Errorf("identities[%d].attestation.proof is required", i)
+	}
+	if len(a.Claims) == 0 {
+		return fmt.Errorf("identities[%d].attestation.claims must not be empty", i)
+	}
+	if len(a.Claims) > MaxAttestationClaims {
+		return fmt.Errorf("identities[%d].attestation.claims exceeds maximum of %d", i, MaxAttestationClaims)
+	}
+	seen := make(map[AttestationClaim]struct{}, len(a.Claims))
+	for _, c := range a.Claims {
+		if _, dup := seen[c]; dup {
+			return fmt.Errorf("identities[%d].attestation.claims contains duplicate %q", i, c)
+		}
+		seen[c] = struct{}{}
 	}
 	return nil
 }

@@ -9,8 +9,12 @@
 //
 // Identity match signs hex(SHA-256(JCS(canonical_object))) where the canonical
 // object holds {type, request_id, seller_agent_url, identities_hash, consent,
-// package_ids, provider_endpoint_url, daily_epoch}. JCS protects identity
-// inputs against delimiter injection from arbitrary-byte fields like consent.gpp.
+// package_ids, sealed_credentials_hash, provider_endpoint_url, daily_epoch}.
+// JCS protects identity inputs against delimiter injection from arbitrary-byte
+// fields like consent.gpp. identities_hash covers the complete identity objects
+// including any per-identity attestation, and sealed_credentials_hash covers the
+// top-level sealed_credentials, so a stripped, swapped, or injected attestation
+// or sealed blob breaks signature verification.
 package tmproto
 
 import (
@@ -241,15 +245,25 @@ func BuildIdentityMatchSigningInput(req *IdentityMatchRequest, providerEndpointU
 		consent = mapAnyFromMap(req.Consent)
 	}
 
+	var sealedHash any // null when absent, hex SHA-256 of the canonical bytes when present
+	if len(req.SealedCredentials) > 0 {
+		h, err := canonicalSealedCredentialsHash(req.SealedCredentials)
+		if err != nil {
+			return nil, err
+		}
+		sealedHash = h
+	}
+
 	canonical := map[string]any{
-		"type":                  signedTypeIdentity,
-		"request_id":            req.RequestID,
-		"seller_agent_url":      req.SellerAgentURL,
-		"identities_hash":       idsHash,
-		"consent":               consent,
-		"package_ids":           stringsToAny(pkgIDs),
-		"provider_endpoint_url": providerEndpointURL,
-		"daily_epoch":           epoch,
+		"type":                    signedTypeIdentity,
+		"request_id":              req.RequestID,
+		"seller_agent_url":        req.SellerAgentURL,
+		"identities_hash":         idsHash,
+		"consent":                 consent,
+		"package_ids":             stringsToAny(pkgIDs),
+		"sealed_credentials_hash": sealedHash,
+		"provider_endpoint_url":   providerEndpointURL,
+		"daily_epoch":             epoch,
 	}
 
 	jcs, err := jcsMarshal(canonical)
@@ -262,7 +276,11 @@ func BuildIdentityMatchSigningInput(req *IdentityMatchRequest, providerEndpointU
 
 // canonicalIdentitiesHash returns hex(SHA-256(JCS(canonical_identities))).
 // Identities are deduplicated on (uid_type, user_token) using byte-exact match,
-// then sorted by uid_type, then by user_token, both in UTF-8 byte order.
+// then sorted by uid_type, then by user_token, both in UTF-8 byte order. Each
+// entry is serialized as a complete identity object — including any per-identity
+// attestation — so the signature covers the attestation: a stripped, swapped, or
+// injected attestation breaks verification. The dedup key is only for collapsing
+// duplicate tokens; it does not exclude attestation from the hash.
 func canonicalIdentitiesHash(ids []IdentityToken) (string, error) {
 	type idKey struct {
 		uid   string
@@ -285,16 +303,36 @@ func canonicalIdentitiesHash(ids []IdentityToken) (string, error) {
 		return deduped[i].UserToken < deduped[j].UserToken
 	})
 
-	arr := make([]any, len(deduped))
-	for i, id := range deduped {
-		arr[i] = map[string]any{
-			"uid_type":   string(id.UIDType),
-			"user_token": id.UserToken,
-		}
+	canonical, err := jcsValue(deduped)
+	if err != nil {
+		return "", fmt.Errorf("tmproto: identities canonicalization: %w", err)
 	}
-	jcs, err := jcsMarshal(arr)
+	jcs, err := jcsMarshal(canonical)
 	if err != nil {
 		return "", fmt.Errorf("tmproto: identities JCS: %w", err)
+	}
+	sum := sha256.Sum256(jcs)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// canonicalSealedCredentialsHash returns hex(SHA-256(JCS(canonical_sealed))).
+// Entries are sorted by audience_kid (UTF-8 byte order) and serialized as a JCS
+// array of complete objects. Folding this into the signed input makes an
+// injected or swapped sealed blob break signature verification. Callers pass a
+// non-empty slice; an absent sealed_credentials is signed as a null
+// sealed_credentials_hash, not the hash of an empty array.
+func canonicalSealedCredentialsHash(creds []SealedCredential) (string, error) {
+	sorted := append([]SealedCredential(nil), creds...)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].AudienceKID < sorted[j].AudienceKID
+	})
+	canonical, err := jcsValue(sorted)
+	if err != nil {
+		return "", fmt.Errorf("tmproto: sealed-credentials canonicalization: %w", err)
+	}
+	jcs, err := jcsMarshal(canonical)
+	if err != nil {
+		return "", fmt.Errorf("tmproto: sealed-credentials JCS: %w", err)
 	}
 	sum := sha256.Sum256(jcs)
 	return hex.EncodeToString(sum[:]), nil

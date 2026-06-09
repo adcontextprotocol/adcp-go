@@ -236,16 +236,13 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	// Strip country before forwarding — it's a routing directive, not an
 	// identity signal — and not part of the signing input either.
 	imReq.Country = ""
-	body, err = json.Marshal(&imReq)
-	if err != nil {
-		r.logger.Error("failed to serialize identity-match request", "request_id", imReq.RequestID, "error", err)
-		r.writeError(w, imReq.RequestID, tmproto.ErrorCodeInternalError, "internal error")
-		return
-	}
 
-	// Fan out — signer needs the parsed request (not just bytes) to build the
-	// JCS canonical form per provider.
-	results := r.fanOutIdentity(req.Context(), matching, &imReq, body)
+	// Fan out. Each provider receives a minimum-necessary subset of the request
+	// — only the identity tokens whose uid_type it declared and only the sealed
+	// credentials addressed to a key it holds — and the signature is computed
+	// over exactly that subset, so fanOutIdentity marshals per provider rather
+	// than reusing one body.
+	results := r.fanOutIdentity(req.Context(), matching, &imReq)
 
 	// Merge — extract parallel slices for provider IDs and responses.
 	providerIDs := make([]string, len(results))
@@ -344,7 +341,7 @@ type identityResult struct {
 	response   *tmproto.IdentityMatchResponse
 }
 
-func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest, body []byte) []identityResult {
+func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest) []identityResult {
 	var mu sync.Mutex
 	var results []identityResult
 	var wg sync.WaitGroup
@@ -365,14 +362,32 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
 			defer cancel()
 
-			sigHeaders, err := r.signIdentityHeaders(imReq, p.Endpoint)
+			// Minimum-necessary forwarding: keep only the identity tokens this
+			// provider can resolve and the sealed credentials it can open, then
+			// sign and marshal over exactly that subset.
+			forward := *imReq
+			forward.Identities = filterIdentitiesForProvider(imReq.Identities, &p)
+			if len(forward.Identities) == 0 {
+				// Nothing this provider can resolve. Skip silently — surfacing
+				// skip-vs-forward as telemetry would leak which identity types
+				// the user had available.
+				return
+			}
+			forward.SealedCredentials = filterSealedCredentialsForProvider(imReq.SealedCredentials, &p)
+
+			sigHeaders, err := r.signIdentityHeaders(&forward, p.Endpoint)
 			if err != nil {
 				r.logger.Error("failed to sign identity match request", "provider", p.ID, "error", err)
 				return
 			}
+			callBody, err := json.Marshal(&forward)
+			if err != nil {
+				r.logger.Error("failed to serialize identity-match request", "provider", p.ID, "error", err)
+				return
+			}
 
 			var imResp tmproto.IdentityMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/identity", body, sigHeaders, &imResp); err != nil {
+			if err := r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp); err != nil {
 				if r.health != nil {
 					if callCtx.Err() != nil {
 						r.health.RecordTimeout(p.ID)

@@ -27,6 +27,27 @@ func jcsMarshal(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// jcsValue converts an arbitrary JSON-serializable Go value into the
+// map[string]any / []any / primitive shape jcsMarshal accepts, routing through
+// encoding/json with UseNumber so integer values survive canonicalization
+// without acquiring a float representation. This lets canonical hashing cover
+// complete typed objects (e.g. an identity with its attestation) using exactly
+// the fields the struct serializes, instead of hand-building parallel maps that
+// could silently drift from the wire shape.
+func jcsValue(v any) (any, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var out any
+	if err := dec.Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func jcsEncode(buf *bytes.Buffer, v any) error {
 	switch x := v.(type) {
 	case nil:
