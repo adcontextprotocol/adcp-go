@@ -279,6 +279,35 @@ func TestMatchProfile_NoneOfCapTripFailsClosed(t *testing.T) {
 	}
 }
 
+func TestMatchProfile_NoneOfMalformedFailsClosed(t *testing.T) {
+	// A persisted none_of cfg with an empty signal_owner_id or signal_id
+	// must propagate ErrCfgUnsafe so the package fails closed. Profiles are
+	// decoded from stored JSON without Validate, so the read path must catch
+	// this — otherwise the blocklist expands to keys that never match and
+	// passes vacuously even though the any_of side matches.
+	any1 := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "sports"}
+	data := LookupData{KeyTypeURLHash: {"v0"}}
+	fetched := map[string][]string{
+		Key("1", []KeyType{KeyTypeURLHash}, []string{"v0"}): {"sports"},
+	}
+	cases := map[string]Cfg{
+		"empty owner":     {SignalOwnerID: "", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: "brand-unsafe"},
+		"empty signal_id": {SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeURLHash}, SignalID: ""},
+	}
+	for name, none := range cases {
+		t.Run(name, func(t *testing.T) {
+			profile := Profile{AnyOf: []Cfg{any1}, NoneOf: []Cfg{none}}
+			pass, err := profile.MatchProfile(data, fetched)
+			if !errors.Is(err, ErrCfgUnsafe) {
+				t.Fatalf("expected ErrCfgUnsafe to propagate, got pass=%v err=%v", pass, err)
+			}
+			if pass {
+				t.Fatalf("expected fail-closed (pass=false) on malformed none_of, got pass=true")
+			}
+		})
+	}
+}
+
 func TestPlanLookup_DedupsAcrossPackages(t *testing.T) {
 	shared := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "us-traffic"}
 	other := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "ca-only"}

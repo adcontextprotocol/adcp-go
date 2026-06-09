@@ -14,12 +14,13 @@
 // Scope guard. Context-match per the TMP spec forbids user identity on
 // the wire, so AllowedKeyTypes is restricted to context attributes
 // (URL hashes, geo segments, IAB topic ids, artifact_ref public
-// identifiers). Cfgs whose key_types fall outside that set are
-// rejected by both Cfg.Validate (write-time) and ExpandKeys, which
-// re-runs IsAllowed at read time independent of Validate — load-bearing
-// because the read path never calls Validate. A misconfigured cfg
-// therefore cannot reach the identity keyspace from the context-match
-// data path.
+// identifiers). A cfg is rejected at write time by Cfg.Validate and again
+// at read time by ExpandKeys, which re-runs the full Cfg.Validate (owner,
+// signal_id, and key_types) independent of the write path — load-bearing
+// because profiles are persisted as JSON and decoded without Validate. A
+// misconfigured cfg therefore cannot reach the identity keyspace, and a
+// malformed none_of (empty owner or signal_id) fails closed rather than
+// passing the blocklist vacuously.
 package signalstore
 
 import (
@@ -222,21 +223,25 @@ func Key(ownerID string, keyTypes []KeyType, values []string) string {
 //     so cannot possibly match. Callers SHOULD treat the cfg as "did
 //     not match" and continue.
 //   - (keys, nil) — normal path.
-//   - (nil, ErrCfgUnsafe) — cfg carries a disallowed key_type, or
-//     would expand past the per-cfg cap. Callers MUST fail-closed for
-//     the whole package: silently dropping is only safe for any_of,
-//     not for none_of, so the error path forces the engine to treat
-//     the entire profile as unevaluable.
+//   - (nil, ErrCfgUnsafe) — cfg fails static validation (empty
+//     signal_owner_id or signal_id, no key_types, a disallowed
+//     key_type) or would expand past the per-cfg cap. Callers MUST
+//     fail-closed for the whole package: silently dropping is only safe
+//     for any_of, not for none_of, so the error path forces the engine
+//     to treat the entire profile as unevaluable.
 func (c Cfg) ExpandKeys(data LookupData) ([]string, error) {
-	if len(c.KeyTypes) == 0 {
-		return nil, fmt.Errorf("empty key_types: %w", ErrCfgUnsafe)
+	// Re-run the full static validation at read time. Profiles are persisted
+	// as JSON and decoded (pkgconfigstore) without Validate, so the
+	// owner / signal_id / key_type guarantees must be re-established here: a
+	// malformed cfg — e.g. a none_of with empty signal_owner_id or signal_id —
+	// would otherwise expand to keys that never match and let the blocklist
+	// pass vacuously instead of failing closed.
+	if err := c.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCfgUnsafe, err)
 	}
 	sets := make([][]string, len(c.KeyTypes))
 	total := 1
 	for i, kt := range c.KeyTypes {
-		if !IsAllowed(kt) {
-			return nil, fmt.Errorf("key_type %q is not allowed: %w", kt, ErrCfgUnsafe)
-		}
 		vals := data[kt]
 		if len(vals) == 0 {
 			return nil, nil

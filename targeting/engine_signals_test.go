@@ -139,6 +139,36 @@ func TestContext_SignalInvalidKeyType_FailsClosed(t *testing.T) {
 	assert.Empty(t, resp.Offers, "invalid key_type in profile must fail-closed for the package")
 }
 
+func TestContext_SignalNoneOf_MalformedFailsClosed(t *testing.T) {
+	// A persisted none_of cfg with an empty signal_owner_id or signal_id
+	// must fail the package closed, not pass vacuously: a brand-safety
+	// blocklist that silently stops matching would let blocked content
+	// through. Profiles are decoded from stored JSON without Validate, so
+	// the engine read path is the only thing standing between a malformed
+	// blocklist and an unintended serve.
+	cases := map[string]signalstore.Cfg{
+		"empty owner":     {SignalOwnerID: "", KeyTypes: []signalstore.KeyType{signalstore.KeyTypeCountry}, SignalID: "blocked-geo"},
+		"empty signal_id": {SignalOwnerID: "9", KeyTypes: []signalstore.KeyType{signalstore.KeyTypeCountry}, SignalID: ""},
+	}
+	for name, none := range cases {
+		t.Run(name, func(t *testing.T) {
+			cfg := &targeting.PackageContextConfig{
+				PackageID:      "pkg-a",
+				ContextSignals: signalProfile(nil, []signalstore.Cfg{none}),
+			}
+			storage := contextstorage.NewInMemory().WithPackage(cfg)
+			engine := newEngine(t, storage)
+
+			resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+				RequestID: "r", PropertyRID: signalsTestRID, PackageIDs: []string{"pkg-a"},
+				Geo: map[string]any{"country": "US"},
+			})
+			require.NoError(t, err)
+			assert.Empty(t, resp.Offers, "malformed none_of must fail the package closed, not pass vacuously")
+		})
+	}
+}
+
 func TestContext_SignalUnsafeCfgIsolatedToItsPackage(t *testing.T) {
 	// One package carries a profile with a disallowed (identity) key
 	// type; another package is well-formed. The bad package must fail
