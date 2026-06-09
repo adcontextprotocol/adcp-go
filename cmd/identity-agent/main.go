@@ -24,7 +24,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := identityagent.Run(context.Background(), cfg, logger, version); err != nil {
+	opts, err := verifiedIdentityOptions(logger)
+	if err != nil {
+		logger.Error("invalid verified-identity configuration", "error", err)
+		os.Exit(1)
+	}
+
+	if err := identityagent.Run(context.Background(), cfg, logger, version, opts...); err != nil {
 		logger.Error("identity agent terminated", "error", err)
 		os.Exit(1)
 	}
