@@ -108,11 +108,12 @@ func TestSignerContextMatchPackageIDsSorted(t *testing.T) {
 }
 
 func TestSignerContextMatchEmptyPackageIDs(t *testing.T) {
-	req := &ContextMatchRequest{RequestID: "r", PropertyRID: "p", PlacementID: "pl"}
+	req := &ContextMatchRequest{RequestID: "r", SellerAgentURL: "https://seller.example.com/agent", PropertyRID: "p", PlacementID: "pl"}
 	endpoint := "https://provider.example.com"
 	got := string(BuildContextMatchSigningInput(req, endpoint, 20000))
 	want := strings.Join([]string{
 		"context_match_request",
+		"https://seller.example.com/agent",
 		"p",
 		"pl",
 		"",

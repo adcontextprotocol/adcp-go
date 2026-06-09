@@ -39,6 +39,7 @@ var validUIDTypes = map[UIDType]struct{}{
 	UIDTypeMAID:                {},
 	UIDTypeHashedEmail:         {},
 	UIDTypePublisherFirstParty: {},
+	UIDTypeWorldIDNullifier:    {},
 	UIDTypeOther:               {},
 }
 

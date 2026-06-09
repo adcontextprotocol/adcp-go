@@ -3,6 +3,7 @@ package targeting
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -254,7 +255,17 @@ func (e *ContextEngine) fetchSignalsForCandidates(
 		e.metrics.StoreError(ctx, StageSignalMatch, err)
 		return nil, err
 	}
-	return signalstore.DecodeValues(keys, values), nil
+	// DecodeValues returns nil (not an error) when len(values) != len(keys).
+	// keys is non-empty here, so a nil decode means the backend returned a
+	// misaligned slice; surface it as a fetch error so signalsPass fails
+	// closed rather than evaluating none_of blocklists against an empty map.
+	decoded := signalstore.DecodeValues(keys, values)
+	if decoded == nil {
+		err := fmt.Errorf("signalstore: SignalMGet returned %d values for %d keys", len(values), len(keys))
+		e.metrics.StoreError(ctx, StageSignalMatch, err)
+		return nil, err
+	}
+	return decoded, nil
 }
 
 // signalsPass returns true when the package's ContextSignals profile

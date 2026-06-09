@@ -65,12 +65,13 @@ func TestRouter_SignsContextMatchFanOut(t *testing.T) {
 	// Independently verify the received signature against the body the
 	// provider would have parsed.
 	parsed := &tmproto.ContextMatchRequest{
-		RequestID:    "ctx-sign",
-		PropertyID:   "pub",
-		PropertyRID:  "00000000-0000-0000-0000-000000000001",
-		PropertyType: "website",
-		PlacementID:  "sb",
-		PackageIDs:   []string{"pkg-a"},
+		RequestID:      "ctx-sign",
+		PropertyID:     "pub",
+		PropertyRID:    "00000000-0000-0000-0000-000000000001",
+		PropertyType:   "website",
+		PlacementID:    "sb",
+		SellerAgentURL: "https://seller.example.com/agent",
+		PackageIDs:     []string{"pkg-a"},
 	}
 	require.NoError(t, tmproto.VerifyContextMatch(parsed, provider.URL, sig, kid, ks, time.Now()))
 }

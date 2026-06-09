@@ -112,14 +112,14 @@ func TestSafeRequestIDForEcho(t *testing.T) {
 // could otherwise hijack an operator's terminal when viewing raw logs.
 func TestSafeRequestIDForEcho_RejectsC0AndDEL(t *testing.T) {
 	cases := map[string]string{
-		"NUL":      "\x00",
-		"BEL":      "\x07",
+		"NUL":       "\x00",
+		"BEL":       "\x07",
 		"backspace": "\x08",
-		"VT":       "\x0B",
-		"FF":       "\x0C",
-		"SO":       "\x0E",
-		"ANSI_CSI": "\x1B[2J",
-		"DEL":      "\x7F",
+		"VT":        "\x0B",
+		"FF":        "\x0C",
+		"SO":        "\x0E",
+		"ANSI_CSI":  "\x1B[2J",
+		"DEL":       "\x7F",
 	}
 	for name, sentinel := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestValidateIdentityRequest_AllValidUIDTypes(t *testing.T) {
 	types := []UIDType{
 		UIDTypeRampID, UIDTypeRampIDDerived, UIDTypeID5, UIDTypeUID2,
 		UIDTypeEUID, UIDTypePairID, UIDTypeMAID, UIDTypeHashedEmail,
-		UIDTypePublisherFirstParty, UIDTypeOther,
+		UIDTypePublisherFirstParty, UIDTypeWorldIDNullifier, UIDTypeOther,
 	}
 	for _, ut := range types {
 		t.Run(strings.ReplaceAll(string(ut), " ", "_"), func(t *testing.T) {
