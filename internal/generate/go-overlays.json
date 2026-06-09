@@ -6,7 +6,7 @@
     },
     "UIDType": {
       "prefix": "UIDType",
-      "names": ["RampID", "RampIDDerived", "ID5", "UID2", "EUID", "PairID", "MAID", "HashedEmail", "PublisherFirstParty", "Other"]
+      "names": ["RampID", "RampIDDerived", "ID5", "UID2", "EUID", "PairID", "MAID", "HashedEmail", "PublisherFirstParty", "WorldIDNullifier", "Other"]
     },
     "MetroAreaSystem": {
       "prefix": "MetroSystem",

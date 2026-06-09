@@ -46,13 +46,24 @@ func NewService(store Store) (*Service, error) {
 	return &Service{store: store}, nil
 }
 
-// Put writes (or replaces) one package's context config.
+// Put writes (or replaces) one package's context config. Writers
+// MUST call Put for every persisted config — direct Store.Set bypasses
+// the signal profile validation that keeps the keyspace honest.
 func (s *Service) Put(ctx context.Context, cfg *targeting.PackageContextConfig) error {
 	if cfg == nil {
 		return errors.New("pkgconfigstore: config is required")
 	}
 	if cfg.PackageID == "" {
 		return errors.New("pkgconfigstore: package_id is required")
+	}
+	// Validate the context-signal profile (when present) so an
+	// identity-keyed cfg or one with a missing signal id is rejected
+	// at write time. Defense in depth: the reader ALSO fails-closed
+	// on invalid profiles via signalstore.ErrCfgUnsafe, but rejecting
+	// here means the bad payload never reaches Valkey for a future
+	// reader to discover.
+	if err := cfg.ContextSignals.Validate(); err != nil {
+		return fmt.Errorf("pkgconfigstore: %q: %w", cfg.PackageID, err)
 	}
 	payload, err := json.Marshal(cfg)
 	if err != nil {
@@ -78,10 +89,18 @@ type Reader interface {
 	// Get returns the config for one package. ok == false (with err == nil)
 	// means no config is stored.
 	Get(ctx context.Context, packageID string) (cfg *targeting.PackageContextConfig, ok bool, err error)
+
+	// MGet returns the configs for every requested package in a single
+	// round-trip. The returned slice is aligned 1:1 with packageIDs;
+	// nil at index i means "no config stored OR decode failed for that
+	// package" — per-key decode errors are logged by the
+	// implementation but do not fail the whole batch (one bad payload
+	// must not sink an entire request's candidate set).
+	MGet(ctx context.Context, packageIDs []string) ([]*targeting.PackageContextConfig, error)
 }
 
 // NewReader returns a direct Reader that issues one Valkey round-trip
-// per call.
+// per Get / MGet call.
 func NewReader(store Store) Reader {
 	return &reader{store: store}
 }
@@ -101,9 +120,50 @@ func (r *reader) Get(ctx context.Context, packageID string) (*targeting.PackageC
 	if !ok || raw == "" {
 		return nil, false, nil
 	}
+	cfg, err := decodeConfig(packageID, raw)
+	if err != nil {
+		return nil, false, err
+	}
+	return cfg, true, nil
+}
+
+func (r *reader) MGet(ctx context.Context, packageIDs []string) ([]*targeting.PackageContextConfig, error) {
+	if len(packageIDs) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, len(packageIDs))
+	for i, id := range packageIDs {
+		keys[i] = Key(id)
+	}
+	values, err := r.store.MGet(ctx, keys...)
+	if err != nil {
+		return nil, err
+	}
+	if len(values) != len(packageIDs) {
+		return nil, fmt.Errorf("pkgconfigstore: MGET returned %d results for %d keys", len(values), len(packageIDs))
+	}
+	out := make([]*targeting.PackageContextConfig, len(packageIDs))
+	for i, raw := range values {
+		if raw == "" {
+			continue
+		}
+		cfg, err := decodeConfig(packageIDs[i], raw)
+		if err != nil {
+			// One corrupt payload must not sink the whole batch — the
+			// engine evaluates the rest and the bad package is treated
+			// as "no config" (skipped). The reader-level log carries
+			// the package id for diagnosis.
+			continue
+		}
+		out[i] = cfg
+	}
+	return out, nil
+}
+
+func decodeConfig(packageID, raw string) (*targeting.PackageContextConfig, error) {
 	var cfg targeting.PackageContextConfig
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		return nil, false, fmt.Errorf("pkgconfigstore: decode %q: %w", packageID, err)
+		return nil, fmt.Errorf("pkgconfigstore: decode %q: %w", packageID, err)
 	}
-	return &cfg, true, nil
+	return &cfg, nil
 }

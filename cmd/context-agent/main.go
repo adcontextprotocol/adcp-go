@@ -24,7 +24,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := contextagent.Run(context.Background(), cfg, logger, version); err != nil {
+	regCfg, err := loadRegistryConfigFromEnv()
+	if err != nil {
+		logger.Error("invalid registry configuration", "error", err)
+		os.Exit(1)
+	}
+	if err := regCfg.validate(); err != nil {
+		logger.Error("invalid registry configuration", "error", err)
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var opts []contextagent.Option
+	var regBundle *registryBundle
+	if regCfg.Enabled {
+		regBundle, err = buildRegistry(ctx, regCfg, logger)
+		if err != nil {
+			logger.Error("registry bundle build failed", "error", err)
+			os.Exit(1)
+		}
+		opts = append(opts,
+			contextagent.WithPropertyGlobal(regBundle.PropertyBitmap()),
+			contextagent.WithLivenessChecks(regBundle.LivenessCheck()),
+		)
+		defer regBundle.Shutdown()
+	}
+
+	if err := contextagent.Run(ctx, cfg, logger, version, opts...); err != nil {
 		logger.Error("context agent terminated", "error", err)
 		os.Exit(1)
 	}

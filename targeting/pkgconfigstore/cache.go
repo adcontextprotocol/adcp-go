@@ -8,6 +8,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 )
 
 // CacheConfig sizes the per-package config cache.
@@ -59,6 +60,44 @@ func (c *cachedReader) Get(ctx context.Context, packageID string) (*targeting.Pa
 	return clonePackageContextConfig(stored), present, nil
 }
 
+// MGet serves cache hits from memory and batches the remaining misses
+// into one inner MGet round-trip. Result alignment to packageIDs is
+// preserved.
+func (c *cachedReader) MGet(ctx context.Context, packageIDs []string) ([]*targeting.PackageContextConfig, error) {
+	if len(packageIDs) == 0 {
+		return nil, nil
+	}
+	out := make([]*targeting.PackageContextConfig, len(packageIDs))
+	missIdx := make([]int, 0, len(packageIDs))
+	missIDs := make([]string, 0, len(packageIDs))
+	for i, id := range packageIDs {
+		if hit, ok := c.entries.Get(id); ok {
+			if hit.Present {
+				out[i] = clonePackageContextConfig(hit.Config)
+			}
+			continue
+		}
+		missIdx = append(missIdx, i)
+		missIDs = append(missIDs, id)
+	}
+	if len(missIDs) == 0 {
+		return out, nil
+	}
+	fetched, err := c.inner.MGet(ctx, missIDs)
+	if err != nil {
+		return nil, err
+	}
+	for j, cfg := range fetched {
+		i := missIdx[j]
+		stored := clonePackageContextConfig(cfg)
+		c.entries.Add(packageIDs[i], cachedEntry{Config: stored, Present: cfg != nil})
+		if cfg != nil {
+			out[i] = clonePackageContextConfig(stored)
+		}
+	}
+	return out, nil
+}
+
 // clonePackageContextConfig returns an independent copy of cfg with
 // every slice / map / json.RawMessage field freshly allocated so a
 // caller mutating an Offer, a PropertyRID, or any other contained
@@ -104,5 +143,34 @@ func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.P
 		}
 		out.Macros = macros
 	}
+	out.ContextSignals = cloneSignalProfile(cfg.ContextSignals)
 	return &out
+}
+
+func cloneSignalProfile(p *signalstore.Profile) *signalstore.Profile {
+	if p == nil {
+		return nil
+	}
+	out := &signalstore.Profile{}
+	if len(p.AnyOf) > 0 {
+		out.AnyOf = make([]signalstore.Cfg, len(p.AnyOf))
+		for i, c := range p.AnyOf {
+			out.AnyOf[i] = cloneSignalCfg(c)
+		}
+	}
+	if len(p.NoneOf) > 0 {
+		out.NoneOf = make([]signalstore.Cfg, len(p.NoneOf))
+		for i, c := range p.NoneOf {
+			out.NoneOf[i] = cloneSignalCfg(c)
+		}
+	}
+	return out
+}
+
+func cloneSignalCfg(c signalstore.Cfg) signalstore.Cfg {
+	out := c
+	if len(c.KeyTypes) > 0 {
+		out.KeyTypes = append([]signalstore.KeyType(nil), c.KeyTypes...)
+	}
+	return out
 }

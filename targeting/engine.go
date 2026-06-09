@@ -12,8 +12,10 @@ package targeting
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -28,11 +30,10 @@ const GeoCountryKey = "country"
 // caching, persistence, and refresh policy live in the storage impl, not
 // here.
 type ContextEngine struct {
-	providerID     string
-	sellerAgentURL string
-	properties     PropertyList
-	storage        ContextStorage
-	now            func() time.Time
+	providerID string
+	properties PropertyList
+	storage    ContextStorage
+	now        func() time.Time
 
 	// acceptedTaxonomies enumerates the topic taxonomies this deployment
 	// trusts. A publisher's ContextSignals.Topics are unioned into the
@@ -57,12 +58,6 @@ type ContextEngineConfig struct {
 	// tmproto.ProviderRegistration.ProviderID). Stable for the engine's
 	// lifetime; rotate by restarting with a new value.
 	ProviderID string
-
-	// SellerAgentURL is the canonicalized seller_agent_url this
-	// deployment represents. Required: the engine passes it to
-	// Storage.ActivePackages on every request so the active-set
-	// resolution is scoped to this deployment's inventory.
-	SellerAgentURL string
 
 	// Properties is the registry-derived global (and optionally
 	// per-package) property bitmap. Requests whose property_rid is not
@@ -113,7 +108,6 @@ func NewContextEngine(cfg ContextEngineConfig) *ContextEngine {
 	}
 	return &ContextEngine{
 		providerID:         cfg.ProviderID,
-		sellerAgentURL:     cfg.SellerAgentURL,
 		properties:         cfg.Properties,
 		storage:            cfg.Storage,
 		now:                now,
@@ -225,7 +219,7 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	}
 	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
-	activePkgIDs, err := e.storage.ActivePackages(ctx, e.sellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
+	activePkgIDs, err := e.storage.ActivePackages(ctx, req.SellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
 	if err != nil {
 		// A context timeout here means the request budget is gone;
 		// surface it so the handler returns 504. Any other storage
@@ -254,10 +248,35 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	cs := req.ContextSignals
 	haveTopicSource := len(artifactKeys.TopicRefs) > 0 || (cs != nil && len(cs.Topics) > 0)
 
+	// Preload candidate configs so signal targeting can plan a single
+	// MGet across every candidate package's profile before the per-
+	// package loop starts. The pkgconfig batcher (when the storage
+	// implements it) collapses N round-trips to one; engines wired
+	// against the in-memory test storage fall back to per-package
+	// fetches.
+	configs := e.preloadContextConfigs(ctx, candidatePkgIDs)
+
+	// Signal targeting is skipped end-to-end (no extract, no plan,
+	// no MGet, no per-package check) when zero candidates carry a
+	// non-empty profile. Most requests on most deployments fall in
+	// this branch, so the hot path pays nothing for an unused
+	// feature.
+	var (
+		signalData    signalstore.LookupData
+		signalFetched map[string][]string
+		signalErr     error
+		signalLogger  *slog.Logger
+	)
+	if hasAnySignalProfile(configs) {
+		signalData = e.extractSignalLookupData(req, country)
+		signalFetched, signalErr = e.fetchSignalsForCandidates(ctx, configs, signalData)
+		signalLogger = slog.Default()
+	}
+
 	var offers []tmproto.Offer
 	var segments []string
 
-	for _, pkgID := range candidatePkgIDs {
+	for i, pkgID := range candidatePkgIDs {
 		// Bail at the top of every iteration so a deadline that fires
 		// mid-eval surfaces as 504 instead of a 200/empty-offers
 		// response that hides timeouts from buyer telemetry. Storage
@@ -266,17 +285,17 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		cfg, ok, err := e.storage.ContextConfig(ctx, pkgID)
-		if err != nil {
-			e.metrics.StoreError(ctx, "context_config", err)
-			continue
-		}
-		if !ok || cfg == nil {
+		cfg := configs[i]
+		if cfg == nil {
 			continue
 		}
 
 		if !e.matchesPropertyBitmap(cfg, rid, pkgID) {
 			e.metrics.ContextEvaluated(ctx, StagePropertyBitmap, false)
+			continue
+		}
+
+		if !e.signalsPass(ctx, cfg, pkgID, signalData, signalFetched, signalErr, signalLogger) {
 			continue
 		}
 

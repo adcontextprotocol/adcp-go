@@ -197,7 +197,15 @@ func (s *Signer) SignIdentityMatch(req *IdentityMatchRequest, providerEndpointUR
 }
 
 // BuildContextMatchSigningInput returns the bytes the signer feeds to Ed25519
-// for context match: newline-joined fields per the spec.
+// for context match: newline-joined fields.
+//
+// seller_agent_url is bound because it selects which seller's active package
+// set the provider resolves and returns offers from. Leaving it out of the
+// signed bytes would let any holder of a valid registry key spoof another
+// seller's URL and read that seller's private offers. It is signed adjacent to
+// the type tag, mirroring identity-match (BuildIdentityMatchSigningInput).
+// Adding it changes the signed bytes, so signatures produced before this
+// binding no longer verify.
 func BuildContextMatchSigningInput(req *ContextMatchRequest, providerEndpointURL string, epoch int64) []byte {
 	var pkgIDs string
 	if len(req.PackageIDs) > 0 {
@@ -207,6 +215,7 @@ func BuildContextMatchSigningInput(req *ContextMatchRequest, providerEndpointURL
 	}
 	parts := []string{
 		signedTypeContext,
+		req.SellerAgentURL,
 		req.PropertyRID,
 		req.PlacementID,
 		pkgIDs,

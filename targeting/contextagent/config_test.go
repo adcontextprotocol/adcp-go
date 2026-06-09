@@ -27,7 +27,6 @@ func baseValidConfig() Config {
 		MaxOpenConnections:         1024,
 		ResponseTTL:                time.Minute,
 		ProviderID:                 "provider-1",
-		SellerAgentURL:             "https://seller.example.com/agent",
 		AcceptedTaxonomies:         []topicstore.Taxonomy{{Source: "iab", ID: 7}},
 		SuppressionRefreshInterval: 5 * time.Minute,
 		SupportedADCPMajorVersions: []int{3},
@@ -69,7 +68,6 @@ func TestConfigValidate_RequiredFields(t *testing.T) {
 		errMsg string
 	}{
 		{"missing provider_id", func(c *Config) { c.ProviderID = "" }, "PROVIDER_ID"},
-		{"missing seller_agent_url", func(c *Config) { c.SellerAgentURL = "" }, "SELLER_AGENT_URL"},
 		{"missing tmp registry url", func(c *Config) { c.TMP.RegistryURL = "" }, "TMP_REGISTRY_URL"},
 		{"missing tmp own endpoint", func(c *Config) { c.TMP.OwnEndpointURL = "" }, "TMP_OWN_ENDPOINT_URL"},
 		{"missing valkey shards", func(c *Config) {

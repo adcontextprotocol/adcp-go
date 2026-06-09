@@ -20,14 +20,15 @@ import (
 // InMemory satisfies targeting.ContextStorage from plain Go maps.
 // Construct via NewInMemory and populate with the With* methods.
 type InMemory struct {
-	configs          map[string]*targeting.PackageContextConfig
-	activePackages   map[string][]string                   // sellerURL|propertyID|country → pkgIDs
-	artifactTopics   map[topicstore.Taxonomy]map[string][]string
-	packageTopics    map[topicstore.Taxonomy]map[string][]string
-	urlBlocked       map[string]map[string]struct{} // packageID → hashSet
-	urlAllowed       map[string]map[string]struct{}
-	suppressedProps  map[string]struct{} // providerID|propertyRID
-	suppressedGeos   map[string]struct{} // providerID|country
+	configs         map[string]*targeting.PackageContextConfig
+	activePackages  map[string][]string // sellerURL|propertyID|country → pkgIDs
+	artifactTopics  map[topicstore.Taxonomy]map[string][]string
+	packageTopics   map[topicstore.Taxonomy]map[string][]string
+	urlBlocked      map[string]map[string]struct{} // packageID → hashSet
+	urlAllowed      map[string]map[string]struct{}
+	suppressedProps map[string]struct{} // providerID|propertyRID
+	suppressedGeos  map[string]struct{} // providerID|country
+	signals         map[string]string   // signal:* key → CSV of signal IDs
 }
 
 // NewInMemory returns an empty InMemory.
@@ -41,6 +42,7 @@ func NewInMemory() *InMemory {
 		urlAllowed:      make(map[string]map[string]struct{}),
 		suppressedProps: make(map[string]struct{}),
 		suppressedGeos:  make(map[string]struct{}),
+		signals:         make(map[string]string),
 	}
 }
 
@@ -123,6 +125,14 @@ func (s *InMemory) WithSuppressedGeo(providerID, country string) *InMemory {
 	return s
 }
 
+// WithSignalValue seeds one signal:* key with its CSV-encoded signal-id
+// payload. Use signalstore.Key to build the key argument so the bytes
+// match what the engine queries at request time.
+func (s *InMemory) WithSignalValue(key, csvSignalIDs string) *InMemory {
+	s.signals[key] = csvSignalIDs
+	return s
+}
+
 // --- ContextStorage ---
 
 // ActivePackages returns the package IDs registered for the tuple via
@@ -145,6 +155,14 @@ func (s *InMemory) ActivePackages(_ context.Context, sellerAgentURL, propertyID,
 func (s *InMemory) ContextConfig(_ context.Context, packageID string) (*targeting.PackageContextConfig, bool, error) {
 	cfg, ok := s.configs[packageID]
 	return cfg, ok, nil
+}
+
+func (s *InMemory) ContextConfigs(_ context.Context, packageIDs []string) ([]*targeting.PackageContextConfig, error) {
+	out := make([]*targeting.PackageContextConfig, len(packageIDs))
+	for i, id := range packageIDs {
+		out[i] = s.configs[id]
+	}
+	return out, nil
 }
 
 func (s *InMemory) ArtifactTopics(_ context.Context, tax topicstore.Taxonomy, ref string) ([]string, error) {
@@ -189,6 +207,14 @@ func (s *InMemory) IsPropertySuppressed(_ context.Context, providerID, propertyR
 func (s *InMemory) IsGeoSuppressed(_ context.Context, providerID, country string) (bool, error) {
 	_, ok := s.suppressedGeos[providerID+"|"+country]
 	return ok, nil
+}
+
+func (s *InMemory) SignalMGet(_ context.Context, keys ...string) ([]string, error) {
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = s.signals[k]
+	}
+	return out, nil
 }
 
 func activeKey(seller, property, country, placement string) string {

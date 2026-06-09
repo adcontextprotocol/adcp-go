@@ -3,6 +3,7 @@ package targeting
 import (
 	"encoding/json"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -16,13 +17,29 @@ import (
 // targeting/identityconfig/scope3, which is a separate external
 // contract.
 type PackageContextConfig struct {
-	PackageID        string             `json:"package_id"`
-	MediaBuyID       string             `json:"media_buy_id,omitempty"`
-	URLBlocklist     bool               `json:"url_blocklist,omitempty"`
-	URLAllowlist     bool               `json:"url_allowlist,omitempty"`
-	TopicTargets     bool               `json:"topic_targets,omitempty"`
-	PropertyRIDs     []string           `json:"property_rids,omitempty"`
-	EmitSegments     []string           `json:"emit_segments,omitempty"`
+	PackageID    string   `json:"package_id"`
+	MediaBuyID   string   `json:"media_buy_id,omitempty"`
+	URLBlocklist bool     `json:"url_blocklist,omitempty"`
+	URLAllowlist bool     `json:"url_allowlist,omitempty"`
+	TopicTargets bool     `json:"topic_targets,omitempty"`
+	PropertyRIDs []string `json:"property_rids,omitempty"`
+	EmitSegments []string `json:"emit_segments,omitempty"`
+
+	// ContextSignals gates the package on context-attribute signal
+	// targeting. Nil or empty profile passes vacuously. Restricted to
+	// context attributes — see signalstore.AllowedKeyTypes;
+	// identity-keyed cfgs are rejected by signalstore.Profile.Validate.
+	//
+	// Topic cfgs key on a namespaced value, NOT the bare topic id: the
+	// engine prefixes each topic with its taxonomy as
+	// "{taxonomy_source}:{taxonomy_id}:{topic_id}" (the
+	// topicstore.Taxonomy.String() form) so the same topic id under
+	// different taxonomies stays distinct. The spec carries the
+	// taxonomy once on the ContextSignals envelope rather than per
+	// topic, so anyone authoring these cfgs out-of-band MUST apply the
+	// same prefix to a topic cfg's stored signal value.
+	ContextSignals *signalstore.Profile `json:"context_signals,omitempty"`
+
 	Offers           []OfferConfigJSON  `json:"offers,omitempty"`
 	Brand            json.RawMessage    `json:"brand,omitempty"`
 	Price            tmproto.OfferPrice `json:"price"`

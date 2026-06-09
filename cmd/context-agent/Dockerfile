@@ -4,6 +4,7 @@ COPY go.mod go.sum* ./
 COPY tmproto/ tmproto/
 COPY targeting/ targeting/
 COPY urlutil/ urlutil/
+COPY registry/ registry/
 COPY cmd/context-agent/ cmd/context-agent/
 WORKDIR /src/cmd/context-agent
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /context-agent .

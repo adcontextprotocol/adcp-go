@@ -77,8 +77,8 @@ func TestIntegration_Properties(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, props)
 
-	p1 := &registry.Property{PropertyID: "pub1.example.com/home", PropertyRID: 1001, PropertyType: "website", Domain: "example.com", Placements: []string{"top"}}
-	p2 := &registry.Property{PropertyID: "pub2.example.com/home", PropertyRID: 1002, PropertyType: "website", Domain: "two.example.com"}
+	p1 := &registry.Property{PropertyID: "pub1.example.com/home", PropertyRID: "1001", PropertyType: "website", Domain: "example.com", Placements: []string{"top"}}
+	p2 := &registry.Property{PropertyID: "pub2.example.com/home", PropertyRID: "1002", PropertyType: "website", Domain: "two.example.com"}
 
 	require.NoError(t, store.PutProperty(ctx, p1))
 	require.NoError(t, store.PutProperty(ctx, p2))
@@ -88,9 +88,9 @@ func TestIntegration_Properties(t *testing.T) {
 	require.NoError(t, err)
 	sort.Slice(props, func(i, j int) bool { return props[i].PropertyID < props[j].PropertyID })
 	require.Len(t, props, 2)
-	assert.Equal(t, uint64(1001), props[0].PropertyRID)
+	assert.Equal(t, "1001", props[0].PropertyRID)
 	assert.Equal(t, []string{"top"}, props[0].Placements)
-	assert.Equal(t, uint64(1002), props[1].PropertyRID)
+	assert.Equal(t, "1002", props[1].PropertyRID)
 
 	require.NoError(t, store.RemoveProperty(ctx, "pub1.example.com/home"))
 	require.NoError(t, store.RemoveProperty(ctx, "pub1.example.com/home")) // idempotent
@@ -187,8 +187,8 @@ func TestIntegration_KeyPrefixIsolation(t *testing.T) {
 	storeB := New(client, Options{KeyPrefix: "envB"})
 	ctx := context.Background()
 
-	require.NoError(t, storeA.PutProperty(ctx, &registry.Property{PropertyID: "p-a", PropertyRID: 1, Domain: "a.example"}))
-	require.NoError(t, storeB.PutProperty(ctx, &registry.Property{PropertyID: "p-b", PropertyRID: 2, Domain: "b.example"}))
+	require.NoError(t, storeA.PutProperty(ctx, &registry.Property{PropertyID: "p-a", PropertyRID: "1", Domain: "a.example"}))
+	require.NoError(t, storeB.PutProperty(ctx, &registry.Property{PropertyID: "p-b", PropertyRID: "2", Domain: "b.example"}))
 
 	propsA, err := storeA.LoadProperties(ctx)
 	require.NoError(t, err)

@@ -2,7 +2,12 @@ module github.com/adcontextprotocol/adcp-go/cmd/context-agent
 
 go 1.25.0
 
-require github.com/adcontextprotocol/adcp-go v0.0.0
+require (
+	github.com/adcontextprotocol/adcp-go v0.0.0
+	github.com/adcontextprotocol/adcp-go/registry v0.0.0
+	github.com/adcontextprotocol/adcp-go/registry/redisstore v0.0.0
+	github.com/redis/go-redis/v9 v9.19.0
+)
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -18,7 +23,6 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/otlptranslator v1.0.0 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
-	github.com/redis/go-redis/v9 v9.19.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/prometheus v0.65.0 // indirect
@@ -36,3 +40,7 @@ require (
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
+
+replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
+
+replace github.com/adcontextprotocol/adcp-go/registry/redisstore => ../../registry/redisstore

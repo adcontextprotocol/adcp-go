@@ -39,6 +39,7 @@ var validUIDTypes = map[UIDType]struct{}{
 	UIDTypeMAID:                {},
 	UIDTypeHashedEmail:         {},
 	UIDTypePublisherFirstParty: {},
+	UIDTypeWorldIDNullifier:    {},
 	UIDTypeOther:               {},
 }
 
@@ -124,6 +125,9 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	}
 	if err := validateSafeID("placement_id", req.PlacementID); err != nil {
 		return err
+	}
+	if req.SellerAgentURL == "" {
+		return errors.New("seller_agent_url is required")
 	}
 	if len(req.PackageIDs) > MaxPackagesPerRequest {
 		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)

@@ -9,14 +9,15 @@ import (
 )
 
 // contextSignatureCache memoizes context-match signatures by
-// (placement_id, provider_endpoint_url, package_ids, epoch). The Ed25519
-// signature is bound to the exact signing input, so the cache key MUST cover
-// every field the signing input depends on. The spec mandates that
-// package_ids is constant per placement, which would make caching by
-// (placement_id, provider_endpoint_url, epoch) sufficient for spec-compliant
-// traffic — but the publisher controls package_ids, so including it in the
-// key turns a spec violation into a transparent cache miss instead of a
-// signature/body mismatch the provider has to reject.
+// (seller_agent_url, property_rid, placement_id, provider_endpoint_url,
+// package_ids, epoch). The Ed25519 signature is bound to the exact signing
+// input (BuildContextMatchSigningInput), so the cache key MUST cover every
+// field that input depends on — otherwise two requests differing only in an
+// uncovered field share a signature over different bytes, which the provider
+// rejects. seller_agent_url in particular is independent of placement_id (one
+// deployment serves many sellers on the same placement), so it must be keyed:
+// reusing one seller's signature for another would both fail verification and
+// blur the per-seller signing boundary.
 //
 // The cache is bounded — when it exceeds maxEntries, eviction drops the oldest
 // epoch's entries first, then resets. Reference deployments serve a small
@@ -28,10 +29,12 @@ type contextSignatureCache struct {
 }
 
 type contextSignatureCacheKey struct {
-	placementID string
-	endpointURL string
-	packageIDs  string
-	epoch       int64
+	sellerAgentURL string
+	propertyRID    string
+	placementID    string
+	endpointURL    string
+	packageIDs     string
+	epoch          int64
 }
 
 // packageIDsKey serializes the package_ids slice into the same form the
@@ -56,7 +59,7 @@ func newContextSignatureCache(maxEntries int) *contextSignatureCache {
 	}
 }
 
-// signatureFor returns a cached signature for (placementID, endpointURL, epoch),
+// signatureFor returns a cached signature for the request's signing-input key,
 // computing one with signer if absent.
 func (c *contextSignatureCache) signatureFor(
 	signer *tmproto.Signer,
@@ -65,10 +68,12 @@ func (c *contextSignatureCache) signatureFor(
 	epoch int64,
 ) string {
 	key := contextSignatureCacheKey{
-		placementID: req.PlacementID,
-		endpointURL: endpointURL,
-		packageIDs:  packageIDsKey(req.PackageIDs),
-		epoch:       epoch,
+		sellerAgentURL: req.SellerAgentURL,
+		propertyRID:    req.PropertyRID,
+		placementID:    req.PlacementID,
+		endpointURL:    endpointURL,
+		packageIDs:     packageIDsKey(req.PackageIDs),
+		epoch:          epoch,
 	}
 	c.mu.Lock()
 	if sig, ok := c.entries[key]; ok {

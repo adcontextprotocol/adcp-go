@@ -53,11 +53,6 @@ type Config struct {
 	// suppressionstore) and emitted on logs / metrics.
 	ProviderID string
 
-	// SellerAgentURL is the canonicalized seller_agent_url this
-	// deployment represents. Same byte-for-byte string match as
-	// identityconfig.
-	SellerAgentURL string
-
 	// AcceptedTaxonomies enumerates the topic taxonomies the engine
 	// trusts on inbound ContextSignals and consults on Valkey lookups.
 	// Required: an empty list fails-closed on every TopicTargets
@@ -68,10 +63,11 @@ type Config struct {
 	// the top of every request. A request whose property_rid is not in
 	// this list short-circuits before any storage lookup.
 	//
-	// TODO(context-agent-followup): replace with a registry.Syncer
-	// hookup that hydrates the bitmap from registry/persist Store
-	// (PR #358). This static env is a stopgap that lets the agent run
-	// end-to-end without the registry feed wired in.
+	// Static fallback: this list is used only when the binary entry
+	// point does not inject a bitmap via WithPropertyGlobal. The
+	// production wiring in cmd/context-agent feeds a live
+	// registry.PropertyIndex through that option when REGISTRY_ENABLED
+	// is true; PropertyRIDs covers stand-alone / smoke deployments.
 	PropertyRIDs []string
 
 	// SuppressionRefreshInterval is how often the agent re-scans
@@ -308,7 +304,6 @@ func LoadConfigFromEnv() (Config, error) {
 		SupportedADCPMajorVersions: supportedVers,
 		LogLevel:                   strings.TrimSpace(os.Getenv("LOG_LEVEL")),
 		ProviderID:                 strings.TrimSpace(os.Getenv("PROVIDER_ID")),
-		SellerAgentURL:             strings.TrimSpace(os.Getenv("SELLER_AGENT_URL")),
 		AcceptedTaxonomies:         taxonomies,
 		PropertyRIDs:               propertyRIDs,
 		SuppressionRefreshInterval: suppressionRefresh,
@@ -357,9 +352,6 @@ func (c Config) Validate() error {
 	}
 	if c.ProviderID == "" {
 		errs = append(errs, errors.New("PROVIDER_ID is required"))
-	}
-	if c.SellerAgentURL == "" {
-		errs = append(errs, errors.New("SELLER_AGENT_URL is required"))
 	}
 	if !c.TMP.AllowUnsigned {
 		if c.TMP.RegistryURL == "" {

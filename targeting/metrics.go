@@ -20,6 +20,7 @@ const (
 	StageTopicMatch      = "topic_match"
 	StageTopicNoTaxonomy = "topic_no_taxonomy"
 	StageAudience        = "audience"
+	StageSignalMatch     = "signal_match"
 )
 
 // Metrics receives instrumentation callbacks from the targeting engine.

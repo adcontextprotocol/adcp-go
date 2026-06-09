@@ -16,6 +16,16 @@ type SyncerConfig struct {
 	FeedLimit      int           // events per page during steady-state (default 1000)
 	BootstrapLimit int           // events per page during initial catchup (default 10000)
 	EventTypes     []string      // optional type filter globs
+
+	// OnSuccessfulPoll, when non-nil, is invoked after every feed PAGE
+	// that fetches AND persists cleanly (zero-event pages included).
+	// During a multi-page bootstrap (HasMore=true) it therefore fires
+	// once per page, not once per drain cycle. Callers use it as a
+	// liveness beacon — `count` is the number of events in that page,
+	// so a steady stream of count=0 calls distinguishes a quiescent
+	// feed from a stalled one. The hook MUST be cheap and non-blocking;
+	// the loop holds no lock around the call but waits for it to return.
+	OnSuccessfulPoll func(count int)
 }
 
 func (c *SyncerConfig) defaults() {
@@ -194,6 +204,14 @@ func (s *Syncer) Run(ctx context.Context) error {
 
 		backoff = time.Second
 
+		// Only beacon liveness when the cursor for this page actually
+		// persisted. A Save failure below the 3-strike threshold leaves
+		// saveFailures > 0; firing the hook then would keep /live green
+		// while cursor persistence is stalled.
+		if s.config.OnSuccessfulPoll != nil && saveFailures == 0 {
+			s.config.OnSuccessfulPoll(len(resp.Events))
+		}
+
 		if resp.HasMore {
 			continue
 		}
@@ -237,7 +255,7 @@ func (s *Syncer) applyEvent(ctx context.Context, event FeedEvent) error {
 			s.log.Warn("bad property event payload", "event_id", event.EventID, "error", err)
 			return nil
 		}
-		if p.PropertyID == "" || p.PropertyRID == 0 {
+		if p.PropertyID == "" || p.PropertyRID == "" {
 			s.log.Warn("property event missing required fields", "event_id", event.EventID,
 				"property_id", p.PropertyID, "property_rid", p.PropertyRID)
 			return nil

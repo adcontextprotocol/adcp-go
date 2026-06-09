@@ -1,12 +1,12 @@
-// Package liveramp is a thin HTTP client for the Scope3 LiveRamp mapping
-// sidecar. Given a LiveRamp environment identifier ("env" / RampID), the
-// sidecar returns the Scope3-mapped form the rest of the platform speaks.
+// Package liveramp is a thin HTTP client for a LiveRamp mapping
+// sidecar. Given a LiveRamp environment identifier ("env" / RampID),
+// the sidecar returns the platform-mapped form the rest of the
+// identity pipeline consumes.
 //
-// The shape mirrors github.com/scope3data/rtdp/internal/liveramp.sidecar.go
-// so behavior matches what bid-path code already depends on; differences:
+// Design notes:
 //
-//   - Constructor-based (no package init / global state). Tests instantiate
-//     their own Client against an httptest server.
+//   - Constructor-based (no package init / global state). Tests
+//     instantiate their own Client against an httptest server.
 //   - Caller supplies context.Context per request so the identity-match
 //     agent can apply its per-request deadline.
 package liveramp
@@ -23,12 +23,11 @@ import (
 	"time"
 )
 
-// Default per-call timeouts are sized to fit the identity-match agent's
-// 40ms per-request budget — rtdp's 2s/1s defaults are appropriate for its
-// bidder budget but would cancel-against the agent's deadline every time.
-// A LiveRamp call that takes more than ~15ms is already starving the rest
-// of the agent's request path; the caller should treat that as a miss and
-// drop the identity.
+// Default per-call timeouts are sized to fit the identity-match
+// agent's 40ms per-request budget. A LiveRamp call that takes more
+// than ~15ms is already starving the rest of the agent's request
+// path; the caller should treat that as a miss and drop the
+// identity.
 //
 // Retry policy: none. The 40ms budget doesn't accommodate a retry chain;
 // the LiveRamp client takes one shot and any failure is reported back so
@@ -51,7 +50,7 @@ const (
 	transportExpectContinueLimit = 1 * time.Second
 
 	// scope3SeatID is the key inside the per-source mapping object that
-	// carries the Scope3-mapped form. Mirrors rtdp's constant.
+	// carries the platform-mapped form.
 	scope3SeatID = "Scope3"
 
 	// liverampSource is the source identifier the sidecar publishes for
@@ -85,7 +84,8 @@ type Config struct {
 	HTTPClient *http.Client
 }
 
-// Client looks up LiveRamp env → Scope3 mappings via the sidecar.
+// Client looks up LiveRamp env → platform-mapped value via the
+// sidecar.
 type Client struct {
 	baseURL *url.URL
 	http    *http.Client
@@ -132,14 +132,16 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{baseURL: u, http: hc}, nil
 }
 
-// mapping is the per-source object inside the sidecar's response array.
-// Fields match rtdp's struct so the wire format is the same.
+// mapping is the per-source object inside the sidecar's response
+// array.
 type mapping struct {
 	Source  string            `json:"source"`
 	Mapping map[string]string `json:"mapping"`
 }
 
-// MappedID looks up env in the sidecar and returns the Scope3-mapped value.
+// MappedID looks up env in the sidecar and returns the
+// platform-mapped value (the value the sidecar publishes under the
+// scope3SeatID wire key).
 // Returns ErrNoMapping when the sidecar reachably responds but has no
 // mapping. Transport, decode, and non-OK status errors are returned as-is
 // so the caller can decide whether to alert.
@@ -179,9 +181,10 @@ func (c *Client) MappedID(ctx context.Context, env string) (string, error) {
 		_, _ = io.CopyN(io.Discard, resp.Body, 4*1024)
 		return "", fmt.Errorf("liveramp: sidecar status %d", resp.StatusCode)
 	}
-	// rtdp's contract: 200 + empty body = no mapping. Determined by reading
-	// the body — Content-Length is -1 under chunked encoding and a
-	// `ContentLength == 0` short-circuit would misread that as "empty".
+	// Sidecar contract: 200 + empty body = no mapping. Determined by
+	// reading the body — Content-Length is -1 under chunked encoding
+	// and a `ContentLength == 0` short-circuit would misread that as
+	// "empty".
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
 		return "", fmt.Errorf("liveramp: read body: %w", err)

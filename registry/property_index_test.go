@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestPropertyIndex_PutAndLookup(t *testing.T) {
 
 	p := &Property{
 		PropertyID:   "pub1.example.com/homepage",
-		PropertyRID:  1001,
+		PropertyRID:  "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
 		PropertyType: "website",
 		Domain:       "example.com",
 		Placements:   []string{"top-banner", "sidebar"},
@@ -26,9 +27,9 @@ func TestPropertyIndex_PutAndLookup(t *testing.T) {
 
 	got, ok := idx.LookupByID("pub1.example.com/homepage")
 	require.True(t, ok, "LookupByID: not found")
-	assert.Equal(t, uint64(1001), got.PropertyRID)
+	assert.Equal(t, "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", got.PropertyRID)
 
-	got, ok = idx.LookupByRID(1001)
+	got, ok = idx.LookupByRID("0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b")
 	require.True(t, ok, "LookupByRID: not found")
 	assert.Equal(t, "pub1.example.com/homepage", got.PropertyID)
 	assert.Equal(t, "example.com", got.Domain)
@@ -37,24 +38,24 @@ func TestPropertyIndex_PutAndLookup(t *testing.T) {
 	require.True(t, ok, "LookupByDomain: not found")
 	assert.Equal(t, "pub1.example.com/homepage", id)
 
-	assert.Equal(t, uint64(1001), idx.PropertyRID("pub1.example.com/homepage"))
-	assert.Equal(t, uint64(0), idx.PropertyRID("nonexistent"))
+	assert.Equal(t, "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", idx.PropertyRID("pub1.example.com/homepage"))
+	assert.Equal(t, "", idx.PropertyRID("nonexistent"))
 }
 
 func TestPropertyIndex_Update(t *testing.T) {
 	idx := NewPropertyIndex()
 	ctx := context.Background()
 
-	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: 100, Domain: "old.com", PropertyType: "website"}))
-	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: 200, Domain: "new.com", PropertyType: "ctv_app"}))
+	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: "rid-100", Domain: "old.com", PropertyType: "website"}))
+	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: "rid-200", Domain: "new.com", PropertyType: "ctv_app"}))
 
 	require.Equal(t, 1, idx.Count())
 
-	_, ok := idx.LookupByRID(100)
-	assert.False(t, ok, "old RID 100 should be removed")
+	_, ok := idx.LookupByRID("rid-100")
+	assert.False(t, ok, "old RID rid-100 should be removed")
 
-	got, ok := idx.LookupByRID(200)
-	require.True(t, ok, "new RID 200 not found")
+	got, ok := idx.LookupByRID("rid-200")
+	require.True(t, ok, "new RID rid-200 not found")
 	assert.Equal(t, "ctv_app", got.PropertyType)
 
 	_, ok = idx.LookupByDomain("old.com")
@@ -69,7 +70,7 @@ func TestPropertyIndex_Remove(t *testing.T) {
 	idx := NewPropertyIndex()
 	ctx := context.Background()
 
-	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: 100, Domain: "example.com"}))
+	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: "rid-100", Domain: "example.com"}))
 
 	_, existed := idx.LookupByID("prop1")
 	assert.True(t, existed, "should exist before remove")
@@ -77,7 +78,7 @@ func TestPropertyIndex_Remove(t *testing.T) {
 	require.NoError(t, idx.Remove(ctx, "prop1")) // idempotent
 	assert.Equal(t, 0, idx.Count())
 
-	_, ok := idx.LookupByRID(100)
+	_, ok := idx.LookupByRID("rid-100")
 	assert.False(t, ok, "RID should be removed")
 	_, ok = idx.LookupByDomain("example.com")
 	assert.False(t, ok, "domain should be removed")
@@ -87,11 +88,11 @@ func TestPropertyIndex_NoDomain(t *testing.T) {
 	idx := NewPropertyIndex()
 	ctx := context.Background()
 
-	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: 100}))
+	require.NoError(t, idx.Put(ctx, &Property{PropertyID: "prop1", PropertyRID: "rid-100"}))
 
 	_, ok := idx.LookupByID("prop1")
 	assert.True(t, ok, "should find by ID")
-	_, ok = idx.LookupByRID(100)
+	_, ok = idx.LookupByRID("rid-100")
 	assert.True(t, ok, "should find by RID")
 	require.NoError(t, idx.Remove(ctx, "prop1"))
 	assert.Equal(t, 0, idx.Count(), "should be empty after remove")
@@ -104,21 +105,21 @@ func TestPropertyIndex_Concurrent(t *testing.T) {
 
 	for i := range 100 {
 		wg.Add(1)
-		go func(n uint64) {
+		go func(n int) {
 			defer wg.Done()
 			p := &Property{
 				PropertyID:  "prop",
-				PropertyRID: n,
+				PropertyRID: strconv.Itoa(n),
 				Domain:      "example.com",
 			}
 			_ = idx.Put(ctx, p)
-		}(uint64(i)) //nolint:gosec // test values are small
+		}(i)
 	}
 
 	for range 100 {
 		wg.Go(func() {
 			idx.LookupByID("prop")
-			idx.LookupByRID(50)
+			idx.LookupByRID("50")
 			idx.LookupByDomain("example.com")
 			idx.PropertyRID("prop")
 			idx.Count()

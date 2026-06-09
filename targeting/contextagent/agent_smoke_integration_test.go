@@ -52,7 +52,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 	client := redis.NewClient(&redis.Options{Addr: addr})
 	t.Cleanup(func() { _ = client.Close() })
 	store := redisstore.New(client)
-	seedSmokeData(t, ctx, store, cfg)
+	seedSmokeData(t, ctx, store)
 
 	// buildBundle exercises the production wiring: Valkey connect,
 	// suppression initial load (fail-closed), per-domain readers,
@@ -60,7 +60,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 	metricsProvider, err := BuildMetrics(cfg.Metrics)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = metricsProvider.Shutdown(ctx) })
-	bundle, err := buildBundle(ctx, cfg, metricsProvider.Recorder, logger)
+	bundle, err := buildBundle(ctx, cfg, runOptions{}, metricsProvider.Recorder, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() { teardownBundle(bundle) })
 
@@ -99,6 +99,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 			PropertyRID:     "rid-1",
 			PropertyType:    "site",
 			PlacementID:     "slot-A",
+			SellerAgentURL:  smokeSellerAgentURL,
 		})
 		resp, err := http.Post(ts.URL+"/context", "application/json", strings.NewReader(body))
 		require.NoError(t, err)
@@ -124,6 +125,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 			PropertyRID:     "rid-1",
 			PropertyType:    "site",
 			PlacementID:     "slot-A",
+			SellerAgentURL:  smokeSellerAgentURL,
 			PackageIDs:      []string{"pkg-not-registered", "pkg-smoke"},
 		})
 		resp, err := http.Post(ts.URL+"/context", "application/json", strings.NewReader(body))
@@ -157,6 +159,7 @@ func TestSmoke_ContextAgent_EndToEnd(t *testing.T) {
 			PropertyRID:     "rid-1",
 			PropertyType:    "site",
 			PlacementID:     "slot-A",
+			SellerAgentURL:  smokeSellerAgentURL,
 		})
 		resp, err := http.Post(ts.URL+"/context", "application/json", strings.NewReader(body))
 		require.NoError(t, err)
@@ -191,7 +194,6 @@ func smokeConfig(valkeyAddr string) Config {
 		SupportedADCPMajorVersions: []int{3},
 		LogLevel:                   "info",
 		ProviderID:                 "provider-smoke",
-		SellerAgentURL:             "https://seller.example/agent",
 		PropertyRIDs:               []string{"rid-1"},
 		SuppressionRefreshInterval: time.Minute,
 		TMP: TMPConfig{
@@ -229,13 +231,18 @@ func handlerCfgFor(cfg Config, bundle *bundle, recorder Recorder, logger *slog.L
 // active package to surface on a /context request: one media buy
 // pointing at the seller_agent_url, one package config naming the
 // expected offer.
-func seedSmokeData(t *testing.T, ctx context.Context, store *redisstore.Store, cfg Config) {
+// smokeSellerAgentURL is the seller the smoke media buy is keyed under
+// and the value every smoke request carries as seller_agent_url, so the
+// engine's active-set lookup resolves the seeded buy.
+const smokeSellerAgentURL = "https://seller.example/agent"
+
+func seedSmokeData(t *testing.T, ctx context.Context, store *redisstore.Store) {
 	t.Helper()
 	mbSvc, err := mediabuystore.NewService(store)
 	require.NoError(t, err)
 	require.NoError(t, mbSvc.Put(ctx, mediabuystore.MediaBuy{
 		MediaBuyID:     "mb-smoke",
-		SellerAgentURL: cfg.SellerAgentURL,
+		SellerAgentURL: smokeSellerAgentURL,
 		StartDate:      "2020-01-01",
 		EndDate:        "2099-12-31",
 		Packages:       []mediabuystore.MediaBuyPackage{{PackageID: "pkg-smoke", MediaBuyID: "mb-smoke"}},
