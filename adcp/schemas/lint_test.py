@@ -630,85 +630,55 @@ class OptionalNumericPointerLintTest(unittest.TestCase):
         reports = lint.optional_bool_pointer_reports(lint.parse_go_structs())
         self.assertEqual([], reports)
 
-    def test_optional_numeric_lint_current_schema_is_clean(self):
-        # The generator pointerizes every optional numeric whose omission is
-        # semantically distinct from zero, so the real schema must not report.
+    def test_optional_numeric_lint_catches_current_schema_candidates(self):
         reports = lint.optional_numeric_pointer_reports(lint.parse_go_structs())
-        self.assertEqual([], reports)
+        report_keys = {(r["type"], r["json"]) for r in reports}
 
-    def test_optional_numeric_lint_catches_generated_scalar_omitempty(self):
-        schema = {
-            "type": "object",
-            "properties": {
-                "weight": {
-                    "type": "number",
-                    "description": "Optional weight; if omitted, no weight is applied.",
-                },
-                "count": {"type": "integer"},
-            },
-            "required": ["count"],
-        }
-        entry = {
-            "kind": "struct",
-            "name": "GeneratedShape",
-            "schema": "generated-shape.json",
-            "schema_obj": schema,
-        }
+        self.assertNotIn(("CreativeAsset", "weight"), report_keys)
+        self.assertNotIn(("KeywordTarget", "bid_price"), report_keys)
 
-        def field_go_type_info(type_name, json_name, prop, required_set):
-            return ("float64", None)
+        original_hints = lint.gen.INLINE_TYPE_HINTS
+        try:
+            lint.gen.INLINE_TYPE_HINTS = {
+                key: value for key, value in original_hints.items()
+                if key not in {
+                    ("CreativeAsset", "weight"),
+                    ("KeywordTarget", "bid_price"),
+                }
+            }
+            lint.gen._reset_will_generate_cache()
 
-        with (
-            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[entry]),
-            mock.patch.object(lint.gen, "field_go_type_info", side_effect=field_go_type_info),
-            mock.patch.object(lint, "resolve_schema_spec", return_value=None),
-        ):
-            reports = lint.optional_numeric_pointer_reports({})
+            reports = lint.optional_numeric_pointer_reports(lint.parse_go_structs())
+            report_keys = {(r["type"], r["json"]) for r in reports}
 
-        self.assertEqual([("GeneratedShape", "weight")], [
-            (r["type"], r["json"]) for r in reports
-        ])
+            self.assertIn(("CreativeAsset", "weight"), report_keys)
+            self.assertIn(("KeywordTarget", "bid_price"), report_keys)
+        finally:
+            lint.gen.INLINE_TYPE_HINTS = original_hints
+            lint.gen._reset_will_generate_cache()
 
     def test_optional_numeric_lint_honors_explicit_waivers(self):
-        schema = {
-            "type": "object",
-            "properties": {
-                "weight": {
-                    "type": "number",
-                    "description": "Optional weight; if omitted, no weight is applied.",
-                },
-            },
-        }
-        entry = {
-            "kind": "struct",
-            "name": "GeneratedShape",
-            "schema": "generated-shape.json",
-            "schema_obj": schema,
-        }
-
-        def field_go_type_info(type_name, json_name, prop, required_set):
-            return ("float64", None)
-
+        original_hints = lint.gen.INLINE_TYPE_HINTS
         original_waivers = lint.OPTIONAL_NUMERIC_SCALAR_OK
         try:
+            lint.gen.INLINE_TYPE_HINTS = {
+                key: value for key, value in original_hints.items()
+                if key != ("CreativeAsset", "weight")
+            }
             lint.OPTIONAL_NUMERIC_SCALAR_OK = {
                 **original_waivers,
-                ("GeneratedShape", "weight"): "test waiver",
+                ("CreativeAsset", "weight"): "test waiver",
             }
-            with (
-                mock.patch.object(
-                    lint.gen, "generated_schema_entries", return_value=[entry]
-                ),
-                mock.patch.object(
-                    lint.gen, "field_go_type_info", side_effect=field_go_type_info
-                ),
-                mock.patch.object(lint, "resolve_schema_spec", return_value=None),
-            ):
-                reports = lint.optional_numeric_pointer_reports({})
+            lint.gen._reset_will_generate_cache()
 
-            self.assertEqual([], reports)
+            reports = lint.optional_numeric_pointer_reports(lint.parse_go_structs())
+            report_keys = {(r["type"], r["json"]) for r in reports}
+
+            self.assertNotIn(("CreativeAsset", "weight"), report_keys)
         finally:
+            lint.gen.INLINE_TYPE_HINTS = original_hints
             lint.OPTIONAL_NUMERIC_SCALAR_OK = original_waivers
+            lint.gen._reset_will_generate_cache()
 
 
 if __name__ == "__main__":

@@ -1531,6 +1531,8 @@ INLINE_TYPE_HINTS = {
     ('PackageSignalTargeting', 'max_value'): '*float64',
     ('SignalTargetingExpression', 'min_value'): '*float64',
     ('SignalTargetingExpression', 'max_value'): '*float64',
+    ('BuildCreativeSignalCondition', 'min_value'): '*float64',
+    ('BuildCreativeSignalCondition', 'max_value'): '*float64',
     ('SignalTargetingRules', 'min_selected_signals'): '*int',
     ('CommittedMetric', 'qualifier'): '*MetricQualifier',
     ('DeliveryMetricAggregate', 'qualifier'): '*MetricQualifier',
@@ -2580,86 +2582,6 @@ def should_pointer_optional_type(go_type):
     return True
 
 
-# Description fragments signalling that omitting an optional numeric carries
-# meaning beyond an explicit zero (so the field needs a pointer).
-OPTIONAL_NUMERIC_OMISSION_HINTS = (
-    'default:',
-    'defaults to',
-    'default is',
-    'if omitted',
-    'omit for',
-    'omit to',
-    'when omitted',
-    'if present',
-    'when present',
-    'when provided',
-    'if provided',
-    'required when',
-    'populated when',
-    'when specified',
-    'optional override',
-)
-
-
-def numeric_zero_invalid(prop):
-    """Return True when schema constraints reject an explicit numeric zero."""
-    minimum = prop.get('minimum')
-    if minimum is not None:
-        try:
-            if float(minimum) > 0:
-                return True
-        except (TypeError, ValueError):
-            pass
-
-    exclusive_minimum = prop.get('exclusiveMinimum')
-    if exclusive_minimum is True:
-        try:
-            return float(prop.get('minimum', 0)) >= 0
-        except (TypeError, ValueError):
-            return True
-    if (
-        exclusive_minimum is not False and
-        isinstance(exclusive_minimum, (int, float))
-    ):
-        if float(exclusive_minimum) >= 0:
-            return True
-
-    enum = prop.get('enum')
-    if enum is not None and 0 not in enum and 0.0 not in enum:
-        return True
-
-    return False
-
-
-def numeric_omission_is_semantically_distinct(prop):
-    """Heuristic for optional numerics where omission means more than zero."""
-    if 'default' in prop:
-        try:
-            return float(prop['default']) != 0
-        except (TypeError, ValueError):
-            return True
-    description = (prop.get('description') or '').lower()
-    return any(hint in description for hint in OPTIONAL_NUMERIC_OMISSION_HINTS)
-
-
-def should_pointer_optional_numeric(prop, is_required):
-    """True when an optional numeric scalar must use a pointer to omit cleanly.
-
-    Mirrors the lint contract: an optional numeric whose omission is
-    semantically distinct from an explicit zero (and where zero is a valid
-    value) cannot round-trip through a plain int/float64, because the zero value
-    is dropped by omitempty.
-    """
-    if is_required:
-        return False
-    if prop.get('type') not in ('integer', 'number'):
-        return False
-    return (
-        not numeric_zero_invalid(prop) and
-        numeric_omission_is_semantically_distinct(prop)
-    )
-
-
 def field_go_type_info(type_name, json_name, prop, required_set):
     """Return the generated field type and fallback reason for a struct field."""
     hint_key = (type_name, json_name)
@@ -2678,11 +2600,6 @@ def field_go_type_info(type_name, json_name, prop, required_set):
     is_required = json_name in required_set
     if not is_required and go_type == 'bool':
         go_type = '*bool'
-    elif (
-        go_type in ('int', 'float64') and
-        should_pointer_optional_numeric(prop, is_required)
-    ):
-        go_type = f'*{go_type}'
     elif not is_required and should_pointer_optional_type(go_type) and not direct_enum_ref:
         go_type = f'*{go_type}'
     return go_type, reason
