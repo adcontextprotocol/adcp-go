@@ -148,6 +148,20 @@ type GeoMetrosCaps struct {
 }
 
 type GeoPostalAreasCaps struct {
+	// Native support keyed by ISO 3166-1 alpha-2 country, each listing the
+	// country-local postal systems the seller honors.
+	US []string `json:"US,omitempty"`
+	GB []string `json:"GB,omitempty"`
+	CA []string `json:"CA,omitempty"`
+	DE []string `json:"DE,omitempty"`
+	CH []string `json:"CH,omitempty"`
+	AT []string `json:"AT,omitempty"`
+	FR []string `json:"FR,omitempty"`
+	AU []string `json:"AU,omitempty"`
+	BR []string `json:"BR,omitempty"`
+	IN []string `json:"IN,omitempty"`
+	ZA []string `json:"ZA,omitempty"`
+	// Deprecated country-fused boolean aliases retained for migration.
 	USZip         *bool `json:"us_zip,omitempty"`
 	USZipPlusFour *bool `json:"us_zip_plus_four,omitempty"`
 	GBOutward     *bool `json:"gb_outward,omitempty"`
@@ -364,13 +378,34 @@ type BrandCapabilities struct {
 
 // CreativeCapabilities is the creative protocol capability block.
 type CreativeCapabilities struct {
-	SupportsCompliance      *bool                     `json:"supports_compliance,omitempty"`
-	HasCreativeLibrary      *bool                     `json:"has_creative_library,omitempty"`
-	SupportsGeneration      *bool                     `json:"supports_generation,omitempty"`
-	SupportsTransformation  *bool                     `json:"supports_transformation,omitempty"`
-	SupportedFormats        []CreativeSupportedFormat `json:"supported_formats,omitempty"`
-	BillsThroughAdcp        *bool                     `json:"bills_through_adcp,omitempty"`
-	CanonicalCatalogVersion string                    `json:"canonical_catalog_version,omitempty"`
+	SupportsCompliance        *bool                     `json:"supports_compliance,omitempty"`
+	HasCreativeLibrary        *bool                     `json:"has_creative_library,omitempty"`
+	SupportsGeneration        *bool                     `json:"supports_generation,omitempty"`
+	SupportsTransformation    *bool                     `json:"supports_transformation,omitempty"`
+	SupportsTransformers      *bool                     `json:"supports_transformers,omitempty"`
+	SupportsRefinement        *bool                     `json:"supports_refinement,omitempty"`
+	SupportsEvaluator         *bool                     `json:"supports_evaluator,omitempty"`
+	SupportsSpendControls     *bool                     `json:"supports_spend_controls,omitempty"`
+	RefinableRetentionSeconds *int                      `json:"refinable_retention_seconds,omitempty"`
+	Multiplicity              *CreativeMultiplicityCaps `json:"multiplicity,omitempty"`
+	SupportedFormats          []CreativeSupportedFormat `json:"supported_formats,omitempty"`
+	BillsThroughAdcp          *bool                     `json:"bills_through_adcp,omitempty"`
+	CanonicalCatalogVersion   string                    `json:"canonical_catalog_version,omitempty"`
+}
+
+// CreativeMultiplicityCaps declares pre-call build_creative fan-out
+// discriminators so a buyer can tell, before sending max_creatives /
+// max_variants, whether this agent supports catalog/signal fan-out or variants
+// and what per-call limits apply.
+type CreativeMultiplicityCaps struct {
+	SupportsCatalogFanout    *bool    `json:"supports_catalog_fanout,omitempty"`
+	MaxCreativesLimit        *int     `json:"max_creatives_limit,omitempty"`
+	SupportsSignalFanout     *bool    `json:"supports_signal_fanout,omitempty"`
+	MaxSignalConditionsLimit *int     `json:"max_signal_conditions_limit,omitempty"`
+	SupportsVariants         *bool    `json:"supports_variants,omitempty"`
+	MaxVariantsLimit         *int     `json:"max_variants_limit,omitempty"`
+	VariantDimensions        []string `json:"variant_dimensions,omitempty"`
+	SelectionStrategies      []string `json:"selection_strategies,omitempty"`
 }
 
 type CreativeSupportedFormat struct {
@@ -1475,17 +1510,18 @@ type PerformanceStandard struct {
 // enforcement per variant is deferred to the schema validator; omitempty on
 // numeric fields means legitimate zero values (e.g. CPM: 0) do not round-trip.
 type VendorPricingOption struct {
-	PricingOptionID string         `json:"pricing_option_id"`
-	Model           string         `json:"model"`
-	CPM             float64        `json:"cpm,omitempty"`
-	Percent         float64        `json:"percent,omitempty"`
-	MaxCPM          float64        `json:"max_cpm,omitempty"`
-	Amount          float64        `json:"amount,omitempty"`
-	Period          string         `json:"period,omitempty"`
-	Unit            string         `json:"unit,omitempty"`
-	UnitPrice       float64        `json:"unit_price,omitempty"`
-	Description     string         `json:"description,omitempty"`
-	Metadata        map[string]any `json:"metadata,omitempty"`
-	Currency        string         `json:"currency,omitempty"`
-	Ext             any            `json:"ext,omitempty"`
+	PricingOptionID          string         `json:"pricing_option_id"`
+	Model                    string         `json:"model"`
+	CPM                      float64        `json:"cpm,omitempty"`
+	Percent                  float64        `json:"percent,omitempty"`
+	MaxCPM                   float64        `json:"max_cpm,omitempty"`
+	Amount                   float64        `json:"amount,omitempty"`
+	Period                   string         `json:"period,omitempty"`
+	Unit                     string         `json:"unit,omitempty"`
+	UnitPrice                float64        `json:"unit_price,omitempty"`
+	Description              string         `json:"description,omitempty"`
+	Metadata                 map[string]any `json:"metadata,omitempty"`
+	Currency                 string         `json:"currency,omitempty"`
+	AppliesToOutputFormatIDs []FormatRef    `json:"applies_to_output_format_ids,omitempty"`
+	Ext                      any            `json:"ext,omitempty"`
 }

@@ -8809,8 +8809,8 @@ type BuildCreativeSignalCondition struct {
 	ValueType            string    `json:"value_type,omitempty"`              // Discriminator for numeric signals
 	Value                *bool     `json:"value,omitempty"`                   // Whether to include (true) or exclude (false) users matching this signal
 	Values               []string  `json:"values,omitempty"`                  // Values to target. Users with any of these values will be included.
-	MinValue             float64   `json:"min_value,omitempty"`               // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both
-	MaxValue             float64   `json:"max_value,omitempty"`               // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both
+	MinValue             *float64  `json:"min_value,omitempty"`               // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both
+	MaxValue             *float64  `json:"max_value,omitempty"`               // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both
 	SignalAgentSegmentID string    `json:"signal_agent_segment_id,omitempty"` // Optional opaque resolved-segment handle for this fan-out condition — the
 }
 
