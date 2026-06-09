@@ -20,15 +20,15 @@ import (
 // InMemory satisfies targeting.ContextStorage from plain Go maps.
 // Construct via NewInMemory and populate with the With* methods.
 type InMemory struct {
-	configs          map[string]*targeting.PackageContextConfig
-	activePackages   map[string][]string                   // sellerURL|propertyID|country → pkgIDs
-	artifactTopics   map[topicstore.Taxonomy]map[string][]string
-	packageTopics    map[topicstore.Taxonomy]map[string][]string
-	urlBlocked       map[string]map[string]struct{} // packageID → hashSet
-	urlAllowed       map[string]map[string]struct{}
-	suppressedProps  map[string]struct{} // providerID|propertyRID
-	suppressedGeos   map[string]struct{} // providerID|country
-	signals          map[string]string   // signal:* key → CSV of signal IDs
+	configs         map[string]*targeting.PackageContextConfig
+	activePackages  map[string][]string // sellerURL|propertyID|country → pkgIDs
+	artifactTopics  map[topicstore.Taxonomy]map[string][]string
+	packageTopics   map[topicstore.Taxonomy]map[string][]string
+	urlBlocked      map[string]map[string]struct{} // packageID → hashSet
+	urlAllowed      map[string]map[string]struct{}
+	suppressedProps map[string]struct{} // providerID|propertyRID
+	suppressedGeos  map[string]struct{} // providerID|country
+	signals         map[string]string   // signal:* key → CSV of signal IDs
 }
 
 // NewInMemory returns an empty InMemory.

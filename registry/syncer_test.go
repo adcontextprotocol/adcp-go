@@ -19,13 +19,13 @@ func TestSyncer_AppliesPropertyEvents(t *testing.T) {
 			EventID: "019414a0-0000-7000-0000-000000000001", EventType: "property.created",
 			EntityType: "property", EntityID: "pub1.example.com/home",
 			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: "0190a1b2-c3d4-7e5f-8a9b-000000001001", PropertyType: "website", Domain: "example.com"}),
-			Actor: "pipeline:crawler",
+			Actor:   "pipeline:crawler",
 		},
 		{
 			EventID: "019414a0-0000-7000-0000-000000000002", EventType: "property.updated",
 			EntityType: "property", EntityID: "pub1.example.com/home",
 			Payload: mustMarshal(Property{PropertyID: "pub1.example.com/home", PropertyRID: "0190a1b2-c3d4-7e5f-8a9b-000000001001", PropertyType: "website", Domain: "example.com", Placements: []string{"top"}}),
-			Actor: "pipeline:crawler",
+			Actor:   "pipeline:crawler",
 		},
 	}
 
@@ -168,7 +168,7 @@ func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
 			events: []FeedEvent{
 				{EventID: "e1", EventType: "authorization.granted", EntityType: "authorization", EntityID: "a:d",
 					Payload: mustMarshal(AuthorizationEntry{AgentURL: "https://agent.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"}),
-					Actor: "test"},
+					Actor:   "test"},
 			},
 			cursor: strPtr("e1"), hasMore: true,
 		},
@@ -176,7 +176,7 @@ func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
 			events: []FeedEvent{
 				{EventID: "e2", EventType: "authorization.revoked", EntityType: "authorization", EntityID: "a:d",
 					Payload: mustMarshal(map[string]string{"agent_url": "https://agent.com", "publisher_domain": "pub.com"}),
-					Actor: "test"},
+					Actor:   "test"},
 			},
 			cursor: strPtr("e2"), hasMore: false,
 		},
@@ -235,7 +235,7 @@ func TestSyncer_AgentRemovedCleansAuth(t *testing.T) {
 					Payload: mustMarshal(AgentProfile{AgentURL: "https://agent.com"}), Actor: "test"},
 				{EventID: "e2", EventType: "authorization.granted", EntityType: "authorization", EntityID: "a:d",
 					Payload: mustMarshal(AuthorizationEntry{AgentURL: "https://agent.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"}),
-					Actor: "test"},
+					Actor:   "test"},
 			},
 			cursor: strPtr("e2"), hasMore: true,
 		},

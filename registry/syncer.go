@@ -204,7 +204,11 @@ func (s *Syncer) Run(ctx context.Context) error {
 
 		backoff = time.Second
 
-		if s.config.OnSuccessfulPoll != nil {
+		// Only beacon liveness when the cursor for this page actually
+		// persisted. A Save failure below the 3-strike threshold leaves
+		// saveFailures > 0; firing the hook then would keep /live green
+		// while cursor persistence is stalled.
+		if s.config.OnSuccessfulPoll != nil && saveFailures == 0 {
 			s.config.OnSuccessfulPoll(len(resp.Events))
 		}
 

@@ -9,8 +9,8 @@ import "github.com/adcontextprotocol/adcp-go/targeting"
 type Option func(*runOptions)
 
 type runOptions struct {
-	propertyGlobal  targeting.Bitmap
-	livenessChecks  []LivenessCheck
+	propertyGlobal targeting.Bitmap
+	livenessChecks []LivenessCheck
 }
 
 // WithPropertyGlobal injects the global property bitmap the engine

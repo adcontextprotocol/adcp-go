@@ -263,7 +263,7 @@ func TestMatchProfile_NoneOfCapTripFailsClosed(t *testing.T) {
 	}
 	data := LookupData{KeyTypeURLHash: vals, KeyTypeCountry: vals}
 	profile := Profile{
-		AnyOf: []Cfg{any1},
+		AnyOf:  []Cfg{any1},
 		NoneOf: []Cfg{none}, // would trip cap
 	}
 	// Pretend any_of matches.

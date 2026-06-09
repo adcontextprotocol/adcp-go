@@ -15,9 +15,11 @@
 // the wire, so AllowedKeyTypes is restricted to context attributes
 // (URL hashes, geo segments, IAB topic ids, artifact_ref public
 // identifiers). Cfgs whose key_types fall outside that set are
-// rejected at three layers — Validate, ExpandKeys, and the
-// writer-side Service.Put — so a misconfigured cfg cannot reach the
-// identity keyspace from the context-match data path.
+// rejected by both Cfg.Validate (write-time) and ExpandKeys, which
+// re-runs IsAllowed at read time independent of Validate — load-bearing
+// because the read path never calls Validate. A misconfigured cfg
+// therefore cannot reach the identity keyspace from the context-match
+// data path.
 package signalstore
 
 import (

@@ -218,8 +218,9 @@ type contextConfigBatcher interface {
 //
 //   - (map, nil) — fetched successfully; the map may be empty when no
 //     profile produced expandable keys.
-//   - (nil, nil) — no candidate carries a profile to evaluate;
-//     callers should skip the signal stage entirely.
+//   - (nil, nil) — there is nothing to evaluate: no candidate carries a
+//     profile, or the request produced no signal lookup data
+//     (len(data) == 0); callers should skip the signal stage entirely.
 //   - (nil, err) — planning or MGet failed; callers MUST fail-closed
 //     every package with a non-empty profile.
 func (e *ContextEngine) fetchSignalsForCandidates(

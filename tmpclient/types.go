@@ -37,9 +37,9 @@ type ActivateParams struct {
 
 	// Identity match inputs.
 	UserToken string
-	UIDType        tmproto.UIDType
-	Consent        map[string]any
-	Country        string // ISO 3166-1 alpha-2 routing directive for identity match
+	UIDType   tmproto.UIDType
+	Consent   map[string]any
+	Country   string // ISO 3166-1 alpha-2 routing directive for identity match
 }
 
 // Activation is a package that passed both context and identity checks.
