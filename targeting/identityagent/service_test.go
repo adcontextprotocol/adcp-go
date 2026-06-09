@@ -90,6 +90,9 @@ func newTestService(t *testing.T, opts testServiceOptions) *Service {
 		ConfigService:   configSvc,
 		FCapTimeout:     50 * time.Millisecond,
 		AudienceTimeout: 50 * time.Millisecond,
+		Verifier:        opts.verifier,
+		RecipientKeys:   opts.recipientKeys,
+		AgeResolver:     opts.ageResolver,
 	})
 	require.NoError(t, err)
 	return svc
@@ -100,6 +103,11 @@ type testServiceOptions struct {
 	cappedTuples     []capTuple
 	memberships      []membershipFixture
 	audienceDisabled bool
+
+	// verified-identity deps (all optional; zero value disables the stage).
+	verifier      targeting.AttestationVerifier
+	recipientKeys map[string]RecipientKey
+	ageResolver   targeting.AgeResolver
 }
 
 type capTuple struct {

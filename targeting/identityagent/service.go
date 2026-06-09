@@ -30,6 +30,14 @@ type Service struct {
 	fcapTimeout     time.Duration
 	audienceTimeout time.Duration
 	recorder        Recorder
+
+	// Verified-identity dependencies are all optional. When verifier or
+	// recipientKeys is unset the verified-identity stage is a no-op and
+	// eligibility behaves exactly as before (fail-closed: no attestation is
+	// ever trusted without a wired verifier).
+	verifier      targeting.AttestationVerifier
+	recipientKeys map[string]RecipientKey
+	ageResolver   targeting.AgeResolver
 }
 
 // ServiceConfig packages the dependencies for NewService.
@@ -41,6 +49,17 @@ type ServiceConfig struct {
 	FCapTimeout     time.Duration
 	AudienceTimeout time.Duration
 	Recorder        Recorder
+
+	// Verifier validates attestations; nil disables the verified-identity
+	// stage (fail-closed — attestations are treated as absent).
+	Verifier targeting.AttestationVerifier
+	// RecipientKeys maps audience_kid → the HPKE recipient key + the relying
+	// party this deployment acts as for that audience. nil/empty disables the
+	// stage. The values contain secret key material — never log this map.
+	RecipientKeys map[string]RecipientKey
+	// AgeResolver resolves a package's required age threshold by geo; nil
+	// means no age gating.
+	AgeResolver targeting.AgeResolver
 }
 
 // NewService validates the supplied dependencies and returns a Service.
@@ -74,6 +93,9 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		fcapTimeout:     cfg.FCapTimeout,
 		audienceTimeout: cfg.AudienceTimeout,
 		recorder:        rec,
+		verifier:        cfg.Verifier,
+		recipientKeys:   cfg.RecipientKeys,
+		ageResolver:     cfg.AgeResolver,
 	}, nil
 }
 
@@ -95,6 +117,14 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	s.recorder.StageOutcome(ctx, StageResolve, OutcomePass)
 	resolved := &targeting.ResolvedPackages{IdentityConfigs: idConfigs}
 
+	// Verified-identity stage runs synchronously before the parallel block:
+	// it may call a (possibly network) verifier, and its fail-closed verdict
+	// must be computed outside the cancelable goroutines so a short-circuit
+	// cancel cannot drop it. No-op (verified == nil, vidRejected empty) when
+	// no verifier is wired, leaving existing behavior unchanged.
+	verified := s.runVerifiedIdentityStage(ctx, req)
+	vidRejected := s.computeVerifiedIdentityGate(ctx, req, resolved, effectivePkgIDs, verified)
+
 	pkgsWithSegments := s.packagesWithSegmentRules(resolved, effectivePkgIDs)
 	audienceNeeded := s.audienceSvc != nil && len(pkgsWithSegments) > 0
 
@@ -108,7 +138,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	)
 
 	wg.Go(func() {
-		fcapResult = s.runFcapStage(parCtx, req, effectivePkgIDs)
+		fcapResult = s.runFcapStage(parCtx, req, effectivePkgIDs, verified)
 		if fcapResult.allCapped(effectivePkgIDs) {
 			cancel()
 		}
@@ -137,7 +167,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 		}
 	}
 
-	eligibility := s.joinResults(effectivePkgIDs, pkgsWithSegments, fcapResult, audResult)
+	eligibility := s.joinResults(effectivePkgIDs, pkgsWithSegments, fcapResult, audResult, vidRejected)
 	return &targeting.IdentityResult{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
@@ -188,7 +218,7 @@ func (r fcapResult) allCapped(pkgIDs []string) bool {
 // fcap.Service.IsCappedAny which pipelines the cross-product internally
 // using a pooled scratch buffer. The result is the per-package cap verdict
 // across all request identities.
-func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, pkgIDs []string) fcapResult {
+func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, pkgIDs []string, verified []targeting.VerifiedIdentity) fcapResult {
 	start := time.Now()
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
 	defer cancelFcap()
@@ -217,9 +247,31 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 	for i, pkgID := range pkgIDs {
 		fields[i] = fcap.Field{SellerAgentURL: sellerDomain, PackageID: pkgID}
 	}
-	identities := make([]string, len(req.Identities))
-	for i, id := range req.Identities {
-		identities[i] = id.UserToken
+	// Frequency-cap key selection. When verified identities are present, cap
+	// on their relying-party-scoped, namespaced nullifier keys — a true
+	// per-human cap a rotating UserToken can't give. CapKey's "vid:<rp>:"
+	// namespace prevents cross-RP cap collisions and keeps verified-identity
+	// keys disjoint from raw UserToken keys, so a guessed nullifier sent as an
+	// ordinary token cannot poison a human's cap. With no verified identities,
+	// fall back to the request's user tokens (unchanged behavior).
+	//
+	// Read/write symmetry (deploy invariant): this reads caps under the
+	// nullifier key, so the frequency-writer MUST record verified-identity
+	// caps under the same "vid:<rp>:<nullifier>" key. Enabling a verifier
+	// before the writer emits nullifier-keyed caps would let a human already
+	// capped under their UserToken appear uncapped on any attested request
+	// (cap fail-open / over-delivery). Gate verifier-enable on writer parity.
+	var identities []string
+	if len(verified) > 0 {
+		identities = make([]string, len(verified))
+		for i, vi := range verified {
+			identities[i] = vi.CapKey()
+		}
+	} else {
+		identities = make([]string, len(req.Identities))
+		for i, id := range req.Identities {
+			identities[i] = id.UserToken
+		}
 	}
 
 	cappedByField, err := s.fcap.IsCappedAny(fcapCtx, identities, fields)
@@ -344,13 +396,20 @@ func (s *Service) runAudienceStage(ctx context.Context, req *tmproto.IdentityMat
 	return audienceResult{rejected: rejected, outcome: outcome, duration: dur}
 }
 
-// joinResults computes the final per-package eligibility from the parallel
-// stage outputs. A package is eligible only when:
+// joinResults computes the final per-package eligibility from the stage
+// outputs. A package is eligible only when ALL of:
 //
 //   - fcap did not flag it as capped for any identity, AND
 //   - audience did not reject it (or the package has no segment rule, in
-//     which case audience is a no-op for it).
-func (s *Service) joinResults(pkgIDs []string, pkgsWithSegments map[string]struct{}, fc fcapResult, aud audienceResult) []tmproto.PackageEligibility {
+//     which case audience is a no-op for it), AND
+//   - the verified-identity gate did not reject it (a package requiring a
+//     verified human, or a resolved age threshold, with none satisfied).
+//
+// The verdict starts eligible and each gate can only remove eligibility, so
+// the verified-identity gate (vidRejected) is fail-closed: a package that
+// demands verification is ineligible by default unless a verified identity
+// cleared it.
+func (s *Service) joinResults(pkgIDs []string, pkgsWithSegments map[string]struct{}, fc fcapResult, aud audienceResult, vidRejected map[string]struct{}) []tmproto.PackageEligibility {
 	out := make([]tmproto.PackageEligibility, 0, len(pkgIDs))
 	for _, id := range pkgIDs {
 		eligible := true
@@ -362,6 +421,11 @@ func (s *Service) joinResults(pkgIDs []string, pkgsWithSegments map[string]struc
 				if _, rejected := aud.rejected[id]; rejected {
 					eligible = false
 				}
+			}
+		}
+		if eligible {
+			if _, rejected := vidRejected[id]; rejected {
+				eligible = false
 			}
 		}
 		out = append(out, tmproto.PackageEligibility{PackageID: id, Eligible: eligible})
