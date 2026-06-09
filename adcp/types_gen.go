@@ -8788,6 +8788,32 @@ type BuildCreativePreviewInput struct {
 	ContextDescription string            `json:"context_description,omitempty"` // Natural language description of the context for AI-generated content
 }
 
+// BuildCreativeMaxSpend — Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's
+type BuildCreativeMaxSpend struct {
+	Amount   float64 `json:"amount"`   // Maximum aggregate vendor_cost to incur on this call, in `currency`.
+	Currency string  `json:"currency"` // ISO 4217 currency; MUST match the rate card.
+}
+
+// BuildCreativeVariantAxis — Declares the dimension along which variants differ. When `values` is provided, the agent produces
+type BuildCreativeVariantAxis struct {
+	Dimension string `json:"dimension"`        // What varies across variants. `transformer_config` varies a named config param
+	Field     string `json:"field,omitempty"`  // The transformer `config` param `field` this axis sweeps. REQUIRED when
+	Values    []any  `json:"values,omitempty"` // Caller-fixed set of values for the axis (e.g. ["isaac", "sara"] for dimension
+	Label     string `json:"label,omitempty"`  // Human-readable description of the axis, especially for `custom`.
+}
+
+type BuildCreativeSignalCondition struct {
+	SignalRef *SignalRef `json:"signal_ref,omitempty"` // The signal to target. New targeting constraints SHOULD use signal_ref.
+	// Deprecated: DEPRECATED.
+	SignalID             *SignalID `json:"signal_id,omitempty"`               // DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility
+	ValueType            string    `json:"value_type,omitempty"`              // Discriminator for numeric signals
+	Value                *bool     `json:"value,omitempty"`                   // Whether to include (true) or exclude (false) users matching this signal
+	Values               []string  `json:"values,omitempty"`                  // Values to target. Users with any of these values will be included.
+	MinValue             float64   `json:"min_value,omitempty"`               // Minimum value (inclusive). Omit for no minimum. Must be <= max_value when both
+	MaxValue             float64   `json:"max_value,omitempty"`               // Maximum value (inclusive). Omit for no maximum. Must be >= min_value when both
+	SignalAgentSegmentID string    `json:"signal_agent_segment_id,omitempty"` // Optional opaque resolved-segment handle for this fan-out condition — the
+}
+
 // CollectionRequestPagination — Pagination parameters. Uses higher limits than standard pagination because collection lists can
 type CollectionRequestPagination struct {
 	MaxResults int    `json:"max_results,omitempty"` // Maximum number of collections to return per page
@@ -10095,41 +10121,41 @@ func (ProvidePerformanceFeedbackError) isProvidePerformanceFeedbackResponse()   
 
 // BuildCreativeRequest — Request to transform, generate, refine, or retrieve a creative manifest. Supports four modes: (1)
 type BuildCreativeRequest struct {
-	AdcpVersion              string                      `json:"adcp_version,omitempty"`                 // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
-	AdcpMajorVersion         int                         `json:"adcp_major_version,omitempty"`           // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
-	Message                  string                      `json:"message,omitempty"`                      // Natural language instructions for the transformation or generation. For pure
-	CreativeManifest         *CreativeManifest           `json:"creative_manifest,omitempty"`            // Creative manifest to transform or generate from. For pure generation, this
-	CreativeID               string                      `json:"creative_id,omitempty"`                  // Reference to a creative in the agent's library. The creative agent resolves
-	ConceptID                string                      `json:"concept_id,omitempty"`                   // Creative concept containing the creative. Creative agents SHOULD assign
-	MediaBuyID               string                      `json:"media_buy_id,omitempty"`                 // Media buy identifier for tag generation context. When the creative agent is
-	PackageID                string                      `json:"package_id,omitempty"`                   // Package identifier within the media buy. Used with media_buy_id when the
-	TargetFormatID           *FormatRef                  `json:"target_format_id,omitempty"`             // Single format ID to generate. Mutually exclusive with target_format_ids. The
-	TargetFormatIDs          []FormatRef                 `json:"target_format_ids,omitempty"`            // Array of format IDs to generate in a single call. Mutually exclusive with
-	TransformerID            string                      `json:"transformer_id,omitempty"`               // Selects an account-scoped transformer (discovered via list_transformers) to
-	Config                   map[string]any              `json:"config,omitempty"`                       // Typed render configuration for the selected transformer, keyed by each param's
-	RefineFromBuildVariantID string                      `json:"refine_from_build_variant_id,omitempty"` // Refine a previously produced variant: re-build from the referenced
-	Mode                     string                      `json:"mode,omitempty"`                         // `execute` (default) produces and bills the creative(s). `estimate` is a DRY
-	MaxSpend                 any                         `json:"max_spend,omitempty"`                    // Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf
-	MaxCreatives             int                         `json:"max_creatives,omitempty"`                // Caps how many DISTINCT creatives to produce along the catalog/item fan-out
-	SignalConditions         []any                       `json:"signal_conditions,omitempty"`            // Advisory keep-all PRODUCTION axis: produce one distinct creative group per
-	MaxVariants              int                         `json:"max_variants,omitempty"`                 // Caps how many ALTERNATIVES to produce per creative (different voices, themes
-	VariantAxis              any                         `json:"variant_axis,omitempty"`                 // Declares the dimension along which variants differ. When `values` is provided
-	KeepMode                 string                      `json:"keep_mode,omitempty"`                    // Advisory hint for how the buyer intends to use the variants. `keep_one`
-	SelectionStrategy        CreativeSelectionStrategy   `json:"selection_strategy,omitempty"`           // Governs HOW the agent samples when max_creatives < items_total (folds #5262).
-	Account                  *AccountReference           `json:"account,omitempty"`                      // Account reference for pricing and billing. When present, the creative agent
-	Brand                    *BrandReference             `json:"brand,omitempty"`                        // Brand reference for creative generation. Resolved to full brand identity
-	Quality                  CreativeQuality             `json:"quality,omitempty"`                      // Quality tier for generation. 'draft' produces fast, lower-fidelity output for
-	Evaluator                any                         `json:"evaluator,omitempty"`                    // Optional advisory evaluator (buyer-attached pointer, #5280) declaring how
-	ItemLimit                int                         `json:"item_limit,omitempty"`                   // Maximum number of catalog items a SINGLE creative consumes when generating
-	IncludePreview           *bool                       `json:"include_preview,omitempty"`              // When true, requests the creative agent to include preview renders in the
-	PreviewInputs            []BuildCreativePreviewInput `json:"preview_inputs,omitempty"`               // Input sets for preview generation when include_preview is true. Each input set
-	PreviewQuality           CreativeQuality             `json:"preview_quality,omitempty"`              // Render quality for inline preview when include_preview is true. 'draft'
-	PreviewOutputFormat      PreviewOutputFormat         `json:"preview_output_format,omitempty"`        // Output format for preview renders when include_preview is true. 'url' returns
-	MacroValues              map[string]string           `json:"macro_values,omitempty"`                 // Macro values to pre-substitute into the output manifest's assets. Keys are
-	IdempotencyKey           string                      `json:"idempotency_key"`                        // Client-generated unique key for this request. Prevents duplicate creative
-	PushNotificationConfig   *PushNotificationConfig     `json:"push_notification_config,omitempty"`     // Optional webhook configuration for async terminal completion/failure
-	Context                  any                         `json:"context,omitempty"`
-	Ext                      any                         `json:"ext,omitempty"`
+	AdcpVersion              string                         `json:"adcp_version,omitempty"`                 // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	AdcpMajorVersion         int                            `json:"adcp_major_version,omitempty"`           // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	Message                  string                         `json:"message,omitempty"`                      // Natural language instructions for the transformation or generation. For pure
+	CreativeManifest         *CreativeManifest              `json:"creative_manifest,omitempty"`            // Creative manifest to transform or generate from. For pure generation, this
+	CreativeID               string                         `json:"creative_id,omitempty"`                  // Reference to a creative in the agent's library. The creative agent resolves
+	ConceptID                string                         `json:"concept_id,omitempty"`                   // Creative concept containing the creative. Creative agents SHOULD assign
+	MediaBuyID               string                         `json:"media_buy_id,omitempty"`                 // Media buy identifier for tag generation context. When the creative agent is
+	PackageID                string                         `json:"package_id,omitempty"`                   // Package identifier within the media buy. Used with media_buy_id when the
+	TargetFormatID           *FormatRef                     `json:"target_format_id,omitempty"`             // Single format ID to generate. Mutually exclusive with target_format_ids. The
+	TargetFormatIDs          []FormatRef                    `json:"target_format_ids,omitempty"`            // Array of format IDs to generate in a single call. Mutually exclusive with
+	TransformerID            string                         `json:"transformer_id,omitempty"`               // Selects an account-scoped transformer (discovered via list_transformers) to
+	Config                   map[string]any                 `json:"config,omitempty"`                       // Typed render configuration for the selected transformer, keyed by each param's
+	RefineFromBuildVariantID string                         `json:"refine_from_build_variant_id,omitempty"` // Refine a previously produced variant: re-build from the referenced
+	Mode                     string                         `json:"mode,omitempty"`                         // `execute` (default) produces and bills the creative(s). `estimate` is a DRY
+	MaxSpend                 *BuildCreativeMaxSpend         `json:"max_spend,omitempty"`                    // Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf
+	MaxCreatives             int                            `json:"max_creatives,omitempty"`                // Caps how many DISTINCT creatives to produce along the catalog/item fan-out
+	SignalConditions         []BuildCreativeSignalCondition `json:"signal_conditions,omitempty"`            // Advisory keep-all PRODUCTION axis: produce one distinct creative group per
+	MaxVariants              int                            `json:"max_variants,omitempty"`                 // Caps how many ALTERNATIVES to produce per creative (different voices, themes
+	VariantAxis              *BuildCreativeVariantAxis      `json:"variant_axis,omitempty"`                 // Declares the dimension along which variants differ. When `values` is provided
+	KeepMode                 string                         `json:"keep_mode,omitempty"`                    // Advisory hint for how the buyer intends to use the variants. `keep_one`
+	SelectionStrategy        CreativeSelectionStrategy      `json:"selection_strategy,omitempty"`           // Governs HOW the agent samples when max_creatives < items_total (folds #5262).
+	Account                  *AccountReference              `json:"account,omitempty"`                      // Account reference for pricing and billing. When present, the creative agent
+	Brand                    *BrandReference                `json:"brand,omitempty"`                        // Brand reference for creative generation. Resolved to full brand identity
+	Quality                  CreativeQuality                `json:"quality,omitempty"`                      // Quality tier for generation. 'draft' produces fast, lower-fidelity output for
+	Evaluator                any                            `json:"evaluator,omitempty"`                    // Optional advisory evaluator (buyer-attached pointer, #5280) declaring how
+	ItemLimit                int                            `json:"item_limit,omitempty"`                   // Maximum number of catalog items a SINGLE creative consumes when generating
+	IncludePreview           *bool                          `json:"include_preview,omitempty"`              // When true, requests the creative agent to include preview renders in the
+	PreviewInputs            []BuildCreativePreviewInput    `json:"preview_inputs,omitempty"`               // Input sets for preview generation when include_preview is true. Each input set
+	PreviewQuality           CreativeQuality                `json:"preview_quality,omitempty"`              // Render quality for inline preview when include_preview is true. 'draft'
+	PreviewOutputFormat      PreviewOutputFormat            `json:"preview_output_format,omitempty"`        // Output format for preview renders when include_preview is true. 'url' returns
+	MacroValues              map[string]string              `json:"macro_values,omitempty"`                 // Macro values to pre-substitute into the output manifest's assets. Keys are
+	IdempotencyKey           string                         `json:"idempotency_key"`                        // Client-generated unique key for this request. Prevents duplicate creative
+	PushNotificationConfig   *PushNotificationConfig        `json:"push_notification_config,omitempty"`     // Optional webhook configuration for async terminal completion/failure
+	Context                  any                            `json:"context,omitempty"`
+	Ext                      any                            `json:"ext,omitempty"`
 }
 
 // SyncCreativesRequest — Request parameters for syncing creative assets with upsert semantics - supports bulk operations
