@@ -15,9 +15,72 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
+
+const testNullifier = "0x" + "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
+func TestVerifiedIdentityEntries_EncodesNullifier(t *testing.T) {
+	cfg := &TMPXSealer{}
+	entries := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
+		{Nullifier: testNullifier, RelyingPartyID: "rp.example"},
+	})
+	require.Len(t, entries, 1)
+	assert.Equal(t, tmproto.UIDTypeWorldIDNullifier, entries[0].UIDType)
+	size, _ := tmproto.TmpxTokenSize(tmproto.TmpxTypeWorldIDNullifier)
+	assert.Len(t, entries[0].Bytes, size, "verified nullifier must encode to the registry token width")
+}
+
+func TestVerifiedIdentityEntries_SkipsEmptyAndMalformed(t *testing.T) {
+	rec := newTestRecorder()
+	cfg := &TMPXSealer{recorder: rec}
+	entries := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
+		{Nullifier: ""},            // skipped, no counter
+		{Nullifier: "0xnothex"},    // malformed → decoder_error drop
+		{Nullifier: testNullifier}, // survives
+	})
+	require.Len(t, entries, 1, "only the well-formed nullifier survives")
+	assert.Equal(t, 1, rec.dropCount(TmpxDropDecoderError, string(tmproto.UIDTypeWorldIDNullifier)),
+		"a malformed nullifier records a decoder_error drop and does not fail the batch")
+}
+
+// TestVerifiedNullifierSealsWhileInboundAssertedDropped is the verify-before-trust
+// end-to-end check: a verifier-derived nullifier reaches the wire, while a
+// sender-asserted world_id_nullifier supplied on req.Identities is dropped at
+// decode (no inbound decoder) and never sealed.
+func TestVerifiedNullifierSealsWhileInboundAssertedDropped(t *testing.T) {
+	cfg := &TMPXSealer{
+		country:  "US",
+		encStore: newFakeResolver(t, "k1"),
+		decoders: defaultTestDecoders(t),
+	}
+
+	// Sender-asserted world_id_nullifier on the inbound identities: dropped.
+	inbound := cfg.Decode(t.Context(), []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeWorldIDNullifier, UserToken: testNullifier},
+	})
+	require.Len(t, inbound, 1)
+	assert.Empty(t, inbound[0].Bytes, "inbound asserted world_id_nullifier has no decoder and must drop")
+
+	inboundEntries, err := cfg.selectEntries(inbound)
+	require.NoError(t, err)
+	assert.Empty(t, inboundEntries, "asserted nullifier must not reach the wire")
+
+	// Verifier-derived nullifier: packs into a wire entry.
+	verified := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
+		{Nullifier: testNullifier, RelyingPartyID: "rp.example"},
+	})
+	entries, err := cfg.selectEntries(append(inbound, verified...))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the verified nullifier is sealed")
+	assert.Equal(t, tmproto.TmpxTypeWorldIDNullifier, entries[0].TypeID)
+
+	wire, err := cfg.SealDecoded(t.Context(), append(inbound, verified...))
+	require.NoError(t, err)
+	assert.NotEmpty(t, wire, "verified nullifier must produce a TMPX wire")
+}
 
 // fakeRecipientResolver returns a fixed recipient. Used to exercise
 // (*TMPXSealer).Seal without spinning up an httptest JWKS server.
@@ -227,8 +290,8 @@ func TestNoDecoder_DropsFromBothWireAndAudience(t *testing.T) {
 func TestAudienceEligibleIdentities_FiltersDropped(t *testing.T) {
 	decoded := []DecodedIdentity{
 		{UIDType: tmproto.UIDTypeMAID, Bytes: []byte{0x01, 0x02, 0x03}},
-		{UIDType: tmproto.UIDTypeUID2, Bytes: nil},                       // dropped at decode (no decoder)
-		{UIDType: tmproto.UIDTypeRampID, Bytes: nil},                     // dropped (LR miss)
+		{UIDType: tmproto.UIDTypeUID2, Bytes: nil},   // dropped at decode (no decoder)
+		{UIDType: tmproto.UIDTypeRampID, Bytes: nil}, // dropped (LR miss)
 		{UIDType: tmproto.UIDTypeHashedEmail, Bytes: []byte{0xff, 0xee}},
 	}
 	got := audienceEligibleIdentities(decoded)

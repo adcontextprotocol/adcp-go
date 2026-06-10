@@ -41,6 +41,14 @@ func NewIdentityEngine(cfg IdentityEngineConfig) *IdentityEngine {
 type IdentityResult struct {
 	RequestID   string
 	Eligibility []tmproto.PackageEligibility
+
+	// Verified carries the identities the verified-identity stage validated
+	// (verify-before-trust). The TMPX seal step encodes their nullifiers onto
+	// the wire so the buyer can frequency-cap / unique-human gate on its own
+	// relying-party-scoped pseudonym. Empty when no verifier is wired or no
+	// attestation passed verification — the audience-only engine never sets
+	// it. Never populated from sender-asserted inbound identities.
+	Verified []VerifiedIdentity
 }
 
 // EvaluateIdentityResolved evaluates package eligibility for an identity

@@ -80,6 +80,7 @@ const (
 	TmpxTypePairID              TmpxTypeID = 7
 	TmpxTypeHashedEmail         TmpxTypeID = 8
 	TmpxTypePublisherFirstParty TmpxTypeID = 9
+	TmpxTypeWorldIDNullifier    TmpxTypeID = 10
 )
 
 // TmpxTokenSize returns the spec-defined binary size for a Type ID.
@@ -88,7 +89,8 @@ const (
 func TmpxTokenSize(typeID TmpxTypeID) (int, bool) {
 	switch typeID {
 	case TmpxTypeUID2, TmpxTypeEUID, TmpxTypeID5, TmpxTypeRampID,
-		TmpxTypePairID, TmpxTypeHashedEmail, TmpxTypePublisherFirstParty:
+		TmpxTypePairID, TmpxTypeHashedEmail, TmpxTypePublisherFirstParty,
+		TmpxTypeWorldIDNullifier:
 		return 32, true
 	case TmpxTypeRampIDDerived:
 		return 48, true

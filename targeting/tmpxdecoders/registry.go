@@ -30,6 +30,13 @@ type RegistryOptions struct {
 // is non-nil. UID types without a registered decoder are silently dropped
 // at decode time.
 //
+// WorldIDNullifier is deliberately absent: a World ID nullifier is
+// verify-before-trust and must never be decoded from an inbound,
+// sender-asserted IdentityToken. It reaches the wire only via the
+// verified-identity stage, which encodes the verifier-derived nullifier
+// directly (see TMPXSealer.verifiedIdentityEntries). An inbound
+// world_id_nullifier token therefore has no decoder here and is dropped.
+//
 // The returned map is freshly allocated on every call so callers can mutate
 // it (e.g. swap in a custom decoder for tests) without affecting other
 // callers.
