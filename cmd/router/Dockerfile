@@ -3,6 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 COPY tmproto/ tmproto/
 COPY targeting/ targeting/
+COPY urlcanon/ urlcanon/
 COPY router/ router/
 COPY cmd/router/ cmd/router/
 WORKDIR /src/cmd/router
