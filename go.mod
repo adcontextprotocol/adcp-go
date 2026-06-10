@@ -3,7 +3,8 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/urlcanon v0.0.0
+	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
@@ -17,6 +18,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	golang.org/x/crypto v0.51.0
 	golang.org/x/net v0.54.0
+	lukechampine.com/blake3 v1.4.1
 )
 
 require (
@@ -41,7 +43,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
@@ -76,7 +77,4 @@ require (
 	golang.org/x/sys v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/adcontextprotocol/adcp-go/urlcanon => ./urlcanon

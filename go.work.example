@@ -13,6 +13,4 @@ use (
 	./registry
 	./registry/glidestore
 	./registry/redisstore
-	./targeting/prommetrics
-	./targeting/valkeystore
 )
