@@ -42,18 +42,23 @@ const (
 //
 // The supplied logger is used for structured event logs. version is stamped
 // into /live responses; /health intentionally omits it per the TMP spec.
-func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string) error {
+func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, opts ...RunOption) error {
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration: %w", err)
 	}
 	startTime := time.Now()
+
+	var ro runOptions
+	for _, opt := range opts {
+		opt(&ro)
+	}
 
 	metricsProvider, err := Build(cfg.Metrics)
 	if err != nil {
 		return fmt.Errorf("build metrics provider: %w", err)
 	}
 
-	bundle, err := buildBundle(ctx, cfg, metricsProvider.Recorder, logger)
+	bundle, err := buildBundle(ctx, cfg, metricsProvider.Recorder, logger, ro)
 	if err != nil {
 		return fmt.Errorf("build bundle: %w", err)
 	}
@@ -273,7 +278,7 @@ type bundle struct {
 // resources push their teardown function onto rollback; on a build failure
 // rollback runs them in reverse order so partial state is released. The
 // rollback list is cleared before return on the success path.
-func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger) (b *bundle, retErr error) {
+func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger, opts runOptions) (b *bundle, retErr error) {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 
 	type rollbackStep struct {
@@ -366,6 +371,9 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		FCapTimeout:     cfg.FCapTimeout,
 		AudienceTimeout: cfg.AudienceTimeout,
 		Recorder:        recorder,
+		Verifier:        opts.verifier,
+		RecipientKeys:   opts.recipientKeys,
+		AgeResolver:     opts.ageResolver,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build service: %w", err)
