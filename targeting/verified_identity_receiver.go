@@ -172,8 +172,16 @@ type VerifiedIdentityRequirement struct {
 	// RequiresVerifiedHuman gates the package on at least one present verified
 	// identity (a verified unique human).
 	RequiresVerifiedHuman bool
-	// RequiredAge, when non-empty, is the age claim a verified identity must
-	// satisfy. Empty means no age requirement.
+	// RequiresAge gates the package on a verified age threshold. When set, a
+	// verified identity must satisfy RequiredAge. RequiredAge may be empty even
+	// when RequiresAge is set (the policy applies but resolved no closed-set
+	// claim); no verified identity can satisfy an empty claim, so the package
+	// is then rejected — fail-closed. Carried separately from RequiredAge so
+	// "age required, threshold empty" is not collapsed into "no age
+	// requirement".
+	RequiresAge bool
+	// RequiredAge is the age claim a verified identity must satisfy when
+	// RequiresAge is set.
 	RequiredAge tmproto.AttestationClaim
 }
 
@@ -185,15 +193,14 @@ type VerifiedIdentityRequirement struct {
 func RejectByVerifiedIdentity(reqs map[string]VerifiedIdentityRequirement, verified []VerifiedIdentity) map[string]struct{} {
 	rejected := make(map[string]struct{})
 	for id, r := range reqs {
-		ageRequired := r.RequiredAge != ""
-		if !r.RequiresVerifiedHuman && !ageRequired {
+		if !r.RequiresVerifiedHuman && !r.RequiresAge {
 			continue // package has no verified-identity requirement
 		}
 		if len(verified) == 0 {
 			rejected[id] = struct{}{} // required but absent — fail closed
 			continue
 		}
-		if ageRequired && !anyVerifiedSatisfies(verified, r.RequiredAge) {
+		if r.RequiresAge && !anyVerifiedSatisfies(verified, r.RequiredAge) {
 			rejected[id] = struct{}{}
 		}
 	}
@@ -209,13 +216,13 @@ func anyVerifiedSatisfies(verified []VerifiedIdentity, required tmproto.Attestat
 	return false
 }
 
-// normalizeClaimSet drops any claim not in the closed attestation-claim set.
+// normalizeClaimSet drops any claim not in the closed attestation-claim set,
+// applying the same closed-set policy as NormalizeClaims to a claim set the
+// verifier already returned as a map.
 func normalizeClaimSet(in map[tmproto.AttestationClaim]struct{}) map[tmproto.AttestationClaim]struct{} {
-	out := make(map[tmproto.AttestationClaim]struct{}, len(in))
+	claims := make([]tmproto.AttestationClaim, 0, len(in))
 	for c := range in {
-		if IsClosedClaim(c) {
-			out[c] = struct{}{}
-		}
+		claims = append(claims, c)
 	}
-	return out
+	return NormalizeClaims(claims)
 }

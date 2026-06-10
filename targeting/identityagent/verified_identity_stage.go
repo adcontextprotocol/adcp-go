@@ -85,6 +85,7 @@ func (s *Service) computeVerifiedIdentityGate(ctx context.Context, req *tmproto.
 		}
 		if s.ageResolver != nil {
 			if claim, ok := s.ageResolver.ResolveRequiredAge(ctx, id, req.Country); ok {
+				pkgReq.RequiresAge = true
 				pkgReq.RequiredAge = claim
 			}
 		}

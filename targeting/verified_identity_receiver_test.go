@@ -256,12 +256,27 @@ func TestRejectByVerifiedIdentity(t *testing.T) {
 
 	t.Run("age threshold above the verified claim is rejected", func(t *testing.T) {
 		rejected := targeting.RejectByVerifiedIdentity(map[string]targeting.VerifiedIdentityRequirement{
-			"age21": {RequiredAge: tmproto.AttestationClaimAgeOver21},
-			"age18": {RequiredAge: tmproto.AttestationClaimAgeOver18},
+			"age21": {RequiresAge: true, RequiredAge: tmproto.AttestationClaimAgeOver21},
+			"age18": {RequiresAge: true, RequiredAge: tmproto.AttestationClaimAgeOver18},
 		}, human)
 		_, rejected21 := rejected["age21"]
 		_, rejected18 := rejected["age18"]
 		assert.True(t, rejected21, "age_over_18 does not satisfy a 21 gate")
 		assert.False(t, rejected18, "age_over_18 satisfies an 18 gate")
+	})
+
+	// Fail-closed: an age requirement whose threshold resolved to the empty
+	// claim (RequiresAge true, RequiredAge "") is rejected — no verified
+	// identity can satisfy an empty claim. RequiresAge must not be inferred from
+	// a non-empty RequiredAge, or this requirement silently evaporates.
+	t.Run("age required with empty threshold is rejected (fail-closed)", func(t *testing.T) {
+		reqs := map[string]targeting.VerifiedIdentityRequirement{"age": {RequiresAge: true}}
+		rejectedEmpty := targeting.RejectByVerifiedIdentity(reqs, nil)
+		_, absentRejected := rejectedEmpty["age"]
+		assert.True(t, absentRejected, "age required + no verified identity ⇒ rejected")
+
+		rejectedPresent := targeting.RejectByVerifiedIdentity(reqs, human)
+		_, presentRejected := rejectedPresent["age"]
+		assert.True(t, presentRejected, "empty age claim is satisfiable by no identity ⇒ rejected")
 	})
 }
