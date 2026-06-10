@@ -171,6 +171,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	return &targeting.IdentityResult{
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
+		Verified:    verified,
 	}
 }
 

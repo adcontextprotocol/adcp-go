@@ -120,10 +120,15 @@ func TestService_VerifiedIdentity_HappyPath(t *testing.T) {
 		ageResolver:   staticAgeResolver{"pkg-alcohol": tmproto.AttestationClaimAgeOver21},
 	})
 	req := vidReq(sealedCred(t, "kid-1", sk.PublicKey(), validAtt(tmproto.AttestationClaimAgeOver21)))
-	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
+	result := svc.Evaluate(t.Context(), req)
+	got := eligibilityMap(result.Eligibility)
 	assert.True(t, got["pkg-alcohol"], "verified age_over_21 satisfies the 21 gate")
 	assert.True(t, got["pkg-general"], "ungated package eligible")
 	assert.Equal(t, 1, mv.calls)
+	// The verified identity is surfaced on the result so the handler can seal
+	// its nullifier into TMPX.
+	require.Len(t, result.Verified, 1)
+	assert.Equal(t, "N", result.Verified[0].Nullifier)
 }
 
 // AGE GATE: verified claim is only age_over_18; the age_over_21 package is
