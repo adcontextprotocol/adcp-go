@@ -1,6 +1,7 @@
 package tmpxdecoders
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -22,9 +23,36 @@ func TestWorldIDNullifier_FullWidthHex(t *testing.T) {
 		got, err := WorldIDNullifier{}.Decode(t.Context(), in)
 		require.NoError(t, err, "input %q", in)
 		assert.Equal(t, want, got, "input %q", in)
-		size, _ := tmproto.TmpxTokenSize(tmproto.TmpxTypeWorldIDNullifier)
-		assert.Len(t, got, size, "must produce the registry token width")
+		assert.Len(t, got, worldIDNullifierBytes, "Decode yields the 32-byte nullifier component")
 	}
+}
+
+func TestWorldIDNullifier_TokenIsRelyingPartyScoped(t *testing.T) {
+	const rp = "rp.example"
+	token, err := WorldIDNullifier{}.Token(t.Context(), rp, "0x2a")
+	require.NoError(t, err)
+
+	size, _ := tmproto.TmpxTokenSize(tmproto.TmpxTypeWorldIDNullifier)
+	require.Len(t, token, size, "token must be the registry width")
+
+	digest := sha256.Sum256([]byte(rp))
+	assert.Equal(t, digest[:worldIDRelyingPartyDigestBytes], token[:worldIDRelyingPartyDigestBytes],
+		"leading bytes are the relying-party digest")
+	nullifier, err := WorldIDNullifier{}.Decode(t.Context(), "0x2a")
+	require.NoError(t, err)
+	assert.Equal(t, nullifier, token[worldIDRelyingPartyDigestBytes:], "trailing bytes are the nullifier")
+
+	other, err := WorldIDNullifier{}.Token(t.Context(), "rp.other", "0x2a")
+	require.NoError(t, err)
+	assert.NotEqual(t, token, other, "same nullifier under different relying parties yields distinct tokens")
+}
+
+func TestWorldIDNullifier_TokenRejectsMissingRelyingPartyOrBadNullifier(t *testing.T) {
+	_, err := WorldIDNullifier{}.Token(t.Context(), "", "0x2a")
+	assert.Error(t, err, "a token without a relying party must not be formed")
+
+	_, err = WorldIDNullifier{}.Token(t.Context(), "rp.example", "0xnothex")
+	assert.Error(t, err, "a malformed nullifier must not be sealed")
 }
 
 func TestWorldIDNullifier_LeftPadsShortFieldElement(t *testing.T) {

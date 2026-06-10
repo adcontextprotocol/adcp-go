@@ -37,13 +37,23 @@ func TestVerifiedIdentityEntries_SkipsEmptyAndMalformed(t *testing.T) {
 	rec := newTestRecorder()
 	cfg := &TMPXSealer{recorder: rec}
 	entries := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
-		{Nullifier: ""},            // skipped, no counter
-		{Nullifier: "0xnothex"},    // malformed → decoder_error drop
-		{Nullifier: testNullifier}, // survives
+		{Nullifier: ""}, // skipped, no counter
+		{Nullifier: "0xnothex", RelyingPartyID: "rp.example"},    // malformed → decoder_error drop
+		{Nullifier: testNullifier, RelyingPartyID: "rp.example"}, // survives
 	})
 	require.Len(t, entries, 1, "only the well-formed nullifier survives")
 	assert.Equal(t, 1, rec.dropCount(TmpxDropDecoderError, string(tmproto.UIDTypeWorldIDNullifier)),
 		"a malformed nullifier records a decoder_error drop and does not fail the batch")
+}
+
+func TestVerifiedIdentityEntries_DropsMissingRelyingParty(t *testing.T) {
+	rec := newTestRecorder()
+	cfg := &TMPXSealer{recorder: rec}
+	entries := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
+		{Nullifier: testNullifier}, // no relying party → cannot form an rp-scoped token
+	})
+	assert.Empty(t, entries, "a verified nullifier without a relying party cannot be sealed")
+	assert.Equal(t, 1, rec.dropCount(TmpxDropDecoderError, string(tmproto.UIDTypeWorldIDNullifier)))
 }
 
 // TestVerifiedNullifierSealsWhileInboundAssertedDropped is the verify-before-trust

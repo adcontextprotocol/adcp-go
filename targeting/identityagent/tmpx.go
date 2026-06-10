@@ -454,7 +454,7 @@ func (s *TMPXSealer) verifiedIdentityEntries(ctx context.Context, verified []tar
 		if vi.Nullifier == "" {
 			continue
 		}
-		b, err := worldIDNullifierEncoder.Decode(ctx, vi.Nullifier)
+		b, err := worldIDNullifierEncoder.Token(ctx, vi.RelyingPartyID, vi.Nullifier)
 		if err != nil {
 			s.recordDrop(ctx, TmpxDropDecoderError, tmproto.UIDTypeWorldIDNullifier)
 			s.log().Warn("world id nullifier encode failed — dropping from tmpx", "error", err)
