@@ -15,10 +15,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/adcp/urlcanon"
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
 
 // GeoCountryKey is the ContextMatchRequest.Geo map key carrying the

@@ -5,7 +5,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/adcontextprotocol/adcp-go/adcp/urlcanon"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
 
 // canonicalTargetURI applies the AdCP URL-identifier canonicalization to

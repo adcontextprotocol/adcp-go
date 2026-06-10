@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/cmd/identity-agent
 
-go 1.26.2
+go 1.25.0
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
@@ -8,7 +8,7 @@ require (
 )
 
 require (
-	github.com/adcontextprotocol/adcp-go/adcp v0.0.0 // indirect
+	github.com/adcontextprotocol/adcp-go/urlcanon v0.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -45,4 +45,4 @@ replace github.com/adcontextprotocol/adcp-go => ../../
 
 replace github.com/adcontextprotocol/adcp-go/verify/worldid => ../../verify/worldid
 
-replace github.com/adcontextprotocol/adcp-go/adcp => ../../adcp
+replace github.com/adcontextprotocol/adcp-go/urlcanon => ../../urlcanon

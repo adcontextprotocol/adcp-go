@@ -232,12 +232,18 @@ func writeGoMod(t *testing.T, dir string) {
 	// so this test doesn't break when dependencies are bumped.
 	goVersion, mcpVersion := parseAdcpGoMod(t, filepath.Join(adcpDir, "go.mod"))
 
+	// The adcp module depends on the urlcanon module via a local replace, so
+	// the generated module needs the same replace or `go mod tidy` would try
+	// to fetch urlcanon from the network.
+	urlcanonDir := filepath.Join(adcpDir, "..", "urlcanon")
+
 	goMod := "module skill_check\n\ngo " + goVersion + "\n\n" +
 		"require (\n" +
 		"\tgithub.com/adcontextprotocol/adcp-go/adcp v0.0.0\n" +
 		"\tgithub.com/modelcontextprotocol/go-sdk " + mcpVersion + "\n" +
 		")\n\n" +
-		"replace github.com/adcontextprotocol/adcp-go/adcp => " + adcpDir + "\n"
+		"replace github.com/adcontextprotocol/adcp-go/adcp => " + adcpDir + "\n\n" +
+		"replace github.com/adcontextprotocol/adcp-go/urlcanon => " + urlcanonDir + "\n"
 
 	err = os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0600)
 	require.NoError(t, err, "write go.mod")
