@@ -2,7 +2,7 @@ module github.com/adcontextprotocol/adcp-go/verify/worldid
 
 go 1.25.0
 
-require github.com/adcontextprotocol/adcp-go v0.0.0
+require github.com/adcontextprotocol/adcp-go v0.0.0-20260610020654-c0720af293c1
 
 require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
