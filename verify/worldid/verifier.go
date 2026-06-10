@@ -146,7 +146,7 @@ func (v *Verifier) Verify(ctx context.Context, att *tmproto.Attestation, vctx ta
 	if err != nil {
 		return zero, fmt.Errorf("worldid: verify request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxVerifyResponseBytes))
 	if err != nil {
 		return zero, fmt.Errorf("worldid: read verify response: %w", err)
