@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/cmd/context-agent
 
-go 1.25.0
+go 1.26.2
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/adcontextprotocol/adcp-go/adcp v0.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -44,3 +45,5 @@ replace github.com/adcontextprotocol/adcp-go => ../../
 replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
 
 replace github.com/adcontextprotocol/adcp-go/registry/redisstore => ../../registry/redisstore
+
+replace github.com/adcontextprotocol/adcp-go/adcp => ../../adcp
