@@ -123,6 +123,8 @@ When the URL and country are set, the agent generates a TMPX token alongside eve
 
 **Decoder coverage:** MAID, HashedEmail, and ID5 have format-only decoders that need no external dependency. RampID and RampIDDerived are decoded via the LiveRamp sidecar when `LIVERAMP_SIDECAR_URL` is configured. UID types without a registered decoder are silently dropped from both the TMPX wire and the audience/fcap shadow request; the startup log enumerates which UID types are dropped.
 
+**Verified identity (World ID):** the `world_id_nullifier` type is verify-before-trust and has no inbound decoder — a sender-asserted nullifier on `identities` is dropped. Its TMPX entry comes only from the verified-identity stage, which seals the relying-party-scoped nullifier the verifier derived from World's authoritative response. The nullifier is encoded as a 32-byte big-endian field element. Under `TMPX_PRIORITY`, include `world_id_nullifier` to keep it on the wire when the resolved set is over budget.
+
 ## Pinhole Specification
 
 The identity agent is the privacy boundary. When running in a TEE:

@@ -178,17 +178,17 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// When a canonicalizer ran, decoded already holds the per-request
 		// decode pass and we pass it through to keep the LiveRamp sidecar
 		// at one call per request. When canonicalization is opted-out
-		// (decoded is nil) the sealer falls back to its own decode pass
-		// — Seal(=Decode+SealDecoded) covers that explicitly.
-		var (
-			token string
-			terr  error
-		)
-		if decoded != nil {
-			token, terr = h.tmpx.SealDecoded(ctx, decoded)
-		} else {
-			token, terr = h.tmpx.Seal(ctx, req.Identities)
+		// (decoded is nil) the sealer runs its own decode pass over the
+		// inbound identities. Verified-identity nullifiers are appended as
+		// pre-decoded entries: they come from the verified-identity stage
+		// (verify-before-trust) and are never decoded from inbound
+		// sender-asserted identities.
+		seal := decoded
+		if seal == nil {
+			seal = h.tmpx.Decode(ctx, req.Identities)
 		}
+		seal = append(seal, h.tmpx.verifiedIdentityEntries(ctx, result.Verified)...)
+		token, terr := h.tmpx.SealDecoded(ctx, seal)
 		if terr != nil {
 			h.logger.Warn("tmpx generation failed, response will omit tmpx",
 				"request_id", req.RequestID, "error", terr)

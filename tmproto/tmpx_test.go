@@ -334,12 +334,13 @@ func TestTmpxWireSizeEmptyEntries(t *testing.T) {
 }
 
 func TestTmpxTokenSizeRegistry(t *testing.T) {
-	// Spec: types 1..4, 7, 8, 9 are 32 bytes; 5 is 48; 6 is 16.
+	// Spec: types 1..4, 7, 8, 9, 10 are 32 bytes; 5 is 48; 6 is 16.
 	cases := map[TmpxTypeID]int{
 		TmpxTypeUID2: 32, TmpxTypeEUID: 32, TmpxTypeID5: 32,
 		TmpxTypeRampID: 32, TmpxTypeRampIDDerived: 48,
 		TmpxTypeMAID: 16, TmpxTypePairID: 32,
 		TmpxTypeHashedEmail: 32, TmpxTypePublisherFirstParty: 32,
+		TmpxTypeWorldIDNullifier: 32,
 	}
 	for id, want := range cases {
 		got, ok := TmpxTokenSize(id)

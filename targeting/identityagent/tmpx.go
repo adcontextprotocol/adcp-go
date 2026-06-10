@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
 	"github.com/adcontextprotocol/adcp-go/targeting/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -259,6 +260,9 @@ func logDecoderLayout(logger *slog.Logger, country string, decoders map[tmproto.
 	enabled := make([]tmproto.UIDType, 0, len(decoders))
 	dropped := make([]tmproto.UIDType, 0, len(uidToTmpxTypeID))
 	for uid := range uidToTmpxTypeID {
+		if !inboundDecodable(uid) {
+			continue
+		}
 		if _, ok := decoders[uid]; ok {
 			enabled = append(enabled, uid)
 		} else {
@@ -412,6 +416,53 @@ var uidToTmpxTypeID = map[tmproto.UIDType]tmproto.TmpxTypeID{
 	tmproto.UIDTypePairID:              tmproto.TmpxTypePairID,
 	tmproto.UIDTypeHashedEmail:         tmproto.TmpxTypeHashedEmail,
 	tmproto.UIDTypePublisherFirstParty: tmproto.TmpxTypePublisherFirstParty,
+	tmproto.UIDTypeWorldIDNullifier:    tmproto.TmpxTypeWorldIDNullifier,
+}
+
+// inboundDecodable reports whether a TMPX-encodable UID type is expected to
+// have a decoder in the inbound registry. World ID nullifiers are
+// verify-before-trust and never decoded from inbound identities, so their
+// absence from the inbound registry is by design, not a misconfiguration —
+// the startup coverage logs exclude them so an operator doesn't read them as
+// a dropped type.
+func inboundDecodable(uid tmproto.UIDType) bool {
+	return uid != tmproto.UIDTypeWorldIDNullifier
+}
+
+// worldIDNullifierEncoder converts a verifier-derived nullifier string into
+// its TMPX token bytes. It is intentionally not part of the inbound decoder
+// registry (see tmpxdecoders.NewDefaultRegistry) so it is unreachable from
+// sender-asserted identities; the verified-identity stage is its only caller.
+var worldIDNullifierEncoder = tmpxdecoders.WorldIDNullifier{}
+
+// verifiedIdentityEntries converts the verifier-derived identities into
+// pre-decoded TMPX entries. These bypass the inbound decoder registry by
+// design — verify-before-trust: a World ID nullifier reaches the wire ONLY
+// after the verified-identity stage validated its proof. An inbound,
+// sender-asserted world_id_nullifier token has no registered decoder and is
+// dropped at Decode, so it can never arrive here.
+//
+// A nullifier that fails to encode (malformed/oversized) is dropped with a
+// decoder_error counter rather than failing the whole seal — one bad
+// nullifier must not suppress the other resolved identities.
+func (s *TMPXSealer) verifiedIdentityEntries(ctx context.Context, verified []targeting.VerifiedIdentity) []DecodedIdentity {
+	if len(verified) == 0 {
+		return nil
+	}
+	out := make([]DecodedIdentity, 0, len(verified))
+	for _, vi := range verified {
+		if vi.Nullifier == "" {
+			continue
+		}
+		b, err := worldIDNullifierEncoder.Decode(ctx, vi.Nullifier)
+		if err != nil {
+			s.recordDrop(ctx, TmpxDropDecoderError, tmproto.UIDTypeWorldIDNullifier)
+			s.log().Warn("world id nullifier encode failed — dropping from tmpx", "error", err)
+			continue
+		}
+		out = append(out, DecodedIdentity{UIDType: tmproto.UIDTypeWorldIDNullifier, Bytes: b})
+	}
+	return out
 }
 
 // selectEntries packs already-decoded identities into the wire TmpxEntry
@@ -494,4 +545,3 @@ func indexOfUIDType(list []tmproto.UIDType, uid tmproto.UIDType) int {
 	}
 	return -1
 }
-

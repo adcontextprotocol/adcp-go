@@ -182,6 +182,9 @@ func logCanonicalizerLayout(logger *slog.Logger, decoders map[tmproto.UIDType]Tm
 	enabled := make([]tmproto.UIDType, 0, len(decoders))
 	dropped := make([]tmproto.UIDType, 0, len(uidToTmpxTypeID))
 	for uid := range uidToTmpxTypeID {
+		if !inboundDecodable(uid) {
+			continue
+		}
 		if _, ok := decoders[uid]; ok {
 			enabled = append(enabled, uid)
 		} else {
