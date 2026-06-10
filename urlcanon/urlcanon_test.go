@@ -1,4 +1,4 @@
-package signing
+package urlcanon
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCanonicalTargetURI(t *testing.T) {
+func TestCanonicalize(t *testing.T) {
 	cases := []struct {
 		name string
 		in   string
@@ -34,46 +34,27 @@ func TestCanonicalTargetURI(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := canonicalTargetURI(tc.in)
+			got, err := Canonicalize(tc.in)
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
-func TestCanonicalAuthority(t *testing.T) {
-	assert.Equal(t, "seller.example.com", canonicalAuthority("Seller.Example.COM", "https"))
-	assert.Equal(t, "seller.example.com", canonicalAuthority("seller.example.com:443", "https"))
-	assert.Equal(t, "seller.example.com", canonicalAuthority("seller.example.com:80", "http"))
-	assert.Equal(t, "seller.example.com:8443", canonicalAuthority("seller.example.com:8443", "https"))
-	assert.Equal(t, "[2001:db8::1]:8443", canonicalAuthority("[2001:db8::1]:8443", "https"))
-	assert.Equal(t, "[2001:db8::1]", canonicalAuthority("[2001:db8::1]:443", "https"))
-}
-
-func TestCanonicalTargetURIRejectsNonASCII(t *testing.T) {
-	// Raw U-label — signer MUST convert to A-label first.
-	_, err := canonicalTargetURI("https://例え.example/x")
+func TestCanonicalizeRejectsNonASCII(t *testing.T) {
+	// Raw U-label — caller MUST convert to A-label first.
+	_, err := Canonicalize("https://例え.example/x")
 	require.Error(t, err)
 }
 
-func TestBuildSignatureBaseMatchesPositive001(t *testing.T) {
-	// From testdata/request-signing/positive/001-basic-post.json
-	want := "\"@method\": POST\n" +
-		"\"@target-uri\": https://seller.example.com/adcp/create_media_buy\n" +
-		"\"@authority\": seller.example.com\n" +
-		"\"content-type\": application/json\n" +
-		`"@signature-params": ("@method" "@target-uri" "@authority" "content-type");created=1776520800;expires=1776521100;nonce="KXYnfEfJ0PBRZXQyVXfVQA";keyid="test-ed25519-2026";alg="ed25519";tag="adcp/request-signing/v1"`
-
-	covered := []string{"@method", "@target-uri", "@authority", "content-type"}
-	values := map[string]string{
-		"@method":      "POST",
-		"@target-uri":  "https://seller.example.com/adcp/create_media_buy",
-		"@authority":   "seller.example.com",
-		"content-type": "application/json",
+func TestRemoveDotSegments(t *testing.T) {
+	cases := map[string]string{
+		"/a/b/c/./../../g":   "/a/g",
+		"/a/./b":             "/a/b",
+		"mid/content=5/../6": "mid/6",
+		"/":                  "/",
 	}
-	sigParams := `("@method" "@target-uri" "@authority" "content-type");created=1776520800;expires=1776521100;nonce="KXYnfEfJ0PBRZXQyVXfVQA";keyid="test-ed25519-2026";alg="ed25519";tag="adcp/request-signing/v1"`
-
-	got, err := buildSignatureBase(covered, values, sigParams)
-	require.NoError(t, err)
-	assert.Equal(t, want, got)
+	for in, want := range cases {
+		assert.Equal(t, want, removeDotSegments(in), "input %q", in)
+	}
 }

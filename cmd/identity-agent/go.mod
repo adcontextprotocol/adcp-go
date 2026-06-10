@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/adcontextprotocol/adcp-go/urlcanon v0.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -43,3 +44,5 @@ require (
 replace github.com/adcontextprotocol/adcp-go => ../../
 
 replace github.com/adcontextprotocol/adcp-go/verify/worldid => ../../verify/worldid
+
+replace github.com/adcontextprotocol/adcp-go/urlcanon => ../../urlcanon

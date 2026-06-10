@@ -3,6 +3,7 @@ WORKDIR /src
 COPY go.mod go.sum* ./
 COPY tmproto/ tmproto/
 COPY targeting/ targeting/
+COPY urlcanon/ urlcanon/
 COPY urlutil/ urlutil/
 COPY registry/ registry/
 COPY cmd/context-agent/ cmd/context-agent/

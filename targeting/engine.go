@@ -18,6 +18,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
 
 // GeoCountryKey is the ContextMatchRequest.Geo map key carrying the
@@ -219,7 +220,29 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 	}
 	e.metrics.Latency(ctx, StageSuppression, time.Since(suppressionStart))
 
-	activePkgIDs, err := e.storage.ActivePackages(ctx, req.SellerAgentURL, req.PropertyID, country, req.PlacementID, e.now())
+	// seller_agent_url selects the seller's active package set. The AdCP
+	// spec compares URL identifiers under URL-identifier canonicalization,
+	// not byte-equality, so a request carrying
+	// "https://Seller.Example.com:443/agent" must resolve to the same set
+	// as one registered under "https://seller.example.com/agent".
+	// Canonicalize once here, the single read-path chokepoint.
+	//
+	// An empty seller_agent_url carries no URL to canonicalize and is
+	// passed through unchanged. A non-empty but malformed value cannot name
+	// any registered seller, so it fails safe to an empty active set (empty
+	// offers) rather than 5xx or a raw-string lookup that would silently
+	// miss every registration.
+	canonicalSeller := req.SellerAgentURL
+	if canonicalSeller != "" {
+		canonicalSeller, err = urlcanon.Canonicalize(canonicalSeller)
+		if err != nil {
+			slog.Default().Warn("seller_agent_url canonicalization failed; treating as no active packages",
+				"seller_agent_url", req.SellerAgentURL, "error", err)
+			return &ContextResult{RequestID: req.RequestID}, nil
+		}
+	}
+
+	activePkgIDs, err := e.storage.ActivePackages(ctx, canonicalSeller, req.PropertyID, country, req.PlacementID, e.now())
 	if err != nil {
 		// A context timeout here means the request budget is gone;
 		// surface it so the handler returns 504. Any other storage
