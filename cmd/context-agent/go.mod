@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/adcontextprotocol/adcp-go/urlcanon v0.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -44,3 +45,5 @@ replace github.com/adcontextprotocol/adcp-go => ../../
 replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
 
 replace github.com/adcontextprotocol/adcp-go/registry/redisstore => ../../registry/redisstore
+
+replace github.com/adcontextprotocol/adcp-go/urlcanon => ../../urlcanon

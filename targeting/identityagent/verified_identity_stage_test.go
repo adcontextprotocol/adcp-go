@@ -275,8 +275,8 @@ func TestService_computeVerifiedIdentityGate_RequiresVerifiedIdentity(t *testing
 	assert.False(t, strictRejected, "RequiresVerifiedIdentity satisfied by a present verified identity")
 }
 
-// DoS: more than maxSealedCredentials sealed entries are truncated BEFORE any
-// crypto — the verifier is called at most maxSealedCredentials times, so a
+// DoS: more than targeting.MaxSealedCredentials sealed entries are truncated BEFORE any
+// crypto — the verifier is called at most targeting.MaxSealedCredentials times, so a
 // flood cannot force unbounded HPKE opens + verifier round-trips.
 func TestService_VerifiedIdentity_BoundsSealedCount(t *testing.T) {
 	sk, keys := newRecipient(t)
@@ -287,16 +287,16 @@ func TestService_VerifiedIdentity_BoundsSealedCount(t *testing.T) {
 		recipientKeys: keys,
 		ageResolver:   staticAgeResolver{"pkg-alcohol": tmproto.AttestationClaimAgeOver21},
 	})
-	creds := make([]tmproto.SealedCredential, 0, maxSealedCredentials+5)
-	for i := 0; i < maxSealedCredentials+5; i++ {
+	creds := make([]tmproto.SealedCredential, 0, targeting.MaxSealedCredentials+5)
+	for i := 0; i < targeting.MaxSealedCredentials+5; i++ {
 		creds = append(creds, sealedCred(t, "kid-1", sk.PublicKey(), validAtt(tmproto.AttestationClaimAgeOver21)))
 	}
 	svc.Evaluate(t.Context(), vidReq(creds...))
-	assert.LessOrEqual(t, mv.calls, maxSealedCredentials,
+	assert.LessOrEqual(t, mv.calls, targeting.MaxSealedCredentials,
 		"sealed_credentials count must be bounded before any crypto/verifier call")
 }
 
-// DoS: a sealed entry whose payload exceeds maxSealedPayloadBytes is dropped at
+// DoS: a sealed entry whose payload exceeds targeting.MaxSealedPayloadBytes is dropped at
 // the size check, before any HPKE open or verifier call.
 func TestService_VerifiedIdentity_DropsOversizedPayload(t *testing.T) {
 	_, keys := newRecipient(t)
@@ -307,7 +307,7 @@ func TestService_VerifiedIdentity_DropsOversizedPayload(t *testing.T) {
 		recipientKeys: keys,
 		ageResolver:   staticAgeResolver{"pkg-alcohol": tmproto.AttestationClaimAgeOver21},
 	})
-	oversized := tmproto.SealedCredential{AudienceKID: "kid-1", Payload: strings.Repeat("A", maxSealedPayloadBytes+1)}
+	oversized := tmproto.SealedCredential{AudienceKID: "kid-1", Payload: strings.Repeat("A", targeting.MaxSealedPayloadBytes+1)}
 	got := eligibilityMap(svc.Evaluate(t.Context(), vidReq(oversized)).Eligibility)
 	assert.False(t, got["pkg-alcohol"], "oversized payload ⇒ dropped ⇒ attestation absent ⇒ ineligible")
 	assert.Equal(t, 0, mv.calls, "an oversized payload must be dropped before any HPKE open or verifier call")

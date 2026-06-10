@@ -3,6 +3,7 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
+	github.com/adcontextprotocol/adcp-go/urlcanon v0.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
@@ -77,3 +78,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
+
+replace github.com/adcontextprotocol/adcp-go/urlcanon => ./urlcanon

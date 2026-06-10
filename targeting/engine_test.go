@@ -130,6 +130,77 @@ func TestContext_ExplicitPackageIDs_IntersectsWithActiveSet(t *testing.T) {
 		"stale PackageContextConfig must NOT serve offers on an expired media buy")
 }
 
+// TestContext_SellerAgentURLCanonicalization pins that the engine resolves
+// the active package set under AdCP URL-identifier canonicalization, not
+// byte-equality: byte-different-but-canonically-equal seller_agent_url values
+// (uppercase host, :443, scheme case, userinfo) hit the same mediabuy:seller
+// key (the active set is registered under the canonical form
+// testSeller = "https://seller.example.com/agent"). A package config exists
+// for both ids, so absent canonicalization a key miss would fall back to the
+// full config set and surface pkg-other too — that difference is what makes
+// the equality assertion load-bearing.
+//
+// A malformed seller_agent_url cannot name any registered seller and must fail
+// safe to empty offers, never an error.
+func TestContext_SellerAgentURLCanonicalization(t *testing.T) {
+	cases := []struct {
+		name       string
+		sellerURL  string
+		wantOffers []string
+	}{
+		{
+			"uppercase host and default port stripped",
+			"https://Seller.Example.com:443/agent",
+			[]string{"pkg-active"},
+		},
+		{
+			"mixed scheme case and userinfo stripped",
+			"HTTPS://buyer:tok@seller.example.com/agent",
+			[]string{"pkg-active"},
+		},
+		{
+			"exact canonical form",
+			"https://seller.example.com/agent",
+			[]string{"pkg-active"},
+		},
+		{
+			"malformed url fails safe to empty offers",
+			"://not a url",
+			nil,
+		},
+		{
+			"unsupported scheme fails safe to empty offers",
+			"ftp://seller.example.com/agent",
+			nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			storage := contextstorage.NewInMemory().
+				WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-active"}).
+				WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-other"}).
+				WithActivePackages(testSeller, "pub-1", "US", "placement-1", []string{"pkg-active"})
+
+			engine := newEngine(t, storage)
+			resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
+				RequestID:      "r",
+				PropertyRID:    "10",
+				PropertyID:     "pub-1",
+				PlacementID:    "placement-1",
+				SellerAgentURL: tc.sellerURL,
+				Geo:            map[string]any{"country": "US"},
+			})
+			require.NoError(t, err, "canonicalization must never surface an error to the caller")
+
+			got := make([]string, len(resp.Offers))
+			for i, o := range resp.Offers {
+				got[i] = o.PackageID
+			}
+			assert.ElementsMatch(t, tc.wantOffers, got)
+		})
+	}
+}
+
 func TestContext_TopicMatchViaArtifact(t *testing.T) {
 	storage := contextstorage.NewInMemory().
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true}).

@@ -30,16 +30,15 @@ const (
 	StageVerifiedIdentity = "verified_identity"
 )
 
-// Verified-identity drop reasons. Each corresponds to one rejection branch in
-// the verified-identity stage; cardinality is bounded by this constant set
-// plus the targeting.PreCheck* reasons (malformed, no_binding, expired,
-// rp_mismatch) reused as labels. A non-zero verifier_error rate distinguishes
-// "verifier down/misconfigured" from organic absence (no metric ticks).
-const (
-	VIDropOpenFailed    = "open_failed"      // HPKE open / plaintext decode failed
-	VIDropVerifierError = "verifier_error"   // verifier returned an error (treat as absent)
-	VIDropMalformedSeal = "malformed_sealed" // sealed_credentials entry missing audience_kid/payload
-)
+// VIDropVerifierError is the drop label for a verifier that returned an error.
+// The receiver loop reports verifier failure out-of-band (targeting's
+// CredentialObserver.VerifierFailed) rather than as a labeled drop, so the
+// stage applies this label itself — a non-zero verifier_error rate
+// distinguishes "verifier down/misconfigured" from organic absence (no metric
+// ticks). The remaining drop labels are emitted by the loop from the
+// targeting.Drop* and targeting.PreCheck* constant sets, which bound the
+// verified-identity drop cardinality.
+const VIDropVerifierError = "verifier_error"
 
 // Outcome labels paired with stages. Bounded to a fixed set.
 const (
