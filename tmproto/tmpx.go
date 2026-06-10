@@ -89,10 +89,14 @@ const (
 func TmpxTokenSize(typeID TmpxTypeID) (int, bool) {
 	switch typeID {
 	case TmpxTypeUID2, TmpxTypeEUID, TmpxTypeID5, TmpxTypeRampID,
-		TmpxTypePairID, TmpxTypeHashedEmail, TmpxTypePublisherFirstParty,
-		TmpxTypeWorldIDNullifier:
+		TmpxTypePairID, TmpxTypeHashedEmail, TmpxTypePublisherFirstParty:
 		return 32, true
 	case TmpxTypeRampIDDerived:
+		return 48, true
+	case TmpxTypeWorldIDNullifier:
+		// 16-byte relying-party digest followed by the 32-byte nullifier:
+		// the nullifier is meaningful only within its relying party, so the
+		// token is relying-party-scoped on the wire.
 		return 48, true
 	case TmpxTypeMAID:
 		return 16, true
