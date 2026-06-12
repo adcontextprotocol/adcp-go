@@ -38,6 +38,11 @@ type Service struct {
 	verifier      targeting.AttestationVerifier
 	recipientKeys map[string]RecipientKey
 	ageResolver   targeting.AgeResolver
+	// relyingPartyID is the RP this deployment acts as for in-band
+	// (req.Identities[].Attestation) verification. Empty disables the in-band
+	// carrier; the sealed_credentials carrier takes its RP from the recipient
+	// keys instead.
+	relyingPartyID string
 }
 
 // ServiceConfig packages the dependencies for NewService.
@@ -60,6 +65,9 @@ type ServiceConfig struct {
 	// AgeResolver resolves a package's required age threshold by geo; nil
 	// means no age gating.
 	AgeResolver targeting.AgeResolver
+	// RelyingPartyID is the RP this deployment acts as for in-band attestation
+	// verification (req.Identities[].Attestation). Empty disables that carrier.
+	RelyingPartyID string
 }
 
 // NewService validates the supplied dependencies and returns a Service.
@@ -96,6 +104,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		verifier:        cfg.Verifier,
 		recipientKeys:   cfg.RecipientKeys,
 		ageResolver:     cfg.AgeResolver,
+		relyingPartyID:  cfg.RelyingPartyID,
 	}, nil
 }
 
