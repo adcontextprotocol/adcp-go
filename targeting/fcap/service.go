@@ -2,6 +2,8 @@ package fcap
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -115,6 +117,14 @@ func (s *Service) IsCapped(ctx context.Context, userIdentity string, field Field
 func (s *Service) IsCappedAny(ctx context.Context, identities []string, fields []Field) ([]bool, error) {
 	if len(identities) == 0 || len(fields) == 0 {
 		return nil, nil
+	}
+	// Guard the cross-product against int overflow before it sizes the scratch
+	// allocation. len(fields) is non-zero here (the early return above), so
+	// bounding len(identities) by MaxInt/len(fields) proves the product stays
+	// within int range; an oversized input fails closed instead of computing a
+	// wrapped, corrupt allocation size.
+	if len(identities) > math.MaxInt/len(fields) {
+		return nil, fmt.Errorf("fcap: identity-field cross-product overflows (%d identities x %d fields)", len(identities), len(fields))
 	}
 	need := len(identities) * len(fields)
 
