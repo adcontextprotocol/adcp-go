@@ -23,14 +23,18 @@ import (
 //
 // Required when enabled:
 //
-//	TMP_RELYING_PARTY_ID  the relying party this deployment acts as; must match
-//	                      the rp_id the sealed credentials were sealed for.
-//	TMP_RECIPIENT_KID     the audience_kid identifying our HPKE recipient key.
-//	TMP_RECIPIENT_KEY     hex-encoded 32-byte X25519 private key (secret —
-//	                      injected from secret storage, never logged).
+//	TMP_RELYING_PARTY_ID  the relying party this deployment acts as. In-band
+//	                      attestations on req.Identities must carry this rp_id,
+//	                      and sealed credentials must be sealed for it.
 //
 // Optional:
 //
+//	TMP_RECIPIENT_KID     the audience_kid identifying our HPKE recipient key.
+//	TMP_RECIPIENT_KEY     hex-encoded 32-byte X25519 private key (secret —
+//	                      injected from secret storage, never logged). KID and
+//	                      KEY are set together to enable the sealed_credentials
+//	                      carrier; without them only in-band attestations are
+//	                      verified.
 //	WORLD_VERIFY_BASE_URL World's verifier backend (defaults to production).
 //	WORLD_API_KEY         API key for World's verifier backend, if required.
 //
@@ -49,24 +53,13 @@ func verifiedIdentityOptions(logger *slog.Logger) ([]identityagent.RunOption, er
 	}
 
 	rpID := os.Getenv("TMP_RELYING_PARTY_ID")
+	if rpID == "" {
+		return nil, fmt.Errorf("TMP_RELYING_PARTY_ID is required when TMP_VERIFIED_IDENTITY_ENABLED=true")
+	}
 	kid := os.Getenv("TMP_RECIPIENT_KID")
 	keyHex := os.Getenv("TMP_RECIPIENT_KEY")
-	switch {
-	case rpID == "":
-		return nil, fmt.Errorf("TMP_RELYING_PARTY_ID is required when TMP_VERIFIED_IDENTITY_ENABLED=true")
-	case kid == "":
-		return nil, fmt.Errorf("TMP_RECIPIENT_KID is required when TMP_VERIFIED_IDENTITY_ENABLED=true")
-	case keyHex == "":
-		return nil, fmt.Errorf("TMP_RECIPIENT_KEY is required when TMP_VERIFIED_IDENTITY_ENABLED=true")
-	}
-
-	raw, err := hex.DecodeString(keyHex)
-	if err != nil {
-		return nil, fmt.Errorf("TMP_RECIPIENT_KEY must be hex-encoded: %w", err)
-	}
-	key, err := tmproto.LoadX25519PrivateKey(raw)
-	if err != nil {
-		return nil, fmt.Errorf("TMP_RECIPIENT_KEY: %w", err)
+	if (kid == "") != (keyHex == "") {
+		return nil, fmt.Errorf("TMP_RECIPIENT_KID and TMP_RECIPIENT_KEY must be set together (the sealed_credentials carrier needs both)")
 	}
 
 	baseURL := worldid.DefaultBaseURL
@@ -78,15 +71,31 @@ func verifiedIdentityOptions(logger *slog.Logger) ([]identityagent.RunOption, er
 		worldid.WithAPIKey(os.Getenv("WORLD_API_KEY")),
 	)
 
-	logger.Info("verified-identity stage enabled",
-		"relying_party_id", rpID, "recipient_kid", kid, "world_verify_base_url", baseURL)
-
-	return []identityagent.RunOption{
+	opts := []identityagent.RunOption{
 		identityagent.WithAttestationVerifier(verifier),
-		identityagent.WithRecipientKeys(map[string]identityagent.RecipientKey{
+		identityagent.WithRelyingPartyID(rpID),
+	}
+
+	// Recipient keys enable the sealed_credentials carrier; without them only
+	// the in-band attestation carrier (req.Identities[].Attestation) is active.
+	if kid != "" {
+		raw, err := hex.DecodeString(keyHex)
+		if err != nil {
+			return nil, fmt.Errorf("TMP_RECIPIENT_KEY must be hex-encoded: %w", err)
+		}
+		key, err := tmproto.LoadX25519PrivateKey(raw)
+		if err != nil {
+			return nil, fmt.Errorf("TMP_RECIPIENT_KEY: %w", err)
+		}
+		opts = append(opts, identityagent.WithRecipientKeys(map[string]identityagent.RecipientKey{
 			kid: {PrivateKey: key, RelyingPartyID: rpID},
-		}),
-	}, nil
+		}))
+	}
+
+	logger.Info("verified-identity stage enabled",
+		"relying_party_id", rpID, "sealed_credentials_enabled", kid != "", "world_verify_base_url", baseURL)
+
+	return opts, nil
 }
 
 // lookupBool parses a boolean environment variable, returning def when unset.

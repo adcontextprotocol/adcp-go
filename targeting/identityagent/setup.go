@@ -374,6 +374,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		Verifier:        opts.verifier,
 		RecipientKeys:   opts.recipientKeys,
 		AgeResolver:     opts.ageResolver,
+		RelyingPartyID:  opts.relyingPartyID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build service: %w", err)
