@@ -2,6 +2,7 @@ package fcap
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -117,6 +118,13 @@ func (s *Service) IsCappedAny(ctx context.Context, identities []string, fields [
 		return nil, nil
 	}
 	need := len(identities) * len(fields)
+	// Guard the cross-product against int overflow before it sizes the scratch
+	// allocation. len(fields) is non-zero here (the early return above), so the
+	// division is safe; a wrapped product fails closed instead of allocating a
+	// corrupt-sized buffer.
+	if need/len(fields) != len(identities) {
+		return nil, fmt.Errorf("fcap: identity-field cross-product overflows (%d identities x %d fields)", len(identities), len(fields))
+	}
 
 	bufPtr := fieldLookupBufPool.Get().(*[]FieldLookup)
 	buf := *bufPtr
