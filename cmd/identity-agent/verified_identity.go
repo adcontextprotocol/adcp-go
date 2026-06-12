@@ -37,6 +37,11 @@ import (
 //	                      verified.
 //	WORLD_VERIFY_BASE_URL World's verifier backend (defaults to production).
 //	WORLD_API_KEY         API key for World's verifier backend, if required.
+//	TMP_WORLD_ID_TRUST_UNVERIFIED
+//	                      Demo only. When true, attestations are trusted from
+//	                      their own self-reported nullifier and claims without
+//	                      validating the World ID proof or calling World — no
+//	                      Sybil resistance or proof-of-personhood. Default false.
 //
 // Age gating (AgeResolver) is intentionally left unset: production resolves the
 // required-age policy via the AdCP Policy Registry, which is not yet wired. With
@@ -62,18 +67,26 @@ func verifiedIdentityOptions(logger *slog.Logger) ([]identityagent.RunOption, er
 		return nil, fmt.Errorf("TMP_RECIPIENT_KID and TMP_RECIPIENT_KEY must be set together (the sealed_credentials carrier needs both)")
 	}
 
-	baseURL := worldid.DefaultBaseURL
-	if v := os.Getenv("WORLD_VERIFY_BASE_URL"); v != "" {
-		baseURL = v
+	trustUnverified, err := lookupBool("TMP_WORLD_ID_TRUST_UNVERIFIED", false)
+	if err != nil {
+		return nil, err
 	}
-	verifier := worldid.New(
-		worldid.WithBaseURL(baseURL),
-		worldid.WithAPIKey(os.Getenv("WORLD_API_KEY")),
-	)
 
 	opts := []identityagent.RunOption{
-		identityagent.WithAttestationVerifier(verifier),
 		identityagent.WithRelyingPartyID(rpID),
+	}
+	if trustUnverified {
+		logger.Warn("WORLD ID ATTESTATIONS TRUSTED WITHOUT VERIFICATION — TMP_WORLD_ID_TRUST_UNVERIFIED=true; demo only, no Sybil resistance or proof-of-personhood, never enable on production traffic")
+		opts = append(opts, identityagent.WithAttestationVerifier(worldid.NewTrustingVerifier()))
+	} else {
+		baseURL := worldid.DefaultBaseURL
+		if v := os.Getenv("WORLD_VERIFY_BASE_URL"); v != "" {
+			baseURL = v
+		}
+		opts = append(opts, identityagent.WithAttestationVerifier(worldid.New(
+			worldid.WithBaseURL(baseURL),
+			worldid.WithAPIKey(os.Getenv("WORLD_API_KEY")),
+		)))
 	}
 
 	// Recipient keys enable the sealed_credentials carrier; without them only
@@ -93,7 +106,7 @@ func verifiedIdentityOptions(logger *slog.Logger) ([]identityagent.RunOption, er
 	}
 
 	logger.Info("verified-identity stage enabled",
-		"relying_party_id", rpID, "sealed_credentials_enabled", kid != "", "world_verify_base_url", baseURL)
+		"relying_party_id", rpID, "sealed_credentials_enabled", kid != "", "trust_unverified", trustUnverified)
 
 	return opts, nil
 }
