@@ -3,6 +3,7 @@ package fcap
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -117,14 +118,15 @@ func (s *Service) IsCappedAny(ctx context.Context, identities []string, fields [
 	if len(identities) == 0 || len(fields) == 0 {
 		return nil, nil
 	}
-	need := len(identities) * len(fields)
 	// Guard the cross-product against int overflow before it sizes the scratch
-	// allocation. len(fields) is non-zero here (the early return above), so the
-	// division is safe; a wrapped product fails closed instead of allocating a
-	// corrupt-sized buffer.
-	if need/len(fields) != len(identities) {
+	// allocation. len(fields) is non-zero here (the early return above), so
+	// bounding len(identities) by MaxInt/len(fields) proves the product stays
+	// within int range; an oversized input fails closed instead of computing a
+	// wrapped, corrupt allocation size.
+	if len(identities) > math.MaxInt/len(fields) {
 		return nil, fmt.Errorf("fcap: identity-field cross-product overflows (%d identities x %d fields)", len(identities), len(fields))
 	}
+	need := len(identities) * len(fields)
 
 	bufPtr := fieldLookupBufPool.Get().(*[]FieldLookup)
 	buf := *bufPtr
