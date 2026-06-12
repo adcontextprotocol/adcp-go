@@ -78,6 +78,20 @@ func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.Ide
 		inbandCtx.ExpectedRelyingPartyID = s.relyingPartyID
 		verified = append(verified, targeting.VerifyAttestations(ctx, req.Identities, s.verifier, inbandCtx, obs)...)
 	}
+	// Dedup by (nullifier, rp) so the same identity arriving on both carriers
+	// counts once toward cap and gate.
+	if len(verified) > 1 {
+		seen := make(map[string]struct{}, len(verified))
+		out := verified[:0]
+		for _, vi := range verified {
+			k := vi.CapKey()
+			if _, exists := seen[k]; !exists {
+				seen[k] = struct{}{}
+				out = append(out, vi)
+			}
+		}
+		verified = out
+	}
 
 	s.recorder.StageDuration(ctx, StageVerifiedIdentity, time.Since(start))
 	outcome := OutcomePass

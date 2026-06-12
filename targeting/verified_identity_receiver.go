@@ -184,6 +184,17 @@ func verifyOne(ctx context.Context, att *tmproto.Attestation, verifier Attestati
 // receiver acts as; an attestation bound to any other RP is dropped by
 // LocalPreCheck.
 //
+// Security boundary: unlike sealed_credentials, this carrier provides no
+// confidentiality envelope. The nullifier, claims, and relying_party_id on each
+// req.Identities[].Attestation are visible to anyone who can observe the
+// IdentityMatchRequest. Verification security (forgery + replay resistance via
+// signal_binding and RP-binding) is unchanged — verifyOne applies the same
+// invariants as the sealed path. The delta is confidentiality only: use this
+// carrier exclusively where the request channel is trusted end-to-end (the
+// relay is the operator — network-as-RP). An in-band attestation MUST NOT
+// cross an untrusted hop (logging middleware, forwarding relays, third-party
+// infrastructure) or the identity data leaks.
+//
 // Fail-closed by construction: with no verifier or no expected relying party it
 // returns nil without consulting the verifier. An identity entry without an
 // attestation is an ordinary token, not a verified identity, and is skipped.
