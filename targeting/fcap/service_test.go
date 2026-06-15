@@ -169,11 +169,22 @@ func TestService_IsCappedAny_EmptyInputs(t *testing.T) {
 	svc := New(NewMockStore())
 	ctx := t.Context()
 
-	got, err := svc.IsCappedAny(ctx, nil, []Field{{SellerAgentURL: "s", PackageID: "p"}})
+	// No identities but non-empty fields: nothing can be capped, so the result
+	// is an all-false slice of length len(fields) — NOT nil. Callers index the
+	// result by field, so a nil result here reads out of range and panics.
+	got, err := svc.IsCappedAny(ctx, nil, []Field{
+		{SellerAgentURL: "s", PackageID: "p1"},
+		{SellerAgentURL: "s", PackageID: "p2"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []bool{false, false}, got)
+
+	// Empty fields returns nil regardless of identities (no fields to report).
+	got, err = svc.IsCappedAny(ctx, []string{"u"}, nil)
 	require.NoError(t, err)
 	assert.Nil(t, got)
 
-	got, err = svc.IsCappedAny(ctx, []string{"u"}, nil)
+	got, err = svc.IsCappedAny(ctx, nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }

@@ -107,16 +107,25 @@ func (s *Service) IsCapped(ctx context.Context, userIdentity string, field Field
 // scales with the result slice (one per call) rather than N×M.
 //
 // Both input slices are read-only and must not be retained past return.
-// Empty identities or empty fields returns (nil, nil) without touching the
-// store.
+// Empty fields returns (nil, nil) without touching the store. Empty identities
+// (with non-empty fields) returns an all-false result of length len(fields) —
+// nothing can be capped without an identity — preserving the length-len(fields)
+// contract callers index against.
 //
 // Goroutine-safe: each invocation uses its own scratch buffer and shares no
 // state with concurrent callers. The store call inherits the supplied ctx
 // and routes through the configured topology — cluster/shadow distribution
 // is unchanged from IsCappedBatch.
 func (s *Service) IsCappedAny(ctx context.Context, identities []string, fields []Field) ([]bool, error) {
-	if len(identities) == 0 || len(fields) == 0 {
+	if len(fields) == 0 {
 		return nil, nil
+	}
+	if len(identities) == 0 {
+		// No identity can be capped, so nothing is capped. Return an all-false
+		// result sized to fields (not nil) to preserve the length-len(fields)
+		// contract; a nil result makes callers that index by field read out of
+		// range.
+		return make([]bool, len(fields)), nil
 	}
 	// Guard the cross-product against int overflow before it sizes the scratch
 	// allocation. len(fields) is non-zero here (the early return above), so
