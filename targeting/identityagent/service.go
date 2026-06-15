@@ -282,6 +282,15 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 		return fcapResult{cappedByPkg: failClosedFcap(pkgIDs), outcome: outcome, duration: dur}
 	}
 
+	if len(cappedByField) != len(pkgIDs) {
+		// IsCappedAny returns one result per field (one field per pkgID); a
+		// shorter result would read out of range below. Treat the unexpected
+		// shape as a store error and fail closed rather than panic.
+		s.recorder.StoreError(ctx, StageFCap)
+		s.recorder.StageOutcome(ctx, StageFCap, OutcomeError)
+		return fcapResult{cappedByPkg: failClosedFcap(pkgIDs), outcome: OutcomeError, duration: dur}
+	}
+
 	capped := make(map[string]bool, len(pkgIDs))
 	allCapped := true
 	for i, pkgID := range pkgIDs {

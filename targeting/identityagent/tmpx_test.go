@@ -312,6 +312,48 @@ func TestAudienceEligibleIdentities_FiltersDropped(t *testing.T) {
 	assert.Equal(t, "ffee", got[1].UserToken, "HashedEmail UserToken is the canonical lowercase-hex form")
 }
 
+func TestServiceIdentities_PreservesUndecodedAttestation(t *testing.T) {
+	att := &tmproto.Attestation{
+		Scheme: "world_id_v4",
+		Proof:  map[string]any{"responses": []any{}},
+	}
+	inbound := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeMAID, UserToken: "maid-raw"},
+		// Not inbound-decodable, carries the attestation the verified-identity
+		// stage needs.
+		{UIDType: tmproto.UIDTypeWorldIDNullifier, UserToken: testNullifier, Attestation: att},
+	}
+	decoded := []DecodedIdentity{
+		{UIDType: tmproto.UIDTypeMAID, Bytes: []byte{0x01, 0x02, 0x03}},
+		{UIDType: tmproto.UIDTypeWorldIDNullifier, Bytes: nil}, // no decoder → dropped
+	}
+
+	got := serviceIdentities(inbound, decoded)
+	require.Len(t, got, 2, "decoded MAID plus the undecoded World attestation carrier")
+
+	// Decoded MAID is represented by its canonical token, no attestation.
+	assert.Equal(t, tmproto.UIDTypeMAID, got[0].UIDType)
+	assert.Equal(t, "010203", got[0].UserToken)
+	assert.Nil(t, got[0].Attestation)
+
+	// World token survives with its attestation and raw nullifier intact so the
+	// verified-identity stage can verify it.
+	assert.Equal(t, tmproto.UIDTypeWorldIDNullifier, got[1].UIDType)
+	assert.Equal(t, testNullifier, got[1].UserToken)
+	require.NotNil(t, got[1].Attestation)
+	assert.Equal(t, "world_id_v4", got[1].Attestation.Scheme)
+}
+
+func TestServiceIdentities_NoAttestationDropsUndecoded(t *testing.T) {
+	// An undecodable identity with NO attestation is not re-added — only the
+	// canonical (decoded) set represents it, and here it decoded to nothing.
+	inbound := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "uid2-raw"},
+	}
+	decoded := []DecodedIdentity{{UIDType: tmproto.UIDTypeUID2, Bytes: nil}}
+	assert.Empty(t, serviceIdentities(inbound, decoded))
+}
+
 func TestDecode_RecordsDropsByReason(t *testing.T) {
 	rec := newTestRecorder()
 	cfg := &TMPXSealer{
