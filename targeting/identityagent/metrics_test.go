@@ -4,10 +4,50 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// durationHistogramSuffixes are the histogram metric-name suffixes that record
+// latency in seconds and must carry sub-second bucket boundaries.
+var durationHistogramSuffixes = []string{
+	"_request_duration_seconds",
+	"_stage_duration_seconds",
+}
+
+func TestDurationHistograms_UseSubSecondBuckets(t *testing.T) {
+	p, err := Build(MetricsConfig{Enabled: true, Namespace: "identity_agent"})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = p.Shutdown(context.Background()) })
+
+	// Record a sub-second observation into each duration histogram so the
+	// Prometheus exporter materializes its buckets.
+	ctx := context.Background()
+	p.Recorder.RequestCompleted(ctx, "ok", 30*time.Millisecond)
+	p.Recorder.StageDuration(ctx, StageResolve, 5*time.Millisecond)
+
+	mfs, err := p.Registry.Gather()
+	require.NoError(t, err)
+
+	for _, suffix := range durationHistogramSuffixes {
+		var bounds []float64
+		for _, mf := range mfs {
+			if !strings.HasSuffix(mf.GetName(), suffix) {
+				continue
+			}
+			require.Len(t, mf.GetMetric(), 1)
+			for _, b := range mf.GetMetric()[0].GetHistogram().GetBucket() {
+				bounds = append(bounds, b.GetUpperBound())
+			}
+			break
+		}
+		require.NotNil(t, bounds, "histogram %q should be registered", suffix)
+		assert.Equal(t, durationBucketsSeconds, bounds,
+			"histogram %q should carry the explicit sub-second boundaries, not OTEL's millisecond-scaled defaults", suffix)
+	}
+}
 
 func TestRegisterConfigEntriesObserver_DisabledProviderIsNoop(t *testing.T) {
 	p, err := Build(MetricsConfig{Enabled: false})

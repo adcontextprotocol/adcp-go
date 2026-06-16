@@ -239,6 +239,19 @@ type otelRecorder struct {
 
 var _ Recorder = (*otelRecorder)(nil)
 
+// durationBucketsSeconds are the explicit histogram boundaries for the
+// latency instruments. OTEL's default boundaries assume the recorded value is
+// in milliseconds, but these instruments record seconds; a request budget of
+// tens of milliseconds is far below OTEL's smallest default boundary, so every
+// observation would collapse into the first bucket and the percentiles would
+// carry no resolution. These boundaries span sub-millisecond to one second so
+// p50–p999 stay meaningful around the request budget. The 0.035 boundary is
+// tuned to sit just under the REQUEST_TIMEOUT budget (40ms by default); revisit
+// this slice if that budget changes so an edge keeps landing near it.
+var durationBucketsSeconds = []float64{
+	0.0005, 0.001, 0.0025, 0.005, 0.01, 0.02, 0.035, 0.05, 0.075, 0.1, 0.25, 0.5, 1,
+}
+
 func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error) {
 	requestStarted, err := meter.Int64Counter(
 		fmt.Sprintf("%s_requests_started_total", namespace))
@@ -246,7 +259,8 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		return nil, err
 	}
 	requestDuration, err := meter.Float64Histogram(
-		fmt.Sprintf("%s_request_duration_seconds", namespace))
+		fmt.Sprintf("%s_request_duration_seconds", namespace),
+		metric.WithExplicitBucketBoundaries(durationBucketsSeconds...))
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +270,8 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		return nil, err
 	}
 	stageDuration, err := meter.Float64Histogram(
-		fmt.Sprintf("%s_stage_duration_seconds", namespace))
+		fmt.Sprintf("%s_stage_duration_seconds", namespace),
+		metric.WithExplicitBucketBoundaries(durationBucketsSeconds...))
 	if err != nil {
 		return nil, err
 	}
