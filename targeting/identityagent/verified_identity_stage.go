@@ -44,7 +44,17 @@ func (o *stageObserver) VerifierFailed(ctx context.Context) {
 // targeting.OpenAndVerify; this stage wires the request, the metric observer,
 // and the stage-level duration/outcome metrics around it.
 func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.IdentityMatchRequest) []targeting.VerifiedIdentity {
-	if s.verifier == nil || len(s.recipientKeys) == 0 || len(req.SealedCredentials) == 0 {
+	if s.verifier == nil {
+		return nil
+	}
+	// Two verify-before-trust carriers share this stage: sealed_credentials
+	// (network-as-RP, RP from the recipient keys) and in-band attestations on
+	// req.Identities (RP from s.relyingPartyID). Either may be inactive by
+	// configuration or absent from the request; with neither available the
+	// stage is a no-op and eligibility is unchanged.
+	sealedAvailable := len(s.recipientKeys) > 0 && len(req.SealedCredentials) > 0
+	inbandAvailable := s.relyingPartyID != "" && len(req.Identities) > 0
+	if !sealedAvailable && !inbandAvailable {
 		return nil
 	}
 	start := time.Now()
@@ -59,7 +69,15 @@ func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.Ide
 		Country:   req.Country,
 		Now:       start,
 	}
-	verified := targeting.OpenAndVerify(ctx, req.SealedCredentials, s.recipientKeys, s.verifier, vctx, obs)
+	var verified []targeting.VerifiedIdentity
+	if sealedAvailable {
+		verified = targeting.OpenAndVerify(ctx, req.SealedCredentials, s.recipientKeys, s.verifier, vctx, obs)
+	}
+	if inbandAvailable {
+		inbandCtx := vctx
+		inbandCtx.ExpectedRelyingPartyID = s.relyingPartyID
+		verified = append(verified, targeting.VerifyAttestations(ctx, req.Identities, s.verifier, inbandCtx, obs)...)
+	}
 
 	s.recorder.StageDuration(ctx, StageVerifiedIdentity, time.Since(start))
 	outcome := OutcomePass

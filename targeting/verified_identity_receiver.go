@@ -142,26 +142,67 @@ func OpenAndVerify(
 		}
 		credVctx := vctx
 		credVctx.ExpectedRelyingPartyID = rk.RelyingPartyID
-		// Local, fail-closed invariants BEFORE the (possibly network) verifier:
-		// empty signal_binding, expired, or RP mismatch ⇒ absent.
-		if reason := LocalPreCheck(&att, credVctx); reason != PreCheckOK {
-			obs.Dropped(ctx, reason)
+		if vi, ok := verifyOne(ctx, &att, verifier, credVctx, obs); ok {
+			verified = append(verified, vi)
+		}
+	}
+	return verified
+}
+
+// verifyOne runs the verify-before-trust checks for a single attestation whose
+// expected relying party is already set on vctx: the local, fail-closed
+// pre-checks (signal_binding present, not expired, relying_party_id == the RP
+// we act as) BEFORE the possibly-network verifier, then the verifier, then the
+// defense-in-depth post-verify RP recheck. It returns the VerifiedIdentity with
+// claims normalized to the closed set so the age gate only ever sees canonical
+// values. ok is false — and the matching observer signal has already fired —
+// when the attestation must be treated as absent.
+func verifyOne(ctx context.Context, att *tmproto.Attestation, verifier AttestationVerifier, vctx VerifyContext, obs CredentialObserver) (VerifiedIdentity, bool) {
+	if reason := LocalPreCheck(att, vctx); reason != PreCheckOK {
+		obs.Dropped(ctx, reason)
+		return VerifiedIdentity{}, false
+	}
+	vi, err := verifier.Verify(ctx, att, vctx)
+	if err != nil {
+		obs.VerifierFailed(ctx)
+		return VerifiedIdentity{}, false
+	}
+	if vi.RelyingPartyID != vctx.ExpectedRelyingPartyID {
+		obs.Dropped(ctx, DropRPMismatchPostVerify)
+		return VerifiedIdentity{}, false
+	}
+	vi.Claims = normalizeClaimSet(vi.Claims)
+	return vi, true
+}
+
+// VerifyAttestations is the in-band sibling of OpenAndVerify: it runs the
+// verify-before-trust checks on the attestations carried directly on the
+// request's identity entries (req.Identities[].Attestation), with no HPKE seal
+// to open, and returns the verified identities. The same rule holds — claims
+// are trusted only from the verifier, never the asserted attestation — and the
+// expected relying party is vctx.ExpectedRelyingPartyID, the single RP this
+// receiver acts as; an attestation bound to any other RP is dropped by
+// LocalPreCheck.
+//
+// Fail-closed by construction: with no verifier or no expected relying party it
+// returns nil without consulting the verifier. An identity entry without an
+// attestation is an ordinary token, not a verified identity, and is skipped.
+func VerifyAttestations(ctx context.Context, identities []tmproto.IdentityToken, verifier AttestationVerifier, vctx VerifyContext, obs CredentialObserver) []VerifiedIdentity {
+	if verifier == nil || vctx.ExpectedRelyingPartyID == "" || len(identities) == 0 {
+		return nil
+	}
+	if obs == nil {
+		obs = noopCredentialObserver{}
+	}
+	var verified []VerifiedIdentity
+	for i := range identities {
+		att := identities[i].Attestation
+		if att == nil {
 			continue
 		}
-		vi, err := verifier.Verify(ctx, &att, credVctx)
-		if err != nil {
-			obs.VerifierFailed(ctx)
-			continue
+		if vi, ok := verifyOne(ctx, att, verifier, vctx, obs); ok {
+			verified = append(verified, vi)
 		}
-		// Defense-in-depth: the verifier must return the RP we bound to.
-		if vi.RelyingPartyID != rk.RelyingPartyID {
-			obs.Dropped(ctx, DropRPMismatchPostVerify)
-			continue
-		}
-		// Normalize to the closed claim set so the age gate only ever sees
-		// canonical values, regardless of verifier behavior.
-		vi.Claims = normalizeClaimSet(vi.Claims)
-		verified = append(verified, vi)
 	}
 	return verified
 }

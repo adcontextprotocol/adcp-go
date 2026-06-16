@@ -261,53 +261,20 @@ func TestService_FCapTimeout_FailClosed(t *testing.T) {
 	require.False(t, got["pkg-1"], "fcap timeout must fail closed")
 }
 
-// TestService_FCap_NormalizesSellerURLToRegistrableDomain ensures the fcap
-// stage reduces req.SellerAgentURL to its registrable domain (eTLD+1) before
-// looking up markers — matching the transformation frequency-writer applies
-// when it writes them. The cap is recorded under "seller.example.com" while
-// the request carries the full "https://sub.seller.example.com/agent" form;
-// the cap must still apply.
-func TestService_FCap_NormalizesSellerURLToRegistrableDomain(t *testing.T) {
-	// The full URL carries subdomain + path; its eTLD+1 is "seller.com".
-	// frequency-writer would record the marker under the eTLD+1; the
-	// fcap stage must reduce the request URL the same way for the
-	// lookup to find it.
-	fullURL := "https://api.seller.com/agent"
-	registrable := "seller.com"
-	entries := []identityconfig.Entry{
-		{Key: identityconfig.Key{SellerAgentURL: fullURL, PackageID: "pkg-1"}},
-	}
-	svc := newTestService(t, testServiceOptions{
-		configEntries: entries,
-		cappedTuples: []capTuple{
-			{identity: "u1", seller: registrable, pkg: "pkg-1"},
-		},
-	})
-	req := &tmproto.IdentityMatchRequest{
-		RequestID:      "r1",
-		SellerAgentURL: fullURL,
-		PackageIDs:     []string{"pkg-1"},
-		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
-	}
-	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
-	assert.False(t, got["pkg-1"], "cap recorded under registrable domain must apply to a request that uses a subdomain/path form")
-}
-
-// TestService_FCap_UnregistrableSellerURL_NoCapApplied verifies the symmetric
-// behavior to frequency-writer's "skip on invalid URL": if the request's
-// seller URL can't be reduced to a registrable domain, no marker exists, so
-// the fcap stage applies no caps and leaves eligibility to other stages.
-func TestService_FCap_UnregistrableSellerURL_NoCapApplied(t *testing.T) {
-	// "http://localhost" parses as a URL but localhost has no eTLD+1, so
-	// urlutil.Registrable returns ErrInvalid.
-	sellerURL := "http://localhost"
+// TestService_FCap_UsesSellerURLVerbatim ensures the fcap stage keys
+// marker lookups by req.SellerAgentURL verbatim — no registrable-domain
+// reduction — matching how frequency-writer writes them. A storefront
+// path with no registrable host must still resolve a cap.
+func TestService_FCap_UsesSellerURLVerbatim(t *testing.T) {
+	// A path-only seller URL has no registrable host; frequency-writer
+	// records the marker under the raw value, so the fcap stage must
+	// look it up by the same raw value.
+	sellerURL := "/storefront/wonderstruck/mcp"
 	entries := []identityconfig.Entry{
 		{Key: identityconfig.Key{SellerAgentURL: sellerURL, PackageID: "pkg-1"}},
 	}
 	svc := newTestService(t, testServiceOptions{
 		configEntries: entries,
-		// Seed a cap on the unreduced URL so we can prove the fcap stage
-		// never consults it.
 		cappedTuples: []capTuple{
 			{identity: "u1", seller: sellerURL, pkg: "pkg-1"},
 		},
@@ -319,7 +286,34 @@ func TestService_FCap_UnregistrableSellerURL_NoCapApplied(t *testing.T) {
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
 	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
-	assert.True(t, got["pkg-1"], "unregistrable seller URL must skip fcap and leave the package eligible")
+	assert.False(t, got["pkg-1"], "cap recorded under the verbatim seller URL must apply")
+}
+
+// TestService_FCap_DoesNotReduceSellerURL proves the fcap stage does not
+// reduce req.SellerAgentURL to a registrable domain: a cap recorded under
+// the bare domain must NOT apply to a request that carries the full
+// subdomain/path form, because the marker keys differ verbatim.
+func TestService_FCap_DoesNotReduceSellerURL(t *testing.T) {
+	fullURL := "https://api.seller.com/agent"
+	entries := []identityconfig.Entry{
+		{Key: identityconfig.Key{SellerAgentURL: fullURL, PackageID: "pkg-1"}},
+	}
+	svc := newTestService(t, testServiceOptions{
+		configEntries: entries,
+		// Cap recorded under the bare registrable domain — a request using
+		// the full URL must not match it (no reduction on either side).
+		cappedTuples: []capTuple{
+			{identity: "u1", seller: "seller.com", pkg: "pkg-1"},
+		},
+	})
+	req := &tmproto.IdentityMatchRequest{
+		RequestID:      "r1",
+		SellerAgentURL: fullURL,
+		PackageIDs:     []string{"pkg-1"},
+		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
+	}
+	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
+	assert.True(t, got["pkg-1"], "a cap under the bare domain must not apply to the full-URL request")
 }
 
 // slowFCapStore is an fcap.Store wrapper that injects a fixed delay before

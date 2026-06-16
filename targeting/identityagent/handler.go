@@ -296,6 +296,38 @@ func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.
 	}
 	decoded := h.canonicalizer.Decode(ctx, req.Identities)
 	shadow := *req
-	shadow.Identities = audienceEligibleIdentities(decoded)
+	shadow.Identities = serviceIdentities(req.Identities, decoded)
 	return &shadow, decoded
+}
+
+// serviceIdentities is the identity slice Evaluate operates on. It combines the
+// successfully-decoded identities (canonical lowercase-hex UserToken, for
+// audience/fcap keying) with any inbound identity carrying a verified-identity
+// attestation that the canonicalizer could not decode.
+//
+// The second group exists for identities that are intentionally not
+// inbound-decodable — notably a World ID nullifier, which must be
+// verifier-derived rather than trusted from a raw token, yet carries the
+// attestation the verified-identity stage verifies. Decoding drops both the
+// World token and every Attestation, so without this the in-band
+// verified-identity path is a no-op whenever a canonicalizer is configured.
+// Attestation-less and successfully-decoded identities are already represented
+// by the canonical set, so only undecoded attestation carriers are appended
+// (no double-counting).
+func serviceIdentities(inbound []tmproto.IdentityToken, decoded []DecodedIdentity) []tmproto.IdentityToken {
+	out := audienceEligibleIdentities(decoded)
+	for i := range inbound {
+		if inbound[i].Attestation == nil {
+			continue
+		}
+		if i < len(decoded) && len(decoded[i].Bytes) > 0 {
+			continue
+		}
+		out = append(out, tmproto.IdentityToken{
+			UIDType:     inbound[i].UIDType,
+			UserToken:   inbound[i].UserToken,
+			Attestation: inbound[i].Attestation,
+		})
+	}
+	return out
 }

@@ -229,6 +229,83 @@ func TestOpenAndVerify_MalformedEnvelope(t *testing.T) {
 	assert.Equal(t, []string{targeting.DropMalformedSeal}, obs.drops)
 }
 
+// identityWithAtt wraps an attestation on a world_id_nullifier identity entry,
+// the in-band (Mechanism A) carrier VerifyAttestations consumes.
+func identityWithAtt(att tmproto.Attestation) tmproto.IdentityToken {
+	return tmproto.IdentityToken{UIDType: tmproto.UIDTypeWorldIDNullifier, UserToken: "0xnf", Attestation: &att}
+}
+
+// attCtx is baseCtx with the receiver's single expected relying party set — the
+// RP the in-band attestation must be bound to.
+func attCtx(rp string) targeting.VerifyContext {
+	v := baseCtx()
+	v.ExpectedRelyingPartyID = rp
+	return v
+}
+
+// Fail-closed by omission: no verifier, no expected RP, or no identities ⇒ nil
+// and the verifier is never consulted.
+func TestVerifyAttestations_FailClosedByOmission(t *testing.T) {
+	ids := []tmproto.IdentityToken{identityWithAtt(attestation("rp-1", tmproto.AttestationClaimUniqueHuman))}
+	assert.Nil(t, targeting.VerifyAttestations(t.Context(), ids, nil, attCtx("rp-1"), nil))
+	assert.Nil(t, targeting.VerifyAttestations(t.Context(), ids, &stubVerifier{}, baseCtx(), nil), "no expected RP ⇒ absent")
+	assert.Nil(t, targeting.VerifyAttestations(t.Context(), nil, &stubVerifier{}, attCtx("rp-1"), nil))
+}
+
+// Verify-before-trust: claims come from the verifier, never the asserted
+// attestation — the asserted age_over_21 does not leak through.
+func TestVerifyAttestations_TrustsVerifierNotAttestation(t *testing.T) {
+	v := &stubVerifier{nullifier: "N", claims: []tmproto.AttestationClaim{tmproto.AttestationClaimUniqueHuman}}
+	ids := []tmproto.IdentityToken{identityWithAtt(attestation("rp-1", tmproto.AttestationClaimAgeOver21))}
+
+	got := targeting.VerifyAttestations(t.Context(), ids, v, attCtx("rp-1"), nil)
+	require.Len(t, got, 1)
+	assert.Equal(t, "rp-1", got[0].RelyingPartyID)
+	assert.True(t, got[0].ClaimsSatisfy(tmproto.AttestationClaimUniqueHuman))
+	assert.False(t, got[0].ClaimsSatisfy(tmproto.AttestationClaimAgeOver21),
+		"the asserted age_over_21 must NOT be trusted — only the verifier's claims count")
+}
+
+// An attestation minted for another RP is dropped by the local pre-check before
+// the verifier is consulted.
+func TestVerifyAttestations_RPMismatchPreVerify(t *testing.T) {
+	v := &stubVerifier{nullifier: "N", claims: []tmproto.AttestationClaim{tmproto.AttestationClaimUniqueHuman}}
+	obs := &recordingObserver{}
+	ids := []tmproto.IdentityToken{identityWithAtt(attestation("rp-EVIL", tmproto.AttestationClaimUniqueHuman))}
+
+	got := targeting.VerifyAttestations(t.Context(), ids, v, attCtx("rp-1"), obs)
+	assert.Empty(t, got)
+	assert.Equal(t, 0, v.calls, "verifier MUST NOT be called for a proof minted for another RP")
+	assert.Equal(t, []string{targeting.PreCheckRPMismatch}, obs.drops)
+}
+
+// Identity entries without an attestation are ordinary tokens, skipped without
+// reaching the verifier.
+func TestVerifyAttestations_SkipsEntriesWithoutAttestation(t *testing.T) {
+	v := &stubVerifier{nullifier: "N", claims: []tmproto.AttestationClaim{tmproto.AttestationClaimUniqueHuman}}
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeMAID, UserToken: "maid-1"},
+		identityWithAtt(attestation("rp-1", tmproto.AttestationClaimUniqueHuman)),
+	}
+
+	got := targeting.VerifyAttestations(t.Context(), ids, v, attCtx("rp-1"), nil)
+	assert.Len(t, got, 1)
+	assert.Equal(t, 1, v.calls, "only the entry carrying an attestation reaches the verifier")
+}
+
+// A verifier error yields no identity and is reported via VerifierFailed, not a
+// Dropped reason, so a down verifier is distinguishable from organic absence.
+func TestVerifyAttestations_VerifierError(t *testing.T) {
+	v := &stubVerifier{err: errors.New("verifier down")}
+	obs := &recordingObserver{}
+	ids := []tmproto.IdentityToken{identityWithAtt(attestation("rp-1", tmproto.AttestationClaimUniqueHuman))}
+
+	got := targeting.VerifyAttestations(t.Context(), ids, v, attCtx("rp-1"), obs)
+	assert.Empty(t, got)
+	assert.Empty(t, obs.drops)
+	assert.Equal(t, 1, obs.verifierFails)
+}
+
 func TestRejectByVerifiedIdentity(t *testing.T) {
 	human := []targeting.VerifiedIdentity{{Nullifier: "N", RelyingPartyID: "rp-1", Claims: targeting.NormalizeClaims([]tmproto.AttestationClaim{tmproto.AttestationClaimUniqueHuman, tmproto.AttestationClaimAgeOver18})}}
 

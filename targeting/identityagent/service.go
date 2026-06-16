@@ -3,7 +3,6 @@ package identityagent
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"maps"
 	"sync"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
-	"github.com/adcontextprotocol/adcp-go/urlutil"
 )
 
 // Service composes the audience-only IdentityEngine with a frequency-cap
@@ -38,6 +36,11 @@ type Service struct {
 	verifier      targeting.AttestationVerifier
 	recipientKeys map[string]RecipientKey
 	ageResolver   targeting.AgeResolver
+	// relyingPartyID is the RP this deployment acts as for in-band
+	// (req.Identities[].Attestation) verification. Empty disables the in-band
+	// carrier; the sealed_credentials carrier takes its RP from the recipient
+	// keys instead.
+	relyingPartyID string
 }
 
 // ServiceConfig packages the dependencies for NewService.
@@ -60,6 +63,9 @@ type ServiceConfig struct {
 	// AgeResolver resolves a package's required age threshold by geo; nil
 	// means no age gating.
 	AgeResolver targeting.AgeResolver
+	// RelyingPartyID is the RP this deployment acts as for in-band attestation
+	// verification (req.Identities[].Attestation). Empty disables that carrier.
+	RelyingPartyID string
 }
 
 // NewService validates the supplied dependencies and returns a Service.
@@ -96,6 +102,7 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		verifier:        cfg.Verifier,
 		recipientKeys:   cfg.RecipientKeys,
 		ageResolver:     cfg.AgeResolver,
+		relyingPartyID:  cfg.RelyingPartyID,
 	}, nil
 }
 
@@ -224,29 +231,12 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
 	defer cancelFcap()
 
-	// Reduce the seller URL to its registrable domain so the marker key
-	// matches what frequency-writer wrote (writer applies the same
-	// transformation via urlutil.Registrable). Any deviation makes
-	// markers unreachable and silently disables caps.
-	sellerDomain, err := urlutil.Registrable(req.SellerAgentURL)
-	if err != nil {
-		// frequency-writer skips messages whose seller URL is not
-		// registrable, so no marker exists for this URL. The symmetric
-		// reader behavior is "no caps fired" — leave cappedByPkg empty
-		// and let the audience stage decide eligibility.
-		dur := time.Since(start)
-		s.recorder.StageDuration(ctx, StageFCap, dur)
-		s.recorder.StageOutcome(ctx, StageFCap, OutcomeError)
-		slog.Warn("seller_agent_url is not a registrable domain; skipping fcap lookup",
-			"request_id", req.RequestID,
-			"seller_agent_url", req.SellerAgentURL,
-			"error", err)
-		return fcapResult{outcome: OutcomeError, duration: dur}
-	}
-
+	// The seller URL is the marker key verbatim — frequency-writer writes
+	// it unchanged, so the reader must not transform it either. Any
+	// deviation makes markers unreachable and silently disables caps.
 	fields := make([]fcap.Field, len(pkgIDs))
 	for i, pkgID := range pkgIDs {
-		fields[i] = fcap.Field{SellerAgentURL: sellerDomain, PackageID: pkgID}
+		fields[i] = fcap.Field{SellerAgentURL: req.SellerAgentURL, PackageID: pkgID}
 	}
 	// Frequency-cap key selection. When verified identities are present, cap
 	// on their relying-party-scoped, namespaced nullifier keys — a true
@@ -290,6 +280,15 @@ func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRe
 		}
 		s.recorder.StageOutcome(ctx, StageFCap, outcome)
 		return fcapResult{cappedByPkg: failClosedFcap(pkgIDs), outcome: outcome, duration: dur}
+	}
+
+	if len(cappedByField) != len(pkgIDs) {
+		// IsCappedAny returns one result per field (one field per pkgID); a
+		// shorter result would read out of range below. Treat the unexpected
+		// shape as a store error and fail closed rather than panic.
+		s.recorder.StoreError(ctx, StageFCap)
+		s.recorder.StageOutcome(ctx, StageFCap, OutcomeError)
+		return fcapResult{cappedByPkg: failClosedFcap(pkgIDs), outcome: OutcomeError, duration: dur}
 	}
 
 	capped := make(map[string]bool, len(pkgIDs))

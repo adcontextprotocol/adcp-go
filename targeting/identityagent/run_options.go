@@ -16,9 +16,10 @@ import "github.com/adcontextprotocol/adcp-go/targeting"
 type RunOption func(*runOptions)
 
 type runOptions struct {
-	verifier      targeting.AttestationVerifier
-	recipientKeys map[string]RecipientKey
-	ageResolver   targeting.AgeResolver
+	verifier       targeting.AttestationVerifier
+	recipientKeys  map[string]RecipientKey
+	ageResolver    targeting.AgeResolver
+	relyingPartyID string
 }
 
 // WithAttestationVerifier injects the verified-identity verifier. Without it,
@@ -32,6 +33,14 @@ func WithAttestationVerifier(v targeting.AttestationVerifier) RunOption {
 // relying party this deployment acts as) used to open sealed_credentials.
 func WithRecipientKeys(keys map[string]RecipientKey) RunOption {
 	return func(o *runOptions) { o.recipientKeys = keys }
+}
+
+// WithRelyingPartyID sets the relying party this deployment acts as for in-band
+// attestation verification (req.Identities[].Attestation). Without it, only the
+// sealed_credentials carrier is active; in-band attestations are treated as
+// absent.
+func WithRelyingPartyID(rpID string) RunOption {
+	return func(o *runOptions) { o.relyingPartyID = rpID }
 }
 
 // WithAgeResolver injects the age-policy resolver (e.g. AdCP Policy Registry
