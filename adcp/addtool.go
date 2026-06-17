@@ -83,9 +83,17 @@ func permissiveSchemaFor[In any]() *jsonschema.Schema {
 // properties whose schema serializes to `true` (the "any" type), since
 // some validators reject bare `true` as a property schema.
 func allowAdditionalProperties(s *jsonschema.Schema) {
+	allowAdditionalPropertiesSeen(s, map[*jsonschema.Schema]bool{})
+}
+
+func allowAdditionalPropertiesSeen(s *jsonschema.Schema, seen map[*jsonschema.Schema]bool) {
 	if s == nil {
 		return
 	}
+	if seen[s] {
+		return
+	}
+	seen[s] = true
 
 	// Remove additionalProperties: false (which is encoded as {not: {}})
 	if s.Type == "object" && s.AdditionalProperties != nil {
@@ -113,29 +121,60 @@ func allowAdditionalProperties(s *jsonschema.Schema) {
 
 	// Recurse into properties
 	for _, prop := range s.Properties {
-		allowAdditionalProperties(prop)
+		allowAdditionalPropertiesSeen(prop, seen)
 	}
 
 	// Recurse into items (array elements)
-	if s.Items != nil {
-		allowAdditionalProperties(s.Items)
+	allowAdditionalPropertiesSeen(s.Items, seen)
+	for _, sub := range s.ItemsArray {
+		allowAdditionalPropertiesSeen(sub, seen)
 	}
+	for _, sub := range s.PrefixItems {
+		allowAdditionalPropertiesSeen(sub, seen)
+	}
+	allowAdditionalPropertiesSeen(s.AdditionalItems, seen)
+	allowAdditionalPropertiesSeen(s.Contains, seen)
+	allowAdditionalPropertiesSeen(s.UnevaluatedItems, seen)
+
+	// Recurse into object-related subschemas. Preserve typed-map
+	// additionalProperties schemas, but make any object values inside them
+	// permissive too.
+	for _, sub := range s.PatternProperties {
+		allowAdditionalPropertiesSeen(sub, seen)
+	}
+	allowAdditionalPropertiesSeen(s.AdditionalProperties, seen)
+	allowAdditionalPropertiesSeen(s.PropertyNames, seen)
+	allowAdditionalPropertiesSeen(s.UnevaluatedProperties, seen)
 
 	// Recurse into schema combinators
 	for _, sub := range s.AllOf {
-		allowAdditionalProperties(sub)
+		allowAdditionalPropertiesSeen(sub, seen)
 	}
 	for _, sub := range s.AnyOf {
-		allowAdditionalProperties(sub)
+		allowAdditionalPropertiesSeen(sub, seen)
 	}
 	for _, sub := range s.OneOf {
-		allowAdditionalProperties(sub)
+		allowAdditionalPropertiesSeen(sub, seen)
 	}
+	allowAdditionalPropertiesSeen(s.Not, seen)
+	allowAdditionalPropertiesSeen(s.If, seen)
+	allowAdditionalPropertiesSeen(s.Then, seen)
+	allowAdditionalPropertiesSeen(s.Else, seen)
 
 	// Recurse into $defs
 	for _, def := range s.Defs {
-		allowAdditionalProperties(def)
+		allowAdditionalPropertiesSeen(def, seen)
 	}
+	for _, def := range s.Definitions {
+		allowAdditionalPropertiesSeen(def, seen)
+	}
+	for _, def := range s.DependencySchemas {
+		allowAdditionalPropertiesSeen(def, seen)
+	}
+	for _, def := range s.DependentSchemas {
+		allowAdditionalPropertiesSeen(def, seen)
+	}
+	allowAdditionalPropertiesSeen(s.ContentSchema, seen)
 }
 
 // isTrueSchema returns true if the schema serializes to the JSON value `true`,
