@@ -1,11 +1,13 @@
 package adcp
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +34,49 @@ func TestPermissiveSchemaFor(t *testing.T) {
 	require.NotNil(t, schema.Properties, "expected properties to be set")
 	assert.Contains(t, schema.Properties, "name", "expected 'name' property")
 	assert.Contains(t, schema.Properties, "age", "expected 'age' property")
+}
+
+func TestAddToolAllowsExtraFieldsToReachHandler(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "addtool-test", Version: "v0.0.1"}, nil)
+	called := false
+	var got testInput
+	AddTool(server, "echo_input", "Echo input",
+		func(_ context.Context, _ *mcp.CallToolRequest, input testInput) (*mcp.CallToolResult, any, error) {
+			called = true
+			got = input
+			return Result(map[string]any{"ok": true}, "ok")
+		})
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "addtool-test-client", Version: "v0.0.1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "echo_input",
+		Arguments: map[string]any{
+			"name":               "Ada",
+			"adcp_major_version": 3,
+			"nested": map[string]any{
+				"value":    "nested-ok",
+				"metadata": "extra",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.True(t, called, "handler should run despite unknown root and nested fields")
+	assert.Equal(t, "Ada", got.Name)
+	require.NotNil(t, got.Nested)
+	assert.Equal(t, "nested-ok", got.Nested.Value)
 }
 
 func TestPermissiveSchemaForNested(t *testing.T) {
@@ -64,6 +109,47 @@ func TestAllowAdditionalProperties(t *testing.T) {
 
 	assert.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil after patching")
 	assert.NotNil(t, schema.Properties["foo"], "expected properties to be preserved")
+}
+
+func TestAllowAdditionalPropertiesWalksTupleAndMapValueSchemas(t *testing.T) {
+	falseSchema := func() *jsonschema.Schema {
+		return &jsonschema.Schema{Not: &jsonschema.Schema{}}
+	}
+	itemsObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	prefixObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	mapValueObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	dependencyObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	dependentObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	mapSchema := &jsonschema.Schema{Type: "object", AdditionalProperties: mapValueObject}
+	schema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"items_array": {
+				Type:       "array",
+				ItemsArray: []*jsonschema.Schema{itemsObject},
+			},
+			"prefix_items": {
+				Type:        "array",
+				PrefixItems: []*jsonschema.Schema{prefixObject},
+			},
+			"typed_map": mapSchema,
+		},
+		DependencySchemas: map[string]*jsonschema.Schema{
+			"items_array": dependencyObject,
+		},
+		DependentSchemas: map[string]*jsonschema.Schema{
+			"prefix_items": dependentObject,
+		},
+	}
+
+	allowAdditionalProperties(schema)
+
+	assert.Nil(t, itemsObject.AdditionalProperties, "expected itemsArray object to be permissive")
+	assert.Nil(t, prefixObject.AdditionalProperties, "expected prefixItems object to be permissive")
+	assert.Same(t, mapValueObject, mapSchema.AdditionalProperties, "expected typed-map schema to be preserved")
+	assert.Nil(t, mapValueObject.AdditionalProperties, "expected typed-map object values to be permissive")
+	assert.Nil(t, dependencyObject.AdditionalProperties, "expected legacy dependency schema object to be permissive")
+	assert.Nil(t, dependentObject.AdditionalProperties, "expected dependentSchemas object to be permissive")
 }
 
 func TestJsonRoundTrip(t *testing.T) {
