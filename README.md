@@ -115,7 +115,7 @@ for the version compatibility contract.
 
 - [`adcp/types.go`](adcp/types.go) — Hand-written SDK types (Product, MediaBuyData, Signal, etc.)
 - [`adcp/inputs.go`](adcp/inputs.go) — Typed input structs for all tool handlers
-- [`adcp/types_gen.go`](adcp/types_gen.go) — types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) 3.1.0-rc.3
+- [`adcp/types_gen.go`](adcp/types_gen.go) — types generated from [AdCP schemas](https://github.com/adcontextprotocol/adcp) 3.1.0
 - [`adcp/governance_types.go`](adcp/governance_types.go) — hand-written `Plan` and related governance types (inline in sync_plans)
 - [`adcp/plan_validate.go`](adcp/plan_validate.go) — client-side enforcement of the budget `oneOf` and Annex III `if/then` invariants
 

@@ -113,10 +113,10 @@ type structRegistry map[string]string
 
 // loadContext holds state shared across loading functions.
 type loadContext struct {
-	overlay    *Overlay
-	enumReg    enumRegistry
-	structReg  structRegistry
-	seen       map[string]string // struct name -> source file (for duplicate detection)
+	overlay   *Overlay
+	enumReg   enumRegistry
+	structReg structRegistry
+	seen      map[string]string // struct name -> source file (for duplicate detection)
 }
 
 // LoadSchemas reads JSON Schema files from schemaDir, enum files from enumDir,
@@ -722,19 +722,16 @@ func pascalCase(s string) string {
 	return strings.Join(parts, "")
 }
 
+var titleWordSplitRe = regexp.MustCompile(`[^A-Za-z0-9]+`)
+
 // titleToPascalCase converts a title like "Context Match Request" to "ContextMatchRequest".
-// Splits on whitespace and hyphens.
+// Splits on non-alphanumeric separators so parenthetical qualifiers do not
+// leak punctuation into generated Go identifiers.
 func titleToPascalCase(title string) string {
 	if title == "" {
 		return ""
 	}
-	// Split on whitespace first, then split each word on hyphens.
-	spaceWords := strings.Fields(title)
-	var words []string
-	for _, sw := range spaceWords {
-		parts := strings.Split(sw, "-")
-		words = append(words, parts...)
-	}
+	words := titleWordSplitRe.Split(title, -1)
 	for i, w := range words {
 		if w == "" {
 			continue

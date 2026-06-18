@@ -69,13 +69,21 @@ LATEST=$(python3 -c '
 import json, sys, re
 m = json.load(sys.stdin)
 versions = m.get("versions") or []
+def version_value(entry):
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        v = entry.get("version")
+        if isinstance(v, str):
+            return v
+    return ""
 def key(v):
     v = v.lstrip("v")
     parts = v.split("-", 1)
     nums = tuple(int(x) for x in parts[0].split(".") if x.isdigit())
     pre = parts[1] if len(parts) > 1 else ""
     return (nums, pre == "", pre)
-released = [v for v in versions if re.match(r"^v?\d+\.\d+\.\d+", v)]
+released = [v for v in (version_value(entry) for entry in versions) if re.match(r"^v?\d+\.\d+\.\d+$", v)]
 released.sort(key=key)
 print(released[-1] if released else "")
 ' <<<"$MANIFEST")
