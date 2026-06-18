@@ -183,6 +183,7 @@ func TestTitleToPascalCase(t *testing.T) {
 		{"Property Type", "PropertyType"},
 		{"UID Type", "UIDType"},
 		{"Offer Price", "OfferPrice"},
+		{"Metric Type (Deprecated)", "MetricTypeDeprecated"},
 	}
 	for _, tt := range tests {
 		got := titleToPascalCase(tt.title)

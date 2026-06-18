@@ -1,7 +1,7 @@
 # Go Generator Baseline
 
-Snapshot date: 2026-05-30
-Schema bundle: AdCP 3.1.0-rc.4
+Snapshot date: 2026-06-18
+Schema bundle: AdCP 3.1.0
 Command:
 
 ```bash
@@ -10,11 +10,11 @@ python3 generate.py --coverage-summary
 python3 generate.py --coverage-max-unreviewed-any 0
 ```
 
-The generator currently reports 217 generated dynamic `any` uses:
+The generator currently reports 222 generated dynamic `any` uses:
 
 | Class | Count | Status |
 | --- | ---: | --- |
-| Reviewed intentional `any` | 217 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
+| Reviewed intentional `any` | 222 | Allowed by `INTENTIONAL_ANY_FIELD_NAMES`, `INTENTIONAL_ANY_FIELDS`, or `AdcpError` handling |
 | Unreviewed generated `any` | 0 | CI baseline; every new unreviewed fallback is a regression |
 
 CI enforces this baseline with:
@@ -83,25 +83,24 @@ No unreviewed unknown `$ref` fallbacks remain. Future unknown refs should be
 added to the generation graph unless the target schema is an intentionally open
 or union-shaped payload with a specific allowlist reason.
 
-## 3.1 RC4 Integration
+## 3.1 GA Integration
 
-Snapshot date: 2026-05-30
-Schema bundle: AdCP 3.1.0-rc.4
+Snapshot date: 2026-06-18
+Schema bundle: AdCP 3.1.0
 
-The checked-in baseline now uses the rc.4 bundle. The generator owns the new
+The checked-in baseline now uses the 3.1.0 bundle. The generator owns the new
 named 3.1 schemas for account authorization, committed metrics, delivery metric
 aggregates, missing metrics, signal targeting, forecast dimensions, provenance
 audit observations, wholesale-feed capability blocks, and the newly named
 inline delivery/reporting helper shapes.
 
-The rc.4 integration adds typed get-signals response rows for signal definition
-enrichment and signal coverage forecasts without raising the unreviewed `any`
-baseline.
+The GA integration adds typed audio distribution declarations and filters,
+plus YouTube channel handle and URL distribution identifiers, without raising
+the unreviewed `any` baseline.
 
 The 3.1 integration and subsequent generator passes reduced unreviewed
-generated `any` fallbacks from the 3.0.12 baseline of 15 to 2 while adding the
-3.1 protocol surface. The remaining items are intentionally tracked as
-generator work, not schema drift.
+generated `any` fallbacks from the 3.0.12 baseline of 15 to 0 while adding the
+3.1 protocol surface.
 
 ### Product Refinement Shapes
 

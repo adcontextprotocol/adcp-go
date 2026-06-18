@@ -170,7 +170,7 @@ func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
 					Payload: mustMarshal(AuthorizationEntry{AgentURL: "https://agent.com", PublisherDomain: "pub.com", AuthorizationType: "publisher_properties"}),
 					Actor:   "test"},
 			},
-			cursor: strPtr("e1"), hasMore: true,
+			cursor: strPtr("e1"), hasMore: false,
 		},
 		{
 			events: []FeedEvent{
@@ -187,12 +187,14 @@ func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
 
 	auth := NewAuthIndex()
 	syncer := newTestSyncer(srv.URL, NewPropertyIndex(), auth, NewAgentIndex())
+	syncer.config.PollInterval = 250 * time.Millisecond
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	go func() { _ = syncer.Run(ctx) }()
 
-	// First observe the grant (page 1 has hasMore=true, so page 2 follows immediately)
+	// First observe the grant. The first page is intentionally terminal so the
+	// second poll cannot revoke it before the test sees the intermediate state.
 	waitFor(t, func() bool { return auth.Check("https://agent.com", "pub.com") })
 
 	// Then observe the revocation
