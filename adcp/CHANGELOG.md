@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.1.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.0.1...adcp-v2.1.0) (2026-06-18)
+
+
+### Features
+
+* **adcp:** pin schemas to AdCP 3.1.0 ([#388](https://github.com/adcontextprotocol/adcp-go/issues/388)) ([b799400](https://github.com/adcontextprotocol/adcp-go/commit/b7994000296aba7f329c3fe802492e14abbdfeb4))
+* **context-agent:** registry-fed property bitmap + context-signal targeting ([0d8d1fe](https://github.com/adcontextprotocol/adcp-go/commit/0d8d1fe43f991fea995a37cacaa87de450378f4f))
+* **targeting:** canonicalize seller_agent_url via shared urlcanon ([c722633](https://github.com/adcontextprotocol/adcp-go/commit/c722633e8fcac0d8d631d63ac37c11884a4c588b))
+* **targeting:** canonicalize seller_agent_url via shared urlcanon ([2416ac1](https://github.com/adcontextprotocol/adcp-go/commit/2416ac18602af50c057033e4b418b909d2c5819b))
+
+
+### Bug Fixes
+
+* harden AddTool permissive schema traversal ([3cba266](https://github.com/adcontextprotocol/adcp-go/commit/3cba2663d11a1f944d56542868d14424d2ba32ed))
+* **schemas:** reconcile rc.11 hand-written type drift + optional-numeric pointers ([d367d9b](https://github.com/adcontextprotocol/adcp-go/commit/d367d9be715091aa6c957ccef6b0a4918d22b6e1))
+* **schemas:** type structured build_creative fields; allowlist genuinely-open ones ([6f9f0c1](https://github.com/adcontextprotocol/adcp-go/commit/6f9f0c16aeb1713445574ecf7d3f1bf3fff4d106))
+
 ## [2.0.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.0.0...adcp-v2.0.1) (2026-05-31)
 
 
