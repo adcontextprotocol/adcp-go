@@ -119,13 +119,13 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if req.RequestID == "" {
 		return errors.New("request_id is required")
 	}
-	if req.PropertyID == "" {
-		return errors.New("property_id is required")
-	}
-	if err := validateSafeID("property_id", req.PropertyID); err != nil {
-		return err
+	if req.PropertyRID == "" {
+		return errors.New("property_rid is required")
 	}
 	if err := validateSafeID("property_rid", req.PropertyRID); err != nil {
+		return err
+	}
+	if err := validateSafeID("property_id", req.PropertyID); err != nil {
 		return err
 	}
 	if req.PropertyType == "" {

@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"time"
@@ -168,9 +169,9 @@ type responseBody struct {
 }
 
 type wireConfig struct {
-	SellerAgentURL string            `json:"sellerAgentUrl"`
-	PackageID      string            `json:"packageId"`
-	TargetSegments *wireSegmentRule  `json:"targetSegments,omitempty"`
+	SellerAgentURL string           `json:"sellerAgentUrl"`
+	PackageID      string           `json:"packageId"`
+	TargetSegments *wireSegmentRule `json:"targetSegments,omitempty"`
 }
 
 type wireRemovedEntry struct {
@@ -213,9 +214,7 @@ func (s *Source) post(ctx context.Context, body requestBody) (out *responseBody,
 	req.Header.Set("Authorization", "Bearer "+s.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	for name, values := range s.extraHeaders {
-		req.Header[name] = values
-	}
+	maps.Copy(req.Header, s.extraHeaders)
 
 	resp, err := s.client.Do(req)
 	if err != nil {

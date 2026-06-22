@@ -154,17 +154,20 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if err := ValidateContextRequest(&cmReq); err != nil {
-		r.logValidationFailure("invalid context-match request", req, cmReq.RequestID, err)
-		r.writeError(w, tmproto.SafeRequestIDForEcho(cmReq.RequestID), tmproto.ErrorCodeInvalidRequest, "invalid request")
-		return
-	}
-
-	// Enrich with registry data — resolve property_rid for fast provider-side matching
+	// Enrich with registry data — resolve property_rid for fast provider-side
+	// matching. Runs before validation so publishers MAY send property_id alone
+	// and let the router resolve the wire-required property_rid from the
+	// registry; a property_id with no registry hit fails validation below.
 	if r.registry != nil {
 		if prop, ok := r.registry.LookupByID(cmReq.PropertyID); ok {
 			cmReq.PropertyRID = prop.PropertyRID
 		}
+	}
+
+	if err := ValidateContextRequest(&cmReq); err != nil {
+		r.logValidationFailure("invalid context-match request", req, cmReq.RequestID, err)
+		r.writeError(w, tmproto.SafeRequestIDForEcho(cmReq.RequestID), tmproto.ErrorCodeInvalidRequest, "invalid request")
+		return
 	}
 
 	// Strip per-asset Access credentials before fan-out — the spec says

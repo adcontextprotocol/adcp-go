@@ -113,6 +113,7 @@ func (c *Client) Activate(ctx context.Context, params *ActivateParams) (*Activat
 	ctxReq := &tmproto.ContextMatchRequest{
 		Type:           tmproto.TypeContextMatchRequest,
 		RequestID:      ctxReqID,
+		PropertyRID:    params.PropertyRID,
 		PropertyID:     params.PropertyID,
 		PropertyType:   params.PropertyType,
 		PlacementID:    params.PlacementID,

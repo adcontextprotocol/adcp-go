@@ -267,7 +267,7 @@ func TestOffer_RichResponse(t *testing.T) {
 	offer := &Offer{
 		PackageID: "pkg-reco-001",
 		Brand:     json.RawMessage(`{"name":"Acme Corp","advertiser_domain":"acme.example.com"}`),
-		Price:     OfferPrice{Amount: 12.50, Currency: "USD", Model: string(PriceModelCPM)},
+		Price:     &OfferPrice{Amount: 12.50, Currency: "USD", Model: string(PriceModelCPM)},
 		Summary:   "Acme product recommendation for cooking context",
 		Macros:    map[string]string{"click_url": "https://track.example.com/c/123"},
 	}

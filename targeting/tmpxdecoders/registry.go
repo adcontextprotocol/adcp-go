@@ -1,5 +1,7 @@
 package tmpxdecoders
 
+import "maps"
+
 import "github.com/adcontextprotocol/adcp-go/tmproto"
 
 // formatOnlyDecoders holds the per-UID-type decoders that produce
@@ -42,9 +44,7 @@ type RegistryOptions struct {
 // callers.
 func NewDefaultRegistry(opts RegistryOptions) map[tmproto.UIDType]Decoder {
 	out := make(map[tmproto.UIDType]Decoder, len(formatOnlyDecoders)+2)
-	for k, v := range formatOnlyDecoders {
-		out[k] = v
-	}
+	maps.Copy(out, formatOnlyDecoders)
 	if opts.LiveRampClient != nil {
 		out[tmproto.UIDTypeRampID] = RampID{Client: opts.LiveRampClient}
 		out[tmproto.UIDTypeRampIDDerived] = RampIDDerived{Client: opts.LiveRampClient}

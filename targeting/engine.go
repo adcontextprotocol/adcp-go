@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
@@ -511,10 +512,8 @@ func candidateSet(activeIDs, requested []string) []string {
 // faster than building an auxiliary set.
 func hasOverlap(a, b []string) bool {
 	for _, x := range a {
-		for _, y := range b {
-			if x == y {
-				return true
-			}
+		if slices.Contains(b, x) {
+			return true
 		}
 	}
 	return false
@@ -530,7 +529,7 @@ func buildOffersFromContextConfig(pkgID string, cfg *PackageContextConfig) []tmp
 			offers[i] = tmproto.Offer{
 				PackageID: pkgID,
 				Brand:     o.Brand,
-				Price:     o.Price,
+				Price:     offerPricePtr(o.Price),
 				Summary:   o.Summary,
 				Macros:    o.Macros,
 			}
@@ -540,7 +539,7 @@ func buildOffersFromContextConfig(pkgID string, cfg *PackageContextConfig) []tmp
 	return []tmproto.Offer{{
 		PackageID:        pkgID,
 		Brand:            cfg.Brand,
-		Price:            cfg.Price,
+		Price:            offerPricePtr(cfg.Price),
 		Summary:          cfg.Summary,
 		CreativeManifest: rawMessagePtr(cfg.CreativeManifest),
 		Macros:           cfg.Macros,
@@ -554,6 +553,16 @@ func rawMessagePtr(m json.RawMessage) *json.RawMessage {
 		return nil
 	}
 	return &m
+}
+
+// offerPricePtr returns a pointer to p, or nil when p is the zero value —
+// so a config that omits price renders as an Offer with no `price` field
+// rather than `{"amount":0,"currency":"","model":""}`.
+func offerPricePtr(p tmproto.OfferPrice) *tmproto.OfferPrice {
+	if p == (tmproto.OfferPrice{}) {
+		return nil
+	}
+	return &p
 }
 
 // artifactKeys is the per-request projection of the inbound

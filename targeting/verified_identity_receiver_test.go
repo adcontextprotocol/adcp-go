@@ -196,7 +196,7 @@ func TestOpenAndVerify_BoundsCountBeforeCrypto(t *testing.T) {
 	sk, keys := newKey(t, "rp-1")
 	v := &stubVerifier{nullifier: "N", claims: []tmproto.AttestationClaim{tmproto.AttestationClaimUniqueHuman}}
 	creds := make([]tmproto.SealedCredential, 0, targeting.MaxSealedCredentials+5)
-	for i := 0; i < targeting.MaxSealedCredentials+5; i++ {
+	for range targeting.MaxSealedCredentials + 5 {
 		creds = append(creds, sealTo(t, "kid-1", sk.PublicKey(), attestation("rp-1", tmproto.AttestationClaimUniqueHuman)))
 	}
 

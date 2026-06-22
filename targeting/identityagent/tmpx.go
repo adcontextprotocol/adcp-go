@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -297,7 +298,7 @@ func logDecoderLayout(logger *slog.Logger, country string, decoders map[tmproto.
 }
 
 func sortUIDs(s []tmproto.UIDType) {
-	sort.Slice(s, func(i, j int) bool { return s[i] < s[j] })
+	slices.Sort(s)
 }
 
 func joinUIDs(s []tmproto.UIDType) string {

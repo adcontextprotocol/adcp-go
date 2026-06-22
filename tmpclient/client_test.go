@@ -36,6 +36,7 @@ func TestContextMatch_HappyPath(t *testing.T) {
 	c := NewClient(srv.URL)
 	resp, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:      "ctx-1",
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "top-banner",
@@ -90,6 +91,7 @@ func TestContextMatch_ErrorResponse(t *testing.T) {
 	c := NewClient(srv.URL)
 	_, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
 		RequestID:      "err-1",
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -132,6 +134,7 @@ func TestContextMatch_AutoGeneratesRequestID(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.ContextMatch(context.Background(), &tmproto.ContextMatchRequest{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -172,6 +175,7 @@ func TestActivate_HappyPath(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -213,6 +217,7 @@ func TestActivate_NoOverlap(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -240,6 +245,7 @@ func TestActivate_ContextFails(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -274,6 +280,7 @@ func TestActivate_MultiPackage(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -310,6 +317,7 @@ func TestActivate_PackageIDsSentToBothEndpoints(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -341,6 +349,7 @@ func TestActivate_Tmpx(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	result, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
@@ -374,6 +383,7 @@ func TestActivate_CountryPassedThrough(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	_, err := c.Activate(context.Background(), &ActivateParams{
+		PropertyRID:    "0192f6e0-1234-7890-abcd-0123456789ab",
 		PropertyID:     "prop-1",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "banner",
