@@ -1,8 +1,10 @@
 package tmpxdecoders
 
-import "maps"
+import (
+	"maps"
 
-import "github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
+)
 
 // formatOnlyDecoders holds the per-UID-type decoders that produce
 // buyer-decodable binary tokens by parsing the inbound user_token string
