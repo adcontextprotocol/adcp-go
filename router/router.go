@@ -154,13 +154,22 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Enrich with registry data — resolve property_rid for fast provider-side
-	// matching. Runs before validation so publishers MAY send property_id alone
-	// and let the router resolve the wire-required property_rid from the
-	// registry; a property_id with no registry hit fails validation below.
+	// Enrich with registry data so the request reaching MatchesContextProvider
+	// carries both identifiers regardless of which one the publisher sent.
+	// Runs before validation: publishers MAY send property_id alone and let the
+	// router resolve the wire-required property_rid; publishers MAY send
+	// property_rid alone (spec-canonical) and let the router resolve the slug
+	// needed by providers configured with PropertyIDs allowlists. A missing
+	// registry entry leaves the empty identifier as-is and validation rejects it.
 	if r.registry != nil {
-		if prop, ok := r.registry.LookupByID(cmReq.PropertyID); ok {
-			cmReq.PropertyRID = prop.PropertyRID
+		if cmReq.PropertyID != "" {
+			if prop, ok := r.registry.LookupByID(cmReq.PropertyID); ok {
+				cmReq.PropertyRID = prop.PropertyRID
+			}
+		} else if cmReq.PropertyRID != "" {
+			if prop, ok := r.registry.LookupByRID(cmReq.PropertyRID); ok {
+				cmReq.PropertyID = prop.PropertyID
+			}
 		}
 	}
 
