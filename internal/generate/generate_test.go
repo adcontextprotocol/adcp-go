@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testDirs(t *testing.T) (schemaDir, enumDir, overlayPath string) {
+func testDirs(t *testing.T) (schemaDir, enumDir, mergeDir, overlayPath string) {
 	t.Helper()
 	schemaDir = filepath.Join("..", "..", "adcp", "schemas", "tmp")
 	if _, err := os.Stat(schemaDir); err != nil {
@@ -24,17 +24,23 @@ func testDirs(t *testing.T) (schemaDir, enumDir, overlayPath string) {
 	}
 	enumDir, _ = filepath.Abs(enumDir)
 
+	mergeDir = filepath.Join("..", "..", "adcp", "schemas", "core")
+	if _, err := os.Stat(mergeDir); err != nil {
+		t.Skipf("merge dir not found: %v", err)
+	}
+	mergeDir, _ = filepath.Abs(mergeDir)
+
 	overlayPath = "go-overlays.json"
 	if _, err := os.Stat(overlayPath); err != nil {
 		t.Skipf("overlay file not found: %v", err)
 	}
 
-	return schemaDir, enumDir, overlayPath
+	return schemaDir, enumDir, mergeDir, overlayPath
 }
 
 func TestLoadSchemas(t *testing.T) {
-	schemaDir, enumDir, overlayPath := testDirs(t)
-	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	schemaDir, enumDir, mergeDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	// Expected enums from overlay.
@@ -63,8 +69,8 @@ func TestLoadSchemas(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	schemaDir, enumDir, overlayPath := testDirs(t)
-	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	schemaDir, enumDir, mergeDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	src, err := Render("tmproto", ir)
@@ -101,8 +107,8 @@ func TestRender(t *testing.T) {
 }
 
 func TestGoldenFile(t *testing.T) {
-	schemaDir, enumDir, overlayPath := testDirs(t)
-	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	schemaDir, enumDir, mergeDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	generated, err := Render("tmproto", ir)
@@ -116,8 +122,8 @@ func TestGoldenFile(t *testing.T) {
 }
 
 func TestEnumCompleteness(t *testing.T) {
-	schemaDir, enumDir, overlayPath := testDirs(t)
-	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	schemaDir, enumDir, mergeDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	// Each enum should have at least 2 values.
@@ -129,8 +135,8 @@ func TestEnumCompleteness(t *testing.T) {
 }
 
 func TestOverlayFieldOverrides(t *testing.T) {
-	schemaDir, enumDir, overlayPath := testDirs(t)
-	ir, err := LoadSchemas(schemaDir, enumDir, overlayPath)
+	schemaDir, enumDir, mergeDir, overlayPath := testDirs(t)
+	ir, err := LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath)
 	require.NoError(t, err, "LoadSchemas")
 
 	src, err := Render("tmproto", ir)
@@ -205,7 +211,7 @@ func TestLoadWithoutOverlay(t *testing.T) {
 	enumDir, _ = filepath.Abs(enumDir)
 
 	// Without overlay: all enums should be loaded.
-	ir, err := LoadSchemas(schemaDir, enumDir, "")
+	ir, err := LoadSchemas(schemaDir, enumDir, "", "")
 	require.NoError(t, err, "LoadSchemas without overlay")
 
 	assert.NotEmpty(t, ir.Enums, "expected enums when loading without overlay")

@@ -413,7 +413,7 @@ func TestMaxKeysPerCfgExposed(t *testing.T) {
 func TestProfileValidate_RejectsTooManyCfgs(t *testing.T) {
 	ok := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
 	p := &Profile{}
-	for i := 0; i < maxCfgsPerProfile+1; i++ {
+	for range maxCfgsPerProfile + 1 {
 		p.AnyOf = append(p.AnyOf, ok)
 	}
 	err := p.Validate()
@@ -425,7 +425,7 @@ func TestProfileValidate_RejectsTooManyCfgs(t *testing.T) {
 func TestProfileValidate_AllowsMaxCfgs(t *testing.T) {
 	ok := Cfg{SignalOwnerID: "1", KeyTypes: []KeyType{KeyTypeCountry}, SignalID: "x"}
 	p := &Profile{}
-	for i := 0; i < maxCfgsPerProfile; i++ {
+	for range maxCfgsPerProfile {
 		p.AnyOf = append(p.AnyOf, ok)
 	}
 	if err := p.Validate(); err != nil {
@@ -438,14 +438,14 @@ func TestPlanLookup_RequestWideCapFailsClosed(t *testing.T) {
 	// value set per dimension to multiply). Spread enough distinct cfgs
 	// across owners so the deduped plan crosses maxKeysPerPlan.
 	data := LookupData{KeyTypeURLHash: make([]string, 64), KeyTypeCountry: make([]string, 64)}
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		data[KeyTypeURLHash][i] = "h" + strconv.Itoa(i)
 		data[KeyTypeCountry][i] = "c" + strconv.Itoa(i)
 	}
 	// 64*64 = 4096 keys per cfg (right at maxKeysPerCfg). Distinct owner
 	// per cfg keeps keys un-deduped, so 17 cfgs > 65536 keys.
 	profiles := make([]*Profile, 0, 32)
-	for owner := 0; owner < 32; owner++ {
+	for owner := range 32 {
 		profiles = append(profiles, &Profile{AnyOf: []Cfg{{
 			SignalOwnerID: strconv.Itoa(owner),
 			KeyTypes:      []KeyType{KeyTypeURLHash, KeyTypeCountry},

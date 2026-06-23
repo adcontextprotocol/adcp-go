@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -618,12 +619,7 @@ func TestService_RefreshObserverEmitsErrorOnDeltaFailure(t *testing.T) {
 	src.mu.Unlock()
 
 	require.Eventually(t, func() bool {
-		for _, o := range rec.snapshot() {
-			if o == RefreshOutcomeError {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(rec.snapshot(), RefreshOutcomeError)
 	}, time.Second, 5*time.Millisecond, "observer should fire with an error outcome after a delta failure")
 }
 

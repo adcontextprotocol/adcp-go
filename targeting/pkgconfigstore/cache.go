@@ -3,6 +3,7 @@ package pkgconfigstore
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2/expirable"
@@ -123,9 +124,7 @@ func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.P
 			}
 			if len(o.Macros) > 0 {
 				macros := make(map[string]string, len(o.Macros))
-				for k, v := range o.Macros {
-					macros[k] = v
-				}
+				maps.Copy(macros, o.Macros)
 				out.Offers[i].Macros = macros
 			}
 		}
@@ -138,9 +137,7 @@ func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.P
 	}
 	if len(cfg.Macros) > 0 {
 		macros := make(map[string]string, len(cfg.Macros))
-		for k, v := range cfg.Macros {
-			macros[k] = v
-		}
+		maps.Copy(macros, cfg.Macros)
 		out.Macros = macros
 	}
 	out.ContextSignals = cloneSignalProfile(cfg.ContextSignals)

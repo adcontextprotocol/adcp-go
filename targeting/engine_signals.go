@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
@@ -107,10 +108,8 @@ func appendUnique(data signalstore.LookupData, kt signalstore.KeyType, v string)
 	if strings.ContainsRune(v, ',') {
 		return
 	}
-	for _, existing := range data[kt] {
-		if existing == v {
-			return
-		}
+	if slices.Contains(data[kt], v) {
+		return
 	}
 	data[kt] = append(data[kt], v)
 }

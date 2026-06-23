@@ -31,6 +31,7 @@ func TestValidateContextRequest_Valid(t *testing.T) {
 	req := &tmproto.ContextMatchRequest{
 		Type:           tmproto.TypeContextMatchRequest,
 		RequestID:      "ctx-001",
+		PropertyRID:    "rid-1001",
 		PropertyID:     "pub-oakwood",
 		PropertyType:   tmproto.PropertyTypeWebsite,
 		PlacementID:    "sidebar-300x250",
@@ -45,9 +46,9 @@ func TestValidateContextRequest_MissingFields(t *testing.T) {
 		name string
 		req  tmproto.ContextMatchRequest
 	}{
-		{"missing request_id", tmproto.ContextMatchRequest{PropertyID: "p", PlacementID: "pl", PackageIDs: []string{"a"}}},
-		{"missing property_id", tmproto.ContextMatchRequest{RequestID: "r", PlacementID: "pl", PackageIDs: []string{"a"}}},
-		{"missing placement_id", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", PackageIDs: []string{"a"}}},
+		{"missing request_id", tmproto.ContextMatchRequest{PropertyRID: "rid", PropertyID: "p", PlacementID: "pl", PackageIDs: []string{"a"}}},
+		{"missing property_rid", tmproto.ContextMatchRequest{RequestID: "r", PropertyID: "p", PlacementID: "pl", PackageIDs: []string{"a"}}},
+		{"missing placement_id", tmproto.ContextMatchRequest{RequestID: "r", PropertyRID: "rid", PropertyID: "p", PackageIDs: []string{"a"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -176,6 +177,7 @@ func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	reqBody := `{
 		"type": "context_match_request",
 		"request_id": "ctx-e2e",
+		"property_rid": "rid-1001",
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",
@@ -204,6 +206,7 @@ func TestRouterContextMatch_ValidationErrorIsGenericAndLogged(t *testing.T) {
 	reqBody := `{
 		"type": "context_match_request",
 		"request_id": "ctx-invalid",
+		"property_rid": "rid-1001",
 		"property_id": "bad:property",
 		"property_type": "website",
 		"placement_id": "sidebar",
@@ -309,6 +312,7 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	cm := tmproto.ContextMatchRequest{
 		Type:           tmproto.TypeContextMatchRequest,
 		RequestID:      "ctx-strip",
+		PropertyRID:    "rid-1001",
 		PropertyID:     "pub-test",
 		PropertyType:   "website",
 		PlacementID:    "main",
@@ -541,6 +545,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	reqBody := `{
 		"type": "context_match_request",
 		"request_id": "ctx-timeout",
+		"property_rid": "rid-1001",
 		"property_id": "pub-test",
 		"property_type": "website",
 		"placement_id": "sidebar",

@@ -142,7 +142,7 @@ func TestRouter_NoSigner_DoesNotSetHeaders(t *testing.T) {
 	router := testRouter([]ProviderConfig{
 		{ID: "p1", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
 	})
-	body := `{"type":"context_match_request","request_id":"x","property_id":"p","property_type":"website","placement_id":"s","seller_agent_url":"https://seller.example.com/agent","package_ids":["a"]}`
+	body := `{"type":"context_match_request","request_id":"x","property_rid":"rid","property_id":"p","property_type":"website","placement_id":"s","seller_agent_url":"https://seller.example.com/agent","package_ids":["a"]}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
 	router.HandleContextMatch(w, req)

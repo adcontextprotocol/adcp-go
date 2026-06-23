@@ -158,8 +158,7 @@ func TestSnapshot_FailureCounter_ClimbsAndResetsOnLoad(t *testing.T) {
 }
 
 func TestSnapshot_Start_RefreshLoopAdvancesCounterOnFailure(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	base := suppressionstore.NewMockStore()
 	flaky := &flakyStore{Store: base, err: errors.New("valkey unreachable")}

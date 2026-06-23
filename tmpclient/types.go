@@ -23,6 +23,7 @@ func (e *TMPError) Error() string {
 // are separated and cannot be mixed.
 type ActivateParams struct {
 	// Context match inputs.
+	PropertyRID  string // Property catalog UUID; required by the context-match wire schema.
 	PropertyID   string
 	PropertyType tmproto.PropertyType
 	PlacementID  string

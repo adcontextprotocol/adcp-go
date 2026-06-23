@@ -197,6 +197,61 @@ func TestRegistry_RouterEnrichesPropertyRID(t *testing.T) {
 	assert.Equal(t, "rid-1001", receivedRID)
 }
 
+// TestRegistry_RouterEnrichesPropertyID covers the symmetric case: the
+// publisher sends only property_rid (spec-canonical wire identifier) and the
+// router fills in property_id so providers configured with slug-based
+// PropertyIDs allowlists still match. Without this enrichment the slug filter
+// in matchesProperty would short-circuit on empty property_id and silently
+// drop a request that should match by RID.
+func TestRegistry_RouterEnrichesPropertyID(t *testing.T) {
+	reg := NewRegistry("", "")
+	reg.LoadFromData([]RegistryProperty{
+		{PropertyID: "pub-oakwood", PropertyRID: "rid-1001", PropertyType: "website"},
+	}, 1)
+
+	var receivedID, receivedRID string
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			PropertyID  string `json:"property_id"`
+			PropertyRID string `json:"property_rid"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		receivedID = req.PropertyID
+		receivedRID = req.PropertyRID
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"request_id": "ctx-rid-only",
+			"offers":     []any{map[string]any{"package_id": "pkg-1"}},
+		})
+	}))
+	defer provider.Close()
+
+	// Provider is configured with a slug allowlist only — matchesProperty must
+	// still match because router enrichment fills property_id from the RID.
+	router := testRouter([]ProviderConfig{
+		{ID: "test", Endpoint: provider.URL, ContextMatch: true, PropertyIDs: []string{"pub-*"}, Timeout: 5e9},
+	})
+	router.registry = reg
+
+	reqBody := `{
+		"type": "context_match_request",
+		"request_id": "ctx-rid-only",
+		"property_rid": "rid-1001",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
+	router.HandleContextMatch(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, "pub-oakwood", receivedID, "router should enrich property_id from RID")
+	assert.Equal(t, "rid-1001", receivedRID)
+}
+
 func TestRegistry_AttachSigningKey(t *testing.T) {
 	reg := NewRegistry("", "")
 	reg.LoadFromData([]RegistryProperty{

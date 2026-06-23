@@ -45,10 +45,11 @@ func sanitizeComment(s string) string {
 
 // Overlay holds Go-specific overrides applied on top of upstream schemas.
 type Overlay struct {
-	Enums   map[string]EnumOverlay  `json:"enums"`   // keyed by Go type name (derived from title)
-	Structs map[string]string       `json:"structs"` // derived name -> desired name
-	Fields  map[string]FieldOverlay `json:"fields"`  // keyed by "StructName.json_field_name" (uses final name after rename)
-	Refs    map[string]string       `json:"refs"`    // $ref path -> Go type
+	Enums     map[string]EnumOverlay  `json:"enums"`      // keyed by Go type name (derived from title)
+	Structs   map[string]string       `json:"structs"`    // derived name -> desired name
+	Fields    map[string]FieldOverlay `json:"fields"`     // keyed by "StructName.json_field_name" (uses final name after rename)
+	Refs      map[string]string       `json:"refs"`       // $ref path -> Go type
+	MergeRefs []string                `json:"merge_refs"` // $ref paths from -merge-schemas whose properties are merged into any struct that lists them in allOf
 }
 
 // EnumOverlay customizes enum const naming.
@@ -116,12 +117,15 @@ type loadContext struct {
 	overlay   *Overlay
 	enumReg   enumRegistry
 	structReg structRegistry
-	seen      map[string]string // struct name -> source file (for duplicate detection)
+	mergeReg  map[string]*jsonschema.Schema // canonicalized $ref -> schema, for allOf-merge expansion
+	seen      map[string]string             // struct name -> source file (for duplicate detection)
 }
 
 // LoadSchemas reads JSON Schema files from schemaDir, enum files from enumDir,
-// and applies overlay overrides. enumDir and overlayPath may be empty.
-func LoadSchemas(schemaDir, enumDir, overlayPath string) (*IR, error) {
+// and applies overlay overrides. enumDir, mergeDir, and overlayPath may be empty.
+// mergeDir holds schemas referenced via allOf in schemaDir files; only those
+// listed in overlay.MergeRefs are merged into the parent struct.
+func LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath string) (*IR, error) {
 	ir := &IR{}
 
 	// Load overlay.
@@ -138,7 +142,14 @@ func LoadSchemas(schemaDir, enumDir, overlayPath string) (*IR, error) {
 		overlay:   overlay,
 		enumReg:   make(enumRegistry),
 		structReg: make(structRegistry),
+		mergeReg:  make(map[string]*jsonschema.Schema),
 		seen:      make(map[string]string),
+	}
+
+	if mergeDir != "" {
+		if err := loadMergeSchemas(mergeDir, ctx); err != nil {
+			return nil, fmt.Errorf("merge schemas: %w", err)
+		}
 	}
 
 	// Load enums.
@@ -232,6 +243,97 @@ func LoadSchemas(schemaDir, enumDir, overlayPath string) (*IR, error) {
 	}
 
 	return ir, nil
+}
+
+// loadMergeSchemas reads every .json schema from dir into ctx.mergeReg, keyed
+// by both raw $id and version-canonicalized $id. Used to resolve allOf $ref
+// targets that should be merged into a parent struct's fields (gated by
+// overlay.MergeRefs).
+func loadMergeSchemas(dir string, ctx *loadContext) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		s, err := readSchema(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", e.Name(), err)
+		}
+		if s.ID == "" {
+			continue
+		}
+		ctx.mergeReg[s.ID] = s
+		ctx.mergeReg[canonicalizeRef(s.ID)] = s
+	}
+	return nil
+}
+
+// mergeAllOfProperties returns the additional property names (and their
+// schemas) plus required-set entries contributed by allOf $refs that appear in
+// overlay.MergeRefs. Properties already declared on the parent take
+// precedence and are skipped here. Returned names preserve the upstream
+// schema's PropertyOrder; merged names are prepended to the parent's order so
+// envelope-style fields render before per-task fields, matching the inlined
+// pattern on request schemas.
+func mergeAllOfProperties(parent *jsonschema.Schema, ctx *loadContext, parentRequired map[string]bool) (orderedNames []string, props map[string]*jsonschema.Schema, addedRequired []string) {
+	if len(parent.AllOf) == 0 || ctx.mergeReg == nil || ctx.overlay == nil || len(ctx.overlay.MergeRefs) == 0 {
+		return nil, nil, nil
+	}
+	whitelist := make(map[string]bool, len(ctx.overlay.MergeRefs))
+	for _, ref := range ctx.overlay.MergeRefs {
+		whitelist[ref] = true
+		whitelist[canonicalizeRef(ref)] = true
+	}
+	props = make(map[string]*jsonschema.Schema)
+	seen := make(map[string]bool)
+	for _, sub := range parent.AllOf {
+		if sub == nil || sub.Ref == "" {
+			continue
+		}
+		if !whitelist[sub.Ref] && !whitelist[canonicalizeRef(sub.Ref)] {
+			continue
+		}
+		ref, ok := ctx.mergeReg[sub.Ref]
+		if !ok {
+			ref = ctx.mergeReg[canonicalizeRef(sub.Ref)]
+		}
+		if ref == nil {
+			continue
+		}
+		order := ref.PropertyOrder
+		if len(order) == 0 {
+			for name := range ref.Properties {
+				order = append(order, name)
+			}
+			sort.Strings(order)
+		}
+		for _, name := range order {
+			if _, ok := parent.Properties[name]; ok {
+				continue // parent wins
+			}
+			if seen[name] {
+				continue
+			}
+			prop, ok := ref.Properties[name]
+			if !ok {
+				continue
+			}
+			seen[name] = true
+			orderedNames = append(orderedNames, name)
+			props[name] = prop
+		}
+		for _, r := range ref.Required {
+			if parentRequired[r] {
+				continue
+			}
+			addedRequired = append(addedRequired, r)
+		}
+	}
+	return orderedNames, props, addedRequired
 }
 
 func loadOverlay(path string) (*Overlay, error) {
@@ -519,6 +621,11 @@ func schemaToStruct(name string, s *jsonschema.Schema, ctx *loadContext) (GoStru
 		requiredSet[r] = true
 	}
 
+	mergedOrder, mergedProps, mergedRequired := mergeAllOfProperties(s, ctx, requiredSet)
+	for _, r := range mergedRequired {
+		requiredSet[r] = true
+	}
+
 	// Sort properties for deterministic output.
 	propNames := make([]string, 0, len(s.Properties))
 	for pn := range s.Properties {
@@ -530,8 +637,14 @@ func schemaToStruct(name string, s *jsonschema.Schema, ctx *loadContext) (GoStru
 		sort.Strings(propNames)
 	}
 
+	// Prepend merged allOf fields so envelope fields render before per-task fields.
+	propNames = append(mergedOrder, propNames...)
+
 	for _, jsonName := range propNames {
 		prop := s.Properties[jsonName]
+		if prop == nil {
+			prop = mergedProps[jsonName]
+		}
 		if prop == nil {
 			continue
 		}

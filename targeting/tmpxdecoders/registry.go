@@ -1,6 +1,10 @@
 package tmpxdecoders
 
-import "github.com/adcontextprotocol/adcp-go/tmproto"
+import (
+	"maps"
+
+	"github.com/adcontextprotocol/adcp-go/tmproto"
+)
 
 // formatOnlyDecoders holds the per-UID-type decoders that produce
 // buyer-decodable binary tokens by parsing the inbound user_token string
@@ -42,9 +46,7 @@ type RegistryOptions struct {
 // callers.
 func NewDefaultRegistry(opts RegistryOptions) map[tmproto.UIDType]Decoder {
 	out := make(map[tmproto.UIDType]Decoder, len(formatOnlyDecoders)+2)
-	for k, v := range formatOnlyDecoders {
-		out[k] = v
-	}
+	maps.Copy(out, formatOnlyDecoders)
 	if opts.LiveRampClient != nil {
 		out[tmproto.UIDTypeRampID] = RampID{Client: opts.LiveRampClient}
 		out[tmproto.UIDTypeRampIDDerived] = RampIDDerived{Client: opts.LiveRampClient}

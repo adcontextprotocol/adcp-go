@@ -28,8 +28,8 @@
     },
     "ErrorCode": {
       "prefix": "ErrorCode",
-      "names": ["InvalidRequest", "UnknownPackage", "RateLimited", "Timeout", "InternalError", "ProviderUnavailable"],
-      "values": ["invalid_request", "unknown_package", "rate_limited", "timeout", "internal_error", "provider_unavailable"],
+      "names": ["InvalidRequest", "UnknownPackage", "RateLimited", "Timeout", "InternalError", "ProviderUnavailable", "SellerNotAuthorized"],
+      "values": ["invalid_request", "unknown_package", "rate_limited", "timeout", "internal_error", "provider_unavailable", "seller_not_authorized"],
       "description": "Machine-readable TMP error code."
     }
   },
@@ -44,6 +44,7 @@
     "IdentityMatchRequest.identities": {"type": "[]IdentityToken"},
     "IdentityMatchRequest.sealed_credentials": {"type": "[]SealedCredential"},
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
+    "Offer.price": {"type": "OfferPrice", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
     "ErrorResponse.code": {"type": "ErrorCode"}
   },
@@ -55,5 +56,8 @@
     "/schemas/latest/core/creative-manifest.json": "json.RawMessage",
     "/schemas/latest/core/seller-agent-ref.json": "json.RawMessage",
     "/schemas/latest/content-standards/artifact.json": "json.RawMessage"
-  }
+  },
+  "merge_refs": [
+    "/schemas/latest/core/version-envelope.json"
+  ]
 }

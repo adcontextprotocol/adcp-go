@@ -288,7 +288,7 @@ func TestService_VerifiedIdentity_BoundsSealedCount(t *testing.T) {
 		ageResolver:   staticAgeResolver{"pkg-alcohol": tmproto.AttestationClaimAgeOver21},
 	})
 	creds := make([]tmproto.SealedCredential, 0, targeting.MaxSealedCredentials+5)
-	for i := 0; i < targeting.MaxSealedCredentials+5; i++ {
+	for range targeting.MaxSealedCredentials + 5 {
 		creds = append(creds, sealedCred(t, "kid-1", sk.PublicKey(), validAtt(tmproto.AttestationClaimAgeOver21)))
 	}
 	svc.Evaluate(t.Context(), vidReq(creds...))

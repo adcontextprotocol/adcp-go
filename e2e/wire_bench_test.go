@@ -34,7 +34,7 @@ func TestWire_JSONCost(t *testing.T) {
 	ctxResp := tmproto.ContextMatchResponse{
 		RequestID: "bench-ctx-001",
 		Offers: []tmproto.Offer{
-			{PackageID: "pkg-food-display", Brand: json.RawMessage(brandJSON), Price: tmproto.OfferPrice{Amount: 12.50, Currency: "USD", Model: string(tmproto.PriceModelCPM)}, Summary: "Olive oil sponsored"},
+			{PackageID: "pkg-food-display", Brand: json.RawMessage(brandJSON), Price: &tmproto.OfferPrice{Amount: 12.50, Currency: "USD", Model: string(tmproto.PriceModelCPM)}, Summary: "Olive oil sponsored"},
 			{PackageID: "pkg-family-safe"},
 		},
 		Signals: map[string]any{"segments": []string{"food", "cooking"}},

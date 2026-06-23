@@ -12,13 +12,14 @@ import (
 func main() {
 	schemaDir := flag.String("schema", "", "directory containing JSON Schema files")
 	enumDir := flag.String("enums", "", "directory containing individual enum JSON files")
+	mergeDir := flag.String("merge-schemas", "", "directory containing schemas referenced via allOf that should be merged into the parent struct (gated by overlay.merge_refs)")
 	overlayFile := flag.String("overlay", "", "path to Go overlay JSON file")
 	outFile := flag.String("out", "", "output Go file path")
 	pkg := flag.String("pkg", "tmproto", "Go package name for generated file")
 	flag.Parse()
 
 	if *schemaDir == "" || *outFile == "" {
-		fmt.Fprintln(os.Stderr, "usage: generate -schema <dir> [-enums <dir>] [-overlay <file>] -out <file> [-pkg <name>]")
+		fmt.Fprintln(os.Stderr, "usage: generate -schema <dir> [-enums <dir>] [-merge-schemas <dir>] [-overlay <file>] -out <file> [-pkg <name>]")
 		os.Exit(1)
 	}
 
@@ -37,7 +38,16 @@ func main() {
 		}
 	}
 
-	ir, err := LoadSchemas(absSchema, absEnums, *overlayFile)
+	var absMerge string
+	if *mergeDir != "" {
+		absMerge, err = filepath.Abs(*mergeDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "resolve merge dir: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	ir, err := LoadSchemas(absSchema, absEnums, absMerge, *overlayFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "load schemas: %v\n", err)
 		os.Exit(1)
