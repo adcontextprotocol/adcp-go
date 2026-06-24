@@ -160,6 +160,86 @@ func TestMergeIdentityResponses(t *testing.T) {
 	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
+// TestMergeContextResponses_DuplicatePackageID covers the dedup-warn path the
+// router-architecture spec calls out: same package_id from two providers MUST
+// keep the first response and SHOULD log a warning naming both providers.
+func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
+	r1 := &tmproto.ContextMatchResponse{
+		Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "first"}},
+	}
+	r2 := &tmproto.ContextMatchResponse{
+		Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "second"}, {PackageID: "pkg-2", Summary: "unique"}},
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeContextResponses("ctx-dup", []contextResult{
+		{providerID: "alpha", response: r1},
+		{providerID: "beta", response: r2},
+	}, logger)
+
+	require.Len(t, merged.Offers, 2, "duplicate package_id should be deduped, unique one kept")
+	assert.Equal(t, "first", merged.Offers[0].Summary, "first provider's offer wins on dup")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "duplicate package_id across providers")
+	assert.Contains(t, logText, `"first_provider":"alpha"`)
+	assert.Contains(t, logText, `"duplicate_provider":"beta"`)
+	assert.Contains(t, logText, `"package_id":"pkg-dup"`)
+}
+
+// TestMergeContextResponses_SingleProviderRepeat covers the within-response
+// repeat case: a single provider that returns the same package_id twice in
+// its own offers list. The warning names the provider once rather than
+// emitting the misleading "alpha duplicated alpha" cross-provider message.
+func TestMergeContextResponses_SingleProviderRepeat(t *testing.T) {
+	r1 := &tmproto.ContextMatchResponse{
+		Offers: []tmproto.Offer{
+			{PackageID: "pkg-1", Summary: "first"},
+			{PackageID: "pkg-1", Summary: "second"},
+		},
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeContextResponses("ctx-single-dup", []contextResult{
+		{providerID: "alpha", response: r1},
+	}, logger)
+
+	require.Len(t, merged.Offers, 1)
+	logText := logs.String()
+	assert.Contains(t, logText, "repeated package_id within a single provider's response")
+	assert.Contains(t, logText, `"provider":"alpha"`)
+	assert.NotContains(t, logText, "first_provider", "should not use the cross-provider warning shape")
+}
+
+// TestMergeIdentityResponses_LogsDuplicateWarning covers the warn-on-dup
+// path the spec mandates for identity match. Two providers list the same
+// package_id; eligibility is the union (per the spec's in-repo authority on
+// union merging — packages are provider-specific), but the warning names
+// both providers so misconfig is observable.
+func TestMergeIdentityResponses_LogsDuplicateWarning(t *testing.T) {
+	r1 := &tmproto.IdentityMatchResponse{EligiblePackageIDs: []string{"pkg-dup", "pkg-1"}}
+	r2 := &tmproto.IdentityMatchResponse{EligiblePackageIDs: []string{"pkg-dup", "pkg-2"}}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeIdentityResponses("id-dup", []string{"alpha", "beta"},
+		[]*tmproto.IdentityMatchResponse{r1, r2}, logger)
+
+	require.Len(t, merged.EligiblePackageIDs, 3, "union eligibility — all listed packages remain eligible")
+	logText := logs.String()
+	assert.Contains(t, logText, "duplicate package_id across providers' identity-match responses")
+	assert.Contains(t, logText, `"package_id":"pkg-dup"`)
+	assert.Contains(t, logText, `"providers":["alpha","beta"]`)
+	// Non-duplicates do not generate warnings.
+	assert.NotContains(t, logText, `"package_id":"pkg-1"`)
+	assert.NotContains(t, logText, `"package_id":"pkg-2"`)
+}
+
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	// Mock provider that activates pkg-1
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
