@@ -97,13 +97,23 @@ func (r *Registry) DefineHistogram(name, help string, labels []string, buckets [
 // CounterInc increments a counter. Label values must match the order
 // of labels passed to DefineCounter.
 func (r *Registry) CounterInc(name string, labelValues ...string) {
+	r.CounterAdd(name, 1, labelValues...)
+}
+
+// CounterAdd adds delta to a counter. Negative deltas are silently dropped
+// since counters MUST be monotonic per Prometheus conventions. Label values
+// must match the order of labels passed to DefineCounter.
+func (r *Registry) CounterAdd(name string, delta int64, labelValues ...string) {
+	if delta <= 0 {
+		return
+	}
 	key := buildKey(name, labelValues)
 	if v, ok := r.counters.Load(key); ok {
-		v.(*atomic.Int64).Add(1)
+		v.(*atomic.Int64).Add(delta)
 		return
 	}
 	v, _ := r.counters.LoadOrStore(key, &atomic.Int64{})
-	v.(*atomic.Int64).Add(1)
+	v.(*atomic.Int64).Add(delta)
 }
 
 // HistogramObserve records a value in a histogram. Label values must match

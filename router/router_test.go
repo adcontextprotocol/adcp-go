@@ -119,7 +119,10 @@ func TestMergeContextResponses(t *testing.T) {
 		},
 	}
 
-	merged := mergeContextResponses("ctx-test", []*tmproto.ContextMatchResponse{r1, r2})
+	merged := mergeContextResponses("ctx-test", []contextResult{
+		{providerID: "p1", response: r1},
+		{providerID: "p2", response: r2},
+	}, nil)
 
 	assert.Len(t, merged.Offers, 3)
 	assert.NotNil(t, merged.Signals)
@@ -137,7 +140,7 @@ func TestMergeIdentityResponses(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, []*tmproto.IdentityMatchResponse{r1, r2})
+	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, []*tmproto.IdentityMatchResponse{r1, r2}, nil)
 
 	eligible := map[string]bool{}
 	for _, id := range merged.EligiblePackageIDs {
@@ -501,7 +504,7 @@ func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2})
+	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.IdentityMatchResponse{r1, r2}, nil)
 
 	require.Len(t, merged.EligiblePackageIDs, 3)
 	assert.Equal(t, 300, merged.ServeWindowSec)
@@ -512,7 +515,7 @@ func TestMergeIdentityResponses_UsesMostRestrictiveServeWindow(t *testing.T) {
 		{EligiblePackageIDs: []string{"pkg-1"}, ServeWindowSec: 120},
 		{EligiblePackageIDs: []string{"pkg-2"}, ServeWindowSec: 45},
 		{EligiblePackageIDs: []string{"pkg-3"}, ServeWindowSec: 300},
-	})
+	}, nil)
 
 	assert.Equal(t, 45, merged.ServeWindowSec)
 }

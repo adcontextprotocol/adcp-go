@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -52,6 +53,35 @@ type ProviderConfig struct {
 	AudienceKIDs []string `json:"audience_kids,omitempty"`
 
 	Timeout time.Duration `json:"timeout"`
+
+	// Priority is documented in the schema (tmp/provider-registration.json) and
+	// the spec config sample for future use (merge conflict resolution, adaptive
+	// timeout allocation). Accepted on the wire so spec-aligned configs parse,
+	// but has no effect on routing today.
+	Priority int `json:"priority,omitempty"`
+}
+
+// UnmarshalJSON accepts both the impl-internal field names (id, timeout) and
+// the schema-aligned spec field names (provider_id, timeout_ms) so a config
+// file that mirrors the wire schema in router-architecture.mdx parses without
+// silently dropping fields. The schema names take precedence when both appear.
+func (p *ProviderConfig) UnmarshalJSON(data []byte) error {
+	type providerConfigAlias ProviderConfig
+	aux := struct {
+		*providerConfigAlias
+		ProviderID string `json:"provider_id"`
+		TimeoutMs  *int   `json:"timeout_ms"`
+	}{providerConfigAlias: (*providerConfigAlias)(p)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ProviderID != "" {
+		p.ID = aux.ProviderID
+	}
+	if aux.TimeoutMs != nil {
+		p.Timeout = time.Duration(*aux.TimeoutMs) * time.Millisecond
+	}
+	return nil
 }
 
 // EffectiveStatus returns the provider's status, defaulting to active when empty.

@@ -2,9 +2,14 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ServerConfig is the JSON config file format for the router.
@@ -58,12 +63,24 @@ type ShutdownConfig struct {
 	DrainSeconds int `json:"drain_seconds"`
 }
 
-// LoadServerConfig reads a JSON config file and returns the config.
-// Invalid providers are logged and skipped rather than causing a hard error.
+// LoadServerConfig reads a JSON or YAML config file and returns the config.
+// Format is selected by file extension: .yaml/.yml use YAML, anything else
+// (including .json and no extension) uses JSON. YAML is converted to JSON
+// internally so all struct tags and custom UnmarshalJSON implementations on
+// nested types (e.g. ProviderConfig schema-name aliases) are honored
+// uniformly across formats. Invalid providers are logged and skipped rather
+// than causing a hard error.
 func LoadServerConfig(path string) (*ServerConfig, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // path is from CLI flag, not user input
 	if err != nil {
 		return nil, err
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".yaml" || ext == ".yml" {
+		data, err = yamlToJSON(data)
+		if err != nil {
+			return nil, fmt.Errorf("parse YAML config %s: %w", path, err)
+		}
 	}
 	var cfg ServerConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -84,6 +101,44 @@ func LoadServerConfig(path string) (*ServerConfig, error) {
 	}
 	cfg.Providers = valid
 	return &cfg, nil
+}
+
+// yamlToJSON decodes YAML into a generic value, then re-encodes as JSON so a
+// single json.Unmarshal pass into ServerConfig honors all struct tags and
+// custom UnmarshalJSON implementations (e.g. ProviderConfig's schema-name
+// aliases). Map keys arriving as interface{} from yaml.v3 are normalized to
+// string keys so the JSON encoder accepts them.
+func yamlToJSON(yamlBytes []byte) ([]byte, error) {
+	var raw any
+	if err := yaml.Unmarshal(yamlBytes, &raw); err != nil {
+		return nil, err
+	}
+	return json.Marshal(normalizeYAMLNode(raw))
+}
+
+func normalizeYAMLNode(v any) any {
+	switch x := v.(type) {
+	case map[any]any:
+		out := make(map[string]any, len(x))
+		for k, val := range x {
+			out[fmt.Sprint(k)] = normalizeYAMLNode(val)
+		}
+		return out
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, val := range x {
+			out[k] = normalizeYAMLNode(val)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, val := range x {
+			out[i] = normalizeYAMLNode(val)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
 // DefaultServerConfig returns sensible defaults with no providers configured.
