@@ -319,6 +319,11 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 			continue
 		}
 
+		if !e.directMatchPasses(cfg, req, country) {
+			e.metrics.ContextEvaluated(ctx, StageDirectMatch, false)
+			continue
+		}
+
 		if !e.signalsPass(ctx, cfg, pkgID, signalData, signalFetched, signalErr, signalLogger) {
 			continue
 		}
