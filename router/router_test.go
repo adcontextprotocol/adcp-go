@@ -2,12 +2,14 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -238,6 +240,181 @@ func TestMergeIdentityResponses_LogsDuplicateWarning(t *testing.T) {
 	// Non-duplicates do not generate warnings.
 	assert.NotContains(t, logText, `"package_id":"pkg-1"`)
 	assert.NotContains(t, logText, `"package_id":"pkg-2"`)
+}
+
+// recordingMetrics is a FanOutMetricsExt impl that captures every callback
+// invocation for assertion. Safe for parallel fan-out calls.
+type recordingMetrics struct {
+	mu              sync.Mutex
+	excluded        []string
+	durations       []durationSample
+	timeoutInc      []string
+	errorInc        []string
+	offersTotal     int
+}
+
+type durationSample struct {
+	provider string
+	ms       float64
+}
+
+func (m *recordingMetrics) IncExcluded(providerID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.excluded = append(m.excluded, providerID)
+}
+
+func (m *recordingMetrics) ObserveProviderDuration(providerID string, ms float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.durations = append(m.durations, durationSample{provider: providerID, ms: ms})
+}
+
+func (m *recordingMetrics) IncProviderTimeout(providerID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.timeoutInc = append(m.timeoutInc, providerID)
+}
+
+func (m *recordingMetrics) IncProviderError(providerID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.errorInc = append(m.errorInc, providerID)
+}
+
+func (m *recordingMetrics) AddOffers(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.offersTotal += n
+}
+
+// TestFanOut_ObservesDurationOnAllTerminalOutcomes verifies that
+// tmp_provider_duration_ms reflects the slow-failure tail, not just
+// successful legs. The spec's §Monitoring table calls this "per-provider
+// response time" with no success qualifier; observing only successes
+// truncates p95/p99 silently when a provider hangs to its deadline.
+func TestFanOut_ObservesDurationOnAllTerminalOutcomes(t *testing.T) {
+	// A 500-responder counts as an error (non-timeout, non-cancel).
+	errSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer errSrv.Close()
+
+	// A slow responder that exceeds the per-provider deadline.
+	timeoutSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(50 * time.Millisecond)
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-dur"})
+	}))
+	defer timeoutSrv.Close()
+
+	rec := &recordingMetrics{}
+	router := testRouter([]ProviderConfig{
+		{ID: "err-prov", Endpoint: errSrv.URL, ContextMatch: true, Timeout: 5 * time.Second},
+		{ID: "timeout-prov", Endpoint: timeoutSrv.URL, ContextMatch: true, Timeout: 5 * time.Millisecond},
+	})
+	router.metrics = rec
+
+	reqBody := `{
+		"type": "context_match_request",
+		"request_id": "ctx-dur",
+		"property_rid": "rid-1001",
+		"property_id": "pub-test",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
+	router.HandleContextMatch(w, req)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	require.Len(t, rec.durations, 2, "both error and timeout legs MUST contribute duration samples")
+
+	durByProvider := map[string]float64{}
+	for _, d := range rec.durations {
+		durByProvider[d.provider] = d.ms
+	}
+	assert.Contains(t, durByProvider, "err-prov", "non-timeout error leg observes duration")
+	assert.Contains(t, durByProvider, "timeout-prov", "timeout leg observes duration")
+	assert.Contains(t, rec.errorInc, "err-prov")
+	assert.Contains(t, rec.timeoutInc, "timeout-prov")
+}
+
+// TestFanOut_ParentCancelRecordsNothing verifies the privacy-correct
+// behavior introduced when classifyCallFailure split parent-cancel from
+// per-provider timeout: a parent-context cancellation (client disconnect,
+// server drain) MUST NOT count against the provider — neither timeout,
+// error, nor duration. The provider isn't slow; the router gave up.
+//
+// Use a pre-cancelled request context so the fan-out's HTTP call aborts
+// before any response could be produced. This is the same path a real
+// client-disconnect or server-drain would take: req.Context() is Done
+// before callProvider runs.
+func TestFanOut_ParentCancelRecordsNothing(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-cancel"})
+	}))
+	defer provider.Close()
+
+	rec := &recordingMetrics{}
+	router := testRouter([]ProviderConfig{
+		{ID: "cancel-prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second},
+	})
+	router.metrics = rec
+
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel() // already cancelled before the fan-out begins
+
+	reqBody := `{
+		"type": "context_match_request",
+		"request_id": "ctx-cancel",
+		"property_rid": "rid-1001",
+		"property_id": "pub-test",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+	req := httptest.NewRequestWithContext(parentCtx, "POST", "/tmp/context", strings.NewReader(reqBody))
+
+	w := httptest.NewRecorder()
+	router.HandleContextMatch(w, req)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	assert.Empty(t, rec.timeoutInc, "parent-cancel MUST NOT count against tmp_provider_timeout_total")
+	assert.Empty(t, rec.errorInc, "parent-cancel MUST NOT count against tmp_provider_error_total")
+	assert.Empty(t, rec.durations, "parent-cancel MUST NOT contribute a duration sample — provider attribution is wrong")
+}
+
+// TestMergeIdentityResponses_SingleProviderRepeat covers a provider that
+// returns the same package_id twice in its own eligible list. Eligible
+// arrives raw off the wire with no dedup, so this is reachable. The
+// warning MUST name a within-provider repeat — not the cross-provider
+// duplicate, which would otherwise log
+// `"providers":["alpha","alpha"]` (mirrors the Context-path split).
+func TestMergeIdentityResponses_SingleProviderRepeat(t *testing.T) {
+	r1 := &tmproto.IdentityMatchResponse{EligiblePackageIDs: []string{"pkg-repeat", "pkg-repeat", "pkg-1"}}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeIdentityResponses("id-self-dup", []string{"alpha"},
+		[]*tmproto.IdentityMatchResponse{r1}, logger)
+
+	// Eligibility is built from a set, so the merged response is still correct.
+	require.Len(t, merged.EligiblePackageIDs, 2, "self-repeat dedups in the eligible set")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "repeated package_id within a single provider's identity-match response")
+	assert.Contains(t, logText, `"package_id":"pkg-repeat"`)
+	assert.Contains(t, logText, `"provider":"alpha"`)
+	// Crucially, the cross-provider warning MUST NOT fire — it would emit
+	// `"providers":["alpha","alpha"]`, which is the bug this test guards.
+	assert.NotContains(t, logText, "duplicate package_id across providers' identity-match responses")
+	assert.NotContains(t, logText, `["alpha","alpha"]`)
 }
 
 func TestRouterContextMatch_EndToEnd(t *testing.T) {

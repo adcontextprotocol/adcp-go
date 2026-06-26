@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ServerConfig is the JSON config file format for the router.
+// ServerConfig is the JSON/YAML config file format for the router.
 type ServerConfig struct {
 	Addr            string            `json:"addr"`
 	LatencyBudgetMs int               `json:"latency_budget_ms"`
@@ -22,6 +22,31 @@ type ServerConfig struct {
 	Discovery       DiscoveryConfig   `json:"discovery"`
 	Shutdown        ShutdownConfig    `json:"shutdown"`
 	Signing         SigningConfig     `json:"signing"`
+}
+
+// UnmarshalJSON accepts the top-level field names from the spec config
+// sample (`router-architecture.mdx`) — `listen` for the bind address and
+// `health_check_interval_sec` for the active-check interval — so a verbatim
+// copy of the documented sample doesn't silently bind to the default port
+// or run the health checker at the default cadence. Schema-aligned names
+// take precedence when both forms appear.
+func (c *ServerConfig) UnmarshalJSON(data []byte) error {
+	type serverConfigAlias ServerConfig
+	aux := struct {
+		*serverConfigAlias
+		Listen                  string `json:"listen"`
+		HealthCheckIntervalSec  *int   `json:"health_check_interval_sec"`
+	}{serverConfigAlias: (*serverConfigAlias)(c)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.Listen != "" && c.Addr == "" {
+		c.Addr = aux.Listen
+	}
+	if aux.HealthCheckIntervalSec != nil && c.HealthCheck.IntervalSeconds == 0 {
+		c.HealthCheck.IntervalSeconds = *aux.HealthCheckIntervalSec
+	}
+	return nil
 }
 
 // SigningConfig configures the TMP request-authentication signer the router

@@ -389,8 +389,17 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 			callStart := time.Now()
 			var cmResp tmproto.ContextMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/context", callBody, sigHeaders, &cmResp); err != nil {
-				timeout, parentCancelled := classifyCallFailure(callCtx)
+			err := r.callProvider(callCtx, p.Endpoint+"/context", callBody, sigHeaders, &cmResp)
+			elapsed := time.Since(callStart)
+			timeout, parentCancelled := classifyCallFailure(callCtx)
+			// Observe duration on every terminal outcome except parent
+			// cancellation (router-driven, not provider-attributable). Mirrors
+			// router/healthcheck.go: timing every outcome keeps p95/p99 honest;
+			// recording only successes silently truncates the slow-failure tail.
+			if ext := r.metricsExt(); ext != nil && !parentCancelled {
+				ext.ObserveProviderDuration(p.ID, float64(elapsed.Milliseconds()))
+			}
+			if err != nil {
 				if r.health != nil {
 					switch {
 					case timeout:
@@ -410,9 +419,6 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			}
 			if r.health != nil {
 				r.health.RecordSuccess(p.ID)
-			}
-			if ext := r.metricsExt(); ext != nil {
-				ext.ObserveProviderDuration(p.ID, float64(time.Since(callStart).Milliseconds()))
 			}
 
 			mu.Lock()
@@ -483,8 +489,15 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 
 			callStart := time.Now()
 			var imResp tmproto.IdentityMatchResponse
-			if err := r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp); err != nil {
-				timeout, parentCancelled := classifyCallFailure(callCtx)
+			err = r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp)
+			elapsed := time.Since(callStart)
+			timeout, parentCancelled := classifyCallFailure(callCtx)
+			// Observe duration on every terminal outcome except parent
+			// cancellation — see the matching note in fanOutContext.
+			if ext := r.metricsExt(); ext != nil && !parentCancelled {
+				ext.ObserveProviderDuration(p.ID, float64(elapsed.Milliseconds()))
+			}
+			if err != nil {
 				if r.health != nil {
 					switch {
 					case timeout:
@@ -504,9 +517,6 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 			if r.health != nil {
 				r.health.RecordSuccess(p.ID)
-			}
-			if ext := r.metricsExt(); ext != nil {
-				ext.ObserveProviderDuration(p.ID, float64(time.Since(callStart).Milliseconds()))
 			}
 
 			mu.Lock()
@@ -614,7 +624,8 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 // practice only one provider mints the token).
 func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
-	pkgProviders := make(map[string][]string) // package_id -> provider IDs that listed it
+	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
+	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
 	minServeWindowSec := -1
 	var tmpx string
 
@@ -632,8 +643,24 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		if i < len(providerIDs) {
 			providerID = providerIDs[i]
 		}
+		// Track DISTINCT providers per package_id and remember if any single
+		// provider repeats a package_id within its own response — eligible
+		// arrives raw off the wire with no dedup, so a within-provider repeat
+		// is reachable and must not be classified as a cross-provider config
+		// error (mirrors the Context-path split between the two warnings).
+		seenForPkg := make(map[string]bool)
 		for _, pkgID := range resp.EligiblePackageIDs {
 			eligibleSet[pkgID] = struct{}{}
+			if seenForPkg[pkgID] {
+				if !providerRepeats[pkgID][providerID] {
+					if providerRepeats[pkgID] == nil {
+						providerRepeats[pkgID] = make(map[string]bool)
+					}
+					providerRepeats[pkgID][providerID] = true
+				}
+				continue
+			}
+			seenForPkg[pkgID] = true
 			pkgProviders[pkgID] = append(pkgProviders[pkgID], providerID)
 		}
 	}
@@ -655,6 +682,25 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 				"package_id", pkgID,
 				"providers", pkgProviders[pkgID],
 			)
+		}
+		repeatKeys := make([]string, 0, len(providerRepeats))
+		for pkgID := range providerRepeats {
+			repeatKeys = append(repeatKeys, pkgID)
+		}
+		sort.Strings(repeatKeys)
+		for _, pkgID := range repeatKeys {
+			provs := make([]string, 0, len(providerRepeats[pkgID]))
+			for p := range providerRepeats[pkgID] {
+				provs = append(provs, p)
+			}
+			sort.Strings(provs)
+			for _, p := range provs {
+				logger.Warn("repeated package_id within a single provider's identity-match response",
+					"request_id", requestID,
+					"package_id", pkgID,
+					"provider", p,
+				)
+			}
 		}
 	}
 

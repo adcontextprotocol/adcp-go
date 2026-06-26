@@ -55,9 +55,13 @@ type ProviderConfig struct {
 	Timeout time.Duration `json:"timeout"`
 
 	// Priority is documented in the schema (tmp/provider-registration.json) and
-	// the spec config sample for future use (merge conflict resolution, adaptive
-	// timeout allocation). Accepted on the wire so spec-aligned configs parse,
-	// but has no effect on routing today.
+	// the spec config sample. Accepted on the wire so spec-aligned configs
+	// parse, but has no effect on routing today: the upstream spec contradicts
+	// itself between provider-registration.json ("router keeps the offer from
+	// the higher-priority provider") and router-architecture.mdx (first-received
+	// wins on duplicate package_id) — tracked at
+	// https://github.com/adcontextprotocol/adcp/issues/5722. Wiring priority
+	// through dedup/conflict-resolution waits on that resolution.
 	Priority int `json:"priority,omitempty"`
 }
 
