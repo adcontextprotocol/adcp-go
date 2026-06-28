@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -52,6 +53,39 @@ type ProviderConfig struct {
 	AudienceKIDs []string `json:"audience_kids,omitempty"`
 
 	Timeout time.Duration `json:"timeout"`
+
+	// Priority is documented in the schema (tmp/provider-registration.json) and
+	// the spec config sample. Accepted on the wire so spec-aligned configs
+	// parse, but has no effect on routing today: the upstream spec contradicts
+	// itself between provider-registration.json ("router keeps the offer from
+	// the higher-priority provider") and router-architecture.mdx (first-received
+	// wins on duplicate package_id) — tracked at
+	// https://github.com/adcontextprotocol/adcp/issues/5722. Wiring priority
+	// through dedup/conflict-resolution waits on that resolution.
+	Priority int `json:"priority,omitempty"`
+}
+
+// UnmarshalJSON accepts both the impl-internal field names (id, timeout) and
+// the schema-aligned spec field names (provider_id, timeout_ms) so a config
+// file that mirrors the wire schema in router-architecture.mdx parses without
+// silently dropping fields. The schema names take precedence when both appear.
+func (p *ProviderConfig) UnmarshalJSON(data []byte) error {
+	type providerConfigAlias ProviderConfig
+	aux := struct {
+		*providerConfigAlias
+		ProviderID string `json:"provider_id"`
+		TimeoutMs  *int   `json:"timeout_ms"`
+	}{providerConfigAlias: (*providerConfigAlias)(p)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ProviderID != "" {
+		p.ID = aux.ProviderID
+	}
+	if aux.TimeoutMs != nil {
+		p.Timeout = time.Duration(*aux.TimeoutMs) * time.Millisecond
+	}
+	return nil
 }
 
 // EffectiveStatus returns the provider's status, defaulting to active when empty.
