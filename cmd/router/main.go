@@ -75,6 +75,17 @@ func main() {
 	reg.DefineCounter("tmp_provider_excluded_total", "Times a provider was excluded from fan-out.", []string{"provider"})
 	reg.DefineCounter("tmp_provider_recovered_total", "Times a provider recovered from exclusion.", []string{"provider"})
 
+	// Metric series documented in docs/trusted-match/router-architecture.mdx
+	// §Monitoring. Operator dashboards and alerts derive from these names —
+	// keep them aligned with the spec table.
+	matchDurationBuckets := []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000}
+	reg.DefineHistogram("tmp_context_match_duration_ms", "Context Match end-to-end latency.", nil, matchDurationBuckets)
+	reg.DefineHistogram("tmp_identity_match_duration_ms", "Identity Match end-to-end latency.", nil, matchDurationBuckets)
+	reg.DefineHistogram("tmp_provider_duration_ms", "Per-provider response time.", []string{"provider"}, matchDurationBuckets)
+	reg.DefineCounter("tmp_provider_timeout_total", "Per-provider call timeouts.", []string{"provider"})
+	reg.DefineCounter("tmp_provider_error_total", "Per-provider non-timeout errors.", []string{"provider"})
+	reg.DefineCounter("tmp_offers_total", "Total offers returned across all providers.", nil)
+
 	// Wire fan-out metrics now that registry exists.
 	fanOutMetrics.reg = reg
 
@@ -97,25 +108,33 @@ func main() {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "context")
 		r.HandleContextMatch(w, req)
-		reg.HistogramObserve("router_request_duration_seconds", time.Since(start).Seconds(), "context")
-		slog.Debug("context match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", time.Since(start).Milliseconds())
+		elapsed := time.Since(start)
+		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "context")
+		reg.HistogramObserve("tmp_context_match_duration_ms", float64(elapsed.Milliseconds()))
+		slog.Debug("context match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
 	})
 	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "identity")
 		r.HandleIdentityMatch(w, req)
-		reg.HistogramObserve("router_request_duration_seconds", time.Since(start).Seconds(), "identity")
-		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", time.Since(start).Milliseconds())
+		elapsed := time.Since(start)
+		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "identity")
+		reg.HistogramObserve("tmp_identity_match_duration_ms", float64(elapsed.Milliseconds()))
+		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
 	})
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.Handle("GET /metrics", reg.Handler())
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+	// /healthz is the route the spec advertises; /health is kept for back-compat
+	// with existing probes that pre-date the spec wording.
+	healthHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"status":  "ok",
 			"version": version,
 		})
-	})
+	}
+	mux.HandleFunc("GET /healthz", healthHandler)
+	mux.HandleFunc("GET /health", healthHandler)
 	mux.HandleFunc("GET /providers", func(w http.ResponseWriter, _ *http.Request) {
 		type providerInfo struct {
 			router.ProviderConfig
@@ -306,6 +325,8 @@ func (a *healthCheckMetricsAdapter) IncRecovered(providerID string) {
 }
 
 // fanOutMetricsAdapter bridges router.FanOutMetrics to prommetrics.
+// Series names follow the table in docs/trusted-match/router-architecture.mdx
+// §Monitoring.
 type fanOutMetricsAdapter struct {
 	reg *prommetrics.Registry
 }
@@ -313,5 +334,29 @@ type fanOutMetricsAdapter struct {
 func (a *fanOutMetricsAdapter) IncExcluded(providerID string) {
 	if a.reg != nil {
 		a.reg.CounterInc("tmp_provider_excluded_total", providerID)
+	}
+}
+
+func (a *fanOutMetricsAdapter) ObserveProviderDuration(providerID string, ms float64) {
+	if a.reg != nil {
+		a.reg.HistogramObserve("tmp_provider_duration_ms", ms, providerID)
+	}
+}
+
+func (a *fanOutMetricsAdapter) IncProviderTimeout(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_provider_timeout_total", providerID)
+	}
+}
+
+func (a *fanOutMetricsAdapter) IncProviderError(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_provider_error_total", providerID)
+	}
+}
+
+func (a *fanOutMetricsAdapter) AddOffers(n int) {
+	if a.reg != nil {
+		a.reg.CounterAdd("tmp_offers_total", int64(n))
 	}
 }
