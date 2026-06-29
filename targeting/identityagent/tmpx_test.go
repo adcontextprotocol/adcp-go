@@ -22,6 +22,34 @@ import (
 
 const testNullifier = "0x" + "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
+// MacroEntry pairs a sealed token with the provider's first registered slot
+// name; both inputs must be non-empty for a useful pair to come out.
+func TestMacroEntry_EmitsWhenConfigured(t *testing.T) {
+	s := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
+	entry, ok := s.MacroEntry("k1.token")
+	require.True(t, ok)
+	assert.Equal(t, "S3_TMPX", entry.Name)
+	assert.Equal(t, "k1.token", entry.Value)
+}
+
+// MacroEntry returns (zero, false) on three independently-disabling
+// conditions: nil receiver, empty token, no registered macro names. Without
+// either side the pair is meaningless, so the response should fall back to
+// the legacy single-`tmpx` carrier.
+func TestMacroEntry_NotEmittedWhenDisabled(t *testing.T) {
+	var nilSealer *TMPXSealer
+	_, ok := nilSealer.MacroEntry("k1.token")
+	assert.False(t, ok, "nil sealer must not produce a macro entry")
+
+	noMacros := &TMPXSealer{}
+	_, ok = noMacros.MacroEntry("k1.token")
+	assert.False(t, ok, "sealer without registered macro names must not produce a macro entry")
+
+	noToken := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
+	_, ok = noToken.MacroEntry("")
+	assert.False(t, ok, "empty token must not produce a macro entry")
+}
+
 func TestVerifiedIdentityEntries_EncodesNullifier(t *testing.T) {
 	cfg := &TMPXSealer{}
 	entries := cfg.verifiedIdentityEntries(t.Context(), []targeting.VerifiedIdentity{
