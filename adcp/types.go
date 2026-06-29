@@ -84,6 +84,7 @@ type MediaBuyCapabilities struct {
 	ReportingDeliveryMethods     []string                              `json:"reporting_delivery_methods,omitempty"`
 	OfflineDeliveryProtocols     []string                              `json:"offline_delivery_protocols,omitempty"`
 	SupportsProposals            *bool                                 `json:"supports_proposals,omitempty"`
+	GovernanceAware              *bool                                 `json:"governance_aware,omitempty"`
 	PropagationSurfaces          []string                              `json:"propagation_surfaces,omitempty"`
 	CreativeApprovalMode         string                                `json:"creative_approval_mode,omitempty"`
 	Features                     map[string]any                        `json:"features,omitempty"`
