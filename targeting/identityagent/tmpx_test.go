@@ -1,11 +1,13 @@
 package identityagent
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -139,6 +141,44 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 		recipient: tmproto.TmpxRecipient{Kid: kid, PublicKey: sk.PublicKey()},
 		ok:        true,
 	}
+}
+
+// TestWarnIfMultiSlotIgnored pins the operator-visibility contract for the
+// multi-slot-config-but-single-slot-emission case. The wire shape accepts up
+// to two slots per provider; the sealer currently fills only the first.
+// An operator who configures both expecting multi-chunk emission should see
+// a startup warning naming the active slot and the ignored ones, not
+// discover the gap at trafficking time.
+func TestWarnIfMultiSlotIgnored(t *testing.T) {
+	t.Run("zero or one slot does not warn", func(t *testing.T) {
+		for _, names := range [][]string{nil, {}, {"S3_TMPX"}} {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, nil))
+			warnIfMultiSlotIgnored(logger, names)
+			assert.Empty(t, buf.String(), "single/zero slots are the supported shape — no warning expected (input: %v)", names)
+		}
+	})
+
+	t.Run("two-plus slots warn naming active and ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&buf, nil))
+		warnIfMultiSlotIgnored(logger, []string{"PIN_TMPX_1", "PIN_TMPX_2", "PIN_TMPX_3"})
+
+		got := buf.String()
+		assert.Contains(t, got, `"level":"WARN"`)
+		assert.Contains(t, got, "multi-chunk encoding is not implemented")
+		assert.Contains(t, got, `"active_slot":"PIN_TMPX_1"`)
+		assert.Contains(t, got, `"ignored_slots":["PIN_TMPX_2","PIN_TMPX_3"]`)
+	})
+
+	t.Run("nil logger is a no-op", func(t *testing.T) {
+		// Defensive: NewTMPXSealer reassigns nil logger to slog.Default
+		// before calling the helper, but pinning the contract avoids a
+		// nil-deref if a caller ever reaches this directly.
+		assert.NotPanics(t, func() {
+			warnIfMultiSlotIgnored(nil, []string{"A", "B"})
+		})
+	})
 }
 
 func TestNewTMPXSealerDisabled(t *testing.T) {

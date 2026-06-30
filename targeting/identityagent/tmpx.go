@@ -219,6 +219,7 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	}
 	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
+	warnIfMultiSlotIgnored(logger, cfg.MacroNames)
 	return &TMPXSealer{
 		country:    cfg.Country,
 		encStore:   store,
@@ -228,6 +229,24 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 		logger:     logger,
 		recorder:   recorder,
 	}, nil
+}
+
+// warnIfMultiSlotIgnored surfaces the configuration/implementation mismatch
+// when an operator declares more than one TMPX_MACRO_NAMES slot. Multi-chunk
+// encoding splits a single sealed token across multiple ad-server slots; the
+// splitter (and the matching reassembler on the receiver side) is deferred
+// until production deployments actually exceed the 255-char single-slot
+// budget. Until then MacroEntry only fills macroNames[0] — log loudly so an
+// operator who expects two-slot emission sees that it's silently single-slot
+// today rather than discovering it at trafficking time.
+func warnIfMultiSlotIgnored(logger *slog.Logger, names []string) {
+	if logger == nil || len(names) <= 1 {
+		return
+	}
+	logger.Warn("TMPX_MACRO_NAMES configured with multiple slots but multi-chunk encoding is not implemented; only the first slot will be filled on responses",
+		"active_slot", names[0],
+		"ignored_slots", append([]string(nil), names[1:]...),
+	)
 }
 
 // MacroEntry returns the {name, value} pair that fills the provider's first
