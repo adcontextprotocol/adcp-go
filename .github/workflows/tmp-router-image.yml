@@ -75,10 +75,12 @@ jobs:
         id: sde
         # Use the timestamp of the last commit that touched a build input.
         # This is what scripts/build-tmp-router.sh computes for local rebuilds,
-        # so CI and local produce the same layer mtimes. Fallback to 0 if
-        # `git log` returns empty (defensive — should not occur with the
-        # full-history checkout above, since at minimum the Dockerfile and
-        # workflow are themselves build inputs).
+        # so CI and local produce the same layer mtimes. `git log -1 ...`
+        # exits 0 with empty output when no commit matches the path filter
+        # (and only fails with non-zero when git itself errors), so the
+        # `-z` guard below — not the `|| echo 0` — is what catches the
+        # empty-result case; the `|| echo 0` is defensive against git
+        # error paths only.
         run: |
           set -euo pipefail
           SDE="$(git log -1 --format=%ct -- \
@@ -168,12 +170,41 @@ jobs:
           echo "linux/amd64 = ${AMD64}"
           echo "linux/arm64 = ${ARM64}"
 
+      - name: Verify reproducibility (no-cache clean rebuild)
+        # The publish path uses `cache-from/cache-to: type=gha,scope=tmp-router`
+        # so iterating PRs is fast. GHA cache is not a trust boundary: a
+        # poisoned cached layer would land in a "reproducible" image that
+        # CI then signs and attests as authoritative. To close that gap, we
+        # rebuild the linux/amd64 image here using scripts/build-tmp-router.sh
+        # — which does NOT consult the GHA cache — and assert the resulting
+        # per-platform image-manifest digest equals what the publish-path
+        # build produced. A mismatch means the cached path diverged from a
+        # clean build; fail before cosign sign so we never publish a signed
+        # digest we could not reproduce.
+        if: github.event_name != 'pull_request'
+        env:
+          EXPECTED_AMD64: ${{ steps.platforms.outputs.amd64 }}
+        run: |
+          set -euo pipefail
+          ACTUAL_AMD64="$(scripts/build-tmp-router.sh --platform linux/amd64 2>/tmp/build-stderr.log | tail -n1)"
+          echo "expected (publish-path build): $EXPECTED_AMD64"
+          echo "actual   (no-cache clean rebuild): $ACTUAL_AMD64"
+          if [ "$EXPECTED_AMD64" != "$ACTUAL_AMD64" ]; then
+            echo "::error::Reproducibility check FAILED — the publish-path digest does not match a clean rebuild."
+            echo "This typically indicates a poisoned GHA cache or non-deterministic input."
+            echo "--- clean-build stderr (last 40 lines) ---"
+            tail -n 40 /tmp/build-stderr.log || true
+            exit 1
+          fi
+          echo "Reproducibility verified: linux/amd64 publish-path digest matches a clean rebuild."
+
       - name: Write measurements manifest
         id: manifest
         # The manifest publishes per-platform image-manifest digests, not
         # the index digest. The index digest is recorded as `index_digest`
         # for traceability but is NOT what a TEE attestation verifier (or a
         # `scripts/build-tmp-router.sh --platform <p>` auditor) compares.
+        if: github.event_name != 'pull_request'
         run: |
           set -euo pipefail
           mkdir -p artifacts
@@ -214,6 +245,7 @@ jobs:
           cat "$MANIFEST"
 
       - name: Upload measurements manifest (workflow artifact)
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v4
         with:
           name: tmp-router-measurements-${{ steps.build.outputs.digest }}
@@ -228,11 +260,17 @@ jobs:
           cosign-release: v3.0.6
 
       - name: Sign image (keyless OIDC)
-        # Signs every pushed tag against the build's content digest, so all
-        # tags that resolve to the same image share a single transparency-log
-        # entry per digest. Verify with:
+        # Signs every pushed tag against the build's content digest (the
+        # multi-arch index), so all tags that resolve to the same image
+        # share a single transparency-log entry per digest. Verifiers MUST
+        # cosign verify the index BEFORE trusting any per-platform manifest
+        # digest extracted from it — see docs/tmp-router-reproducible-build.md
+        # for the canonical verification flow. The cert-identity regexp
+        # below is intentionally narrow: only `main` and `tmp-router-v*`
+        # refs are trusted; a fork or branch build would carry a different
+        # ref in the OIDC token and fail this match.
         #   cosign verify ghcr.io/<owner>/<repo>/tmp-router:<tag> \
-        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@.*' \
+        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
         #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
         if: github.event_name != 'pull_request'
         env:
@@ -245,15 +283,17 @@ jobs:
             cosign sign --yes "${tag}@${DIGEST}"
           done
 
-      - name: Attest measurements manifest (keyless OIDC, tag pushes only)
+      - name: Attest measurements manifest (keyless OIDC)
         # Attaches the measurements manifest as a cosign attestation against
         # the image digest, so it is discoverable from the published image
-        # rather than only from this workflow run's artifacts. Verify with:
-        #   cosign verify-attestation --type custom \
+        # rather than only from this workflow run's artifacts. Fires on
+        # every push (main + tag), so operators pinning `edge` or
+        # `main-<sha>` also get a registry-discoverable manifest. Verify with:
+        #   cosign verify-attestation --type 'https://adcontextprotocol.org/tmp-router-measurements/v1' \
         #     ghcr.io/<owner>/<repo>/tmp-router@<digest> \
-        #     --certificate-identity-regexp='...' \
+        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
         #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-        if: startsWith(github.ref, 'refs/tags/tmp-router-v')
+        if: github.event_name == 'push'
         env:
           IMAGE: ${{ env.IMAGE }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -262,5 +302,5 @@ jobs:
           set -euo pipefail
           cosign attest --yes \
             --predicate "$MANIFEST" \
-            --type custom \
+            --type "https://adcontextprotocol.org/tmp-router-measurements/v1" \
             "${IMAGE}@${DIGEST}"

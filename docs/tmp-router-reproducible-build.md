@@ -23,37 +23,58 @@ Multi-platform builds (`linux/amd64`, `linux/arm64`) are deterministic per platf
 
 ## Verifying a published image
 
-Anyone — auditor, CISO, regulator, paranoid operator — can verify reproducibility with:
+Anyone — auditor, CISO, regulator, paranoid operator — can verify reproducibility with the following procedure. The order matters: the cosign signature must be verified *before* any digest extracted from the registry is trusted, otherwise the procedure is anchoring trust in an unverified registry response.
 
 ```bash
-# 1. Clone at the same revision as the published image.
+# 0. Clone at the same revision as the published image.
 git clone https://github.com/adcontextprotocol/adcp-go
 cd adcp-go
 git checkout <commit-or-tag>
 
-# 2. Rebuild locally for the platform you want to verify. The script prints
-#    the platform-specific image-manifest digest.
-scripts/build-tmp-router.sh --platform linux/amd64
-
-# 3. Read the matching per-platform digest from the published manifest list.
-#    The registry publishes a multi-arch INDEX; the index references one
-#    image-manifest per platform plus provenance/SBOM attestation manifests.
-#    What you compare against is the per-platform image manifest, NOT the
-#    index digest — the index hash changes with provenance/SBOM by design.
-docker buildx imagetools inspect \
+# 1. Verify the cosign keyless signature on the published tag. This binds
+#    trust to the GitHub Actions workflow that built and signed the image:
+#    only signatures whose OIDC token names this exact workflow on `main`
+#    or a `tmp-router-v*` tag are accepted. Capture the verified index
+#    digest for the next step.
+VERIFIED_INDEX_DIGEST="$(cosign verify \
   ghcr.io/adcontextprotocol/adcp-go/tmp-router:<tag> \
+  --certificate-identity-regexp='https://github.com/adcontextprotocol/adcp-go/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  --output json \
+  | jq -r '.[0].critical.image."docker-manifest-digest"')"
+echo "verified index digest: $VERIFIED_INDEX_DIGEST"
+
+# 2. Extract the per-platform image-manifest digest from the verified
+#    index — NOT from the registry tag. The index references one
+#    image-manifest per platform plus provenance/SBOM attestation
+#    manifests; the filter on `vnd.docker.reference.type` excludes the
+#    attestations and keeps the actual workload manifests. The digest
+#    you read here inherits its trust from the cosign verify in step 1.
+PUBLISHED_AMD64_DIGEST="$(docker buildx imagetools inspect \
+  "ghcr.io/adcontextprotocol/adcp-go/tmp-router@${VERIFIED_INDEX_DIGEST}" \
   --raw \
 | jq -r '.manifests[]
     | select(.platform.architecture == "amd64" and .platform.os == "linux"
              and (.annotations["vnd.docker.reference.type"] | not))
-    | .digest'
+    | .digest')"
+echo "published linux/amd64 digest: $PUBLISHED_AMD64_DIGEST"
+
+# 3. Rebuild locally for the same platform. The script prints the per-platform
+#    image-manifest digest as its last line of stdout.
+LOCAL_AMD64_DIGEST="$(scripts/build-tmp-router.sh --platform linux/amd64 | tail -n1)"
+echo "local rebuild  linux/amd64 digest: $LOCAL_AMD64_DIGEST"
+
+# 4. Compare.
+test "$PUBLISHED_AMD64_DIGEST" = "$LOCAL_AMD64_DIGEST" \
+  && echo "OK — reproducibility verified." \
+  || { echo "DIVERGED — do not allowlist this image." >&2; exit 1; }
 ```
 
 The two digests must be identical. If they are not, do not allowlist the published image — open an issue and treat the divergence as a build-pipeline integrity incident until explained.
 
-The `platform_digests` map in the CI-published `tmp-router-measurements.json` is the authoritative shortcut — it records the same per-platform digests, so an auditor with the manifest in hand can skip the `imagetools inspect | jq` step and compare against the manifest entry directly.
+The `platform_digests` map in the published `tmp-router-measurements.json` records the same per-platform digests for convenience, but it is **not** a substitute for the rebuild — the cosign attestation that carries the manifest proves the workflow produced those values, not that an independent build reproduces them. CI itself performs an independent no-cache rebuild before signing (`Verify reproducibility (no-cache clean rebuild)` in the workflow), but operators with a higher bar than "trust our CI" run the procedure above themselves.
 
-The Sigstore signature on the published image is independent of reproducibility — it tells you "GitHub Actions for this repo built and signed this digest." Reproducibility tells you "this source tree produces this digest." Both are needed: signature without reproducibility means a malicious workflow could publish a backdoored binary; reproducibility without signature means anyone could publish look-alike binaries.
+The Sigstore signature on the published image is independent of reproducibility — it tells you "this GitHub Actions workflow built and signed this digest." Reproducibility tells you "this source tree produces this digest." Both are needed: signature without reproducibility means a malicious workflow could publish a backdoored binary; reproducibility without signature means anyone could publish look-alike binaries.
 
 ## The measurements manifest
 
@@ -83,16 +104,17 @@ Every CI build produces a `tmp-router-measurements.json` artifact with this shap
 
 The local script's manifest shares the same schema (`tmp-router-measurements/v1`) with `platform_digests` carrying the one platform built, and `index_digest` omitted; an additional local-only `source.dirty` flag is included so an auditor's running build state is visible. A schema validator that wants strict cross-emitter compatibility should treat both `index_digest` and `source.dirty` as optional.
 
-For tag pushes the CI manifest is also attached to the published image as a Sigstore attestation (`cosign attest --type custom`). Verifiers retrieve it from the registry with:
+For every push (both `main` and `tmp-router-v*` tags) the CI manifest is also attached to the published image as a Sigstore attestation under the stable predicate type `https://adcontextprotocol.org/tmp-router-measurements/v1`. Verifiers retrieve it from the registry with:
 
 ```bash
-cosign verify-attestation --type custom \
+cosign verify-attestation \
+  --type 'https://adcontextprotocol.org/tmp-router-measurements/v1' \
   ghcr.io/adcontextprotocol/adcp-go/tmp-router@sha256:<digest> \
-  --certificate-identity-regexp='https://github.com/adcontextprotocol/adcp-go/.github/workflows/tmp-router-image\.yml@.*' \
+  --certificate-identity-regexp='https://github.com/adcontextprotocol/adcp-go/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
 ```
 
-For non-tag pushes the manifest is only available as a workflow-run artifact.
+The `--type` URI pins verification to the schema this workflow produces — `--type custom` would match any custom predicate attached to the image.
 
 ## How per-platform digests map to TEE measurements
 

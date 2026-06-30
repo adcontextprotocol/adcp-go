@@ -60,8 +60,17 @@ if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
 fi
 export SOURCE_DATE_EPOCH
 
+format_epoch() {
+  # `date -u -d "@$epoch"` is GNU (Linux); `date -u -r "$epoch"` is BSD (macOS).
+  # Try both rather than guess; the local script and CI both go through here.
+  local epoch="$1"
+  date -u -d "@$epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+    || date -u -r "$epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+    || echo unknown
+}
+
 echo "==> TMP router reproducible build" >&2
-echo "    SOURCE_DATE_EPOCH = $SOURCE_DATE_EPOCH ($(date -u -r "$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown))" >&2
+echo "    SOURCE_DATE_EPOCH = $SOURCE_DATE_EPOCH ($(format_epoch "$SOURCE_DATE_EPOCH"))" >&2
 echo "    platform          = $PLATFORM" >&2
 
 METADATA_FILE="$(mktemp -t tmp-router-metadata.XXXXXX.json)"
