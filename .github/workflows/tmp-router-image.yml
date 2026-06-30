@@ -193,8 +193,8 @@ jobs:
               image: $image,
               index_digest: (if $index_digest == "" then null else $index_digest end),
               platform_digests: (
-                ($amd64_digest | select(. != "") | {("linux/amd64"): .}) //
-                {} | . + ($arm64_digest | select(. != "") | {("linux/arm64"): .} // {})
+                (if $amd64_digest == "" then {} else {"linux/amd64": $amd64_digest} end) +
+                (if $arm64_digest == "" then {} else {"linux/arm64": $arm64_digest} end)
               ),
               source: {
                 revision: $source_rev,
