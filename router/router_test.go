@@ -225,6 +225,49 @@ func TestMergeIdentityResponses_LegacyOnlyAgent(t *testing.T) {
 	assert.Equal(t, "k1.legacy-value", merged.Tmpx, "legacy carrier preserved")
 }
 
+// TestMergeIdentityResponses_MixedShapeAgents covers a transition fan-out
+// where one agent emits the new TmpxMacros[] carrier and another only emits
+// the legacy `tmpx` string. The merged response MUST:
+//   - populate tmpx_providers with the new-shape agent's entry only
+//     (legacy-only agents don't get synthesized — router has no registered
+//     names in that path)
+//   - source the legacy `Tmpx` carrier from the first response that has a
+//     non-empty value (first-source-wins, in input order), which pins the
+//     back-compat behavior when responses arrive in mixed order: a
+//     legacy-only agent that sorts ahead does NOT lose to a new-shape agent
+//     that sorts behind it. The deprecated carrier is best-effort
+//     compatibility; tmpx_providers is the authoritative new shape.
+func TestMergeIdentityResponses_MixedShapeAgents(t *testing.T) {
+	legacyAgent := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		Tmpx:               "k0.legacy-string",
+	}
+	newShapeAgent := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-2"},
+		ServeWindowSec:     300,
+		TmpxMacros: []tmproto.TmpxMacro{
+			{Name: "PIN_TMPX_1", Value: "k1.new-shape-value"},
+		},
+	}
+
+	merged := mergeIdentityResponses("id-mixed",
+		[]string{"legacy_provider", "new_provider"},
+		[]*tmproto.IdentityMatchResponse{legacyAgent, newShapeAgent}, nil)
+
+	require.Len(t, merged.TmpxProviders, 1,
+		"only the new-shape agent contributes to tmpx_providers")
+	entry, ok := merged.TmpxProviders["new_provider"]
+	require.True(t, ok)
+	assert.Equal(t, "k1.new-shape-value", entry.Macros[0].Value)
+
+	// Legacy-only agent sorts ahead → its legacy string wins the legacy
+	// mirror, even though a later agent has a new-shape value. Pins the
+	// first-source-wins contract for the deprecated carrier.
+	assert.Equal(t, "k0.legacy-string", merged.Tmpx,
+		"legacy carrier is first-source-wins across mixed-shape responses")
+}
+
 // TestMergeContextResponses_DuplicatePackageID covers the dedup-warn path the
 // router-architecture spec calls out: same package_id from two providers MUST
 // keep the first response and SHOULD log a warning naming both providers.

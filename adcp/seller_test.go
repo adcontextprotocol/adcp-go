@@ -67,8 +67,8 @@ func TestBuildCapabilitiesDefaults(t *testing.T) {
 	require.NotNil(t, caps.ADCP)
 	assert.Equal(t, 86400, caps.ADCP.Idempotency.ReplayTTLSeconds)
 	assert.Equal(t, []int{3}, caps.ADCP.MajorVersions)
-	assert.Equal(t, []string{"3.0", "3.1"}, caps.ADCP.SupportedVersions)
-	assert.Equal(t, "3.1", caps.AdcpVersion)
+	assert.Equal(t, []string{"3.0", "3.1", "3.2"}, caps.ADCP.SupportedVersions)
+	assert.Equal(t, "3.2", caps.AdcpVersion)
 	assert.Equal(t, 3, caps.AdcpMajorVersion)
 	assert.Contains(t, caps.SupportedProtocols, "media_buy")
 }
@@ -177,8 +177,8 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	idem, ok := adcp["idempotency"].(map[string]any)
 	require.True(t, ok, "adcp.idempotency must be present as an object (required in 3.0)")
 	assert.EqualValues(t, 86400, idem["replay_ttl_seconds"])
-	assert.Equal(t, []any{"3.0", "3.1"}, adcp["supported_versions"])
-	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.Equal(t, []any{"3.0", "3.1", "3.2"}, adcp["supported_versions"])
+	assert.Equal(t, "3.2", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
 
 	mb, ok := wire["media_buy"].(map[string]any)
@@ -315,8 +315,9 @@ func TestRegisteredCapabilitiesNegotiatesVersionPins(t *testing.T) {
 	}{
 		{name: "explicit 3.0", args: map[string]any{"adcp_version": "3.0", "adcp_major_version": 3}, want: "3.0"},
 		{name: "explicit 3.1", args: map[string]any{"adcp_version": "3.1", "adcp_major_version": 3}, want: "3.1"},
-		{name: "legacy major", args: map[string]any{"adcp_major_version": 3}, want: "3.1"},
-		{name: "default", args: map[string]any{}, want: "3.1"},
+		{name: "explicit 3.2", args: map[string]any{"adcp_version": "3.2", "adcp_major_version": 3}, want: "3.2"},
+		{name: "legacy major", args: map[string]any{"adcp_major_version": 3}, want: "3.2"},
+		{name: "default", args: map[string]any{}, want: "3.2"},
 	}
 
 	for _, tt := range tests {
@@ -329,7 +330,7 @@ func TestRegisteredCapabilitiesNegotiatesVersionPins(t *testing.T) {
 			assert.EqualValues(t, 3, wire["adcp_major_version"])
 			adcpBlock, ok := wire["adcp"].(map[string]any)
 			require.True(t, ok)
-			assert.Equal(t, []any{"3.0", "3.1"}, adcpBlock["supported_versions"])
+			assert.Equal(t, []any{"3.0", "3.1", "3.2"}, adcpBlock["supported_versions"])
 		})
 	}
 }
@@ -375,7 +376,7 @@ func TestRegisteredCapabilitiesRejectsUnsupportedVersion(t *testing.T) {
 	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
 	details, ok := errPayload["details"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, []any{"3.0", "3.1"}, details["supported_versions"])
+	assert.Equal(t, []any{"3.0", "3.1", "3.2"}, details["supported_versions"])
 }
 
 func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {

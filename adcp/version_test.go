@@ -50,8 +50,9 @@ func TestNegotiateADCPVersion(t *testing.T) {
 	}{
 		{name: "explicit 3.0", requestVersion: "3.0", want: "3.0", ok: true},
 		{name: "explicit 3.1", requestVersion: "3.1", want: "3.1", ok: true},
-		{name: "legacy major", requestMajor: 3, want: "3.1", ok: true},
-		{name: "default highest", want: "3.1", ok: true},
+		{name: "explicit 3.2", requestVersion: "3.2", want: "3.2", ok: true},
+		{name: "legacy major", requestMajor: 3, want: "3.2", ok: true},
+		{name: "default highest", want: "3.2", ok: true},
 		{name: "downshift", requestVersion: "3.1", supported: []string{"3.0"}, want: "3.0", ok: true},
 		{name: "pre release uses matching stable", requestVersion: "3.1-rc.3", supported: []string{"3.0", "3.1"}, want: "3.1", ok: true},
 		{name: "ga buyer can use only matching pre release seller", requestVersion: "3.1.0", supported: []string{"3.1-rc.3"}, want: "3.1-rc.3", ok: true},
@@ -74,11 +75,11 @@ func TestNegotiateADCPVersionMajorPresence(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{name: "omitted major defaults highest", req: adcpVersionRequest{}, want: "3.1", ok: true},
+		{name: "omitted major defaults highest", req: adcpVersionRequest{}, want: "3.2", ok: true},
 		{name: "explicit zero major is invalid", req: adcpVersionRequest{major: 0, majorProvided: true}, ok: false},
 		{name: "negative major is invalid", req: adcpVersionRequest{major: -1, majorProvided: true}, ok: false},
 		{name: "unsupported positive major is invalid", req: adcpVersionRequest{major: 4, majorProvided: true}, ok: false},
-		{name: "supported major selects highest matching release", req: adcpVersionRequest{major: 3, majorProvided: true}, want: "3.1", ok: true},
+		{name: "supported major selects highest matching release", req: adcpVersionRequest{major: 3, majorProvided: true}, want: "3.2", ok: true},
 	}
 
 	for _, tt := range tests {
