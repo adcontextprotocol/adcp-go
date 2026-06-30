@@ -1,0 +1,222 @@
+name: tmp-router image
+
+# Reproducibly builds the cmd/router OCI image for linux/amd64 and
+# linux/arm64, pushes to ghcr.io/<owner>/<repo>/tmp-router, signs each pushed
+# digest with cosign keyless (OIDC against Sigstore), and publishes a signed
+# measurements manifest as both a workflow artifact and (on tag) a cosign
+# attestation attached to the image.
+#
+# The reproducibility property: an auditor cloning this repo at the same
+# revision and running scripts/build-tmp-router.sh produces the same image
+# digest published here. That digest is what a TEE attestation verifier
+# allowlists against the bound workload measurement.
+#
+# Triggers:
+#   - push to main           → tags: edge, main-<short_sha>
+#   - push of tmp-router-v*  → tags: <semver>, <major>.<minor>, <major>, latest
+#   - pull_request           → build only, no push (verifies the build stays green)
+#   - workflow_dispatch      → manual rebuild
+#
+# Permissions:
+#   - packages:  write  → push to GHCR
+#   - id-token:  write  → cosign keyless signing
+#
+# First-push note: GHCR creates the package as private. After the first
+# successful push, a repo admin must flip visibility to public via
+# GitHub → Packages → tmp-router → Package settings → Change visibility.
+
+on:
+  push:
+    branches: [main]
+    tags: ['tmp-router-v*']
+  pull_request:
+    branches: [main]
+    paths:
+      - cmd/router/**
+      - router/**
+      - tmproto/**
+      - targeting/**
+      - urlcanon/**
+      - go.mod
+      - go.sum
+      - scripts/build-tmp-router.sh
+      - .github/workflows/tmp-router-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: tmp-router-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}/tmp-router
+
+jobs:
+  build:
+    name: Build & publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Compute SOURCE_DATE_EPOCH
+        id: sde
+        # Use the timestamp of the last commit that touched a build input.
+        # This is what scripts/build-tmp-router.sh computes for local rebuilds,
+        # so CI and local produce the same layer mtimes.
+        run: |
+          set -euo pipefail
+          SDE="$(git log -1 --format=%ct -- \
+            cmd/router/Dockerfile cmd/router/ router/ tmproto/ targeting/ urlcanon/ \
+            go.mod go.sum)"
+          echo "source_date_epoch=${SDE}" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_DATE_EPOCH=${SDE}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags & labels
+        id: meta
+        uses: docker/metadata-action@369eb591f429131d6889c46b94e711f089e6ca96 # v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=edge,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=sha,prefix=main-,format=short,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=match,pattern=tmp-router-v(.*),group=1
+            type=match,pattern=tmp-router-v(\d+\.\d+),group=1
+            type=match,pattern=tmp-router-v(\d+),group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/tmp-router-v') }}
+          labels: |
+            org.opencontainers.image.title=tmp-router
+            org.opencontainers.image.description=Reproducibly-built TMP Router (cmd/router) for TEE-attested operation
+            org.opencontainers.image.vendor=Ad Context Protocol
+
+      - name: Build & push
+        id: build
+        uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991 # v6
+        with:
+          context: .
+          file: cmd/router/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SOURCE_DATE_EPOCH=${{ steps.sde.outputs.source_date_epoch }}
+          # Provenance and SBOM are emitted as separate manifest attestations
+          # alongside the image — they do NOT change the image digest itself,
+          # so reproducibility holds. mode=max captures full build provenance.
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=tmp-router
+          cache-to: type=gha,mode=max,scope=tmp-router
+
+      - name: Write measurements manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          MANIFEST="artifacts/tmp-router-measurements.json"
+          SOURCE_DIRTY="false"
+          if ! git diff --quiet HEAD --; then SOURCE_DIRTY="true"; fi
+          jq -n \
+            --arg digest "${{ steps.build.outputs.digest }}" \
+            --arg image "${{ env.IMAGE }}" \
+            --arg source_date_epoch "${{ steps.sde.outputs.source_date_epoch }}" \
+            --arg source_rev "${{ github.sha }}" \
+            --arg source_rev_short "$(git rev-parse --short HEAD)" \
+            --arg source_ref "${{ github.ref }}" \
+            --arg workflow_run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --argjson source_dirty "$SOURCE_DIRTY" \
+            --argjson platforms '["linux/amd64","linux/arm64"]' \
+            '{
+              schema: "tmp-router-measurements/v1",
+              image: $image,
+              image_digest: $digest,
+              platforms: $platforms,
+              source: {
+                revision: $source_rev,
+                revision_short: $source_rev_short,
+                ref: $source_ref,
+                dirty: $source_dirty,
+                date_epoch: ($source_date_epoch | tonumber)
+              },
+              build: {
+                workflow_run: $workflow_run,
+                runner: "github-hosted ubuntu-latest"
+              },
+              reproducibility: {
+                note: "Reproduce with scripts/build-tmp-router.sh on the named revision and a BuildKit-compatible Docker (24+). image_digest is what a TEE attestation verifier compares against the bound workload-image measurement for formats where the OCI digest IS the measurement (e.g., GCP Confidential Space). For Nitro / TDX / SEV-SNP, derive the platform-specific measurement (EIF PCR0 / quote MRTD / SNP_MEASUREMENT) from this image with the documented platform-tool version; see docs/tmp-router-reproducible-build.md."
+              }
+            }' > "$MANIFEST"
+          echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"
+          cat "$MANIFEST"
+
+      - name: Upload measurements manifest (workflow artifact)
+        uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v4
+        with:
+          name: tmp-router-measurements-${{ steps.build.outputs.digest }}
+          path: ${{ steps.manifest.outputs.manifest }}
+          if-no-files-found: error
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign versioning=semver
+          cosign-release: v3.0.6
+
+      - name: Sign image (keyless OIDC)
+        # Signs every pushed tag against the build's content digest, so all
+        # tags that resolve to the same image share a single transparency-log
+        # entry per digest. Verify with:
+        #   cosign verify ghcr.io/<owner>/<repo>/tmp-router:<tag> \
+        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@.*' \
+        #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          echo "$TAGS" | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Attest measurements manifest (keyless OIDC, tag pushes only)
+        # Attaches the measurements manifest as a cosign attestation against
+        # the image digest, so it is discoverable from the published image
+        # rather than only from this workflow run's artifacts. Verify with:
+        #   cosign verify-attestation --type custom \
+        #     ghcr.io/<owner>/<repo>/tmp-router@<digest> \
+        #     --certificate-identity-regexp='...' \
+        #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+        if: startsWith(github.ref, 'refs/tags/tmp-router-v')
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          MANIFEST: ${{ steps.manifest.outputs.manifest }}
+        run: |
+          set -euo pipefail
+          cosign attest --yes \
+            --predicate "$MANIFEST" \
+            --type custom \
+            "${IMAGE}@${DIGEST}"
