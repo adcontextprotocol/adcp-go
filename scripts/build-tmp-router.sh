@@ -102,6 +102,10 @@ if [[ -n "$MEASUREMENTS_OUT" ]]; then
   SOURCE_REV_SHORT="$(git rev-parse --short --verify HEAD 2>/dev/null || echo unknown)"
   SOURCE_DIRTY="false"
   if ! git diff --quiet HEAD -- 2>/dev/null; then SOURCE_DIRTY="true"; fi
+  # Schema matches .github/workflows/tmp-router-image.yml — `platform_digests`
+  # is a {<platform>: <digest>} map (the local build records only the one
+  # platform it produced); `index_digest` is omitted since a local build does
+  # not produce a multi-arch index. `source.dirty` is local-only.
   jq -n \
     --arg digest "$DIGEST" \
     --arg platform "$PLATFORM" \
@@ -111,15 +115,16 @@ if [[ -n "$MEASUREMENTS_OUT" ]]; then
     --argjson source_dirty "$SOURCE_DIRTY" \
     '{
       schema: "tmp-router-measurements/v1",
-      image_digest: $digest,
-      platform: $platform,
+      platform_digests: { ($platform): $digest },
       source: {
         revision: $source_rev,
         revision_short: $source_rev_short,
         dirty: $source_dirty,
         date_epoch: ($source_date_epoch | tonumber)
       },
-      note: "Reproduce with scripts/build-tmp-router.sh on the named revision. The image_digest is the OCI image digest a TEE attestation verifier compares against the bound measurement for formats where the workload-image digest IS the measurement (e.g., GCP Confidential Space). For Nitro / TDX / SEV-SNP the EIF/quote measurement is derived from this image plus the platform-tool version — see docs/tmp-router-reproducible-build.md."
+      reproducibility: {
+        note: "Local single-platform reproducible build. Compare `platform_digests.\"\($platform)\"` to the matching entry under `platform_digests` in the CI-published manifest at the same revision. The CI manifest also records an `index_digest`; that is NOT the value an auditor or a TEE attestation verifier compares — index digests change with provenance/SBOM attestation manifests. See docs/tmp-router-reproducible-build.md."
+      }
     }' > "$MEASUREMENTS_OUT"
   echo "==> measurements manifest written to: $MEASUREMENTS_OUT" >&2
 fi

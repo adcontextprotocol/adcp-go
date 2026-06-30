@@ -63,17 +63,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # Full history is required for the SOURCE_DATE_EPOCH derivation to
+          # agree with a local clone: a shallow CI checkout (default depth 1)
+          # truncates history, so `git log -1 -- <build-paths>` resolves a
+          # different last-touching-commit timestamp than an auditor's full
+          # clone, producing a different SDE and a different image digest.
+          fetch-depth: 0
 
       - name: Compute SOURCE_DATE_EPOCH
         id: sde
         # Use the timestamp of the last commit that touched a build input.
         # This is what scripts/build-tmp-router.sh computes for local rebuilds,
-        # so CI and local produce the same layer mtimes.
+        # so CI and local produce the same layer mtimes. Fallback to 0 if
+        # `git log` returns empty (defensive — should not occur with the
+        # full-history checkout above, since at minimum the Dockerfile and
+        # workflow are themselves build inputs).
         run: |
           set -euo pipefail
           SDE="$(git log -1 --format=%ct -- \
             cmd/router/Dockerfile cmd/router/ router/ tmproto/ targeting/ urlcanon/ \
-            go.mod go.sum)"
+            go.mod go.sum || echo 0)"
+          if [ -z "$SDE" ]; then SDE=0; fi
           echo "source_date_epoch=${SDE}" >> "$GITHUB_OUTPUT"
           echo "SOURCE_DATE_EPOCH=${SDE}"
 
@@ -120,42 +131,75 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SOURCE_DATE_EPOCH=${{ steps.sde.outputs.source_date_epoch }}
-          # Provenance and SBOM are emitted as separate manifest attestations
-          # alongside the image — they do NOT change the image digest itself,
-          # so reproducibility holds. mode=max captures full build provenance.
+          # Provenance and SBOM are emitted as additional manifests inside
+          # the image index. They DO change the index digest (the index is
+          # the set of manifests it carries), but they do NOT change the
+          # per-platform image-manifest digests this workflow records below.
+          # mode=max captures full build provenance.
           provenance: mode=max
           sbom: true
           cache-from: type=gha,scope=tmp-router
           cache-to: type=gha,mode=max,scope=tmp-router
 
+      - name: Resolve per-platform image-manifest digests
+        id: platforms
+        # The build's `digest` output is the multi-arch INDEX digest, which
+        # is not directly comparable to a single-platform local rebuild
+        # (the index also references provenance/SBOM attestation manifests
+        # that change the index hash). Verifiers and TEE attestation chains
+        # bind to a specific platform's image-manifest digest. Resolve those
+        # here so the measurements manifest publishes the values an auditor
+        # actually compares.
+        if: github.event_name != 'pull_request'
+        env:
+          INDEX_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          RAW="$(docker buildx imagetools inspect --raw "$INDEX_REF")"
+          AMD64="$(printf '%s' "$RAW" | jq -r '.manifests[] | select(.platform.architecture=="amd64" and .platform.os=="linux" and (.annotations["vnd.docker.reference.type"] | not)) | .digest')"
+          ARM64="$(printf '%s' "$RAW" | jq -r '.manifests[] | select(.platform.architecture=="arm64" and .platform.os=="linux" and (.annotations["vnd.docker.reference.type"] | not)) | .digest')"
+          if [ -z "$AMD64" ] || [ -z "$ARM64" ]; then
+            echo "failed to resolve per-platform digests from index $INDEX_REF" >&2
+            printf '%s\n' "$RAW" >&2
+            exit 1
+          fi
+          echo "amd64=${AMD64}" >> "$GITHUB_OUTPUT"
+          echo "arm64=${ARM64}" >> "$GITHUB_OUTPUT"
+          echo "linux/amd64 = ${AMD64}"
+          echo "linux/arm64 = ${ARM64}"
+
       - name: Write measurements manifest
         id: manifest
+        # The manifest publishes per-platform image-manifest digests, not
+        # the index digest. The index digest is recorded as `index_digest`
+        # for traceability but is NOT what a TEE attestation verifier (or a
+        # `scripts/build-tmp-router.sh --platform <p>` auditor) compares.
         run: |
           set -euo pipefail
           mkdir -p artifacts
           MANIFEST="artifacts/tmp-router-measurements.json"
-          SOURCE_DIRTY="false"
-          if ! git diff --quiet HEAD --; then SOURCE_DIRTY="true"; fi
           jq -n \
-            --arg digest "${{ steps.build.outputs.digest }}" \
+            --arg index_digest "${{ steps.build.outputs.digest }}" \
             --arg image "${{ env.IMAGE }}" \
+            --arg amd64_digest "${{ steps.platforms.outputs.amd64 }}" \
+            --arg arm64_digest "${{ steps.platforms.outputs.arm64 }}" \
             --arg source_date_epoch "${{ steps.sde.outputs.source_date_epoch }}" \
             --arg source_rev "${{ github.sha }}" \
             --arg source_rev_short "$(git rev-parse --short HEAD)" \
             --arg source_ref "${{ github.ref }}" \
             --arg workflow_run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            --argjson source_dirty "$SOURCE_DIRTY" \
-            --argjson platforms '["linux/amd64","linux/arm64"]' \
             '{
               schema: "tmp-router-measurements/v1",
               image: $image,
-              image_digest: $digest,
-              platforms: $platforms,
+              index_digest: (if $index_digest == "" then null else $index_digest end),
+              platform_digests: (
+                ($amd64_digest | select(. != "") | {("linux/amd64"): .}) //
+                {} | . + ($arm64_digest | select(. != "") | {("linux/arm64"): .} // {})
+              ),
               source: {
                 revision: $source_rev,
                 revision_short: $source_rev_short,
                 ref: $source_ref,
-                dirty: $source_dirty,
                 date_epoch: ($source_date_epoch | tonumber)
               },
               build: {
@@ -163,7 +207,7 @@ jobs:
                 runner: "github-hosted ubuntu-latest"
               },
               reproducibility: {
-                note: "Reproduce with scripts/build-tmp-router.sh on the named revision and a BuildKit-compatible Docker (24+). image_digest is what a TEE attestation verifier compares against the bound workload-image measurement for formats where the OCI digest IS the measurement (e.g., GCP Confidential Space). For Nitro / TDX / SEV-SNP, derive the platform-specific measurement (EIF PCR0 / quote MRTD / SNP_MEASUREMENT) from this image with the documented platform-tool version; see docs/tmp-router-reproducible-build.md."
+                note: "Reproduce with `scripts/build-tmp-router.sh --platform <p>` on the named revision and a BuildKit-compatible Docker (24+); compare the resulting digest against the matching entry in `platform_digests`. The `index_digest` is the multi-arch index pushed to the registry and includes provenance/SBOM attestation manifests; it is NOT what an auditor or TEE attestation verifier compares. For GCP Confidential Space the verifier compares the `linux/amd64` entry against `submods.container.image_digest` in the attestation token. For Nitro / TDX / SEV-SNP, derive the platform-specific measurement (EIF PCR0 / quote MRTD / SNP_MEASUREMENT) from the per-platform image with the documented platform-tool version; see docs/tmp-router-reproducible-build.md."
               }
             }' > "$MANIFEST"
           echo "manifest=$MANIFEST" >> "$GITHUB_OUTPUT"

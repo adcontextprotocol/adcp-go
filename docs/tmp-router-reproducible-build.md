@@ -19,7 +19,7 @@ The Dockerfile at [`cmd/router/Dockerfile`](../cmd/router/Dockerfile) pins:
 - **Build flags.** `CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, and `-ldflags="-s -w -buildid="` strip all entropy from the produced binary — file paths, VCS metadata, Go's build-id, and the debug/symbol tables. Without these, the binary varies per build environment even with the same source.
 - **`SOURCE_DATE_EPOCH`** is passed in as a build arg from the timestamp of the last commit that touched a build input. BuildKit uses it to normalize layer mtimes.
 
-Multi-platform builds (`linux/amd64`, `linux/arm64`) are deterministic per platform — the published image is a multi-arch manifest pointing at platform-specific digests.
+Multi-platform builds (`linux/amd64`, `linux/arm64`) are deterministic per platform. The CI workflow pushes a multi-arch *index* that references per-platform image manifests **plus** provenance and SBOM attestation manifests; the per-platform image manifests are what an auditor reproduces and what a TEE attestation chain binds against. The index digest itself is not reproducible by a local single-platform build (and not expected to be) — the relevant comparison is always at the per-platform level.
 
 ## Verifying a published image
 
@@ -31,15 +31,27 @@ git clone https://github.com/adcontextprotocol/adcp-go
 cd adcp-go
 git checkout <commit-or-tag>
 
-# 2. Rebuild locally. The script prints the OCI image digest.
+# 2. Rebuild locally for the platform you want to verify. The script prints
+#    the platform-specific image-manifest digest.
 scripts/build-tmp-router.sh --platform linux/amd64
 
-# 3. Compare against the published digest.
-docker buildx imagetools inspect ghcr.io/adcontextprotocol/adcp-go/tmp-router:<tag> \
-  --format '{{.Manifest.Digest}}'
+# 3. Read the matching per-platform digest from the published manifest list.
+#    The registry publishes a multi-arch INDEX; the index references one
+#    image-manifest per platform plus provenance/SBOM attestation manifests.
+#    What you compare against is the per-platform image manifest, NOT the
+#    index digest — the index hash changes with provenance/SBOM by design.
+docker buildx imagetools inspect \
+  ghcr.io/adcontextprotocol/adcp-go/tmp-router:<tag> \
+  --raw \
+| jq -r '.manifests[]
+    | select(.platform.architecture == "amd64" and .platform.os == "linux"
+             and (.annotations["vnd.docker.reference.type"] | not))
+    | .digest'
 ```
 
 The two digests must be identical. If they are not, do not allowlist the published image — open an issue and treat the divergence as a build-pipeline integrity incident until explained.
+
+The `platform_digests` map in the CI-published `tmp-router-measurements.json` is the authoritative shortcut — it records the same per-platform digests, so an auditor with the manifest in hand can skip the `imagetools inspect | jq` step and compare against the manifest entry directly.
 
 The Sigstore signature on the published image is independent of reproducibility — it tells you "GitHub Actions for this repo built and signed this digest." Reproducibility tells you "this source tree produces this digest." Both are needed: signature without reproducibility means a malicious workflow could publish a backdoored binary; reproducibility without signature means anyone could publish look-alike binaries.
 
@@ -51,13 +63,15 @@ Every CI build produces a `tmp-router-measurements.json` artifact with this shap
 {
   "schema": "tmp-router-measurements/v1",
   "image": "ghcr.io/adcontextprotocol/adcp-go/tmp-router",
-  "image_digest": "sha256:...",
-  "platforms": ["linux/amd64", "linux/arm64"],
+  "index_digest": "sha256:...",
+  "platform_digests": {
+    "linux/amd64": "sha256:...",
+    "linux/arm64": "sha256:..."
+  },
   "source": {
     "revision": "<git sha>",
     "revision_short": "<short sha>",
     "ref": "refs/tags/tmp-router-v0.1.0",
-    "dirty": false,
     "date_epoch": 1782825869
   },
   "build": { "workflow_run": "...", "runner": "github-hosted ubuntu-latest" },
@@ -65,7 +79,11 @@ Every CI build produces a `tmp-router-measurements.json` artifact with this shap
 }
 ```
 
-For tag pushes the manifest is also attached to the published image as a Sigstore attestation (`cosign attest --type custom`). Verifiers retrieve it from the registry with:
+`platform_digests` is the value a verifier or auditor compares against. `index_digest` is the multi-arch index pushed to the registry (the same digest cosign signs) and is recorded for traceability, but it includes the `provenance: mode=max` and SBOM attestation manifests — so it is not byte-stable across CI runs that recompute provenance, and it is not what a TEE attestation chain binds against. Local reproducible builds (single-platform) cannot reproduce an index digest by construction; they reproduce a per-platform image-manifest digest, which is what `platform_digests` records.
+
+The local script's manifest shares the same schema (`tmp-router-measurements/v1`) with `platform_digests` carrying the one platform built, and `index_digest` omitted; an additional local-only `source.dirty` flag is included so an auditor's running build state is visible. A schema validator that wants strict cross-emitter compatibility should treat both `index_digest` and `source.dirty` as optional.
+
+For tag pushes the CI manifest is also attached to the published image as a Sigstore attestation (`cosign attest --type custom`). Verifiers retrieve it from the registry with:
 
 ```bash
 cosign verify-attestation --type custom \
@@ -76,18 +94,18 @@ cosign verify-attestation --type custom \
 
 For non-tag pushes the manifest is only available as a workflow-run artifact.
 
-## How `image_digest` maps to platform measurements
+## How per-platform digests map to TEE measurements
 
-The OCI image digest is the *workload identity* a TEE verifier needs, but the format-specific measurement value differs:
+A per-platform image-manifest digest from `platform_digests` is the *workload identity* the verifier needs, but the format-specific measurement value differs:
 
-| TEE format | Measurement | Relation to `image_digest` |
+| TEE format | Measurement | Relation to a `platform_digests` entry |
 |---|---|---|
-| GCP Confidential Space | Workload-image digest in the token's `submods.confidential_space.image_digest` claim | **Direct equality** — the verifier compares `image_digest` to the token claim. |
-| AWS Nitro Enclaves | PCR0/PCR1/PCR2 in the attestation document | **Derived deterministically** from the OCI image plus the Nitro CLI version. Build the EIF with `nitro-cli build-enclave --docker-uri <image>@<digest>` on a Nitro-enabled host; the PCR values fall out of the build. The published manifest declares the OCI digest; the operator's Nitro-build step produces the EIF measurement. |
+| GCP Confidential Space | `submods.container.image_digest` claim in the attestation token (the `container` submodule carries workload-image identity; `confidential_space` carries platform/support attributes). | **Direct equality** — the verifier compares the token's `submods.container.image_digest` against the `platform_digests` entry for the platform the workload runs on (a Confidential Space VM runs a single platform image, not a multi-arch index, so the comparison is per-platform). |
+| AWS Nitro Enclaves | PCR0/PCR1/PCR2 in the attestation document | **Derived deterministically** from the OCI image plus the Nitro CLI version *and* the linuxkit kernel/init blobs that ship with that Nitro CLI release — bumping the Nitro CLI base layer changes PCR0 even when the OCI image is unchanged. Build the EIF with `nitro-cli build-enclave --docker-uri <image>@<per-platform-digest>` on a Nitro-enabled host; the PCR values fall out of the build. The published `tmp-router-measurements.json` declares the OCI per-platform digest; the operator's Nitro-build step produces the EIF measurement separately, pinned to a specific Nitro CLI version. |
 | Intel TDX | MRTD in the quote | Same model as Nitro: derived from the image plus the TDX measurement-build chain. |
 | AMD SEV-SNP | SNP_MEASUREMENT in the report | Same model: image-plus-host-chain derivation. |
 
-In every non-GCP case, the operator runs a one-shot transformation from the OCI image to the platform-specific measurement on a host with the platform tooling. That transformation is itself deterministic — same OCI image plus same tool version equals same measurement value — but it is *not run in this CI* because GitHub-hosted runners don't have Nitro / TDX / SEV-SNP tooling. Each platform's measurement value should be derived once per release on a controlled host and published alongside the AdCP `tmp-router-measurements.json` manifest.
+In every non-GCP case, the operator runs a one-shot transformation from the per-platform OCI image to the platform-specific measurement on a host with the platform tooling. That transformation is itself deterministic — same per-platform image plus same tool version equals same measurement value — but it is *not run in this CI* because GitHub-hosted runners don't have Nitro / TDX / SEV-SNP tooling. Each platform's measurement value should be derived once per release on a controlled host and published alongside the AdCP `tmp-router-measurements.json` manifest.
 
 ## What this does NOT cover
 
