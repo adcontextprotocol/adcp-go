@@ -15,7 +15,7 @@ name: tmp-router image
 #   - push to main           → tags: edge, main-<short_sha>
 #   - push of tmp-router-v*  → tags: <semver>, <major>.<minor>, <major>, latest
 #   - pull_request           → build only, no push (verifies the build stays green)
-#   - workflow_dispatch      → manual rebuild
+#   - workflow_dispatch      → manual rebuild, build-only (no push, no sign)
 #
 # Permissions:
 #   - packages:  write  → push to GHCR
@@ -90,7 +90,7 @@ jobs:
         uses: docker/setup-buildx-action@c47758b77c9736f4b2ef4073d4d51994fabfe349 # v3
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
         with:
           registry: ghcr.io
@@ -121,7 +121,7 @@ jobs:
           context: .
           file: cmd/router/Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -145,7 +145,7 @@ jobs:
         # bind to a specific platform's image-manifest digest. Resolve those
         # here so the measurements manifest publishes the values an auditor
         # actually compares.
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         env:
           INDEX_REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
         run: |
@@ -176,18 +176,36 @@ jobs:
         # digest we could not reproduce. Both amd64 and arm64 are verified
         # (arm64 via QEMU on the amd64 runner — slower but symmetric with
         # what's actually published and signed).
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         env:
           EXPECTED_AMD64: ${{ steps.platforms.outputs.amd64 }}
           EXPECTED_ARM64: ${{ steps.platforms.outputs.arm64 }}
         run: |
           set -euo pipefail
+          STDERR_LOGS=()
+          cleanup() { for f in "${STDERR_LOGS[@]}"; do rm -f "$f"; done; }
+          trap cleanup EXIT
+
           verify_platform() {
             local platform="$1" expected="$2"
             local stderr_log
             stderr_log="$(mktemp)"
+            STDERR_LOGS+=("$stderr_log")
+
+            # Capture the rebuild's exit status explicitly. Under
+            # `set -euo pipefail`, `actual="$(script ...)"` would abort
+            # the step on script failure before the diagnostic block
+            # below could run — the operator would see only "step
+            # failed" with no stderr context. Explicit capture surfaces
+            # the build failure too, not just the digest mismatch.
             local actual
-            actual="$(scripts/build-tmp-router.sh --platform "$platform" 2>"$stderr_log" | tail -n1)"
+            if ! actual="$(scripts/build-tmp-router.sh --platform "$platform" 2>"$stderr_log" | tail -n1)"; then
+              echo "::error::Reproducibility check FAILED for $platform — the no-cache clean rebuild itself errored."
+              echo "--- clean-build stderr (last 60 lines) ---"
+              tail -n 60 "$stderr_log" || true
+              return 1
+            fi
+
             echo "expected ($platform, publish-path build)   : $expected"
             echo "actual   ($platform, no-cache clean rebuild): $actual"
             if [ "$expected" != "$actual" ]; then
@@ -195,7 +213,7 @@ jobs:
               echo "This typically indicates a poisoned GHA cache or non-deterministic input."
               echo "--- clean-build stderr (last 40 lines) ---"
               tail -n 40 "$stderr_log" || true
-              exit 1
+              return 1
             fi
           }
           verify_platform "linux/amd64" "$EXPECTED_AMD64"
@@ -208,7 +226,7 @@ jobs:
         # the index digest. The index digest is recorded as `index_digest`
         # for traceability but is NOT what a TEE attestation verifier (or a
         # `scripts/build-tmp-router.sh --platform <p>` auditor) compares.
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         run: |
           set -euo pipefail
           mkdir -p artifacts
@@ -249,7 +267,7 @@ jobs:
           cat "$MANIFEST"
 
       - name: Upload measurements manifest (workflow artifact)
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@de65e23aa2b7e23d713bb51fbfcb6d502f8667d8 # v4
         with:
           name: tmp-router-measurements-${{ steps.build.outputs.digest }}
@@ -257,7 +275,7 @@ jobs:
           if-no-files-found: error
 
       - name: Install cosign
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign versioning=semver
@@ -270,13 +288,22 @@ jobs:
         # cosign verify the index BEFORE trusting any per-platform manifest
         # digest extracted from it — see docs/tmp-router-reproducible-build.md
         # for the canonical verification flow. The cert-identity regexp
-        # below is intentionally narrow: only `main` and `tmp-router-v*`
-        # refs are trusted; a fork or branch build would carry a different
-        # ref in the OIDC token and fail this match.
+        # below is anchored (^...$) because cosign uses Go's
+        # regexp.MatchString, which is unanchored (substring match): without
+        # the anchors, `heads/main` would match `heads/main-attacker`. It
+        # also requires the tag portion to start with a digit
+        # (`tmp-router-v[0-9].*`) so a branch named `tmp-router-vroot` can
+        # not slip through. Only `main` and `tmp-router-v<N>...` refs are
+        # trusted; a fork or branch build carries a different ref in the
+        # OIDC token and fails this match.
         #   cosign verify ghcr.io/<owner>/<repo>/tmp-router:<tag> \
-        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
+        #     --certificate-identity-regexp='^https://github\.com/<owner>/<repo>/\.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v[0-9].*)$' \
         #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-        if: github.event_name != 'pull_request'
+        # Signing scope is intentionally pinned to `main` and version tags so
+        # a future trigger-list expansion cannot silently widen what gets
+        # signed — the `on:` filter already narrows to these refs, but the
+        # explicit `if:` here is defense-in-depth against drift.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/tmp-router-v'))
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -295,9 +322,11 @@ jobs:
         # `main-<sha>` also get a registry-discoverable manifest. Verify with:
         #   cosign verify-attestation --type 'https://adcontextprotocol.org/tmp-router-measurements/v1' \
         #     ghcr.io/<owner>/<repo>/tmp-router@<digest> \
-        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
+        #     --certificate-identity-regexp='^https://github\.com/<owner>/<repo>/\.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v[0-9].*)$' \
         #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
-        if: github.event_name == 'push'
+        # Same trusted-refs pin as the sign step — attestation and signature
+        # must have the same signing scope.
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/tmp-router-v'))
         env:
           IMAGE: ${{ env.IMAGE }}
           DIGEST: ${{ steps.build.outputs.digest }}

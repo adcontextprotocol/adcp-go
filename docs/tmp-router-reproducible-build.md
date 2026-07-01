@@ -38,7 +38,7 @@ git checkout <commit-or-tag>
 #    digest for the next step.
 VERIFIED_INDEX_DIGEST="$(cosign verify \
   ghcr.io/adcontextprotocol/adcp-go/tmp-router:<tag> \
-  --certificate-identity-regexp='https://github.com/adcontextprotocol/adcp-go/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
+  --certificate-identity-regexp='^https://github\.com/adcontextprotocol/adcp-go/\.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v[0-9].*)$' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
   --output json \
   | jq -r '.[0].critical.image."docker-manifest-digest"')"
@@ -110,7 +110,7 @@ For every push (both `main` and `tmp-router-v*` tags) the CI manifest is also at
 cosign verify-attestation \
   --type 'https://adcontextprotocol.org/tmp-router-measurements/v1' \
   ghcr.io/adcontextprotocol/adcp-go/tmp-router@sha256:<digest> \
-  --certificate-identity-regexp='https://github.com/adcontextprotocol/adcp-go/.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v.*)' \
+  --certificate-identity-regexp='^https://github\.com/adcontextprotocol/adcp-go/\.github/workflows/tmp-router-image\.yml@refs/(heads/main|tags/tmp-router-v[0-9].*)$' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
 ```
 
