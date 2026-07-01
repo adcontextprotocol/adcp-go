@@ -19,7 +19,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/pkgconfigstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/suppressionstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
-	"github.com/adcontextprotocol/adcp-go/targeting/urlliststore"
 )
 
 // Real-cluster integration for glide isn't covered here:
@@ -62,13 +61,6 @@ func TestIntegration_GlideContextStores_Shadow(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 		assert.True(t, got.TopicTargets)
-	})
-
-	t.Run("urllist", func(t *testing.T) {
-		seedGlideSetAdd(t, clients, urlliststore.BlocklistKey("pkg-1"), "hash-blocked")
-		blocked, err := urlliststore.NewReader(store).IsBlocked(context.Background(), "pkg-1", "hash-blocked")
-		require.NoError(t, err)
-		assert.True(t, blocked)
 	})
 
 	t.Run("topics", func(t *testing.T) {
@@ -138,15 +130,6 @@ func runGlideContextStoresSuite(t *testing.T, store *Store, seller, providerID s
 		require.NoError(t, err)
 		require.True(t, ok)
 		assert.True(t, got.TopicTargets)
-	})
-
-	t.Run("urllist", func(t *testing.T) {
-		svc, err := urlliststore.NewService(store)
-		require.NoError(t, err)
-		require.NoError(t, svc.AddToBlocklist(ctx, "pkg-1", "hash-blocked"))
-		blocked, err := urlliststore.NewReader(store).IsBlocked(ctx, "pkg-1", "hash-blocked")
-		require.NoError(t, err)
-		assert.True(t, blocked)
 	})
 
 	t.Run("topics", func(t *testing.T) {

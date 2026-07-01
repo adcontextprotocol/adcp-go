@@ -17,7 +17,7 @@ import (
 //     plain maps; used by engine tests, the reference agent, and any
 //     embedder that wants to build a ContextStorage by hand.
 //   - targeting/contextagent's bundle — the production impl. Layers a
-//     per-domain Service (mediabuystore, pkgconfigstore, urlliststore,
+//     per-domain Service (mediabuystore, pkgconfigstore,
 //     suppressionstore, topicstore) optionally wrapped in an LRU cache
 //     decorator. The engine never sees those packages directly.
 //
@@ -66,18 +66,6 @@ type ContextStorage interface {
 	// PackageTopics returns the raw topic ids `packageID` targets under
 	// `tax`. Same shape as ArtifactTopics.
 	PackageTopics(ctx context.Context, tax topicstore.Taxonomy, packageID string) ([]string, error)
-
-	// URLBlocked reports whether `urlHash` is in `packageID`'s blocklist.
-	// false (with err == nil) covers both "no blocklist configured" and
-	// "blocklist exists but hash absent"; the caller distinguishes via
-	// PackageContextConfig.URLBlocklist.
-	URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error)
-
-	// URLAllowed reports whether `urlHash` is in `packageID`'s allowlist.
-	// Returns false when the hash is absent OR when no allowlist is
-	// configured; the caller distinguishes via
-	// PackageContextConfig.URLAllowlist.
-	URLAllowed(ctx context.Context, packageID, urlHash string) (bool, error)
 
 	// IsPropertySuppressed reports whether `propertyRID` is currently
 	// suppressed for `providerID`. Suppressions are deployment-scoped

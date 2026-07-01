@@ -19,8 +19,6 @@ import (
 type PackageContextConfig struct {
 	PackageID    string   `json:"package_id"`
 	MediaBuyID   string   `json:"media_buy_id,omitempty"`
-	URLBlocklist bool     `json:"url_blocklist,omitempty"`
-	URLAllowlist bool     `json:"url_allowlist,omitempty"`
 	TopicTargets bool     `json:"topic_targets,omitempty"`
 	PropertyRIDs []string `json:"property_rids,omitempty"`
 	EmitSegments []string `json:"emit_segments,omitempty"`

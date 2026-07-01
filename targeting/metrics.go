@@ -17,7 +17,6 @@ const (
 	StageSuppression     = "suppression"
 	StageSignature       = "signature"
 	StageDirectMatch     = "direct_match"
-	StageURLFilter       = "url_filter"
 	StageTopicMatch      = "topic_match"
 	StageTopicNoTaxonomy = "topic_no_taxonomy"
 	StageAudience        = "audience"

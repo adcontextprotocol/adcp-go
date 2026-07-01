@@ -15,7 +15,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/contextstorage"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
-	"github.com/adcontextprotocol/adcp-go/targeting/urlliststore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -62,7 +61,7 @@ func BenchmarkSignatureVerify(b *testing.B) {
 // BenchmarkFullPipeline tests complete context evaluation with bitmap + topic match.
 func BenchmarkFullPipeline(b *testing.B) {
 	storage := contextstorage.NewInMemory().
-		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true, URLBlocklist: true}).
+		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-food", TopicTargets: true}).
 		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-tech", TopicTargets: true}).
 		WithPackageTopics(benchTaxonomy, "pkg-food", []string{"food.cooking", "food.baking", "food.italian"}).
 		WithArtifactTopics(benchTaxonomy, "article:pasta-recipe", []string{"food.cooking", "food.italian"})
@@ -114,24 +113,6 @@ func BenchmarkRegistryLoad(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		reg := NewPropertyRegistry()
 		_ = reg.LoadFromJSON(data)
-	}
-}
-
-// BenchmarkURLLookup tests URL block-set membership through the
-// urlliststore reader (mock backing store).
-func BenchmarkURLLookup(b *testing.B) {
-	store := urlliststore.NewMockStore()
-	svc, _ := urlliststore.NewService(store)
-	ctx := context.Background()
-	for i := range 10000 {
-		_ = svc.AddToBlocklist(ctx, "pkg-1", tmproto.HashURL(fmt.Sprintf("article:content-%d", i)))
-	}
-	r := urlliststore.NewReader(store)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		urlHash := tmproto.HashURL(fmt.Sprintf("article:content-%d", i%20000))
-		_, _ = r.IsBlocked(ctx, "pkg-1", urlHash)
 	}
 }
 

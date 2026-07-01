@@ -360,9 +360,8 @@ func buildBundle(ctx context.Context, cfg Config, opts runOptions, recorder Reco
 
 	// Valkey backend. *redisstore.Store satisfies every per-domain
 	// Store interface (mediabuystore.Store, pkgconfigstore.Store,
-	// urlliststore.Store, suppressionstore.Store, topicstore.Store)
-	// via duck typing — every required method is implemented on the
-	// same concrete struct.
+	// suppressionstore.Store, topicstore.Store) via duck typing —
+	// every required method is implemented on the same concrete struct.
 	rawStore, valkeyCloser, err := redisstore.Build(ctx, cfg.Valkey.ToRedisStoreConfig())
 	if err != nil {
 		cancelBg()
@@ -393,7 +392,6 @@ func buildBundle(ctx context.Context, cfg Config, opts runOptions, recorder Reco
 	}
 
 	storage, err := buildStorage(
-		rawStore,
 		rawStore,
 		rawStore,
 		rawStore,

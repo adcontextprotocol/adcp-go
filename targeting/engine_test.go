@@ -275,25 +275,11 @@ func TestContext_RogueTaxonomyOnlySource_FailClosed(t *testing.T) {
 }
 
 // TestContext_StorageError_FailsClosed pins the safety-relevant
-// contract that a Valkey blip on URL filter or topic match causes the
-// affected package to be skipped, not to slip past the brand-safety
-// filter. The previous behavior recorded a metric and fell through,
-// which let a transient outage match packages their blocklist should
-// have blocked.
+// contract that a Valkey blip on topic match causes the affected
+// package to be skipped, not to slip past. The previous behavior
+// recorded a metric and fell through, which let a transient outage
+// match packages that should have been filtered.
 func TestContext_StorageError_FailsClosed(t *testing.T) {
-	t.Run("url_blocklist_error", func(t *testing.T) {
-		base := contextstorage.NewInMemory().
-			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", URLBlocklist: true})
-		storage := &errInjectStorage{ContextStorage: base, urlBlockedErr: true}
-		engine := newEngine(t, storage)
-		resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-			RequestID: "r", PropertyRID: "10",
-			ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:any"}},
-			PackageIDs:   []string{"pkg-1"},
-		})
-		require.NoError(t, err)
-		assert.Empty(t, resp.Offers, "URL filter Valkey error must fail-closed, not let the package activate")
-	})
 	t.Run("topic_match_error", func(t *testing.T) {
 		base := contextstorage.NewInMemory().
 			WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-1", TopicTargets: true})
@@ -351,15 +337,7 @@ func (c *cancelOnConfigStorage) ContextConfig(ctx context.Context, packageID str
 
 type errInjectStorage struct {
 	targeting.ContextStorage
-	urlBlockedErr    bool
 	packageTopicsErr bool
-}
-
-func (e *errInjectStorage) URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error) {
-	if e.urlBlockedErr {
-		return false, errInjected
-	}
-	return e.ContextStorage.URLBlocked(ctx, packageID, urlHash)
 }
 
 func (e *errInjectStorage) PackageTopics(ctx context.Context, tax topicstore.Taxonomy, packageID string) ([]string, error) {
@@ -374,74 +352,6 @@ var errInjected = injectedError("injected")
 type injectedError string
 
 func (e injectedError) Error() string { return string(e) }
-
-// TestContext_URLBlocklist_AcceptsURLHashArtifactRef pins the
-// publisher-side `url_hash` wire format: the engine MUST use a
-// pre-hashed url_hash artifact-ref directly as the SISMEMBER lookup
-// key, with no re-hashing. Same storage key shape as a `url` ref
-// hashed via tmproto.HashURL, so both flow into the same Valkey set.
-func TestContext_URLBlocklist_AcceptsURLHashArtifactRef(t *testing.T) {
-	urlHash := tmproto.HashURL("https://oakwood.example/article")
-	storage := contextstorage.NewInMemory().
-		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-family", URLBlocklist: true}).
-		WithURLBlocked("pkg-family", urlHash)
-
-	engine := newEngine(t, storage)
-	// Publisher sends the hash directly via ArtifactRefTypeURLHash.
-	// The engine MUST treat the wire value as the storage key with
-	// no further hashing.
-	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "r",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURLHash, Value: urlHash}},
-		PackageIDs:   []string{"pkg-family"},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, resp.Offers, "pre-hashed url_hash artifact-ref must hit the same blocklist a hashed url ref would")
-}
-
-func TestContext_URLBlocklist(t *testing.T) {
-	urlHash := tmproto.HashURL("article:bad")
-	storage := contextstorage.NewInMemory().
-		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-family", URLBlocklist: true}).
-		WithURLBlocked("pkg-family", urlHash)
-
-	engine := newEngine(t, storage)
-	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "r",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:bad"}},
-		PackageIDs:   []string{"pkg-family"},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, resp.Offers)
-}
-
-func TestContext_URLAllowlist(t *testing.T) {
-	storage := contextstorage.NewInMemory().
-		WithPackage(&targeting.PackageContextConfig{PackageID: "pkg-curated", URLAllowlist: true}).
-		WithURLAllowed("pkg-curated", tmproto.HashURL("article:safe"))
-
-	engine := newEngine(t, storage)
-
-	resp, err := engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "r",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:safe"}},
-		PackageIDs:   []string{"pkg-curated"},
-	})
-	require.NoError(t, err)
-	assert.Len(t, resp.Offers, 1)
-
-	resp, err = engine.Evaluate(context.Background(), &tmproto.ContextMatchRequest{
-		RequestID:    "r",
-		PropertyRID:  "10",
-		ArtifactRefs: []tmproto.ArtifactRef{{Type: tmproto.ArtifactRefTypeURL, Value: "article:not-allowed"}},
-		PackageIDs:   []string{"pkg-curated"},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, resp.Offers)
-}
 
 func TestContext_PerPackagePropertyTargeting(t *testing.T) {
 	storage := contextstorage.NewInMemory().
