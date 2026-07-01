@@ -1,11 +1,13 @@
 package identityagent
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,6 +23,34 @@ import (
 )
 
 const testNullifier = "0x" + "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
+
+// MacroEntry pairs a sealed token with the provider's first registered slot
+// name; both inputs must be non-empty for a useful pair to come out.
+func TestMacroEntry_EmitsWhenConfigured(t *testing.T) {
+	s := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
+	entry, ok := s.MacroEntry("k1.token")
+	require.True(t, ok)
+	assert.Equal(t, "S3_TMPX", entry.Name)
+	assert.Equal(t, "k1.token", entry.Value)
+}
+
+// MacroEntry returns (zero, false) on three independently-disabling
+// conditions: nil receiver, empty token, no registered macro names. Without
+// either side the pair is meaningless, so the response should fall back to
+// the legacy single-`tmpx` carrier.
+func TestMacroEntry_NotEmittedWhenDisabled(t *testing.T) {
+	var nilSealer *TMPXSealer
+	_, ok := nilSealer.MacroEntry("k1.token")
+	assert.False(t, ok, "nil sealer must not produce a macro entry")
+
+	noMacros := &TMPXSealer{}
+	_, ok = noMacros.MacroEntry("k1.token")
+	assert.False(t, ok, "sealer without registered macro names must not produce a macro entry")
+
+	noToken := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
+	_, ok = noToken.MacroEntry("")
+	assert.False(t, ok, "empty token must not produce a macro entry")
+}
 
 func TestVerifiedIdentityEntries_EncodesNullifier(t *testing.T) {
 	cfg := &TMPXSealer{}
@@ -111,6 +141,44 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 		recipient: tmproto.TmpxRecipient{Kid: kid, PublicKey: sk.PublicKey()},
 		ok:        true,
 	}
+}
+
+// TestWarnIfMultiSlotIgnored pins the operator-visibility contract for the
+// multi-slot-config-but-single-slot-emission case. The wire shape accepts up
+// to two slots per provider; the sealer currently fills only the first.
+// An operator who configures both expecting multi-chunk emission should see
+// a startup warning naming the active slot and the ignored ones, not
+// discover the gap at trafficking time.
+func TestWarnIfMultiSlotIgnored(t *testing.T) {
+	t.Run("zero or one slot does not warn", func(t *testing.T) {
+		for _, names := range [][]string{nil, {}, {"S3_TMPX"}} {
+			var buf bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&buf, nil))
+			warnIfMultiSlotIgnored(logger, names)
+			assert.Empty(t, buf.String(), "single/zero slots are the supported shape — no warning expected (input: %v)", names)
+		}
+	})
+
+	t.Run("two-plus slots warn naming active and ignored", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&buf, nil))
+		warnIfMultiSlotIgnored(logger, []string{"PIN_TMPX_1", "PIN_TMPX_2", "PIN_TMPX_3"})
+
+		got := buf.String()
+		assert.Contains(t, got, `"level":"WARN"`)
+		assert.Contains(t, got, "multi-chunk encoding is not implemented")
+		assert.Contains(t, got, `"active_slot":"PIN_TMPX_1"`)
+		assert.Contains(t, got, `"ignored_slots":["PIN_TMPX_2","PIN_TMPX_3"]`)
+	})
+
+	t.Run("nil logger is a no-op", func(t *testing.T) {
+		// Defensive: NewTMPXSealer reassigns nil logger to slog.Default
+		// before calling the helper, but pinning the contract avoids a
+		// nil-deref if a caller ever reaches this directly.
+		assert.NotPanics(t, func() {
+			warnIfMultiSlotIgnored(nil, []string{"A", "B"})
+		})
+	})
 }
 
 func TestNewTMPXSealerDisabled(t *testing.T) {

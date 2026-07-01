@@ -46,7 +46,8 @@
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
     "Offer.price": {"type": "OfferPrice", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
-    "ErrorResponse.code": {"type": "ErrorCode"}
+    "ErrorResponse.code": {"type": "ErrorCode"},
+    "IdentityMatchResponse.tmpx_providers": {"type": "map[string]TmpxProviderEntry"}
   },
   "refs": {
     "/schemas/latest/core/property-id.json": "string",

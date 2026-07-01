@@ -620,21 +620,30 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 // same `package_id` in multiple providers' eligible lists — we log a warning
 // naming all reporting providers and emit the union (the spec's "must be in
 // both" rule collapses to union when only yes-responses are observable).
-// TMPX: collected from whichever provider returned it (last wins; in
-// practice only one provider mints the token).
+//
+// TMPX collection per the spec §"TMPX collection":
+//   - Each agent's TmpxMacros[] is folded into tmpx_providers[provider_id] so
+//     per-provider attribution survives the fan-out.
+//   - The legacy singular `tmpx` field stays populated on the merged response
+//     for back-compat with consumers that haven't moved to tmpx_providers
+//     (deprecated, removed in 4.0). Source order: prefer the first provider's
+//     first macro value when TmpxMacros[] is present; otherwise fall back to
+//     the agent's legacy `tmpx` field (legacy-only agents during transition).
+//   - The router MUST NOT carry tmpx_macros[] at the root of the outbound
+//     response — that field is the agent → router carrier only; leaking it
+//     alongside tmpx_providers would give the publisher no schema signal for
+//     which to read.
 func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
 	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
 	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
 	minServeWindowSec := -1
-	var tmpx string
+	var legacyTmpx string
+	tmpxProviders := make(map[string]tmproto.TmpxProviderEntry)
 
 	for i, resp := range responses {
 		if resp == nil {
 			continue
-		}
-		if resp.Tmpx != "" {
-			tmpx = resp.Tmpx
 		}
 		if minServeWindowSec < 0 || resp.ServeWindowSec < minServeWindowSec {
 			minServeWindowSec = resp.ServeWindowSec
@@ -642,6 +651,26 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		providerID := ""
 		if i < len(providerIDs) {
 			providerID = providerIDs[i]
+		}
+		// TMPX: prefer the new TmpxMacros[] carrier — collect into the
+		// per-provider map. Skip empty providerID entries (defensive: a
+		// fan-out with mis-aligned parallel slices would otherwise stash
+		// macros under "", which any consumer would treat as garbage).
+		if len(resp.TmpxMacros) > 0 && providerID != "" {
+			tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
+				Macros: append([]tmproto.TmpxMacro(nil), resp.TmpxMacros...),
+			}
+			if legacyTmpx == "" {
+				legacyTmpx = resp.TmpxMacros[0].Value
+			}
+		} else if resp.Tmpx != "" {
+			// Legacy-only agent during transition — preserve in legacy
+			// carrier so single-string consumers keep working. No
+			// tmpx_providers entry: the router does not synthesize names
+			// from registration metadata in this version.
+			if legacyTmpx == "" {
+				legacyTmpx = resp.Tmpx
+			}
 		}
 		// Track DISTINCT providers per package_id and remember if any single
 		// provider repeats a package_id within its own response — eligible
@@ -719,7 +748,10 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
 		ServeWindowSec:     minServeWindowSec,
-		Tmpx:               tmpx,
+		Tmpx:               legacyTmpx,
+	}
+	if len(tmpxProviders) > 0 {
+		merged.TmpxProviders = tmpxProviders
 	}
 	return merged
 }
