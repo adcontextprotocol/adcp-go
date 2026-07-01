@@ -2,8 +2,8 @@
 //
 // Two engines live here: ContextEngine evaluates context-match requests
 // against a ContextStorage (property bitmaps, package configs, topic
-// sets, URL filters, suppression markers), and IdentityEngine (in
-// identity_engine.go) evaluates identity-match requests against an
+// sets, signal-targeting keys, suppression markers), and IdentityEngine
+// (in identity_engine.go) evaluates identity-match requests against an
 // audience service. They are deployed as separate processes — the
 // context agent and identity agent — so that user-token data never
 // traverses the context path.
@@ -67,7 +67,7 @@ type ContextEngineConfig struct {
 	Properties PropertyList
 
 	// Storage is the read surface for media-buy resolution, package
-	// configs, topic data, URL lists, and suppression. Required.
+	// configs, topic data, signal targeting, and suppression. Required.
 	Storage ContextStorage
 
 	// AcceptedTaxonomies enumerates the topic taxonomies this deployment
@@ -174,9 +174,9 @@ type ContextResult struct {
 //     the spec, but the same provider-controls-the-active-set
 //     principle applies); when omitted, the full active set.
 //  5. Per package: load context config, check per-package property
-//     bitmap, check URL block/allow lists, check topic match (publisher
-//     topics short-circuited first, then per-artifact / per-taxonomy
-//     storage lookups).
+//     bitmap, check direct-match dimensions, check signal targeting,
+//     check topic match (publisher topics short-circuited first, then
+//     per-artifact / per-taxonomy storage lookups).
 //
 // Storage errors on any per-package dimension are recorded via
 // StoreError and fail-closed for that package — the package's
