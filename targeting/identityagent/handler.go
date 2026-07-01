@@ -194,7 +194,17 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"request_id", req.RequestID, "error", terr)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomeError)
 		} else if token != "" {
+			// Legacy single-string carrier — keep populated for back-compat
+			// with consumers that haven't moved to tmpx_providers. Deprecated;
+			// removed in 4.0 per the spec.
 			resp.Tmpx = token
+			// New shape: ordered macro/value pairs the router collects into
+			// tmpx_providers[provider_id]. Emitted only when the operator has
+			// declared the provider's registered macro slot names via
+			// TMPX_MACRO_NAMES; otherwise we stay on the legacy carrier.
+			if entry, ok := h.tmpx.MacroEntry(token); ok {
+				resp.TmpxMacros = []tmproto.TmpxMacro{entry}
+			}
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomePass)
 		}
 		h.recorder.StageDuration(ctx, StageTMPX, time.Since(tmpxStart))

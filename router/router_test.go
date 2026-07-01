@@ -162,6 +162,112 @@ func TestMergeIdentityResponses(t *testing.T) {
 	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
+// TestMergeIdentityResponses_TmpxProvidersFromNewShape verifies that each
+// agent's TmpxMacros[] is folded into the merged TmpxProviders map keyed by
+// provider_id, preserving per-provider attribution across fan-out. Legacy
+// `tmpx` stays populated for back-compat with consumers that haven't moved
+// to the new shape, sourced from the first provider's first macro value.
+func TestMergeIdentityResponses_TmpxProvidersFromNewShape(t *testing.T) {
+	r1 := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		TmpxMacros: []tmproto.TmpxMacro{
+			{Name: "PIN_TMPX_1", Value: "k1.alpha-value"},
+		},
+	}
+	r2 := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-2"},
+		ServeWindowSec:     300,
+		TmpxMacros: []tmproto.TmpxMacro{
+			{Name: "NOVA_TMPX_1", Value: "k2.beta-value"},
+		},
+	}
+
+	merged := mergeIdentityResponses("id-tmpx", []string{"pinnacle_id", "nova_id"},
+		[]*tmproto.IdentityMatchResponse{r1, r2}, nil)
+
+	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST be populated when any agent emitted tmpx_macros")
+	require.Len(t, merged.TmpxProviders, 2)
+
+	pin, ok := merged.TmpxProviders["pinnacle_id"]
+	require.True(t, ok, "pinnacle_id entry must exist")
+	require.Len(t, pin.Macros, 1)
+	assert.Equal(t, "PIN_TMPX_1", pin.Macros[0].Name)
+	assert.Equal(t, "k1.alpha-value", pin.Macros[0].Value)
+
+	nova, ok := merged.TmpxProviders["nova_id"]
+	require.True(t, ok, "nova_id entry must exist")
+	assert.Equal(t, "NOVA_TMPX_1", nova.Macros[0].Name)
+	assert.Equal(t, "k2.beta-value", nova.Macros[0].Value)
+
+	// Legacy carrier is the first provider's first slot, so back-compat
+	// consumers receive a non-empty value without per-provider context.
+	assert.Equal(t, "k1.alpha-value", merged.Tmpx,
+		"legacy tmpx must mirror the first provider's first slot for back-compat")
+}
+
+// TestMergeIdentityResponses_LegacyOnlyAgent covers a transition case: an
+// agent that only emits the deprecated `tmpx` string with no TmpxMacros[].
+// The router preserves it in the legacy field but does NOT synthesize a
+// tmpx_providers entry — the router doesn't have the registered macro names
+// in this code path and shouldn't invent them.
+func TestMergeIdentityResponses_LegacyOnlyAgent(t *testing.T) {
+	legacy := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		Tmpx:               "k1.legacy-value",
+	}
+
+	merged := mergeIdentityResponses("id-legacy", []string{"legacy_provider"},
+		[]*tmproto.IdentityMatchResponse{legacy}, nil)
+
+	assert.Empty(t, merged.TmpxProviders, "no TmpxMacros[] emitted → no tmpx_providers entry")
+	assert.Equal(t, "k1.legacy-value", merged.Tmpx, "legacy carrier preserved")
+}
+
+// TestMergeIdentityResponses_MixedShapeAgents covers a transition fan-out
+// where one agent emits the new TmpxMacros[] carrier and another only emits
+// the legacy `tmpx` string. The merged response MUST:
+//   - populate tmpx_providers with the new-shape agent's entry only
+//     (legacy-only agents don't get synthesized — router has no registered
+//     names in that path)
+//   - source the legacy `Tmpx` carrier from the first response that has a
+//     non-empty value (first-source-wins, in input order), which pins the
+//     back-compat behavior when responses arrive in mixed order: a
+//     legacy-only agent that sorts ahead does NOT lose to a new-shape agent
+//     that sorts behind it. The deprecated carrier is best-effort
+//     compatibility; tmpx_providers is the authoritative new shape.
+func TestMergeIdentityResponses_MixedShapeAgents(t *testing.T) {
+	legacyAgent := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		Tmpx:               "k0.legacy-string",
+	}
+	newShapeAgent := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-2"},
+		ServeWindowSec:     300,
+		TmpxMacros: []tmproto.TmpxMacro{
+			{Name: "PIN_TMPX_1", Value: "k1.new-shape-value"},
+		},
+	}
+
+	merged := mergeIdentityResponses("id-mixed",
+		[]string{"legacy_provider", "new_provider"},
+		[]*tmproto.IdentityMatchResponse{legacyAgent, newShapeAgent}, nil)
+
+	require.Len(t, merged.TmpxProviders, 1,
+		"only the new-shape agent contributes to tmpx_providers")
+	entry, ok := merged.TmpxProviders["new_provider"]
+	require.True(t, ok)
+	assert.Equal(t, "k1.new-shape-value", entry.Macros[0].Value)
+
+	// Legacy-only agent sorts ahead → its legacy string wins the legacy
+	// mirror, even though a later agent has a new-shape value. Pins the
+	// first-source-wins contract for the deprecated carrier.
+	assert.Equal(t, "k0.legacy-string", merged.Tmpx,
+		"legacy carrier is first-source-wins across mixed-shape responses")
+}
+
 // TestMergeContextResponses_DuplicatePackageID covers the dedup-warn path the
 // router-architecture spec calls out: same package_id from two providers MUST
 // keep the first response and SHOULD log a warning naming both providers.

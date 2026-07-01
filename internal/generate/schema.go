@@ -192,7 +192,7 @@ func LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath string) (*IR, error) 
 			// Infer the $id or construct ref path from filename.
 			refPath := s.ID
 			if refPath == "" {
-				refPath = "/schemas/tmp/" + e.Name()
+				refPath = "/schemas/trusted-match/" + e.Name()
 			}
 			ctx.structReg[refPath] = goName
 		}

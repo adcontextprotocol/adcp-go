@@ -109,6 +109,17 @@ type TMPXSealer struct {
 	country  string
 	encStore tmpxRecipientResolver
 
+	// macroNames is the ordered list of ad-server macro slot names this
+	// provider's sealed token fills on IdentityMatchResponse.tmpx_macros[].
+	// Sourced from TMPXConfig.MacroNames (env: TMPX_MACRO_NAMES) and MUST
+	// match the provider's registered tmpx_macros list in
+	// provider-registration.json. When empty the response carries only the
+	// legacy singular `tmpx` field (deprecated, removed in 4.0). The spec
+	// caps the registered list at 2; multi-chunk encoding is not yet
+	// implemented in this sealer — a single-slot deployment is the only
+	// shape this version emits, and additional slot names are ignored.
+	macroNames []string
+
 	// priority is the explicit per-spec priority ordering used when the
 	// resolved identities exceed the 255-byte wire budget. Entries earlier
 	// in the slice rank higher; entries whose UIDType is absent are
@@ -208,14 +219,47 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	}
 	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
+	warnIfMultiSlotIgnored(logger, cfg.MacroNames)
 	return &TMPXSealer{
-		country:  cfg.Country,
-		encStore: store,
-		priority: order,
-		decoders: decoders,
-		logger:   logger,
-		recorder: recorder,
+		country:    cfg.Country,
+		encStore:   store,
+		macroNames: append([]string(nil), cfg.MacroNames...),
+		priority:   order,
+		decoders:   decoders,
+		logger:     logger,
+		recorder:   recorder,
 	}, nil
+}
+
+// warnIfMultiSlotIgnored surfaces the configuration/implementation mismatch
+// when an operator declares more than one TMPX_MACRO_NAMES slot. Multi-chunk
+// encoding splits a single sealed token across multiple ad-server slots; the
+// splitter (and the matching reassembler on the receiver side) is deferred
+// until production deployments actually exceed the 255-char single-slot
+// budget. Until then MacroEntry only fills macroNames[0] — log loudly so an
+// operator who expects two-slot emission sees that it's silently single-slot
+// today rather than discovering it at trafficking time.
+func warnIfMultiSlotIgnored(logger *slog.Logger, names []string) {
+	if logger == nil || len(names) <= 1 {
+		return
+	}
+	logger.Warn("TMPX_MACRO_NAMES configured with multiple slots but multi-chunk encoding is not implemented; only the first slot will be filled on responses",
+		"active_slot", names[0],
+		"ignored_slots", append([]string(nil), names[1:]...),
+	)
+}
+
+// MacroEntry returns the {name, value} pair that fills the provider's first
+// registered macro slot for the given sealed token, or (zero, false) when no
+// macro names are configured. Single-slot is the only emission shape today;
+// multi-chunk splitting across more than one registered name is deferred
+// until production deployments actually exceed the 255-char ad-server slot
+// budget.
+func (s *TMPXSealer) MacroEntry(token string) (tmproto.TmpxMacro, bool) {
+	if s == nil || token == "" || len(s.macroNames) == 0 {
+		return tmproto.TmpxMacro{}, false
+	}
+	return tmproto.TmpxMacro{Name: s.macroNames[0], Value: token}, true
 }
 
 // log returns the sealer's logger, falling back to slog.Default() when none

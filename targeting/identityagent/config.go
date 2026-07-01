@@ -116,6 +116,17 @@ type TMPXConfig struct {
 	EncryptJWKSTTL time.Duration
 	Country        string
 	Priority       string
+
+	// MacroNames is the ordered list of ad-server macro slot names this
+	// provider's TMPX response fills, matching the provider's registered
+	// `tmpx_macros` (provider-registration.json). The sealer pairs the
+	// sealed token with these names to populate IdentityMatchResponse's
+	// `tmpx_macros[]`. When empty the response carries only the legacy
+	// singular `tmpx` field (deprecated, removed in 4.0). Capped at 2 by
+	// the spec; multi-chunk encoding is not yet implemented — when
+	// configured with more than one name only the first slot is filled,
+	// matching the single-slot deployment shape.
+	MacroNames []string
 }
 
 // LiveRampSidecarConfig optionally enables calls to the Scope3 LiveRamp
@@ -410,6 +421,7 @@ func LoadConfigFromEnv() (Config, error) {
 			EncryptJWKSTTL: jwksTTL,
 			Country:        os.Getenv("TMPX_COUNTRY"),
 			Priority:       os.Getenv("TMPX_PRIORITY"),
+			MacroNames:     parseTmpxMacroNames(os.Getenv("TMPX_MACRO_NAMES")),
 		},
 		LiveRamp: LiveRampSidecarConfig{
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
@@ -643,6 +655,35 @@ func lookupString(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// parseTmpxMacroNames splits TMPX_MACRO_NAMES (comma-separated, e.g.
+// `S3_TMPX` or `S3_TMPX_1,S3_TMPX_2`) into the ordered slot list emitted on
+// IdentityMatchResponse.tmpx_macros[]. Empty / whitespace-only values yield
+// nil, which keeps the legacy single-`tmpx`-string emission shape — no new
+// behavior until the env var is set. The spec caps the registered list at 2
+// (provider-registration.json `tmpx_macros.maxItems`); enforcement of that
+// happens at registration time, not here — this parser is permissive so an
+// operator sees the misconfig surface as a downstream schema-validation
+// error rather than a startup panic.
+func parseTmpxMacroNames(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	names := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		names = append(names, p)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return names
 }
 
 func lookupInt(name string, def int) (int, error) {
