@@ -73,20 +73,13 @@ jobs:
 
       - name: Compute SOURCE_DATE_EPOCH
         id: sde
-        # Use the timestamp of the last commit that touched a build input.
-        # This is what scripts/build-tmp-router.sh computes for local rebuilds,
-        # so CI and local produce the same layer mtimes. `git log -1 ...`
-        # exits 0 with empty output when no commit matches the path filter
-        # (and only fails with non-zero when git itself errors), so the
-        # `-z` guard below — not the `|| echo 0` — is what catches the
-        # empty-result case; the `|| echo 0` is defensive against git
-        # error paths only.
+        # Delegated to scripts/tmp-router-sde.sh so the CI and local-rebuild
+        # SDE derivations can never drift — a drift would cause a genuinely
+        # reproducible build to fail the documented verification check
+        # because CI and an auditor would compute different layer mtimes.
         run: |
           set -euo pipefail
-          SDE="$(git log -1 --format=%ct -- \
-            cmd/router/Dockerfile cmd/router/ router/ tmproto/ targeting/ urlcanon/ \
-            go.mod go.sum || echo 0)"
-          if [ -z "$SDE" ]; then SDE=0; fi
+          SDE="$(scripts/tmp-router-sde.sh)"
           echo "source_date_epoch=${SDE}" >> "$GITHUB_OUTPUT"
           echo "SOURCE_DATE_EPOCH=${SDE}"
 
@@ -175,28 +168,39 @@ jobs:
         # so iterating PRs is fast. GHA cache is not a trust boundary: a
         # poisoned cached layer would land in a "reproducible" image that
         # CI then signs and attests as authoritative. To close that gap, we
-        # rebuild the linux/amd64 image here using scripts/build-tmp-router.sh
+        # rebuild each published platform here using scripts/build-tmp-router.sh
         # — which does NOT consult the GHA cache — and assert the resulting
-        # per-platform image-manifest digest equals what the publish-path
+        # per-platform image-manifest digests equal what the publish-path
         # build produced. A mismatch means the cached path diverged from a
         # clean build; fail before cosign sign so we never publish a signed
-        # digest we could not reproduce.
+        # digest we could not reproduce. Both amd64 and arm64 are verified
+        # (arm64 via QEMU on the amd64 runner — slower but symmetric with
+        # what's actually published and signed).
         if: github.event_name != 'pull_request'
         env:
           EXPECTED_AMD64: ${{ steps.platforms.outputs.amd64 }}
+          EXPECTED_ARM64: ${{ steps.platforms.outputs.arm64 }}
         run: |
           set -euo pipefail
-          ACTUAL_AMD64="$(scripts/build-tmp-router.sh --platform linux/amd64 2>/tmp/build-stderr.log | tail -n1)"
-          echo "expected (publish-path build): $EXPECTED_AMD64"
-          echo "actual   (no-cache clean rebuild): $ACTUAL_AMD64"
-          if [ "$EXPECTED_AMD64" != "$ACTUAL_AMD64" ]; then
-            echo "::error::Reproducibility check FAILED — the publish-path digest does not match a clean rebuild."
-            echo "This typically indicates a poisoned GHA cache or non-deterministic input."
-            echo "--- clean-build stderr (last 40 lines) ---"
-            tail -n 40 /tmp/build-stderr.log || true
-            exit 1
-          fi
-          echo "Reproducibility verified: linux/amd64 publish-path digest matches a clean rebuild."
+          verify_platform() {
+            local platform="$1" expected="$2"
+            local stderr_log
+            stderr_log="$(mktemp)"
+            local actual
+            actual="$(scripts/build-tmp-router.sh --platform "$platform" 2>"$stderr_log" | tail -n1)"
+            echo "expected ($platform, publish-path build)   : $expected"
+            echo "actual   ($platform, no-cache clean rebuild): $actual"
+            if [ "$expected" != "$actual" ]; then
+              echo "::error::Reproducibility check FAILED for $platform — the publish-path digest does not match a clean rebuild."
+              echo "This typically indicates a poisoned GHA cache or non-deterministic input."
+              echo "--- clean-build stderr (last 40 lines) ---"
+              tail -n 40 "$stderr_log" || true
+              exit 1
+            fi
+          }
+          verify_platform "linux/amd64" "$EXPECTED_AMD64"
+          verify_platform "linux/arm64" "$EXPECTED_ARM64"
+          echo "Reproducibility verified: both linux/amd64 and linux/arm64 publish-path digests match clean rebuilds."
 
       - name: Write measurements manifest
         id: manifest

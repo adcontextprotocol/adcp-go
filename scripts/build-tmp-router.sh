@@ -54,9 +54,17 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
-  SOURCE_DATE_EPOCH="$(git log -1 --format=%ct -- \
-    cmd/router/Dockerfile cmd/router/ router/ tmproto/ targeting/ urlcanon/ \
-    go.mod go.sum 2>/dev/null || echo 0)"
+  # scripts/tmp-router-sde.sh is the single source of truth for the SDE
+  # derivation, shared with .github/workflows/tmp-router-image.yml. It
+  # already handles the empty-result-from-`git log` case (shallow clone
+  # or path filter matches no commit) and returns "0".
+  SOURCE_DATE_EPOCH="$("$REPO_ROOT/scripts/tmp-router-sde.sh")"
+fi
+if [[ -z "$SOURCE_DATE_EPOCH" ]]; then
+  # Defensive: SDE must be a number for BuildKit and for the manifest's
+  # jq `tonumber`. An empty string would hard-crash the build-arg pass
+  # and the manifest write.
+  SOURCE_DATE_EPOCH=0
 fi
 export SOURCE_DATE_EPOCH
 
@@ -109,8 +117,17 @@ echo "$DIGEST"
 if [[ -n "$MEASUREMENTS_OUT" ]]; then
   SOURCE_REV="$(git rev-parse --verify HEAD 2>/dev/null || echo unknown)"
   SOURCE_REV_SHORT="$(git rev-parse --short --verify HEAD 2>/dev/null || echo unknown)"
-  SOURCE_DIRTY="false"
-  if ! git diff --quiet HEAD -- 2>/dev/null; then SOURCE_DIRTY="true"; fi
+  # `git diff --quiet HEAD` misses untracked files under a COPY'd path;
+  # `git status --porcelain` covers both modifications and untracked files.
+  # Scoped to the same build paths tmp-router-sde.sh uses so unrelated
+  # working-tree changes don't taint the manifest.
+  if [[ -n "$(git status --porcelain -- \
+        cmd/router/Dockerfile cmd/router/ router/ tmproto/ targeting/ \
+        urlcanon/ go.mod go.sum 2>/dev/null)" ]]; then
+    SOURCE_DIRTY="true"
+  else
+    SOURCE_DIRTY="false"
+  fi
   # Schema matches .github/workflows/tmp-router-image.yml — `platform_digests`
   # is a {<platform>: <digest>} map (the local build records only the one
   # platform it produced); `index_digest` is omitted since a local build does
