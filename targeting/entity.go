@@ -2,6 +2,7 @@ package targeting
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -132,6 +133,63 @@ type PackageContextConfig struct {
 	ManifestType     string             `json:"manifest_type,omitempty"`
 	CreativeManifest json.RawMessage    `json:"creative_manifest,omitempty"`
 	Macros           map[string]string  `json:"macros,omitempty"`
+
+	// propertyRIDBitmap is a materialized O(1) view of PropertyRIDs so
+	// membership checks on the hot path avoid rebuilding a map on every
+	// request. Populated by MaterializePropertyBitmap; ContainsPropertyRID
+	// falls back to a linear slice scan when the bitmap is nil.
+	//
+	// Safety invariant: PropertyRIDs contents MUST be treated as
+	// immutable after MaterializePropertyBitmap runs. The bitmap is
+	// derived from the slice at build time and never re-derived, so an
+	// in-place element write, a resize, or any other mutation of the
+	// backing array silently desynchronizes the bitmap from PropertyRIDs
+	// and produces a stale gate. A caller that must mutate PropertyRIDs
+	// on an already-materialized config MUST call
+	// MaterializePropertyBitmap again on the mutated copy.
+	//
+	// The pkgconfigstore cache's `out := *cfg` clone preserves the
+	// invariant by REALLOCATING PropertyRIDs with identical contents
+	// (see clonePackageContextConfig) rather than reusing the backing
+	// array; the bitmap pointer memcopies to the clone and stays
+	// consistent with the freshly allocated slice because contents
+	// match. If that clone is ever changed to reuse the slice in place,
+	// this gate breaks silently — re-materialize at the mutation site.
+	//
+	// Under the immutability invariant the bitmap is safe to share
+	// across clones and across goroutines: MapBitmap is written only
+	// inside NewMapBitmap (before the pointer is published), and every
+	// later access is a read-only map lookup.
+	propertyRIDBitmap Bitmap
+}
+
+// MaterializePropertyBitmap builds the O(1) membership index over
+// PropertyRIDs so subsequent ContainsPropertyRID calls do not rebuild a
+// set on every check. Storage decoders SHOULD call this once after
+// unmarshaling; callers that construct configs directly (e.g. tests)
+// can call it explicitly or omit it — ContainsPropertyRID has a
+// slice-scan fallback. Idempotent; the last call wins.
+func (c *PackageContextConfig) MaterializePropertyBitmap() {
+	if len(c.PropertyRIDs) == 0 {
+		c.propertyRIDBitmap = nil
+		return
+	}
+	c.propertyRIDBitmap = NewMapBitmap(c.PropertyRIDs...)
+}
+
+// ContainsPropertyRID reports whether rid passes the config's
+// PropertyRIDs gate. An empty PropertyRIDs list is "no gate" and
+// returns true. Uses the materialized bitmap when present; falls back
+// to a linear slice scan otherwise so directly-constructed configs
+// keep working without an explicit MaterializePropertyBitmap call.
+func (c *PackageContextConfig) ContainsPropertyRID(rid string) bool {
+	if len(c.PropertyRIDs) == 0 {
+		return true
+	}
+	if c.propertyRIDBitmap != nil {
+		return c.propertyRIDBitmap.Contains(rid)
+	}
+	return slices.Contains(c.PropertyRIDs, rid)
 }
 
 // MetroTarget is one entry in a Metros / MetrosExclude list. System is

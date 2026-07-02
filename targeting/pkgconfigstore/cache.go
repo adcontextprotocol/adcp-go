@@ -104,6 +104,16 @@ func (c *cachedReader) MGet(ctx context.Context, packageIDs []string) ([]*target
 // caller mutating an Offer, a PropertyRID, or any other contained
 // slice/map cannot poison the cached pointer that subsequent requests
 // receive. Returns nil when cfg is nil (negative-cache hit).
+//
+// The unexported PackageContextConfig.propertyRIDBitmap is intentionally
+// SHARED across clones — the `out := *cfg` memcopy propagates the
+// interface pointer, and the bitmap is treated as immutable after
+// MaterializePropertyBitmap (see the field comment in targeting/entity.go
+// for the full invariant). PropertyRIDs is deep-copied below to keep
+// slice isolation for callers, and the two stay consistent only because
+// nothing mutates the reallocated slice's contents. If a future edit
+// starts writing into PropertyRIDs in place, that call site MUST
+// re-materialize the bitmap or the gate will go stale.
 func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.PackageContextConfig {
 	if cfg == nil {
 		return nil

@@ -373,12 +373,15 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 // PackageContextConfig.PropertyRIDs is non-empty) and the engine's
 // PropertyList.ByPackage override (when configured). The global bitmap
 // is checked earlier at the top of Evaluate.
+//
+// Delegates the per-package check to PackageContextConfig.ContainsPropertyRID
+// so the O(1) bitmap materialized at decode time is reused across every
+// request instead of rebuilt per call. Configs constructed outside the
+// storage decoder fall back to a linear slice scan; see
+// PackageContextConfig.MaterializePropertyBitmap.
 func (e *ContextEngine) matchesPropertyBitmap(cfg *PackageContextConfig, rid, pkgID string) bool {
-	if len(cfg.PropertyRIDs) > 0 {
-		var pkgBitmap Bitmap = NewMapBitmap(cfg.PropertyRIDs...)
-		if !pkgBitmap.Contains(rid) {
-			return false
-		}
+	if !cfg.ContainsPropertyRID(rid) {
+		return false
 	}
 	return e.properties.ContainsPackage(pkgID, rid)
 }
