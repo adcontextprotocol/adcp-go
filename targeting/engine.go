@@ -2,8 +2,8 @@
 //
 // Two engines live here: ContextEngine evaluates context-match requests
 // against a ContextStorage (property bitmaps, package configs, topic
-// sets, URL filters, suppression markers), and IdentityEngine (in
-// identity_engine.go) evaluates identity-match requests against an
+// sets, signal-targeting keys, suppression markers), and IdentityEngine
+// (in identity_engine.go) evaluates identity-match requests against an
 // audience service. They are deployed as separate processes — the
 // context agent and identity agent — so that user-token data never
 // traverses the context path.
@@ -67,7 +67,7 @@ type ContextEngineConfig struct {
 	Properties PropertyList
 
 	// Storage is the read surface for media-buy resolution, package
-	// configs, topic data, URL lists, and suppression. Required.
+	// configs, topic data, signal targeting, and suppression. Required.
 	Storage ContextStorage
 
 	// AcceptedTaxonomies enumerates the topic taxonomies this deployment
@@ -174,9 +174,9 @@ type ContextResult struct {
 //     the spec, but the same provider-controls-the-active-set
 //     principle applies); when omitted, the full active set.
 //  5. Per package: load context config, check per-package property
-//     bitmap, check URL block/allow lists, check topic match (publisher
-//     topics short-circuited first, then per-artifact / per-taxonomy
-//     storage lookups).
+//     bitmap, check direct-match dimensions, check signal targeting,
+//     check topic match (publisher topics short-circuited first, then
+//     per-artifact / per-taxonomy storage lookups).
 //
 // Storage errors on any per-package dimension are recorded via
 // StoreError and fail-closed for that package — the package's
@@ -328,21 +328,6 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 			continue
 		}
 
-		if cfg.URLBlocklist || cfg.URLAllowlist {
-			blocked, err := e.checkURLFilter(ctx, artifactKeys.URLHashes, pkgID, cfg)
-			if err != nil {
-				// Fail-closed: URL block/allow lists are brand-safety
-				// filters. A transient Valkey error must skip the
-				// package, not let it activate without the filter.
-				e.metrics.StoreError(ctx, StageURLFilter, err)
-				continue
-			}
-			if blocked {
-				e.metrics.ContextEvaluated(ctx, StageURLFilter, false)
-				continue
-			}
-		}
-
 		if cfg.TopicTargets {
 			if len(e.acceptedTaxonomies) == 0 {
 				e.metrics.ContextEvaluated(ctx, StageTopicNoTaxonomy, false)
@@ -396,47 +381,6 @@ func (e *ContextEngine) matchesPropertyBitmap(cfg *PackageContextConfig, rid, pk
 		}
 	}
 	return e.properties.ContainsPackage(pkgID, rid)
-}
-
-// checkURLFilter applies the package's blocklist and allowlist rules
-// to every artifact in the request. Returns true when at least one
-// artifact is blocked or, with an allowlist configured, when no
-// artifact is allowed. The hash slice mirrors `artifacts` 1:1: for
-// `url` refs the engine hashed the URL via tmproto.HashURL; for
-// `url_hash` refs the wire value is used directly, since the publisher
-// already produced the spec-canonical Blake3+base64 form.
-func (e *ContextEngine) checkURLFilter(ctx context.Context, artifactHashes []string, pkgID string, cfg *PackageContextConfig) (bool, error) {
-	if cfg.URLBlocklist {
-		for _, hash := range artifactHashes {
-			blocked, err := e.storage.URLBlocked(ctx, pkgID, hash)
-			if err != nil {
-				return false, err
-			}
-			if blocked {
-				return true, nil
-			}
-		}
-	}
-	if cfg.URLAllowlist {
-		if len(artifactHashes) == 0 {
-			return true, nil
-		}
-		anyAllowed := false
-		for _, hash := range artifactHashes {
-			allowed, err := e.storage.URLAllowed(ctx, pkgID, hash)
-			if err != nil {
-				return false, err
-			}
-			if allowed {
-				anyAllowed = true
-				break
-			}
-		}
-		if !anyAllowed {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // checkTopicMatch returns true when at least one accepted taxonomy
@@ -571,43 +515,23 @@ func offerPricePtr(p tmproto.OfferPrice) *tmproto.OfferPrice {
 }
 
 // artifactKeys is the per-request projection of the inbound
-// `artifact_refs` list onto the two engine downstream uses:
-//
-//   - URLHashes: spec-canonical Blake3+base64 hashes for URL block /
-//     allow list SISMEMBER lookups. `url` refs are hashed via
-//     tmproto.HashURL; `url_hash` refs pass through unchanged (the
-//     publisher's wire value IS the storage key).
-//   - TopicRefs: the verbatim ref values for ArtifactTopics(taxonomy,
-//     ref) lookups against topicstore. Topic-store keys are whatever
-//     the writer pipeline used at write time; this engine path uses
-//     whichever form the publisher sent. Producer + consumer must
-//     have agreed on the form.
-//
-// The two slices are independent: URLHashes is the URL-filter input;
-// TopicRefs is the topic-match input. Ordering within each slice
-// mirrors `req.ArtifactRefs` so iteration is deterministic.
+// `artifact_refs` list. TopicRefs carries the verbatim ref values used
+// for ArtifactTopics(taxonomy, ref) lookups against topicstore —
+// topic-store keys are whatever the writer pipeline used at write
+// time, so this engine path uses whichever form the publisher sent.
+// Producer + consumer must have agreed on the form. Ordering mirrors
+// `req.ArtifactRefs` so iteration is deterministic.
 type artifactKeys struct {
-	URLHashes []string
 	TopicRefs []string
 }
 
 // extractArtifactKeys projects the request's `artifact_refs` onto the
-// two engine downstream uses. See artifactKeys.
+// engine's downstream uses. See artifactKeys.
 func extractArtifactKeys(req *tmproto.ContextMatchRequest) artifactKeys {
 	var ak artifactKeys
 	for _, ref := range req.ArtifactRefs {
 		switch ref.Type {
-		case tmproto.ArtifactRefTypeURL:
-			ak.URLHashes = append(ak.URLHashes, tmproto.HashURL(ref.Value))
-			ak.TopicRefs = append(ak.TopicRefs, ref.Value)
-		case tmproto.ArtifactRefTypeURLHash:
-			// Wire value is already the spec-canonical Blake3+base64
-			// hash, ready for SISMEMBER. Topic-store keys are
-			// publisher-controlled, so the same value also flows
-			// through for ArtifactTopics — the writer pipeline that
-			// populated topic data for this artifact must have keyed
-			// on the same form.
-			ak.URLHashes = append(ak.URLHashes, ref.Value)
+		case tmproto.ArtifactRefTypeURL, tmproto.ArtifactRefTypeURLHash:
 			ak.TopicRefs = append(ak.TopicRefs, ref.Value)
 		}
 	}

@@ -11,7 +11,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/pkgconfigstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/suppressionstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
-	"github.com/adcontextprotocol/adcp-go/targeting/urlliststore"
 )
 
 // storage adapts the per-domain Reader interfaces into a single
@@ -21,7 +20,6 @@ import (
 type storage struct {
 	mediaBuys    mediabuystore.Reader
 	pkgConfigs   pkgconfigstore.Reader
-	urlLists     urlliststore.Reader
 	topics       *topicstore.Reader
 	suppressions *suppressionstore.Snapshot
 	signals      signalMGet
@@ -67,14 +65,6 @@ func (s *storage) PackageTopics(ctx context.Context, tax topicstore.Taxonomy, pa
 	return s.topics.PackageTopics(ctx, tax, packageID)
 }
 
-func (s *storage) URLBlocked(ctx context.Context, packageID, urlHash string) (bool, error) {
-	return s.urlLists.IsBlocked(ctx, packageID, urlHash)
-}
-
-func (s *storage) URLAllowed(ctx context.Context, packageID, urlHash string) (bool, error) {
-	return s.urlLists.IsAllowed(ctx, packageID, urlHash)
-}
-
 func (s *storage) IsPropertySuppressed(ctx context.Context, providerID, propertyRID string) (bool, error) {
 	return s.suppressions.IsPropertySuppressed(ctx, providerID, propertyRID)
 }
@@ -107,7 +97,6 @@ func (s *storage) SignalMGet(ctx context.Context, keys ...string) ([]string, err
 func buildStorage(
 	mediaBuyStore mediabuystore.Store,
 	pkgConfigStore pkgconfigstore.Store,
-	urlListStore urlliststore.Store,
 	topicStore topicstore.Store,
 	suppressSnap *suppressionstore.Snapshot,
 	signalStore signalMGet,
@@ -132,14 +121,6 @@ func buildStorage(
 		})
 	}
 
-	urlLists := urlliststore.NewReader(urlListStore)
-	if cacheCfg.Enabled && cacheCfg.URLList.Enabled {
-		urlLists = urlliststore.WithCache(urlLists, urlliststore.CacheConfig{
-			Size: cacheCfg.URLList.Size,
-			TTL:  cacheCfg.URLList.TTL,
-		})
-	}
-
 	topics, err := topicstore.NewReader(topicStore)
 	if err != nil {
 		return nil, err
@@ -156,7 +137,6 @@ func buildStorage(
 	return &storage{
 		mediaBuys:    mediaBuys,
 		pkgConfigs:   pkgConfigs,
-		urlLists:     urlLists,
 		topics:       topics,
 		suppressions: suppressSnap,
 		signals:      signalStore,
