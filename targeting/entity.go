@@ -141,11 +141,27 @@ type PackageContextConfig struct {
 	// request. Populated by MaterializePropertyBitmap; ContainsPropertyRID
 	// falls back to a linear slice scan when the bitmap is nil.
 	//
-	// The bitmap is treated as immutable after construction, so a struct
-	// memcopy (e.g. the pkgconfigstore cache's per-request clone) shares
-	// the pointer safely — mutating PropertyRIDs on a clone does not
-	// invalidate the bitmap on the original, and neither side writes to
-	// the bitmap.
+	// Safety invariant: PropertyRIDs contents MUST be treated as
+	// immutable after MaterializePropertyBitmap runs. The bitmap is
+	// derived from the slice at build time and never re-derived, so an
+	// in-place element write, a resize, or any other mutation of the
+	// backing array silently desynchronizes the bitmap from PropertyRIDs
+	// and produces a stale gate. A caller that must mutate PropertyRIDs
+	// on an already-materialized config MUST call
+	// MaterializePropertyBitmap again on the mutated copy.
+	//
+	// The pkgconfigstore cache's `out := *cfg` clone preserves the
+	// invariant by REALLOCATING PropertyRIDs with identical contents
+	// (see clonePackageContextConfig) rather than reusing the backing
+	// array; the bitmap pointer memcopies to the clone and stays
+	// consistent with the freshly allocated slice because contents
+	// match. If that clone is ever changed to reuse the slice in place,
+	// this gate breaks silently — re-materialize at the mutation site.
+	//
+	// Under the immutability invariant the bitmap is safe to share
+	// across clones and across goroutines: MapBitmap is written only
+	// inside NewMapBitmap (before the pointer is published), and every
+	// later access is a read-only map lookup.
 	propertyRIDBitmap Bitmap
 }
 
