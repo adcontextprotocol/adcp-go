@@ -2,6 +2,7 @@ package targeting
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/signalstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -134,6 +135,47 @@ type PackageContextConfig struct {
 	ManifestType     string             `json:"manifest_type,omitempty"`
 	CreativeManifest json.RawMessage    `json:"creative_manifest,omitempty"`
 	Macros           map[string]string  `json:"macros,omitempty"`
+
+	// propertyRIDBitmap is a materialized O(1) view of PropertyRIDs so
+	// membership checks on the hot path avoid rebuilding a map on every
+	// request. Populated by MaterializePropertyBitmap; ContainsPropertyRID
+	// falls back to a linear slice scan when the bitmap is nil.
+	//
+	// The bitmap is treated as immutable after construction, so a struct
+	// memcopy (e.g. the pkgconfigstore cache's per-request clone) shares
+	// the pointer safely — mutating PropertyRIDs on a clone does not
+	// invalidate the bitmap on the original, and neither side writes to
+	// the bitmap.
+	propertyRIDBitmap Bitmap
+}
+
+// MaterializePropertyBitmap builds the O(1) membership index over
+// PropertyRIDs so subsequent ContainsPropertyRID calls do not rebuild a
+// set on every check. Storage decoders SHOULD call this once after
+// unmarshaling; callers that construct configs directly (e.g. tests)
+// can call it explicitly or omit it — ContainsPropertyRID has a
+// slice-scan fallback. Idempotent; the last call wins.
+func (c *PackageContextConfig) MaterializePropertyBitmap() {
+	if len(c.PropertyRIDs) == 0 {
+		c.propertyRIDBitmap = nil
+		return
+	}
+	c.propertyRIDBitmap = NewMapBitmap(c.PropertyRIDs...)
+}
+
+// ContainsPropertyRID reports whether rid passes the config's
+// PropertyRIDs gate. An empty PropertyRIDs list is "no gate" and
+// returns true. Uses the materialized bitmap when present; falls back
+// to a linear slice scan otherwise so directly-constructed configs
+// keep working without an explicit MaterializePropertyBitmap call.
+func (c *PackageContextConfig) ContainsPropertyRID(rid string) bool {
+	if len(c.PropertyRIDs) == 0 {
+		return true
+	}
+	if c.propertyRIDBitmap != nil {
+		return c.propertyRIDBitmap.Contains(rid)
+	}
+	return slices.Contains(c.PropertyRIDs, rid)
 }
 
 // MetroTarget is one entry in a Metros / MetrosExclude list. System is

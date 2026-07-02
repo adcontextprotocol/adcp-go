@@ -165,5 +165,6 @@ func decodeConfig(packageID, raw string) (*targeting.PackageContextConfig, error
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		return nil, fmt.Errorf("pkgconfigstore: decode %q: %w", packageID, err)
 	}
+	cfg.MaterializePropertyBitmap()
 	return &cfg, nil
 }
