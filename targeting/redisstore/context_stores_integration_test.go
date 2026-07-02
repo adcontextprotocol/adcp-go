@@ -20,7 +20,6 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/pkgconfigstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/suppressionstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
-	"github.com/adcontextprotocol/adcp-go/targeting/urlliststore"
 )
 
 // Each context-agent storage domain shares the same redisstore.Store
@@ -76,13 +75,6 @@ func TestIntegration_ContextStores_Shadow(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, ok)
 		assert.True(t, got.TopicTargets)
-	})
-
-	t.Run("urllist", func(t *testing.T) {
-		seedRedisSetAdd(t, clients, urlliststore.BlocklistKey("pkg-1"), "hash-blocked")
-		blocked, err := urlliststore.NewReader(store).IsBlocked(context.Background(), "pkg-1", "hash-blocked")
-		require.NoError(t, err)
-		assert.True(t, blocked)
 	})
 
 	t.Run("topics", func(t *testing.T) {
@@ -220,15 +212,6 @@ func runContextStoresSuite(t *testing.T, store *Store, seller, providerID string
 		require.True(t, ok)
 		assert.True(t, got.TopicTargets)
 		assert.Equal(t, []string{"rid-1"}, got.PropertyRIDs)
-	})
-
-	t.Run("urllist", func(t *testing.T) {
-		svc, err := urlliststore.NewService(store)
-		require.NoError(t, err)
-		require.NoError(t, svc.AddToBlocklist(ctx, "pkg-1", "hash-blocked"))
-		blocked, err := urlliststore.NewReader(store).IsBlocked(ctx, "pkg-1", "hash-blocked")
-		require.NoError(t, err)
-		assert.True(t, blocked)
 	})
 
 	t.Run("topics", func(t *testing.T) {

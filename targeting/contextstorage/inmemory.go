@@ -24,8 +24,6 @@ type InMemory struct {
 	activePackages  map[string][]string // sellerURL|propertyID|country → pkgIDs
 	artifactTopics  map[topicstore.Taxonomy]map[string][]string
 	packageTopics   map[topicstore.Taxonomy]map[string][]string
-	urlBlocked      map[string]map[string]struct{} // packageID → hashSet
-	urlAllowed      map[string]map[string]struct{}
 	suppressedProps map[string]struct{} // providerID|propertyRID
 	suppressedGeos  map[string]struct{} // providerID|country
 	signals         map[string]string   // signal:* key → CSV of signal IDs
@@ -38,8 +36,6 @@ func NewInMemory() *InMemory {
 		activePackages:  make(map[string][]string),
 		artifactTopics:  make(map[topicstore.Taxonomy]map[string][]string),
 		packageTopics:   make(map[topicstore.Taxonomy]map[string][]string),
-		urlBlocked:      make(map[string]map[string]struct{}),
-		urlAllowed:      make(map[string]map[string]struct{}),
 		suppressedProps: make(map[string]struct{}),
 		suppressedGeos:  make(map[string]struct{}),
 		signals:         make(map[string]string),
@@ -88,28 +84,6 @@ func (s *InMemory) WithPackageTopics(tax topicstore.Taxonomy, packageID string, 
 		s.packageTopics[tax] = byPkg
 	}
 	byPkg[packageID] = append([]string(nil), topics...)
-	return s
-}
-
-// WithURLBlocked adds a hash to a package's blocklist.
-func (s *InMemory) WithURLBlocked(packageID, urlHash string) *InMemory {
-	set := s.urlBlocked[packageID]
-	if set == nil {
-		set = make(map[string]struct{})
-		s.urlBlocked[packageID] = set
-	}
-	set[urlHash] = struct{}{}
-	return s
-}
-
-// WithURLAllowed adds a hash to a package's allowlist.
-func (s *InMemory) WithURLAllowed(packageID, urlHash string) *InMemory {
-	set := s.urlAllowed[packageID]
-	if set == nil {
-		set = make(map[string]struct{})
-		s.urlAllowed[packageID] = set
-	}
-	set[urlHash] = struct{}{}
 	return s
 }
 
@@ -179,24 +153,6 @@ func (s *InMemory) PackageTopics(_ context.Context, tax topicstore.Taxonomy, pac
 		return nil, nil
 	}
 	return append([]string(nil), byPkg[packageID]...), nil
-}
-
-func (s *InMemory) URLBlocked(_ context.Context, packageID, urlHash string) (bool, error) {
-	set, ok := s.urlBlocked[packageID]
-	if !ok {
-		return false, nil
-	}
-	_, blocked := set[urlHash]
-	return blocked, nil
-}
-
-func (s *InMemory) URLAllowed(_ context.Context, packageID, urlHash string) (bool, error) {
-	set, ok := s.urlAllowed[packageID]
-	if !ok {
-		return false, nil
-	}
-	_, allowed := set[urlHash]
-	return allowed, nil
 }
 
 func (s *InMemory) IsPropertySuppressed(_ context.Context, providerID, propertyRID string) (bool, error) {

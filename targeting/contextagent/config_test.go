@@ -47,7 +47,6 @@ func baseValidConfig() Config {
 				MediaBuySize: 1024, MediaBuyTTL: time.Minute,
 			},
 			PkgConfig: DomainCacheConfig{Enabled: true, Size: 1024, TTL: time.Minute},
-			URLList:   DomainCacheConfig{Enabled: true, Size: 1024, TTL: time.Minute},
 			Topics: TopicsCacheConfig{
 				Enabled:      true,
 				ArtifactSize: 1024, ArtifactTTL: time.Minute,
@@ -155,9 +154,6 @@ func TestConfigValidate_CacheSizesRequiredWhenEnabled(t *testing.T) {
 		{"pkgconfig", func(c *Config) {
 			c.Cache.PkgConfig.Size = 0
 		}, "CACHE_PKGCONFIG_SIZE"},
-		{"urllist", func(c *Config) {
-			c.Cache.URLList.Size = 0
-		}, "CACHE_URLLIST_SIZE"},
 		{"topics artifact", func(c *Config) {
 			c.Cache.Topics.ArtifactSize = 0
 		}, "CACHE_TOPICS_ARTIFACT_SIZE"},

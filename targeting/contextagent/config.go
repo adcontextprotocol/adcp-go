@@ -1,10 +1,10 @@
 // Package contextagent assembles a production-ready TMP context-match
 // service. It composes the targeting.ContextEngine with a Valkey-backed
 // storage layer (per-domain reader services from mediabuystore,
-// pkgconfigstore, urlliststore, suppressionstore, topicstore),
-// optionally fronted by LRU caches; surfaces them behind TMP-signature
-// verification on /context; exports Prometheus-compatible metrics; and
-// orchestrates a coordinated graceful shutdown.
+// pkgconfigstore, suppressionstore, topicstore), optionally fronted by
+// LRU caches; surfaces them behind TMP-signature verification on
+// /context; exports Prometheus-compatible metrics; and orchestrates a
+// coordinated graceful shutdown.
 package contextagent
 
 import (
@@ -148,7 +148,6 @@ type CacheConfig struct {
 
 	MediaBuy  MediaBuyCacheConfig
 	PkgConfig DomainCacheConfig
-	URLList   DomainCacheConfig
 	Topics    TopicsCacheConfig
 }
 
@@ -216,9 +215,6 @@ const (
 
 	defaultPkgConfigSize = 4096
 	defaultPkgConfigTTL  = 5 * time.Minute
-
-	defaultURLListSize = 16384
-	defaultURLListTTL  = 1 * time.Minute
 
 	defaultTopicArtifactSize = 65536
 	defaultTopicArtifactTTL  = 5 * time.Minute
@@ -414,9 +410,6 @@ func validateCacheSizes(c CacheConfig) error {
 	if c.Enabled && c.PkgConfig.Enabled && c.PkgConfig.Size <= 0 {
 		errs = append(errs, errors.New("CACHE_PKGCONFIG_SIZE must be positive when CACHE_PKGCONFIG_ENABLED=true"))
 	}
-	if c.Enabled && c.URLList.Enabled && c.URLList.Size <= 0 {
-		errs = append(errs, errors.New("CACHE_URLLIST_SIZE must be positive when CACHE_URLLIST_ENABLED=true"))
-	}
 	if c.Enabled && c.Topics.Enabled {
 		if c.Topics.ArtifactSize <= 0 {
 			errs = append(errs, errors.New("CACHE_TOPICS_ARTIFACT_SIZE must be positive when CACHE_TOPICS_ENABLED=true"))
@@ -451,13 +444,6 @@ func loadCacheConfigFromEnv() (CacheConfig, error) {
 	pcTTL, err := lookupDuration("CACHE_PKGCONFIG_TTL", defaultPkgConfigTTL)
 	errs = appendErr(errs, err)
 
-	ulEnabled, err := lookupBool("CACHE_URLLIST_ENABLED", true)
-	errs = appendErr(errs, err)
-	ulSize, err := lookupInt("CACHE_URLLIST_SIZE", defaultURLListSize)
-	errs = appendErr(errs, err)
-	ulTTL, err := lookupDuration("CACHE_URLLIST_TTL", defaultURLListTTL)
-	errs = appendErr(errs, err)
-
 	tEnabled, err := lookupBool("CACHE_TOPICS_ENABLED", true)
 	errs = appendErr(errs, err)
 	tArtSize, err := lookupInt("CACHE_TOPICS_ARTIFACT_SIZE", defaultTopicArtifactSize)
@@ -477,7 +463,6 @@ func loadCacheConfigFromEnv() (CacheConfig, error) {
 			MediaBuySize: mbRecSize, MediaBuyTTL: mbRecTTL,
 		},
 		PkgConfig: DomainCacheConfig{Enabled: pcEnabled, Size: pcSize, TTL: pcTTL},
-		URLList:   DomainCacheConfig{Enabled: ulEnabled, Size: ulSize, TTL: ulTTL},
 		Topics: TopicsCacheConfig{
 			Enabled:      tEnabled,
 			ArtifactSize: tArtSize, ArtifactTTL: tArtTTL,

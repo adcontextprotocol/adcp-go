@@ -86,7 +86,6 @@ func main() {
 		WithPackage(&targeting.PackageContextConfig{
 			PackageID:    "pkg-native-0078",
 			TopicTargets: true,
-			URLBlocklist: true,
 			EmitSegments: []string{"technology"},
 		}).
 		WithPackageTopics(referenceTaxonomy, "pkg-display-0041", []string{"food.cooking", "food.recipes", "lifestyle.home"}).
