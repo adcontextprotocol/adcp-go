@@ -174,9 +174,9 @@ type ContextResult struct {
 //     the spec, but the same provider-controls-the-active-set
 //     principle applies); when omitted, the full active set.
 //  5. Per package: load context config, check per-package property
-//     bitmap, check direct-match dimensions, check signal targeting,
-//     check topic match (publisher topics short-circuited first, then
-//     per-artifact / per-taxonomy storage lookups).
+//     bitmap, check signal targeting, check topic match (publisher
+//     topics short-circuited first, then per-artifact / per-taxonomy
+//     storage lookups).
 //
 // Storage errors on any per-package dimension are recorded via
 // StoreError and fail-closed for that package — the package's
@@ -316,11 +316,6 @@ func (e *ContextEngine) Evaluate(ctx context.Context, req *tmproto.ContextMatchR
 
 		if !e.matchesPropertyBitmap(cfg, rid, pkgID) {
 			e.metrics.ContextEvaluated(ctx, StagePropertyBitmap, false)
-			continue
-		}
-
-		if !e.directMatchPasses(cfg, req, country) {
-			e.metrics.ContextEvaluated(ctx, StageDirectMatch, false)
 			continue
 		}
 
