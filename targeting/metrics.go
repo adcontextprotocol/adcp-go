@@ -16,7 +16,6 @@ const (
 	StagePropertyBitmap  = "property_bitmap"
 	StageSuppression     = "suppression"
 	StageSignature       = "signature"
-	StageDirectMatch     = "direct_match"
 	StageTopicMatch      = "topic_match"
 	StageTopicNoTaxonomy = "topic_no_taxonomy"
 	StageAudience        = "audience"
