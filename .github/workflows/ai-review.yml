@@ -1,20 +1,21 @@
 name: AI PR Review (Argus)
 
-# Argus is an LLM PR reviewer that posts an `--approve`, `--comment`, or
-# `--request-changes` review on every non-dependabot PR. It reads the diff,
-# delegates to subagents when relevant (ad-tech-protocol-expert,
-# security-reviewer, code-reviewer, etc.), and writes the review in
-# bokelley's voice.
+# Argus is the AAO Secretariat's review desk: an LLM PR reviewer that posts
+# an `--approve`, `--comment`, or `--request-changes` review on every
+# non-dependabot PR. It reads the diff, delegates to subagents when relevant
+# (ad-tech-protocol-expert, security-reviewer, code-reviewer, etc.), and
+# applies the AdCP Working Group constitution
+# (adcontextprotocol/adcp:.agents/wg/constitution.md, fetched from the spec
+# repo and appended to the review prompt at run time).
 #
-# Reviews are posted as the AAO IPR GitHub App, so they count toward the
-# "1 review required" branch-protection check the same way a human approval
-# does. (The IPR App's pull_requests:write scope is already configured for
-# the IPR-agreement workflow.)
+# Reviews are posted as the AAO Secretariat GitHub App
+# (`aao-secretariat[bot]`), so they count toward the "1 review required"
+# branch-protection check the same way a human approval does.
 #
-# Required secrets:
-#   IPR_APP_ID           — GitHub App ID (already configured for IPR)
-#   IPR_APP_PRIVATE_KEY  — GitHub App private key PEM (already configured)
-#   ANTHROPIC_API_KEY    — Anthropic API key for claude-code-action
+# Required secrets (org-level):
+#   SECRETARIAT_APP_ID           — AAO Secretariat GitHub App ID
+#   SECRETARIAT_APP_PRIVATE_KEY  — AAO Secretariat App private key PEM
+#   ANTHROPIC_API_KEY            — Anthropic API key for claude-code-action
 #
 # Forked from adcontextprotocol/adcp's Argus workflow. Drift against
 # upstream is surfaced weekly by sync-argus-upstream-check.yml.
@@ -45,19 +46,19 @@ jobs:
           fetch-depth: 0
 
       # ─────────────────────────────────────────────────────────────────────
-      # Mint an installation token from the AAO IPR GitHub App. Reviews
-      # posted with this token appear as the App's bot user and count
-      # toward branch-protection's required-approvals check.
+      # Mint an installation token from the AAO Secretariat GitHub App.
+      # Reviews posted with this token appear as `aao-secretariat[bot]` and
+      # count toward branch-protection's required-approvals check.
       # ─────────────────────────────────────────────────────────────────────
       - name: Mint App token
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.IPR_APP_ID }}
-          private-key: ${{ secrets.IPR_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.SECRETARIAT_APP_ID }}
+          private-key: ${{ secrets.SECRETARIAT_APP_PRIVATE_KEY }}
           # Narrow the minted installation token to what Argus actually
-          # needs. The IPR App's installed perms are broader; this caps
-          # what propagates to `claude-code-action` and the workflow
+          # needs. The Secretariat App's installed perms are broader; this
+          # caps what propagates to `claude-code-action` and the workflow
           # steps that consume the token.
           permission-contents: read
           permission-pull-requests: write
@@ -197,13 +198,34 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          PROMPT_BODY="$(cat .github/ai-review/expert-adcp-reviewer.md)"
+          # Load the reviewer prompt from the base SHA, never from the
+          # working checkout — the checkout is the PR merge ref, so a PR
+          # could rewrite the rules it is reviewed under. The checkout
+          # uses fetch-depth: 0, so the base SHA is always reachable.
+          if ! git cat-file -e "${BASE_SHA}:.github/ai-review/expert-adcp-reviewer.md" 2>/dev/null; then
+            echo "::error::Prompt file does not exist at base SHA ${BASE_SHA}."
+            exit 1
+          fi
+          PROMPT_BODY="$(git show "${BASE_SHA}:.github/ai-review/expert-adcp-reviewer.md")"
+          # Fetch the WG constitution from the spec repo — never from this
+          # repo or the PR. Best-effort: if the fetch fails, the review
+          # proceeds without it.
+          CONSTITUTION="$(curl -sf https://raw.githubusercontent.com/adcontextprotocol/adcp/main/.agents/wg/constitution.md || true)"
           {
             echo 'ARGUS_PROMPT<<ARGUS_EOF'
             echo "$PROMPT_BODY"
+            if [ -n "$CONSTITUTION" ]; then
+              echo ''
+              echo '---'
+              echo ''
+              echo '## WG constitution (from adcontextprotocol/adcp@main)'
+              echo ''
+              echo "$CONSTITUTION"
+            fi
             echo ''
             echo '---'
             echo ''
