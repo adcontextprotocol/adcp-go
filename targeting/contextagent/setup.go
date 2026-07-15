@@ -437,10 +437,10 @@ func buildBundle(ctx context.Context, cfg Config, opts runOptions, recorder Reco
 	}, nil
 }
 
-// buildKeyStore wires up the TMP signature key store from
-// TMPConfig.RegistryURL. The background refresh runs under safeGo so a
-// panic in the upstream library is captured and reported instead of
-// taking the process down.
+// buildKeyStore wires up the TMP signature key store from TMPConfig.
+// The background refresh (snapshot mode) runs under safeGo so a panic in
+// the upstream library is captured and reported instead of taking the
+// process down.
 func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger *slog.Logger) (tmproto.KeyStore, error) {
 	if cfg.RegistryURL == "" {
 		if !cfg.AllowUnsigned {
@@ -448,6 +448,21 @@ func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger
 		}
 		return nil, nil
 	}
+	mode := cfg.RegistryMode
+	if mode == "" {
+		mode = RegistryModeSnapshot
+	}
+	switch mode {
+	case RegistryModeAuthorization:
+		return buildAuthzKeyStore(cfg, logger)
+	case RegistryModeSnapshot:
+		return buildSnapshotKeyStore(ctx, cfg, recorder, logger)
+	default:
+		return nil, fmt.Errorf("unknown TMP_REGISTRY_MODE %q; expected %q or %q", mode, RegistryModeSnapshot, RegistryModeAuthorization)
+	}
+}
+
+func buildSnapshotKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger *slog.Logger) (tmproto.KeyStore, error) {
 	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{URL: cfg.RegistryURL})
 	if err != nil {
 		return nil, err
@@ -469,4 +484,16 @@ func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger
 		}
 	})
 	return ks, nil
+}
+
+// buildAuthzKeyStore instantiates the lazy per-agent keystore. No
+// initial fetch — the first signed request from an agent warms its
+// cache entry. Fits deployments where the caller set is not known
+// ahead of time.
+func buildAuthzKeyStore(cfg TMPConfig, logger *slog.Logger) (tmproto.KeyStore, error) {
+	return tmproto.NewLazyAuthorizationKeyStore(tmproto.LazyAuthorizationKeyStoreOptions{
+		BaseURL:     cfg.RegistryURL,
+		BearerToken: cfg.RegistryBearer,
+		Logger:      logger,
+	})
 }
