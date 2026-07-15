@@ -446,9 +446,10 @@ func TestLazyAuthorizationKeyStore_StaleGraceIsBounded(t *testing.T) {
 	}
 }
 
-// A cached agent that now signs with a new kid should refetch once and
-// pick up the rotation, instead of 401ing until positive TTL expires.
-func TestLazyAuthorizationKeyStore_RefetchOnUnknownKid(t *testing.T) {
+// A cached entry younger than the cooldown must NOT trigger a refetch
+// on an unknown kid — otherwise a spray of forged kids from a real
+// seller's URL would amplify to the registry 1:1.
+func TestLazyAuthorizationKeyStore_UnknownKidBlockedWithinCooldown(t *testing.T) {
 	oldJWK, _ := buildJWK(t, "kid-old")
 	newJWK, _ := buildJWK(t, "kid-new")
 	var phase atomic.Int32
@@ -466,23 +467,106 @@ func TestLazyAuthorizationKeyStore_RefetchOnUnknownKid(t *testing.T) {
 	defer srv.Close()
 
 	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
-		BaseURL:             srv.URL,
-		AllowInsecureScheme: true,
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 5 * time.Second, // long enough that the test never crosses it
 	})
-	// First lookup caches kid-old.
 	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
 		t.Fatal("kid-old should be cached after first lookup")
 	}
-	// Simulate publisher rotation → registry now serves kid-new.
 	phase.Store(1)
-	// Immediately look up kid-new. The cached entry is <30s old, so the
-	// entry-age gate SHOULD say "too fresh, don't refetch" and this
-	// misses.
 	if _, ok := ks.LookupKeyForAgent("kid-new", "https://seller.example/agent"); ok {
 		t.Error("expected fresh-entry gate to block refetch inside cooldown")
 	}
 	if got := calls.Load(); got != 1 {
 		t.Errorf("expected 1 HTTP call inside cooldown; got %d", got)
+	}
+}
+
+// Past the cooldown, an unknown kid triggers exactly one refetch which
+// picks up a legitimate rotation. This is the feature this path exists
+// to provide.
+func TestLazyAuthorizationKeyStore_UnknownKidRefetchesPastCooldown(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	newJWK, _ := buildJWK(t, "kid-new")
+	var phase atomic.Int32
+	var calls atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		keys := []SigningKey{oldJWK}
+		if phase.Load() == 1 {
+			keys = []SigningKey{newJWK}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": keys}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 20 * time.Millisecond,
+	})
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("kid-old should be cached after first lookup")
+	}
+	phase.Store(1)
+	time.Sleep(40 * time.Millisecond) // cross the cooldown
+
+	if _, ok := ks.LookupKeyForAgent("kid-new", "https://seller.example/agent"); !ok {
+		t.Error("expected refetch to pick up rotated key past cooldown")
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected 2 HTTP calls (initial + refetch), got %d", got)
+	}
+	// Legitimate old-kid traffic still verifies against the new snapshot
+	// only if the old kid is still authorized — here the server dropped
+	// it, so kid-old is now genuinely absent. Confirm no crash / hang.
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); ok {
+		t.Error("kid-old should no longer resolve after registry dropped it")
+	}
+}
+
+// Blocker regression test: an attacker-triggered refetch failure MUST
+// NOT evict the still-valid cached entry. Fetch-then-swap semantics.
+func TestLazyAuthorizationKeyStore_RefetchFailurePreservesCachedEntry(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	var fail atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{oldJWK}}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 20 * time.Millisecond,
+	})
+	// Warm the cache with kid-old.
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	// Cross the cooldown and simulate a registry outage.
+	time.Sleep(40 * time.Millisecond)
+	fail.Store(1)
+
+	// Attacker: probe with a bogus kid. Refetch will 500 → return nil.
+	// The cached kid-old entry MUST survive.
+	if _, ok := ks.LookupKeyForAgent("kid-forged", "https://seller.example/agent"); ok {
+		t.Error("forged kid should not resolve")
+	}
+
+	// Legitimate traffic from the same seller with the real kid must
+	// still verify — the outage did not evict its key.
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Error("legitimate kid-old evicted by failed refetch — regression")
 	}
 }
 

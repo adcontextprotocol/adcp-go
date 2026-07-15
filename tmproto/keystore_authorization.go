@@ -57,9 +57,10 @@ type LazyAuthorizationKeyStore struct {
 	logger       *slog.Logger
 	fetchTimeout time.Duration
 
-	positiveTTL     time.Duration
-	negativeTTL     time.Duration
-	serveStaleGrace time.Duration
+	positiveTTL               time.Duration
+	negativeTTL               time.Duration
+	serveStaleGrace           time.Duration
+	unknownKidRefetchCooldown time.Duration
 
 	// cache is bounded by size; expiry is checked at read time. LRU
 	// promotion happens on Get, so entries for agents that keep signing
@@ -131,6 +132,14 @@ type LazyAuthorizationKeyStoreOptions struct {
 	// still gets this ceiling.
 	FetchTimeout time.Duration
 
+	// UnknownKidRefetchCooldown gates how soon after a fetch the store
+	// will retry the registry when the incoming kid isn't in the cached
+	// keyset (typical cause: publisher rotation). Defaults to 30 s.
+	// Shorter values pick up rotations faster; longer values further
+	// dampen the impact of forged-kid probes. Exposed primarily so
+	// tests can shorten it without racing wall-clock time.
+	UnknownKidRefetchCooldown time.Duration
+
 	// ServeStaleGrace lets an expired positive entry keep serving for
 	// this window when a refetch fails (timeout / 5xx / network blip).
 	// Zero disables the grace — expiry means immediate 401 for that
@@ -164,18 +173,20 @@ type agentCacheEntry struct {
 	staleUntil time.Time
 }
 
-// unknownKidRefetchCooldown gates the "refetch on unknown kid" fallback:
-// once an entry is younger than this window, we trust the freshly-cached
-// keyset and do not refetch even if the incoming kid isn't in it. Long
-// enough to absorb a spray of forged kids from one agent; short enough
-// that a legitimate rotation lands quickly.
-const unknownKidRefetchCooldown = 30 * time.Second
+// defaultUnknownKidRefetchCooldown gates the "refetch on unknown kid"
+// fallback: once an entry is younger than this window, we trust the
+// freshly-cached keyset and do not refetch even if the incoming kid
+// isn't in it. Long enough to absorb a spray of forged kids from one
+// agent; short enough that a legitimate rotation lands quickly.
+const defaultUnknownKidRefetchCooldown = 30 * time.Second
 
-// unknownKidRefetchExhausted reports whether the entry is too young to
-// justify another refetch attempt. The kid argument is reserved for a
-// future per-kid tracking scheme; today the gate is entry-global.
-func (e *agentCacheEntry) unknownKidRefetchExhausted(_ string, cooldown time.Duration) bool {
-	return time.Since(e.fetchedAt) < cooldown
+// refetchOnUnknownKidAllowed reports whether the entry is old enough to
+// justify one more refetch attempt on an unknown kid. Semantics: a
+// brand-new entry answers false (still fresh, trust the keyset); an
+// entry past the cooldown answers true. The kid argument is reserved
+// for a future per-kid tracking scheme; today the gate is entry-global.
+func (e *agentCacheEntry) refetchOnUnknownKidAllowed(_ string, cooldown time.Duration) bool {
+	return time.Since(e.fetchedAt) >= cooldown
 }
 
 type inflightFetch struct {
@@ -246,18 +257,23 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 	if maxConcurrent <= 0 {
 		maxConcurrent = 32
 	}
+	unknownKidCooldown := opts.UnknownKidRefetchCooldown
+	if unknownKidCooldown <= 0 {
+		unknownKidCooldown = defaultUnknownKidRefetchCooldown
+	}
 	return &LazyAuthorizationKeyStore{
-		baseURL:         parsed,
-		bearerToken:     opts.BearerToken,
-		client:          client,
-		logger:          logger,
-		fetchTimeout:    fetchTimeout,
-		positiveTTL:     positiveTTL,
-		negativeTTL:     negativeTTL,
-		serveStaleGrace: opts.ServeStaleGrace,
-		cache:           cache,
-		fetchSem:        make(chan struct{}, maxConcurrent),
-		inflight:        make(map[string]*inflightFetch),
+		baseURL:                   parsed,
+		bearerToken:               opts.BearerToken,
+		client:                    client,
+		logger:                    logger,
+		fetchTimeout:              fetchTimeout,
+		positiveTTL:               positiveTTL,
+		negativeTTL:               negativeTTL,
+		serveStaleGrace:           opts.ServeStaleGrace,
+		unknownKidRefetchCooldown: unknownKidCooldown,
+		cache:                     cache,
+		fetchSem:                  make(chan struct{}, maxConcurrent),
+		inflight:                  make(map[string]*inflightFetch),
 	}, nil
 }
 
@@ -298,21 +314,73 @@ func (s *LazyAuthorizationKeyStore) LookupKeyForAgentCtx(ctx context.Context, ki
 	}
 	// Kid isn't in the cached keyset. The most common cause is a
 	// legitimate signer that rotated to a new kid after we cached this
-	// agent — the registry has the new key, we're serving stale. Refetch
-	// once (bounded by a short cooldown to prevent thrash on genuinely
-	// unknown kids from the same agent) and try again. Spec §579 wants
-	// the effective rotation window shorter than the positive TTL.
-	if !entry.unknownKidRefetchExhausted(kid, unknownKidRefetchCooldown) {
-		s.cache.Remove(canonical)
-		entry = s.entryFor(ctx, canonical)
-		if entry == nil || entry.byKid == nil {
-			return nil, false
-		}
-		if k, ok := entry.byKid[kid]; ok {
-			return k, true
+	// agent — the registry has the new key, we're serving stale. Try to
+	// refetch once (bounded by a short cooldown to dampen forged-kid
+	// probes). CRUCIAL: fetch-then-swap. We do NOT evict the existing
+	// entry first, because an attacker with a bogus kid could otherwise
+	// force a refetch that fails (registry blip, semaphore saturation
+	// from a spray of unique agent URLs) and cancel the ServeStaleGrace
+	// net we hold for legitimate traffic. On refetch failure the old
+	// entry stays exactly where it was.
+	if entry.refetchOnUnknownKidAllowed(kid, s.unknownKidRefetchCooldown) {
+		if fresh := s.refetchAgent(ctx, canonical); fresh != nil && fresh.byKid != nil {
+			if k, ok := fresh.byKid[kid]; ok {
+				return k, true
+			}
 		}
 	}
 	return nil, false
+}
+
+// refetchAgent forces a registry call for the agent, updating the cache
+// only on success. Unlike entryFor, it bypasses the "cache still valid"
+// short-circuit — the caller has already established that the cached
+// entry needs refresh — but preserves single-flight and the fetch
+// semaphore. On failure it returns nil WITHOUT touching the existing
+// cache entry, so a still-valid entry (with respect to the caller's
+// original expectation) is preserved.
+func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical string) *agentCacheEntry {
+	s.inflightMu.Lock()
+	if in, ok := s.inflight[canonical]; ok {
+		s.inflightMu.Unlock()
+		in.wg.Wait()
+		if in.err != nil {
+			return nil
+		}
+		return in.entry
+	}
+	in := &inflightFetch{}
+	in.wg.Add(1)
+	s.inflight[canonical] = in
+	s.inflightMu.Unlock()
+
+	semAcquired := false
+	defer func() {
+		if semAcquired {
+			<-s.fetchSem
+		}
+		in.wg.Done()
+		s.inflightMu.Lock()
+		delete(s.inflight, canonical)
+		s.inflightMu.Unlock()
+	}()
+
+	select {
+	case s.fetchSem <- struct{}{}:
+		semAcquired = true
+	default:
+		in.err = errors.New("fetch semaphore full")
+		return nil
+	}
+
+	entry, err := s.fetch(ctx, canonical)
+	in.entry = entry
+	in.err = err
+	if err != nil {
+		return nil
+	}
+	s.cache.Add(canonical, entry)
+	return entry
 }
 
 // Invalidate drops the cached entry for the given agent URL so the next
