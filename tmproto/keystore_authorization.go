@@ -33,7 +33,10 @@ import (
 // agent_url server-side; this store canonicalizes client-side too so cache
 // keys are stable across callers that submit non-canonical URLs.
 type LazyAuthorizationKeyStore struct {
-	baseURL     string
+	// baseURL is parsed once at construction. Per-request URLs are built
+	// by cloning it and setting the `agent_url` query parameter — the
+	// host is never derived from caller input, only the query string is.
+	baseURL     *url.URL
 	bearerToken string
 	client      *http.Client
 	logger      *slog.Logger
@@ -149,7 +152,7 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 		logger = slog.Default()
 	}
 	return &LazyAuthorizationKeyStore{
-		baseURL:     opts.BaseURL,
+		baseURL:     parsed,
 		bearerToken: opts.BearerToken,
 		client:      client,
 		logger:      logger,
@@ -271,13 +274,15 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	q := url.Values{}
+	// Clone the pre-parsed base URL and set the query param. The host is
+	// fixed at construction; only the `agent_url` query param carries
+	// user-derived input, so a hostile seller_agent_url cannot redirect
+	// the request to a different origin.
+	u := *s.baseURL
+	q := u.Query()
 	q.Set("agent_url", canonicalAgentURL)
-	sep := "?"
-	if strings.Contains(s.baseURL, "?") {
-		sep = "&"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.baseURL+sep+q.Encode(), nil)
+	u.RawQuery = q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, err
 	}
