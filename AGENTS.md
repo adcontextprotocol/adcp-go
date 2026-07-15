@@ -39,6 +39,7 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 | `tmproto/signing.go` | TMP request-authentication envelope (Ed25519, `X-AdCP-Signature`/`X-AdCP-Key-Id`, JCS for identity match, daily-epoch replay window). |
 | `tmproto/verify_middleware.go` | `VerifyContextMatchHandler` / `VerifyIdentityMatchHandler` middleware used by reference providers. |
 | `tmproto/keystore_remote.go` | `RemoteKeyStore` polls the router's `/registry/snapshot` for signing keys. |
+| `tmproto/keystore_authorization.go` | `LazyAuthorizationKeyStore` fetches signing keys on demand per `seller_agent_url` from the AdCP registry `/api/registry/authorizations` endpoint. Implements `AgentAwareKeyStore`. |
 | `router/serverconfig.go` | Config loading (JSON file, env vars, defaults). |
 | `cmd/router/main.go` | Router binary entry point — wires components, Prometheus metrics, env vars. |
 | `docs/network-surface.md` | Port map, data flow, pinhole spec, env var reference. |
