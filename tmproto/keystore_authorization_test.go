@@ -276,6 +276,104 @@ func TestLazyAuthorizationKeyStore_RejectsInsecureSchemeByDefault(t *testing.T) 
 // Verify* end-to-end: the store implements AgentAwareKeyStore so
 // resolveSigningKey routes the lookup with req.SellerAgentURL, and
 // VerifyContextMatch succeeds against a locally-signed request.
+// LookupKey without a seller_agent_url must fail closed — the store is
+// exclusively agent-scoped and a plain kid lookup would break the
+// per-agent isolation AgentAwareKeyStore is designed to preserve.
+func TestLazyAuthorizationKeyStore_LookupKeyAlwaysFails(t *testing.T) {
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		jwk, _ := buildJWK(t, "kid-a")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{jwk}}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL: srv.URL, AllowInsecureScheme: true,
+	})
+	// Populate the cache via the agent-aware path so the entry exists.
+	if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); !ok {
+		t.Fatal("agent-aware lookup did not populate the cache")
+	}
+	// Plain LookupKey MUST still return false — no linear scan.
+	if _, ok := ks.LookupKey("kid-a"); ok {
+		t.Error("LookupKey returned true; expected agent-scoped isolation")
+	}
+}
+
+// The cache is LRU-bounded so an attacker cannot grow it indefinitely.
+// After N+1 unique agent URLs, at most N entries remain.
+func TestLazyAuthorizationKeyStore_CacheSizeCap(t *testing.T) {
+	jwk, _ := buildJWK(t, "kid")
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{jwk}}},
+		})
+	})
+	defer srv.Close()
+
+	const cap = 4
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:             srv.URL,
+		AllowInsecureScheme: true,
+		MaxCacheEntries:     cap,
+	})
+	for i := 0; i < cap*3; i++ {
+		_, _ = ks.LookupKeyForAgent("kid", "https://seller"+strings.Repeat("x", i)+".example/agent")
+	}
+	if got := ks.cache.Len(); got > cap {
+		t.Errorf("cache grew past ceiling: got %d, want <= %d", got, cap)
+	}
+}
+
+// The fetch semaphore bounds concurrent outbound registry calls so a
+// spray of unique URLs cannot amplify 1:1. Excess concurrent misses
+// fail closed rather than queue.
+func TestLazyAuthorizationKeyStore_FetchConcurrencyCap(t *testing.T) {
+	release := make(chan struct{})
+	var inflight int32
+	var maxInflight int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		cur := atomic.AddInt32(&inflight, 1)
+		for {
+			m := atomic.LoadInt32(&maxInflight)
+			if cur <= m || atomic.CompareAndSwapInt32(&maxInflight, m, cur) {
+				break
+			}
+		}
+		<-release
+		atomic.AddInt32(&inflight, -1)
+		_ = json.NewEncoder(w).Encode(map[string]any{"rows": []any{}})
+	})
+	defer srv.Close()
+
+	const semCap = 2
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:              srv.URL,
+		AllowInsecureScheme:  true,
+		MaxConcurrentFetches: semCap,
+	})
+
+	const goroutines = 8
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		agentURL := "https://seller" + strings.Repeat("x", i+1) + ".example/agent"
+		go func() {
+			defer wg.Done()
+			_, _ = ks.LookupKeyForAgent("kid", agentURL)
+		}()
+	}
+	// Let all goroutines reach the semaphore before releasing.
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&maxInflight); got > int32(semCap) {
+		t.Errorf("observed %d concurrent fetches; expected <= %d", got, semCap)
+	}
+}
+
 func TestLazyAuthorizationKeyStore_VerifyContextMatchEndToEnd(t *testing.T) {
 	jwk, priv := buildJWK(t, "kid-e2e")
 	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {

@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/urlcanon"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 // LazyAuthorizationKeyStore is an AgentAwareKeyStore backed by an AdCP
 // registry authorizations endpoint (typically
 // https://agenticadvertising.org/api/registry/authorizations). Instead of
 // syncing every publisher's keys at startup, it fetches on demand for the
-// exact seller_agent_url a request is signed by, caches per agent, and
-// invalidates on TTL expiry or verification failure.
+// exact seller_agent_url a request is signed by and caches per agent.
 //
 // Fits the deployment where the verifier does not know its callers ahead
 // of time and where the caller set is small relative to the global
@@ -32,6 +32,21 @@ import (
 // authorization rows with signing_keys[]. The endpoint canonicalizes
 // agent_url server-side; this store canonicalizes client-side too so cache
 // keys are stable across callers that submit non-canonical URLs.
+//
+// Availability-hardening: verification runs before the signature is
+// checked (the verifier needs the key to check it), so LookupKeyForAgent
+// operates on attacker-controllable input. An attacker spraying signed-
+// shaped requests with unique `seller_agent_url` values would otherwise
+// (a) miss the cache on every request, amplifying to the registry 1:1,
+// and (b) fill the cache with negative entries indefinitely. Two
+// bounds mitigate both:
+//   - the cache is an LRU with a size cap — attacker garbage evicts
+//     itself before displacing legitimate agents (whose entries get
+//     touched on every legitimate verify);
+//   - a fetch semaphore caps concurrent outbound registry calls, so a
+//     spray cannot fan out to unbounded HTTP concurrency. Excess
+//     concurrent misses fail closed (the extra request 401s) rather
+//     than queue — a queue is the amplifier.
 type LazyAuthorizationKeyStore struct {
 	// baseURL is parsed once at construction. Per-request URLs are built
 	// by cloning it and setting the `agent_url` query parameter — the
@@ -44,8 +59,15 @@ type LazyAuthorizationKeyStore struct {
 	positiveTTL time.Duration
 	negativeTTL time.Duration
 
-	mu    sync.RWMutex
-	byURL map[string]*agentCacheEntry
+	// cache is bounded by size; expiry is checked at read time. LRU
+	// promotion happens on Get, so entries for agents that keep signing
+	// stay hot while attacker sprays age out.
+	cache *lru.Cache[string, *agentCacheEntry]
+
+	// fetchSem caps concurrent outbound registry calls. A non-blocking
+	// acquire — the point is to prevent amplification, not to enqueue
+	// work under load.
+	fetchSem chan struct{}
 
 	// singleflight collapses concurrent misses for the same agent URL onto
 	// one HTTP call.
@@ -85,6 +107,22 @@ type LazyAuthorizationKeyStoreOptions struct {
 	// up quickly, long enough to absorb a burst of forged requests.
 	NegativeTTL time.Duration
 
+	// MaxCacheEntries caps the number of agents kept in the LRU cache.
+	// An attacker spraying unique seller_agent_url values cannot grow
+	// the cache past this bound — legitimate agents' entries stay hot
+	// because every legitimate verify touches them, while the attacker's
+	// unique-URL entries age out of the tail. Defaults to 4096, which
+	// comfortably covers any realistic per-verifier caller set while
+	// being small enough that steady-state memory is trivially bounded.
+	MaxCacheEntries int
+
+	// MaxConcurrentFetches caps outbound registry calls in flight. A
+	// spray of unique agent URLs cannot fan out beyond this bound —
+	// excess concurrent misses fail closed (return no key → the request
+	// 401s) rather than queue. Defaults to 32, high enough for
+	// legitimate cold-start bursts, low enough to bound the amplifier.
+	MaxConcurrentFetches int
+
 	// Logger receives cache-miss and fetch-error events.
 	Logger *slog.Logger
 }
@@ -111,9 +149,8 @@ type inflightFetch struct {
 const MaxAuthorizationBodyBytes = 1 * 1024 * 1024
 
 // NewLazyAuthorizationKeyStore constructs the store. It does not fetch
-// anything until LookupKeyForAgent is called for the first time — Run is
-// optional and only useful when the verifier wants a background timer to
-// prune stale entries.
+// anything until LookupKeyForAgent is called for the first time —
+// entries populate lazily on demand.
 func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyAuthorizationKeyStore, error) {
 	if opts.BaseURL == "" {
 		return nil, errors.New("tmproto: LazyAuthorizationKeyStore BaseURL is required")
@@ -151,6 +188,18 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 	if logger == nil {
 		logger = slog.Default()
 	}
+	maxEntries := opts.MaxCacheEntries
+	if maxEntries <= 0 {
+		maxEntries = 4096
+	}
+	cache, err := lru.New[string, *agentCacheEntry](maxEntries)
+	if err != nil {
+		return nil, fmt.Errorf("tmproto: LazyAuthorizationKeyStore cache: %w", err)
+	}
+	maxConcurrent := opts.MaxConcurrentFetches
+	if maxConcurrent <= 0 {
+		maxConcurrent = 32
+	}
 	return &LazyAuthorizationKeyStore{
 		baseURL:     parsed,
 		bearerToken: opts.BearerToken,
@@ -158,31 +207,20 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 		logger:      logger,
 		positiveTTL: positiveTTL,
 		negativeTTL: negativeTTL,
-		byURL:       make(map[string]*agentCacheEntry),
+		cache:       cache,
+		fetchSem:    make(chan struct{}, maxConcurrent),
 		inflight:    make(map[string]*inflightFetch),
 	}, nil
 }
 
-// LookupKey implements KeyStore. Without a seller_agent_url the store
-// falls back to a linear scan of the cache — this is only useful for
-// callers that have not yet been updated to pass agent context. Verifiers
-// on the current signing path always have req.SellerAgentURL and take the
-// LookupKeyForAgent path instead.
-func (s *LazyAuthorizationKeyStore) LookupKey(kid string) (*SigningKey, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	now := time.Now()
-	for _, entry := range s.byURL {
-		if entry == nil || entry.byKid == nil {
-			continue
-		}
-		if now.After(entry.expires) {
-			continue
-		}
-		if k, ok := entry.byKid[kid]; ok {
-			return k, true
-		}
-	}
+// LookupKey implements KeyStore but always returns false. This store is
+// exclusively agent-scoped: verifying a kid without knowing which agent
+// claimed it would defeat the per-agent isolation the AgentAwareKeyStore
+// interface exists to preserve (see AgentAwareKeyStore godoc). Callers
+// on the signing path always have req.SellerAgentURL and go through
+// LookupKeyForAgent; a caller that hits this branch is on a misconfigured
+// path and should fail closed.
+func (s *LazyAuthorizationKeyStore) LookupKey(_ string) (*SigningKey, bool) {
 	return nil, false
 }
 
@@ -202,26 +240,22 @@ func (s *LazyAuthorizationKeyStore) LookupKeyForAgent(kid, sellerAgentURL string
 }
 
 // Invalidate drops the cached entry for the given agent URL so the next
-// lookup triggers a fresh fetch. Callers should Invalidate after a
-// signature verification failure — the spec (§590) requires re-fetching
-// on failure to pick up a rotation.
+// lookup triggers a fresh fetch. The current verify middleware does not
+// call this on signature failure — a rotation therefore takes up to the
+// positive TTL (default 5 minutes) to propagate. Exported for host code
+// that wants to wire re-fetch-on-failure per spec §590.
 func (s *LazyAuthorizationKeyStore) Invalidate(sellerAgentURL string) {
 	canonical, err := urlcanon.Canonicalize(sellerAgentURL)
 	if err != nil {
 		return
 	}
-	s.mu.Lock()
-	delete(s.byURL, canonical)
-	s.mu.Unlock()
+	s.cache.Remove(canonical)
 }
 
 // entryFor returns a cached entry for the canonical URL, fetching if
 // missing or expired. Concurrent misses for the same URL are collapsed.
 func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry {
-	s.mu.RLock()
-	entry := s.byURL[canonical]
-	s.mu.RUnlock()
-	if entry != nil && time.Now().Before(entry.expires) {
+	if entry, ok := s.cache.Get(canonical); ok && time.Now().Before(entry.expires) {
 		return entry
 	}
 
@@ -241,7 +275,25 @@ func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry 
 	s.inflight[canonical] = in
 	s.inflightMu.Unlock()
 
+	// Non-blocking semaphore acquire — if concurrent fetches are already
+	// at the ceiling, drop this request fail-closed rather than queuing.
+	// A queue is the amplifier we're guarding against; the caller's
+	// verify returns ErrSignatureKeyUnknown (401), which is the safe
+	// outcome under load.
+	select {
+	case s.fetchSem <- struct{}{}:
+	default:
+		in.err = errors.New("fetch semaphore full")
+		in.wg.Done()
+		s.inflightMu.Lock()
+		delete(s.inflight, canonical)
+		s.inflightMu.Unlock()
+		s.logger.Warn("authorization keystore refused fetch — concurrency ceiling reached", "seller_agent_url", canonical)
+		return nil
+	}
+
 	entry, err := s.fetch(canonical)
+	<-s.fetchSem
 	in.entry = entry
 	in.err = err
 	in.wg.Done()
@@ -255,9 +307,7 @@ func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry 
 		return nil
 	}
 
-	s.mu.Lock()
-	s.byURL[canonical] = entry
-	s.mu.Unlock()
+	s.cache.Add(canonical, entry)
 	return entry
 }
 

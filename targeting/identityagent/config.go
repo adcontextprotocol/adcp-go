@@ -434,10 +434,15 @@ func LoadConfigFromEnv() (Config, error) {
 		SupportedADCPMajorVersions: supportedVersions,
 		LogLevel:                   lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
-			RegistryURL:    os.Getenv("TMP_REGISTRY_URL"),
-			RegistryMode:   os.Getenv("TMP_REGISTRY_MODE"),
-			RegistryBearer: os.Getenv("TMP_REGISTRY_BEARER"),
-			OwnEndpointURL: os.Getenv("TMP_OWN_ENDPOINT_URL"),
+			// TrimSpace on every field: a bearer with a trailing newline
+			// becomes `Bearer <token>\n` (silent 401 at the registry);
+			// a padded mode string hits the `default` branch and fails
+			// startup. Both are foot-guns operators hit with env-file
+			// injection tools that append newlines.
+			RegistryURL:    strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
+			RegistryMode:   strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
+			RegistryBearer: strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
+			OwnEndpointURL: strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
 			AllowUnsigned:  allowUnsigned,
 		},
 		TMPX: TMPXConfig{
