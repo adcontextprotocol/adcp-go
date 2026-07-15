@@ -282,7 +282,12 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 	q := u.Query()
 	q.Set("agent_url", canonicalAgentURL)
 	u.RawQuery = q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+
+	// gosec G107 (SSRF): the URL is fixed at construction time from operator
+	// configuration (TMP_REGISTRY_URL); only the ?agent_url= query parameter
+	// is derived from request data, which is the documented registry
+	// contract. The Client is not a generic HTTP fetcher.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +296,7 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 		req.Header.Set("Authorization", "Bearer "+s.bearerToken)
 	}
 
-	resp, err := s.client.Do(req)
+	resp, err := s.client.Do(req) //nolint:gosec // see G107 justification above
 	if err != nil {
 		return nil, fmt.Errorf("fetch authorizations: %w", err)
 	}
