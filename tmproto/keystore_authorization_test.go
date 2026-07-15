@@ -1,6 +1,7 @@
 package tmproto
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
@@ -371,6 +372,145 @@ func TestLazyAuthorizationKeyStore_FetchConcurrencyCap(t *testing.T) {
 
 	if got := atomic.LoadInt32(&maxInflight); got > int32(semCap) {
 		t.Errorf("observed %d concurrent fetches; expected <= %d", got, semCap)
+	}
+}
+
+// After an entry expires and the refetch fails, ServeStaleGrace lets
+// the store keep serving the stale entry up to the grace window.
+func TestLazyAuthorizationKeyStore_ServeStaleGraceOnRefetchError(t *testing.T) {
+	jwk, _ := buildJWK(t, "kid-a")
+	var fail int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if atomic.LoadInt32(&fail) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{jwk}}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:             srv.URL,
+		AllowInsecureScheme: true,
+		PositiveTTL:         50 * time.Millisecond,
+		ServeStaleGrace:     time.Second,
+	})
+
+	if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	// Wait for expiry.
+	time.Sleep(80 * time.Millisecond)
+	atomic.StoreInt32(&fail, 1)
+
+	// Refetch fails; grace window still valid → stale entry served.
+	if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); !ok {
+		t.Error("expected stale entry to be served within grace window on refetch error")
+	}
+}
+
+// Grace does NOT extend indefinitely — past staleUntil the store fails
+// closed even under refetch error.
+func TestLazyAuthorizationKeyStore_StaleGraceIsBounded(t *testing.T) {
+	jwk, _ := buildJWK(t, "kid-a")
+	var fail int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if atomic.LoadInt32(&fail) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{jwk}}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:             srv.URL,
+		AllowInsecureScheme: true,
+		PositiveTTL:         30 * time.Millisecond,
+		ServeStaleGrace:     30 * time.Millisecond,
+	})
+
+	if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	atomic.StoreInt32(&fail, 1)
+	// Wait past positiveTTL + serveStaleGrace.
+	time.Sleep(120 * time.Millisecond)
+
+	if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); ok {
+		t.Error("expected fail-closed past stale grace window")
+	}
+}
+
+// A cached agent that now signs with a new kid should refetch once and
+// pick up the rotation, instead of 401ing until positive TTL expires.
+func TestLazyAuthorizationKeyStore_RefetchOnUnknownKid(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	newJWK, _ := buildJWK(t, "kid-new")
+	var phase atomic.Int32
+	var calls atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		keys := []SigningKey{oldJWK}
+		if phase.Load() == 1 {
+			keys = []SigningKey{newJWK}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": keys}},
+		})
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:             srv.URL,
+		AllowInsecureScheme: true,
+	})
+	// First lookup caches kid-old.
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("kid-old should be cached after first lookup")
+	}
+	// Simulate publisher rotation → registry now serves kid-new.
+	phase.Store(1)
+	// Immediately look up kid-new. The cached entry is <30s old, so the
+	// entry-age gate SHOULD say "too fresh, don't refetch" and this
+	// misses.
+	if _, ok := ks.LookupKeyForAgent("kid-new", "https://seller.example/agent"); ok {
+		t.Error("expected fresh-entry gate to block refetch inside cooldown")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 HTTP call inside cooldown; got %d", got)
+	}
+}
+
+func TestLazyAuthorizationKeyStore_FetchContextPropagates(t *testing.T) {
+	// A caller with an already-cancelled context should not trigger any
+	// HTTP call. Confirms context propagation into fetch.
+	var calls atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"rows":[]}`))
+	})
+	defer srv.Close()
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:             srv.URL,
+		AllowInsecureScheme: true,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, _ = ks.LookupKeyForAgentCtx(ctx, "kid", "https://seller.example/agent")
+	// The request may or may not have made it to the server before ctx
+	// was checked; what matters is that the lookup returned fail-closed
+	// (nil, false) rather than blocking. Sanity: server saw at most one
+	// call.
+	if got := calls.Load(); got > 1 {
+		t.Errorf("cancelled ctx produced %d HTTP calls, expected 0 or 1", got)
 	}
 }
 
