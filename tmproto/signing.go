@@ -120,6 +120,23 @@ type KeyStore interface {
 	LookupKey(kid string) (*SigningKey, bool)
 }
 
+// AgentAwareKeyStore is a KeyStore that can resolve a kid scoped to a
+// specific seller_agent_url. Verifiers prefer this interface when the
+// backing store implements it, so a keystore that fetches on demand can
+// avoid syncing the entire registry and instead pull just the keys of
+// the agent that actually signed the request.
+//
+// LookupKeyForAgent MUST return the same key as LookupKey(kid) when kid
+// belongs to sellerAgentURL, and MAY return false in cases where a kid
+// exists in the store but is not registered for that agent — this
+// enforces the spec's per-agent scoping (see specification.mdx §514,
+// §601) so a captured signature from agent A cannot be replayed under
+// agent B's identity even if B has cached a copy of A's key.
+type AgentAwareKeyStore interface {
+	KeyStore
+	LookupKeyForAgent(kid, sellerAgentURL string) (*SigningKey, bool)
+}
+
 // StaticKeyStore is a concurrent-safe map-backed KeyStore for tests and for
 // wrapping a pre-built snapshot of the registry.
 type StaticKeyStore struct {
@@ -342,7 +359,7 @@ func canonicalSealedCredentialsHash(creds []SealedCredential) (string, error) {
 // the verifier's own registered endpoint URL. now should be the wall clock for
 // the request — current+previous epoch are accepted.
 func VerifyContextMatch(req *ContextMatchRequest, ownEndpointURL, sig, kid string, ks KeyStore, now time.Time) error {
-	pub, key, err := resolveSigningKey(kid, ks)
+	pub, key, err := resolveSigningKey(kid, req.SellerAgentURL, ks)
 	if err != nil {
 		return err
 	}
@@ -369,7 +386,7 @@ func VerifyContextMatch(req *ContextMatchRequest, ownEndpointURL, sig, kid strin
 
 // VerifyIdentityMatch verifies the signature on an identity-match request.
 func VerifyIdentityMatch(req *IdentityMatchRequest, ownEndpointURL, sig, kid string, ks KeyStore, now time.Time) error {
-	pub, key, err := resolveSigningKey(kid, ks)
+	pub, key, err := resolveSigningKey(kid, req.SellerAgentURL, ks)
 	if err != nil {
 		return err
 	}
@@ -426,11 +443,11 @@ func LoadEd25519PrivateKeyPEM(pemBytes []byte) (ed25519.PrivateKey, error) {
 	return priv, nil
 }
 
-func resolveSigningKey(kid string, ks KeyStore) (ed25519.PublicKey, *SigningKey, error) {
+func resolveSigningKey(kid, sellerAgentURL string, ks KeyStore) (ed25519.PublicKey, *SigningKey, error) {
 	if ks == nil {
 		return nil, nil, ErrSignatureKeyUnknown
 	}
-	key, ok := ks.LookupKey(kid)
+	key, ok := lookupKey(ks, kid, sellerAgentURL)
 	if !ok {
 		return nil, nil, ErrSignatureKeyUnknown
 	}
@@ -439,6 +456,20 @@ func resolveSigningKey(kid string, ks KeyStore) (ed25519.PublicKey, *SigningKey,
 		return nil, nil, fmt.Errorf("%w: %v", ErrSignatureKeyUnknown, err)
 	}
 	return pub, key, nil
+}
+
+// lookupKey prefers AgentAwareKeyStore.LookupKeyForAgent when the store
+// implements it and a sellerAgentURL is available — this gives per-agent
+// stores (see LazyAuthorizationKeyStore) the context they need to fetch
+// keys on demand rather than requiring a bulk registry sync. Falls back
+// to LookupKey(kid) for stores on the plain interface.
+func lookupKey(ks KeyStore, kid, sellerAgentURL string) (*SigningKey, bool) {
+	if sellerAgentURL != "" {
+		if aa, ok := ks.(AgentAwareKeyStore); ok {
+			return aa.LookupKeyForAgent(kid, sellerAgentURL)
+		}
+	}
+	return ks.LookupKey(kid)
 }
 
 func decodeSignature(s string) ([]byte, error) {

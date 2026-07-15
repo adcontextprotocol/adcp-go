@@ -84,12 +84,22 @@ type Config struct {
 	Pprof   PprofConfig
 }
 
-// TMPConfig drives TMP signature verification on /context.
+// TMPConfig drives TMP signature verification on /context. See
+// identityagent.TMPConfig for full field semantics — the two are kept in
+// sync deliberately so operators wire the same env vars on both agents.
 type TMPConfig struct {
 	RegistryURL    string
+	RegistryMode   string
+	RegistryBearer string
 	OwnEndpointURL string
 	AllowUnsigned  bool
 }
+
+// Registry mode enum values (mirrors identityagent).
+const (
+	RegistryModeSnapshot      = "snapshot"
+	RegistryModeAuthorization = "authorization"
+)
 
 // ValkeyBlock is the Valkey configuration. The context-agent issues
 // reads against media-buy, package-config, URL-list, topic, and
@@ -305,6 +315,8 @@ func LoadConfigFromEnv() (Config, error) {
 		SuppressionRefreshInterval: suppressionRefresh,
 		TMP: TMPConfig{
 			RegistryURL:    strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
+			RegistryMode:   strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
+			RegistryBearer: strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
 			OwnEndpointURL: strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
 			AllowUnsigned:  allowUnsigned,
 		},

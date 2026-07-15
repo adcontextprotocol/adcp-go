@@ -104,10 +104,32 @@ type Config struct {
 
 // TMPConfig drives TMP signature verification on /identity.
 type TMPConfig struct {
-	RegistryURL    string
+	// RegistryURL is where the agent resolves publisher signing keys.
+	// Meaning depends on RegistryMode:
+	//   - "snapshot" (default): a router's /registry/snapshot endpoint
+	//     that returns {properties[]{signing_keys[]}}. Bulk-synced.
+	//   - "authorization": an AdCP registry authorizations endpoint
+	//     (e.g. https://agenticadvertising.org/api/registry/authorizations)
+	//     that the agent queries per-request using
+	//     `?agent_url=<seller_agent_url>`.
+	RegistryURL string
+	// RegistryMode selects the KeyStore implementation. "snapshot" (default)
+	// preserves back-compat with existing deployments. "authorization"
+	// switches to per-agent lazy resolution — the right choice when the
+	// verifier does not know its callers ahead of time.
+	RegistryMode string
+	// RegistryBearer is sent as `Authorization: Bearer <token>` on
+	// authorization-mode registry calls. Ignored in snapshot mode.
+	RegistryBearer string
 	OwnEndpointURL string
 	AllowUnsigned  bool
 }
+
+// Registry mode enum values.
+const (
+	RegistryModeSnapshot      = "snapshot"
+	RegistryModeAuthorization = "authorization"
+)
 
 // TMPXConfig drives TMPX response sealing. Disabled when EncryptJWKSURL is
 // empty.
@@ -412,8 +434,15 @@ func LoadConfigFromEnv() (Config, error) {
 		SupportedADCPMajorVersions: supportedVersions,
 		LogLevel:                   lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
-			RegistryURL:    os.Getenv("TMP_REGISTRY_URL"),
-			OwnEndpointURL: os.Getenv("TMP_OWN_ENDPOINT_URL"),
+			// TrimSpace on every field: a bearer with a trailing newline
+			// becomes `Bearer <token>\n` (silent 401 at the registry);
+			// a padded mode string hits the `default` branch and fails
+			// startup. Both are foot-guns operators hit with env-file
+			// injection tools that append newlines.
+			RegistryURL:    strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
+			RegistryMode:   strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
+			RegistryBearer: strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
+			OwnEndpointURL: strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
 			AllowUnsigned:  allowUnsigned,
 		},
 		TMPX: TMPXConfig{

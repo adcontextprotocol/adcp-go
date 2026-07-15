@@ -380,7 +380,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("build service: %w", err)
 	}
 
-	keystore, err := BuildKeyStore(bgCtx, cfg.TMP.RegistryURL, !cfg.TMP.AllowUnsigned, logger, recorder)
+	keystore, err := BuildKeyStore(bgCtx, cfg.TMP, logger, recorder)
 	if err != nil {
 		return nil, fmt.Errorf("keystore: %w", err)
 	}
