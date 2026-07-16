@@ -1,13 +1,11 @@
 package identityagent
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdh"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,32 +22,85 @@ import (
 
 const testNullifier = "0x" + "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-// MacroEntry pairs a sealed token with the provider's first registered slot
-// name; both inputs must be non-empty for a useful pair to come out.
-func TestMacroEntry_EmitsWhenConfigured(t *testing.T) {
+// MacroEntries pairs the sealed token with the provider's registered slot
+// names. Single-slot deployments emit exactly one entry carrying the whole
+// token — the legacy shape before multi-chunk encoding was implemented.
+func TestMacroEntries_SingleSlotEmitsWholeToken(t *testing.T) {
 	s := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
-	entry, ok := s.MacroEntry("k1.token")
-	require.True(t, ok)
-	assert.Equal(t, "S3_TMPX", entry.Name)
-	assert.Equal(t, "k1.token", entry.Value)
+	entries := s.MacroEntries("k1.token")
+	require.Len(t, entries, 1)
+	assert.Equal(t, "S3_TMPX", entries[0].Name)
+	assert.Equal(t, "k1.token", entries[0].Value)
 }
 
-// MacroEntry returns (zero, false) on three independently-disabling
-// conditions: nil receiver, empty token, no registered macro names. Without
-// either side the pair is meaningless, so the response should fall back to
-// the legacy single-`tmpx` carrier.
-func TestMacroEntry_NotEmittedWhenDisabled(t *testing.T) {
+// MacroEntries returns nil on three independently-disabling conditions:
+// nil receiver, empty token, no registered macro names. Without either
+// side the pair is meaningless and the response falls back to the legacy
+// single-`tmpx` carrier.
+func TestMacroEntries_NotEmittedWhenDisabled(t *testing.T) {
 	var nilSealer *TMPXSealer
-	_, ok := nilSealer.MacroEntry("k1.token")
-	assert.False(t, ok, "nil sealer must not produce a macro entry")
+	assert.Nil(t, nilSealer.MacroEntries("k1.token"), "nil sealer must not produce entries")
 
 	noMacros := &TMPXSealer{}
-	_, ok = noMacros.MacroEntry("k1.token")
-	assert.False(t, ok, "sealer without registered macro names must not produce a macro entry")
+	assert.Nil(t, noMacros.MacroEntries("k1.token"), "sealer without registered macro names must not produce entries")
 
 	noToken := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
-	_, ok = noToken.MacroEntry("")
-	assert.False(t, ok, "empty token must not produce a macro entry")
+	assert.Nil(t, noToken.MacroEntries(""), "empty token must not produce entries")
+}
+
+// MacroEntries with two slots but a token that fits in one slot emits only
+// the first slot; the empty trailing slot is dropped rather than emitted
+// with an empty value. This matches the AdCP wire contract: consumers
+// reassemble by concatenating present entries in order, and a trailing
+// empty entry would confuse "how many chunks did the sealer intend" for a
+// receiver that also supports N>2 in a later version.
+func TestMacroEntries_TwoSlots_TokenFitsInFirst(t *testing.T) {
+	s := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
+	token := strings.Repeat("a", 100) // < 255 bytes
+	entries := s.MacroEntries(token)
+	require.Len(t, entries, 1, "second slot MUST NOT be emitted when the token fits in the first")
+	assert.Equal(t, "PIN_TMPX_1", entries[0].Name)
+	assert.Equal(t, token, entries[0].Value)
+}
+
+// MacroEntries with two slots and a token that straddles both slots
+// chunks at exactly TmpxMaxWireBytes (255) — the GAM %%PATTERN_MACRO%%
+// substitution limit. Reassembly is byte-concatenation in slot order,
+// so the boundary must be deterministic.
+func TestMacroEntries_TwoSlots_TokenStraddlesBothSlots(t *testing.T) {
+	s := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
+	// Build a 300-byte token from distinguishable halves so we can pin the
+	// chunk boundary at 255.
+	first := strings.Repeat("a", tmproto.TmpxMaxWireBytes)
+	rest := strings.Repeat("b", 45)
+	token := first + rest
+	entries := s.MacroEntries(token)
+	require.Len(t, entries, 2, "both slots must be emitted when the token exceeds one slot")
+	assert.Equal(t, "PIN_TMPX_1", entries[0].Name)
+	assert.Equal(t, "PIN_TMPX_2", entries[1].Name)
+	require.Len(t, entries[0].Value, tmproto.TmpxMaxWireBytes, "first chunk MUST fill exactly one slot")
+	assert.Equal(t, first, entries[0].Value)
+	assert.Equal(t, rest, entries[1].Value)
+	// Reassembly is byte-concatenation in slot order.
+	assert.Equal(t, token, entries[0].Value+entries[1].Value)
+}
+
+// MacroEntries never emits an entry whose value exceeds one macro slot —
+// even if a caller supplies a token longer than the sealer's wireBudget().
+// The sealer's selectEntries pass keeps the produced token within budget,
+// so this is a defensive floor, not a code path production exercises.
+func TestMacroEntries_ClampsToConfiguredSlotCount(t *testing.T) {
+	s := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
+	// A token that would need three chunks; the sealer should have refused
+	// to produce it, but MacroEntries still refuses to emit more than the
+	// configured slot count.
+	oversize := strings.Repeat("a", 3*tmproto.TmpxMaxWireBytes)
+	entries := s.MacroEntries(oversize)
+	require.Len(t, entries, 2, "must not exceed the configured slot count")
+	for i, e := range entries {
+		assert.LessOrEqual(t, len(e.Value), tmproto.TmpxMaxWireBytes,
+			"entry %d must not exceed the single-slot substitution limit", i)
+	}
 }
 
 func TestVerifiedIdentityEntries_EncodesNullifier(t *testing.T) {
@@ -141,44 +192,6 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 		recipient: tmproto.TmpxRecipient{Kid: kid, PublicKey: sk.PublicKey()},
 		ok:        true,
 	}
-}
-
-// TestWarnIfMultiSlotIgnored pins the operator-visibility contract for the
-// multi-slot-config-but-single-slot-emission case. The wire shape accepts up
-// to two slots per provider; the sealer currently fills only the first.
-// An operator who configures both expecting multi-chunk emission should see
-// a startup warning naming the active slot and the ignored ones, not
-// discover the gap at trafficking time.
-func TestWarnIfMultiSlotIgnored(t *testing.T) {
-	t.Run("zero or one slot does not warn", func(t *testing.T) {
-		for _, names := range [][]string{nil, {}, {"S3_TMPX"}} {
-			var buf bytes.Buffer
-			logger := slog.New(slog.NewJSONHandler(&buf, nil))
-			warnIfMultiSlotIgnored(logger, names)
-			assert.Empty(t, buf.String(), "single/zero slots are the supported shape — no warning expected (input: %v)", names)
-		}
-	})
-
-	t.Run("two-plus slots warn naming active and ignored", func(t *testing.T) {
-		var buf bytes.Buffer
-		logger := slog.New(slog.NewJSONHandler(&buf, nil))
-		warnIfMultiSlotIgnored(logger, []string{"PIN_TMPX_1", "PIN_TMPX_2", "PIN_TMPX_3"})
-
-		got := buf.String()
-		assert.Contains(t, got, `"level":"WARN"`)
-		assert.Contains(t, got, "multi-chunk encoding is not implemented")
-		assert.Contains(t, got, `"active_slot":"PIN_TMPX_1"`)
-		assert.Contains(t, got, `"ignored_slots":["PIN_TMPX_2","PIN_TMPX_3"]`)
-	})
-
-	t.Run("nil logger is a no-op", func(t *testing.T) {
-		// Defensive: NewTMPXSealer reassigns nil logger to slog.Default
-		// before calling the helper, but pinning the contract avoids a
-		// nil-deref if a caller ever reaches this directly.
-		assert.NotPanics(t, func() {
-			warnIfMultiSlotIgnored(nil, []string{"A", "B"})
-		})
-	})
 }
 
 func TestNewTMPXSealerDisabled(t *testing.T) {
@@ -563,6 +576,90 @@ func TestSelectEntries_PriorityTruncatesUnderBudget(t *testing.T) {
 	assert.LessOrEqual(t, wire, tmproto.TmpxMaxWireBytes, "selected entries within budget")
 }
 
+// TestSelectEntries_TwoSlotBudget_FitsMoreEntries pins the multi-chunk
+// contract at the selection layer: an operator with two macro slots
+// configured gets a 2 * TmpxMaxWireBytes wire budget, so a survivor set
+// that overflows the single-slot budget (see
+// TestSelectEntries_PriorityTruncatesUnderBudget) survives here without
+// truncation. Priority ordering still applies.
+func TestSelectEntries_TwoSlotBudget_FitsMoreEntries(t *testing.T) {
+	cfg := &TMPXSealer{
+		macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"},
+		priority: []tmproto.UIDType{
+			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,
+		},
+		decoders: defaultTestDecoders(t),
+	}
+	// Same input set as TestSelectEntries_PriorityTruncatesUnderBudget: five
+	// identities that overflow the single-slot budget. With two slots the
+	// wire budget doubles and every survivor fits.
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
+		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
+	}
+	got, err := decodeAndSelect(t, cfg, ids)
+	require.NoError(t, err)
+	assert.Equal(t, len(ids), len(got), "two-slot budget must fit every survivor that overflowed the single-slot budget")
+	// The wire fits under the doubled budget but exceeds the single-slot
+	// one — otherwise this test would be identical to the single-slot case.
+	usedBytes := 0
+	for _, e := range got {
+		usedBytes += 1 + len(e.Token)
+	}
+	wire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
+	assert.Greater(t, wire, tmproto.TmpxMaxWireBytes, "the packed set MUST exceed a single slot's budget for this test to prove anything")
+	assert.LessOrEqual(t, wire, 2*tmproto.TmpxMaxWireBytes, "packed set must fit inside the two-slot budget")
+}
+
+// TestSelectEntries_TwoSlotBudget_PriorityTruncatesOnOverflow keeps the
+// priority-truncation contract for the multi-slot case: even with a
+// doubled wire budget, an input set that overflows it (spec caps macro
+// list at 2, so budget is 2 * TmpxMaxWireBytes) still triggers
+// priority-ordered truncation rather than an error.
+func TestSelectEntries_TwoSlotBudget_PriorityTruncatesOnOverflow(t *testing.T) {
+	// The two-slot wire budget is 510 bytes. Every TMPX-encodable UID type
+	// packed together overflows it, so priority truncation kicks in even at
+	// the doubled budget.
+	priority := []tmproto.UIDType{
+		tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeWorldIDNullifier, tmproto.UIDTypeRampID,
+		tmproto.UIDTypeID5, tmproto.UIDTypeHashedEmail, tmproto.UIDTypeUID2,
+		tmproto.UIDTypeEUID, tmproto.UIDTypePairID, tmproto.UIDTypePublisherFirstParty,
+		tmproto.UIDTypeMAID,
+	}
+	cfg := &TMPXSealer{
+		macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"},
+		priority:   priority,
+	}
+	survivors := make([]DecodedIdentity, 0, len(priority))
+	for _, uid := range priority {
+		size, _ := tmproto.TmpxTokenSize(uidToTmpxTypeID[uid])
+		survivors = append(survivors, DecodedIdentity{UIDType: uid, Bytes: bytesOfLen(size)})
+	}
+	got, err := cfg.selectEntries(survivors)
+	require.NoError(t, err)
+	assert.Less(t, len(got), len(survivors), "expected priority truncation under the two-slot budget")
+	// Truncation drops from the tail of the priority list — the retained
+	// entries MUST be the highest-priority prefix.
+	for i, e := range got {
+		assert.Equal(t, uidToTmpxTypeID[priority[i]], e.TypeID, "entry %d must follow priority order", i)
+	}
+	usedBytes := 0
+	for _, e := range got {
+		usedBytes += 1 + len(e.Token)
+	}
+	wire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes)
+	assert.LessOrEqual(t, wire, 2*tmproto.TmpxMaxWireBytes, "packed set must fit inside the two-slot budget")
+}
+
+// bytesOfLen returns a deterministic byte slice of the requested length —
+// zero-filled is sufficient since selectEntries only sizes against the
+// slice, it does not inspect content.
+func bytesOfLen(n int) []byte { return make([]byte, n) }
+
 func TestSelectEntries_NoPriorityErrorsOnOverflow(t *testing.T) {
 	cfg := &TMPXSealer{decoders: defaultTestDecoders(t)}
 	ids := []tmproto.IdentityToken{
@@ -586,6 +683,45 @@ func TestSelectEntries_NoPriorityPassesUnderBudget(t *testing.T) {
 	got, err := decodeAndSelect(t, cfg, ids)
 	require.NoError(t, err)
 	assert.Len(t, got, 2)
+}
+
+// TestSeal_TwoSlotEndToEnd exercises the full seal + chunk path with a
+// two-slot configuration. An identity set that overflows the single-slot
+// budget succeeds under the doubled budget, and MacroEntries returns two
+// entries whose concatenation reproduces the sealed wire — the AdCP
+// contract with the reassembler on the receiver side.
+func TestSeal_TwoSlotEndToEnd(t *testing.T) {
+	cfg := &TMPXSealer{
+		country:    "US",
+		encStore:   newFakeResolver(t, "kid-8chr"),
+		macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"},
+		priority: []tmproto.UIDType{
+			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
+			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,
+		},
+		decoders: defaultTestDecoders(t),
+	}
+	// Five identities that overflow the single-slot budget (see
+	// TestSelectEntries_PriorityTruncatesUnderBudget which drops from this
+	// same set at the 255-byte limit).
+	ids := []tmproto.IdentityToken{
+		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
+		{UIDType: tmproto.UIDTypeID5, UserToken: validUserTokenFor(tmproto.UIDTypeID5)},
+		{UIDType: tmproto.UIDTypeRampID, UserToken: validUserTokenFor(tmproto.UIDTypeRampID)},
+		{UIDType: tmproto.UIDTypeRampIDDerived, UserToken: validUserTokenFor(tmproto.UIDTypeRampIDDerived)},
+	}
+	wire, err := cfg.Seal(t.Context(), ids)
+	require.NoError(t, err)
+	assert.Greater(t, len(wire), tmproto.TmpxMaxWireBytes, "test only proves multi-chunk if the seal exceeds a single slot")
+	assert.LessOrEqual(t, len(wire), 2*tmproto.TmpxMaxWireBytes, "seal must fit inside the two-slot budget")
+
+	entries := cfg.MacroEntries(wire)
+	require.Len(t, entries, 2, "an over-single-slot seal must yield two macro entries")
+	assert.Equal(t, "PIN_TMPX_1", entries[0].Name)
+	assert.Equal(t, "PIN_TMPX_2", entries[1].Name)
+	assert.Len(t, entries[0].Value, tmproto.TmpxMaxWireBytes, "first chunk MUST fill exactly one slot")
+	assert.Equal(t, wire, entries[0].Value+entries[1].Value, "reassembly is byte-concatenation in slot order")
 }
 
 func TestSeal_PriorityResultsInValidWire(t *testing.T) {

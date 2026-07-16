@@ -114,7 +114,7 @@ func TestLazyAuthorizationKeyStore_NegativeCacheOn404(t *testing.T) {
 		NegativeTTL:         time.Second,
 	})
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, ok := ks.LookupKeyForAgent("kid", "https://nobody.example/agent"); ok {
 			t.Fatalf("iteration %d: expected miss on unknown agent", i)
 		}
@@ -220,7 +220,7 @@ func TestLazyAuthorizationKeyStore_SingleFlight(t *testing.T) {
 	var wg sync.WaitGroup
 	var hits int32
 	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		go func() {
 			defer wg.Done()
 			if _, ok := ks.LookupKeyForAgent("kid-a", "https://seller.example/agent"); ok {
@@ -321,7 +321,7 @@ func TestLazyAuthorizationKeyStore_CacheSizeCap(t *testing.T) {
 		AllowInsecureScheme: true,
 		MaxCacheEntries:     cap,
 	})
-	for i := 0; i < cap*3; i++ {
+	for i := range cap * 3 {
 		_, _ = ks.LookupKeyForAgent("kid", "https://seller"+strings.Repeat("x", i)+".example/agent")
 	}
 	if got := ks.cache.Len(); got > cap {
@@ -360,7 +360,7 @@ func TestLazyAuthorizationKeyStore_FetchConcurrencyCap(t *testing.T) {
 	const goroutines = 8
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		agentURL := "https://seller" + strings.Repeat("x", i+1) + ".example/agent"
 		go func() {
 			defer wg.Done()
@@ -631,11 +631,9 @@ func TestLazyAuthorizationKeyStore_OnFetchOutcome(t *testing.T) {
 		OnFetchOutcome:       record,
 	})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_, _ = ks2.LookupKeyForAgent("kid", "https://one.example/agent")
-	}()
+	})
 	// Give the leader a moment to take the semaphore.
 	time.Sleep(30 * time.Millisecond)
 	_, _ = ks2.LookupKeyForAgent("kid", "https://two.example/agent")

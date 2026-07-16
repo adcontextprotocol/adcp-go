@@ -144,10 +144,12 @@ type TMPXConfig struct {
 	// `tmpx_macros` (provider-registration.json). The sealer pairs the
 	// sealed token with these names to populate IdentityMatchResponse's
 	// `tmpx_macros[]`. When empty the response carries only the legacy
-	// singular `tmpx` field (deprecated, removed in 4.0). Capped at 2 by
-	// the spec; multi-chunk encoding is not yet implemented — when
-	// configured with more than one name only the first slot is filled,
-	// matching the single-slot deployment shape.
+	// singular `tmpx` field (deprecated, removed in 4.0). The v1 spec
+	// caps the registered list at 2 entries — enforced at registration
+	// time, not here. When more than one name is configured the sealed
+	// token is split into up to len(MacroNames) chunks of at most 255
+	// bytes each (the GAM `%%PATTERN_MACRO%%` substitution limit), one
+	// per slot in the configured order.
 	MacroNames []string
 }
 

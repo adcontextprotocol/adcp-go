@@ -16,6 +16,47 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
+// TestAssignTmpxToResponse_SingleSlotFillsBothCarriers pins the legacy /
+// new-field wiring for a single-slot deployment. The sealed token fits in
+// one macro slot, so TmpxMacros has one entry AND the legacy Tmpx string
+// is set for back-compat.
+func TestAssignTmpxToResponse_SingleSlotFillsBothCarriers(t *testing.T) {
+	sealer := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
+	resp := &tmproto.IdentityMatchResponse{}
+	assignTmpxToResponse(resp, sealer, "k1.short-token")
+	require.Len(t, resp.TmpxMacros, 1)
+	assert.Equal(t, "S3_TMPX", resp.TmpxMacros[0].Name)
+	assert.Equal(t, "k1.short-token", resp.TmpxMacros[0].Value)
+	assert.Equal(t, "k1.short-token", resp.Tmpx, "single-slot token fits in the legacy carrier")
+}
+
+// TestAssignTmpxToResponse_MultiChunkOmitsLegacyTmpx locks the contract
+// that a token that exceeds one macro slot leaves the legacy Tmpx field
+// empty — that field is a single 255-byte carrier and cannot represent a
+// chunked value; consumers on those deployments must read the ordered
+// TmpxMacros / tmpx_providers shape.
+func TestAssignTmpxToResponse_MultiChunkOmitsLegacyTmpx(t *testing.T) {
+	sealer := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
+	// 300-byte token: first chunk fills a whole slot, second slot carries the tail.
+	token := strings.Repeat("a", tmproto.TmpxMaxWireBytes) + strings.Repeat("b", 45)
+	resp := &tmproto.IdentityMatchResponse{}
+	assignTmpxToResponse(resp, sealer, token)
+	require.Len(t, resp.TmpxMacros, 2, "TmpxMacros slice length matches the number of chunks emitted")
+	assert.Empty(t, resp.Tmpx, "legacy single-string carrier must be omitted for multi-chunk tokens")
+}
+
+// TestAssignTmpxToResponse_NoMacrosKeepsOnlyLegacyTmpx covers the
+// no-macro-names deployment: TmpxMacros stays empty, the legacy Tmpx
+// carrier is filled. This is the shape existing single-slot deployments
+// see, and it must remain identical to the pre-multi-chunk behavior.
+func TestAssignTmpxToResponse_NoMacrosKeepsOnlyLegacyTmpx(t *testing.T) {
+	sealer := &TMPXSealer{} // no macroNames configured
+	resp := &tmproto.IdentityMatchResponse{}
+	assignTmpxToResponse(resp, sealer, "k1.tok")
+	assert.Empty(t, resp.TmpxMacros)
+	assert.Equal(t, "k1.tok", resp.Tmpx)
+}
+
 func TestIdentityHandlerValidationErrorIsGenericAndLogged(t *testing.T) {
 	var logs bytes.Buffer
 	h := NewIdentityHandler(IdentityHandlerConfig{

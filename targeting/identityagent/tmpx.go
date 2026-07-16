@@ -114,18 +114,24 @@ type TMPXSealer struct {
 	// Sourced from TMPXConfig.MacroNames (env: TMPX_MACRO_NAMES) and MUST
 	// match the provider's registered tmpx_macros list in
 	// provider-registration.json. When empty the response carries only the
-	// legacy singular `tmpx` field (deprecated, removed in 4.0). The spec
-	// caps the registered list at 2; multi-chunk encoding is not yet
-	// implemented in this sealer — a single-slot deployment is the only
-	// shape this version emits, and additional slot names are ignored.
+	// legacy singular `tmpx` field (deprecated, removed in 4.0). The v1
+	// spec caps the registered list at 2 entries (enforced at registration
+	// time in provider-registration.json — not here); the sealer does not
+	// impose an extra cap so an operator can experiment beyond v1 without
+	// this code needing a bump. When more than one name is configured, the
+	// sealed token is chunked at 255-byte boundaries (one boundary per
+	// slot; the GAM `%%PATTERN_MACRO%%` substitution limit) and each
+	// chunk is emitted in slot order.
 	macroNames []string
 
 	// priority is the explicit per-spec priority ordering used when the
-	// resolved identities exceed the 255-byte wire budget. Entries earlier
-	// in the slice rank higher; entries whose UIDType is absent are
-	// dropped (the spec requires explicit configuration — arbitrary
-	// truncation is forbidden). When priority is empty, no truncation is
-	// performed and an over-budget token is reported as an error.
+	// resolved identities exceed the sealer's wireBudget (one macro slot
+	// by default, more for multi-chunk deployments; see wireBudget).
+	// Entries earlier in the slice rank higher; entries whose UIDType is
+	// absent are dropped (the spec requires explicit configuration —
+	// arbitrary truncation is forbidden). When priority is empty, no
+	// truncation is performed and an over-budget token is reported as an
+	// error.
 	priority []tmproto.UIDType
 
 	// decoders maps each TMPX-encodable UID type to the adapter that
@@ -219,7 +225,6 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	}
 	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
-	warnIfMultiSlotIgnored(logger, cfg.MacroNames)
 	return &TMPXSealer{
 		country:    cfg.Country,
 		encStore:   store,
@@ -231,35 +236,48 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	}, nil
 }
 
-// warnIfMultiSlotIgnored surfaces the configuration/implementation mismatch
-// when an operator declares more than one TMPX_MACRO_NAMES slot. Multi-chunk
-// encoding splits a single sealed token across multiple ad-server slots; the
-// splitter (and the matching reassembler on the receiver side) is deferred
-// until production deployments actually exceed the 255-char single-slot
-// budget. Until then MacroEntry only fills macroNames[0] — log loudly so an
-// operator who expects two-slot emission sees that it's silently single-slot
-// today rather than discovering it at trafficking time.
-func warnIfMultiSlotIgnored(logger *slog.Logger, names []string) {
-	if logger == nil || len(names) <= 1 {
-		return
-	}
-	logger.Warn("TMPX_MACRO_NAMES configured with multiple slots but multi-chunk encoding is not implemented; only the first slot will be filled on responses",
-		"active_slot", names[0],
-		"ignored_slots", append([]string(nil), names[1:]...),
-	)
+// wireBudget is the maximum sealed-wire size the sealer targets for the
+// current macro-slot configuration. Each configured slot contributes one
+// TmpxMaxWireBytes-sized chunk (the GAM `%%PATTERN_MACRO%%` substitution
+// limit); a deployment with no macro slots configured falls back to the
+// legacy single-`tmpx` carrier and gets a one-slot budget.
+//
+// The v1 spec caps the registered macro list at 2 entries — enforced at
+// registration time in provider-registration.json rather than here — so
+// this returns len(macroNames)*TmpxMaxWireBytes without an extra ceiling.
+func (s *TMPXSealer) wireBudget() int {
+	slots := max(len(s.macroNames), 1)
+	return slots * tmproto.TmpxMaxWireBytes
 }
 
-// MacroEntry returns the {name, value} pair that fills the provider's first
-// registered macro slot for the given sealed token, or (zero, false) when no
-// macro names are configured. Single-slot is the only emission shape today;
-// multi-chunk splitting across more than one registered name is deferred
-// until production deployments actually exceed the 255-char ad-server slot
-// budget.
-func (s *TMPXSealer) MacroEntry(token string) (tmproto.TmpxMacro, bool) {
+// MacroEntries pairs the sealed wire token with the provider's registered
+// macro slot names, splitting the token at TmpxMaxWireBytes boundaries so
+// each entry fits inside one ad-server macro slot (255 bytes; the GAM
+// `%%PATTERN_MACRO%%` substitution limit). Entries are returned in slot
+// order — the receiver reassembles by concatenating in the same order.
+//
+// Returns nil when there is no token to place, no macro names are
+// configured (the response falls back to the legacy `tmpx` string), or
+// the receiver is nil. Never emits more entries than macroNames and
+// never emits an entry whose value exceeds TmpxMaxWireBytes; the sealer's
+// selectEntries pass keeps the produced token within wireBudget() so
+// chunking below never needs to overflow — but if a caller ever supplies
+// a longer token, the surplus is dropped rather than allowing a slot
+// value to exceed the substitution limit.
+func (s *TMPXSealer) MacroEntries(token string) []tmproto.TmpxMacro {
 	if s == nil || token == "" || len(s.macroNames) == 0 {
-		return tmproto.TmpxMacro{}, false
+		return nil
 	}
-	return tmproto.TmpxMacro{Name: s.macroNames[0], Value: token}, true
+	entries := make([]tmproto.TmpxMacro, 0, len(s.macroNames))
+	for i, name := range s.macroNames {
+		start := i * tmproto.TmpxMaxWireBytes
+		if start >= len(token) {
+			break
+		}
+		end := min(start+tmproto.TmpxMaxWireBytes, len(token))
+		entries = append(entries, tmproto.TmpxMacro{Name: name, Value: token[start:end]})
+	}
+	return entries
 }
 
 // log returns the sealer's logger, falling back to slog.Default() when none
@@ -511,12 +529,14 @@ func (s *TMPXSealer) verifiedIdentityEntries(ctx context.Context, verified []tar
 }
 
 // selectEntries packs already-decoded identities into the wire TmpxEntry
-// list under the TmpxMaxWireBytes budget. Identities the Decode pass
-// dropped (Bytes == nil) are skipped here; their drop counters fired in
-// Decode. Identities whose UIDType is not in TMPX_PRIORITY (when priority
-// is configured) are also skipped here without a counter — operators set
-// priority explicitly, so unreachable entries are intentional and surfaced
-// at startup by logDecoderLayout, not per-request.
+// list under the sealer's wireBudget() — TmpxMaxWireBytes per configured
+// macro slot, or a single slot's worth when no slots are configured (the
+// legacy single-`tmpx` carrier). Identities the Decode pass dropped
+// (Bytes == nil) are skipped here; their drop counters fired in Decode.
+// Identities whose UIDType is not in TMPX_PRIORITY (when priority is
+// configured) are also skipped here without a counter — operators set
+// priority explicitly, so unreachable entries are intentional and
+// surfaced at startup by logDecoderLayout, not per-request.
 //
 // The budget is computed against TmpxMaxKidLen rather than the currently
 // advertised kid: a JWKS rotation can change the kid length between
@@ -558,16 +578,17 @@ func (s *TMPXSealer) selectEntries(decoded []DecodedIdentity) ([]tmproto.TmpxEnt
 		})
 	}
 
+	budget := s.wireBudget()
 	entries := make([]tmproto.TmpxEntry, 0, len(survivors))
 	usedBytes := 0
 	budgetOverflowed := false
 	for _, c := range survivors {
 		need := 1 + len(c.d.Bytes)
 		nextWire := tmproto.TmpxWireSize(tmproto.TmpxMaxKidLen, usedBytes+need)
-		if nextWire > tmproto.TmpxMaxWireBytes {
+		if nextWire > budget {
 			if len(s.priority) == 0 {
 				return nil, fmt.Errorf("tmpx wire size %d exceeds %d-byte budget and no TMPX_PRIORITY configured: spec forbids arbitrary truncation",
-					nextWire, tmproto.TmpxMaxWireBytes)
+					nextWire, budget)
 			}
 			budgetOverflowed = true
 			break
@@ -576,7 +597,7 @@ func (s *TMPXSealer) selectEntries(decoded []DecodedIdentity) ([]tmproto.TmpxEnt
 		usedBytes += need
 	}
 	if len(entries) == 0 && budgetOverflowed {
-		return nil, fmt.Errorf("tmpx wire budget %d cannot fit even the highest-priority entry", tmproto.TmpxMaxWireBytes)
+		return nil, fmt.Errorf("tmpx wire budget %d cannot fit even the highest-priority entry", budget)
 	}
 	return entries, nil
 }
