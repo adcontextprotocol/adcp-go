@@ -717,6 +717,8 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 		SellerAgentURL: "https://seller.example.com/agent",
 		PackageIDs:     []string{"pkg-1"},
 		Artifact: &tmproto.Artifact{
+			PropertyRID: "rid-1001",
+			ArtifactID:  "art-1",
 			Assets: tmproto.Assets{
 				func() *tmproto.ImageAsset {
 					access := tmproto.NewBearerTokenAccess("secret-bearer-token")
