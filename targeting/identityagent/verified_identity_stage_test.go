@@ -75,15 +75,15 @@ func sealedCred(t *testing.T, kid string, pub *ecdh.PublicKey, att tmproto.Attes
 
 func vidEntries() []identityconfig.Entry {
 	return []identityconfig.Entry{
-		{Key: identityconfig.Key{SellerAgentURL: "seller.com", PackageID: "pkg-alcohol"}},
-		{Key: identityconfig.Key{SellerAgentURL: "seller.com", PackageID: "pkg-general"}},
+		{Key: identityconfig.Key{SellerAgentURL: "https://seller.example.com/agent", PackageID: "pkg-alcohol"}},
+		{Key: identityconfig.Key{SellerAgentURL: "https://seller.example.com/agent", PackageID: "pkg-general"}},
 	}
 }
 
 func vidReq(sealed ...tmproto.SealedCredential) *tmproto.IdentityMatchRequest {
 	return &tmproto.IdentityMatchRequest{
 		RequestID:         "r1",
-		SellerAgentURL:    "seller.com",
+		SellerAgentURL:    "https://seller.example.com/agent",
 		PackageIDs:        []string{"pkg-alcohol", "pkg-general"},
 		Identities:        []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 		Country:           "US",
@@ -162,8 +162,8 @@ func TestService_VerifiedIdentity_FcapOnNullifier(t *testing.T) {
 		// No age gate — isolate fcap behavior. Cap the namespaced nullifier
 		// key for pkg-alcohol, and (decoy) cap the raw user token too.
 		cappedTuples: []capTuple{
-			{identity: capKey, seller: "seller.com", pkg: "pkg-alcohol"},
-			{identity: "u1", seller: "seller.com", pkg: "pkg-general"},
+			{identity: capKey, seller: "https://seller.example.com/agent", pkg: "pkg-alcohol"},
+			{identity: "u1", seller: "https://seller.example.com/agent", pkg: "pkg-general"},
 		},
 	})
 	req := vidReq(sealedCred(t, "kid-1", sk.PublicKey(), validAtt(tmproto.AttestationClaimUniqueHuman)))

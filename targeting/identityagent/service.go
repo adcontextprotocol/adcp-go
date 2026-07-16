@@ -3,6 +3,7 @@ package identityagent
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"maps"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/fcap"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
 
 // Service composes the audience-only IdentityEngine with a frequency-cap
@@ -116,7 +118,31 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 // Parent-context expiry (the handler's 40ms budget) terminates both
 // goroutines and forces a fail-closed result.
 func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchRequest) *targeting.IdentityResult {
-	effectivePkgIDs, idConfigs := identityconfig.ResolveRequest(s.configSvc, req.SellerAgentURL, req.PackageIDs)
+	// seller_agent_url selects the seller's active package set. The AdCP
+	// spec compares URL identifiers under URL-identifier canonicalization,
+	// not byte-equality, so a request carrying
+	// "https://Seller.Example.com:443/agent" must resolve to the same set
+	// as one registered under "https://seller.example.com/agent".
+	// Canonicalize once here — the identityconfig snapshot is keyed by the
+	// canonical form (see buildSnapshot / applyDelta), so a raw-string
+	// lookup would silently miss every registration.
+	//
+	// An empty seller_agent_url carries no URL to canonicalize and is
+	// passed through unchanged. A non-empty but malformed value cannot name
+	// any registered seller, so it fails safe to an empty active set rather
+	// than 5xx.
+	canonicalSeller := req.SellerAgentURL
+	if canonicalSeller != "" {
+		canon, err := urlcanon.Canonicalize(canonicalSeller)
+		if err != nil {
+			slog.Default().Warn("identityagent: seller_agent_url canonicalization failed; treating as no active packages",
+				"seller_agent_url", req.SellerAgentURL, "error", err)
+			s.recorder.StageOutcome(ctx, StageResolve, OutcomeFail)
+			return &targeting.IdentityResult{RequestID: req.RequestID}
+		}
+		canonicalSeller = canon
+	}
+	effectivePkgIDs, idConfigs := identityconfig.ResolveRequest(s.configSvc, canonicalSeller, req.PackageIDs)
 	if len(effectivePkgIDs) == 0 {
 		s.recorder.StageOutcome(ctx, StageResolve, OutcomeFail)
 		return &targeting.IdentityResult{RequestID: req.RequestID}

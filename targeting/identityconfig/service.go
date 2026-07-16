@@ -11,7 +11,29 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
+
+// canonicalSellerKey applies AdCP URL-identifier canonicalization to a
+// seller_agent_url so snapshot keys are byte-comparable regardless of the
+// form the source supplies. An empty input is passed through unchanged; a
+// malformed value is logged and returned as the empty string so it fails
+// safe to "no seller" rather than persisting an unreachable key.
+func canonicalSellerKey(logger *slog.Logger, raw string) string {
+	if raw == "" {
+		return ""
+	}
+	canon, err := urlcanon.Canonicalize(raw)
+	if err != nil {
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("identityconfig: seller_agent_url canonicalization failed; dropping entry",
+			"seller_agent_url", raw, "error", err)
+		return ""
+	}
+	return canon
+}
 
 // Service holds an in-memory snapshot of identity configs and refreshes it
 // from a Source on a fixed interval. Reads (Get, GetBySeller) are lock-free:
@@ -119,7 +141,11 @@ func WithRefreshObserver(fn func(outcome string)) Option {
 // is needed.
 func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 	snap := s.snap.Load()
-	return snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
+	key := canonicalSellerKey(s.logger, sellerAgentURL)
+	if key == "" && sellerAgentURL != "" {
+		return nil
+	}
+	return snap.byKey[Key{SellerAgentURL: key, PackageID: packageID}]
 }
 
 // Lookup returns the TargetSegments rule registered under (sellerAgentURL,
@@ -132,7 +158,11 @@ func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 // is needed.
 func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRule, bool) {
 	snap := s.snap.Load()
-	rule, ok := snap.byKey[Key{SellerAgentURL: sellerAgentURL, PackageID: packageID}]
+	key := canonicalSellerKey(s.logger, sellerAgentURL)
+	if key == "" && sellerAgentURL != "" {
+		return nil, false
+	}
+	rule, ok := snap.byKey[Key{SellerAgentURL: key, PackageID: packageID}]
 	return rule, ok
 }
 
@@ -148,7 +178,11 @@ func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRu
 // needing a stable order must sort the result.
 func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 	snap := s.snap.Load()
-	entries := snap.bySeller[sellerAgentURL]
+	key := canonicalSellerKey(s.logger, sellerAgentURL)
+	if key == "" && sellerAgentURL != "" {
+		return nil
+	}
+	entries := snap.bySeller[key]
 	if len(entries) == 0 {
 		return nil
 	}
@@ -277,7 +311,7 @@ func (s *Service) loadAllOnce(ctx context.Context) error {
 		s.notifyRefresh(RefreshOutcomeError)
 		return fmt.Errorf("identityconfig: load all: %w", err)
 	}
-	s.snap.Store(buildSnapshot(snap))
+	s.snap.Store(buildSnapshotWithLogger(s.logger, snap))
 	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
 }
@@ -373,7 +407,7 @@ func (s *Service) refreshDelta(ctx context.Context) error {
 		s.notifyRefresh(RefreshOutcomeSuccess)
 		return nil
 	}
-	s.snap.Store(applyDelta(current, delta))
+	s.snap.Store(applyDeltaWithLogger(s.logger, current, delta))
 	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
 }
@@ -402,32 +436,64 @@ func emptySnapshot() *snapshotData {
 	}
 }
 
-// buildSnapshot turns a Source.LoadAll Snapshot into the immutable
+// buildSnapshotWithLogger turns a Source.LoadAll Snapshot into the immutable
 // snapshotData the Service serves reads from.
-func buildSnapshot(s Snapshot) *snapshotData {
+//
+// Seller URLs are folded through URL-identifier canonicalization before use
+// as map keys so a source that supplies non-canonical forms (mixed case,
+// default ports, dot-segments) still matches lookups made with the wire
+// form. Entries whose seller URL fails to canonicalize are dropped.
+func buildSnapshotWithLogger(logger *slog.Logger, s Snapshot) *snapshotData {
 	out := &snapshotData{
 		byKey:         make(map[Key]*targeting.SegmentRule, len(s.Configs)),
 		bySeller:      make(map[string][]Entry),
 		lastUpdatedAt: s.LastUpdatedAt,
 	}
 	for _, e := range s.Configs {
-		out.byKey[e.Key] = e.TargetSegments
-		out.bySeller[e.Key.SellerAgentURL] = append(out.bySeller[e.Key.SellerAgentURL], e)
+		key := canonicalizeEntry(logger, e)
+		if key == nil {
+			continue
+		}
+		out.byKey[*key] = e.TargetSegments
+		out.bySeller[key.SellerAgentURL] = append(out.bySeller[key.SellerAgentURL], Entry{Key: *key, TargetSegments: e.TargetSegments})
 	}
 	return out
 }
 
-// applyDelta produces a new snapshotData from the current one with `delta`
-// applied. The previous snapshot is left untouched so concurrent readers
-// keep working.
-func applyDelta(current *snapshotData, delta Delta) *snapshotData {
+// canonicalizeEntry returns the entry's canonical Key, or nil when the
+// seller URL is present but malformed.
+func canonicalizeEntry(logger *slog.Logger, e Entry) *Key {
+	seller := canonicalSellerKey(logger, e.Key.SellerAgentURL)
+	if seller == "" && e.Key.SellerAgentURL != "" {
+		return nil
+	}
+	return &Key{SellerAgentURL: seller, PackageID: e.Key.PackageID}
+}
+
+// applyDeltaWithLogger produces a new snapshotData from the current one with
+// `delta` applied. The previous snapshot is left untouched so concurrent
+// readers keep working.
+//
+// Upserted entries have their seller URLs canonicalized before insertion
+// (see buildSnapshotWithLogger). Removed keys are canonicalized the same way
+// so a source that pointed at a non-canonical form during Upsert can still
+// address the same entry for Removal.
+func applyDeltaWithLogger(logger *slog.Logger, current *snapshotData, delta Delta) *snapshotData {
 	newByKey := make(map[Key]*targeting.SegmentRule, len(current.byKey)+len(delta.Upserted))
 	maps.Copy(newByKey, current.byKey)
 	for _, e := range delta.Upserted {
-		newByKey[e.Key] = e.TargetSegments
+		key := canonicalizeEntry(logger, e)
+		if key == nil {
+			continue
+		}
+		newByKey[*key] = e.TargetSegments
 	}
 	for _, k := range delta.Removed {
-		delete(newByKey, k)
+		key := canonicalizeEntry(logger, Entry{Key: k})
+		if key == nil {
+			continue
+		}
+		delete(newByKey, *key)
 	}
 
 	newBySeller := make(map[string][]Entry)
