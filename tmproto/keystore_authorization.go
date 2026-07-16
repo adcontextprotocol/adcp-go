@@ -51,13 +51,16 @@ type LazyAuthorizationKeyStore struct {
 	// baseURL is parsed once at construction. Per-request URLs are built
 	// by cloning it and setting the `agent_url` query parameter — the
 	// host is never derived from caller input, only the query string is.
-	baseURL     *url.URL
-	bearerToken string
-	client      *http.Client
-	logger      *slog.Logger
+	baseURL      *url.URL
+	bearerToken  string
+	client       *http.Client
+	logger       *slog.Logger
+	fetchTimeout time.Duration
 
-	positiveTTL time.Duration
-	negativeTTL time.Duration
+	positiveTTL               time.Duration
+	negativeTTL               time.Duration
+	serveStaleGrace           time.Duration
+	unknownKidRefetchCooldown time.Duration
 
 	// cache is bounded by size; expiry is checked at read time. LRU
 	// promotion happens on Get, so entries for agents that keep signing
@@ -123,6 +126,31 @@ type LazyAuthorizationKeyStoreOptions struct {
 	// legitimate cold-start bursts, low enough to bound the amplifier.
 	MaxConcurrentFetches int
 
+	// FetchTimeout bounds a single outbound registry call. Defaults to
+	// 3 seconds. Set alongside HTTPClient's own Timeout — whichever is
+	// tighter wins. An operator-supplied HTTPClient with no Timeout
+	// still gets this ceiling.
+	FetchTimeout time.Duration
+
+	// UnknownKidRefetchCooldown gates how soon after a fetch the store
+	// will retry the registry when the incoming kid isn't in the cached
+	// keyset (typical cause: publisher rotation). Defaults to 30 s.
+	// Shorter values pick up rotations faster; longer values further
+	// dampen the impact of forged-kid probes. Exposed primarily so
+	// tests can shorten it without racing wall-clock time.
+	UnknownKidRefetchCooldown time.Duration
+
+	// ServeStaleGrace lets an expired positive entry keep serving for
+	// this window when a refetch fails (timeout / 5xx / network blip).
+	// Zero disables the grace — expiry means immediate 401 for that
+	// agent until the next successful fetch. A non-zero value trades a
+	// bounded revocation window (extends the effective positive TTL by
+	// up to Grace on failure) for continuity of service during a
+	// registry outage. Snapshot-mode RemoteKeyStore keeps serving its
+	// last snapshot indefinitely across refresh failures; this bounds
+	// that behaviour explicitly.
+	ServeStaleGrace time.Duration
+
 	// Logger receives cache-miss and fetch-error events.
 	Logger *slog.Logger
 }
@@ -132,8 +160,33 @@ type agentCacheEntry struct {
 	// all authorizations the registry returned. Nil for a negative
 	// cache entry.
 	byKid map[string]*SigningKey
+	// fetchedAt is when this entry was populated by a successful
+	// registry response. Used to gate refetch-on-unknown-kid so a
+	// freshly-fetched entry does not thrash on a spray of unknown kids
+	// from the same agent.
+	fetchedAt time.Time
 	// expires is when this entry becomes stale.
 	expires time.Time
+	// staleUntil is the wall-clock cutoff beyond which even
+	// serve-stale-on-error refuses to serve. Zero when serve-stale is
+	// disabled (returns nil on expiry+refetch-failure).
+	staleUntil time.Time
+}
+
+// defaultUnknownKidRefetchCooldown gates the "refetch on unknown kid"
+// fallback: once an entry is younger than this window, we trust the
+// freshly-cached keyset and do not refetch even if the incoming kid
+// isn't in it. Long enough to absorb a spray of forged kids from one
+// agent; short enough that a legitimate rotation lands quickly.
+const defaultUnknownKidRefetchCooldown = 30 * time.Second
+
+// refetchOnUnknownKidAllowed reports whether the entry is old enough to
+// justify one more refetch attempt on an unknown kid. Semantics: a
+// brand-new entry answers false (still fresh, trust the keyset); an
+// entry past the cooldown answers true. The kid argument is reserved
+// for a future per-kid tracking scheme; today the gate is entry-global.
+func (e *agentCacheEntry) refetchOnUnknownKidAllowed(_ string, cooldown time.Duration) bool {
+	return time.Since(e.fetchedAt) >= cooldown
 }
 
 type inflightFetch struct {
@@ -169,10 +222,14 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 	default:
 		return nil, fmt.Errorf("tmproto: LazyAuthorizationKeyStore BaseURL must use http(s) scheme, got %q", parsed.Scheme)
 	}
+	fetchTimeout := opts.FetchTimeout
+	if fetchTimeout <= 0 {
+		fetchTimeout = 3 * time.Second
+	}
 	client := opts.HTTPClient
 	if client == nil {
 		client = &http.Client{
-			Timeout:       3 * time.Second,
+			Timeout:       fetchTimeout,
 			CheckRedirect: denyCrossOriginRedirect,
 		}
 	}
@@ -200,16 +257,23 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 	if maxConcurrent <= 0 {
 		maxConcurrent = 32
 	}
+	unknownKidCooldown := opts.UnknownKidRefetchCooldown
+	if unknownKidCooldown <= 0 {
+		unknownKidCooldown = defaultUnknownKidRefetchCooldown
+	}
 	return &LazyAuthorizationKeyStore{
-		baseURL:     parsed,
-		bearerToken: opts.BearerToken,
-		client:      client,
-		logger:      logger,
-		positiveTTL: positiveTTL,
-		negativeTTL: negativeTTL,
-		cache:       cache,
-		fetchSem:    make(chan struct{}, maxConcurrent),
-		inflight:    make(map[string]*inflightFetch),
+		baseURL:                   parsed,
+		bearerToken:               opts.BearerToken,
+		client:                    client,
+		logger:                    logger,
+		fetchTimeout:              fetchTimeout,
+		positiveTTL:               positiveTTL,
+		negativeTTL:               negativeTTL,
+		serveStaleGrace:           opts.ServeStaleGrace,
+		unknownKidRefetchCooldown: unknownKidCooldown,
+		cache:                     cache,
+		fetchSem:                  make(chan struct{}, maxConcurrent),
+		inflight:                  make(map[string]*inflightFetch),
 	}, nil
 }
 
@@ -226,41 +290,56 @@ func (s *LazyAuthorizationKeyStore) LookupKey(_ string) (*SigningKey, bool) {
 
 // LookupKeyForAgent implements AgentAwareKeyStore.
 func (s *LazyAuthorizationKeyStore) LookupKeyForAgent(kid, sellerAgentURL string) (*SigningKey, bool) {
+	return s.LookupKeyForAgentCtx(context.Background(), kid, sellerAgentURL)
+}
+
+// LookupKeyForAgentCtx is the context-aware variant. Callers on a
+// deadline (verify middleware inside a request handler) SHOULD use this
+// so a slow registry can't couple the agent's availability to it — the
+// context deadline caps how long the store will spend on a cold-miss
+// fetch. The interface method LookupKeyForAgent stays context-less to
+// match the KeyStore family.
+func (s *LazyAuthorizationKeyStore) LookupKeyForAgentCtx(ctx context.Context, kid, sellerAgentURL string) (*SigningKey, bool) {
 	canonical, err := urlcanon.Canonicalize(sellerAgentURL)
 	if err != nil {
 		s.logger.Debug("agent URL failed canonicalization; treating as unknown", "seller_agent_url", sellerAgentURL, "error", err)
 		return nil, false
 	}
-	entry := s.entryFor(canonical)
+	entry := s.entryFor(ctx, canonical)
 	if entry == nil || entry.byKid == nil {
 		return nil, false
 	}
-	k, ok := entry.byKid[kid]
-	return k, ok
+	if k, ok := entry.byKid[kid]; ok {
+		return k, true
+	}
+	// Kid isn't in the cached keyset. The most common cause is a
+	// legitimate signer that rotated to a new kid after we cached this
+	// agent — the registry has the new key, we're serving stale. Try to
+	// refetch once (bounded by a short cooldown to dampen forged-kid
+	// probes). CRUCIAL: fetch-then-swap. We do NOT evict the existing
+	// entry first, because an attacker with a bogus kid could otherwise
+	// force a refetch that fails (registry blip, semaphore saturation
+	// from a spray of unique agent URLs) and cancel the ServeStaleGrace
+	// net we hold for legitimate traffic. On refetch failure the old
+	// entry stays exactly where it was.
+	if entry.refetchOnUnknownKidAllowed(kid, s.unknownKidRefetchCooldown) {
+		if fresh := s.refetchAgent(ctx, canonical); fresh != nil && fresh.byKid != nil {
+			if k, ok := fresh.byKid[kid]; ok {
+				return k, true
+			}
+		}
+	}
+	return nil, false
 }
 
-// Invalidate drops the cached entry for the given agent URL so the next
-// lookup triggers a fresh fetch. The current verify middleware does not
-// call this on signature failure — a rotation therefore takes up to the
-// positive TTL (default 5 minutes) to propagate. Exported for host code
-// that wants to wire re-fetch-on-failure per spec §590.
-func (s *LazyAuthorizationKeyStore) Invalidate(sellerAgentURL string) {
-	canonical, err := urlcanon.Canonicalize(sellerAgentURL)
-	if err != nil {
-		return
-	}
-	s.cache.Remove(canonical)
-}
-
-// entryFor returns a cached entry for the canonical URL, fetching if
-// missing or expired. Concurrent misses for the same URL are collapsed.
-func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry {
-	if entry, ok := s.cache.Get(canonical); ok && time.Now().Before(entry.expires) {
-		return entry
-	}
-
-	// Single-flight the fetch so a burst of first requests for a new
-	// agent produces one HTTP call, not N.
+// refetchAgent forces a registry call for the agent, updating the cache
+// only on success. Unlike entryFor, it bypasses the "cache still valid"
+// short-circuit — the caller has already established that the cached
+// entry needs refresh — but preserves single-flight and the fetch
+// semaphore. On failure it returns nil WITHOUT touching the existing
+// cache entry, so a still-valid entry (with respect to the caller's
+// original expectation) is preserved.
+func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical string) *agentCacheEntry {
 	s.inflightMu.Lock()
 	if in, ok := s.inflight[canonical]; ok {
 		s.inflightMu.Unlock()
@@ -275,6 +354,94 @@ func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry 
 	s.inflight[canonical] = in
 	s.inflightMu.Unlock()
 
+	semAcquired := false
+	defer func() {
+		if semAcquired {
+			<-s.fetchSem
+		}
+		in.wg.Done()
+		s.inflightMu.Lock()
+		delete(s.inflight, canonical)
+		s.inflightMu.Unlock()
+	}()
+
+	select {
+	case s.fetchSem <- struct{}{}:
+		semAcquired = true
+	default:
+		in.err = errors.New("fetch semaphore full")
+		return nil
+	}
+
+	entry, err := s.fetch(ctx, canonical)
+	in.entry = entry
+	in.err = err
+	if err != nil {
+		return nil
+	}
+	s.cache.Add(canonical, entry)
+	return entry
+}
+
+// Invalidate drops the cached entry for the given agent URL so the next
+// lookup triggers a fresh fetch. The current verify middleware does not
+// call this on signature failure — a rotation therefore takes up to the
+// positive TTL (default 5 minutes) to propagate. Exported for host code
+// that wants to wire re-fetch-on-failure per spec §590.
+//
+// Race note: an in-flight leader fetch that completes AFTER Invalidate
+// will Add its result back into the cache, re-inserting the entry the
+// caller just wanted gone. Callers wiring §590 refetch-on-failure
+// SHOULD accept that as best-effort — a stale entry surviving one extra
+// round is bounded by the positive TTL either way.
+func (s *LazyAuthorizationKeyStore) Invalidate(sellerAgentURL string) {
+	canonical, err := urlcanon.Canonicalize(sellerAgentURL)
+	if err != nil {
+		return
+	}
+	s.cache.Remove(canonical)
+}
+
+// entryFor returns a cached entry for the canonical URL, fetching if
+// missing or expired. Concurrent misses for the same URL are collapsed.
+// Callers pass a context so the fetch inherits the request's deadline
+// rather than pinning a semaphore slot for the full FetchTimeout.
+func (s *LazyAuthorizationKeyStore) entryFor(ctx context.Context, canonical string) *agentCacheEntry {
+	cached, hasCached := s.cache.Get(canonical)
+	if hasCached && time.Now().Before(cached.expires) {
+		return cached
+	}
+
+	// Single-flight the fetch so a burst of first requests for a new
+	// agent produces one HTTP call, not N.
+	s.inflightMu.Lock()
+	if in, ok := s.inflight[canonical]; ok {
+		s.inflightMu.Unlock()
+		in.wg.Wait()
+		if in.err != nil {
+			return s.staleOrNil(cached, hasCached)
+		}
+		return in.entry
+	}
+	in := &inflightFetch{}
+	in.wg.Add(1)
+	s.inflight[canonical] = in
+	s.inflightMu.Unlock()
+
+	// Everything past this point must run even on panic — otherwise
+	// waiters block forever on wg.Wait(), the inflight entry leaks, and
+	// a semaphore slot is lost. defer covers all three legs.
+	semAcquired := false
+	defer func() {
+		if semAcquired {
+			<-s.fetchSem
+		}
+		in.wg.Done()
+		s.inflightMu.Lock()
+		delete(s.inflight, canonical)
+		s.inflightMu.Unlock()
+	}()
+
 	// Non-blocking semaphore acquire — if concurrent fetches are already
 	// at the ceiling, drop this request fail-closed rather than queuing.
 	// A queue is the amplifier we're guarding against; the caller's
@@ -282,33 +449,41 @@ func (s *LazyAuthorizationKeyStore) entryFor(canonical string) *agentCacheEntry 
 	// outcome under load.
 	select {
 	case s.fetchSem <- struct{}{}:
+		semAcquired = true
 	default:
 		in.err = errors.New("fetch semaphore full")
-		in.wg.Done()
-		s.inflightMu.Lock()
-		delete(s.inflight, canonical)
-		s.inflightMu.Unlock()
 		s.logger.Warn("authorization keystore refused fetch — concurrency ceiling reached", "seller_agent_url", canonical)
-		return nil
+		return s.staleOrNil(cached, hasCached)
 	}
 
-	entry, err := s.fetch(canonical)
-	<-s.fetchSem
+	entry, err := s.fetch(ctx, canonical)
 	in.entry = entry
 	in.err = err
-	in.wg.Done()
-
-	s.inflightMu.Lock()
-	delete(s.inflight, canonical)
-	s.inflightMu.Unlock()
 
 	if err != nil {
 		s.logger.Warn("authorization keystore fetch failed", "seller_agent_url", canonical, "error", err)
-		return nil
+		return s.staleOrNil(cached, hasCached)
 	}
 
 	s.cache.Add(canonical, entry)
 	return entry
+}
+
+// staleOrNil returns a still-valid stale entry when serve-stale grace is
+// configured and the cached entry has not yet passed its staleUntil, else
+// nil. Trades a bounded revocation window for continuity across registry
+// blips.
+func (s *LazyAuthorizationKeyStore) staleOrNil(cached *agentCacheEntry, hasCached bool) *agentCacheEntry {
+	if !hasCached || s.serveStaleGrace <= 0 {
+		return nil
+	}
+	if cached == nil || cached.byKid == nil {
+		return nil
+	}
+	if time.Now().Before(cached.staleUntil) {
+		return cached
+	}
+	return nil
 }
 
 // authorizationsResponse mirrors the JSON envelope of
@@ -320,8 +495,12 @@ type authorizationsResponse struct {
 	} `json:"rows"`
 }
 
-func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCacheEntry, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func (s *LazyAuthorizationKeyStore) fetch(ctx context.Context, canonicalAgentURL string) (*agentCacheEntry, error) {
+	// Cap the fetch by the store's FetchTimeout, but only tighten the
+	// caller's deadline — never extend it. This lets a request-scoped
+	// context cancel a slow registry, while still bounding an
+	// unbounded (background) caller to FetchTimeout.
+	fetchCtx, cancel := context.WithTimeout(ctx, s.fetchTimeout)
 	defer cancel()
 
 	// Clone the pre-parsed base URL and set the query param. The host is
@@ -337,7 +516,7 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 	// configuration (TMP_REGISTRY_URL); only the ?agent_url= query parameter
 	// is derived from request data, which is the documented registry
 	// contract. The Client is not a generic HTTP fetcher.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil) //nolint:gosec
+	req, err := http.NewRequestWithContext(fetchCtx, http.MethodGet, u.String(), nil) //nolint:gosec
 	if err != nil {
 		return nil, err
 	}
@@ -355,11 +534,16 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 		_ = resp.Body.Close()
 	}()
 
+	now := time.Now()
+
 	// 404 is a legitimate "no authorizations exist for this agent" —
 	// cache negatively so a burst of forged requests does not pound
 	// the registry.
 	if resp.StatusCode == http.StatusNotFound {
-		return &agentCacheEntry{expires: time.Now().Add(s.negativeTTL)}, nil
+		return &agentCacheEntry{
+			fetchedAt: now,
+			expires:   now.Add(s.negativeTTL),
+		}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("authorizations returned %d", resp.StatusCode)
@@ -390,10 +574,18 @@ func (s *LazyAuthorizationKeyStore) fetch(canonicalAgentURL string) (*agentCache
 	// negative result from the verifier's point of view — but cache
 	// briefly so the registry is not hammered.
 	if len(byKid) == 0 {
-		return &agentCacheEntry{expires: time.Now().Add(s.negativeTTL)}, nil
+		return &agentCacheEntry{
+			fetchedAt: now,
+			expires:   now.Add(s.negativeTTL),
+		}, nil
 	}
-	return &agentCacheEntry{
-		byKid:   byKid,
-		expires: time.Now().Add(s.positiveTTL),
-	}, nil
+	entry := &agentCacheEntry{
+		byKid:     byKid,
+		fetchedAt: now,
+		expires:   now.Add(s.positiveTTL),
+	}
+	if s.serveStaleGrace > 0 {
+		entry.staleUntil = entry.expires.Add(s.serveStaleGrace)
+	}
+	return entry, nil
 }

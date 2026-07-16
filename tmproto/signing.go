@@ -126,12 +126,16 @@ type KeyStore interface {
 // avoid syncing the entire registry and instead pull just the keys of
 // the agent that actually signed the request.
 //
-// LookupKeyForAgent MUST return the same key as LookupKey(kid) when kid
-// belongs to sellerAgentURL, and MAY return false in cases where a kid
-// exists in the store but is not registered for that agent — this
-// enforces the spec's per-agent scoping (see specification.mdx §514,
-// §601) so a captured signature from agent A cannot be replayed under
-// agent B's identity even if B has cached a copy of A's key.
+// The trust property this interface adds is authorization scoping, not
+// cross-agent replay protection. Cross-agent replay is already blocked
+// by the fact that seller_agent_url is part of the signed input
+// (specification.mdx §514, §555) — a captured signature under agent A
+// cannot verify when the request claims agent B because ed25519.Verify
+// fails over the swapped bytes. What LookupKeyForAgent adds on top:
+// even if a kid exists somewhere in the store's cache from a different
+// agent, resolving it under sellerAgentURL SHOULD only return keys the
+// registry attests were authorized for that agent — preventing a
+// silent cross-agent trust bleed at the key-store layer.
 type AgentAwareKeyStore interface {
 	KeyStore
 	LookupKeyForAgent(kid, sellerAgentURL string) (*SigningKey, bool)
