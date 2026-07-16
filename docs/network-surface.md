@@ -28,7 +28,7 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 
 | Service | Default Port | Protocol | Direction | Configurable Via |
 |---------|-------------|----------|-----------|------------------|
-| Router | `:8080` | HTTP | Inbound (publishers) | `--addr` / `TMP_ROUTER_ADDR` |
+| Router | `:8080` (HTTP), `:8443` (HTTPS when TLS configured) | HTTP / HTTPS | Inbound (publishers) | `--addr` / `TMP_ROUTER_ADDR`; `tls.{cert,key}` in config or `TMP_ROUTER_TLS_{CERT,KEY}` |
 | Context Agent | `:8081` | HTTP | Inbound (router) | `--addr` / `TMP_CONTEXT_ADDR` |
 | Identity Agent | `:8082` | HTTP | Inbound (router) | `--addr` / `TMP_IDENTITY_ADDR` |
 | Valkey | `localhost:6379` | Redis protocol | Local only | wired by the embedder via `glidestore`/`redisstore` |
@@ -211,6 +211,8 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 |----------|---------|---------|---------|
 | `TMP_ROUTER_ADDR` | Router | Listen address | `:8080` |
 | `TMP_ROUTER_CONFIG` | Router | Path to JSON config file | (none) |
+| `TMP_ROUTER_TLS_CERT` | Router | Path to TLS certificate (PEM). Setting both cert and key serves HTTPS. Leave both unset to serve HTTP (typical when TLS is terminated by upstream ingress). | (none) |
+| `TMP_ROUTER_TLS_KEY` | Router | Path to TLS private key (PEM). Must be set together with `TMP_ROUTER_TLS_CERT`. | (none) |
 | `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |

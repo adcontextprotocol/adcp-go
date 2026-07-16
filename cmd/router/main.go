@@ -180,13 +180,29 @@ func main() {
 		close(done)
 	}()
 
-	slog.Info("TMP Router starting", "addr", cfg.Addr, "providers", len(cfg.Providers), "version", version)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		slog.Error("listen error", "error", err)
+	slog.Info("TMP Router starting",
+		"addr", cfg.Addr,
+		"providers", len(cfg.Providers),
+		"tls", cfg.TLS.Enabled(),
+		"version", version,
+	)
+	serveErr := listenAndServe(srv, cfg.TLS)
+	if serveErr != nil && serveErr != http.ErrServerClosed {
+		slog.Error("listen error", "error", serveErr)
 		os.Exit(1)
 	}
 	<-done
 	slog.Info("TMP Router stopped")
+}
+
+// listenAndServe picks HTTPS when both cert and key are configured, HTTP
+// otherwise. Deployments that terminate TLS at an upstream ingress leave the
+// TLS block empty and this falls through to ListenAndServe.
+func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
+	if tlsCfg.Enabled() {
+		return srv.ListenAndServeTLS(tlsCfg.CertPath, tlsCfg.KeyPath)
+	}
+	return srv.ListenAndServe()
 }
 
 // loadConfig resolves config from flags, env vars, JSON file, and defaults.
@@ -232,6 +248,21 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 	}
 	if v := os.Getenv("TMP_ROUTER_SIGNING_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
 		cfg.Signing.Disabled = true
+	}
+
+	// TLS config — env vars override JSON; both cert and key must be set to
+	// enable HTTPS. Leaving both unset serves cleartext HTTP (typical when
+	// TLS is terminated by an upstream ingress).
+	if v := os.Getenv("TMP_ROUTER_TLS_CERT"); v != "" {
+		cfg.TLS.CertPath = v
+	}
+	if v := os.Getenv("TMP_ROUTER_TLS_KEY"); v != "" {
+		cfg.TLS.KeyPath = v
+	}
+
+	if err := cfg.TLS.Validate(); err != nil {
+		slog.Error("invalid TLS configuration", "error", err)
+		os.Exit(1)
 	}
 
 	return cfg
