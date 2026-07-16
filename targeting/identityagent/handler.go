@@ -194,17 +194,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"request_id", req.RequestID, "error", terr)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomeError)
 		} else if token != "" {
-			// Legacy single-string carrier — keep populated for back-compat
-			// with consumers that haven't moved to tmpx_providers. Deprecated;
-			// removed in 4.0 per the spec.
-			resp.Tmpx = token
-			// New shape: ordered macro/value pairs the router collects into
-			// tmpx_providers[provider_id]. Emitted only when the operator has
-			// declared the provider's registered macro slot names via
-			// TMPX_MACRO_NAMES; otherwise we stay on the legacy carrier.
-			if entry, ok := h.tmpx.MacroEntry(token); ok {
-				resp.TmpxMacros = []tmproto.TmpxMacro{entry}
-			}
+			assignTmpxToResponse(resp, h.tmpx, token)
 			h.recorder.StageOutcome(ctx, StageTMPX, OutcomePass)
 		}
 		h.recorder.StageDuration(ctx, StageTMPX, time.Since(tmpxStart))
@@ -220,6 +210,30 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"eligible", len(eligible),
 		"latency_ms", time.Since(start).Milliseconds())
 	h.recordCompletion(ctx, start, status)
+}
+
+// assignTmpxToResponse populates the TMPX-carrying fields on an
+// IdentityMatchResponse from a freshly sealed wire token.
+//
+//   - TmpxMacros carries the sealer's ordered chunks (one per configured
+//     macro slot at TmpxMaxWireBytes boundaries). Multi-slot deployments
+//     traffic these; the router folds them into tmpx_providers[provider_id].
+//     Empty when no macro slots are configured.
+//   - Tmpx is the legacy single-string carrier. Populated only when the
+//     sealed token fits within one macro slot (255 bytes; the GAM
+//     `%%PATTERN_MACRO%%` substitution limit). Multi-chunk tokens cannot
+//     be represented in this single-string field — the field is
+//     deprecated and removed in AdCP 4.0 — so we omit it rather than
+//     emit a truncated value.
+//
+// Extracted from ServeHTTP as a package-private helper so the
+// legacy/new-field bookkeeping can be unit-tested without spinning up a
+// full request lifecycle.
+func assignTmpxToResponse(resp *tmproto.IdentityMatchResponse, sealer *TMPXSealer, token string) {
+	resp.TmpxMacros = sealer.MacroEntries(token)
+	if len(token) <= tmproto.TmpxMaxWireBytes {
+		resp.Tmpx = token
+	}
 }
 
 // writeResponse marshals payload to JSON in one shot and writes it. Using

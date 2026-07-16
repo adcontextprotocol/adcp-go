@@ -206,6 +206,38 @@ func TestMergeIdentityResponses_TmpxProvidersFromNewShape(t *testing.T) {
 		"legacy tmpx must mirror the first provider's first slot for back-compat")
 }
 
+// TestMergeIdentityResponses_MultiChunkClearsLegacyTmpx pins the guard
+// against the identity-loss regression Blocker 2 fixed: when an agent emits a
+// multi-chunk sealed token (len(TmpxMacros) > 1), the deprecated single-string
+// `tmpx` field cannot carry it — any one chunk on its own is a broken
+// ciphertext half that fails AEAD open silently. The router MUST leave the
+// legacy carrier empty in this case so consumers still reading `tmpx` skip it
+// rather than receive garbage; the authoritative multi-chunk data survives
+// intact on TmpxProviders[provider_id].Macros.
+func TestMergeIdentityResponses_MultiChunkClearsLegacyTmpx(t *testing.T) {
+	multi := &tmproto.IdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		TmpxMacros: []tmproto.TmpxMacro{
+			{Name: "PIN_TMPX_1", Value: "k1.first-half-of-sealed-token"},
+			{Name: "PIN_TMPX_2", Value: "second-half-of-sealed-token"},
+		},
+	}
+
+	merged := mergeIdentityResponses("id-multi", []string{"pinnacle_id"},
+		[]*tmproto.IdentityMatchResponse{multi}, nil)
+
+	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST carry the multi-chunk data")
+	pin, ok := merged.TmpxProviders["pinnacle_id"]
+	require.True(t, ok, "pinnacle_id entry must exist")
+	require.Len(t, pin.Macros, 2, "both chunks MUST survive on tmpx_providers")
+	assert.Equal(t, "k1.first-half-of-sealed-token", pin.Macros[0].Value)
+	assert.Equal(t, "second-half-of-sealed-token", pin.Macros[1].Value)
+
+	assert.Empty(t, merged.Tmpx,
+		"multi-chunk emissions MUST leave the deprecated legacy `tmpx` field empty — a single chunk is a broken half-token")
+}
+
 // TestMergeIdentityResponses_LegacyOnlyAgent covers a transition case: an
 // agent that only emits the deprecated `tmpx` string with no TmpxMacros[].
 // The router preserves it in the legacy field but does NOT synthesize a

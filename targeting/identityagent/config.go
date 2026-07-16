@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
 // Config is the env-derived configuration for a single identity-agent
@@ -144,10 +145,12 @@ type TMPXConfig struct {
 	// `tmpx_macros` (provider-registration.json). The sealer pairs the
 	// sealed token with these names to populate IdentityMatchResponse's
 	// `tmpx_macros[]`. When empty the response carries only the legacy
-	// singular `tmpx` field (deprecated, removed in 4.0). Capped at 2 by
-	// the spec; multi-chunk encoding is not yet implemented — when
-	// configured with more than one name only the first slot is filled,
-	// matching the single-slot deployment shape.
+	// singular `tmpx` field (deprecated, removed in 4.0). The v1 spec
+	// caps the registered list at 2 entries — enforced at registration
+	// time, not here. When more than one name is configured the sealed
+	// token is split into up to len(MacroNames) chunks of at most 255
+	// bytes each (the GAM `%%PATTERN_MACRO%%` substitution limit), one
+	// per slot in the configured order.
 	MacroNames []string
 }
 
@@ -389,6 +392,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	macroNames, err := parseTmpxMacroNames(os.Getenv("TMPX_MACRO_NAMES"))
+	if err != nil {
+		errs = append(errs, err)
+	}
 	audienceTimeout, err := lookupDuration("AUDIENCE_TIMEOUT", defaultAudienceTimeout)
 	if err != nil {
 		errs = append(errs, err)
@@ -450,7 +457,7 @@ func LoadConfigFromEnv() (Config, error) {
 			EncryptJWKSTTL: jwksTTL,
 			Country:        os.Getenv("TMPX_COUNTRY"),
 			Priority:       os.Getenv("TMPX_PRIORITY"),
-			MacroNames:     parseTmpxMacroNames(os.Getenv("TMPX_MACRO_NAMES")),
+			MacroNames:     macroNames,
 		},
 		LiveRamp: LiveRampSidecarConfig{
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
@@ -690,15 +697,19 @@ func lookupString(name, def string) string {
 // `S3_TMPX` or `S3_TMPX_1,S3_TMPX_2`) into the ordered slot list emitted on
 // IdentityMatchResponse.tmpx_macros[]. Empty / whitespace-only values yield
 // nil, which keeps the legacy single-`tmpx`-string emission shape — no new
-// behavior until the env var is set. The spec caps the registered list at 2
-// (provider-registration.json `tmpx_macros.maxItems`); enforcement of that
-// happens at registration time, not here — this parser is permissive so an
-// operator sees the misconfig surface as a downstream schema-validation
-// error rather than a startup panic.
-func parseTmpxMacroNames(raw string) []string {
+// behavior until the env var is set.
+//
+// The v1 spec caps the registered list at tmproto.TmpxMaxSlots
+// (provider-registration.json `tmpx_macros.maxItems`) because each slot carries
+// at most TmpxMaxWireBytes of the sealed wire and the receiver's OpenTmpx
+// bound is TmpxMaxSlots * TmpxMaxWireBytes. An unbounded name list would
+// silently produce a wire the sealer's own conformant receiver refuses;
+// reject it at startup with a clear message rather than corrupt tokens at
+// serving time.
+func parseTmpxMacroNames(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
 	parts := strings.Split(raw, ",")
 	names := make([]string, 0, len(parts))
@@ -710,9 +721,13 @@ func parseTmpxMacroNames(raw string) []string {
 		names = append(names, p)
 	}
 	if len(names) == 0 {
-		return nil
+		return nil, nil
 	}
-	return names
+	if len(names) > tmproto.TmpxMaxSlots {
+		return nil, fmt.Errorf("TMPX_MACRO_NAMES has %d entries, exceeds the v1 cap of %d (provider-registration.json `tmpx_macros.maxItems`); each slot carries at most %d bytes of the sealed wire and the receiver's OpenTmpx bound is %d * %d bytes",
+			len(names), tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes, tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes)
+	}
+	return names, nil
 }
 
 func lookupInt(name string, def int) (int, error) {
