@@ -213,6 +213,11 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_ROUTER_CONFIG` | Router | Path to JSON config file | (none) |
 | `TMP_ROUTER_TLS_CERT` | Router | Path to TLS certificate (PEM). Setting both cert and key serves HTTPS. Leave both unset to serve HTTP (typical when TLS is terminated by upstream ingress). | (none) |
 | `TMP_ROUTER_TLS_KEY` | Router | Path to TLS private key (PEM). Must be set together with `TMP_ROUTER_TLS_CERT`. | (none) |
+| `TMP_ROUTER_REGISTRY_FEED_URL` | Router | AdCP registry base URL. Setting this enables live property sync so `/registry/snapshot` serves real property metadata; leaving it empty falls back to seeding only the router's authorized property RIDs. | (none) |
+| `TMP_ROUTER_REGISTRY_FEED_TOKEN` | Router | Bearer token forwarded on registry feed requests (`Authorization: Bearer …`). | (none) |
+| `TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC` | Router | Steady-state poll cadence in seconds. | `30` |
+| `TMP_ROUTER_REGISTRY_BOOTSTRAP_LIMIT` | Router | Events per page during the initial catch-up drain. | `10000` |
+| `TMP_ROUTER_REGISTRY_FEED_LIMIT` | Router | Events per page during steady-state polling. | `1000` |
 | `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |

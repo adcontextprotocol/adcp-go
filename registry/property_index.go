@@ -190,6 +190,20 @@ func (idx *PropertyIndex) Count() int {
 	return len(idx.byID)
 }
 
+// All returns a snapshot copy of every property currently in the index.
+// Callers own the returned slice and each element; mutating them does not
+// affect the index. Used by the router to project the index into its
+// wire-serving Registry.
+func (idx *PropertyIndex) All() []Property {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+	out := make([]Property, 0, len(idx.byID))
+	for _, p := range idx.byID {
+		out = append(out, *cloneProperty(p))
+	}
+	return out
+}
+
 // Hydrate loads persisted properties into the in-memory maps. No-op
 // when no Store is attached, and idempotent: calling twice is a no-op
 // the second time. Hydration runs under the write lock so it does not
