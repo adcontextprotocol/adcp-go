@@ -30,9 +30,12 @@ const tmpxMaxPayloadBytes = 32 + TmpxHeaderBytes + 255*(1+48) + chacha20poly1305
 const TmpxSealedMaxWireBytes = TmpxMaxKidLen + 1 + 8192
 
 // TmpxKid returns the kid prefix from a TMPX wire token so receivers can look up
-// the matching X25519 private key before calling OpenTmpx.
+// the matching X25519 private key before calling OpenTmpx. The wire may be a
+// single-slot token OR a receiver-reassembled multi-chunk token (concatenation
+// of up to TmpxMaxSlots chunks in slot order), so the bound is
+// TmpxMaxReassembledWireBytes rather than the per-slot TmpxMaxWireBytes.
 func TmpxKid(wire string) (string, error) {
-	kid, _, err := splitTmpxWire(wire, TmpxMaxWireBytes)
+	kid, _, err := splitTmpxWire(wire, TmpxMaxReassembledWireBytes)
 	return kid, err
 }
 
@@ -66,8 +69,16 @@ func splitTmpxWire(wire string, maxWire int) (kid, payload string, err error) {
 // example via TmpxKid and a keystore lookup); OpenTmpx does not consult a
 // keystore. `info` MUST match the value passed to SealTmpx (nil per the spec
 // default).
+//
+// The wire may be a single-slot token OR a receiver-reassembled multi-chunk
+// token: the AdCP TMPX macro carrier chunks sealed tokens at TmpxMaxWireBytes
+// boundaries so each chunk fits inside one ad-server macro slot (the GAM
+// `%%PATTERN_MACRO%%` substitution limit); the receiver concatenates chunks
+// in slot order before calling OpenTmpx. The bound accepts up to TmpxMaxSlots
+// chunks worth of payload so the sealer's own conformant receiver accepts
+// tokens the sealer may emit; larger reassembled inputs are rejected.
 func OpenTmpx(skR *ecdh.PrivateKey, info []byte, wire string) (plaintext []byte, kid string, err error) {
-	return openTmpxWire(skR, info, wire, TmpxMaxWireBytes)
+	return openTmpxWire(skR, info, wire, TmpxMaxReassembledWireBytes)
 }
 
 // OpenSealedCredential opens a sealed_credentials entry — an attestation

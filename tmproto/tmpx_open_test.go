@@ -128,7 +128,10 @@ func TestOpenReturnsKidOnPayloadError(t *testing.T) {
 
 func TestOpenRejectsOversizedWireBeforeDecode(t *testing.T) {
 	skR := newX25519(t)
-	wire := "k1." + strings.Repeat("A", TmpxMaxWireBytes)
+	// Bound is TmpxMaxReassembledWireBytes — the maximum reassembled
+	// multi-chunk token the receiver ever needs to accept. Anything above it
+	// is a protocol violation and must be rejected before base64 decode.
+	wire := "k1." + strings.Repeat("A", TmpxMaxReassembledWireBytes)
 	if _, _, err := OpenTmpx(skR, nil, wire); err == nil {
 		t.Fatal("expected oversized wire to fail")
 	}
