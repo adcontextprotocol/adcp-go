@@ -45,24 +45,26 @@ func main() {
 		slog.Error("invalid signing configuration", "error", signerErr)
 		os.Exit(1)
 	}
-	var reseedSigning func(*router.Registry)
+	var routerKey tmproto.SigningKey
 	if signer != nil {
-		jwk := signer.PublicJWK()
-		// Seed the registry with property records the operator authorized us
-		// to sign for, so providers fetching /registry/snapshot pick up the
-		// public key alongside the property metadata.
-		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, jwk)
-		// Keep a reseed callback so every registry-feed rebuild re-attaches
-		// the router's own signing keys after LoadFromData swaps the maps.
-		reseedSigning = reseedSigningPropertiesFactory(cfg.Signing.PropertyRIDs, jwk)
+		routerKey = signer.PublicJWK()
 	}
 
 	// Optional AdCP registry feed sync. When configured, replaces the
 	// stub /registry/snapshot with live property metadata from the feed.
-	bridge, bridgeErr := buildRegistryBridge(cfg.Registry, registry, reseedSigning, slog.Default())
+	// When enabled, the bridge is the sole publisher into router.Registry:
+	// each successful poll rebuilds the whole snapshot (feed properties
+	// merged with the router's signing key on authorized RIDs) in one
+	// atomic LoadFromData call. When disabled, seedSigningProperties is
+	// called once at startup so the seed-only stub mode still serves the
+	// authorized-RID records.
+	bridge, bridgeErr := buildRegistryBridge(cfg.Registry, registry, cfg.Signing.PropertyRIDs, routerKey, signer != nil, slog.Default())
 	if bridgeErr != nil {
 		slog.Error("registry feed bootstrap failed", "error", bridgeErr)
 		os.Exit(1)
+	}
+	if bridge == nil && signer != nil {
+		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, routerKey)
 	}
 
 	routerOpts := []router.RouterOption{

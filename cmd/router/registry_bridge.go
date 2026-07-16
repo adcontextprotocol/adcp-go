@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
-	"sync/atomic"
 
 	"github.com/adcontextprotocol/adcp-go/registry"
 	"github.com/adcontextprotocol/adcp-go/router"
@@ -21,21 +20,34 @@ import (
 //
 // The router.Registry is the wire-serving layer; registry.PropertyIndex is
 // the polling layer. They are kept in sync by rebuildRouterSnapshot, which
-// runs on every OnSuccessfulPoll callback. router.Registry.LoadFromData
-// swaps the internal maps atomically, so any signing keys attached to
-// properties before the swap are lost — reseedFn re-attaches the router's
-// own signing keys after each rebuild.
+// runs on every OnSuccessfulPoll callback. Feed properties AND the
+// router's authorized-RID signing records are assembled into one slice
+// before a single LoadFromData call — a two-phase rebuild would leave a
+// window where /registry/snapshot serves feed properties without the
+// router's own signing keys and downstream providers would cache that
+// keyless snapshot and reject legitimate router-signed requests.
 type registryBridge struct {
 	client     *registry.Client
 	properties *registry.PropertyIndex
-	auth       *registry.AuthIndex
-	agents     *registry.AgentIndex
-	cursor     registry.CursorStore
-	syncer     *registry.Syncer
+	// AuthIndex and AgentIndex are hydrated because registry.Syncer requires
+	// them, but they are intentionally not projected into router.Registry —
+	// downstream providers consume auth/agent facts through separate
+	// registry channels (LazyAuthorizationKeyStore), not through
+	// /registry/snapshot.
+	auth   *registry.AuthIndex
+	agents *registry.AgentIndex
+	cursor registry.CursorStore
+	syncer *registry.Syncer
 
-	router    *router.Registry
-	reseedFn  func(*router.Registry)
-	seqSource atomic.Uint64
+	router *router.Registry
+
+	// Signing-key projection: on every rebuild, attach routerKey to the
+	// records for each authorizedRID (merging into a feed-provided record
+	// when present, adding a placeholder otherwise). When no signer is
+	// configured, both are zero-value and no keys are projected.
+	authorizedRIDs []string
+	routerKey      tmproto.SigningKey
+	hasSigner      bool
 
 	cancel   context.CancelFunc
 	syncDone chan struct{}
@@ -47,7 +59,7 @@ type registryBridge struct {
 // /registry/snapshot serves live property metadata from the AdCP feed.
 // Returns (nil, nil) when cfg.Enabled() is false so the caller can
 // continue with the seed-only fallback.
-func buildRegistryBridge(cfg router.RegistryConfig, rtr *router.Registry, reseed func(*router.Registry), logger *slog.Logger) (*registryBridge, error) {
+func buildRegistryBridge(cfg router.RegistryConfig, rtr *router.Registry, authorizedRIDs []string, routerKey tmproto.SigningKey, hasSigner bool, logger *slog.Logger) (*registryBridge, error) {
 	if !cfg.Enabled() {
 		return nil, nil
 	}
@@ -74,20 +86,17 @@ func buildRegistryBridge(cfg router.RegistryConfig, rtr *router.Registry, reseed
 	}
 
 	b := &registryBridge{
-		client:     client,
-		properties: properties,
-		auth:       auth,
-		agents:     agents,
-		cursor:     cursor,
-		router:     rtr,
-		reseedFn:   reseed,
-		logger:     logger,
+		client:         client,
+		properties:     properties,
+		auth:           auth,
+		agents:         agents,
+		cursor:         cursor,
+		router:         rtr,
+		authorizedRIDs: append([]string(nil), authorizedRIDs...),
+		routerKey:      routerKey,
+		hasSigner:      hasSigner,
+		logger:         logger,
 	}
-	// Seed the sequence source from the router's current sequence so the
-	// first mirror after seedSigningProperties advances past what the seed
-	// already published — otherwise downstream consumers using sequence
-	// for delta tracking would observe the registry going backward.
-	b.seqSource.Store(rtr.Sequence())
 
 	b.syncer = registry.NewSyncer(client, properties, auth, agents, cursor, registry.SyncerConfig{
 		PollInterval:   cfg.PollInterval(),
@@ -136,25 +145,43 @@ func (b *registryBridge) runSyncer(ctx context.Context) {
 	}
 }
 
-// rebuildRouterSnapshot copies the current property index into the router's
-// wire-serving Registry. Called on every OnSuccessfulPoll. Signing keys
-// attached to the previous snapshot are dropped by LoadFromData's map swap,
-// so reseedFn re-attaches the router's own kid to its authorized properties
-// after the load.
+// rebuildRouterSnapshot atomically replaces the wire-serving snapshot with
+// (a) every feed-provided property and (b) the router's own signing key
+// attached to each authorized RID. Called on every OnSuccessfulPoll.
+//
+// The two-list merge happens BEFORE LoadFromData so the single map swap
+// inside applySnapshot publishes both feed properties and the router
+// signing key together. A prior version did two locked phases —
+// LoadFromData then per-RID AttachSigningKey — which left a window where
+// /registry/snapshot served feed properties without the router key, and
+// downstream providers that fetched during that window cached a keyless
+// snapshot and rejected legitimate router-signed requests until their next
+// poll.
 //
 // The Property → RegistryProperty projection is intentionally hand-copied
 // rather than reflected: any new field added to registry.Property would be
 // silently dropped, which is the correct default (fields need explicit
-// audit before crossing into the router's wire-serving surface). Add them
-// here deliberately.
+// audit before crossing into the router's wire-serving surface). Feed
+// signing keys are deliberately NOT projected — a compromised feed must
+// not be able to inject a signing key onto the router's snapshot.
 func (b *registryBridge) rebuildRouterSnapshot() {
 	if b == nil || b.router == nil {
 		return
 	}
+
 	src := b.properties.All()
-	props := make([]router.RegistryProperty, 0, len(src))
+	// Reserve extra capacity for any authorized RIDs that the feed does
+	// not already cover — they get placeholder records.
+	props := make([]router.RegistryProperty, 0, len(src)+len(b.authorizedRIDs))
+
+	// Feed-provided properties first, indexed by RID so we can merge
+	// signing keys into any authorized-RID record the feed also emits.
+	ridToPos := make(map[string]int, len(src))
 	for i := range src {
 		p := src[i]
+		if p.PropertyRID != "" {
+			ridToPos[p.PropertyRID] = len(props)
+		}
 		props = append(props, router.RegistryProperty{
 			PropertyID:   p.PropertyID,
 			PropertyRID:  p.PropertyRID,
@@ -163,11 +190,32 @@ func (b *registryBridge) rebuildRouterSnapshot() {
 			Placements:   append([]string(nil), p.Placements...),
 		})
 	}
-	seq := b.seqSource.Add(1)
-	b.router.LoadFromData(props, seq)
-	if b.reseedFn != nil {
-		b.reseedFn(b.router)
+
+	// Router's own signing key: attach to every authorized RID. When the
+	// feed does not carry the RID (typical during bootstrap or for
+	// operator-authorized RIDs the feed hasn't emitted yet), synthesize a
+	// placeholder record so downstream providers can still resolve the
+	// kid via LookupKey.
+	if b.hasSigner {
+		for _, rid := range b.authorizedRIDs {
+			if pos, ok := ridToPos[rid]; ok {
+				props[pos].SigningKeys = append(props[pos].SigningKeys, b.routerKey)
+				continue
+			}
+			props = append(props, router.RegistryProperty{
+				PropertyRID: rid,
+				PropertyID:  rid, // placeholder until the feed emits the record
+				SigningKeys: []tmproto.SigningKey{b.routerKey},
+			})
+		}
 	}
+
+	// Sequence advances by 1 per successful poll, read fresh from the
+	// router so any pre-bridge init (seedSigningProperties at startup)
+	// stays monotonically below every subsequent rebuild — no sequence
+	// counter of our own to drift.
+	seq := b.router.Sequence() + 1
+	b.router.LoadFromData(props, seq)
 }
 
 // Shutdown cancels the sync loop and waits for it to exit. Idempotent.
@@ -180,19 +228,5 @@ func (b *registryBridge) Shutdown() {
 	}
 	if b.syncDone != nil {
 		<-b.syncDone
-	}
-}
-
-// reseedSigningPropertiesFactory builds a reseed callback that re-applies
-// the router's authorized property RIDs + signing key onto every new
-// snapshot. The router's own kid is the only key the router serves; other
-// property owners' keys flow in via the registry feed's property records.
-func reseedSigningPropertiesFactory(propertyRIDs []string, jwk tmproto.SigningKey) func(*router.Registry) {
-	if len(propertyRIDs) == 0 {
-		return func(*router.Registry) {}
-	}
-	rids := append([]string(nil), propertyRIDs...)
-	return func(reg *router.Registry) {
-		seedSigningProperties(reg, rids, jwk)
 	}
 }
