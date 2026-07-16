@@ -91,6 +91,50 @@ providers:
 	assert.Equal(t, "p1", cfg.Providers[0].ID, "provider_id should still map to ID")
 }
 
+// LoadServerConfig MUST accept the spec's `tls: {cert, key}` block verbatim so
+// a copy of the sample deployment YAML from router-architecture.mdx parses
+// into a TLS-enabled ServerConfig.
+func TestLoadServerConfig_AcceptsSpecTLSBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "config.yaml", `listen: ":8443"
+tls:
+  cert: /etc/tmp/tls.crt
+  key: /etc/tmp/tls.key
+providers:
+  - provider_id: p1
+    endpoint: https://provider.example/agent
+    context_match: true
+`)
+
+	cfg, err := LoadServerConfig(path)
+	require.NoError(t, err)
+	assert.Equal(t, ":8443", cfg.Addr)
+	assert.Equal(t, "/etc/tmp/tls.crt", cfg.TLS.CertPath)
+	assert.Equal(t, "/etc/tmp/tls.key", cfg.TLS.KeyPath)
+	assert.True(t, cfg.TLS.Enabled(), "both cert and key set → TLS enabled")
+	assert.NoError(t, cfg.TLS.Validate())
+}
+
+// TLS is opt-in: no tls block → cleartext, no error.
+func TestTLSConfig_UnsetIsDisabled(t *testing.T) {
+	var tls TLSConfig
+	assert.False(t, tls.Enabled())
+	assert.NoError(t, tls.Validate(), "unset TLS is a valid deployment (TLS terminated upstream)")
+}
+
+// Half-configured TLS is a startup error — an operator who set only one of
+// cert/key almost certainly missed an env var, and finding out at cert
+// rotation time would be worse.
+func TestTLSConfig_HalfConfiguredIsError(t *testing.T) {
+	certOnly := TLSConfig{CertPath: "/etc/tmp/tls.crt"}
+	assert.False(t, certOnly.Enabled())
+	assert.Error(t, certOnly.Validate())
+
+	keyOnly := TLSConfig{KeyPath: "/etc/tmp/tls.key"}
+	assert.False(t, keyOnly.Enabled())
+	assert.Error(t, keyOnly.Validate())
+}
+
 // Existing impl-internal names continue to work — backward compat.
 func TestLoadServerConfig_AcceptsImplFieldNames(t *testing.T) {
 	dir := t.TempDir()

@@ -22,6 +22,36 @@ type ServerConfig struct {
 	Discovery       DiscoveryConfig   `json:"discovery"`
 	Shutdown        ShutdownConfig    `json:"shutdown"`
 	Signing         SigningConfig     `json:"signing"`
+	TLS             TLSConfig         `json:"tls"`
+}
+
+// TLSConfig configures TLS termination in the router binary. When both
+// CertPath and KeyPath are set, the router serves HTTPS. When both are empty,
+// the router serves cleartext HTTP (typical when TLS is terminated by an
+// upstream ingress/load balancer). Setting only one is a configuration error
+// and Validate reports it.
+//
+// The field names `cert` and `key` match the top-level `tls:` block in the
+// spec's sample deployment YAML (docs/trusted-match/router-architecture.mdx).
+type TLSConfig struct {
+	CertPath string `json:"cert"`
+	KeyPath  string `json:"key"`
+}
+
+// Enabled reports whether TLS should be enabled based on the presence of both
+// cert and key paths.
+func (t TLSConfig) Enabled() bool {
+	return t.CertPath != "" && t.KeyPath != ""
+}
+
+// Validate reports a configuration error when exactly one of cert/key is set,
+// which almost always indicates a missing env var or a typo the operator would
+// rather find at startup than after their next cert rotation.
+func (t TLSConfig) Validate() error {
+	if (t.CertPath == "") != (t.KeyPath == "") {
+		return fmt.Errorf("tls: both cert and key must be set together (cert=%q, key=%q)", t.CertPath, t.KeyPath)
+	}
+	return nil
 }
 
 // UnmarshalJSON accepts the top-level field names from the spec config
