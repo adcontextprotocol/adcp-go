@@ -660,7 +660,17 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 			tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
 				Macros: append([]tmproto.TmpxMacro(nil), resp.TmpxMacros...),
 			}
-			if legacyTmpx == "" {
+			// The deprecated single-string `tmpx` carrier can only represent
+			// tokens that fit in one macro slot. Multi-chunk responses (>1
+			// TmpxMacros entry) produce a wire that spans multiple slots —
+			// any single chunk on its own is a broken ciphertext half that
+			// fails AEAD open silently. Populate the legacy field only when
+			// the emitting agent produced exactly one chunk; a multi-chunk
+			// emission leaves it empty so consumers still reading the
+			// deprecated field skip it rather than get identity loss. See
+			// the mirror guard in identityagent/handler.go's
+			// assignTmpxToResponse.
+			if legacyTmpx == "" && len(resp.TmpxMacros) == 1 {
 				legacyTmpx = resp.TmpxMacros[0].Value
 			}
 		} else if resp.Tmpx != "" {
