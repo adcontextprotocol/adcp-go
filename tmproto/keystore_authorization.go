@@ -370,6 +370,7 @@ func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical 
 		semAcquired = true
 	default:
 		in.err = errors.New("fetch semaphore full")
+		s.logger.Warn("authorization keystore refused refetch — concurrency ceiling reached", "seller_agent_url", canonical)
 		return nil
 	}
 
@@ -377,6 +378,10 @@ func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical 
 	in.entry = entry
 	in.err = err
 	if err != nil {
+		// Parity with entryFor: refetch failures are precisely the
+		// outage path an operator needs to see in logs. Silent nil
+		// here made a registry blip during a rotation invisible.
+		s.logger.Warn("authorization keystore refetch failed", "seller_agent_url", canonical, "error", err)
 		return nil
 	}
 	s.cache.Add(canonical, entry)

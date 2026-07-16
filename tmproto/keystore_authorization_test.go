@@ -1,10 +1,12 @@
 package tmproto
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -525,6 +527,44 @@ func TestLazyAuthorizationKeyStore_UnknownKidRefetchesPastCooldown(t *testing.T)
 	// it, so kid-old is now genuinely absent. Confirm no crash / hang.
 	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); ok {
 		t.Error("kid-old should no longer resolve after registry dropped it")
+	}
+}
+
+// Refetch failures must not be silent — an operator debugging a
+// rotation-during-outage needs to see them in logs. Captures the
+// logger's output and asserts the failure line is present.
+func TestLazyAuthorizationKeyStore_RefetchFailureIsLogged(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	var fail atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{oldJWK}}},
+		})
+	})
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 20 * time.Millisecond,
+		Logger:                    logger,
+	})
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	time.Sleep(40 * time.Millisecond)
+	fail.Store(1)
+	_, _ = ks.LookupKeyForAgent("kid-forged", "https://seller.example/agent")
+
+	logs := buf.String()
+	if !strings.Contains(logs, "authorization keystore refetch failed") {
+		t.Errorf("expected refetch failure to be logged; got: %s", logs)
 	}
 }
 
