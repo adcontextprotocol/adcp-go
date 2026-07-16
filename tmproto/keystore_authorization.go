@@ -47,15 +47,34 @@ import (
 //     spray cannot fan out to unbounded HTTP concurrency. Excess
 //     concurrent misses fail closed (the extra request 401s) rather
 //     than queue — a queue is the amplifier.
+//
+// FetchOutcome values reported to LazyAuthorizationKeyStoreOptions.OnFetchOutcome.
+// Kept as string constants (not an enum type) so the hook maps cleanly onto the
+// contextagent/identityagent Recorder.KeystoreRefresh(ctx, outcome string) shape
+// already used for RemoteKeyStore, and onto arbitrary metrics backends behind it.
+const (
+	// FetchOutcomeSuccess: the registry returned a valid response and
+	// the cache was updated. Positive or negative (0-keys) both count.
+	FetchOutcomeSuccess = "success"
+	// FetchOutcomeError: the registry call failed (timeout, 5xx, decode
+	// error, transport panic). Cached entries — if any — are preserved.
+	FetchOutcomeError = "error"
+	// FetchOutcomeSemaphoreFull: the concurrency ceiling was reached and
+	// the fetch was refused fail-closed. Distinct from Error because it
+	// signals verifier-side overload, not registry-side unavailability.
+	FetchOutcomeSemaphoreFull = "semaphore_full"
+)
+
 type LazyAuthorizationKeyStore struct {
 	// baseURL is parsed once at construction. Per-request URLs are built
 	// by cloning it and setting the `agent_url` query parameter — the
 	// host is never derived from caller input, only the query string is.
-	baseURL      *url.URL
-	bearerToken  string
-	client       *http.Client
-	logger       *slog.Logger
-	fetchTimeout time.Duration
+	baseURL        *url.URL
+	bearerToken    string
+	client         *http.Client
+	logger         *slog.Logger
+	fetchTimeout   time.Duration
+	onFetchOutcome func(ctx context.Context, outcome string)
 
 	positiveTTL               time.Duration
 	negativeTTL               time.Duration
@@ -153,6 +172,15 @@ type LazyAuthorizationKeyStoreOptions struct {
 
 	// Logger receives cache-miss and fetch-error events.
 	Logger *slog.Logger
+
+	// OnFetchOutcome, when non-nil, is invoked once per registry fetch
+	// attempt with one of the FetchOutcome* constants. The hook is fired
+	// from both the initial-miss path (entryFor) and the refetch-on-
+	// unknown-kid path (refetchAgent), so operators can alert on
+	// registry unavailability regardless of which lookup surface tripped
+	// it. Invoked synchronously on the caller's goroutine — implementations
+	// MUST NOT block. Typical wiring: an OTEL counter keyed by outcome.
+	OnFetchOutcome func(ctx context.Context, outcome string)
 }
 
 type agentCacheEntry struct {
@@ -267,6 +295,7 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 		client:                    client,
 		logger:                    logger,
 		fetchTimeout:              fetchTimeout,
+		onFetchOutcome:            opts.OnFetchOutcome,
 		positiveTTL:               positiveTTL,
 		negativeTTL:               negativeTTL,
 		serveStaleGrace:           opts.ServeStaleGrace,
@@ -275,6 +304,16 @@ func NewLazyAuthorizationKeyStore(opts LazyAuthorizationKeyStoreOptions) (*LazyA
 		fetchSem:                  make(chan struct{}, maxConcurrent),
 		inflight:                  make(map[string]*inflightFetch),
 	}, nil
+}
+
+// recordOutcome is a nil-safe wrapper around onFetchOutcome. Every
+// fetch attempt flows through here so future callsites cannot forget
+// to emit.
+func (s *LazyAuthorizationKeyStore) recordOutcome(ctx context.Context, outcome string) {
+	if s.onFetchOutcome == nil {
+		return
+	}
+	s.onFetchOutcome(ctx, outcome)
 }
 
 // LookupKey implements KeyStore but always returns false. This store is
@@ -370,6 +409,8 @@ func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical 
 		semAcquired = true
 	default:
 		in.err = errors.New("fetch semaphore full")
+		s.logger.Warn("authorization keystore refused refetch — concurrency ceiling reached", "seller_agent_url", canonical)
+		s.recordOutcome(ctx, FetchOutcomeSemaphoreFull)
 		return nil
 	}
 
@@ -377,9 +418,16 @@ func (s *LazyAuthorizationKeyStore) refetchAgent(ctx context.Context, canonical 
 	in.entry = entry
 	in.err = err
 	if err != nil {
+		// Parity with entryFor: refetch failures are precisely the
+		// outage path an operator needs to see in logs and dashboards.
+		// Silent nil here made a registry blip during a rotation
+		// invisible.
+		s.logger.Warn("authorization keystore refetch failed", "seller_agent_url", canonical, "error", err)
+		s.recordOutcome(ctx, FetchOutcomeError)
 		return nil
 	}
 	s.cache.Add(canonical, entry)
+	s.recordOutcome(ctx, FetchOutcomeSuccess)
 	return entry
 }
 
@@ -453,6 +501,7 @@ func (s *LazyAuthorizationKeyStore) entryFor(ctx context.Context, canonical stri
 	default:
 		in.err = errors.New("fetch semaphore full")
 		s.logger.Warn("authorization keystore refused fetch — concurrency ceiling reached", "seller_agent_url", canonical)
+		s.recordOutcome(ctx, FetchOutcomeSemaphoreFull)
 		return s.staleOrNil(cached, hasCached)
 	}
 
@@ -462,10 +511,12 @@ func (s *LazyAuthorizationKeyStore) entryFor(ctx context.Context, canonical stri
 
 	if err != nil {
 		s.logger.Warn("authorization keystore fetch failed", "seller_agent_url", canonical, "error", err)
+		s.recordOutcome(ctx, FetchOutcomeError)
 		return s.staleOrNil(cached, hasCached)
 	}
 
 	s.cache.Add(canonical, entry)
+	s.recordOutcome(ctx, FetchOutcomeSuccess)
 	return entry
 }
 

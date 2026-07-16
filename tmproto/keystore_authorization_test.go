@@ -1,10 +1,12 @@
 package tmproto
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -525,6 +527,131 @@ func TestLazyAuthorizationKeyStore_UnknownKidRefetchesPastCooldown(t *testing.T)
 	// it, so kid-old is now genuinely absent. Confirm no crash / hang.
 	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); ok {
 		t.Error("kid-old should no longer resolve after registry dropped it")
+	}
+}
+
+// Refetch failures must not be silent — an operator debugging a
+// rotation-during-outage needs to see them in logs. Captures the
+// logger's output and asserts the failure line is present.
+func TestLazyAuthorizationKeyStore_RefetchFailureIsLogged(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	var fail atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{oldJWK}}},
+		})
+	})
+	defer srv.Close()
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 20 * time.Millisecond,
+		Logger:                    logger,
+	})
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	time.Sleep(40 * time.Millisecond)
+	fail.Store(1)
+	_, _ = ks.LookupKeyForAgent("kid-forged", "https://seller.example/agent")
+
+	logs := buf.String()
+	if !strings.Contains(logs, "authorization keystore refetch failed") {
+		t.Errorf("expected refetch failure to be logged; got: %s", logs)
+	}
+}
+
+// OnFetchOutcome fires for every fetch attempt regardless of which
+// code path — initial miss vs refetch on unknown kid — triggered it,
+// so operators can alert on registry unavailability without caring
+// about the internal lookup surface. Exercises success + error +
+// semaphore_full outcomes.
+func TestLazyAuthorizationKeyStore_OnFetchOutcome(t *testing.T) {
+	oldJWK, _ := buildJWK(t, "kid-old")
+	var fail atomic.Int32
+	srv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		if fail.Load() == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rows": []map[string]any{{"signing_keys": []SigningKey{oldJWK}}},
+		})
+	})
+	defer srv.Close()
+
+	var mu sync.Mutex
+	seen := map[string]int{}
+	record := func(_ context.Context, outcome string) {
+		mu.Lock()
+		defer mu.Unlock()
+		seen[outcome]++
+	}
+
+	ks, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:                   srv.URL,
+		AllowInsecureScheme:       true,
+		UnknownKidRefetchCooldown: 20 * time.Millisecond,
+		MaxConcurrentFetches:      1,
+		OnFetchOutcome:            record,
+	})
+
+	// 1) Initial fetch succeeds → FetchOutcomeSuccess.
+	if _, ok := ks.LookupKeyForAgent("kid-old", "https://seller.example/agent"); !ok {
+		t.Fatal("initial lookup failed")
+	}
+	// 2) Cross cooldown, force server to fail → refetch fires and
+	//    reports FetchOutcomeError.
+	time.Sleep(40 * time.Millisecond)
+	fail.Store(1)
+	_, _ = ks.LookupKeyForAgent("kid-forged", "https://seller.example/agent")
+
+	// 3) Saturate the semaphore: hold a fetch open by making the
+	//    server slow, then queue a second concurrent lookup for a
+	//    different agent. The second lookup takes the semaphore-full
+	//    branch → FetchOutcomeSemaphoreFull.
+	fail.Store(0)
+	block := make(chan struct{})
+	slowSrv := newAuthzServer(t, func(_ string, w http.ResponseWriter, _ *http.Request) {
+		<-block
+		_ = json.NewEncoder(w).Encode(map[string]any{"rows": []any{}})
+	})
+	defer slowSrv.Close()
+	ks2, _ := NewLazyAuthorizationKeyStore(LazyAuthorizationKeyStoreOptions{
+		BaseURL:              slowSrv.URL,
+		AllowInsecureScheme:  true,
+		MaxConcurrentFetches: 1,
+		OnFetchOutcome:       record,
+	})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = ks2.LookupKeyForAgent("kid", "https://one.example/agent")
+	}()
+	// Give the leader a moment to take the semaphore.
+	time.Sleep(30 * time.Millisecond)
+	_, _ = ks2.LookupKeyForAgent("kid", "https://two.example/agent")
+	close(block)
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if seen[FetchOutcomeSuccess] < 1 {
+		t.Errorf("expected at least one success outcome; got %v", seen)
+	}
+	if seen[FetchOutcomeError] < 1 {
+		t.Errorf("expected at least one error outcome; got %v", seen)
+	}
+	if seen[FetchOutcomeSemaphoreFull] < 1 {
+		t.Errorf("expected at least one semaphore_full outcome; got %v", seen)
 	}
 }
 

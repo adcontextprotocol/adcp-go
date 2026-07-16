@@ -40,7 +40,7 @@ func BuildKeyStore(runCtx context.Context, cfg TMPConfig, logger *slog.Logger, r
 	}
 	switch mode {
 	case RegistryModeAuthorization:
-		return buildAuthorizationKeyStore(cfg, logger)
+		return buildAuthorizationKeyStore(cfg, logger, recorder)
 	case RegistryModeSnapshot:
 		return buildSnapshotKeyStore(runCtx, cfg.RegistryURL, logger, recorder)
 	default:
@@ -78,12 +78,24 @@ func buildSnapshotKeyStore(runCtx context.Context, registryURL string, logger *s
 // entry. Fits deployments where the verifier's caller set is not known
 // ahead of time (e.g. the identity/context agents behind the AdCP
 // property registry).
-func buildAuthorizationKeyStore(cfg TMPConfig, logger *slog.Logger) (tmproto.KeyStore, error) {
-	ks, err := tmproto.NewLazyAuthorizationKeyStore(tmproto.LazyAuthorizationKeyStoreOptions{
+//
+// The store's OnFetchOutcome hook is wired to recorder.KeystoreRefresh
+// so registry health surfaces on the same Prometheus counter the
+// snapshot-mode store already emits (labeled by tmproto.FetchOutcome*).
+// Operators can alert on error rate without caring which registry mode
+// they picked.
+func buildAuthorizationKeyStore(cfg TMPConfig, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
+	opts := tmproto.LazyAuthorizationKeyStoreOptions{
 		BaseURL:     cfg.RegistryURL,
 		BearerToken: cfg.RegistryBearer,
 		Logger:      logger,
-	})
+	}
+	if recorder != nil {
+		opts.OnFetchOutcome = func(ctx context.Context, outcome string) {
+			recorder.KeystoreRefresh(ctx, outcome)
+		}
+	}
+	ks, err := tmproto.NewLazyAuthorizationKeyStore(opts)
 	if err != nil {
 		return nil, err
 	}

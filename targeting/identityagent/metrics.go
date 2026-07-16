@@ -70,6 +70,12 @@ type Recorder interface {
 	StageDuration(ctx context.Context, stage string, d time.Duration)
 	StoreError(ctx context.Context, store string)
 	ConfigRefresh(ctx context.Context, outcome string)
+	// KeystoreRefresh records one outcome of a TMP keystore fetch —
+	// used by both the bulk RemoteKeyStore refresh path and the
+	// per-agent LazyAuthorizationKeyStore. Outcome values are the
+	// tmproto.FetchOutcome* constants (success / error /
+	// semaphore_full). Mirrors contextagent.Recorder.KeystoreRefresh.
+	KeystoreRefresh(ctx context.Context, outcome string)
 	ShutdownPanic(ctx context.Context)
 	HandlerPanic(ctx context.Context)
 	BackgroundPanic(ctx context.Context, where string)
@@ -230,6 +236,7 @@ type otelRecorder struct {
 	stageDuration        metric.Float64Histogram
 	storeError           metric.Int64Counter
 	configRefresh        metric.Int64Counter
+	keystoreRefresh      metric.Int64Counter
 	shutdownPanic        metric.Int64Counter
 	handlerPanic         metric.Int64Counter
 	backgroundPanic      metric.Int64Counter
@@ -285,6 +292,11 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 	if err != nil {
 		return nil, err
 	}
+	keystoreRefresh, err := meter.Int64Counter(
+		fmt.Sprintf("%s_keystore_refresh_total", namespace))
+	if err != nil {
+		return nil, err
+	}
 	shutdownPanic, err := meter.Int64Counter(
 		fmt.Sprintf("%s_shutdown_panic_total", namespace))
 	if err != nil {
@@ -317,6 +329,7 @@ func newOtelRecorder(meter metric.Meter, namespace string) (*otelRecorder, error
 		stageDuration:        stageDuration,
 		storeError:           storeError,
 		configRefresh:        configRefresh,
+		keystoreRefresh:      keystoreRefresh,
 		shutdownPanic:        shutdownPanic,
 		handlerPanic:         handlerPanic,
 		backgroundPanic:      backgroundPanic,
@@ -352,6 +365,10 @@ func (r *otelRecorder) ConfigRefresh(ctx context.Context, outcome string) {
 	r.configRefresh.Add(ctx, 1, metric.WithAttributes(stringAttr("outcome", outcome)))
 }
 
+func (r *otelRecorder) KeystoreRefresh(ctx context.Context, outcome string) {
+	r.keystoreRefresh.Add(ctx, 1, metric.WithAttributes(stringAttr("outcome", outcome)))
+}
+
 func (r *otelRecorder) ShutdownPanic(ctx context.Context) {
 	r.shutdownPanic.Add(ctx, 1)
 }
@@ -385,6 +402,7 @@ func (noopRecorder) StageOutcome(context.Context, string, string)            {}
 func (noopRecorder) StageDuration(context.Context, string, time.Duration)    {}
 func (noopRecorder) StoreError(context.Context, string)                      {}
 func (noopRecorder) ConfigRefresh(context.Context, string)                   {}
+func (noopRecorder) KeystoreRefresh(context.Context, string)                 {}
 func (noopRecorder) ShutdownPanic(context.Context)                           {}
 func (noopRecorder) HandlerPanic(context.Context)                            {}
 func (noopRecorder) BackgroundPanic(context.Context, string)                 {}
