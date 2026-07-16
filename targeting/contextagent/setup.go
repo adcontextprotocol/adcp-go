@@ -454,7 +454,7 @@ func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger
 	}
 	switch mode {
 	case RegistryModeAuthorization:
-		return buildAuthzKeyStore(cfg, logger)
+		return buildAuthzKeyStore(cfg, logger, recorder)
 	case RegistryModeSnapshot:
 		return buildSnapshotKeyStore(ctx, cfg, recorder, logger)
 	default:
@@ -490,10 +490,21 @@ func buildSnapshotKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder
 // initial fetch — the first signed request from an agent warms its
 // cache entry. Fits deployments where the caller set is not known
 // ahead of time.
-func buildAuthzKeyStore(cfg TMPConfig, logger *slog.Logger) (tmproto.KeyStore, error) {
-	return tmproto.NewLazyAuthorizationKeyStore(tmproto.LazyAuthorizationKeyStoreOptions{
+//
+// OnFetchOutcome is wired to recorder.KeystoreRefresh so registry
+// health emits on the same counter snapshot mode already uses,
+// labeled by tmproto.FetchOutcome* — operators alert on error rate
+// without caring which mode is running.
+func buildAuthzKeyStore(cfg TMPConfig, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
+	opts := tmproto.LazyAuthorizationKeyStoreOptions{
 		BaseURL:     cfg.RegistryURL,
 		BearerToken: cfg.RegistryBearer,
 		Logger:      logger,
-	})
+	}
+	if recorder != nil {
+		opts.OnFetchOutcome = func(ctx context.Context, outcome string) {
+			recorder.KeystoreRefresh(ctx, outcome)
+		}
+	}
+	return tmproto.NewLazyAuthorizationKeyStore(opts)
 }
