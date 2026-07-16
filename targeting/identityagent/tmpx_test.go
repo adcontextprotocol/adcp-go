@@ -85,22 +85,20 @@ func TestMacroEntries_TwoSlots_TokenStraddlesBothSlots(t *testing.T) {
 	assert.Equal(t, token, entries[0].Value+entries[1].Value)
 }
 
-// MacroEntries never emits an entry whose value exceeds one macro slot —
-// even if a caller supplies a token longer than the sealer's wireBudget().
-// The sealer's selectEntries pass keeps the produced token within budget,
-// so this is a defensive floor, not a code path production exercises.
-func TestMacroEntries_ClampsToConfiguredSlotCount(t *testing.T) {
+// MacroEntries fails closed on an over-budget token: a token longer than
+// len(macroNames) * TmpxMaxWireBytes cannot be reassembled by the receiver
+// (the trailing bytes have no slot), so returning truncated chunks would
+// silently corrupt downstream reassembly. The sealer's selectEntries pass
+// keeps produced tokens within budget, so this is a defensive floor against
+// a future change that raises the seal budget without bumping the slot count.
+func TestMacroEntries_FailsClosedOnOverBudgetToken(t *testing.T) {
 	s := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
 	// A token that would need three chunks; the sealer should have refused
-	// to produce it, but MacroEntries still refuses to emit more than the
-	// configured slot count.
+	// to produce it. MacroEntries surfaces this as "no TMPX" — an identity
+	// drop — rather than truncating.
 	oversize := strings.Repeat("a", 3*tmproto.TmpxMaxWireBytes)
-	entries := s.MacroEntries(oversize)
-	require.Len(t, entries, 2, "must not exceed the configured slot count")
-	for i, e := range entries {
-		assert.LessOrEqual(t, len(e.Value), tmproto.TmpxMaxWireBytes,
-			"entry %d must not exceed the single-slot substitution limit", i)
-	}
+	assert.Nil(t, s.MacroEntries(oversize),
+		"over-budget token MUST return nil so the response falls back to no-TMPX rather than truncated chunks")
 }
 
 func TestVerifiedIdentityEntries_EncodesNullifier(t *testing.T) {

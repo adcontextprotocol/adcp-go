@@ -259,13 +259,20 @@ func (s *TMPXSealer) wireBudget() int {
 // Returns nil when there is no token to place, no macro names are
 // configured (the response falls back to the legacy `tmpx` string), or
 // the receiver is nil. Never emits more entries than macroNames and
-// never emits an entry whose value exceeds TmpxMaxWireBytes; the sealer's
-// selectEntries pass keeps the produced token within wireBudget() so
-// chunking below never needs to overflow — but if a caller ever supplies
-// a longer token, the surplus is dropped rather than allowing a slot
-// value to exceed the substitution limit.
+// never emits an entry whose value exceeds TmpxMaxWireBytes.
+//
+// A token longer than len(macroNames) * TmpxMaxWireBytes would not fit into
+// the configured slots; fail closed and return nil rather than emit truncated
+// chunks that cannot be reassembled by the receiver. The sealer's
+// selectEntries pass keeps produced tokens within wireBudget(), so this is a
+// defensive floor against a future change raising the seal budget without
+// bumping the slot count — surface a wire that can't be trafficked as "no
+// TMPX" (identity drop) rather than silently corrupting downstream reassembly.
 func (s *TMPXSealer) MacroEntries(token string) []tmproto.TmpxMacro {
 	if s == nil || token == "" || len(s.macroNames) == 0 {
+		return nil
+	}
+	if len(token) > len(s.macroNames)*tmproto.TmpxMaxWireBytes {
 		return nil
 	}
 	entries := make([]tmproto.TmpxMacro, 0, len(s.macroNames))
