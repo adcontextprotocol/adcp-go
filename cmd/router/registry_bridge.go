@@ -170,9 +170,11 @@ func (b *registryBridge) rebuildRouterSnapshot() {
 	}
 
 	src := b.properties.All()
-	// Reserve extra capacity for any authorized RIDs that the feed does
-	// not already cover — they get placeholder records.
-	props := make([]router.RegistryProperty, 0, len(src)+len(b.authorizedRIDs))
+	// Cap hint sized to the feed alone; the authorized-RID tail is small
+	// (operator-configured, typically single-digit) so append growth is
+	// negligible and adding the two lengths would give CodeQL a theoretical
+	// overflow flag on an allocation size.
+	props := make([]router.RegistryProperty, 0, len(src))
 
 	// Feed-provided properties first, indexed by RID so we can merge
 	// signing keys into any authorized-RID record the feed also emits.
