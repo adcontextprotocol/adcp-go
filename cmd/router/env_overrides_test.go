@@ -1,0 +1,117 @@
+package main
+
+import (
+	"testing"
+	"time"
+
+	"github.com/adcontextprotocol/adcp-go/router"
+	"github.com/stretchr/testify/assert"
+)
+
+// stubGetenv returns a getenv function backed by a static map so env
+// merging can be exercised without touching real process state.
+func stubGetenv(env map[string]string) func(string) string {
+	return func(k string) string { return env[k] }
+}
+
+// Addr resolution honors the documented precedence: flag > env > JSON.
+func TestApplyEnvOverrides_AddrPrecedence(t *testing.T) {
+	cases := []struct {
+		name string
+		flag string
+		env  string
+		json string
+		want string
+	}{
+		{"flag wins over env and JSON", "flag-addr", "env-addr", "json-addr", "flag-addr"},
+		{"env wins when no flag", "", "env-addr", "json-addr", "env-addr"},
+		{"JSON when neither set", "", "", "json-addr", "json-addr"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &router.ServerConfig{Addr: tc.json}
+			applyEnvOverrides(cfg, tc.flag, stubGetenv(map[string]string{"TMP_ROUTER_ADDR": tc.env}))
+			assert.Equal(t, tc.want, cfg.Addr)
+		})
+	}
+}
+
+// All TMP_ROUTER_SIGNING_* env vars override JSON values.
+func TestApplyEnvOverrides_SigningLayering(t *testing.T) {
+	cfg := &router.ServerConfig{
+		Signing: router.SigningConfig{
+			KeyID:          "json-kid",
+			PrivateKeyPath: "/json/key",
+			PropertyRIDs:   []string{"json-rid"},
+		},
+	}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_SIGNING_KID":           "env-kid",
+		"TMP_ROUTER_SIGNING_KEY_PATH":      "/env/key",
+		"TMP_ROUTER_SIGNING_PROPERTY_RIDS": "rid-a, rid-b",
+		"TMP_ROUTER_SIGNING_DISABLED":      "true",
+	}))
+	assert.Equal(t, "env-kid", cfg.Signing.KeyID)
+	assert.Equal(t, "/env/key", cfg.Signing.PrivateKeyPath)
+	assert.Equal(t, []string{"rid-a", "rid-b"}, cfg.Signing.PropertyRIDs)
+	assert.True(t, cfg.Signing.Disabled)
+}
+
+// TLS env vars flow through and Validate then catches half-config —
+// covering the layering path the reviewer flagged as untested on PR-A.
+func TestApplyEnvOverrides_TLSHalfConfigCaughtAfterMerge(t *testing.T) {
+	cfg := &router.ServerConfig{
+		TLS: router.TLSConfig{CertPath: "/json/cert"}, // JSON has cert but no key
+	}
+	applyEnvOverrides(cfg, "", stubGetenv(nil))
+	// After merge, only the cert path is set → Validate must fail.
+	assert.Error(t, cfg.TLS.Validate())
+
+	// Now supply the missing key via env — Validate should pass.
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_TLS_KEY": "/env/key",
+	}))
+	assert.NoError(t, cfg.TLS.Validate())
+	assert.Equal(t, "/json/cert", cfg.TLS.CertPath)
+	assert.Equal(t, "/env/key", cfg.TLS.KeyPath)
+}
+
+// Registry env vars populate the config and PollInterval() honors the
+// override.
+func TestApplyEnvOverrides_Registry(t *testing.T) {
+	cfg := &router.ServerConfig{}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_REGISTRY_FEED_URL":          "https://registry.example/",
+		"TMP_ROUTER_REGISTRY_FEED_TOKEN":        "t0k",
+		"TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC": "45",
+		"TMP_ROUTER_REGISTRY_BOOTSTRAP_LIMIT":   "5000",
+		"TMP_ROUTER_REGISTRY_FEED_LIMIT":        "500",
+	}))
+	assert.True(t, cfg.Registry.Enabled())
+	assert.Equal(t, "https://registry.example/", cfg.Registry.FeedURL)
+	assert.Equal(t, "t0k", cfg.Registry.FeedToken)
+	assert.Equal(t, 45*time.Second, cfg.Registry.PollInterval())
+	assert.Equal(t, 5000, cfg.Registry.BootstrapLimit)
+	assert.Equal(t, 500, cfg.Registry.FeedLimit)
+}
+
+// Non-numeric limit env vars are ignored so a typo doesn't zero out the
+// JSON-configured value. Matches how the existing signing/TLS blocks
+// silently ignore unset vars.
+func TestApplyEnvOverrides_RegistryIgnoresBadNumbers(t *testing.T) {
+	cfg := &router.ServerConfig{
+		Registry: router.RegistryConfig{
+			PollIntervalSeconds: 60,
+			BootstrapLimit:      2000,
+			FeedLimit:           100,
+		},
+	}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC": "not-a-number",
+		"TMP_ROUTER_REGISTRY_BOOTSTRAP_LIMIT":   "-1",
+		"TMP_ROUTER_REGISTRY_FEED_LIMIT":        "0",
+	}))
+	assert.Equal(t, 60, cfg.Registry.PollIntervalSeconds, "bad value must not clobber JSON")
+	assert.Equal(t, 2000, cfg.Registry.BootstrapLimit)
+	assert.Equal(t, 100, cfg.Registry.FeedLimit)
+}

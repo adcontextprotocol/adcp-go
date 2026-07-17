@@ -23,6 +23,38 @@ type ServerConfig struct {
 	Shutdown        ShutdownConfig    `json:"shutdown"`
 	Signing         SigningConfig     `json:"signing"`
 	TLS             TLSConfig         `json:"tls"`
+	Registry        RegistryConfig    `json:"registry"`
+}
+
+// RegistryConfig points the router at the AdCP registry feed so it can serve
+// real property metadata from `/registry/snapshot` instead of a stub. Left
+// empty, the router falls back to seeding only the property RIDs it is
+// authorized to sign for (dev-mode default).
+//
+// The feed endpoint is the same one the reference context/identity agents
+// consume: `${feed_url}/api/registry/feed` with bearer authentication. The
+// router keeps the resulting property index in memory only — the router is
+// stateless by design (see docs/trusted-match/router-architecture.mdx) so no
+// persistent backend is exposed here.
+type RegistryConfig struct {
+	FeedURL             string `json:"feed_url"`
+	FeedToken           string `json:"feed_token,omitempty"`
+	PollIntervalSeconds int    `json:"poll_interval_seconds,omitempty"`
+	BootstrapLimit      int    `json:"bootstrap_limit,omitempty"`
+	FeedLimit           int    `json:"feed_limit,omitempty"`
+}
+
+// Enabled reports whether the router should stand up a registry feed sync.
+func (r RegistryConfig) Enabled() bool { return r.FeedURL != "" }
+
+// PollInterval returns the poll interval as a duration, falling back to 30s
+// when unset. Matches the default in the internal `registry` package so a
+// router operator gets the same behavior as the reference agents.
+func (r RegistryConfig) PollInterval() time.Duration {
+	if r.PollIntervalSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(r.PollIntervalSeconds) * time.Second
 }
 
 // TLSConfig configures TLS termination in the router binary. When both

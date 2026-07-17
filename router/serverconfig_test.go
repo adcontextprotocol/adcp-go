@@ -122,6 +122,43 @@ func TestTLSConfig_UnsetIsDisabled(t *testing.T) {
 	assert.NoError(t, tls.Validate(), "unset TLS is a valid deployment (TLS terminated upstream)")
 }
 
+// The registry block from the spec's field naming parses into
+// RegistryConfig. Leaving feed_url empty keeps the router in seed-only
+// mode so this test asserts Enabled() flips only when the URL is set.
+func TestLoadServerConfig_AcceptsRegistryBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "config.yaml", `listen: ":8080"
+registry:
+  feed_url: https://registry.example/
+  feed_token: t0k
+  poll_interval_seconds: 45
+  bootstrap_limit: 5000
+  feed_limit: 500
+providers:
+  - provider_id: p1
+    endpoint: https://provider.example/agent
+    context_match: true
+`)
+
+	cfg, err := LoadServerConfig(path)
+	require.NoError(t, err)
+	assert.True(t, cfg.Registry.Enabled())
+	assert.Equal(t, "https://registry.example/", cfg.Registry.FeedURL)
+	assert.Equal(t, "t0k", cfg.Registry.FeedToken)
+	assert.Equal(t, 45*time.Second, cfg.Registry.PollInterval())
+	assert.Equal(t, 5000, cfg.Registry.BootstrapLimit)
+	assert.Equal(t, 500, cfg.Registry.FeedLimit)
+}
+
+// PollInterval defaults to 30s when unset — matches the registry pkg
+// default so a router without an explicit interval matches the reference
+// agents' cadence.
+func TestRegistryConfig_PollIntervalDefault(t *testing.T) {
+	assert.Equal(t, 30*time.Second, RegistryConfig{}.PollInterval())
+	assert.False(t, RegistryConfig{}.Enabled())
+	assert.True(t, RegistryConfig{FeedURL: "https://x"}.Enabled())
+}
+
 // Half-configured TLS is a startup error — an operator who set only one of
 // cert/key almost certainly missed an env var, and finding out at cert
 // rotation time would be worse.

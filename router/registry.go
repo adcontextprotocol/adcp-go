@@ -289,7 +289,13 @@ func (r *Registry) ApplyUpdate(update *RegistryUpdate) {
 	r.sequence.Store(update.Sequence)
 }
 
-// LoadFromData loads a registry from a pre-fetched snapshot (for testing).
+// LoadFromData replaces the entire registry with the given properties and
+// sequence number. Callers pass a snapshot they have assembled elsewhere
+// (a remote feed sync loop, a hand-built test fixture, etc.); the internal
+// maps are swapped atomically. Any state a prior loader attached via
+// ApplyUpdate / AttachSigningKey is dropped by the swap — callers that
+// layer supplementary state (e.g. the router's own signing keys) must
+// re-attach it after each LoadFromData call.
 func (r *Registry) LoadFromData(properties []RegistryProperty, sequence uint64) {
 	snapshot := &RegistrySnapshot{
 		Sequence:   sequence,

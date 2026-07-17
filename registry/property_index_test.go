@@ -42,6 +42,36 @@ func TestPropertyIndex_PutAndLookup(t *testing.T) {
 	assert.Equal(t, "", idx.PropertyRID("nonexistent"))
 }
 
+func TestPropertyIndex_All(t *testing.T) {
+	idx := NewPropertyIndex()
+	ctx := context.Background()
+
+	assert.Empty(t, idx.All(), "empty index returns empty snapshot")
+
+	inputs := []Property{
+		{PropertyID: "a", PropertyRID: "rid-a", Domain: "a.example", Placements: []string{"top"}},
+		{PropertyID: "b", PropertyRID: "rid-b", Domain: "b.example"},
+	}
+	for i := range inputs {
+		require.NoError(t, idx.Put(ctx, &inputs[i]))
+	}
+
+	got := idx.All()
+	require.Len(t, got, 2)
+
+	// Snapshot is a copy: mutating the returned slice or its element
+	// slices must not affect the index. Verifies the cloneProperty
+	// guarantee callers depend on.
+	for i := range got {
+		if got[i].PropertyID == "a" {
+			got[i].Placements[0] = "MUTATED"
+		}
+	}
+	original, ok := idx.LookupByID("a")
+	require.True(t, ok)
+	assert.Equal(t, "top", original.Placements[0], "index must be isolated from mutation of All() results")
+}
+
 func TestPropertyIndex_Update(t *testing.T) {
 	idx := NewPropertyIndex()
 	ctx := context.Background()

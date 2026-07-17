@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -43,12 +45,26 @@ func main() {
 		slog.Error("invalid signing configuration", "error", signerErr)
 		os.Exit(1)
 	}
+	var routerKey tmproto.SigningKey
 	if signer != nil {
-		jwk := signer.PublicJWK()
-		// Seed the registry with property records the operator authorized us
-		// to sign for, so providers fetching /registry/snapshot pick up the
-		// public key alongside the property metadata.
-		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, jwk)
+		routerKey = signer.PublicJWK()
+	}
+
+	// Optional AdCP registry feed sync. When configured, replaces the
+	// stub /registry/snapshot with live property metadata from the feed.
+	// When enabled, the bridge is the sole publisher into router.Registry:
+	// each successful poll rebuilds the whole snapshot (feed properties
+	// merged with the router's signing key on authorized RIDs) in one
+	// atomic LoadFromData call. When disabled, seedSigningProperties is
+	// called once at startup so the seed-only stub mode still serves the
+	// authorized-RID records.
+	bridge, bridgeErr := buildRegistryBridge(cfg.Registry, registry, cfg.Signing.PropertyRIDs, routerKey, signer != nil, slog.Default())
+	if bridgeErr != nil {
+		slog.Error("registry feed bootstrap failed", "error", bridgeErr)
+		os.Exit(1)
+	}
+	if bridge == nil && signer != nil {
+		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, routerKey)
 	}
 
 	routerOpts := []router.RouterOption{
@@ -174,6 +190,9 @@ func main() {
 			disc.Stop()
 		}
 		hc.Stop()
+		if bridge != nil {
+			bridge.Shutdown()
+		}
 		if err := srv.Shutdown(ctx); err != nil {
 			slog.Error("shutdown error", "error", err)
 		}
@@ -198,8 +217,20 @@ func main() {
 // listenAndServe picks HTTPS when both cert and key are configured, HTTP
 // otherwise. Deployments that terminate TLS at an upstream ingress leave the
 // TLS block empty and this falls through to ListenAndServe.
+//
+// When HTTPS is served, TLS 1.2 is pinned as the floor explicitly so future
+// Go crypto/tls default changes or GODEBUG overrides cannot silently lower
+// it for a binary whose stated purpose is public HTTPS.
 func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
 	if tlsCfg.Enabled() {
+		if srv.TLSConfig == nil {
+			srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		} else if srv.TLSConfig.MinVersion < tls.VersionTLS12 {
+			slog.Warn("clamping tls.MinVersion to TLS 1.2 — TLS 1.0/1.1 are not accepted for public HTTPS",
+				"previous", srv.TLSConfig.MinVersion,
+			)
+			srv.TLSConfig.MinVersion = tls.VersionTLS12
+		}
 		return srv.ListenAndServeTLS(tlsCfg.CertPath, tlsCfg.KeyPath)
 	}
 	return srv.ListenAndServe()
@@ -228,37 +259,7 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 		cfg = router.DefaultServerConfig()
 	}
 
-	// Env var for addr (flag takes precedence).
-	if addr != "" {
-		cfg.Addr = addr
-	} else if envAddr := os.Getenv("TMP_ROUTER_ADDR"); envAddr != "" {
-		cfg.Addr = envAddr
-	}
-
-	// Signing config — env vars override JSON, flags take precedence above
-	// neither (the router has no signing flags today).
-	if v := os.Getenv("TMP_ROUTER_SIGNING_KID"); v != "" {
-		cfg.Signing.KeyID = v
-	}
-	if v := os.Getenv("TMP_ROUTER_SIGNING_KEY_PATH"); v != "" {
-		cfg.Signing.PrivateKeyPath = v
-	}
-	if v := os.Getenv("TMP_ROUTER_SIGNING_PROPERTY_RIDS"); v != "" {
-		cfg.Signing.PropertyRIDs = splitAndTrim(v)
-	}
-	if v := os.Getenv("TMP_ROUTER_SIGNING_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
-		cfg.Signing.Disabled = true
-	}
-
-	// TLS config — env vars override JSON; both cert and key must be set to
-	// enable HTTPS. Leaving both unset serves cleartext HTTP (typical when
-	// TLS is terminated by an upstream ingress).
-	if v := os.Getenv("TMP_ROUTER_TLS_CERT"); v != "" {
-		cfg.TLS.CertPath = v
-	}
-	if v := os.Getenv("TMP_ROUTER_TLS_KEY"); v != "" {
-		cfg.TLS.KeyPath = v
-	}
+	applyEnvOverrides(cfg, addr, os.Getenv)
 
 	if err := cfg.TLS.Validate(); err != nil {
 		slog.Error("invalid TLS configuration", "error", err)
@@ -266,6 +267,69 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 	}
 
 	return cfg
+}
+
+// applyEnvOverrides layers env-var and flag overrides onto a base config
+// per the flags > env > JSON > defaults rule. Pulled out of loadConfig so
+// it can be unit-tested against a synthetic getenv without touching real
+// process env or os.Exit. Bad env values fall through to zero-value and
+// let downstream validation surface the error (mirrors how signing/TLS
+// config paths were already handled inline).
+func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(string) string) {
+	// Addr — flag beats env beats JSON.
+	if addrFlag != "" {
+		cfg.Addr = addrFlag
+	} else if v := getenv("TMP_ROUTER_ADDR"); v != "" {
+		cfg.Addr = v
+	}
+
+	// Signing config — env vars override JSON, no flags exposed today.
+	if v := getenv("TMP_ROUTER_SIGNING_KID"); v != "" {
+		cfg.Signing.KeyID = v
+	}
+	if v := getenv("TMP_ROUTER_SIGNING_KEY_PATH"); v != "" {
+		cfg.Signing.PrivateKeyPath = v
+	}
+	if v := getenv("TMP_ROUTER_SIGNING_PROPERTY_RIDS"); v != "" {
+		cfg.Signing.PropertyRIDs = splitAndTrim(v)
+	}
+	if v := getenv("TMP_ROUTER_SIGNING_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
+		cfg.Signing.Disabled = true
+	}
+
+	// TLS config — env vars override JSON; both cert and key must be set to
+	// enable HTTPS. Leaving both unset serves cleartext HTTP (typical when
+	// TLS is terminated by an upstream ingress).
+	if v := getenv("TMP_ROUTER_TLS_CERT"); v != "" {
+		cfg.TLS.CertPath = v
+	}
+	if v := getenv("TMP_ROUTER_TLS_KEY"); v != "" {
+		cfg.TLS.KeyPath = v
+	}
+
+	// Registry feed — env vars override JSON. Leaving FeedURL empty keeps
+	// the router in seed-only mode (dev default).
+	if v := getenv("TMP_ROUTER_REGISTRY_FEED_URL"); v != "" {
+		cfg.Registry.FeedURL = v
+	}
+	if v := getenv("TMP_ROUTER_REGISTRY_FEED_TOKEN"); v != "" {
+		cfg.Registry.FeedToken = v
+	}
+	if v := getenv("TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Registry.PollIntervalSeconds = n
+		}
+	}
+	if v := getenv("TMP_ROUTER_REGISTRY_BOOTSTRAP_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Registry.BootstrapLimit = n
+		}
+	}
+	if v := getenv("TMP_ROUTER_REGISTRY_FEED_LIMIT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Registry.FeedLimit = n
+		}
+	}
 }
 
 func splitAndTrim(s string) []string {
