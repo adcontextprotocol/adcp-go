@@ -65,11 +65,13 @@ jobs:
 
       # ─────────────────────────────────────────────────────────────────────
       # Self-modification gate. If the PR's cumulative diff touches Argus's
-      # own configuration (`.github/workflows/ai-review.yml` or any file
-      # under `.github/ai-review/**`), skip Argus entirely and post a
-      # notice that a human reviewer is required. Argus must not approve
-      # PRs that rewrite its own gates — CODEOWNERS gates the merge, but
-      # this stops a misleading "approved by bot" signal from showing up.
+      # own configuration (`.github/workflows/ai-review.yml`, any file
+      # under `.github/ai-review/**`, or the repo-root `ARGUS.md` whose
+      # content is injected into every review prompt), skip Argus entirely
+      # and post a notice that a human reviewer is required. Argus must not
+      # approve PRs that rewrite its own gates — CODEOWNERS gates the
+      # merge, but this stops a misleading "approved by bot" signal from
+      # showing up.
       # ─────────────────────────────────────────────────────────────────────
       - name: Self-modification check
         id: self-mod
@@ -82,7 +84,7 @@ jobs:
           set -euo pipefail
           TOUCHED="$(gh api --paginate "/repos/${REPO}/pulls/${PR_NUMBER}/files" \
             --jq '.[].filename' \
-            | grep -E '^(\.github/workflows/ai-review\.yml|\.github/ai-review/)' || true)"
+            | grep -E '^(\.github/workflows/ai-review\.yml|\.github/ai-review/|ARGUS\.md$)' || true)"
           if [ -n "$TOUCHED" ]; then
             echo "touches=true" >> "$GITHUB_OUTPUT"
             echo "Argus paths touched — pausing Argus on this PR. Files:"
@@ -117,7 +119,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `${marker}\n🛑 **Argus paused on this PR.**\n\nThis PR modifies Argus's own configuration (\`.github/workflows/ai-review.yml\` or \`.github/ai-review/**\`). Argus will not post an approving review on changes to its own gates — a human reviewer must take this PR. CODEOWNERS already requires a human approval on these paths.\n\n[Workflow run](${runUrl})\n\n<sub>Automated by the Argus self-modification gate.</sub>`,
+              body: `${marker}\n🛑 **Argus paused on this PR.**\n\nThis PR modifies Argus's own configuration (\`.github/workflows/ai-review.yml\`, \`.github/ai-review/**\`, or \`ARGUS.md\`). Argus will not post an approving review on changes to its own gates — a human reviewer must take this PR. CODEOWNERS already requires a human approval on these paths.\n\n[Workflow run](${runUrl})\n\n<sub>Automated by the Argus self-modification gate.</sub>`,
             });
 
       # ─────────────────────────────────────────────────────────────────────
@@ -201,9 +203,27 @@ jobs:
         run: |
           set -euo pipefail
           PROMPT_BODY="$(cat .github/ai-review/expert-adcp-reviewer.md)"
+          # Repo-specific context lives in ARGUS.md at the repo root. It is
+          # optional — the review still runs without it, just without the
+          # repo-tailored priors (high-risk paths, mandatory-coverage rules,
+          # escalation reviewers). Content is injected verbatim under a
+          # dedicated header so the reviewer sees it as authoritative
+          # repo-scope context rather than folded into the base prompt.
+          REPO_CONTEXT=""
+          if [ -f ARGUS.md ]; then
+            REPO_CONTEXT="$(cat ARGUS.md)"
+          fi
           {
             echo 'ARGUS_PROMPT<<ARGUS_EOF'
             echo "$PROMPT_BODY"
+            if [ -n "$REPO_CONTEXT" ]; then
+              echo ''
+              echo '---'
+              echo ''
+              echo '# Repo-specific context (from ARGUS.md)'
+              echo ''
+              echo "$REPO_CONTEXT"
+            fi
             echo ''
             echo '---'
             echo ''
@@ -228,7 +248,7 @@ jobs:
           track_progress: false
           claude_args: |
             --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr review:*),Read,Glob,Grep,Task"
-            --max-turns 60
+            --max-turns 70
             --model claude-opus-4-8
             --effort high
 
