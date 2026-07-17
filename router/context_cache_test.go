@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -187,16 +188,18 @@ func TestContextCache_TTLClampsToMax(t *testing.T) {
 // conversion. Clamping in seconds first (before multiplying by
 // time.Second) guarantees the entry is stored with MaxContextCacheTTL,
 // not silently dropped because Duration wrapped to negative.
+//
+// math.MaxInt is used so this compiles on both 32-bit (where int is
+// int32; MaxInt seconds still exercises the clamp path) and 64-bit
+// (where int is int64; MaxInt * time.Second overflows the Duration
+// multiplication if the clamp weren't seconds-first).
 func TestContextCache_TTLOverflowSafe(t *testing.T) {
 	c := NewContextCache(time.Minute)
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	// int(math.MaxInt64/int64(time.Second)) ~= 9.2e9 seconds; anything
-	// beyond that would overflow Duration when multiplied. Use a value
-	// that would definitely wrap on 64-bit.
 	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{
-		CacheTTL: ttlPtr(1 << 62),
+		CacheTTL: ttlPtr(math.MaxInt),
 	})
 
 	// Just under the max → cached.

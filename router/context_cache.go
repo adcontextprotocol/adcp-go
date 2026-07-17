@@ -222,6 +222,14 @@ func cloneContextResponse(src *tmproto.ContextMatchResponse) *tmproto.ContextMat
 		return nil
 	}
 	dst := *src
+	// CacheTTL is *int; the shallow struct copy above shares the
+	// pointer with the cached entry. Give the caller its own
+	// allocation so `*resp.CacheTTL = 0` on a returned hit cannot
+	// silently flip the cached entry's disable-caching semantics.
+	if src.CacheTTL != nil {
+		v := *src.CacheTTL
+		dst.CacheTTL = &v
+	}
 	if len(src.Offers) > 0 {
 		dst.Offers = make([]tmproto.Offer, len(src.Offers))
 		for i := range src.Offers {
