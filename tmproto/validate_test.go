@@ -255,6 +255,150 @@ func TestSafeRequestIDForEcho_RejectsC0AndDEL(t *testing.T) {
 	}
 }
 
+// ValidateContextRequest must enforce the ladder-level constraints the JSON
+// Schema encodes on ContextSignals, ArtifactRefs, Artifact, and Geo — the
+// audit called out that these Validate methods existed but were never wired
+// into the request-entry path. Each case flips exactly one field so a
+// regression that stops rejecting one dimension surfaces alone.
+func TestValidateContextRequest_LadderConstraints(t *testing.T) {
+	valid := func() ContextMatchRequest {
+		return ContextMatchRequest{
+			Type:           TypeContextMatchRequest,
+			RequestID:      "req-1",
+			PropertyRID:    "prop-1",
+			PropertyType:   PropertyTypeWebsite,
+			PlacementID:    "placement-1",
+			SellerAgentURL: "https://seller.example.com/agent",
+		}
+	}
+
+	oversizedTopics := make([]string, MaxTopics+1)
+	for i := range oversizedTopics {
+		oversizedTopics[i] = "t"
+	}
+
+	cases := []struct {
+		name    string
+		mutate  func(*ContextMatchRequest)
+		wantErr string
+	}{
+		{name: "baseline ok", mutate: func(*ContextMatchRequest) {}},
+		{
+			name: "context_signals sentiment enum rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.ContextSignals = &ContextSignals{Sentiment: "wildly_positive"}
+			},
+			wantErr: "sentiment",
+		},
+		{
+			name: "context_signals topics over cap rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.ContextSignals = &ContextSignals{Topics: oversizedTopics}
+			},
+			wantErr: "topics",
+		},
+		{
+			name: "artifact_refs missing value rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.ArtifactRefs = []ArtifactRef{{Type: ArtifactRefTypeURL, Value: ""}}
+			},
+			wantErr: "artifact_ref.value",
+		},
+		{
+			name: "artifact missing property_rid rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.Artifact = &Artifact{ArtifactID: "a-1"}
+			},
+			wantErr: "property_rid",
+		},
+		{
+			name: "geo.country malformed rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.Geo = map[string]any{"country": "usa"}
+			},
+			wantErr: "geo.country",
+		},
+		{
+			name: "geo.metro missing system rejected",
+			mutate: func(r *ContextMatchRequest) {
+				r.Geo = map[string]any{"metro": map[string]any{"value": "501"}}
+			},
+			wantErr: "geo.metro.system",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := valid()
+			tc.mutate(&req)
+			err := ValidateContextRequest(&req)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+func TestValidateIdentityRequest_Consent(t *testing.T) {
+	base := func() IdentityMatchRequest {
+		return IdentityMatchRequest{
+			Type:           TypeIdentityMatchRequest,
+			RequestID:      "id-1",
+			SellerAgentURL: "https://seller.example.com/agent",
+			Identities:     []IdentityToken{{UserToken: "tok", UIDType: UIDTypeUID2}},
+		}
+	}
+
+	cases := []struct {
+		name    string
+		consent map[string]any
+		wantErr string
+	}{
+		{name: "no consent object accepted", consent: nil},
+		{name: "gdpr false accepted", consent: map[string]any{"gdpr": false}},
+		{
+			name:    "gdpr true with tcf accepted",
+			consent: map[string]any{"gdpr": true, "tcf_consent": "CO..."},
+		},
+		{
+			name:    "gdpr true with gpp accepted",
+			consent: map[string]any{"gdpr": true, "gpp": "DBABMA~..."},
+		},
+		{
+			name:    "gdpr true without consent string rejected",
+			consent: map[string]any{"gdpr": true},
+			wantErr: "consent.gdpr is true",
+		},
+		{
+			name:    "gdpr true with empty tcf rejected",
+			consent: map[string]any{"gdpr": true, "tcf_consent": ""},
+			wantErr: "consent.gdpr is true",
+		},
+		{
+			name:    "gdpr non-boolean rejected",
+			consent: map[string]any{"gdpr": "yes"},
+			wantErr: "consent.gdpr: must be boolean",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := base()
+			req.Consent = tc.consent
+			err := ValidateIdentityRequest(&req)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
 func TestValidateIdentityRequest_AllValidUIDTypes(t *testing.T) {
 	types := []UIDType{
 		UIDTypeRampID, UIDTypeRampIDDerived, UIDTypeID5, UIDTypeUID2,

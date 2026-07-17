@@ -3,8 +3,57 @@ package tmproto
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
+
+// Geo field patterns mirrored from adcp/schemas/trusted-match/context-match-request.json.
+// country is ISO 3166-1 alpha-2; region is ISO 3166-2 (e.g. "US-CA", "GB-SCT").
+var (
+	geoCountryPattern = regexp.MustCompile(`^[A-Z]{2}$`)
+	geoRegionPattern  = regexp.MustCompile(`^[A-Z]{2}-[A-Z0-9]{1,3}$`)
+)
+
+// validateGeo checks the coarse fields the JSON Schema constrains: country
+// and region patterns, and the metro sub-object's required keys. Absent
+// fields are legal (all optional); a wrong type or a value that fails the
+// pattern is not.
+func validateGeo(geo map[string]any) error {
+	if len(geo) == 0 {
+		return nil
+	}
+	if v, present := geo["country"]; present {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("geo.country: must be string")
+		}
+		if !geoCountryPattern.MatchString(s) {
+			return fmt.Errorf("geo.country: does not match pattern ^[A-Z]{2}$")
+		}
+	}
+	if v, present := geo["region"]; present {
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("geo.region: must be string")
+		}
+		if !geoRegionPattern.MatchString(s) {
+			return fmt.Errorf("geo.region: does not match pattern ^[A-Z]{2}-[A-Z0-9]{1,3}$")
+		}
+	}
+	if v, present := geo["metro"]; present {
+		metro, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf("geo.metro: must be object")
+		}
+		if _, ok := metro["system"]; !ok {
+			return fmt.Errorf("geo.metro.system: required")
+		}
+		if _, ok := metro["value"]; !ok {
+			return fmt.Errorf("geo.metro.value: required")
+		}
+	}
+	return nil
+}
 
 // Message type discriminators required on every TMP envelope. The spec
 // instructs agents to reject requests whose `type` does not match the
@@ -151,6 +200,25 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 			return err
 		}
 	}
+	// Ladder-level schema constraints: the JSON Schema caps sizes and
+	// enumerates enums; those are enforced here so a malformed request is
+	// rejected at handler entry instead of surviving into the engine
+	// (where an out-of-range sentiment or a 60-topic list would silently
+	// mismatch every taxonomy check).
+	if err := req.ContextSignals.Validate(); err != nil {
+		return err
+	}
+	for i, ref := range req.ArtifactRefs {
+		if err := ref.Validate(); err != nil {
+			return fmt.Errorf("artifact_refs[%d]: %w", i, err)
+		}
+	}
+	if err := req.Artifact.Validate(); err != nil {
+		return err
+	}
+	if err := validateGeo(req.Geo); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -224,6 +292,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 			return err
 		}
 	}
+	if err := validateConsent(req.Consent); err != nil {
+		return err
+	}
 	if len(req.SealedCredentials) > MaxSealedCredentials {
 		return fmt.Errorf("sealed_credentials exceeds maximum of %d", MaxSealedCredentials)
 	}
@@ -242,6 +313,47 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		}
 	}
 	return nil
+}
+
+// validateConsent enforces the cross-field consent rule the schema encodes
+// in prose: the identity-match spec says "buyers in regulated jurisdictions
+// MUST NOT process the user token without consent information." We can't
+// infer jurisdiction from the request, but the caller declares it via
+// `consent.gdpr == true`. When that flag is set, one of `tcf_consent` or
+// `gpp` must accompany it or the request is rejected — processing an
+// unconsented GDPR request is the non-compliance the spec targets.
+//
+// Absent consent object is allowed (non-regulated request, or an operator
+// deploying outside the EU); the caller has told us jurisdiction does not
+// apply.
+func validateConsent(consent map[string]any) error {
+	if len(consent) == 0 {
+		return nil
+	}
+	gdprAny, present := consent["gdpr"]
+	if !present {
+		return nil
+	}
+	gdpr, ok := gdprAny.(bool)
+	if !ok {
+		return fmt.Errorf("consent.gdpr: must be boolean")
+	}
+	if !gdpr {
+		return nil
+	}
+	if hasNonEmptyString(consent, "tcf_consent") || hasNonEmptyString(consent, "gpp") {
+		return nil
+	}
+	return errors.New("consent.gdpr is true but neither tcf_consent nor gpp is present; refusing to process user tokens without consent")
+}
+
+func hasNonEmptyString(m map[string]any, key string) bool {
+	v, ok := m[key]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	return ok && s != ""
 }
 
 // validateAttestation checks the structural and DoS-bound constraints on a

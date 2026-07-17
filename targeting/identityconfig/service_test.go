@@ -176,7 +176,7 @@ func TestService_RetryEventuallySucceeds(t *testing.T) {
 			time.Sleep(5 * time.Millisecond)
 		}
 		src.setLoadAllError(nil)
-		src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(10, 0))
+		src.put("https://seller.example/agent", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(10, 0))
 	}()
 
 	svc, err := New(src, time.Hour, WithStartConfig(StartConfig{
@@ -193,7 +193,7 @@ func TestService_RetryEventuallySucceeds(t *testing.T) {
 	require.NoError(t, svc.Start(context.Background()))
 	defer svc.Stop()
 
-	require.NotNil(t, svc.Get("seller", "pkg-1"))
+	require.NotNil(t, svc.Get("https://seller.example/agent", "pkg-1"))
 }
 
 func TestService_RetryExhaustsAttempts(t *testing.T) {
@@ -221,14 +221,14 @@ func TestService_DeltaUpsertAndRemove(t *testing.T) {
 	src := newMemorySource()
 	rule1 := &targeting.SegmentRule{AnyOf: []string{"a"}}
 	rule2 := &targeting.SegmentRule{AnyOf: []string{"b"}}
-	src.put("seller", "pkg-1", rule1, time.Unix(100, 0))
-	src.put("seller", "pkg-2", rule2, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-1", rule1, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-2", rule2, time.Unix(100, 0))
 
 	// Queue a delta that removes pkg-1 and replaces pkg-2's rule.
 	rule2New := &targeting.SegmentRule{AllOf: []string{"x"}, NoneOf: []string{"y"}}
 	src.queueDelta(Delta{
-		Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-2"}, TargetSegments: rule2New}},
-		Removed:       []Key{{SellerAgentURL: "seller", PackageID: "pkg-1"}},
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-2"}, TargetSegments: rule2New}},
+		Removed:       []Key{{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-1"}},
 		LastUpdatedAt: time.Unix(200, 0),
 	})
 
@@ -239,10 +239,10 @@ func TestService_DeltaUpsertAndRemove(t *testing.T) {
 
 	// Wait for the delta refresh tick.
 	require.Eventually(t, func() bool {
-		return svc.Get("seller", "pkg-1") == nil
+		return svc.Get("https://seller.example/agent", "pkg-1") == nil
 	}, time.Second, 5*time.Millisecond, "pkg-1 should be removed")
 
-	got := svc.Get("seller", "pkg-2")
+	got := svc.Get("https://seller.example/agent", "pkg-2")
 	require.NotNil(t, got)
 	assert.Equal(t, rule2New, got)
 
@@ -432,7 +432,7 @@ func TestService_StopUnblocksInFlightRefresh(t *testing.T) {
 func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 	src := newMemorySource()
 	for i := range 50 {
-		src.put("seller", fmt.Sprintf("pkg-%d", i), &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(1, 0))
+		src.put("https://seller.example/agent", fmt.Sprintf("pkg-%d", i), &targeting.SegmentRule{AnyOf: []string{"x"}}, time.Unix(1, 0))
 	}
 
 	svc, err := New(src, 2*time.Millisecond)
@@ -445,7 +445,7 @@ func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 	for i := range 20 {
 		seg := fmt.Sprintf("seg-%d", i)
 		src.queueDelta(Delta{
-			Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-0"}, TargetSegments: &targeting.SegmentRule{AnyOf: []string{seg}}}},
+			Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-0"}, TargetSegments: &targeting.SegmentRule{AnyOf: []string{seg}}}},
 			LastUpdatedAt: time.Unix(int64(2+i), 0),
 		})
 	}
@@ -461,8 +461,8 @@ func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 				default:
 				}
 				// Reads must never panic, return torn data, or race.
-				_ = svc.Get("seller", "pkg-0")
-				_ = svc.GetBySeller("seller")
+				_ = svc.Get("https://seller.example/agent", "pkg-0")
+				_ = svc.GetBySeller("https://seller.example/agent")
 				_ = svc.LastUpdatedAt()
 			}
 		})
@@ -474,18 +474,18 @@ func TestService_ConcurrentReadsDuringRefresh(t *testing.T) {
 
 func TestService_GetBySellerCopyIsolated(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
+	src.put("https://seller.example/agent", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
 	svc, err := New(src, time.Hour)
 	require.NoError(t, err)
 	require.NoError(t, svc.Start(context.Background()))
 	defer svc.Stop()
 
-	first := svc.GetBySeller("seller")
+	first := svc.GetBySeller("https://seller.example/agent")
 	require.Len(t, first, 1)
 	// Mutate the returned slice slot — must not affect the snapshot.
-	first[0] = Entry{Key: Key{SellerAgentURL: "seller", PackageID: "tampered"}}
+	first[0] = Entry{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "tampered"}}
 
-	second := svc.GetBySeller("seller")
+	second := svc.GetBySeller("https://seller.example/agent")
 	require.Len(t, second, 1)
 	assert.Equal(t, "pkg-1", second[0].Key.PackageID, "snapshot must be insulated from slot mutation")
 }
@@ -494,7 +494,7 @@ func TestService_GetBySellerDeepCopyIsolatesRule(t *testing.T) {
 	// GetBySeller returns a deep copy: mutating the returned rule's
 	// clause slices must NOT bleed into the snapshot.
 	src := newMemorySource()
-	src.put("seller", "pkg-1", &targeting.SegmentRule{
+	src.put("https://seller.example/agent", "pkg-1", &targeting.SegmentRule{
 		AllOf:  []string{"must-have"},
 		AnyOf:  []string{"a", "b"},
 		NoneOf: []string{"d"},
@@ -504,7 +504,7 @@ func TestService_GetBySellerDeepCopyIsolatesRule(t *testing.T) {
 	require.NoError(t, svc.Start(context.Background()))
 	defer svc.Stop()
 
-	first := svc.GetBySeller("seller")
+	first := svc.GetBySeller("https://seller.example/agent")
 	require.Len(t, first, 1)
 	require.NotNil(t, first[0].TargetSegments)
 	// Append to each clause; the snapshot's rule must be unaffected.
@@ -512,7 +512,7 @@ func TestService_GetBySellerDeepCopyIsolatesRule(t *testing.T) {
 	first[0].TargetSegments.AnyOf = append(first[0].TargetSegments.AnyOf, "tamper-any")
 	first[0].TargetSegments.NoneOf = append(first[0].TargetSegments.NoneOf, "tamper-none")
 
-	second := svc.GetBySeller("seller")
+	second := svc.GetBySeller("https://seller.example/agent")
 	require.Len(t, second, 1)
 	require.NotNil(t, second[0].TargetSegments)
 	assert.Equal(t, []string{"must-have"}, second[0].TargetSegments.AllOf, "AllOf must be insulated from caller mutation")
@@ -524,9 +524,9 @@ func TestService_GetBeforeStartReturnsNil(t *testing.T) {
 	svc, err := New(newMemorySource(), time.Hour)
 	require.NoError(t, err)
 	// No Start, no panic — empty snapshot is installed by the constructor.
-	assert.Nil(t, svc.Get("seller", "pkg"))
-	assert.Empty(t, svc.GetBySeller("seller"))
-	_, present := svc.Lookup("seller", "pkg")
+	assert.Nil(t, svc.Get("https://seller.example/agent", "pkg"))
+	assert.Empty(t, svc.GetBySeller("https://seller.example/agent"))
+	_, present := svc.Lookup("https://seller.example/agent", "pkg")
 	assert.False(t, present)
 }
 
@@ -553,7 +553,7 @@ func (r *outcomeRecorder) snapshot() []string {
 
 func TestService_RefreshObserverEmitsOnInitialLoad(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", nil, time.Unix(1, 0))
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(1, 0))
 
 	rec := &outcomeRecorder{}
 	svc, err := New(src, time.Hour, WithRefreshObserver(rec.record))
@@ -580,9 +580,9 @@ func TestService_RefreshObserverEmitsErrorOnInitialLoadFailure(t *testing.T) {
 
 func TestService_RefreshObserverEmitsOnDelta(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", nil, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(100, 0))
 	src.queueDelta(Delta{
-		Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-2"}, TargetSegments: nil}},
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-2"}, TargetSegments: nil}},
 		LastUpdatedAt: time.Unix(200, 0),
 	})
 
@@ -604,7 +604,7 @@ func TestService_RefreshObserverEmitsOnDelta(t *testing.T) {
 
 func TestService_RefreshObserverEmitsErrorOnDeltaFailure(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", nil, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(100, 0))
 
 	rec := &outcomeRecorder{}
 	svc, err := New(src, 10*time.Millisecond, WithRefreshObserver(rec.record))
@@ -625,7 +625,7 @@ func TestService_RefreshObserverEmitsErrorOnDeltaFailure(t *testing.T) {
 
 func TestService_RefreshObserverPanicDoesNotCrashLoop(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", nil, time.Unix(1, 0))
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(1, 0))
 
 	var calls atomic.Int64
 	svc, err := New(src, 10*time.Millisecond, WithRefreshObserver(func(string) {
@@ -646,9 +646,9 @@ func TestService_RefreshObserverPanicDoesNotCrashLoop(t *testing.T) {
 
 func TestService_LenReflectsSnapshot(t *testing.T) {
 	src := newMemorySource()
-	src.put("seller", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
-	src.put("seller", "pkg-2", &targeting.SegmentRule{AnyOf: []string{"b"}}, time.Unix(1, 0))
-	src.put("other", "pkg-3", nil, time.Unix(1, 0))
+	src.put("https://seller.example/agent", "pkg-1", &targeting.SegmentRule{AnyOf: []string{"a"}}, time.Unix(1, 0))
+	src.put("https://seller.example/agent", "pkg-2", &targeting.SegmentRule{AnyOf: []string{"b"}}, time.Unix(1, 0))
+	src.put("https://other.example/agent", "pkg-3", nil, time.Unix(1, 0))
 
 	svc, err := New(src, 10*time.Millisecond)
 	require.NoError(t, err)
@@ -662,17 +662,17 @@ func TestService_LenReflectsSnapshot(t *testing.T) {
 
 	// Queue a delta that adds one entry and removes another.
 	src.queueDelta(Delta{
-		Upserted:      []Entry{{Key: Key{SellerAgentURL: "seller", PackageID: "pkg-4"}, TargetSegments: nil}},
-		Removed:       []Key{{SellerAgentURL: "seller", PackageID: "pkg-1"}},
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-4"}, TargetSegments: nil}},
+		Removed:       []Key{{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-1"}},
 		LastUpdatedAt: time.Unix(200, 0),
 	})
 
 	// 3 entries before, 3 after (one upsert + one remove). Wait for the
 	// upsert to land — Len alone can't distinguish pre- from post-delta.
 	require.Eventually(t, func() bool {
-		_, present := svc.Lookup("seller", "pkg-4")
+		_, present := svc.Lookup("https://seller.example/agent", "pkg-4")
 		return present
 	}, time.Second, 5*time.Millisecond, "delta refresh should land")
 	assert.Equal(t, 3, svc.Len(), "Len should still reflect every entry after an upsert+remove delta")
-	assert.Nil(t, svc.Get("seller", "pkg-1"), "removed entry should not be readable")
+	assert.Nil(t, svc.Get("https://seller.example/agent", "pkg-1"), "removed entry should not be readable")
 }

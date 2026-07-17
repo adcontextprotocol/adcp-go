@@ -6,9 +6,9 @@ import (
 )
 
 // Schema-driven limits used by the Validate methods below. These mirror the
-// JSON Schema constraints in adcp/schemas/tmp/context-match-request.json and
-// adcp/schemas/content-standards/artifact.json. Named constants so callers can
-// mirror them in their own pre-checks.
+// JSON Schema constraints in adcp/schemas/trusted-match/context-match-request.json
+// and adcp/schemas/content-standards/artifact.json. Named constants so callers
+// can mirror them in their own pre-checks.
 const (
 	// ContextSignals.
 	MaxTopics          = 50
