@@ -218,6 +218,8 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC` | Router | Steady-state poll cadence in seconds. | `30` |
 | `TMP_ROUTER_REGISTRY_BOOTSTRAP_LIMIT` | Router | Events per page during the initial catch-up drain. | `10000` |
 | `TMP_ROUTER_REGISTRY_FEED_LIMIT` | Router | Events per page during steady-state polling. | `1000` |
+| `TMP_ROUTER_CACHE_DISABLED` | Router | Disable the per-provider Context Match cache. Fans out on every request. | `false` |
+| `TMP_ROUTER_CACHE_DEFAULT_TTL_SEC` | Router | Fallback TTL when a provider response omits `cache_ttl`. | `300` |
 | `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |

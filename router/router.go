@@ -71,6 +71,11 @@ type Router struct {
 	// fan-outs.
 	signer      *tmproto.Signer
 	contextSigs *contextSignatureCache
+
+	// contextCache is nil when caching is disabled (dev / test) or when
+	// the deployer did not wire it. Per spec §Caching, populated caches
+	// key on {property_rid, placement_id, provider_id}.
+	contextCache *ContextCache
 }
 
 // RouterOption configures a Router.
@@ -111,6 +116,13 @@ func WithFanOutMetrics(m FanOutMetrics) RouterOption {
 // router holds onto signer for the rest of its lifetime.
 func WithTMPSigner(signer *tmproto.Signer) RouterOption {
 	return func(r *Router) { r.signer = signer }
+}
+
+// WithContextCache attaches a per-provider Context Match response cache
+// (spec §Caching). Pass nil to disable caching — the router will fan
+// out on every request.
+func WithContextCache(c *ContextCache) RouterOption {
+	return func(r *Router) { r.contextCache = c }
 }
 
 // Providers returns the router's provider set for use by health checkers and discovery.
@@ -351,6 +363,31 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 	for _, p := range providers {
 		wg.Go(func() {
+			// Cache hit short-circuit — before health check, signing, or
+			// dial. Spec §Caching keys on {property_rid, placement_id,
+			// provider_id}; the request's package_ids are not part of
+			// the key because active packages are placement-scoped
+			// (spec: "the same packages are evaluated for every user on
+			// a given placement"). A publisher that varies package_ids
+			// across requests for the same {property, placement} is
+			// violating that spec assumption and will get cached offers
+			// scoped to whatever set produced the first fill.
+			//
+			// The cache check also runs before the circuit-breaker
+			// gate: a warm response is still useful when the provider
+			// went down, and the TTL bounds staleness.
+			if r.contextCache != nil {
+				if cached, ok := r.contextCache.Get(cmReq.PropertyRID, cmReq.PlacementID, p.ID); ok {
+					// Echo the CURRENT request's ID; every other field is
+					// stable across cache reuses within the placement scope.
+					cached.RequestID = cmReq.RequestID
+					mu.Lock()
+					results = append(results, contextResult{providerID: p.ID, response: cached})
+					mu.Unlock()
+					return
+				}
+			}
+
 			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
 				if r.metrics != nil {
 					r.metrics.IncExcluded(p.ID)
@@ -419,6 +456,13 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			}
 			if r.health != nil {
 				r.health.RecordSuccess(p.ID)
+			}
+
+			// Cache the fresh response BEFORE returning it to the merger.
+			// The cache clones on both Put and Get, so downstream mutation
+			// (e.g. RequestID overwrites on hits) cannot corrupt entries.
+			if r.contextCache != nil {
+				r.contextCache.Put(cmReq.PropertyRID, cmReq.PlacementID, p.ID, &cmResp)
 			}
 
 			mu.Lock()

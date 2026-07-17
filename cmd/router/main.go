@@ -67,12 +67,21 @@ func main() {
 		seedSigningProperties(registry, cfg.Signing.PropertyRIDs, routerKey)
 	}
 
+	cacheMetrics := &contextCacheMetricsAdapter{}
+	var contextCache *router.ContextCache
+	if !cfg.Cache.Disabled {
+		contextCache = router.NewContextCache(cfg.Cache.DefaultTTL(), router.WithContextCacheMetrics(cacheMetrics))
+	}
+
 	routerOpts := []router.RouterOption{
 		router.WithLatencyBudget(cfg.LatencyBudget()),
 		router.WithFanOutMetrics(fanOutMetrics),
 	}
 	if signer != nil {
 		routerOpts = append(routerOpts, router.WithTMPSigner(signer))
+	}
+	if contextCache != nil {
+		routerOpts = append(routerOpts, router.WithContextCache(contextCache))
 	}
 	r, err := router.NewRouter(cfg.Providers, registry, health, routerOpts...)
 	if err != nil {
@@ -101,9 +110,12 @@ func main() {
 	reg.DefineCounter("tmp_provider_timeout_total", "Per-provider call timeouts.", []string{"provider"})
 	reg.DefineCounter("tmp_provider_error_total", "Per-provider non-timeout errors.", []string{"provider"})
 	reg.DefineCounter("tmp_offers_total", "Total offers returned across all providers.", nil)
+	reg.DefineCounter("tmp_context_cache_hits_total", "Context Match cache hits by provider.", []string{"provider"})
+	reg.DefineCounter("tmp_context_cache_misses_total", "Context Match cache misses by provider.", []string{"provider"})
 
 	// Wire fan-out metrics now that registry exists.
 	fanOutMetrics.reg = reg
+	cacheMetrics.reg = reg
 
 	// Health checker
 	hcMetrics := &healthCheckMetricsAdapter{reg: reg}
@@ -330,6 +342,19 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 			cfg.Registry.FeedLimit = n
 		}
 	}
+
+	// Cache config — env vars override JSON. TMP_ROUTER_CACHE_DISABLED
+	// turns the per-provider Context Match cache off entirely;
+	// TMP_ROUTER_CACHE_DEFAULT_TTL_SEC overrides the fallback TTL that
+	// applies when a provider response omits cache_ttl.
+	if v := getenv("TMP_ROUTER_CACHE_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
+		cfg.Cache.Disabled = true
+	}
+	if v := getenv("TMP_ROUTER_CACHE_DEFAULT_TTL_SEC"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Cache.DefaultTTLSeconds = n
+		}
+	}
 }
 
 func splitAndTrim(s string) []string {
@@ -453,5 +478,25 @@ func (a *fanOutMetricsAdapter) IncProviderError(providerID string) {
 func (a *fanOutMetricsAdapter) AddOffers(n int) {
 	if a.reg != nil {
 		a.reg.CounterAdd("tmp_offers_total", int64(n))
+	}
+}
+
+// contextCacheMetricsAdapter bridges router.ContextCacheMetrics to
+// prommetrics. Provider IDs are stable configured identifiers (spec
+// §Provider Registration limits to ^[A-Za-z0-9_]+$, max 64) so the
+// label cardinality is bounded by the operator's provider list.
+type contextCacheMetricsAdapter struct {
+	reg *prommetrics.Registry
+}
+
+func (a *contextCacheMetricsAdapter) IncHit(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_context_cache_hits_total", providerID)
+	}
+}
+
+func (a *contextCacheMetricsAdapter) IncMiss(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_context_cache_misses_total", providerID)
 	}
 }

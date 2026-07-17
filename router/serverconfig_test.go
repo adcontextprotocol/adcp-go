@@ -150,6 +150,37 @@ providers:
 	assert.Equal(t, 500, cfg.Registry.FeedLimit)
 }
 
+// The cache block from the spec's field naming parses into CacheConfig.
+// DefaultTTL falls back to DefaultContextCacheTTL when unset so a
+// verbatim copy of the docs sample matches the SHOULD-5-minute rule.
+func TestLoadServerConfig_AcceptsCacheBlock(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFile(t, dir, "config.yaml", `listen: ":8080"
+cache:
+  default_ttl_seconds: 120
+providers:
+  - provider_id: p1
+    endpoint: https://provider.example/agent
+    context_match: true
+`)
+
+	cfg, err := LoadServerConfig(path)
+	require.NoError(t, err)
+	assert.False(t, cfg.Cache.Disabled)
+	assert.Equal(t, 120, cfg.Cache.DefaultTTLSeconds)
+	assert.Equal(t, 2*time.Minute, cfg.Cache.DefaultTTL())
+}
+
+// DefaultTTL falls back to DefaultContextCacheTTL (5 min) whenever the
+// operator didn't set an override.
+func TestCacheConfig_DefaultTTL(t *testing.T) {
+	assert.Equal(t, DefaultContextCacheTTL, CacheConfig{}.DefaultTTL(),
+		"unset default must be the spec's 5-minute recommendation")
+	assert.Equal(t, DefaultContextCacheTTL, CacheConfig{DefaultTTLSeconds: 0}.DefaultTTL())
+	assert.Equal(t, DefaultContextCacheTTL, CacheConfig{DefaultTTLSeconds: -5}.DefaultTTL())
+	assert.Equal(t, 90*time.Second, CacheConfig{DefaultTTLSeconds: 90}.DefaultTTL())
+}
+
 // PollInterval defaults to 30s when unset — matches the registry pkg
 // default so a router without an explicit interval matches the reference
 // agents' cadence.

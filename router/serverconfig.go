@@ -24,6 +24,32 @@ type ServerConfig struct {
 	Signing         SigningConfig     `json:"signing"`
 	TLS             TLSConfig         `json:"tls"`
 	Registry        RegistryConfig    `json:"registry"`
+	Cache           CacheConfig       `json:"cache"`
+}
+
+// CacheConfig controls the per-provider Context Match response cache
+// (spec §Caching). When Disabled is false, the router runs a cache
+// with DefaultTTL applied on every entry whose provider does not
+// specify a cache_ttl override.
+type CacheConfig struct {
+	// Disabled turns the cache off entirely — the router fans out on
+	// every request. Useful for A/B comparisons and for operators
+	// terminating cache at an upstream layer.
+	Disabled bool `json:"disabled,omitempty"`
+	// DefaultTTLSeconds sets the fallback TTL when a provider response
+	// omits cache_ttl. Spec recommends 5 minutes; zero or unset
+	// collapses to that default.
+	DefaultTTLSeconds int `json:"default_ttl_seconds,omitempty"`
+}
+
+// DefaultTTL returns the fallback TTL as a duration, honoring the
+// spec's 5-minute recommendation when unset. Zero or negative values
+// yield DefaultContextCacheTTL.
+func (c CacheConfig) DefaultTTL() time.Duration {
+	if c.DefaultTTLSeconds <= 0 {
+		return DefaultContextCacheTTL
+	}
+	return time.Duration(c.DefaultTTLSeconds) * time.Second
 }
 
 // RegistryConfig points the router at the AdCP registry feed so it can serve

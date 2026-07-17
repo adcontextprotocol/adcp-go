@@ -95,6 +95,39 @@ func TestApplyEnvOverrides_Registry(t *testing.T) {
 	assert.Equal(t, 500, cfg.Registry.FeedLimit)
 }
 
+// Cache env vars toggle the Context Match cache and override the
+// fallback TTL. Both override any JSON-supplied values.
+func TestApplyEnvOverrides_Cache(t *testing.T) {
+	cfg := &router.ServerConfig{
+		Cache: router.CacheConfig{DefaultTTLSeconds: 60},
+	}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_CACHE_DISABLED":        "true",
+		"TMP_ROUTER_CACHE_DEFAULT_TTL_SEC": "300",
+	}))
+	assert.True(t, cfg.Cache.Disabled)
+	assert.Equal(t, 300, cfg.Cache.DefaultTTLSeconds)
+	assert.Equal(t, 5*time.Minute, cfg.Cache.DefaultTTL())
+
+	// Only the disabled flag flips when the TTL var is absent.
+	cfg2 := &router.ServerConfig{Cache: router.CacheConfig{DefaultTTLSeconds: 60}}
+	applyEnvOverrides(cfg2, "", stubGetenv(map[string]string{"TMP_ROUTER_CACHE_DISABLED": "1"}))
+	assert.True(t, cfg2.Cache.Disabled)
+	assert.Equal(t, 60, cfg2.Cache.DefaultTTLSeconds, "JSON TTL preserved when env doesn't override")
+}
+
+// A non-numeric TTL env var is ignored so a typo doesn't collapse the
+// JSON-configured value to zero (which would then be filled by the
+// 5-minute default — subtle regression). Mirrors the registry
+// bad-number handling.
+func TestApplyEnvOverrides_CacheIgnoresBadTTL(t *testing.T) {
+	cfg := &router.ServerConfig{Cache: router.CacheConfig{DefaultTTLSeconds: 60}}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_CACHE_DEFAULT_TTL_SEC": "not-a-number",
+	}))
+	assert.Equal(t, 60, cfg.Cache.DefaultTTLSeconds, "bad value must not clobber JSON")
+}
+
 // Non-numeric limit env vars are ignored so a typo doesn't zero out the
 // JSON-configured value. Matches how the existing signing/TLS blocks
 // silently ignore unset vars.

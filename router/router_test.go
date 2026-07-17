@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1045,4 +1046,116 @@ func TestRouterContextMatch_LatencyBudgetCapsFanOut(t *testing.T) {
 	// the budget cancels its parent ctx.
 	require.Len(t, resp.Offers, 1)
 	assert.Equal(t, "pkg-fast", resp.Offers[0].PackageID)
+}
+
+// End-to-end: with a cache attached, a repeat Context Match on the
+// same {property_rid, placement_id} keys off the cache and skips the
+// provider network call entirely. The current request's request_id is
+// stamped onto the cached response (only field that varies across
+// reuses within a placement).
+func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
+	var hits atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Type:      tmproto.TypeContextMatchResponse,
+			RequestID: "server-side",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-cached"}},
+			// Provider omits cache_ttl — router falls back to the
+			// configured default. This mirrors the common case.
+		})
+	}))
+	defer provider.Close()
+
+	r := testRouter([]ProviderConfig{
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+	})
+	r.contextCache = NewContextCache(1 * time.Minute)
+
+	baseBody := func(reqID string) string {
+		return `{
+			"type": "context_match_request",
+			"request_id": "` + reqID + `",
+			"property_rid": "rid-cache-1",
+			"property_id": "pub-test",
+			"property_type": "website",
+			"placement_id": "sidebar",
+			"seller_agent_url": "https://seller.example.com/agent",
+			"package_ids": ["pkg-1"]
+		}`
+	}
+
+	// First call — miss → hits provider once.
+	w1 := httptest.NewRecorder()
+	req1 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(baseBody("req-first")))
+	r.HandleContextMatch(w1, req1)
+	require.Equal(t, int32(1), hits.Load(), "first call must reach the provider")
+
+	var resp1 tmproto.ContextMatchResponse
+	require.NoError(t, json.NewDecoder(w1.Body).Decode(&resp1))
+	require.Len(t, resp1.Offers, 1)
+	assert.Equal(t, "pkg-cached", resp1.Offers[0].PackageID)
+	assert.Equal(t, "req-first", resp1.RequestID, "response request_id must match the incoming request, not the provider's cached value")
+
+	// Second call — same property_rid + placement_id → cache hit → no
+	// additional provider round-trip. Different request_id proves the
+	// cache stamps the current request's ID onto the returned response.
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(baseBody("req-second")))
+	r.HandleContextMatch(w2, req2)
+	assert.Equal(t, int32(1), hits.Load(), "second call must be served from cache, not re-hit the provider")
+
+	var resp2 tmproto.ContextMatchResponse
+	require.NoError(t, json.NewDecoder(w2.Body).Decode(&resp2))
+	require.Len(t, resp2.Offers, 1)
+	assert.Equal(t, "pkg-cached", resp2.Offers[0].PackageID)
+	assert.Equal(t, "req-second", resp2.RequestID, "cached response must carry the current request's ID")
+}
+
+// A response with cache_ttl > 0 uses the provider's TTL over the
+// router default — this is the "provider MUST be respected" half of
+// the spec §Caching contract exercised end-to-end.
+func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
+	var hits atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Type:      tmproto.TypeContextMatchResponse,
+			RequestID: "server-side",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-provider-ttl"}},
+			CacheTTL:  3600, // 1h — well past the 1-minute default
+		})
+	}))
+	defer provider.Close()
+
+	r := testRouter([]ProviderConfig{
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+	})
+	// Very short router default so a naive impl that ignored the
+	// provider TTL would evict between our two calls.
+	r.contextCache = NewContextCache(50 * time.Millisecond)
+
+	body := `{
+		"type": "context_match_request",
+		"request_id": "req-ttl",
+		"property_rid": "rid-ttl-1",
+		"property_id": "pub-test",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
+	r.HandleContextMatch(w, req)
+	require.Equal(t, int32(1), hits.Load())
+
+	// Sleep just past the router's default TTL. With the provider's
+	// 1h override honored, the entry is still valid.
+	time.Sleep(75 * time.Millisecond)
+
+	w2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
+	r.HandleContextMatch(w2, req2)
+	assert.Equal(t, int32(1), hits.Load(), "provider cache_ttl must override the router default")
 }
