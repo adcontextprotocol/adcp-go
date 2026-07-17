@@ -40,6 +40,26 @@ type CacheConfig struct {
 	// omits cache_ttl. Spec recommends 5 minutes; zero or unset
 	// collapses to that default.
 	DefaultTTLSeconds int `json:"default_ttl_seconds,omitempty"`
+	// MaxEntries caps the number of live cache entries so a caller
+	// varying placement/seller/country cannot grow the map without
+	// bound. Zero or unset applies DefaultContextCacheMaxEntries.
+	MaxEntries int `json:"max_entries,omitempty"`
+}
+
+// DefaultContextCacheMaxEntries is the fallback cap when the operator
+// does not configure MaxEntries. Sized well above any realistic
+// {property_rid × placement × provider × seller × country} product
+// for a real deployment.
+const DefaultContextCacheMaxEntries = 10_000
+
+// MaxEntriesResolved returns the cap the cache should apply, honoring
+// the operator's override when set and falling back to the default
+// otherwise.
+func (c CacheConfig) MaxEntriesResolved() int {
+	if c.MaxEntries > 0 {
+		return c.MaxEntries
+	}
+	return DefaultContextCacheMaxEntries
 }
 
 // DefaultTTL returns the fallback TTL as a duration, honoring the

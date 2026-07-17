@@ -37,10 +37,27 @@ func (noopContextCacheMetrics) IncHit(string)  {}
 func (noopContextCacheMetrics) IncMiss(string) {}
 
 // ContextCache is an in-memory, per-provider cache of Context Match
-// responses. Keyed on {property_rid, placement_id, provider_id} per
-// spec §Caching. Responses are deeply cloned on read so callers can
-// freely mutate any field — including nested Offer pointer/slice/map
-// members — without corrupting the cached entry.
+// responses. Keyed on {property_rid, placement_id, provider_id,
+// seller_agent_url, country}.
+//
+// The spec's recommended cache key at §Caching lists only the first
+// three components. The additional seller and country dimensions are
+// added because this repository's own targeting engine
+// (targeting/engine.go: ActivePackages(ctx, canonicalSeller,
+// propertyID, country, placementID, ...)) scopes the active package
+// set per seller and per country — different sellers or geos on the
+// same placement return different offers. Keying only on placement
+// would let one seller's cached offers be served to another seller
+// on the same placement during the TTL window, disclosing competitor
+// brands, pricing, and creative manifests across tenants.
+// seller_agent_url is compared using the AdCP URL canonicalization
+// rules (urlcanon.Canonicalize), the same normalization the engine
+// applies before its lookup.
+//
+// Responses are deeply cloned on read so callers can freely mutate
+// Offer pointer/slice/map members without corrupting the cached
+// entry. (Nested any values inside Signals stay shared — see the
+// note on cloneContextResponse.)
 //
 // Spec cache_ttl semantics (see Put for the enforcement code):
 //
@@ -61,6 +78,10 @@ type ContextCache struct {
 	mu         sync.Mutex
 	entries    map[string]contextCacheEntry
 	defaultTTL time.Duration
+	// maxEntries caps the number of live entries; 0 disables the cap.
+	// When the cap is hit on Put, expired entries are swept; if still
+	// full, the entry with the oldest insertedAt is evicted.
+	maxEntries int
 	metrics    ContextCacheMetrics
 
 	// now is time.Now in production; tests substitute a clock so
@@ -69,8 +90,9 @@ type ContextCache struct {
 }
 
 type contextCacheEntry struct {
-	response  *tmproto.ContextMatchResponse
-	expiresAt time.Time
+	response   *tmproto.ContextMatchResponse
+	expiresAt  time.Time
+	insertedAt time.Time
 }
 
 // ContextCacheOption configures the cache.
@@ -80,6 +102,20 @@ type ContextCacheOption func(*ContextCache)
 // cache runs with a no-op sink.
 func WithContextCacheMetrics(m ContextCacheMetrics) ContextCacheOption {
 	return func(c *ContextCache) { c.metrics = m }
+}
+
+// WithContextCacheMaxEntries caps the number of live entries. Zero or
+// negative values disable the cap. On Put once the cap is hit the
+// cache sweeps expired entries first, then evicts the oldest insert
+// if the cache is still full — bounding memory against a caller that
+// varies placement/seller/country to grow the working set forever.
+func WithContextCacheMaxEntries(n int) ContextCacheOption {
+	return func(c *ContextCache) {
+		if n < 0 {
+			n = 0
+		}
+		c.maxEntries = n
+	}
 }
 
 // NewContextCache builds a cache with the given default TTL applied
@@ -107,11 +143,17 @@ func NewContextCache(defaultTTL time.Duration, opts ...ContextCacheOption) *Cont
 // expiration; the caller falls back to a live fan-out call. The
 // returned response is a defensive copy — callers may overwrite
 // RequestID or Signals without corrupting the cached entry.
-func (c *ContextCache) Get(propertyRID, placementID, providerID string) (*tmproto.ContextMatchResponse, bool) {
+//
+// sellerAgentURL and country participate in the key so a request from
+// one seller never returns a response the router cached for another
+// seller (see the ContextCache doc for the rationale). Callers should
+// pass sellerAgentURL already normalized via urlcanon.Canonicalize —
+// the cache does not canonicalize on the hot path.
+func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL, country string) (*tmproto.ContextMatchResponse, bool) {
 	if c == nil {
 		return nil, false
 	}
-	key := contextCacheKey(propertyRID, placementID, providerID)
+	key := contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country)
 	c.mu.Lock()
 	entry, ok := c.entries[key]
 	if !ok {
@@ -143,7 +185,7 @@ func (c *ContextCache) Get(propertyRID, placementID, providerID string) (*tmprot
 //     MaxContextCacheTTL. Clamping happens in seconds first to avoid
 //     a Duration multiplication overflowing int64 for pathologically
 //     large values that escaped upstream schema validation.
-func (c *ContextCache) Put(propertyRID, placementID, providerID string, resp *tmproto.ContextMatchResponse) {
+func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL, country string, resp *tmproto.ContextMatchResponse) {
 	if c == nil || resp == nil {
 		return
 	}
@@ -166,13 +208,56 @@ func (c *ContextCache) Put(propertyRID, placementID, providerID string, resp *tm
 			ttl = time.Duration(secs) * time.Second
 		}
 	}
-	key := contextCacheKey(propertyRID, placementID, providerID)
+	key := contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country)
+	now := c.now()
 	c.mu.Lock()
+	// Bound the map. Only enforce when writing a NEW key — an
+	// overwrite doesn't grow the set. Sweep expired first (cheap;
+	// removes stale entries the caller has already forgotten about),
+	// then evict the oldest insert if still full.
+	if c.maxEntries > 0 {
+		if _, existing := c.entries[key]; !existing && len(c.entries) >= c.maxEntries {
+			c.sweepExpiredLocked(now)
+			if len(c.entries) >= c.maxEntries {
+				c.evictOldestLocked()
+			}
+		}
+	}
 	c.entries[key] = contextCacheEntry{
-		response:  cloneContextResponse(resp),
-		expiresAt: c.now().Add(ttl),
+		response:   cloneContextResponse(resp),
+		expiresAt:  now.Add(ttl),
+		insertedAt: now,
 	}
 	c.mu.Unlock()
+}
+
+// sweepExpiredLocked removes any entry whose TTL has elapsed. Caller
+// holds c.mu.
+func (c *ContextCache) sweepExpiredLocked(now time.Time) {
+	for k, e := range c.entries {
+		if now.After(e.expiresAt) {
+			delete(c.entries, k)
+		}
+	}
+}
+
+// evictOldestLocked drops the entry with the oldest insertedAt. O(N)
+// but only runs on the cap-hit path, and N is bounded by the
+// operator-configured cap. Caller holds c.mu.
+func (c *ContextCache) evictOldestLocked() {
+	var oldestKey string
+	var oldestAt time.Time
+	first := true
+	for k, e := range c.entries {
+		if first || e.insertedAt.Before(oldestAt) {
+			oldestKey = k
+			oldestAt = e.insertedAt
+			first = false
+		}
+	}
+	if !first {
+		delete(c.entries, oldestKey)
+	}
 }
 
 // Size returns the number of live entries. Includes entries whose TTL
@@ -189,34 +274,47 @@ func (c *ContextCache) Size() int {
 
 // contextCacheKey assembles the canonical cache key. NUL is used as
 // the separator so a component containing "|" or "/" cannot collide
-// with the separator (property_rid is a UUID and placement_id is a
-// bounded string — neither can contain NUL by construction).
-func contextCacheKey(propertyRID, placementID, providerID string) string {
+// with it. tmproto request validation rejects control bytes in
+// property_rid and placement_id, and every component ultimately
+// originates from a JSON string (which cannot contain a raw NUL under
+// the JSON grammar), so no component can carry NUL by construction.
+func contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country string) string {
 	var b strings.Builder
-	b.Grow(len(propertyRID) + len(placementID) + len(providerID) + 2)
+	b.Grow(len(propertyRID) + len(placementID) + len(providerID) + len(sellerAgentURL) + len(country) + 4)
 	b.WriteString(propertyRID)
 	b.WriteByte(0)
 	b.WriteString(placementID)
 	b.WriteByte(0)
 	b.WriteString(providerID)
+	b.WriteByte(0)
+	b.WriteString(sellerAgentURL)
+	b.WriteByte(0)
+	b.WriteString(country)
 	return b.String()
 }
 
-// cloneContextResponse copies the response deeply enough that any
-// downstream code path (merger, seller-agent stamper, macro injector)
-// can freely mutate the returned value without corrupting the cached
-// entry. tmproto.Offer carries several pointer/slice fields that would
-// otherwise be shared:
+// cloneContextResponse copies the response deeply enough that the
+// merger, and any future seller-agent-stamper or macro-injector code
+// path, can freely mutate the returned Offer entries without
+// corrupting the cache. tmproto.Offer carries several pointer/slice
+// fields that would otherwise be shared:
 //
 //   - SellerAgent, Brand   (json.RawMessage — byte slice)
 //   - CreativeManifest     (*json.RawMessage)
 //   - Price                (*OfferPrice)
 //   - Macros               (map[string]string)
 //
-// tmproto/types_gen.go:196 explicitly says "the router MAY stamp
-// SellerAgent from its cached package→seller map" — the moment a
-// caller wires that stamp, a shallow clone would silently corrupt
-// cache entries. Deep-clone eliminates that failure mode upfront.
+// The schema doc on tmproto.Offer.SellerAgent explicitly says the
+// router MAY stamp that field from a cached package→seller map —
+// once that stamp lands, a shallow clone would silently corrupt cache
+// entries. Deep-clone here eliminates that failure mode.
+//
+// Isolation NOT provided for Signals nested values: the top-level
+// map[string]any is a fresh allocation, but nested map/slice values
+// stay shared with the cached entry. Nothing in the merger mutates
+// them today; a general deep-copy of arbitrary any values would need
+// a JSON round-trip (types aren't statically knowable). The
+// ContextCache docstring calls this out.
 func cloneContextResponse(src *tmproto.ContextMatchResponse) *tmproto.ContextMatchResponse {
 	if src == nil {
 		return nil

@@ -15,7 +15,40 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
+
+// canonicalizeSellerForCache normalizes a seller_agent_url for use as
+// a cache-key component. Mirrors targeting/engine.go's normalization
+// before ActivePackages lookup so the router keys the same offer set
+// under the same seller identity. Canonicalization failure falls back
+// to the raw string; note the asymmetry with the engine, which
+// returns an empty offer set on the same failure. A raw-fallback key
+// therefore never collides with a real canonical key in practice
+// (canonicalization is deterministic, so a URL that fails at the
+// router also fails at any downstream using the same canonicalizer,
+// and no live entry is ever populated under a raw-fallback key that
+// could later collide).
+func canonicalizeSellerForCache(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if canonical, err := urlcanon.Canonicalize(raw); err == nil {
+		return canonical
+	}
+	return raw
+}
+
+// contextCountry extracts the ISO alpha-2 country from a Context Match
+// request's geo map, mirroring targeting/engine.go's use of
+// GeoCountryKey. Returns empty string when absent or wrong type.
+func contextCountry(geo map[string]any) string {
+	if geo == nil {
+		return ""
+	}
+	country, _ := geo["country"].(string)
+	return country
+}
 
 // MaxRequestBodyBytes caps an inbound request body the router reads
 // before validating + fan-out. Sized to match the verifier's
@@ -364,20 +397,25 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 	for _, p := range providers {
 		wg.Go(func() {
 			// Cache hit short-circuit — before health check, signing, or
-			// dial. Spec §Caching keys on {property_rid, placement_id,
-			// provider_id}; the request's package_ids are not part of
-			// the key because active packages are placement-scoped
-			// (spec: "the same packages are evaluated for every user on
-			// a given placement"). A publisher that varies package_ids
-			// across requests for the same {property, placement} is
-			// violating that spec assumption and will get cached offers
-			// scoped to whatever set produced the first fill.
+			// dial. Spec §Caching lists {property_rid, placement_id,
+			// provider_id} as the recommended key; we extend it with
+			// canonicalized seller_agent_url and country because this
+			// repo's targeting engine scopes ActivePackages by both,
+			// and keying on placement alone would let one seller's
+			// cached offers be served to another seller's request
+			// during the TTL window (cross-tenant disclosure). The
+			// request's package_ids are not part of the key because
+			// active packages are placement-scoped (spec: "MUST NOT
+			// vary by user"), and country stays constant per viewer's
+			// geo which the publisher does not vary per user.
 			//
-			// The cache check also runs before the circuit-breaker
-			// gate: a warm response is still useful when the provider
-			// went down, and the TTL bounds staleness.
+			// The cache check runs before the circuit-breaker gate: a
+			// warm response is still useful when the provider went
+			// down, and the TTL bounds staleness.
+			cacheSeller := canonicalizeSellerForCache(cmReq.SellerAgentURL)
+			cacheCountry := contextCountry(cmReq.Geo)
 			if r.contextCache != nil {
-				if cached, ok := r.contextCache.Get(cmReq.PropertyRID, cmReq.PlacementID, p.ID); ok {
+				if cached, ok := r.contextCache.Get(cmReq.PropertyRID, cmReq.PlacementID, p.ID, cacheSeller, cacheCountry); ok {
 					// The merger overwrites RequestID from the current
 					// request downstream (mergeContextResponses), so we
 					// don't touch cached.RequestID here — any assignment
@@ -463,7 +501,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			// The cache clones on both Put and Get, so downstream mutation
 			// (e.g. RequestID overwrites on hits) cannot corrupt entries.
 			if r.contextCache != nil {
-				r.contextCache.Put(cmReq.PropertyRID, cmReq.PlacementID, p.ID, &cmResp)
+				r.contextCache.Put(cmReq.PropertyRID, cmReq.PlacementID, p.ID, cacheSeller, cacheCountry, &cmResp)
 			}
 
 			mu.Lock()

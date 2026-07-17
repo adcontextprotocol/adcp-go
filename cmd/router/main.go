@@ -70,7 +70,11 @@ func main() {
 	cacheMetrics := &contextCacheMetricsAdapter{}
 	var contextCache *router.ContextCache
 	if !cfg.Cache.Disabled {
-		contextCache = router.NewContextCache(cfg.Cache.DefaultTTL(), router.WithContextCacheMetrics(cacheMetrics))
+		contextCache = router.NewContextCache(
+			cfg.Cache.DefaultTTL(),
+			router.WithContextCacheMetrics(cacheMetrics),
+			router.WithContextCacheMaxEntries(cfg.Cache.MaxEntriesResolved()),
+		)
 	}
 
 	routerOpts := []router.RouterOption{
@@ -353,6 +357,11 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 	if v := getenv("TMP_ROUTER_CACHE_DEFAULT_TTL_SEC"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Cache.DefaultTTLSeconds = n
+		}
+	}
+	if v := getenv("TMP_ROUTER_CACHE_MAX_ENTRIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.Cache.MaxEntries = n
 		}
 	}
 }

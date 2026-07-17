@@ -1161,6 +1161,136 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 	assert.Equal(t, int32(1), hits.Load(), "provider cache_ttl must override the router default")
 }
 
+// Cross-seller isolation end-to-end: seller A hits, cache fills;
+// seller B's request under the same {property_rid, placement_id} MUST
+// re-fan-out to the provider and see B's own offers, not A's cached
+// ones. Regression guard for the High-severity finding on adcp-go
+// #410 (cross-tenant offer disclosure through a placement-only cache
+// key).
+func TestRouterContextMatch_CacheIsolatesAcrossSellers(t *testing.T) {
+	var hits atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		hits.Add(1)
+		// Read the seller URL out of the request body so we can echo
+		// a distinguishable offer per seller. The router doesn't
+		// strip seller_agent_url on outbound context calls (spec
+		// signs it into the request), so it will be present.
+		body, _ := io.ReadAll(req.Body)
+		var incoming tmproto.ContextMatchRequest
+		_ = json.Unmarshal(body, &incoming)
+		pkg := "pkg-for-a"
+		if strings.Contains(incoming.SellerAgentURL, "seller-b") {
+			pkg = "pkg-for-b"
+		}
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Type:      tmproto.TypeContextMatchResponse,
+			RequestID: "server-side",
+			Offers:    []tmproto.Offer{{PackageID: pkg}},
+		})
+	}))
+	defer provider.Close()
+
+	r := testRouter([]ProviderConfig{
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+	})
+	r.contextCache = NewContextCache(1 * time.Hour)
+
+	body := func(sellerURL string) string {
+		return `{
+			"type": "context_match_request",
+			"request_id": "req-1",
+			"property_rid": "rid-shared",
+			"property_id": "pub-shared",
+			"property_type": "website",
+			"placement_id": "sidebar",
+			"seller_agent_url": "` + sellerURL + `",
+			"package_ids": ["pkg-1"]
+		}`
+	}
+
+	// Seller A first — miss → fan-out, cache fill.
+	wA := httptest.NewRecorder()
+	rA := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body("https://seller-a.example/agent")))
+	r.HandleContextMatch(wA, rA)
+	require.Equal(t, int32(1), hits.Load(), "seller A first call must reach the provider")
+
+	// Seller B under the SAME property/placement/provider — must NOT
+	// hit A's cache. Router re-fans out, provider replies with B's
+	// pkg-for-b, not A's pkg-for-a.
+	wB := httptest.NewRecorder()
+	rB := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body("https://seller-b.example/agent")))
+	r.HandleContextMatch(wB, rB)
+	assert.Equal(t, int32(2), hits.Load(),
+		"seller B must trigger a fresh fan-out, not read from seller A's cache entry (cross-tenant disclosure guard)")
+
+	var respB tmproto.ContextMatchResponse
+	require.NoError(t, json.NewDecoder(wB.Body).Decode(&respB))
+	require.Len(t, respB.Offers, 1)
+	assert.Equal(t, "pkg-for-b", respB.Offers[0].PackageID,
+		"seller B must receive offers scoped to seller B, not seller A's cached offers")
+
+	// Seller A repeats — cache still valid for A, no additional call.
+	wA2 := httptest.NewRecorder()
+	rA2 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body("https://seller-a.example/agent")))
+	r.HandleContextMatch(wA2, rA2)
+	assert.Equal(t, int32(2), hits.Load(), "seller A repeat within TTL must hit its own cache entry")
+}
+
+// Symmetric to the cross-seller isolation test: two requests under
+// the same {property_rid, placement_id, provider_id, seller_agent_url}
+// but different Geo.country MUST re-fan-out — country is a component
+// of the targeting engine's ActivePackages scope (see engine.go),
+// same failure-mode class as the seller isolation.
+func TestRouterContextMatch_CacheIsolatesAcrossCountries(t *testing.T) {
+	var hits atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		hits.Add(1)
+		body, _ := io.ReadAll(req.Body)
+		var incoming tmproto.ContextMatchRequest
+		_ = json.Unmarshal(body, &incoming)
+		country, _ := incoming.Geo["country"].(string)
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Type:      tmproto.TypeContextMatchResponse,
+			RequestID: "server-side",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-" + country}},
+		})
+	}))
+	defer provider.Close()
+
+	r := testRouter([]ProviderConfig{
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+	})
+	r.contextCache = NewContextCache(1 * time.Hour)
+
+	body := func(country string) string {
+		return `{
+			"type": "context_match_request",
+			"request_id": "req-1",
+			"property_rid": "rid-geo",
+			"property_id": "pub-geo",
+			"property_type": "website",
+			"placement_id": "sidebar",
+			"seller_agent_url": "https://seller.example/agent",
+			"geo": {"country": "` + country + `"},
+			"package_ids": ["pkg-1"]
+		}`
+	}
+
+	wUS := httptest.NewRecorder()
+	r.HandleContextMatch(wUS, httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body("US"))))
+	require.Equal(t, int32(1), hits.Load(), "US call must reach provider")
+
+	// Same seller, different country → must re-fan-out.
+	wGB := httptest.NewRecorder()
+	r.HandleContextMatch(wGB, httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body("GB"))))
+	assert.Equal(t, int32(2), hits.Load(), "different country must miss cache and re-fan-out")
+
+	var respGB tmproto.ContextMatchResponse
+	require.NoError(t, json.NewDecoder(wGB.Body).Decode(&respGB))
+	require.Len(t, respGB.Offers, 1)
+	assert.Equal(t, "pkg-GB", respGB.Offers[0].PackageID, "GB request must receive GB-scoped offers, not US-cached ones")
+}
+
 // A provider that returns cache_ttl=0 (spec's "disable caching" signal,
 // typical after a targeting-config change) MUST cause the router to
 // re-fan-out on every subsequent request rather than serve the stale
