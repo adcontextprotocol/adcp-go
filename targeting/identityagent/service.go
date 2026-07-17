@@ -142,6 +142,10 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 		}
 		canonicalSeller = canon
 	}
+	// ResolveRequest → identityconfig.Service.{Lookup,GetBySeller} re-canonicalize
+	// their input; passing the already-canonical form is idempotent (one extra
+	// url.Parse per read) and the second layer is what protects against a
+	// caller that skips this one.
 	effectivePkgIDs, idConfigs := identityconfig.ResolveRequest(s.configSvc, canonicalSeller, req.PackageIDs)
 	if len(effectivePkgIDs) == 0 {
 		s.recorder.StageOutcome(ctx, StageResolve, OutcomeFail)
