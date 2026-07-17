@@ -964,3 +964,85 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	require.Len(t, resp.Offers, 1)
 	assert.Equal(t, "pkg-fast", resp.Offers[0].PackageID)
 }
+
+// The overall latency budget must cap the fan-out even when a provider's
+// own per-call timeout is looser than the budget. effectiveTimeout
+// clamps each per-provider deadline to the budget for exactly this case
+// (router.go — `if r.latencyBudget > 0 && t > r.latencyBudget`), so
+// wg.Wait bounds at ~budget regardless of how generous the per-provider
+// Timeout field is.
+//
+// This is a regression guard: an external audit read the code and
+// flagged "no overall parent-ctx budget; a slow provider still holds a
+// goroutine until its own timeout" as a defect. That's wrong — the
+// per-call clamp already prevents it — but the invariant deserves an
+// explicit test so no future refactor removes the clamp without
+// noticing.
+func TestRouterContextMatch_LatencyBudgetCapsFanOut(t *testing.T) {
+	// Provider sleeps 300ms — well past the 50ms budget but under its
+	// own generous 5s per-call timeout. Only the budget-scoped parent
+	// ctx can cut this off.
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		select {
+		case <-time.After(300 * time.Millisecond):
+		case <-req.Context().Done():
+			// Client cancelled the request — expected when the
+			// budget expires and the parent ctx propagates.
+			return
+		}
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			RequestID: "ctx-slow",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-slow"}},
+		})
+	}))
+	defer slow.Close()
+
+	// Fast provider — responds immediately.
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			RequestID: "ctx-fast",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-fast"}},
+		})
+	}))
+	defer fast.Close()
+
+	r := testRouter([]ProviderConfig{
+		// Per-call timeout is deliberately larger than the budget so
+		// the OVERALL budget is the only thing that stops the slow
+		// call. If effectiveTimeout were the only cap, this test would
+		// hang for ~300ms.
+		{ID: "slow", Endpoint: slow.URL, ContextMatch: true, Timeout: 5 * time.Second},
+		{ID: "fast", Endpoint: fast.URL, ContextMatch: true, Timeout: 5 * time.Second},
+	})
+	r.latencyBudget = 50 * time.Millisecond
+
+	reqBody := `{
+		"type": "context_match_request",
+		"request_id": "ctx-budget",
+		"property_rid": "rid-1001",
+		"property_id": "pub-test",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+
+	start := time.Now()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(reqBody))
+	r.HandleContextMatch(w, req)
+	elapsed := time.Since(start)
+
+	// Allow scheduler slack — the guarantee is "cap the fan-out at
+	// budget", not "cap it at exactly budget." A generous ceiling still
+	// fails loudly if the 300ms sleep runs to completion.
+	assert.Less(t, elapsed, 200*time.Millisecond,
+		"fan-out must not exceed the overall latency budget (got %s)", elapsed)
+
+	var resp tmproto.ContextMatchResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	// Fast provider's offer is retained; slow provider is dropped when
+	// the budget cancels its parent ctx.
+	require.Len(t, resp.Offers, 1)
+	assert.Equal(t, "pkg-fast", resp.Offers[0].PackageID)
+}
