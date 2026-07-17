@@ -3,7 +3,6 @@ package identityagent
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"maps"
 	"sync"
 	"time"
@@ -15,6 +14,23 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
+
+// canonicalizeSellerAgentURL folds a wire seller_agent_url through the AdCP
+// URL-identifier canonicalization when it is a well-formed http/https URL,
+// and returns the raw string unchanged when it is not (e.g. storefront-only
+// routing paths like "/storefront/foo/mcp" that predate the spec fold to
+// URLs — see commit 0bee186). Read and write paths call this same helper so
+// canonical URLs and non-URL routing strings both stay symmetric.
+func canonicalizeSellerAgentURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	canon, err := urlcanon.Canonicalize(raw)
+	if err != nil {
+		return raw
+	}
+	return canon
+}
 
 // Service composes the audience-only IdentityEngine with a frequency-cap
 // gate. fcap and audience lookups run in parallel under a single request
@@ -123,25 +139,16 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	// not byte-equality, so a request carrying
 	// "https://Seller.Example.com:443/agent" must resolve to the same set
 	// as one registered under "https://seller.example.com/agent".
-	// Canonicalize once here — the identityconfig snapshot is keyed by the
-	// canonical form (see buildSnapshot / applyDelta), so a raw-string
-	// lookup would silently miss every registration.
 	//
-	// An empty seller_agent_url carries no URL to canonicalize and is
-	// passed through unchanged. A non-empty but malformed value cannot name
-	// any registered seller, so it fails safe to an empty active set rather
-	// than 5xx.
-	canonicalSeller := req.SellerAgentURL
-	if canonicalSeller != "" {
-		canon, err := urlcanon.Canonicalize(canonicalSeller)
-		if err != nil {
-			slog.Default().Warn("identityagent: seller_agent_url canonicalization failed; treating as no active packages",
-				"seller_agent_url", req.SellerAgentURL, "error", err)
-			s.recorder.StageOutcome(ctx, StageResolve, OutcomeFail)
-			return &targeting.IdentityResult{RequestID: req.RequestID}
-		}
-		canonicalSeller = canon
-	}
+	// The value is not always a well-formed http/https URL: storefront
+	// deployments route through a bare path like "/storefront/foo/mcp"
+	// (see commit 0bee186), and those must keep working under byte-equality.
+	// So this is a best-effort canonicalization: normalize when we can,
+	// pass through raw when we can't. The identityconfig snapshot and the
+	// fcap key both use canonicalSellerKey via this same helper so read and
+	// write stay symmetric on both spec-compliant URLs and non-URL routing
+	// strings.
+	canonicalSeller := canonicalizeSellerAgentURL(req.SellerAgentURL)
 	// ResolveRequest → identityconfig.Service.{Lookup,GetBySeller} re-canonicalize
 	// their input; passing the already-canonical form is idempotent (one extra
 	// url.Parse per read) and the second layer is what protects against a
@@ -175,7 +182,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	)
 
 	wg.Go(func() {
-		fcapResult = s.runFcapStage(parCtx, req, effectivePkgIDs, verified)
+		fcapResult = s.runFcapStage(parCtx, req, canonicalSeller, effectivePkgIDs, verified)
 		if fcapResult.allCapped(effectivePkgIDs) {
 			cancel()
 		}
@@ -256,17 +263,24 @@ func (r fcapResult) allCapped(pkgIDs []string) bool {
 // fcap.Service.IsCappedAny which pipelines the cross-product internally
 // using a pooled scratch buffer. The result is the per-package cap verdict
 // across all request identities.
-func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, pkgIDs []string, verified []targeting.VerifiedIdentity) fcapResult {
+//
+// canonicalSeller is req.SellerAgentURL after URL-identifier canonicalization
+// (computed once in Evaluate). fcap markers are keyed on the canonical form
+// on both sides — this reader canonicalizes here, and the frequency-writer
+// MUST canonicalize before recording markers. Read/write symmetry is
+// non-negotiable: mismatched keys read as "not capped" and fail cap
+// enforcement open. See scope3data/frequency-writer for the writer half of
+// this pair; a deploy that upgrades adcp-go past this change without also
+// upgrading the writer to canonicalize on write will fragment cap buckets
+// by URL spelling until existing markers age out.
+func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, canonicalSeller string, pkgIDs []string, verified []targeting.VerifiedIdentity) fcapResult {
 	start := time.Now()
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
 	defer cancelFcap()
 
-	// The seller URL is the marker key verbatim — frequency-writer writes
-	// it unchanged, so the reader must not transform it either. Any
-	// deviation makes markers unreachable and silently disables caps.
 	fields := make([]fcap.Field, len(pkgIDs))
 	for i, pkgID := range pkgIDs {
-		fields[i] = fcap.Field{SellerAgentURL: req.SellerAgentURL, PackageID: pkgID}
+		fields[i] = fcap.Field{SellerAgentURL: canonicalSeller, PackageID: pkgID}
 	}
 	// Frequency-cap key selection. When verified identities are present, cap
 	// on their relying-party-scoped, namespaced nullifier keys — a true

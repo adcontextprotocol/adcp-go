@@ -261,14 +261,11 @@ func TestService_FCapTimeout_FailClosed(t *testing.T) {
 	require.False(t, got["pkg-1"], "fcap timeout must fail closed")
 }
 
-// TestService_FCap_UsesSellerURLVerbatim ensures the fcap stage keys
-// marker lookups by req.SellerAgentURL verbatim — no registrable-domain
-// reduction — matching how frequency-writer writes them. A storefront
-// path with no registrable host must still resolve a cap.
-func TestService_FCap_UsesSellerURLVerbatim(t *testing.T) {
-	// A path-only seller URL has no registrable host; frequency-writer
-	// records the marker under the raw value, so the fcap stage must
-	// look it up by the same raw value.
+// TestService_FCap_StorefrontPathPassesThrough ensures the fcap stage
+// keys marker lookups by the raw value when the seller_agent_url is not
+// a well-formed http/https URL — the storefront-only path form
+// documented in commit 0bee186 must keep working under byte-equality.
+func TestService_FCap_StorefrontPathPassesThrough(t *testing.T) {
 	sellerURL := "/storefront/wonderstruck/mcp"
 	entries := []identityconfig.Entry{
 		{Key: identityconfig.Key{SellerAgentURL: sellerURL, PackageID: "pkg-1"}},
@@ -286,7 +283,44 @@ func TestService_FCap_UsesSellerURLVerbatim(t *testing.T) {
 		Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
 	}
 	got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
-	assert.False(t, got["pkg-1"], "cap recorded under the verbatim seller URL must apply")
+	assert.False(t, got["pkg-1"], "cap recorded under the raw storefront path must apply")
+}
+
+// TestService_FCap_CanonicalizesURLVariants pins the invariant that URL
+// variants of the same seller (mixed case, default port, dot-segment)
+// resolve to the same fcap bucket — the read side canonicalizes here,
+// and frequency-writer MUST canonicalize identically on the write side.
+// A regression would fragment cap enforcement by URL spelling.
+func TestService_FCap_CanonicalizesURLVariants(t *testing.T) {
+	canonical := "https://seller.example.com/agent"
+	entries := []identityconfig.Entry{
+		{Key: identityconfig.Key{SellerAgentURL: canonical, PackageID: "pkg-1"}},
+	}
+	variants := []string{
+		"https://seller.example.com/agent",
+		"https://Seller.Example.com/agent",
+		"https://seller.example.com:443/agent",
+		"https://seller.example.com/./agent",
+	}
+	for _, wire := range variants {
+		t.Run(wire, func(t *testing.T) {
+			svc := newTestService(t, testServiceOptions{
+				configEntries: entries,
+				cappedTuples: []capTuple{
+					// Cap recorded under the canonical form — the writer's contract.
+					{identity: "u1", seller: canonical, pkg: "pkg-1"},
+				},
+			})
+			req := &tmproto.IdentityMatchRequest{
+				RequestID:      "r1",
+				SellerAgentURL: wire,
+				PackageIDs:     []string{"pkg-1"},
+				Identities:     []tmproto.IdentityToken{{UserToken: "u1", UIDType: tmproto.UIDTypeID5}},
+			}
+			got := eligibilityMap(svc.Evaluate(t.Context(), req).Eligibility)
+			assert.False(t, got["pkg-1"], "cap under canonical form must apply to a wire variant %q", wire)
+		})
+	}
 }
 
 // TestService_FCap_DoesNotReduceSellerURL proves the fcap stage does not

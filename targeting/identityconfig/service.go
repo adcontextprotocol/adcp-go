@@ -16,21 +16,18 @@ import (
 
 // canonicalSellerKey applies AdCP URL-identifier canonicalization to a
 // seller_agent_url so snapshot keys are byte-comparable regardless of the
-// form the source supplies. An empty input is passed through unchanged; a
-// malformed value is logged and returned as the empty string so it fails
-// safe to "no seller" rather than persisting an unreachable key.
-func canonicalSellerKey(logger *slog.Logger, raw string) string {
+// form the source supplies. An empty input is passed through unchanged.
+// A value that is not a well-formed http/https URL — e.g. a storefront-only
+// routing path like "/storefront/foo/mcp" — is returned unchanged so the
+// pre-spec byte-equality behavior is preserved for those callers (matching
+// the identityagent read path).
+func canonicalSellerKey(_ *slog.Logger, raw string) string {
 	if raw == "" {
 		return ""
 	}
 	canon, err := urlcanon.Canonicalize(raw)
 	if err != nil {
-		if logger == nil {
-			logger = slog.Default()
-		}
-		logger.Warn("identityconfig: seller_agent_url canonicalization failed; dropping entry",
-			"seller_agent_url", raw, "error", err)
-		return ""
+		return raw
 	}
 	return canon
 }
@@ -142,9 +139,6 @@ func WithRefreshObserver(fn func(outcome string)) Option {
 func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 	snap := s.snap.Load()
 	key := canonicalSellerKey(s.logger, sellerAgentURL)
-	if key == "" && sellerAgentURL != "" {
-		return nil
-	}
 	return snap.byKey[Key{SellerAgentURL: key, PackageID: packageID}]
 }
 
@@ -159,9 +153,6 @@ func (s *Service) Get(sellerAgentURL, packageID string) *targeting.SegmentRule {
 func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRule, bool) {
 	snap := s.snap.Load()
 	key := canonicalSellerKey(s.logger, sellerAgentURL)
-	if key == "" && sellerAgentURL != "" {
-		return nil, false
-	}
 	rule, ok := snap.byKey[Key{SellerAgentURL: key, PackageID: packageID}]
 	return rule, ok
 }
@@ -179,9 +170,6 @@ func (s *Service) Lookup(sellerAgentURL, packageID string) (*targeting.SegmentRu
 func (s *Service) GetBySeller(sellerAgentURL string) []Entry {
 	snap := s.snap.Load()
 	key := canonicalSellerKey(s.logger, sellerAgentURL)
-	if key == "" && sellerAgentURL != "" {
-		return nil
-	}
 	entries := snap.bySeller[key]
 	if len(entries) == 0 {
 		return nil
@@ -442,7 +430,8 @@ func emptySnapshot() *snapshotData {
 // Seller URLs are folded through URL-identifier canonicalization before use
 // as map keys so a source that supplies non-canonical forms (mixed case,
 // default ports, dot-segments) still matches lookups made with the wire
-// form. Entries whose seller URL fails to canonicalize are dropped.
+// form. Non-URL routing strings (e.g. storefront-only paths) pass through
+// unchanged and are compared byte-for-byte, preserving pre-spec behavior.
 func buildSnapshotWithLogger(logger *slog.Logger, s Snapshot) *snapshotData {
 	out := &snapshotData{
 		byKey:         make(map[Key]*targeting.SegmentRule, len(s.Configs)),
@@ -451,23 +440,16 @@ func buildSnapshotWithLogger(logger *slog.Logger, s Snapshot) *snapshotData {
 	}
 	for _, e := range s.Configs {
 		key := canonicalizeEntry(logger, e)
-		if key == nil {
-			continue
-		}
-		out.byKey[*key] = e.TargetSegments
-		out.bySeller[key.SellerAgentURL] = append(out.bySeller[key.SellerAgentURL], Entry{Key: *key, TargetSegments: e.TargetSegments})
+		out.byKey[key] = e.TargetSegments
+		out.bySeller[key.SellerAgentURL] = append(out.bySeller[key.SellerAgentURL], Entry{Key: key, TargetSegments: e.TargetSegments})
 	}
 	return out
 }
 
-// canonicalizeEntry returns the entry's canonical Key, or nil when the
-// seller URL is present but malformed.
-func canonicalizeEntry(logger *slog.Logger, e Entry) *Key {
+// canonicalizeEntry returns the entry's canonical Key.
+func canonicalizeEntry(logger *slog.Logger, e Entry) Key {
 	seller := canonicalSellerKey(logger, e.Key.SellerAgentURL)
-	if seller == "" && e.Key.SellerAgentURL != "" {
-		return nil
-	}
-	return &Key{SellerAgentURL: seller, PackageID: e.Key.PackageID}
+	return Key{SellerAgentURL: seller, PackageID: e.Key.PackageID}
 }
 
 // applyDeltaWithLogger produces a new snapshotData from the current one with
@@ -483,17 +465,11 @@ func applyDeltaWithLogger(logger *slog.Logger, current *snapshotData, delta Delt
 	maps.Copy(newByKey, current.byKey)
 	for _, e := range delta.Upserted {
 		key := canonicalizeEntry(logger, e)
-		if key == nil {
-			continue
-		}
-		newByKey[*key] = e.TargetSegments
+		newByKey[key] = e.TargetSegments
 	}
 	for _, k := range delta.Removed {
 		key := canonicalizeEntry(logger, Entry{Key: k})
-		if key == nil {
-			continue
-		}
-		delete(newByKey, *key)
+		delete(newByKey, key)
 	}
 
 	newBySeller := make(map[string][]Entry)
