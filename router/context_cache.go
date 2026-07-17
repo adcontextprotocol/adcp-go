@@ -38,9 +38,19 @@ func (noopContextCacheMetrics) IncMiss(string) {}
 
 // ContextCache is an in-memory, per-provider cache of Context Match
 // responses. Keyed on {property_rid, placement_id, provider_id} per
-// spec §Caching. Responses are cloned on read so callers can freely
-// overwrite RequestID with the current request's value; that's the
-// only field that varies between the cached call and the reuse.
+// spec §Caching. Responses are deeply cloned on read so callers can
+// freely mutate any field — including nested Offer pointer/slice/map
+// members — without corrupting the cached entry.
+//
+// Spec cache_ttl semantics (see Put for the enforcement code):
+//
+//   - absent (nil)   → router uses its configured default TTL
+//   - explicit 0     → provider is disabling caching; entry not stored
+//   - explicit > 0   → override, clamped to MaxContextCacheTTL
+//
+// The tri-state depends on tmproto.ContextMatchResponse.CacheTTL being
+// a pointer type so absent-field is distinguishable from present-zero
+// (docs/sdk-typing-policy.md).
 //
 // The router is stateless and horizontally scaled, so this cache is
 // per-instance — restarts clear it and instances behind a load balancer
@@ -121,24 +131,40 @@ func (c *ContextCache) Get(propertyRID, placementID, providerID string) (*tmprot
 }
 
 // Put stores a response under the spec's canonical cache key. The TTL
-// is derived from the response's cache_ttl (clamped to
-// [1s, MaxContextCacheTTL]) when positive, otherwise from the cache's
-// configured default.
+// is derived from the response's cache_ttl per spec §Caching:
 //
-// A cache_ttl of zero from a provider means either (a) the field was
-// truly absent (Go's omitempty conflates absent with zero) or (b) the
-// provider explicitly disabled caching (spec §Caching: "0 disables
-// caching"). Because the Go type can't distinguish these two cases and
-// the majority use is (a), we treat received-zero as "use default".
-// Providers that need to force cache invalidation should return
-// cache_ttl=1 (nearly-disabled) until their config change propagates.
+//   - cache_ttl absent (nil pointer) → use the cache's configured
+//     default TTL (5 min out of the box).
+//   - cache_ttl == 0                  → provider is disabling caching
+//     (e.g. after a targeting-config change). The entry is NOT stored;
+//     subsequent requests fan out live until the provider raises the
+//     TTL again.
+//   - cache_ttl > 0                   → override, clamped to
+//     MaxContextCacheTTL. Clamping happens in seconds first to avoid
+//     a Duration multiplication overflowing int64 for pathologically
+//     large values that escaped upstream schema validation.
 func (c *ContextCache) Put(propertyRID, placementID, providerID string, resp *tmproto.ContextMatchResponse) {
 	if c == nil || resp == nil {
 		return
 	}
 	ttl := c.defaultTTL
-	if resp.CacheTTL > 0 {
-		ttl = min(time.Duration(resp.CacheTTL)*time.Second, MaxContextCacheTTL)
+	if resp.CacheTTL != nil {
+		secs := *resp.CacheTTL
+		switch {
+		case secs == 0:
+			// Explicit disable — do not cache.
+			return
+		case secs < 0:
+			// Nonsensical; fall back to the default rather than store
+			// something with a negative TTL that would collapse to
+			// already-expired.
+		default:
+			maxSecs := int(MaxContextCacheTTL / time.Second)
+			if secs > maxSecs {
+				secs = maxSecs
+			}
+			ttl = time.Duration(secs) * time.Second
+		}
 	}
 	key := contextCacheKey(propertyRID, placementID, providerID)
 	c.mu.Lock()

@@ -378,9 +378,10 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			// went down, and the TTL bounds staleness.
 			if r.contextCache != nil {
 				if cached, ok := r.contextCache.Get(cmReq.PropertyRID, cmReq.PlacementID, p.ID); ok {
-					// Echo the CURRENT request's ID; every other field is
-					// stable across cache reuses within the placement scope.
-					cached.RequestID = cmReq.RequestID
+					// The merger overwrites RequestID from the current
+					// request downstream (mergeContextResponses), so we
+					// don't touch cached.RequestID here — any assignment
+					// would be dead.
 					mu.Lock()
 					results = append(results, contextResult{providerID: p.ID, response: cached})
 					mu.Unlock()

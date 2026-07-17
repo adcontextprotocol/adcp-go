@@ -137,6 +137,10 @@ func TestContextCache_TTLExpiration(t *testing.T) {
 	assert.Equal(t, 0, c.Size())
 }
 
+// ttlPtr is a helper so tests can pass a positive/zero/negative
+// cache_ttl through the *int field.
+func ttlPtr(n int) *int { return &n }
+
 // Provider cache_ttl overrides the router's default when present.
 func TestContextCache_ProviderTTLOverride(t *testing.T) {
 	c := NewContextCache(1 * time.Hour) // long default
@@ -145,7 +149,7 @@ func TestContextCache_ProviderTTLOverride(t *testing.T) {
 
 	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{
 		RequestID: "orig",
-		CacheTTL:  2, // 2 seconds — tighter than the default 1h
+		CacheTTL:  ttlPtr(2), // 2 seconds — tighter than the default 1h
 	})
 
 	// Just under 2s → still cached.
@@ -169,7 +173,7 @@ func TestContextCache_TTLClampsToMax(t *testing.T) {
 
 	// 30 days — well past the schema-enforced 24h ceiling.
 	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{
-		CacheTTL: 30 * 24 * 3600,
+		CacheTTL: ttlPtr(30 * 24 * 3600),
 	})
 
 	// Just past 24h — must be expired regardless of what the provider
@@ -179,16 +183,42 @@ func TestContextCache_TTLClampsToMax(t *testing.T) {
 	assert.False(t, ok, "provider cache_ttl must be clamped to MaxContextCacheTTL")
 }
 
-// cache_ttl == 0 (which Go's omitempty conflates with "field absent")
-// falls back to the router's default TTL. The doc on ContextCache.Put
-// explains why: providers using the Go type can't emit 0 explicitly,
-// so treating received-zero as the default matches the majority use.
-func TestContextCache_ZeroTTLUsesDefault(t *testing.T) {
+// A pathologically large cache_ttl must not overflow the Duration
+// conversion. Clamping in seconds first (before multiplying by
+// time.Second) guarantees the entry is stored with MaxContextCacheTTL,
+// not silently dropped because Duration wrapped to negative.
+func TestContextCache_TTLOverflowSafe(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	now := time.Unix(1_000_000_000, 0)
+	c.now = func() time.Time { return now }
+
+	// int(math.MaxInt64/int64(time.Second)) ~= 9.2e9 seconds; anything
+	// beyond that would overflow Duration when multiplied. Use a value
+	// that would definitely wrap on 64-bit.
+	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{
+		CacheTTL: ttlPtr(1 << 62),
+	})
+
+	// Just under the max → cached.
+	now = now.Add(MaxContextCacheTTL - time.Minute)
+	_, ok := c.Get("rid", "pl", "prov")
+	assert.True(t, ok, "overflow-sized cache_ttl must still cache up to MaxContextCacheTTL")
+
+	// Just past the max → expired.
+	now = now.Add(2 * time.Minute)
+	_, ok = c.Get("rid", "pl", "prov")
+	assert.False(t, ok)
+}
+
+// cache_ttl absent (nil pointer) falls back to the router's default TTL.
+// This is the majority case: providers using the generated Go type
+// that don't want to override just leave the field zero-valued.
+func TestContextCache_AbsentTTLUsesDefault(t *testing.T) {
 	c := NewContextCache(2 * time.Second)
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{CacheTTL: 0})
+	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{}) // CacheTTL nil
 
 	// Cached for the default TTL.
 	now = now.Add(1500 * time.Millisecond)
@@ -199,6 +229,42 @@ func TestContextCache_ZeroTTLUsesDefault(t *testing.T) {
 	now = now.Add(1 * time.Second)
 	_, ok = c.Get("rid", "pl", "prov")
 	assert.False(t, ok)
+}
+
+// cache_ttl == 0 (explicit) is the spec's "disable caching" signal
+// (spec §Caching: "0 disables caching"). The entry MUST NOT be stored,
+// so a subsequent Get is a miss and the router falls back to a fresh
+// fan-out. This is the fix for the request-changes review on #410:
+// a non-Go provider that sends cache_ttl=0 after a targeting-config
+// change must not have its now-stale offers served for 5 minutes.
+func TestContextCache_ExplicitZeroTTLDisablesCaching(t *testing.T) {
+	c := NewContextCache(1 * time.Hour) // long default that would apply if we mishandled zero
+
+	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{
+		RequestID: "orig",
+		CacheTTL:  ttlPtr(0),
+	})
+
+	_, ok := c.Get("rid", "pl", "prov")
+	assert.False(t, ok, "cache_ttl=0 is the spec's disable-caching signal — entry must not be stored")
+	assert.Equal(t, 0, c.Size())
+}
+
+// A negative cache_ttl (which the wire schema should reject, but we're
+// defensive) falls back to the default rather than storing an
+// immediately-expired entry.
+func TestContextCache_NegativeTTLUsesDefault(t *testing.T) {
+	c := NewContextCache(2 * time.Second)
+	now := time.Unix(1_000_000_000, 0)
+	c.now = func() time.Time { return now }
+
+	c.Put("rid", "pl", "prov", &tmproto.ContextMatchResponse{CacheTTL: ttlPtr(-1)})
+
+	// Cached for the default TTL rather than dropped or immediately
+	// expired.
+	now = now.Add(1500 * time.Millisecond)
+	_, ok := c.Get("rid", "pl", "prov")
+	assert.True(t, ok, "negative TTL should fall back to default, not collapse to expired")
 }
 
 // Different providers for the same (property, placement) tuple are

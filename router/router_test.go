@@ -1098,8 +1098,9 @@ func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
 	assert.Equal(t, "req-first", resp1.RequestID, "response request_id must match the incoming request, not the provider's cached value")
 
 	// Second call — same property_rid + placement_id → cache hit → no
-	// additional provider round-trip. Different request_id proves the
-	// cache stamps the current request's ID onto the returned response.
+	// additional provider round-trip. The merged response's request_id
+	// still tracks the CURRENT request (mergeContextResponses sets it
+	// from the incoming request, not the cached entry).
 	w2 := httptest.NewRecorder()
 	req2 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(baseBody("req-second")))
 	r.HandleContextMatch(w2, req2)
@@ -1109,7 +1110,7 @@ func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
 	require.NoError(t, json.NewDecoder(w2.Body).Decode(&resp2))
 	require.Len(t, resp2.Offers, 1)
 	assert.Equal(t, "pkg-cached", resp2.Offers[0].PackageID)
-	assert.Equal(t, "req-second", resp2.RequestID, "cached response must carry the current request's ID")
+	assert.Equal(t, "req-second", resp2.RequestID, "merged response request_id must track the current request")
 }
 
 // A response with cache_ttl > 0 uses the provider's TTL over the
@@ -1123,7 +1124,7 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-provider-ttl"}},
-			CacheTTL:  3600, // 1h — well past the 1-minute default
+			CacheTTL:  ttlPtr(3600), // 1h — well past the 1-minute default
 		})
 	}))
 	defer provider.Close()
@@ -1158,4 +1159,47 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 	req2 := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
 	r.HandleContextMatch(w2, req2)
 	assert.Equal(t, int32(1), hits.Load(), "provider cache_ttl must override the router default")
+}
+
+// A provider that returns cache_ttl=0 (spec's "disable caching" signal,
+// typical after a targeting-config change) MUST cause the router to
+// re-fan-out on every subsequent request rather than serve the stale
+// response from cache. Regression guard for the fix to #410's review
+// blocker.
+func TestRouterContextMatch_ProviderDisablesCaching(t *testing.T) {
+	var hits atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		zero := 0
+		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+			Type:      tmproto.TypeContextMatchResponse,
+			RequestID: "server-side",
+			Offers:    []tmproto.Offer{{PackageID: "pkg-uncached"}},
+			CacheTTL:  &zero, // Explicit disable — the "targeting just changed" case.
+		})
+	}))
+	defer provider.Close()
+
+	r := testRouter([]ProviderConfig{
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+	})
+	r.contextCache = NewContextCache(1 * time.Hour) // long default the disable must override
+
+	body := `{
+		"type": "context_match_request",
+		"request_id": "req-nocache",
+		"property_rid": "rid-nocache-1",
+		"property_id": "pub-test",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"package_ids": ["pkg-1"]
+	}`
+	for i := 1; i <= 3; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/tmp/context", strings.NewReader(body))
+		r.HandleContextMatch(w, req)
+		assert.Equal(t, int32(i), hits.Load(),
+			"request %d: provider cache_ttl=0 must skip cache and re-fan-out", i)
+	}
 }
