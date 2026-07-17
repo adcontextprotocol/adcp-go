@@ -269,10 +269,10 @@ func (r fcapResult) allCapped(pkgIDs []string) bool {
 // on both sides — this reader canonicalizes here, and the frequency-writer
 // MUST canonicalize before recording markers. Read/write symmetry is
 // non-negotiable: mismatched keys read as "not capped" and fail cap
-// enforcement open. See scope3data/frequency-writer for the writer half of
-// this pair; a deploy that upgrades adcp-go past this change without also
-// upgrading the writer to canonicalize on write will fragment cap buckets
-// by URL spelling until existing markers age out.
+// enforcement open. A deploy that upgrades adcp-go past this change
+// without also upgrading the downstream frequency-writer to canonicalize
+// on write will fragment cap buckets by URL spelling until existing
+// markers age out.
 func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, canonicalSeller string, pkgIDs []string, verified []targeting.VerifiedIdentity) fcapResult {
 	start := time.Now()
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
