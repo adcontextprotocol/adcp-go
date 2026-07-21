@@ -85,12 +85,13 @@ services:
       configserver:
         condition: service_started
     # CPU/memory caps — set by run.sh via IDENTITY_CPUS / IDENTITY_MEMORY.
-    # deploy.resources is honored by `docker compose up`; we do NOT need swarm.
-    deploy:
-      resources:
-        limits:
-          cpus: "${IDENTITY_CPUS:-2}"
-          memory: "${IDENTITY_MEMORY:-2g}"
+    # Uses top-level `cpus` and `mem_limit` (Compose v2 non-swarm honors
+    # these directly; `deploy.resources` is unreliable outside swarm on
+    # cgroup v2 hosts). run.sh additionally calls `docker update` and
+    # verifies HostConfig.NanoCpus / HostConfig.Memory as belt-and-braces.
+    cpus: "${IDENTITY_CPUS:-2}"
+    mem_limit: "${IDENTITY_MEMORY:-2g}"
+    memswap_limit: "${IDENTITY_MEMORY:-2g}"
     environment:
       HTTP_PORT: "8080"
       LOG_LEVEL: "warn"
