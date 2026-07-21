@@ -204,4 +204,10 @@ echo
 echo "=== done ==="
 echo "results in: $RESULTS_DIR"
 echo "summary:    $SUMMARY_CSV"
-column -t -s , "$SUMMARY_CSV"
+# `column` isn't installed by default on Ubuntu 24.04; fall through to plain
+# cat so the summary is always printed.
+if command -v column >/dev/null 2>&1; then
+  column -t -s , "$SUMMARY_CSV"
+else
+  cat "$SUMMARY_CSV"
+fi

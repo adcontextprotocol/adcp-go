@@ -150,12 +150,21 @@ type waveParams struct {
 	samples          chan<- sample
 }
 
-// runWave paces work at qps and executes each request on a bounded worker pool.
-// A single ticker emits req-tokens; workers pull them and issue requests. When
-// the pool is saturated, tickets pile up in the buffered channel and drop on
-// send-overflow so we don't push unbounded work into memory — the achieved
-// rate then reflects true saturation instead of a fantasy queue depth.
+// runWave paces work at qps and executes each request on a bounded worker
+// pool. The pacer computes the ideal fire time for tick i as start + i*interval
+// and sleeps until then; a single slow iteration doesn't compound into a
+// growing deficit because subsequent ticks look at absolute wallclock, not
+// "sleep interval from last fire." That behavior is what makes high-frequency
+// pacing (32k+ qps → 31us intervals) work — time.Ticker.C at that rate loses
+// ticks to Go's scheduler / kernel timer coalescing and undershoots the target.
+//
+// Workers pull request-tokens from a buffered channel sized to concurrency;
+// tokens the pacer emits when the channel is full are counted as saturation
+// drops (workers can't keep up), which is the intended signal.
 func runWave(ctx context.Context, client *http.Client, p waveParams) {
+	if p.qps <= 0 {
+		log.Fatalf("qps must be positive (got %d)", p.qps)
+	}
 	tickets := make(chan struct{}, p.concurrency)
 	var wg sync.WaitGroup
 	for i := 0; i < p.concurrency; i++ {
@@ -169,27 +178,38 @@ func runWave(ctx context.Context, client *http.Client, p waveParams) {
 			}
 		}(uint64(i) + 1)
 	}
-	if p.qps <= 0 {
-		log.Fatalf("qps must be positive (got %d)", p.qps)
-	}
 	interval := time.Second / time.Duration(p.qps)
 	if interval <= 0 {
 		interval = time.Nanosecond
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	start := time.Now()
 	dropped := 0
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 loop:
-	for {
-		select {
-		case <-ctx.Done():
-			break loop
-		case <-ticker.C:
-			select {
-			case tickets <- struct{}{}:
-			default:
-				dropped++
+	for i := int64(0); ; i++ {
+		next := start.Add(time.Duration(i) * interval)
+		delay := time.Until(next)
+		if delay > 0 {
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
+			timer.Reset(delay)
+			select {
+			case <-ctx.Done():
+				break loop
+			case <-timer.C:
+			}
+		} else if ctx.Err() != nil {
+			break loop
+		}
+		select {
+		case tickets <- struct{}{}:
+		default:
+			dropped++
 		}
 	}
 	close(tickets)
