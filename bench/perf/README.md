@@ -106,8 +106,14 @@ Summary CSV columns:
 |---|---|
 | `achieved_qps`, `target_qps`, `qps_per_core` | requests / second |
 | `p50_latency_ms`, `p90_latency_ms`, `p99_latency_ms`, `p999_latency_ms` | milliseconds |
-| `rss_peak_mb` | megabytes (peak container RSS during the run) |
-| `memory_gb` | container memory cap, gigabytes |
+| `identity_rss_peak_mb`, `audience_valkey_rss_peak_mb`, `fcap_valkey_rss_peak_mb` | megabytes (peak container RSS during the run) |
+| `identity_cpu_peak_pct`, `audience_valkey_cpu_peak_pct`, `fcap_valkey_cpu_peak_pct` | percent (docker-cgroup CPU; 100% == 1 core, so 400% == 4 cores fully used) |
+| `memory_gb` | identity-agent container memory cap, gigabytes |
+
+The full 1 Hz stats time series for each run is preserved at
+`<scenario>_<cpu>c_<mem>/stats_<qps>qps.log` — three lines per second
+(`<container-name> <rss_mb> <cpu_pct>`) — so you can plot the shape, not
+just the peak.
 
 The runner also captures:
 

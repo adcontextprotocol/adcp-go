@@ -47,7 +47,7 @@ case $# in
     ;;
 esac
 
-echo "scenario,cpus,memory_gb,target_qps,concurrency,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_core,rss_peak_mb" > "$SUMMARY_CSV"
+echo "scenario,cpus,memory_gb,target_qps,concurrency,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_core,identity_rss_peak_mb,audience_valkey_rss_peak_mb,fcap_valkey_rss_peak_mb,identity_cpu_peak_pct,audience_valkey_cpu_peak_pct,fcap_valkey_cpu_peak_pct" > "$SUMMARY_CSV"
 
 # --- helpers -----------------------------------------------------------------
 wait_healthy() {
@@ -65,23 +65,41 @@ wait_healthy() {
   return 1
 }
 
-# Sample the identity-agent container's RSS in MB. Robust to both docker CE
-# formats: '123.5MiB' and '123.5 MiB' (some versions add a space). Uses only
-# POSIX awk features so it works with BSD nawk on macOS and gawk on Linux.
-sample_rss_mb() {
-  local cid=$1
-  if [[ -z "$cid" ]]; then echo 0; return; fi
-  docker stats --no-stream --format '{{.MemUsage}}' "$cid" 2>/dev/null \
+# One `docker stats --no-stream` call covering all three containers we care
+# about (identity-agent + both valkeys), tagged by container name so the
+# post-run peak extractor can split by service. Robust to both docker CE
+# MemUsage layouts ('123.5MiB' and '123.5 MiB'); POSIX awk only so this
+# works on macOS BSD nawk and Linux gawk.
+sample_stats() {
+  local identity=$1 audience=$2 fcap=$3
+  if [[ -z "$identity" && -z "$audience" && -z "$fcap" ]]; then return; fi
+  # {{.Name}} <mem-usage> <mem-unit-maybe> ... <cpu%>
+  docker stats --no-stream --format '{{.Name}} {{.MemUsage}} {{.CPUPerc}}' \
+    "$identity" "$audience" "$fcap" 2>/dev/null \
     | awk '{
-        used = $1
-        if (used ~ /GiB$/) { sub(/GiB$/, "", used); printf "%.1f\n", used * 1024 }
-        else if (used ~ /MiB$/) { sub(/MiB$/, "", used); printf "%.1f\n", used }
-        else if (used ~ /KiB$/) { sub(/KiB$/, "", used); printf "%.3f\n", used / 1024 }
-        else if ($2 ~ /GiB/) { printf "%.1f\n", $1 * 1024 }
-        else if ($2 ~ /MiB/) { printf "%.1f\n", $1 }
-        else if ($2 ~ /KiB/) { printf "%.3f\n", $1 / 1024 }
-        else print 0
+        name = $1
+        # MemUsage is "used / limit"; used may be "123MiB" or "123 MiB".
+        if ($2 ~ /(KiB|MiB|GiB)$/) { used = $2; slash_at = 3 }
+        else                       { used = $2 $3; slash_at = 4 }
+        cpu = $NF
+        sub(/%/, "", cpu)
+        rss_mb = 0
+        if (used ~ /GiB$/) { sub(/GiB$/, "", used); rss_mb = used * 1024 }
+        else if (used ~ /MiB$/) { sub(/MiB$/, "", used); rss_mb = used }
+        else if (used ~ /KiB$/) { sub(/KiB$/, "", used); rss_mb = used / 1024 }
+        printf "%s %.2f %s\n", name, rss_mb, cpu
       }'
+}
+
+# Extract the peak MB or CPU% seen for a given container-name substring in the
+# streaming stats log. Empty log or no match returns 0.
+peak_from_stats() {
+  local stats_log=$1 name_needle=$2 col=$3  # col: 2=rss_mb, 3=cpu%
+  awk -v n="$name_needle" -v c="$col" '
+    BEGIN { m = 0 }
+    index($1, n) > 0 { v = $c + 0; if (v > m) m = v }
+    END { printf "%.2f\n", m }
+  ' "$stats_log" 2>/dev/null || echo 0
 }
 
 # --- build once --------------------------------------------------------------
@@ -142,14 +160,17 @@ for scenario in "${SCENARIOS[@]}"; do
       host_report="$RESULTS_DIR/${scenario}_${cpus}c_${memory}_${qps}qps.json"
       echo "  -> qps=$qps duration=$DURATION concurrency=$CONCURRENCY"
 
-      # RSS peak sampler runs in the background. Container ID resolved once
-      # up front so the per-tick sample doesn't re-invoke docker compose ps.
-      rss_log="$scenario_dir/rss_${qps}qps.log"
-      : > "$rss_log"
-      cid=$(docker compose ps -q identity-agent)
+      # Stats sampler runs in the background: identity-agent + both valkeys.
+      # Container IDs resolved once up front so the per-tick call doesn't
+      # re-invoke docker compose ps.
+      stats_log="$scenario_dir/stats_${qps}qps.log"
+      : > "$stats_log"
+      identity_cid=$(docker compose ps -q identity-agent)
+      audience_cid=$(docker compose ps -q audience-valkey)
+      fcap_cid=$(docker compose ps -q fcap-valkey)
       (
         while true; do
-          sample_rss_mb "$cid" >> "$rss_log" 2>/dev/null || true
+          sample_stats "$identity_cid" "$audience_cid" "$fcap_cid" >> "$stats_log" 2>/dev/null || true
           sleep 1
         done
       ) &
@@ -171,11 +192,17 @@ for scenario in "${SCENARIOS[@]}"; do
         > "$scenario_dir/metrics_${qps}qps.prom" 2>/dev/null || true
 
       if [[ -f "$host_report" ]]; then
-        # roll up into summary.csv
-        rss_peak_mb=$(awk 'BEGIN{m=0} {if ($1+0 > m) m=$1+0} END{printf "%.1f", m}' "$rss_log")
-        python3 - "$host_report" "$scenario" "$cpus" "$memory" "$CONCURRENCY" "$rss_peak_mb" >> "$SUMMARY_CSV" <<'PY'
+        id_rss=$(peak_from_stats "$stats_log" "identity-agent"   2)
+        aud_rss=$(peak_from_stats "$stats_log" "audience-valkey" 2)
+        fc_rss=$(peak_from_stats "$stats_log" "fcap-valkey"      2)
+        id_cpu=$(peak_from_stats "$stats_log" "identity-agent"   3)
+        aud_cpu=$(peak_from_stats "$stats_log" "audience-valkey" 3)
+        fc_cpu=$(peak_from_stats "$stats_log" "fcap-valkey"      3)
+        python3 - "$host_report" "$scenario" "$cpus" "$memory" "$CONCURRENCY" \
+          "$id_rss" "$aud_rss" "$fc_rss" "$id_cpu" "$aud_cpu" "$fc_cpu" \
+          >> "$SUMMARY_CSV" <<'PY'
 import json, sys
-p, scenario, cpus, memory, conc, rss = sys.argv[1:]
+p, scenario, cpus, memory, conc, id_rss, aud_rss, fc_rss, id_cpu, aud_cpu, fc_cpu = sys.argv[1:]
 r = json.load(open(p))
 qps_per_core = r.get("achieved_qps",0) / max(float(cpus),1e-9)
 row = [
@@ -186,7 +213,8 @@ row = [
     f"{r.get('p99_ms',0):.2f}",
     f"{r.get('p99_9_ms',0):.2f}",
     r.get("ok_2xx",0), r.get("non_2xx",0), r.get("transport_errors",0),
-    f"{qps_per_core:.1f}", rss,
+    f"{qps_per_core:.1f}",
+    id_rss, aud_rss, fc_rss, id_cpu, aud_cpu, fc_cpu,
 ]
 print(",".join(str(c) for c in row))
 PY
