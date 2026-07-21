@@ -142,6 +142,27 @@ for scenario in "${SCENARIOS[@]}"; do
     IDENTITY_MEMORY="$memory" \
       docker compose up -d --force-recreate identity-agent
 
+    # docker compose's `deploy.resources.limits` isn't reliably honored
+    # outside swarm mode on Linux/cgroup-v2, so force the cgroup via
+    # `docker update` and verify the resulting NanoCpus/Memory match what
+    # we asked for. This is the only way to be sure the reported qps_per_core
+    # numbers actually reflect a CPU-capped container.
+    identity_cid=$(docker compose ps -q identity-agent)
+    docker update --cpus "$cpus" --memory "$memory" --memory-swap "$memory" \
+      "$identity_cid" >/dev/null
+    want_nanocpus=$(awk -v c="$cpus" 'BEGIN{printf "%d", c*1000000000}')
+    got_nanocpus=$(docker inspect --format '{{.HostConfig.NanoCpus}}' "$identity_cid")
+    got_mem_bytes=$(docker inspect --format '{{.HostConfig.Memory}}' "$identity_cid")
+    if [[ "$got_nanocpus" != "$want_nanocpus" ]]; then
+      echo "!! CPU limit not applied: want NanoCpus=$want_nanocpus got $got_nanocpus" >&2
+      exit 1
+    fi
+    if (( got_mem_bytes == 0 )); then
+      echo "!! Memory limit not applied on identity-agent" >&2
+      exit 1
+    fi
+    echo "  identity-agent limits enforced: NanoCpus=$got_nanocpus MemBytes=$got_mem_bytes"
+
     echo "  waiting for identity-agent /health"
     if ! wait_healthy 90; then
       echo "!! identity-agent did not become healthy" >&2
