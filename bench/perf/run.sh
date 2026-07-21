@@ -200,9 +200,27 @@ for scenario in "${SCENARIOS[@]}"; do
       # (Ctrl-C, set -e failure) so we don't leave orphan pollers behind.
       trap 'kill '"$sampler_pid"' 2>/dev/null || true' EXIT INT TERM
 
+      # IDENTITY_CPUS / IDENTITY_MEMORY have to be passed on every compose
+      # invocation, not just the identity-agent `up`. Otherwise `docker
+      # compose run --rm loadgen` re-evaluates the compose file with those
+      # vars unset, sees the identity-agent service's resolved config
+      # (cpus/mem_limit) differs from the running container, and silently
+      # recreates identity-agent with the default 2 CPU / 2 GB caps — which
+      # is exactly the "why is my 1c container using 202% CPU" bug.
+      IDENTITY_CPUS="$cpus" IDENTITY_MEMORY="$memory" \
       QPS="$qps" DURATION="$DURATION" WARMUP="$WARMUP" CONCURRENCY="$CONCURRENCY" \
         LABEL="$label" REPORT="$report_path" \
         docker compose run --rm loadgen 2>&1 | tee "$scenario_dir/loadgen_${qps}qps.log" || true
+
+      # Recheck the container ID didn't change out from under us; if it did,
+      # `docker compose run` recreated identity-agent and the sampler was
+      # measuring the wrong container. Fail loud so this can't produce
+      # invalid data silently.
+      post_cid=$(docker compose ps -q identity-agent)
+      if [[ "$post_cid" != "$identity_cid" ]]; then
+        echo "!! identity-agent container changed during loadgen (was $identity_cid, now $post_cid)" >&2
+        exit 1
+      fi
 
       kill "$sampler_pid" 2>/dev/null || true
       wait "$sampler_pid" 2>/dev/null || true
