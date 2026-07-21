@@ -85,8 +85,13 @@ sample_rss_mb() {
 }
 
 # --- build once --------------------------------------------------------------
+# Build services sequentially. configserver/seeder/loadgen all share the same
+# adcp-perf-tools image tag, so a parallel `docker compose build` racing on the
+# tag write fails with "image already exists" on some BuildKit versions.
 echo "==> building images"
-docker compose build
+for svc in identity-agent configserver seeder loadgen; do
+  docker compose build "$svc"
+done
 
 for scenario in "${SCENARIOS[@]}"; do
   scenario_env="scenarios/${scenario}.env"
