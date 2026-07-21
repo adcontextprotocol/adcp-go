@@ -1,0 +1,167 @@
+# docker-compose stack for identity-agent perf benchmarking.
+#
+# Services:
+#   audience-valkey / fcap-valkey — the two Valkey backends the identity-agent
+#     reads at request time.
+#   configserver — mock CONFIG_SOURCE_URL that serves a synthetic package snapshot.
+#   seeder — one-shot; populates the Valkey stores. Runs on `docker compose run seeder`.
+#   identity-agent — the SUT. CPU/memory caps read from env vars so the runner
+#     can sweep configurations.
+#   loadgen — one-shot; drives load. Runs on `docker compose run loadgen`.
+#
+# Networks are isolated to the compose bridge; nothing binds to the host by
+# default. Set HOST_METRICS_PORT to expose /metrics for external Prometheus
+# scraping (optional).
+services:
+  audience-valkey:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+  fcap-valkey:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+  configserver:
+    build:
+      context: ../..
+      dockerfile: bench/perf/Dockerfile
+    image: adcp-perf-tools:latest
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/configserver"]
+    environment:
+      PORT: "9001"
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      AUDIENCE_PACKAGES: "${AUDIENCE_PACKAGES:-100}"
+      AUDIENCES_PER_PACKAGE: "${AUDIENCES_PER_PACKAGE:-3}"
+      TOTAL_AUDIENCES: "${TOTAL_AUDIENCES:-500}"
+      AUTH_TOKEN: "${CONFIG_AUTH_TOKEN:-perf-bench-token}"
+    restart: unless-stopped
+
+  seeder:
+    image: adcp-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/seeder"]
+    environment:
+      AUDIENCE_ADDR: "audience-valkey:6379"
+      FCAP_ADDR: "fcap-valkey:6379"
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      TOTAL_USERS: "${TOTAL_USERS:-100000}"
+      TOTAL_AUDIENCES: "${TOTAL_AUDIENCES:-500}"
+      AUDIENCES_PER_USER: "${AUDIENCES_PER_USER:-5}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      FCAP_USER_FRACTION: "${FCAP_USER_FRACTION:-0.5}"
+      PACKAGES_CAPPED_PER_USER: "${PACKAGES_CAPPED_PER_USER:-10}"
+    depends_on:
+      audience-valkey:
+        condition: service_healthy
+      fcap-valkey:
+        condition: service_healthy
+
+  identity-agent:
+    build:
+      context: ../..
+      dockerfile: cmd/identity-agent/Dockerfile
+    image: adcp-identity-agent:latest
+    restart: unless-stopped
+    depends_on:
+      audience-valkey:
+        condition: service_healthy
+      fcap-valkey:
+        condition: service_healthy
+      configserver:
+        condition: service_started
+    # CPU/memory caps — set by run.sh via IDENTITY_CPUS / IDENTITY_MEMORY.
+    # deploy.resources is honored by `docker compose up`; we do NOT need swarm.
+    deploy:
+      resources:
+        limits:
+          cpus: "${IDENTITY_CPUS:-2}"
+          memory: "${IDENTITY_MEMORY:-2g}"
+    environment:
+      HTTP_PORT: "8080"
+      LOG_LEVEL: "warn"
+      REQUEST_TIMEOUT: "40ms"
+      HTTP_READ_HEADER_TIMEOUT: "200ms"
+      HTTP_READ_TIMEOUT: "500ms"
+      HTTP_WRITE_TIMEOUT: "1s"
+      HTTP_IDLE_TIMEOUT: "30s"
+      MAX_OPEN_CONNECTIONS: "${MAX_OPEN_CONNECTIONS:-4096}"
+      RESPONSE_TTL: "60s"
+      STRICT_CONTENT_TYPE: "true"
+      ACCESS_LOG_ENABLED: "false"
+      SUPPORTED_ADCP_MAJOR_VERSIONS: "3"
+      # No TMP signature verification for the benchmark.
+      TMP_ALLOW_UNSIGNED: "true"
+      TMP_OWN_ENDPOINT_URL: "http://identity-agent:8080/identity"
+      # Config source — the mock serves the whole seller/package set.
+      CONFIG_SOURCE_URL: "http://configserver:9001/v1/identity-configs"
+      CONFIG_SOURCE_TOKEN: "${CONFIG_AUTH_TOKEN:-perf-bench-token}"
+      CONFIG_SOURCE_TIMEOUT: "30s"
+      CONFIG_REFRESH_INTERVAL: "5m"
+      CONFIG_START_MODE: "retry"
+      CONFIG_START_RETRY_DEADLINE: "1m"
+      # Frequency-cap Valkey (required).
+      FCAP_VALKEY_MODE: "standalone"
+      FCAP_VALKEY_SHARDS: '{"0":"fcap-valkey:6379"}'
+      FCAP_VALKEY_DB: "0"
+      FCAP_VALKEY_DIAL_TIMEOUT: "5s"
+      FCAP_VALKEY_READ_TIMEOUT: "20ms"
+      FCAP_VALKEY_POOL_SIZE: "${VALKEY_POOL_SIZE:-64}"
+      FCAP_TIMEOUT: "15ms"
+      # Audience Valkey — always wired. Whether it is exercised is controlled
+      # by AUDIENCE_PACKAGES in the config-server (0 = no package carries an
+      # audience rule, so the store is not consulted per-request).
+      AUDIENCE_VALKEY_MODE: "standalone"
+      AUDIENCE_VALKEY_SHARDS: '{"0":"audience-valkey:6379"}'
+      AUDIENCE_VALKEY_DB: "0"
+      AUDIENCE_VALKEY_DIAL_TIMEOUT: "5s"
+      AUDIENCE_VALKEY_READ_TIMEOUT: "20ms"
+      AUDIENCE_VALKEY_POOL_SIZE: "${VALKEY_POOL_SIZE:-64}"
+      AUDIENCE_TIMEOUT: "15ms"
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: "identity_agent"
+      PPROF_ENABLED: "true"
+    ports:
+      - "${HOST_METRICS_PORT:-9464}:8080"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  loadgen:
+    image: adcp-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/loadgen"]
+    environment:
+      TARGET: "http://identity-agent:8080/identity"
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      TOTAL_USERS: "${TOTAL_USERS:-100000}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      PACKAGES_PER_REQ: "${PACKAGES_PER_REQ:-20}"
+      IDENTITIES_PER_REQ: "${IDENTITIES_PER_REQ:-1}"
+      QPS: "${QPS:-1000}"
+      CONCURRENCY: "${CONCURRENCY:-128}"
+      DURATION: "${DURATION:-30s}"
+      WARMUP: "${WARMUP:-5s}"
+      REPORT: "${REPORT:-/results/report.json}"
+      LABEL: "${LABEL:-}"
+    volumes:
+      - ${RESULTS_DIR:-./results}:/results
+    depends_on:
+      - identity-agent
