@@ -3,6 +3,7 @@ package identityagent
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 	"time"
 
@@ -298,9 +299,7 @@ func (m *mockAudienceStore) HExistsBatch(_ context.Context, lookups []audience.H
 func (m *mockAudienceStore) HGetAll(_ context.Context, key string) (map[string]string, error) {
 	src := m.data[key]
 	out := make(map[string]string, len(src))
-	for k, v := range src {
-		out[k] = v
-	}
+	maps.Copy(out, src)
 	return out, nil
 }
 

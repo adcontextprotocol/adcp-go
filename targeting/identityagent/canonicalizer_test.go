@@ -46,8 +46,8 @@ func TestIdentityCanonicalizer_Decode_ProducesCanonicalBytes(t *testing.T) {
 	ids := []tmproto.IdentityToken{
 		{UIDType: tmproto.UIDTypeMAID, UserToken: validUserTokenFor(tmproto.UIDTypeMAID)},
 		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: validUserTokenFor(tmproto.UIDTypeHashedEmail)},
-		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"},          // no decoder
-		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"},          // no mapping
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"}, // no decoder
+		{UIDType: tmproto.UIDTypeOther, UserToken: "ignored"}, // no mapping
 	}
 	decoded := canon.Decode(t.Context(), ids)
 	require.Len(t, decoded, 4)
@@ -72,9 +72,9 @@ func TestIdentityCanonicalizer_Decode_RecordsDropsLikeSealer(t *testing.T) {
 		recorder: rec,
 	}
 	canon.Decode(t.Context(), []tmproto.IdentityToken{
-		{UIDType: tmproto.UIDTypeOther, UserToken: "x"},                 // unmapped
-		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"},           // no decoder
-		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: "deadbeef"},    // decoder_error (too short)
+		{UIDType: tmproto.UIDTypeOther, UserToken: "x"},              // unmapped
+		{UIDType: tmproto.UIDTypeUID2, UserToken: "any-uid2"},        // no decoder
+		{UIDType: tmproto.UIDTypeHashedEmail, UserToken: "deadbeef"}, // decoder_error (too short)
 	})
 	assert.Equal(t, 1, rec.dropCount(TmpxDropUnmapped, string(tmproto.UIDTypeOther)))
 	assert.Equal(t, 1, rec.dropCount(TmpxDropNoDecoder, string(tmproto.UIDTypeUID2)))

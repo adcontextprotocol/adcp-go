@@ -673,26 +673,33 @@ func (c Config) Validate() error {
 }
 
 // loadValkeyBlock reads {prefix}_VALKEY_* env vars into a ValkeyBlock. The
-// block is marked Enabled when the SHARDS variable is present and non-empty
-// — that single variable acts as the "configured" signal.
+// block is marked Enabled when SHARDS parses to a non-empty JSON object.
+// An unset SHARDS env var, an empty string, and a valid-JSON empty object
+// ("{}") all collapse to the same disabled block — a ConfigMap emitter
+// can't easily omit a key, so an unconfigured block often lands as "{}"
+// on the pod and len(shards)==0 is never a useful runtime configuration.
+//
+// If SHARDS is empty but a sibling {prefix}_VALKEY_MODE is set, that's
+// "intended but broken" — operator meant to wire this block but the
+// SHARDS render came out empty. Loud error instead of silent disable so
+// a mis-emitted config during a resharding window doesn't quietly turn
+// the fallback off (which would drop the union OR and reopen the exact
+// stale-membership window the fallback exists to close).
 func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 	var errs []error
 	shardsRaw := os.Getenv(prefix + "_VALKEY_SHARDS")
-	if shardsRaw == "" {
-		return ValkeyBlock{}, nil
-	}
+	shardsEmpty := shardsRaw == ""
 
 	shards := map[string]string{}
-	if err := json.Unmarshal([]byte(shardsRaw), &shards); err != nil {
-		return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_SHARDS is not a JSON object: %w", prefix, err)}
+	if !shardsEmpty {
+		if err := json.Unmarshal([]byte(shardsRaw), &shards); err != nil {
+			return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_SHARDS is not a JSON object: %w", prefix, err)}
+		}
 	}
-	// Treat a valid-JSON empty object identically to an unset env var. A
-	// ConfigMap emitter can't easily omit a key, so an unconfigured
-	// fallback often lands as "{}" on the pod — which without this check
-	// falls through with Enabled=true and empty Shards, then fails
-	// Config.Validate. Since len(shards)==0 is never a useful runtime
-	// configuration anyway, collapse both spellings to "disabled".
 	if len(shards) == 0 {
+		if _, modeSet := os.LookupEnv(prefix + "_VALKEY_MODE"); modeSet {
+			return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_MODE is set but %s_VALKEY_SHARDS is empty or {}; either configure both or unset both", prefix, prefix)}
+		}
 		return ValkeyBlock{}, nil
 	}
 
