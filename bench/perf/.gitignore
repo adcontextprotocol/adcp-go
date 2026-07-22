@@ -1,0 +1,6 @@
+results/
+# Anchor to the bench/perf root — otherwise these also match the
+# cmd/{configserver,seeder,loadgen} source directories.
+/configserver
+/seeder
+/loadgen
