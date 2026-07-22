@@ -220,6 +220,39 @@ cluster_init() {
   echo "  forming audience cluster: ${audience_addrs[*]}"
   docker run --rm --network perf_default valkey/valkey:8.0-alpine \
     valkey-cli --cluster create "${audience_addrs[@]}" --cluster-replicas 0 --cluster-yes
+  # `--cluster create` returns once gossip agrees, but the CLUSTER INFO
+  # state can still be `loading` for a couple of seconds after — a client
+  # that connects during that window sees CLUSTERDOWN. Poll on every node
+  # until every one reports cluster_state:ok before proceeding.
+  wait_cluster_ok "${fcap_addrs[@]}"
+  wait_cluster_ok "${audience_addrs[@]}"
+}
+
+# wait_cluster_ok polls each cluster node's CLUSTER INFO until all report
+# `cluster_state:ok`. Fails after 30s.
+wait_cluster_ok() {
+  local -a addrs=("$@")
+  local deadline=$(( $(date +%s) + 30 ))
+  while (( $(date +%s) < deadline )); do
+    local all_ok=1
+    for addr in "${addrs[@]}"; do
+      local state
+      state=$(docker run --rm --network perf_default valkey/valkey:8.0-alpine \
+        valkey-cli -h "${addr%:*}" -p "${addr##*:}" cluster info 2>/dev/null \
+        | awk -F: '/^cluster_state:/ {print $2}' | tr -d '\r\n ')
+      if [[ "$state" != "ok" ]]; then
+        all_ok=0
+        break
+      fi
+    done
+    if (( all_ok == 1 )); then
+      echo "  cluster ok: ${addrs[*]}"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "!! cluster not stable within 30s: ${addrs[*]}" >&2
+  return 1
 }
 
 # ---- output header --------------------------------------------------------
