@@ -1,3 +1,8 @@
+// The union-store adapters in this file are the reader-side machinery
+// that lets identity-agent survive a shard-count change on its Valkey
+// backends (fcap or audience) without dropping reads. The full runbook
+// — when to enable the fallback, how to reshard, how to remove the
+// fallback — lives at docs/valkey-resharding.md at the repo root.
 package identityagent
 
 import (
