@@ -148,8 +148,13 @@ For each region that has a shadow tier, deploy the new shadow pod with
 Verify:
 ```
 valkey-cli -h <new-primary> cluster info
-# cluster_state:ok
-# cluster_slots_assigned:0
+# cluster_state:fail             ← expected pre-join: a solo cluster-mode
+#                                  node covers 0 of 16384 slots, so
+#                                  Valkey reports `fail` until step 4's
+#                                  add-node lets gossip surface the
+#                                  existing shard's slot coverage.
+# cluster_slots_assigned:0       ← the load-bearing invariant. `state`
+#                                  flips to `ok` at step 4, not here.
 ```
 
 ```
