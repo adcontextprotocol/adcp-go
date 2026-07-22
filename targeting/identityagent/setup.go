@@ -287,9 +287,12 @@ type bundle struct {
 }
 
 // buildBundle wires up every dependency the Service needs. Constructed
-// resources push their teardown function onto rollback; on a build failure
-// rollback runs them in reverse order so partial state is released. The
-// rollback list is cleared before return on the success path.
+// resources push their teardown function onto rollback; on a build
+// failure rollback runs them in reverse order so partial state is
+// released. On success the deferred rollback observes retErr == nil and
+// does nothing — the accumulated list is dropped when the function
+// returns and never touched. The registered closers are then owned by
+// the caller via the shutdown registry (see Run in server.go).
 func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger, opts runOptions) (b *bundle, retErr error) {
 	bgCtx, cancelBg := context.WithCancel(context.Background())
 

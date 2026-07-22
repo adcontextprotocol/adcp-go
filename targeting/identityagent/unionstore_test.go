@@ -163,6 +163,73 @@ func TestUnionAudienceStore_BatchORsReads(t *testing.T) {
 	}
 }
 
+// TestUnionAudienceStore_SingleSideErrorPropagates locks in the
+// symmetric fcap contract for audience: a single-side error must NOT
+// be masked by returning the survivor's answer. See unionstore.go for
+// the fail-closed rationale (NoneOf exclusion rules would fail open
+// under an "empty membership" default).
+func TestUnionAudienceStore_SingleSideErrorPropagates(t *testing.T) {
+	fallback := newMockAudienceStore()
+	ctx := context.Background()
+	_ = fallback.HSetBatch(ctx, []audience.HSetItem{{Key: "u", Field: "aud", Value: "1"}})
+	primaryDown := errors.New("primary audience down")
+
+	t.Run("primary errors", func(t *testing.T) {
+		u := &unionAudienceStore{primary: &errAudienceStore{err: primaryDown}, fallback: fallback}
+		_, err := u.HExistsBatch(ctx, []audience.HLookup{{Key: "u", Field: "aud"}})
+		if err == nil {
+			t.Fatal("expected error to propagate; masking would fail-open NoneOf rules")
+		}
+		if !errors.Is(err, primaryDown) {
+			t.Errorf("expected joined error to contain primary err, got %v", err)
+		}
+	})
+
+	t.Run("fallback errors", func(t *testing.T) {
+		fallbackDown := errors.New("fallback audience down")
+		u := &unionAudienceStore{primary: fallback, fallback: &errAudienceStore{err: fallbackDown}}
+		_, err := u.HExistsBatch(ctx, []audience.HLookup{{Key: "u", Field: "aud"}})
+		if err == nil {
+			t.Fatal("expected error to propagate on single-side failure")
+		}
+		if !errors.Is(err, fallbackDown) {
+			t.Errorf("expected joined error to contain fallback err, got %v", err)
+		}
+	})
+}
+
+func TestUnionAudienceStore_BothErrorReturnsJoinedError(t *testing.T) {
+	primaryDown := errors.New("primary down")
+	fallbackDown := errors.New("fallback down")
+	u := &unionAudienceStore{
+		primary:  &errAudienceStore{err: primaryDown},
+		fallback: &errAudienceStore{err: fallbackDown},
+	}
+	_, err := u.HExistsBatch(context.Background(), []audience.HLookup{{Key: "u", Field: "aud"}})
+	if err == nil {
+		t.Fatal("expected error when both sides fail")
+	}
+	if !errors.Is(err, primaryDown) || !errors.Is(err, fallbackDown) {
+		t.Errorf("expected joined error containing both, got %v", err)
+	}
+}
+
+// errAudienceStore returns err from every method — exercises error paths
+// that the mock in-memory store can't reach.
+type errAudienceStore struct{ err error }
+
+func (e *errAudienceStore) HSetBatch(context.Context, []audience.HSetItem) error { return e.err }
+func (e *errAudienceStore) HExistsBatch(context.Context, []audience.HLookup) ([]bool, error) {
+	return nil, e.err
+}
+func (e *errAudienceStore) HGetAll(context.Context, string) (map[string]string, error) {
+	return nil, e.err
+}
+func (e *errAudienceStore) HGetAllBatch(context.Context, []string) ([]map[string]string, error) {
+	return nil, e.err
+}
+func (e *errAudienceStore) HDelBatch(context.Context, []audience.HDelItem) error { return e.err }
+
 func TestUnionAudienceStore_WritesGoToPrimaryOnly(t *testing.T) {
 	primary := newMockAudienceStore()
 	fallback := newMockAudienceStore()

@@ -55,11 +55,23 @@ type IdentityResult struct {
 // match request using pre-resolved identity configs supplied by the
 // identity agent's bundle. Returns one PackageEligibility per requested
 // package ID, preserving order.
+//
+// A non-nil error means audience membership couldn't be read. Callers
+// MUST fail-closed on that error — defaulting to an empty membership
+// set would let NoneOf exclusion rules (consent-withdrawal / brand-
+// safety suppression) evaluate to "not excluded" and serve past a
+// suppression the operator explicitly configured. `runAudienceStage`
+// in identityagent handles this by rejecting every package that
+// carries a segment rule.
 func (e *IdentityEngine) EvaluateIdentityResolved(ctx context.Context, resolved *ResolvedPackages, req *tmproto.IdentityMatchRequest) (*IdentityResult, error) {
 	evalStart := time.Now()
 	identities := resolveIdentities(req)
 
-	userSegments := e.resolveUserSegments(ctx, identities, collectTargetSegments(resolved, req.PackageIDs))
+	userSegments, err := e.resolveUserSegments(ctx, identities, collectTargetSegments(resolved, req.PackageIDs))
+	if err != nil {
+		e.metrics.Latency(ctx, "identity_eval", time.Since(evalStart))
+		return nil, err
+	}
 
 	var eligibility []tmproto.PackageEligibility
 	for _, pkgID := range req.PackageIDs {
@@ -86,11 +98,16 @@ func (e *IdentityEngine) EvaluateIdentityResolved(ctx context.Context, resolved 
 
 // resolveUserSegments batch-queries audience membership for the identities
 // against the supplied segment set, returning the set of segments the user
-// belongs to. Returns nil when there is no audience service, no identities,
-// or no target segments to evaluate.
-func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []UserIdentity, targetSegments []string) map[string]struct{} {
+// belongs to.
+//
+// Returns (nil, nil) when there is no audience service, no identities,
+// or no target segments to evaluate — a legitimately empty read, safe
+// to Matches() against. Returns (nil, err) when the audience store
+// failed: the caller MUST fail closed rather than treat an empty set
+// as "not a member" (see EvaluateIdentityResolved's doc for why).
+func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []UserIdentity, targetSegments []string) (map[string]struct{}, error) {
 	if e.audience == nil || len(identities) == 0 || len(targetSegments) == 0 {
-		return nil
+		return nil, nil
 	}
 	lookups := make([]audience.MembershipLookup, 0, len(identities)*len(targetSegments))
 	for _, uid := range identities {
@@ -104,7 +121,7 @@ func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []U
 	results, err := e.audience.IsMemberBatch(ctx, lookups)
 	if err != nil {
 		e.metrics.StoreError(ctx, "load_user_audiences", err)
-		results = make([]bool, len(lookups))
+		return nil, err
 	}
 	matched := make(map[string]struct{})
 	for i, l := range lookups {
@@ -112,7 +129,7 @@ func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []U
 			matched[l.AudienceID] = struct{}{}
 		}
 	}
-	return matched
+	return matched, nil
 }
 
 // collectTargetSegments returns the deduplicated union of every segment ID
