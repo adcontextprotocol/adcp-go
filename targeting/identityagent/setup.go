@@ -335,26 +335,48 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	}
 	addRollback("identity-config", func() error { configSvc.Stop(); return nil })
 
-	// Fcap valkey (required).
-	fcapStore, fcapCloser, err := redisstore.Build(ctx, cfg.FCapValkey.ToRedisStoreConfig())
+	// Fcap valkey (required). If a fallback block is configured, wrap the
+	// primary store in a union-read adapter — reads OR the two stores so
+	// answers stay correct across a shadow-mode resharding.
+	fcapPrimaryStore, fcapCloser, err := redisstore.Build(ctx, cfg.FCapValkey.ToRedisStoreConfig())
 	if err != nil {
 		return nil, fmt.Errorf("fcap valkey: %w", err)
 	}
 	addRollback("fcap-valkey", fcapCloser.Close)
+	var fcapStore fcap.Store = fcapPrimaryStore
+	if cfg.FallbackFCapValkey.Enabled {
+		fallbackStore, fallbackCloser, err := redisstore.Build(ctx, cfg.FallbackFCapValkey.ToRedisStoreConfig())
+		if err != nil {
+			return nil, fmt.Errorf("fcap valkey (fallback): %w", err)
+		}
+		addRollback("fcap-valkey-fallback", fallbackCloser.Close)
+		fcapStore = &unionFcapStore{primary: fcapPrimaryStore, fallback: fallbackStore, recorder: recorder}
+		logger.Info("fcap valkey fallback enabled — reads will OR across two topologies until FCAP_FALLBACK_VALKEY_* is removed")
+	}
 	fcapSvc := fcap.New(fcapStore)
 
-	// Audience valkey (optional).
+	// Audience valkey (optional). Same fallback wrapping as fcap.
 	var (
 		audienceSvc    *audience.Service
 		audienceCloser interface{ Close() error }
 	)
 	if cfg.AudienceValkey.Enabled {
-		store, closer, err := redisstore.Build(ctx, cfg.AudienceValkey.ToRedisStoreConfig())
+		primaryStore, closer, err := redisstore.Build(ctx, cfg.AudienceValkey.ToRedisStoreConfig())
 		if err != nil {
 			return nil, fmt.Errorf("audience valkey: %w", err)
 		}
 		addRollback("audience-valkey", closer.Close)
-		audienceSvc = audience.New(store)
+		var audienceStore audience.Store = primaryStore
+		if cfg.FallbackAudienceValkey.Enabled {
+			fallbackStore, fallbackCloser, err := redisstore.Build(ctx, cfg.FallbackAudienceValkey.ToRedisStoreConfig())
+			if err != nil {
+				return nil, fmt.Errorf("audience valkey (fallback): %w", err)
+			}
+			addRollback("audience-valkey-fallback", fallbackCloser.Close)
+			audienceStore = &unionAudienceStore{primary: primaryStore, fallback: fallbackStore, recorder: recorder}
+			logger.Info("audience valkey fallback enabled — reads will OR across two topologies until AUDIENCE_FALLBACK_VALKEY_* is removed")
+		}
+		audienceSvc = audience.New(audienceStore)
 		audienceCloser = closer
 	}
 
