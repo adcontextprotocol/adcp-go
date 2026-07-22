@@ -135,7 +135,11 @@ edit the relevant `scenarios/*.env`:
 - `AUDIENCE_PACKAGES` — how many packages carry an audience rule.
 - `AUDIENCES_PER_PACKAGE` — anyOf list length on each such package.
 - `PACKAGES_PER_REQ` — package_ids on each identity-match request.
-- `IDENTITIES_PER_REQ` — identity tokens per request (1..3, per TMP schema).
+- `IDENTITIES_PER_REQ` — identity tokens per request. **Gated to `1`
+  today** — only MAID-shaped tokens survive the identity-agent's
+  canonicalizer end-to-end with the seeder's current key format. See
+  the comment in `cmd/loadgen/main.go` around `identitiesPerReq`.
+  Multi-identity sweeps would silently read cold keys.
 
 ## Manual invocation
 

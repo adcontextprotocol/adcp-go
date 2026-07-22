@@ -27,6 +27,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -140,9 +141,11 @@ func runFcapWriter(ctx context.Context, r *router.Router, qps, concurrency, tota
 		select {
 		case tickets <- struct{}{}:
 		default:
-			// Consumer can't keep up; drop this tick — the write rate here
-			// is meant to be lower than reader saturation, so dropping is a
-			// signal the target rate is too aggressive.
+			// Consumer can't keep up; drop this tick and yield —
+			// spinning on the drop path at saturation pins a core
+			// and inflates SUT-observed latency if writer and SUT
+			// share cores.
+			runtime.Gosched()
 		}
 	})
 	close(tickets)
@@ -186,6 +189,7 @@ func runAudienceWriter(ctx context.Context, r *router.Router, qps, concurrency, 
 		select {
 		case tickets <- struct{}{}:
 		default:
+			runtime.Gosched()
 		}
 	})
 	close(tickets)
