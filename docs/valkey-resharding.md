@@ -20,11 +20,46 @@ shadow relative to where the underlying data physically lives.
 
 This runbook uses the **union-read fallback** shipped with the
 identity-agent to mask that window. During the migration the reader is
-told about both the pre-migration topology (fallback) and the post-migration
-topology (primary). It ORs `HEXISTS` results across the two; a `true` from
-either side wins. Fcap "capped" and audience "member" are positive-truth
-predicates, so the union is safe throughout the timeline — pre-, mid-, and
-post-reshard.
+told about both the pre-migration topology (fallback) and the
+post-migration topology (primary). It ORs `HEXISTS` results across the
+two; a `true` from either side wins. Fcap "capped" and audience
+"member" are positive-truth predicates, so under normal operation the
+union answer is correct pre-, mid-, and post-reshard. **Two behaviors
+narrow that "safe throughout" claim** — read the callouts below before
+enabling the fallback for audience.
+
+### Stale-membership window (consent violation risk on inclusion rules)
+
+Audience membership is not monotone: `audience.Upsert` supports
+`Remove`, and a removal only stops returning `true` from the OR once
+the underlying DEL has propagated to BOTH shadows. During the union
+window an already-removed user can keep reading `true` for up to
+`max(shadow-0 replication lag, shadow-1 replication lag)` under the
+reshard's write pressure.
+
+Severity depends on rule shape:
+
+- `AllOf` / `AnyOf` (inclusion) — stale `true` **over-targets** a
+  withdrawn user. This is the actual consent violation. For audiences
+  under RTBF / GDPR-erasure / consent-withdrawal SLAs, delay non-
+  urgent reshards until the removal wave has drained on both shadows,
+  or schedule the reshard during a low-removal window.
+- `NoneOf` (exclusion) — stale `true` **over-excludes** the user. This
+  is the fail-safe direction: costs impressions, not privacy. Not a
+  consent hazard.
+
+### Store-error window (impressions lost on all rule shapes)
+
+A single-side error inside the union propagates instead of masking (see
+`unionstore.go`) so the identity-agent's `runAudienceStage` fail-closed
+handling can fire — every package carrying any segment rule (AllOf,
+AnyOf, or NoneOf) is marked rejected until the error clears.
+`identity_agent_stage_outcome_total{stage="audience",outcome="error"}`
+and `identity_agent_store_errors_total{stage="audience"}` both fire.
+This is a symmetric loss of served impressions across rule shapes, not
+a consent hazard — but it means a misconfigured fallback (e.g. blank
+password against an AUTH-required shadow) blocks audience-gated
+delivery entirely, so the misconfig is visible instead of silent.
 
 [shadow-doc]: ../targeting/redisstore/store.go
 
