@@ -26,6 +26,21 @@ either side wins. Fcap "capped" and audience "member" are positive-truth
 predicates, so the union is safe throughout the timeline — pre-, mid-, and
 post-reshard.
 
+**Read this if you're growing the audience backend during an active
+consent-withdrawal or opt-out event.** Audience membership is not
+monotone: `audience.Upsert` supports `Remove`, and a removal only starts
+returning `false` from the OR once the underlying DEL has propagated to
+BOTH shadows. During the union window an already-removed user can still
+read `true` for the up-to-`replication-lag`-plus-`fallback-window`
+interval. For `anyOf` inclusion segments this over-targets a removed
+user; for `noneOf` exclusion segments it over-excludes them. If your
+audience carries consent-withdrawal or right-to-be-forgotten semantics
+with strict SLAs, delay non-urgent reshards until the removal wave has
+drained on both shadows, or schedule the reshard during a low-removal
+window. Bound the extra latency:
+`max(shadow-0 replication lag, shadow-1 replication lag)` under the
+resharding load.
+
 [shadow-doc]: ../targeting/redisstore/store.go
 
 ## What the fallback is (and isn't)

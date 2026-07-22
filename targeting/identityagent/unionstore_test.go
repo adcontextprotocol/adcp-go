@@ -41,22 +41,43 @@ func TestUnionFcapStore_BatchORsReads(t *testing.T) {
 	}
 }
 
-func TestUnionFcapStore_PrimaryErrorFallsThroughToFallback(t *testing.T) {
-	primary := &errFcapStore{err: errors.New("primary down")}
+// TestUnionFcapStore_SingleSideErrorPropagates is the behavior that
+// keeps the steady-state fail-closed invariant during a fallback window.
+// See unionstore.go doc comment: a masked single-side error would let a
+// `false` from the side NOT holding the marker serve past the cap.
+func TestUnionFcapStore_SingleSideErrorPropagates(t *testing.T) {
 	fallback := fcap.NewMockStore()
 	ctx := context.Background()
 	if err := fallback.SetFields(ctx, "u", map[string]string{"X": "1"}, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	primaryDown := errors.New("primary down")
 
-	u := &unionFcapStore{primary: primary, fallback: fallback}
-	got, err := u.FieldExistsBatch(ctx, []fcap.FieldLookup{{Key: "u", Field: "X"}})
-	if err != nil {
-		t.Fatalf("expected primary error to be masked when fallback ok, got err=%v", err)
-	}
-	if len(got) != 1 || !got[0] {
-		t.Errorf("expected [true] from fallback, got %v", got)
-	}
+	t.Run("primary errors", func(t *testing.T) {
+		u := &unionFcapStore{primary: &errFcapStore{err: primaryDown}, fallback: fallback}
+		got, err := u.FieldExistsBatch(ctx, []fcap.FieldLookup{{Key: "u", Field: "X"}})
+		if err == nil {
+			t.Fatal("expected error to propagate on single-side failure")
+		}
+		if !errors.Is(err, primaryDown) {
+			t.Errorf("expected joined error to contain primary err, got %v", err)
+		}
+		if got != nil {
+			t.Errorf("expected nil result on error, got %v", got)
+		}
+	})
+
+	t.Run("fallback errors", func(t *testing.T) {
+		fallbackDown := errors.New("fallback down")
+		u := &unionFcapStore{primary: fallback, fallback: &errFcapStore{err: fallbackDown}}
+		_, err := u.FieldExistsBatch(ctx, []fcap.FieldLookup{{Key: "u", Field: "X"}})
+		if err == nil {
+			t.Fatal("expected error to propagate on single-side failure")
+		}
+		if !errors.Is(err, fallbackDown) {
+			t.Errorf("expected joined error to contain fallback err, got %v", err)
+		}
+	})
 }
 
 func TestUnionFcapStore_BothErrorReturnsJoinedError(t *testing.T) {
@@ -69,6 +90,32 @@ func TestUnionFcapStore_BothErrorReturnsJoinedError(t *testing.T) {
 	}
 	if !errors.Is(err, primary.err) || !errors.Is(err, fallback.err) {
 		t.Errorf("expected joined error containing both, got %v", err)
+	}
+}
+
+// TestUnionFcapStore_FieldExistsSingle exercises the single-key path
+// (previously untested) and confirms it defers to FieldExistsBatch.
+func TestUnionFcapStore_FieldExistsSingle(t *testing.T) {
+	primary := fcap.NewMockStore()
+	fallback := fcap.NewMockStore()
+	ctx := context.Background()
+	_ = fallback.SetFields(ctx, "u", map[string]string{"F": "1"}, time.Now().Add(time.Hour))
+	u := &unionFcapStore{primary: primary, fallback: fallback}
+
+	got, err := u.FieldExists(ctx, "u", "F")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
+		t.Error("expected true from union on fallback-only hit")
+	}
+
+	got, err = u.FieldExists(ctx, "u", "missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got {
+		t.Error("expected false when neither side holds the field")
 	}
 }
 

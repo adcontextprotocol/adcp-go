@@ -151,9 +151,19 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 			return bundle.audienceCloser.Close()
 		})
 	}
+	if bundle.audienceFallbackCloser != nil {
+		registry.add("audience-valkey-fallback", func(_ context.Context) error {
+			return bundle.audienceFallbackCloser.Close()
+		})
+	}
 	registry.add("fcap-valkey", func(_ context.Context) error {
 		return bundle.fcapCloser.Close()
 	})
+	if bundle.fcapFallbackCloser != nil {
+		registry.add("fcap-valkey-fallback", func(_ context.Context) error {
+			return bundle.fcapFallbackCloser.Close()
+		})
+	}
 	registry.add("background-refresh", func(_ context.Context) error {
 		// Cancels both the TMP keystore and TMPX JWKS refresh goroutines.
 		bundle.cancelBackground()
@@ -263,15 +273,17 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 // shutdown registry. cancelBackground stops the keystore and TMPX JWKS
 // refresh goroutines together.
 type bundle struct {
-	service          *Service
-	configSvc        *identityconfig.Service
-	audienceSvc      *audience.Service
-	audienceCloser   interface{ Close() error }
-	fcapCloser       interface{ Close() error }
-	keystore         tmproto.KeyStore
-	tmpx             *TMPXSealer
-	canonicalizer    *IdentityCanonicalizer
-	cancelBackground context.CancelFunc
+	service                *Service
+	configSvc              *identityconfig.Service
+	audienceSvc            *audience.Service
+	audienceCloser         interface{ Close() error }
+	fcapCloser             interface{ Close() error }
+	audienceFallbackCloser interface{ Close() error }
+	fcapFallbackCloser     interface{ Close() error }
+	keystore               tmproto.KeyStore
+	tmpx                   *TMPXSealer
+	canonicalizer          *IdentityCanonicalizer
+	cancelBackground       context.CancelFunc
 }
 
 // buildBundle wires up every dependency the Service needs. Constructed
@@ -343,22 +355,27 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("fcap valkey: %w", err)
 	}
 	addRollback("fcap-valkey", fcapCloser.Close)
-	var fcapStore fcap.Store = fcapPrimaryStore
+	var (
+		fcapStore         fcap.Store = fcapPrimaryStore
+		fcapFallbackClose interface{ Close() error }
+	)
 	if cfg.FallbackFCapValkey.Enabled {
 		fallbackStore, fallbackCloser, err := redisstore.Build(ctx, cfg.FallbackFCapValkey.ToRedisStoreConfig())
 		if err != nil {
 			return nil, fmt.Errorf("fcap valkey (fallback): %w", err)
 		}
 		addRollback("fcap-valkey-fallback", fallbackCloser.Close)
-		fcapStore = &unionFcapStore{primary: fcapPrimaryStore, fallback: fallbackStore, recorder: recorder}
+		fcapFallbackClose = fallbackCloser
+		fcapStore = &unionFcapStore{primary: fcapPrimaryStore, fallback: fallbackStore}
 		logger.Info("fcap valkey fallback enabled — reads will OR across two topologies until FCAP_FALLBACK_VALKEY_* is removed")
 	}
 	fcapSvc := fcap.New(fcapStore)
 
 	// Audience valkey (optional). Same fallback wrapping as fcap.
 	var (
-		audienceSvc    *audience.Service
-		audienceCloser interface{ Close() error }
+		audienceSvc            *audience.Service
+		audienceCloser         interface{ Close() error }
+		audienceFallbackCloser interface{ Close() error }
 	)
 	if cfg.AudienceValkey.Enabled {
 		primaryStore, closer, err := redisstore.Build(ctx, cfg.AudienceValkey.ToRedisStoreConfig())
@@ -373,7 +390,8 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 				return nil, fmt.Errorf("audience valkey (fallback): %w", err)
 			}
 			addRollback("audience-valkey-fallback", fallbackCloser.Close)
-			audienceStore = &unionAudienceStore{primary: primaryStore, fallback: fallbackStore, recorder: recorder}
+			audienceFallbackCloser = fallbackCloser
+			audienceStore = &unionAudienceStore{primary: primaryStore, fallback: fallbackStore}
 			logger.Info("audience valkey fallback enabled — reads will OR across two topologies until AUDIENCE_FALLBACK_VALKEY_* is removed")
 		}
 		audienceSvc = audience.New(audienceStore)
@@ -440,15 +458,17 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	canonicalizer := NewIdentityCanonicalizer(lrSidecar, logger, recorder)
 
 	return &bundle{
-		service:          svc,
-		configSvc:        configSvc,
-		audienceSvc:      audienceSvc,
-		audienceCloser:   audienceCloser,
-		fcapCloser:       fcapCloser,
-		keystore:         keystore,
-		tmpx:             tmpx,
-		canonicalizer:    canonicalizer,
-		cancelBackground: cancelBg,
+		service:                svc,
+		configSvc:              configSvc,
+		audienceSvc:            audienceSvc,
+		audienceCloser:         audienceCloser,
+		fcapCloser:             fcapCloser,
+		audienceFallbackCloser: audienceFallbackCloser,
+		fcapFallbackCloser:     fcapFallbackClose,
+		keystore:               keystore,
+		tmpx:                   tmpx,
+		canonicalizer:          canonicalizer,
+		cancelBackground:       cancelBg,
 	}, nil
 }
 
