@@ -56,8 +56,13 @@ services:
       dockerfile: bench/perf/Dockerfile
     entrypoint: ["/sbin/tini", "--", "/usr/local/bin/seeder"]
     environment:
-      AUDIENCE_ADDR: "audience-valkey:6379"
-      FCAP_ADDR: "fcap-valkey:6379"
+      # Seeder honors the same *_VALKEY_{MODE,SHARDS} contract identity-agent
+      # reads through, so writes fan out across shards via the exact same
+      # routing (standalone / cluster / shadow-CRC16).
+      AUDIENCE_VALKEY_MODE: "${AUDIENCE_VALKEY_MODE:-standalone}"
+      AUDIENCE_VALKEY_SHARDS: '${AUDIENCE_VALKEY_SHARDS:-{"0":"audience-valkey:6379"}}'
+      FCAP_VALKEY_MODE: "${FCAP_VALKEY_MODE:-standalone}"
+      FCAP_VALKEY_SHARDS: '${FCAP_VALKEY_SHARDS:-{"0":"fcap-valkey:6379"}}'
       SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
       TOTAL_USERS: "${TOTAL_USERS:-100000}"
       TOTAL_AUDIENCES: "${TOTAL_AUDIENCES:-500}"
@@ -65,11 +70,6 @@ services:
       TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
       FCAP_USER_FRACTION: "${FCAP_USER_FRACTION:-0.5}"
       PACKAGES_CAPPED_PER_USER: "${PACKAGES_CAPPED_PER_USER:-10}"
-    depends_on:
-      audience-valkey:
-        condition: service_healthy
-      fcap-valkey:
-        condition: service_healthy
 
   identity-agent:
     build:
@@ -115,19 +115,19 @@ services:
       CONFIG_REFRESH_INTERVAL: "5m"
       CONFIG_START_MODE: "retry"
       CONFIG_START_RETRY_DEADLINE: "1m"
-      # Frequency-cap Valkey (required).
-      FCAP_VALKEY_MODE: "standalone"
-      FCAP_VALKEY_SHARDS: '{"0":"fcap-valkey:6379"}'
+      # Frequency-cap Valkey. MODE + SHARDS come from the runner so the same
+      # image can drive standalone (1 shard), cluster (Redis Cluster protocol),
+      # or shadow (client-side CRC16 hashing across N standalones).
+      FCAP_VALKEY_MODE: "${FCAP_VALKEY_MODE:-standalone}"
+      FCAP_VALKEY_SHARDS: '${FCAP_VALKEY_SHARDS:-{"0":"fcap-valkey:6379"}}'
       FCAP_VALKEY_DB: "0"
       FCAP_VALKEY_DIAL_TIMEOUT: "5s"
       FCAP_VALKEY_READ_TIMEOUT: "20ms"
       FCAP_VALKEY_POOL_SIZE: "${VALKEY_POOL_SIZE:-64}"
       FCAP_TIMEOUT: "15ms"
-      # Audience Valkey — always wired. Whether it is exercised is controlled
-      # by AUDIENCE_PACKAGES in the config-server (0 = no package carries an
-      # audience rule, so the store is not consulted per-request).
-      AUDIENCE_VALKEY_MODE: "standalone"
-      AUDIENCE_VALKEY_SHARDS: '{"0":"audience-valkey:6379"}'
+      # Audience Valkey — same MODE + SHARDS contract as fcap.
+      AUDIENCE_VALKEY_MODE: "${AUDIENCE_VALKEY_MODE:-standalone}"
+      AUDIENCE_VALKEY_SHARDS: '${AUDIENCE_VALKEY_SHARDS:-{"0":"audience-valkey:6379"}}'
       AUDIENCE_VALKEY_DB: "0"
       AUDIENCE_VALKEY_DIAL_TIMEOUT: "5s"
       AUDIENCE_VALKEY_READ_TIMEOUT: "20ms"
@@ -166,3 +166,92 @@ services:
       - ${RESULTS_DIR:-./results}:/results
     depends_on:
       - identity-agent
+
+  # ------------------------------------------------------------------
+  # Multi-shard shadow-mode nodes (extra standalone Valkeys). Combined
+  # with the baseline fcap-valkey / audience-valkey (which stay shard 0),
+  # these become shards 1..N-1 under `FCAP_VALKEY_MODE=shadow` etc. Only
+  # start when the runner is testing shadow topologies.
+  # ------------------------------------------------------------------
+  fcap-valkey-2:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  fcap-valkey-3:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  fcap-valkey-4:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  audience-valkey-2:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  audience-valkey-3:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  audience-valkey-4:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    profiles: [shadow]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+
+  # ------------------------------------------------------------------
+  # Cluster-mode nodes. Each runs valkey-server with --cluster-enabled;
+  # run-scaling.sh forms the cluster with `valkey-cli --cluster create`
+  # after they're up. Isolated from the shadow shards so cluster and
+  # shadow tests don't interfere.
+  # ------------------------------------------------------------------
+  fcap-cluster-1: &fcap_cluster
+    image: valkey/valkey:8.0-alpine
+    command: [
+      "valkey-server", "--cluster-enabled", "yes", "--cluster-node-timeout", "5000",
+      "--appendonly", "no", "--save", "", "--maxmemory-policy", "allkeys-lru",
+      "--cluster-config-file", "/tmp/nodes.conf"
+    ]
+    profiles: [cluster]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  fcap-cluster-2:
+    <<: *fcap_cluster
+  fcap-cluster-3:
+    <<: *fcap_cluster
+  fcap-cluster-4:
+    <<: *fcap_cluster
+    profiles: [cluster-large]
+  fcap-cluster-5:
+    <<: *fcap_cluster
+    profiles: [cluster-large]
+  fcap-cluster-6:
+    <<: *fcap_cluster
+    profiles: [cluster-large]
+
+  audience-cluster-1: &audience_cluster
+    image: valkey/valkey:8.0-alpine
+    command: [
+      "valkey-server", "--cluster-enabled", "yes", "--cluster-node-timeout", "5000",
+      "--appendonly", "no", "--save", "", "--maxmemory-policy", "allkeys-lru",
+      "--cluster-config-file", "/tmp/nodes.conf"
+    ]
+    profiles: [cluster]
+    healthcheck: {test: ["CMD", "valkey-cli", "ping"], interval: 2s, timeout: 1s, retries: 30}
+  audience-cluster-2:
+    <<: *audience_cluster
+  audience-cluster-3:
+    <<: *audience_cluster
+  audience-cluster-4:
+    <<: *audience_cluster
+    profiles: [cluster-large]
+  audience-cluster-5:
+    <<: *audience_cluster
+    profiles: [cluster-large]
+  audience-cluster-6:
+    <<: *audience_cluster
+    profiles: [cluster-large]

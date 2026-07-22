@@ -1,20 +1,24 @@
-// seeder populates the audience and fcap Valkey backends with synthetic data
-// shaped to what the identity-agent reads at request time.
+// seeder populates the audience and fcap Valkey backends with synthetic
+// data shaped to what the identity-agent reads at request time.
+//
+// The seeder honors the same {AUDIENCE,FCAP}_VALKEY_{MODE,SHARDS} env
+// vars the identity-agent reads through, so writes land in the same
+// place identity-agent's client-side CRC16 (shadow) or CLUSTER SLOTS
+// (cluster) reads from.
 //
 // Key layouts (see targeting/audience and targeting/fcap):
 //
 //	audience:user:{sha256(user_token)[:16]}  HSET  field=audienceID  value=score
 //	fcap:{sha256(user_token)[:16]}           HSET  field="{sellerURL}:{packageID}" value="1"
-//
-// Sized by env vars so the benchmark can shape memory pressure and match /
-// miss ratios without a code change.
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -24,9 +28,6 @@ import (
 )
 
 func main() {
-	audienceAddr := envStr("AUDIENCE_ADDR", "audience-valkey:6379")
-	fcapAddr := envStr("FCAP_ADDR", "fcap-valkey:6379")
-
 	totalUsers := envInt("TOTAL_USERS", 100_000)
 	totalAudiences := envInt("TOTAL_AUDIENCES", 500)
 	audiencesPerUser := envInt("AUDIENCES_PER_USER", 5)
@@ -42,38 +43,38 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 
-	audienceClient := redis.NewClient(&redis.Options{Addr: audienceAddr, PoolSize: workers})
-	defer audienceClient.Close()
-	fcapClient := redis.NewClient(&redis.Options{Addr: fcapAddr, PoolSize: workers})
-	defer fcapClient.Close()
-
-	if err := waitReady(ctx, audienceClient, "audience"); err != nil {
-		log.Fatalf("%v", err)
+	audienceRouter, err := newRouter(ctx, "AUDIENCE")
+	if err != nil {
+		log.Fatalf("audience: %v", err)
 	}
-	if err := waitReady(ctx, fcapClient, "fcap"); err != nil {
-		log.Fatalf("%v", err)
+	defer audienceRouter.Close()
+	fcapRouter, err := newRouter(ctx, "FCAP")
+	if err != nil {
+		log.Fatalf("fcap: %v", err)
 	}
+	defer fcapRouter.Close()
 
 	log.Printf("flushing audience + fcap stores")
-	if err := audienceClient.FlushDB(ctx).Err(); err != nil {
+	if err := audienceRouter.FlushAll(ctx); err != nil {
 		log.Fatalf("flush audience: %v", err)
 	}
-	if err := fcapClient.FlushDB(ctx).Err(); err != nil {
+	if err := fcapRouter.FlushAll(ctx); err != nil {
 		log.Fatalf("flush fcap: %v", err)
 	}
 
 	if audiencesPerUser > 0 && totalAudiences > 0 {
-		log.Printf("seeding audience: users=%d audiences/user=%d total_audiences=%d",
-			totalUsers, audiencesPerUser, totalAudiences)
-		seedAudience(ctx, audienceClient, totalUsers, audiencesPerUser, totalAudiences, workers, pipelineSize)
+		log.Printf("seeding audience: users=%d audiences/user=%d total_audiences=%d topology=%s shards=%d",
+			totalUsers, audiencesPerUser, totalAudiences, audienceRouter.mode, audienceRouter.NumShards())
+		seedAudience(ctx, audienceRouter, totalUsers, audiencesPerUser, totalAudiences, workers, pipelineSize)
 	} else {
-		log.Printf("skipping audience seed (AUDIENCES_PER_USER=%d, TOTAL_AUDIENCES=%d)", audiencesPerUser, totalAudiences)
+		log.Printf("skipping audience seed (AUDIENCES_PER_USER=%d, TOTAL_AUDIENCES=%d)",
+			audiencesPerUser, totalAudiences)
 	}
 
 	if packagesCappedPerUser > 0 && fcapUserFraction > 0 && totalPackages > 0 {
-		log.Printf("seeding fcap: capped_users=%d packages_per_user=%d",
-			int(float64(totalUsers)*fcapUserFraction), packagesCappedPerUser)
-		seedFCap(ctx, fcapClient, totalUsers, fcapUserFraction, sellerAgentURL, totalPackages, packagesCappedPerUser, workers, pipelineSize)
+		log.Printf("seeding fcap: capped_users=%d packages_per_user=%d topology=%s shards=%d",
+			int(float64(totalUsers)*fcapUserFraction), packagesCappedPerUser, fcapRouter.mode, fcapRouter.NumShards())
+		seedFCap(ctx, fcapRouter, totalUsers, fcapUserFraction, sellerAgentURL, totalPackages, packagesCappedPerUser, workers, pipelineSize)
 	} else {
 		log.Printf("skipping fcap seed (PACKAGES_CAPPED_PER_USER=%d, FCAP_USER_FRACTION=%g, TOTAL_PACKAGES=%d)",
 			packagesCappedPerUser, fcapUserFraction, totalPackages)
@@ -82,46 +83,180 @@ func main() {
 	log.Printf("seeder done")
 }
 
-func waitReady(ctx context.Context, c *redis.Client, name string) error {
-	deadline := time.Now().Add(2 * time.Minute)
-	for {
-		if err := c.Ping(ctx).Err(); err == nil {
-			return nil
-		} else if time.Now().After(deadline) {
-			return fmt.Errorf("%s: not ready after 2m: %w", name, err)
+// router dispatches writes to the correct backend for a given key,
+// matching the identity-agent's redisstore routing per MODE:
+//
+//	standalone: one client (Shards["0"]).
+//	cluster:    one ClusterClient across all shards; go-redis routes
+//	            per key via CLUSTER SLOTS.
+//	shadow:     N standalone clients; picks the shard client by
+//	            CRC16(hashtag(key)) % 16384 → valkey-cli-style ordinal.
+type router struct {
+	mode  string
+	sm    *shardMap        // used only in shadow mode
+	shard []*redis.Client  // used only in shadow mode
+	one   redis.UniversalClient
+}
+
+func newRouter(ctx context.Context, prefix string) (*router, error) {
+	mode := envStr(prefix+"_VALKEY_MODE", "standalone")
+	shardsRaw := envStr(prefix+"_VALKEY_SHARDS", "")
+	if shardsRaw == "" {
+		return nil, fmt.Errorf("%s_VALKEY_SHARDS is required", prefix)
+	}
+	addrs := map[string]string{}
+	if err := json.Unmarshal([]byte(shardsRaw), &addrs); err != nil {
+		return nil, fmt.Errorf("%s_VALKEY_SHARDS: %w", prefix, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("%s_VALKEY_SHARDS has no entries", prefix)
+	}
+	poolSize := envInt(prefix+"_VALKEY_POOL_SIZE", 64)
+	username := envStr(prefix+"_VALKEY_USERNAME", "")
+	password := envStr(prefix+"_VALKEY_PASSWORD", "")
+	db := envInt(prefix+"_VALKEY_DB", 0)
+
+	r := &router{mode: mode}
+	switch mode {
+	case "standalone":
+		addr, ok := addrs["0"]
+		if !ok {
+			return nil, fmt.Errorf("%s: mode=standalone requires shards[0]", prefix)
 		}
-		time.Sleep(500 * time.Millisecond)
+		r.one = redis.NewClient(&redis.Options{
+			Addr:     addr,
+			Username: username,
+			Password: password,
+			DB:       db,
+			PoolSize: poolSize,
+		})
+	case "cluster":
+		r.one = redis.NewClusterClient(&redis.ClusterOptions{
+			Addrs:    sortedAddrs(addrs),
+			Username: username,
+			Password: password,
+			PoolSize: poolSize,
+		})
+	case "shadow":
+		ordinals := make([]int, 0, len(addrs))
+		for k := range addrs {
+			n, err := strconv.Atoi(k)
+			if err != nil {
+				return nil, fmt.Errorf("%s: shadow shard key %q is not an integer", prefix, k)
+			}
+			ordinals = append(ordinals, n)
+		}
+		sort.Ints(ordinals)
+		r.shard = make([]*redis.Client, len(ordinals))
+		for i, ord := range ordinals {
+			if ord != i {
+				return nil, fmt.Errorf("%s: shadow ordinals must be contiguous 0..%d, got %v", prefix, len(ordinals)-1, ordinals)
+			}
+			r.shard[i] = redis.NewClient(&redis.Options{
+				Addr:     addrs[strconv.Itoa(ord)],
+				Username: username,
+				Password: password,
+				DB:       db,
+				PoolSize: poolSize,
+			})
+		}
+		r.sm = newShardMap(len(r.shard))
+	default:
+		return nil, fmt.Errorf("%s: unsupported mode %q", prefix, mode)
+	}
+
+	if err := r.WaitReady(ctx, 2*time.Minute); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
+func (r *router) NumShards() int {
+	if r.mode == "shadow" {
+		return len(r.shard)
+	}
+	return 1
+}
+
+// clientFor returns the target for key. Cluster mode returns the shared
+// client (routing happens inside go-redis via CLUSTER SLOTS); shadow
+// mode picks the per-shard client by CRC16.
+func (r *router) clientFor(key string) redis.UniversalClient {
+	if r.mode == "shadow" {
+		return r.shard[r.sm.shard(key)]
+	}
+	return r.one
+}
+
+func (r *router) WaitReady(ctx context.Context, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	pingOne := func(c redis.UniversalClient, label string) error {
+		var last error
+		for time.Now().Before(deadline) {
+			if err := c.Ping(ctx).Err(); err == nil {
+				return nil
+			} else {
+				last = err
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+		return fmt.Errorf("%s: not ready after %s: %w", label, timeout, last)
+	}
+	if r.one != nil {
+		if err := pingOne(r.one, r.mode); err != nil {
+			return err
+		}
+	}
+	for i, c := range r.shard {
+		if err := pingOne(c, fmt.Sprintf("shadow-%d", i)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *router) FlushAll(ctx context.Context) error {
+	switch r.mode {
+	case "standalone":
+		return r.one.FlushDB(ctx).Err()
+	case "cluster":
+		// ClusterClient.FlushDB fans out to every master.
+		return r.one.(*redis.ClusterClient).ForEachMaster(ctx, func(ctx context.Context, c *redis.Client) error {
+			return c.FlushDB(ctx).Err()
+		})
+	case "shadow":
+		for i, c := range r.shard {
+			if err := c.FlushDB(ctx).Err(); err != nil {
+				return fmt.Errorf("shard %d flush: %w", i, err)
+			}
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported mode %q", r.mode)
+}
+
+func (r *router) Close() {
+	if r.one != nil {
+		_ = r.one.Close()
+	}
+	for _, c := range r.shard {
+		_ = c.Close()
 	}
 }
 
-// UserToken returns the deterministic token string for user index i. Kept
-// in sync with loadgen's userToken() so the fcap/audience keys the seeder
-// writes match what the identity-agent computes at request time. The 32-char
-// lowercase hex form is the canonical form for MAID (16-byte decoder) — it
-// round-trips through Decode(...)→Canonical(...) unchanged, so
-// identityhash.Hash of this string matches identityhash.Hash of what the
-// agent hashes after canonicalization.
+// UserToken must match loadgen's userToken(). See loadgen for the format
+// rationale (MAID-shaped 32-hex-char string that round-trips through the
+// identity-agent's canonicalizer unchanged).
 func UserToken(i int) string { return fmt.Sprintf("%032x", i) }
 
-func seedAudience(ctx context.Context, c *redis.Client, totalUsers, audsPerUser, totalAuds, workers, pipeSize int) {
+func seedAudience(ctx context.Context, r *router, totalUsers, audsPerUser, totalAuds, workers, pipeSize int) {
 	work := make(chan int, workers*4)
 	var wg sync.WaitGroup
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pipe := c.Pipeline()
-			batched := 0
-			flush := func() {
-				if batched == 0 {
-					return
-				}
-				if _, err := pipe.Exec(ctx); err != nil {
-					log.Fatalf("audience pipe exec: %v", err)
-				}
-				batched = 0
-			}
-			for u := range work {
+			seedWorker(ctx, r, work, pipeSize, func(u int, add func(key string, fields map[string]any, ttl time.Duration)) {
 				token := UserToken(u)
 				key := "audience:user:" + identityhash.Hash(token)
 				fields := make(map[string]any, audsPerUser)
@@ -129,13 +264,8 @@ func seedAudience(ctx context.Context, c *redis.Client, totalUsers, audsPerUser,
 					id := (u*audsPerUser + j) % totalAuds
 					fields[fmt.Sprintf("aud-%05d", id)] = "1.0"
 				}
-				pipe.HSet(ctx, key, fields)
-				batched++
-				if batched >= pipeSize {
-					flush()
-				}
-			}
-			flush()
+				add(key, fields, 0)
+			})
 		}()
 	}
 	tick := time.NewTicker(10 * time.Second)
@@ -154,7 +284,7 @@ func seedAudience(ctx context.Context, c *redis.Client, totalUsers, audsPerUser,
 	log.Printf("  audience: seeded %d users in %s", totalUsers, time.Since(start))
 }
 
-func seedFCap(ctx context.Context, c *redis.Client, totalUsers int, userFraction float64, sellerURL string, totalPkgs, pkgsPerUser, workers, pipeSize int) {
+func seedFCap(ctx context.Context, r *router, totalUsers int, userFraction float64, sellerURL string, totalPkgs, pkgsPerUser, workers, pipeSize int) {
 	capped := int(float64(totalUsers) * userFraction)
 	if capped == 0 {
 		return
@@ -165,18 +295,7 @@ func seedFCap(ctx context.Context, c *redis.Client, totalUsers int, userFraction
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pipe := c.Pipeline()
-			batched := 0
-			flush := func() {
-				if batched == 0 {
-					return
-				}
-				if _, err := pipe.Exec(ctx); err != nil {
-					log.Fatalf("fcap pipe exec: %v", err)
-				}
-				batched = 0
-			}
-			for u := range work {
+			seedWorker(ctx, r, work, pipeSize, func(u int, add func(key string, fields map[string]any, ttl time.Duration)) {
 				token := UserToken(u)
 				key := "fcap:" + identityhash.Hash(token)
 				fields := make(map[string]any, pkgsPerUser)
@@ -184,14 +303,8 @@ func seedFCap(ctx context.Context, c *redis.Client, totalUsers int, userFraction
 					id := (u*pkgsPerUser + j) % totalPkgs
 					fields[sellerURL+":"+fmt.Sprintf("pkg-%05d", id)] = "1"
 				}
-				pipe.HSet(ctx, key, fields)
-				pipe.Expire(ctx, key, 24*time.Hour)
-				batched++
-				if batched >= pipeSize {
-					flush()
-				}
-			}
-			flush()
+				add(key, fields, 24*time.Hour)
+			})
 		}()
 	}
 	start := time.Now()
@@ -201,6 +314,72 @@ func seedFCap(ctx context.Context, c *redis.Client, totalUsers int, userFraction
 	close(work)
 	wg.Wait()
 	log.Printf("  fcap: seeded %d users in %s", capped, time.Since(start))
+}
+
+// seedWorker buckets writes by destination shard client (matters for
+// shadow mode where each shard has its own pipeline), flushing when a
+// bucket reaches pipeSize.
+func seedWorker(ctx context.Context, r *router, work <-chan int, pipeSize int, build func(int, func(key string, fields map[string]any, ttl time.Duration))) {
+	// Per-client pending pipeline. In standalone/cluster mode this map has
+	// a single entry; in shadow mode there's one entry per shard.
+	pending := make(map[redis.UniversalClient]redis.Pipeliner)
+	counts := make(map[redis.UniversalClient]int)
+	flush := func(c redis.UniversalClient) {
+		p, ok := pending[c]
+		if !ok || counts[c] == 0 {
+			return
+		}
+		if _, err := p.Exec(ctx); err != nil {
+			log.Fatalf("seed pipeline exec: %v", err)
+		}
+		delete(pending, c)
+		delete(counts, c)
+	}
+	flushAll := func() {
+		for c := range pending {
+			flush(c)
+		}
+	}
+	add := func(key string, fields map[string]any, ttl time.Duration) {
+		c := r.clientFor(key)
+		p, ok := pending[c]
+		if !ok {
+			p = c.Pipeline()
+			pending[c] = p
+		}
+		p.HSet(ctx, key, fields)
+		if ttl > 0 {
+			p.Expire(ctx, key, ttl)
+		}
+		counts[c]++
+		if counts[c] >= pipeSize {
+			flush(c)
+		}
+	}
+	for u := range work {
+		build(u, add)
+	}
+	flushAll()
+}
+
+func sortedAddrs(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		a, ea := strconv.Atoi(keys[i])
+		b, eb := strconv.Atoi(keys[j])
+		if ea == nil && eb == nil {
+			return a < b
+		}
+		return keys[i] < keys[j]
+	})
+	out := make([]string, len(keys))
+	for i, k := range keys {
+		out[i] = m[k]
+	}
+	return out
 }
 
 func envStr(name, def string) string {
