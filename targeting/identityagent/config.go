@@ -686,6 +686,15 @@ func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 	if err := json.Unmarshal([]byte(shardsRaw), &shards); err != nil {
 		return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_SHARDS is not a JSON object: %w", prefix, err)}
 	}
+	// Treat a valid-JSON empty object identically to an unset env var. A
+	// ConfigMap emitter can't easily omit a key, so an unconfigured
+	// fallback often lands as "{}" on the pod — which without this check
+	// falls through with Enabled=true and empty Shards, then fails
+	// Config.Validate. Since len(shards)==0 is never a useful runtime
+	// configuration anyway, collapse both spellings to "disabled".
+	if len(shards) == 0 {
+		return ValkeyBlock{}, nil
+	}
 
 	mode := lookupString(prefix+"_VALKEY_MODE", string(redisstore.ModeStandalone))
 	db, err := lookupInt(prefix+"_VALKEY_DB", 0)

@@ -284,6 +284,21 @@ func TestLoadConfigFromEnv_FallbackBlocks(t *testing.T) {
 		assert.False(t, cfg.FallbackAudienceValkey.Enabled)
 	})
 
+	// A ConfigMap emitter that renders an unset map as jsonencode({}) →
+	// "{}" was blowing up identity-agent at startup with "shards must
+	// contain at least one entry" because loadValkeyBlock only gated on
+	// shardsRaw == "". len(shards)==0 must be treated identically to
+	// unset — a fallback with zero shards is never a valid runtime.
+	t.Run(`empty-map JSON "{}" is disabled, not a validation error`, func(t *testing.T) {
+		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", "{}")
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_SHARDS", "{}")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		require.NoError(t, cfg.Validate())
+		assert.False(t, cfg.FallbackFCapValkey.Enabled)
+		assert.False(t, cfg.FallbackAudienceValkey.Enabled)
+	})
+
 	t.Run("fallback env sets both blocks with N-shard shape", func(t *testing.T) {
 		t.Setenv("FCAP_FALLBACK_VALKEY_MODE", "shadow")
 		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", `{"0":"fc-old:6379"}`)
