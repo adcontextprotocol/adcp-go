@@ -90,12 +90,22 @@ type Config struct {
 
 	LogLevel string
 
-	TMP             TMPConfig
-	TMPX            TMPXConfig
-	LiveRamp        LiveRampSidecarConfig
-	IdentityConfig  IdentityConfigSourceConfig
-	AudienceValkey  ValkeyBlock
-	FCapValkey      ValkeyBlock
+	TMP            TMPConfig
+	TMPX           TMPXConfig
+	LiveRamp       LiveRampSidecarConfig
+	IdentityConfig IdentityConfigSourceConfig
+	AudienceValkey ValkeyBlock
+	FCapValkey     ValkeyBlock
+
+	// FallbackFCapValkey / FallbackAudienceValkey, when Enabled, wrap the
+	// primary store with a union-read adapter used during a Valkey
+	// resharding: reads OR the primary (new topology) with the fallback
+	// (old topology) so answers stay correct while the reshard is in
+	// flight. Writes always go to the primary. Both blocks default off;
+	// the resharding runbook is the only expected caller.
+	FallbackFCapValkey     ValkeyBlock
+	FallbackAudienceValkey ValkeyBlock
+
 	AudienceTimeout time.Duration
 	FCapTimeout     time.Duration
 
@@ -421,6 +431,15 @@ func LoadConfigFromEnv() (Config, error) {
 	errs = append(errs, blockErrs...)
 	fcapBlock, blockErrs := loadValkeyBlock("FCAP")
 	errs = append(errs, blockErrs...)
+	// Fallback blocks are used only during a Valkey resharding — the
+	// runbook sets FCAP_FALLBACK_VALKEY_SHARDS / AUDIENCE_FALLBACK_VALKEY_SHARDS
+	// to the pre-migration topology, the primary block above holds the new
+	// topology, and the two get OR-ed at read time. Absent either key →
+	// disabled (Enabled=false), which is the default steady-state config.
+	fallbackAudienceBlock, blockErrs := loadValkeyBlock("AUDIENCE_FALLBACK")
+	errs = append(errs, blockErrs...)
+	fallbackFcapBlock, blockErrs := loadValkeyBlock("FCAP_FALLBACK")
+	errs = append(errs, blockErrs...)
 
 	cfg := Config{
 		HTTPPort:                   port,
@@ -473,10 +492,12 @@ func LoadConfigFromEnv() (Config, error) {
 			StartRetryDeadline: startRetryDeadline,
 			ExtraHeaders:       extraHeaders,
 		},
-		AudienceValkey:  audienceBlock,
-		FCapValkey:      fcapBlock,
-		AudienceTimeout: audienceTimeout,
-		FCapTimeout:     fcapTimeout,
+		AudienceValkey:         audienceBlock,
+		FCapValkey:             fcapBlock,
+		FallbackAudienceValkey: fallbackAudienceBlock,
+		FallbackFCapValkey:     fallbackFcapBlock,
+		AudienceTimeout:        audienceTimeout,
+		FCapTimeout:            fcapTimeout,
 		Metrics: MetricsConfig{
 			Enabled:   metricsEnabled,
 			Namespace: lookupString("METRICS_NAMESPACE", defaultNamespace),
@@ -604,6 +625,22 @@ func (c Config) Validate() error {
 	if c.AudienceValkey.Enabled {
 		if err := c.AudienceValkey.ToRedisStoreConfig().Validate(); err != nil {
 			errs = append(errs, fmt.Errorf("AUDIENCE_VALKEY: %w", err))
+		}
+	}
+	if c.FallbackFCapValkey.Enabled {
+		if !c.FCapValkey.Enabled {
+			errs = append(errs, errors.New("FCAP_FALLBACK_VALKEY_* is set but FCAP_VALKEY_* is not; fallback requires a primary"))
+		}
+		if err := c.FallbackFCapValkey.ToRedisStoreConfig().Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("FCAP_FALLBACK_VALKEY: %w", err))
+		}
+	}
+	if c.FallbackAudienceValkey.Enabled {
+		if !c.AudienceValkey.Enabled {
+			errs = append(errs, errors.New("AUDIENCE_FALLBACK_VALKEY_* is set but AUDIENCE_VALKEY_* is not; fallback requires a primary"))
+		}
+		if err := c.FallbackAudienceValkey.ToRedisStoreConfig().Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("AUDIENCE_FALLBACK_VALKEY: %w", err))
 		}
 	}
 	if c.TMPX.EncryptJWKSURL != "" || c.TMPX.Country != "" || c.TMPX.Priority != "" {

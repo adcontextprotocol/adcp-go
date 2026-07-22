@@ -267,6 +267,55 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromEnv_FallbackBlocks(t *testing.T) {
+	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
+	t.Setenv("CONFIG_SOURCE_TOKEN", "tok")
+	t.Setenv("TMP_ALLOW_UNSIGNED", "true")
+	t.Setenv("FCAP_VALKEY_MODE", "shadow")
+	t.Setenv("FCAP_VALKEY_SHARDS", `{"0":"fc-a:6379","1":"fc-b:6379"}`)
+	t.Setenv("AUDIENCE_VALKEY_MODE", "shadow")
+	t.Setenv("AUDIENCE_VALKEY_SHARDS", `{"0":"aud-a:6379","1":"aud-b:6379"}`)
+
+	t.Run("no fallback env → both fallback blocks disabled", func(t *testing.T) {
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		require.NoError(t, cfg.Validate())
+		assert.False(t, cfg.FallbackFCapValkey.Enabled)
+		assert.False(t, cfg.FallbackAudienceValkey.Enabled)
+	})
+
+	t.Run("fallback env sets both blocks with N-shard shape", func(t *testing.T) {
+		t.Setenv("FCAP_FALLBACK_VALKEY_MODE", "shadow")
+		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", `{"0":"fc-old:6379"}`)
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_MODE", "shadow")
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_SHARDS", `{"0":"aud-old:6379"}`)
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		require.NoError(t, cfg.Validate())
+		assert.True(t, cfg.FallbackFCapValkey.Enabled)
+		assert.Equal(t, map[string]string{"0": "fc-old:6379"}, cfg.FallbackFCapValkey.Shards)
+		assert.True(t, cfg.FallbackAudienceValkey.Enabled)
+		assert.Equal(t, map[string]string{"0": "aud-old:6379"}, cfg.FallbackAudienceValkey.Shards)
+	})
+
+	t.Run("fallback without primary is a validation error", func(t *testing.T) {
+		// Wipe primaries via t.Setenv-with-empty (Setenv can't unset, but
+		// loadValkeyBlock treats empty SHARDS as disabled).
+		t.Setenv("FCAP_VALKEY_SHARDS", "")
+		t.Setenv("AUDIENCE_VALKEY_SHARDS", "")
+		t.Setenv("FCAP_FALLBACK_VALKEY_MODE", "shadow")
+		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", `{"0":"fc-old:6379"}`)
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_MODE", "shadow")
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_SHARDS", `{"0":"aud-old:6379"}`)
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		err = cfg.Validate()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "FCAP_FALLBACK_VALKEY_* is set but FCAP_VALKEY_* is not")
+		assert.Contains(t, err.Error(), "AUDIENCE_FALLBACK_VALKEY_* is set but AUDIENCE_VALKEY_* is not")
+	})
+}
+
 func TestLoadConfigFromEnv_ExtraHeaders(t *testing.T) {
 	// Minimal env required by LoadConfigFromEnv to produce a populated Config.
 	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
