@@ -94,9 +94,14 @@ func waitReady(ctx context.Context, c *redis.Client, name string) error {
 	}
 }
 
-// UserToken returns the deterministic token string for user index i. Kept in
-// sync with loadgen so it hits the seeded users.
-func UserToken(i int) string { return fmt.Sprintf("user-%08d", i) }
+// UserToken returns the deterministic token string for user index i. Kept
+// in sync with loadgen's userToken() so the fcap/audience keys the seeder
+// writes match what the identity-agent computes at request time. The 32-char
+// lowercase hex form is the canonical form for MAID (16-byte decoder) — it
+// round-trips through Decode(...)→Canonical(...) unchanged, so
+// identityhash.Hash of this string matches identityhash.Hash of what the
+// agent hashes after canonicalization.
+func UserToken(i int) string { return fmt.Sprintf("%032x", i) }
 
 func seedAudience(ctx context.Context, c *redis.Client, totalUsers, audsPerUser, totalAuds, workers, pipeSize int) {
 	work := make(chan int, workers*4)

@@ -260,13 +260,17 @@ func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.
 }
 
 func buildRequest(r *rand.Rand, p waveParams) identityMatchRequest {
-	// UserToken must match the seeder's UserToken function.
+	// UserToken must match the seeder's UserToken function AND survive the
+	// identity-agent's canonicalizer. We emit MAID-shaped tokens: 32 lowercase
+	// hex chars → decoder produces 16 bytes → Canonical() encodes them back
+	// to the same 32 hex chars, so the fcap/audience key the agent computes
+	// (sha256(canonical)[:16]) matches what the seeder wrote.
 	idents := make([]identityToken, 0, p.identitiesPerReq)
 	for i := 0; i < p.identitiesPerReq; i++ {
 		u := r.IntN(p.totalUsers)
 		idents = append(idents, identityToken{
 			UIDType:   uidTypeFor(i),
-			UserToken: fmt.Sprintf("user-%08d", u),
+			UserToken: userToken(u),
 		})
 	}
 	req := identityMatchRequest{
@@ -288,16 +292,31 @@ func buildRequest(r *rand.Rand, p waveParams) identityMatchRequest {
 
 // uidTypeFor returns distinct uid_type strings so requests with >1 identity
 // don't trip the "duplicate (uid_type, user_token) pair" validator. Every
-// value here must appear in tmproto.validUIDTypes or the request 400s.
+// value here must appear in tmproto.validUIDTypes or the request 400s, and
+// its decoder must accept the userToken() format below.
 func uidTypeFor(i int) string {
 	switch i {
 	case 0:
-		return "id5"
-	case 1:
 		return "maid"
+	case 1:
+		return "id5"
 	default:
 		return "uid2"
 	}
+}
+
+// userToken returns a 32-char lowercase hex string deterministic in the user
+// index. That format decodes through MAID/ID5/UID2 to a 16- or 32-byte binary
+// token whose Canonical() form is the same 32-char hex — so the fcap/audience
+// key seeded ahead of time matches what the identity-agent computes at
+// request time, regardless of which uid_type carried the request.
+func userToken(u int) string {
+	// 128 bits of "user index" packed into 16 bytes → 32 hex chars.
+	// MAID's decoder requires exactly 32 hex chars (16 bytes); ID5's
+	// pass-through decoder pins ID5 at 32 bytes so it needs a 32-char
+	// string too. This function is a lower bound: use MAID as the uid_type
+	// (16-byte decoder) for zero-drop.
+	return fmt.Sprintf("%032x", u)
 }
 
 type report struct {
