@@ -135,12 +135,16 @@ for scenario in "${SCENARIOS[@]}"; do
     echo "SCENARIO=$scenario CPUS=$cpus MEMORY=$memory"
     echo "==================================================================="
 
+    # `--profile baseline` activates the standalone audience-valkey /
+    # fcap-valkey services (profile-gated so cluster topologies via
+    # run-scaling.sh don't spin them up idle). Named-service startup
+    # would also work but this is explicit.
     IDENTITY_CPUS="$cpus" \
     IDENTITY_MEMORY="$memory" \
-      docker compose up -d audience-valkey fcap-valkey configserver
+      docker compose --profile baseline up -d audience-valkey fcap-valkey configserver
     IDENTITY_CPUS="$cpus" \
     IDENTITY_MEMORY="$memory" \
-      docker compose up -d --force-recreate identity-agent
+      docker compose --profile baseline up -d --force-recreate identity-agent
 
     # docker compose's `deploy.resources.limits` isn't reliably honored
     # outside swarm mode on Linux/cgroup-v2, so force the cgroup via

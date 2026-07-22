@@ -41,7 +41,7 @@ export WRITE_QPS_FCAP WRITE_QPS_AUDIENCE PACKAGES_PER_WRITE AUDIENCES_PER_WRITE
 # Topology descriptors (space-separated): name|mode|nshards|profiles
 # `profiles` is a comma-separated list of compose profiles to activate.
 ALL_TOPOLOGIES=(
-  "standalone-1|standalone|1|"
+  "standalone-1|standalone|1|baseline"
   "shadow-2|shadow|2|shadow"
   "shadow-4|shadow|4|shadow"
   "cluster-3|cluster|3|cluster"
@@ -289,7 +289,7 @@ for topo_line in "${TOPOLOGIES[@]}"; do
   export AUDIENCE_VALKEY_SHARDS="$(audience_shard_json "$mode" "$nshards")"
 
   # Tear down anything from a previous topology so container IDs are clean.
-  docker compose --profile shadow --profile cluster --profile cluster-large down -v --remove-orphans >/dev/null 2>&1 || true
+  docker compose --profile baseline --profile shadow --profile cluster --profile cluster-large down -v --remove-orphans >/dev/null 2>&1 || true
 
   # Bring up shards + config.
   echo "  starting valkeys + configserver"
@@ -387,6 +387,17 @@ for topo_line in "${TOPOLOGIES[@]}"; do
     kill "$sampler_pid" 2>/dev/null || true
     wait "$sampler_pid" 2>/dev/null || true
     trap - EXIT INT TERM
+
+    # Safety net matching run.sh: a compose-driven recreate of identity-
+    # agent under our feet would silently invalidate the measurement (new
+    # cgroup limits, empty caches, stats sampler now pointing at the wrong
+    # container). Inline env passthrough on the loadgen invocation above
+    # should keep this from firing — but if it ever does, fail loud.
+    post_cid=$(docker compose ps -q identity-agent)
+    if [[ "$post_cid" != "$identity_cid" ]]; then
+      echo "!! identity-agent container changed during loadgen (was $identity_cid, now $post_cid)" >&2
+      exit 1
+    fi
 
     if [[ -f "$host_report" ]]; then
       # Peak identity-agent CPU + aggregate Valkey peaks (max over all shards of
