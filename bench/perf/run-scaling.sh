@@ -27,6 +27,17 @@ WARMUP="${WARMUP:-5s}"
 CONCURRENCY="${CONCURRENCY:-512}"
 read -r -a QPS_STEPS <<< "${QPS_STEPS:-2000 4000 8000 12000 16000 24000}"
 
+# Write-load knobs. Set WRITE_QPS_FCAP to a nonzero value to run a
+# realistic mixed workload — the writer streams HSETEX cap markers at
+# that rate against the same Valkey backends the loadgen reads from.
+# WRITE_QPS_AUDIENCE is off by default (0) because audience updates
+# tend to be batched off-peak in production.
+WRITE_QPS_FCAP="${WRITE_QPS_FCAP:-0}"
+WRITE_QPS_AUDIENCE="${WRITE_QPS_AUDIENCE:-0}"
+PACKAGES_PER_WRITE="${PACKAGES_PER_WRITE:-2}"
+AUDIENCES_PER_WRITE="${AUDIENCES_PER_WRITE:-1}"
+export WRITE_QPS_FCAP WRITE_QPS_AUDIENCE PACKAGES_PER_WRITE AUDIENCES_PER_WRITE
+
 # Topology descriptors (space-separated): name|mode|nshards|profiles
 # `profiles` is a comma-separated list of compose profiles to activate.
 ALL_TOPOLOGIES=(
@@ -86,6 +97,29 @@ peak_from_stats() {
     index($1, n) == 1 { v = $c + 0; if (v > m) m = v }
     END { printf "%.2f\n", m + 0 }
   ' "$stats_log" 2>/dev/null || echo 0
+}
+
+# _dur_seconds parses a subset of Go-duration strings (`30s`, `1m`, `2m30s`)
+# into whole seconds so run-scaling.sh can compute the writer's lifetime
+# budget from the QPS-step DURATION+WARMUP.
+_dur_seconds() {
+  local s=$1 total=0 num
+  while [[ -n "$s" ]]; do
+    num=$(printf '%s' "$s" | awk '{
+      i=0
+      while (i < length($0) && substr($0,i+1,1) ~ /[0-9.]/) i++
+      print substr($0,1,i)
+    }')
+    [[ -z "$num" ]] && break
+    s=${s#"$num"}
+    case "$s" in
+      s*) total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n}'); s=${s#s} ;;
+      m*) total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n*60}'); s=${s#m} ;;
+      h*) total=$(awk -v t="$total" -v n="$num" 'BEGIN{printf "%d", t + n*3600}'); s=${s#h} ;;
+      *)  break ;;
+    esac
+  done
+  echo "$total"
 }
 
 # fcap_shard_json / audience_shard_json print the JSON expected by
@@ -189,11 +223,11 @@ cluster_init() {
 }
 
 # ---- output header --------------------------------------------------------
-echo "topology,mode,shards,target_qps,concurrency,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_shard,identity_cpu_peak_pct,fcap_valkey_cpu_peak_pct,fcap_valkey_rss_peak_mb,audience_valkey_cpu_peak_pct,audience_valkey_rss_peak_mb" > "$SUMMARY_CSV"
+echo "topology,mode,shards,target_qps,concurrency,write_qps_fcap,write_qps_audience,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_shard,identity_cpu_peak_pct,fcap_valkey_cpu_peak_pct,fcap_valkey_rss_peak_mb,audience_valkey_cpu_peak_pct,audience_valkey_rss_peak_mb" > "$SUMMARY_CSV"
 
 # ---- build once -----------------------------------------------------------
 echo "==> building images"
-for svc in identity-agent configserver seeder loadgen; do
+for svc in identity-agent configserver seeder loadgen writer; do
   docker compose build "$svc"
 done
 
@@ -276,6 +310,25 @@ for topo_line in "${TOPOLOGIES[@]}"; do
   audience_names=($(audience_shard_names "$mode" "$nshards"))
   all_sampled=("$identity_cid" "${fcap_names[@]}" "${audience_names[@]}")
 
+  # Optional background writer — mixed read+write workload. Sized to cover
+  # the whole topology's QPS ramp with headroom (writer self-exits on
+  # DURATION timeout).
+  writer_cid=""
+  if (( WRITE_QPS_FCAP > 0 || WRITE_QPS_AUDIENCE > 0 )); then
+    total_secs=$(( ${#QPS_STEPS[@]} * ( $(_dur_seconds "$DURATION") + $(_dur_seconds "$WARMUP") + 15 ) ))
+    echo "  starting writer: fcap=${WRITE_QPS_FCAP}qps audience=${WRITE_QPS_AUDIENCE}qps for ${total_secs}s"
+    WRITER_DURATION="${total_secs}s" \
+    IDENTITY_CPUS="$IDENTITY_CPUS" IDENTITY_MEMORY="$IDENTITY_MEMORY" \
+      docker compose "${compose_args[@]}" up -d writer
+    writer_cid=$(docker compose ps -q writer)
+    # Include writer in stats sampling so we can tell it apart from
+    # identity-agent's contribution to Valkey load.
+    all_sampled+=("$writer_cid")
+    # Give the writer a moment to spool up before the first loadgen step so
+    # the warmup phase sees write load in effect too.
+    sleep 2
+  fi
+
   for qps in "${QPS_STEPS[@]}"; do
     label="${topo_name}_${qps}qps"
     report_path="/results/${topo_name}_${qps}qps.json"
@@ -311,13 +364,15 @@ for topo_line in "${TOPOLOGIES[@]}"; do
       aud_cpu=$(peak_from_stats "$stats_log" "perf-audience-" 3)
       aud_rss=$(peak_from_stats "$stats_log" "perf-audience-" 2)
       python3 - "$host_report" "$topo_name" "$mode" "$nshards" "$CONCURRENCY" \
+        "$WRITE_QPS_FCAP" "$WRITE_QPS_AUDIENCE" \
         "$id_cpu" "$fcap_cpu" "$fcap_rss" "$aud_cpu" "$aud_rss" >> "$SUMMARY_CSV" <<'PY'
 import json, sys
-p, topo, mode, shards, conc, id_cpu, fc_cpu, fc_rss, aud_cpu, aud_rss = sys.argv[1:]
+p, topo, mode, shards, conc, wq_fcap, wq_aud, id_cpu, fc_cpu, fc_rss, aud_cpu, aud_rss = sys.argv[1:]
 r = json.load(open(p))
 achieved = r.get("achieved_qps", 0)
 row = [
     topo, mode, shards, r.get("target_qps",""), conc,
+    wq_fcap, wq_aud,
     f"{achieved:.1f}",
     f"{r.get('p50_ms',0):.2f}",
     f"{r.get('p90_ms',0):.2f}",
@@ -332,6 +387,9 @@ PY
     fi
   done
 
+  if [[ -n "$writer_cid" ]]; then
+    docker compose "${compose_args[@]}" stop writer >/dev/null 2>&1 || true
+  fi
   echo "  tearing down topology $topo_name"
   docker compose "${compose_args[@]}" down -v --remove-orphans >/dev/null
 done

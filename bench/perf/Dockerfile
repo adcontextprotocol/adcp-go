@@ -14,11 +14,13 @@ COPY bench/perf/ bench/perf/
 WORKDIR /src/bench/perf
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/configserver ./cmd/configserver && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/seeder ./cmd/seeder && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadgen ./cmd/loadgen
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadgen ./cmd/loadgen && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/writer ./cmd/writer
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates tini
 COPY --from=build /out/configserver /usr/local/bin/configserver
 COPY --from=build /out/seeder /usr/local/bin/seeder
 COPY --from=build /out/loadgen /usr/local/bin/loadgen
+COPY --from=build /out/writer /usr/local/bin/writer
 ENTRYPOINT ["/sbin/tini", "--"]

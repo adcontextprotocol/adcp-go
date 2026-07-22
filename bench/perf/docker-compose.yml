@@ -143,6 +143,30 @@ services:
         soft: 65536
         hard: 65536
 
+  writer:
+    image: adcp-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/writer"]
+    environment:
+      AUDIENCE_VALKEY_MODE: "${AUDIENCE_VALKEY_MODE:-standalone}"
+      AUDIENCE_VALKEY_SHARDS: '${AUDIENCE_VALKEY_SHARDS:-{"0":"audience-valkey:6379"}}'
+      FCAP_VALKEY_MODE: "${FCAP_VALKEY_MODE:-standalone}"
+      FCAP_VALKEY_SHARDS: '${FCAP_VALKEY_SHARDS:-{"0":"fcap-valkey:6379"}}'
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      TOTAL_USERS: "${TOTAL_USERS:-100000}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      TOTAL_AUDIENCES: "${TOTAL_AUDIENCES:-500}"
+      WRITE_QPS_FCAP: "${WRITE_QPS_FCAP:-0}"
+      WRITE_QPS_AUDIENCE: "${WRITE_QPS_AUDIENCE:-0}"
+      PACKAGES_PER_WRITE: "${PACKAGES_PER_WRITE:-2}"
+      AUDIENCES_PER_WRITE: "${AUDIENCES_PER_WRITE:-1}"
+      SERVE_WINDOW: "${SERVE_WINDOW:-60s}"
+      # Writer keeps running until stopped; run-scaling.sh launches it in the
+      # background and kills it after the loadgen step.
+      DURATION: "${WRITER_DURATION:-5m}"
+
   loadgen:
     image: adcp-perf-tools:latest
     build:
