@@ -13,10 +13,18 @@
 # default. Set HOST_METRICS_PORT to expose /metrics for external Prometheus
 # scraping (optional).
 services:
+  # audience-valkey / fcap-valkey are the baseline standalone Valkey
+  # backends — used by run.sh (identity-agent CPU sweep) and by
+  # run-scaling.sh's `standalone-1` and `shadow-*` topologies as shard 0.
+  # Cluster topologies use the fcap-cluster-* / audience-cluster-* services
+  # below and don't touch these — so both are profile-gated to avoid
+  # spinning up two idle Valkey pods on cluster runs. Enable with
+  # `--profile baseline` when using them.
   audience-valkey:
     image: valkey/valkey:8.0-alpine
     command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
     restart: unless-stopped
+    profiles: [baseline, shadow]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
@@ -27,6 +35,7 @@ services:
     image: valkey/valkey:8.0-alpine
     command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
     restart: unless-stopped
+    profiles: [baseline, shadow]
     healthcheck:
       test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
@@ -77,11 +86,13 @@ services:
       dockerfile: cmd/identity-agent/Dockerfile
     image: adcp-identity-agent:latest
     restart: unless-stopped
+    # No depends_on for the Valkey backends: which ones actually exist
+    # depends on the runtime topology (baseline / shadow / cluster). Both
+    # runner scripts explicitly bring up the correct Valkey services
+    # before starting identity-agent, so ordering is enforced there. A
+    # static depends_on on audience-valkey / fcap-valkey would pull those
+    # baseline services in even under cluster topologies.
     depends_on:
-      audience-valkey:
-        condition: service_healthy
-      fcap-valkey:
-        condition: service_healthy
       configserver:
         condition: service_started
     # CPU/memory caps — set by run.sh via IDENTITY_CPUS / IDENTITY_MEMORY.

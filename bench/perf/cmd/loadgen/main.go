@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"sort"
 	"sync"
 	"syscall"
@@ -68,8 +69,24 @@ func main() {
 	label := flag.String("label", envStr("LABEL", ""), "label included in the report")
 	flag.Parse()
 
-	if *identitiesPerReq < 1 || *identitiesPerReq > 3 {
-		log.Fatalf("identities-per-req must be between 1 and 3 (got %d)", *identitiesPerReq)
+	if *identitiesPerReq != 1 {
+		// Multi-identity requests would silently mismeasure: the seeder
+		// keys every user off a single 32-hex-char token that only the
+		// MAID decoder (16-byte binary form → Canonical re-encodes to
+		// the same 32 hex chars) round-trips to the same identityhash
+		// as what the identity-agent computes at request time. ID5's
+		// decoder is a byte-for-byte pass-through, so the same 32-hex
+		// input becomes 32 raw bytes whose Canonical form is 64 hex
+		// chars — hash mismatch → cold miss on every request. UID2 has
+		// no registered decoder and gets dropped from the canonicalized
+		// slice entirely. Bench numbers under identities-per-req>1 do
+		// not reflect the read path they appear to be measuring.
+		//
+		// A future extension could generate per-uid-type user pools
+		// (MAID hex, ID5 32-byte binary encoded as itself, UID2 UUIDs)
+		// and teach the seeder to write under each canonical form. The
+		// harness stays at 1 identity/request until that lands.
+		log.Fatalf("identities-per-req=%d is not supported; only 1 is measurable today (see comment in loadgen/main.go)", *identitiesPerReq)
 	}
 
 	client := &http.Client{
@@ -209,7 +226,15 @@ loop:
 		select {
 		case tickets <- struct{}{}:
 		default:
+			// Workers can't keep up. Yield the goroutine so we don't
+			// pin a core spinning on the drop path at saturation —
+			// achieved_qps is still derived from completed samples,
+			// but a spinning pacer inflates SUT-observed latency
+			// when loadgen and SUT share cores. Gosched is enough:
+			// the next iteration re-evaluates the interval-based
+			// deadline and will time.Sleep if we're still behind.
 			dropped++
+			runtime.Gosched()
 		}
 	}
 	close(tickets)
@@ -290,32 +315,24 @@ func buildRequest(r *rand.Rand, p waveParams) identityMatchRequest {
 	return req
 }
 
-// uidTypeFor returns distinct uid_type strings so requests with >1 identity
-// don't trip the "duplicate (uid_type, user_token) pair" validator. Every
-// value here must appear in tmproto.validUIDTypes or the request 400s, and
-// its decoder must accept the userToken() format below.
+// uidTypeFor returns the uid_type string for the i-th identity in a
+// request. Only i=0 is exercised today (the loadgen gates
+// identities-per-req at 1). Kept in place with a single MAID entry so a
+// future multi-identity extension has an obvious hook.
 func uidTypeFor(i int) string {
-	switch i {
-	case 0:
-		return "maid"
-	case 1:
-		return "id5"
-	default:
-		return "uid2"
-	}
+	// MAID: 32 hex chars → decoder produces 16 bytes → Canonical()
+	// re-encodes to the same 32 hex chars → identityhash matches the
+	// seeder's Hash(userToken(u)).
+	return "maid"
 }
 
-// userToken returns a 32-char lowercase hex string deterministic in the user
-// index. That format decodes through MAID/ID5/UID2 to a 16- or 32-byte binary
-// token whose Canonical() form is the same 32-char hex — so the fcap/audience
-// key seeded ahead of time matches what the identity-agent computes at
-// request time, regardless of which uid_type carried the request.
+// userToken returns a 32-char lowercase hex string deterministic in the
+// user index. Paired with uid_type=maid — see the comment there for why
+// this format round-trips through the identity-agent's canonicalizer
+// unchanged. The seeder writes fcap/audience keys under
+// identityhash.Hash(userToken(u)); the agent computes the same hash
+// after canonicalization only for MAID-shaped tokens.
 func userToken(u int) string {
-	// 128 bits of "user index" packed into 16 bytes → 32 hex chars.
-	// MAID's decoder requires exactly 32 hex chars (16 bytes); ID5's
-	// pass-through decoder pins ID5 at 32 bytes so it needs a 32-char
-	// string too. This function is a lower bound: use MAID as the uid_type
-	// (16-byte decoder) for zero-drop.
 	return fmt.Sprintf("%032x", u)
 }
 
