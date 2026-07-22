@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/adcontextprotocol/adcp-go/targeting/audience"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
@@ -97,6 +96,3 @@ func (e *erroringAudienceStore) HDelBatch(context.Context, []audience.HDelItem) 
 	return e.err
 }
 
-// _ = time is here so the import stays if a future test adds a
-// time-sensitive case. Keep as-is to avoid churn.
-var _ = time.Second

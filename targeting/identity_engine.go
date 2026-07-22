@@ -120,7 +120,13 @@ func (e *IdentityEngine) resolveUserSegments(ctx context.Context, identities []U
 	}
 	results, err := e.audience.IsMemberBatch(ctx, lookups)
 	if err != nil {
-		e.metrics.StoreError(ctx, "load_user_audiences", err)
+		// runAudienceStage records store_errors_total{stage="audience"}
+		// on the caller side when it observes this error — no engine-layer
+		// StoreError call here, otherwise a single failed request double-
+		// counts against both `store="load_user_audiences"` and
+		// `stage="audience"` and a summed dashboard over-reports 2×. fcap
+		// single-counts via the same pattern (runFcapStage records on the
+		// caller side); keep audience symmetric.
 		return nil, err
 	}
 	matched := make(map[string]struct{})
