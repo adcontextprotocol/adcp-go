@@ -1,30 +1,12 @@
 package identityagent
 
 import (
-	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// unsetenvT unsets an env var for the duration of the test, restoring the
-// prior value (or unset state) on cleanup. Companion to t.Setenv, which
-// can't express "unset". Needed for tests that assert behavior when a
-// specific env is absent while a parent t.Setenv has already set it.
-func unsetenvT(t *testing.T, key string) {
-	t.Helper()
-	prev, hadPrev := os.LookupEnv(key)
-	require.NoError(t, os.Unsetenv(key))
-	t.Cleanup(func() {
-		if hadPrev {
-			_ = os.Setenv(key, prev)
-			return
-		}
-		_ = os.Unsetenv(key)
-	})
-}
 
 func TestConfigValidate(t *testing.T) {
 	base := func() Config {
@@ -317,13 +299,13 @@ func TestLoadConfigFromEnv_FallbackBlocks(t *testing.T) {
 		assert.False(t, cfg.FallbackAudienceValkey.Enabled)
 	})
 
-	// The silent-disable collapse above only applies when the ENTIRE block
-	// is unset. If a sibling MODE is set but SHARDS renders empty, the
-	// operator meant to wire the block but the config-map emit came out
-	// broken — a resharding-window mis-config that would drop the union
-	// OR and reopen the stale-membership window the fallback exists to
-	// close. Loud error, not silent disable.
-	t.Run(`MODE set with empty SHARDS is a validation error, not silent disable`, func(t *testing.T) {
+	// For *_FALLBACK prefixes, empty SHARDS with a non-empty sibling MODE
+	// is "intended but broken" — the operator meant to wire the fallback
+	// but the config-map emit came out broken. A resharding-window
+	// mis-config here would drop the union OR and reopen the stale-
+	// membership window the fallback exists to close. Loud error, not
+	// silent disable.
+	t.Run(`fallback MODE set with empty SHARDS is a validation error, not silent disable`, func(t *testing.T) {
 		t.Setenv("AUDIENCE_FALLBACK_VALKEY_MODE", "shadow")
 		t.Setenv("AUDIENCE_FALLBACK_VALKEY_SHARDS", "{}")
 		_, err := LoadConfigFromEnv()
@@ -331,12 +313,36 @@ func TestLoadConfigFromEnv_FallbackBlocks(t *testing.T) {
 		assert.Contains(t, err.Error(), "AUDIENCE_FALLBACK_VALKEY_MODE is set but AUDIENCE_FALLBACK_VALKEY_SHARDS is empty")
 	})
 
-	t.Run(`MODE set with unset SHARDS is a validation error, not silent disable`, func(t *testing.T) {
+	t.Run(`fallback MODE set with unset SHARDS is a validation error, not silent disable`, func(t *testing.T) {
 		t.Setenv("FCAP_FALLBACK_VALKEY_MODE", "shadow")
 		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", "")
 		_, err := LoadConfigFromEnv()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "FCAP_FALLBACK_VALKEY_MODE is set but FCAP_FALLBACK_VALKEY_SHARDS is empty")
+	})
+
+	// Regression pin: the MODE-intent check is scoped to *_FALLBACK
+	// prefixes. AUDIENCE primary is optional (Config.Validate only
+	// validates it when enabled), so a deployment intentionally running
+	// with audience disabled but where the chart still emits a default
+	// AUDIENCE_VALKEY_MODE must stay a silent-disable, not crash-loop.
+	t.Run(`AUDIENCE primary MODE set with empty SHARDS is disabled, not error`, func(t *testing.T) {
+		t.Setenv("AUDIENCE_VALKEY_MODE", "shadow")
+		t.Setenv("AUDIENCE_VALKEY_SHARDS", "")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.False(t, cfg.AudienceValkey.Enabled)
+	})
+
+	// MODE explicitly rendered as an empty string is not an intent
+	// signal — lookupString on the enabled path treats it the same as
+	// unset (→ standalone default), so the disabled path must agree.
+	t.Run(`fallback MODE="" with empty SHARDS is disabled, not error`, func(t *testing.T) {
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_MODE", "")
+		t.Setenv("AUDIENCE_FALLBACK_VALKEY_SHARDS", "{}")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.False(t, cfg.FallbackAudienceValkey.Enabled)
 	})
 
 	t.Run("fallback env sets both blocks with N-shard shape", func(t *testing.T) {
@@ -354,15 +360,12 @@ func TestLoadConfigFromEnv_FallbackBlocks(t *testing.T) {
 	})
 
 	t.Run("fallback without primary is a validation error", func(t *testing.T) {
-		// Wipe primaries entirely — both SHARDS and MODE. loadValkeyBlock
-		// now rejects "MODE set with empty SHARDS" (intended-but-broken),
-		// so leaving the parent's MODE=shadow in place would short-circuit
-		// this test with the load-time error instead of exercising the
-		// Config.Validate cross-block check we're pinning here.
+		// Wipe primaries via t.Setenv-with-empty (Setenv can't unset, but
+		// loadValkeyBlock treats empty SHARDS as disabled). Primary MODE
+		// is exempt from the load-time intent check, so leaving the
+		// parent's FCAP_VALKEY_MODE / AUDIENCE_VALKEY_MODE in place is fine.
 		t.Setenv("FCAP_VALKEY_SHARDS", "")
 		t.Setenv("AUDIENCE_VALKEY_SHARDS", "")
-		unsetenvT(t, "FCAP_VALKEY_MODE")
-		unsetenvT(t, "AUDIENCE_VALKEY_MODE")
 		t.Setenv("FCAP_FALLBACK_VALKEY_MODE", "shadow")
 		t.Setenv("FCAP_FALLBACK_VALKEY_SHARDS", `{"0":"fc-old:6379"}`)
 		t.Setenv("AUDIENCE_FALLBACK_VALKEY_MODE", "shadow")

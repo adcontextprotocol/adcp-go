@@ -679,12 +679,15 @@ func (c Config) Validate() error {
 // can't easily omit a key, so an unconfigured block often lands as "{}"
 // on the pod and len(shards)==0 is never a useful runtime configuration.
 //
-// If SHARDS is empty but a sibling {prefix}_VALKEY_MODE is set, that's
-// "intended but broken" — operator meant to wire this block but the
-// SHARDS render came out empty. Loud error instead of silent disable so
-// a mis-emitted config during a resharding window doesn't quietly turn
-// the fallback off (which would drop the union OR and reopen the exact
-// stale-membership window the fallback exists to close).
+// For *_FALLBACK prefixes, an empty SHARDS combined with a non-empty
+// sibling {prefix}_VALKEY_MODE is "intended but broken" — the operator
+// meant to wire the fallback but the SHARDS render came out empty.
+// Loud error instead of silent disable so a mis-emitted config during
+// a resharding window doesn't quietly turn the fallback off (which
+// would drop the union OR and reopen the exact stale-membership window
+// the fallback exists to close). Primary prefixes are exempt: the
+// AUDIENCE primary is optional, and a deployment running with audience
+// intentionally disabled can still have the chart emit a default MODE.
 func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 	var errs []error
 	shardsRaw := os.Getenv(prefix + "_VALKEY_SHARDS")
@@ -697,8 +700,10 @@ func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 		}
 	}
 	if len(shards) == 0 {
-		if _, modeSet := os.LookupEnv(prefix + "_VALKEY_MODE"); modeSet {
-			return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_MODE is set but %s_VALKEY_SHARDS is empty or {}; either configure both or unset both", prefix, prefix)}
+		if strings.HasSuffix(prefix, "_FALLBACK") {
+			if mode, ok := os.LookupEnv(prefix + "_VALKEY_MODE"); ok && mode != "" {
+				return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_MODE is set but %s_VALKEY_SHARDS is empty or {}; either configure both or unset both", prefix, prefix)}
+			}
 		}
 		return ValkeyBlock{}, nil
 	}
