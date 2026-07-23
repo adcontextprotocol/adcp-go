@@ -67,9 +67,9 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 2. Regenerate Go types with `python3 generate.py > ../types_gen.go`.
 3. Ensure the PR diff includes both `adcp/schemas/VERSION` and `adcp/schemas/.bundle-sha256`. CI only enables the pinned-bundle shortcut when both files are unchanged from `main`; otherwise, it requires live Sigstore verification. When the files are unchanged, CI sets `ADCP_TRUST_PINNED_BUNDLE=1` and skips live Sigstore verification only after the downloaded bundle hash matches the committed `.bundle-sha256`.
 
-## PR review (Argus)
+## PR review (Ladon)
 
-Every non-draft, non-dependabot PR is reviewed by Argus, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO IPR GitHub App. Workflow lives at `.github/workflows/ai-review.yml`; the reviewer prompt — MUST-FIX gates, expert-triage rules — is at `.github/ai-review/expert-adcp-reviewer.md`. Both files are forked from `adcontextprotocol/adcp`; upstream drift is surfaced weekly by `sync-argus-upstream-check.yml`, which opens an issue listing new upstream commits to reconcile by hand. The fork-point SHAs are pinned in `.github/ai-review/UPSTREAM_FORK_POINT` — bump them in the porting PR.
+Every non-draft, non-dependabot PR is reviewed by Ladon, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO Secretariat GitHub App, so its review counts toward the "1 review required" branch-protection check. The workflow lives at `.github/workflows/ai-review.yml` and consumes the shared review engine remotely (`adcontextprotocol/actions/ladon/review@ladon/review/v1`) — voice, expert triage, and review format are maintained upstream in `adcontextprotocol/actions`, so there is nothing to fork or sync here. This repo supplies only its review policy — repo context, MUST-FIX gates, high-risk paths, escalation reviewers, and trivial paths — in `LADON.md` at the repo root. The workflow uses `pull_request_target` with a trusted base-SHA-only checkout (the PR head is never fetched or executed) and skips auto-review on any PR that modifies `LADON.md` or the workflow itself.
 
 ## Testing
 
