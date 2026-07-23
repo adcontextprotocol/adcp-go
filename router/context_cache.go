@@ -275,9 +275,11 @@ func (c *ContextCache) Size() int {
 // contextCacheKey assembles the canonical cache key. NUL is used as
 // the separator so a component containing "|" or "/" cannot collide
 // with it. tmproto request validation rejects control bytes in
-// property_rid and placement_id, and every component ultimately
-// originates from a JSON string (which cannot contain a raw NUL under
-// the JSON grammar), so no component can carry NUL by construction.
+// property_rid, placement_id, and seller_agent_url (validateSafeID /
+// validateSellerAgentURL); provider_id is bounded by the spec
+// (`^[A-Za-z0-9_]+$`, max 64) and only ever populated from
+// ProviderSet.ID; country is either empty or an ISO-3166 alpha-2
+// pair. No component can carry NUL by construction.
 func contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country string) string {
 	var b strings.Builder
 	b.Grow(len(propertyRID) + len(placementID) + len(providerID) + len(sellerAgentURL) + len(country) + 4)
