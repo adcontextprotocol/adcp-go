@@ -411,7 +411,14 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			//
 			// The cache check runs before the circuit-breaker gate: a
 			// warm response is still useful when the provider went
-			// down, and the TTL bounds staleness.
+			// down, and the TTL bounds staleness. Race note: if a
+			// provider's circuit trips after a targeting-config
+			// change but before it can emit a fresh response with
+			// cache_ttl=0 (the spec's disable-caching signal), the
+			// router keeps serving the pre-change offers until the
+			// entry ages out. Bounded by the entry's TTL — the
+			// operator trades a brief post-change stale window for
+			// availability during the outage.
 			cacheSeller := canonicalizeSellerForCache(cmReq.SellerAgentURL)
 			cacheCountry := contextCountry(cmReq.Geo)
 			if r.contextCache != nil {

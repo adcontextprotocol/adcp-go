@@ -46,6 +46,26 @@ func TestValidateIdentityRequest(t *testing.T) {
 			wantErr: "seller_agent_url is required",
 		},
 		{
+			name:    "seller_agent_url with NUL rejected",
+			mutate:  func(r *IdentityMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\x00" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url with CR rejected",
+			mutate:  func(r *IdentityMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\r/agent" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url with DEL rejected",
+			mutate:  func(r *IdentityMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\x7f" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url exceeding max length rejected",
+			mutate:  func(r *IdentityMatchRequest) { r.SellerAgentURL = "https://" + strings.Repeat("a", MaxSellerAgentURLLength) },
+			wantErr: "seller_agent_url exceeds maximum length",
+		},
+		{
 			name:    "empty identities rejected",
 			mutate:  func(r *IdentityMatchRequest) { r.Identities = nil },
 			wantErr: "identities must not be empty",
@@ -324,6 +344,26 @@ func TestValidateContextRequest_LadderConstraints(t *testing.T) {
 				r.Geo = map[string]any{"metro": map[string]any{"value": "501"}}
 			},
 			wantErr: "geo.metro.system",
+		},
+		{
+			name:    "seller_agent_url with NUL rejected",
+			mutate:  func(r *ContextMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\x00" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url with LF rejected",
+			mutate:  func(r *ContextMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\n/agent" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url with DEL rejected",
+			mutate:  func(r *ContextMatchRequest) { r.SellerAgentURL = "https://seller.example.com/\x7f" },
+			wantErr: "seller_agent_url contains invalid characters",
+		},
+		{
+			name:    "seller_agent_url exceeding max length rejected",
+			mutate:  func(r *ContextMatchRequest) { r.SellerAgentURL = "https://" + strings.Repeat("a", MaxSellerAgentURLLength) },
+			wantErr: "seller_agent_url exceeds maximum length",
 		},
 	}
 

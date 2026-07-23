@@ -131,6 +131,30 @@ func validateSafeID(field, value string) error {
 	return nil
 }
 
+// MaxSellerAgentURLLength caps the seller_agent_url string. The value flows
+// into structured logs, cache keys, and the RFC 9421 @target-uri signing
+// input; a pathologically long URL bloats every one of those.
+const MaxSellerAgentURLLength = 2048
+
+// validateSellerAgentURL rejects a seller_agent_url that carries C0 control
+// bytes (0x00–0x1F) or DEL (0x7F). The value is copied into the router's
+// context cache key (which uses NUL as a separator), echoed in structured
+// logs, and folded into the RFC 9421 @target-uri signing input — rejecting
+// control bytes at the wire boundary keeps all three surfaces well-formed.
+// Callers still check non-emptiness themselves so the error message can
+// name the request shape ("required" vs "invalid").
+func validateSellerAgentURL(value string) error {
+	if len(value) > MaxSellerAgentURLLength {
+		return fmt.Errorf("seller_agent_url exceeds maximum length of %d", MaxSellerAgentURLLength)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7F {
+			return errors.New("seller_agent_url contains invalid characters")
+		}
+	}
+	return nil
+}
+
 // SafeRequestIDForEcho returns requestID only when it satisfies the same
 // constraints as request_id validation. HTTP boundaries use it before echoing a
 // parsed request_id in an error response or structured log.
@@ -189,6 +213,9 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if req.SellerAgentURL == "" {
 		return errors.New("seller_agent_url is required")
 	}
+	if err := validateSellerAgentURL(req.SellerAgentURL); err != nil {
+		return err
+	}
 	if len(req.PackageIDs) > MaxPackagesPerRequest {
 		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)
 	}
@@ -240,6 +267,9 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	}
 	if req.SellerAgentURL == "" {
 		return errors.New("seller_agent_url is required")
+	}
+	if err := validateSellerAgentURL(req.SellerAgentURL); err != nil {
+		return err
 	}
 	if len(req.Identities) == 0 {
 		return errors.New("identities must not be empty")
