@@ -45,6 +45,7 @@
     "IdentityMatchRequest.sealed_credentials": {"type": "[]SealedCredential"},
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
     "Offer.price": {"type": "OfferPrice", "pointer": true},
+    "ContextMatchResponse.cache_ttl": {"type": "int", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
     "ErrorResponse.code": {"type": "ErrorCode"},
     "IdentityMatchResponse.tmpx_providers": {"type": "map[string]TmpxProviderEntry"}

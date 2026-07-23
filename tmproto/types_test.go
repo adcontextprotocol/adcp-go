@@ -321,4 +321,69 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 	assert.Equal(t, PropertyTypeAIAssistant, got.PropertyType, "property_type")
 }
 
+// ContextMatchResponse.cache_ttl is a *int so the router can tell
+// omission (nil → use default TTL) from explicit-zero (spec's disable
+// caching signal). This nails down the wire behavior the router
+// depends on — any codegen or JSON-tag change that regresses it would
+// silently reintroduce the bug fixed on adcp-go PR #410.
+func TestContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
+	t.Run("nil pointer omits the field", func(t *testing.T) {
+		resp := &ContextMatchResponse{
+			Type:      TypeContextMatchResponse,
+			RequestID: "ctx-1",
+			Offers:    []Offer{{PackageID: "pkg-1"}},
+		}
+		data, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.NotContains(t, string(data), "cache_ttl",
+			"absent CacheTTL must be omitted from the wire (omitempty)")
+	})
+
+	t.Run("explicit zero marshals as 0", func(t *testing.T) {
+		zero := 0
+		resp := &ContextMatchResponse{
+			Type:      TypeContextMatchResponse,
+			RequestID: "ctx-1",
+			Offers:    []Offer{{PackageID: "pkg-1"}},
+			CacheTTL:  &zero,
+		}
+		data, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"cache_ttl":0`,
+			"explicit zero must survive marshaling — it's the spec's disable-caching signal")
+	})
+
+	t.Run("positive value marshals as the integer", func(t *testing.T) {
+		ttl := 600
+		resp := &ContextMatchResponse{
+			Type:      TypeContextMatchResponse,
+			RequestID: "ctx-1",
+			CacheTTL:  &ttl,
+		}
+		data, err := json.Marshal(resp)
+		require.NoError(t, err)
+		assert.Contains(t, string(data), `"cache_ttl":600`)
+	})
+
+	t.Run("absent field decodes to nil", func(t *testing.T) {
+		var got ContextMatchResponse
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[]}`), &got))
+		assert.Nil(t, got.CacheTTL, "absent field must decode to nil, not to a pointer to zero")
+	})
+
+	t.Run("zero field decodes to *int(0)", func(t *testing.T) {
+		var got ContextMatchResponse
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[],"cache_ttl":0}`), &got))
+		require.NotNil(t, got.CacheTTL, "cache_ttl=0 on the wire must decode to a non-nil pointer so the router can honor the disable-caching signal")
+		assert.Equal(t, 0, *got.CacheTTL)
+	})
+
+	t.Run("positive field decodes to *int(n)", func(t *testing.T) {
+		var got ContextMatchResponse
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[],"cache_ttl":900}`), &got))
+		require.NotNil(t, got.CacheTTL)
+		assert.Equal(t, 900, *got.CacheTTL)
+	})
+}
+
 // ExposeRequest tests moved to targeting package where the type now lives.

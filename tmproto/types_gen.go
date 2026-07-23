@@ -137,7 +137,7 @@ type ContextMatchResponse struct {
 	Type             string         `json:"type"`                         // Message type discriminator for deserialization.
 	RequestID        string         `json:"request_id"`                   // Echoed request identifier from the context match request
 	Offers           []Offer        `json:"offers"`                       // Offers from the buyer, one per activated package. An empty array means no packages matched. For simple activation, each offer has just package_id. For richer responses, offers include brand, price, summary, and creative manifest.
-	CacheTTL         int            `json:"cache_ttl,omitempty"`          // Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).
+	CacheTTL         *int           `json:"cache_ttl,omitempty"`          // Optional override for the default 5-minute cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching (e.g., when targeting configuration has just changed).
 	Signals          map[string]any `json:"signals,omitempty"`            // Response-level targeting signals for ad server pass-through. In the GAM case, these carry the key-value pairs that trigger line items. Not per-offer — applies to the response as a whole.
 }
 

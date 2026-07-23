@@ -130,13 +130,22 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Offers:    result.Offers,
 		Signals:   result.Signals,
 	}
-	if h.responseTTL > 0 {
-		// ContextMatchResponse.cache_ttl has no spec-level maximum,
-		// only a 5-minute default the router applies when omitted.
-		// Don't borrow IdentityMatchResponse's 300s serve_window_sec
-		// cap — that's a buyer-asserted serve throttle, a different
-		// concept on a different message type.
-		resp.CacheTTL = int(h.responseTTL.Seconds())
+	// ContextMatchResponse.cache_ttl has a schema-enforced maximum of
+	// 86400 seconds (see adcp/schemas/trusted-match/context-match-response.json)
+	// and the router applies a 5-minute default when the field is
+	// omitted. Don't borrow IdentityMatchResponse's 300s
+	// serve_window_sec cap — that's a buyer-asserted serve throttle,
+	// a different concept on a different message type. The field is
+	// a *int so omission is distinguishable from an explicit 0
+	// (which the spec defines as "disable caching"); we only assign
+	// when we have a positive whole-second TTL. A configured
+	// RESPONSE_TTL between 0 and 1s truncates to zero seconds;
+	// emitting cache_ttl=0 in that case would tell the router to
+	// disable caching entirely, which is the opposite of the
+	// operator's intent — so we omit the field instead and let the
+	// router's default apply.
+	if secs := int(h.responseTTL.Seconds()); secs > 0 {
+		resp.CacheTTL = &secs
 	}
 
 	w.Header().Set("Content-Type", "application/json")
