@@ -34,7 +34,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/bench/perf/internal/router"
+	"github.com/adcontextprotocol/adcp-go/bench/identity-perf/internal/router"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityhash"
 	"github.com/redis/go-redis/v9"
 )

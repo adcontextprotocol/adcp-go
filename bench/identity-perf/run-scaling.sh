@@ -10,7 +10,7 @@
 #   ./run-scaling.sh                # full topology sweep
 #   ./run-scaling.sh standalone     # single topology
 #
-# Requires: docker >= 24, compose v2. Run from bench/perf/.
+# Requires: docker >= 24, compose v2. Run from bench/identity-perf/.
 set -euo pipefail
 
 cd "$(dirname "$0")"

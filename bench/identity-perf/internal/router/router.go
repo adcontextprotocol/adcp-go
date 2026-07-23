@@ -208,7 +208,7 @@ func sortedAddrs(m map[string]string) []string {
 
 // --- shardMap: CRC16 + valkey-cli-style slot-to-ordinal mapping ---
 // Copy of targeting/internal/clusterslot (internal to that subtree, can't
-// import from bench/perf/). Keep in lockstep.
+// import from bench/identity-perf/). Keep in lockstep.
 
 const slotTotal = 16384
 
