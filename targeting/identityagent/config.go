@@ -673,18 +673,39 @@ func (c Config) Validate() error {
 }
 
 // loadValkeyBlock reads {prefix}_VALKEY_* env vars into a ValkeyBlock. The
-// block is marked Enabled when the SHARDS variable is present and non-empty
-// — that single variable acts as the "configured" signal.
+// block is marked Enabled when SHARDS parses to a non-empty JSON object.
+// An unset SHARDS env var, an empty string, and a valid-JSON empty object
+// ("{}") all collapse to the same disabled block — a ConfigMap emitter
+// can't easily omit a key, so an unconfigured block often lands as "{}"
+// on the pod and len(shards)==0 is never a useful runtime configuration.
+//
+// For *_FALLBACK prefixes, an empty SHARDS combined with a non-empty
+// sibling {prefix}_VALKEY_MODE is "intended but broken" — the operator
+// meant to wire the fallback but the SHARDS render came out empty.
+// Loud error instead of silent disable so a mis-emitted config during
+// a resharding window doesn't quietly turn the fallback off (which
+// would drop the union OR and reopen the exact stale-membership window
+// the fallback exists to close). Primary prefixes are exempt: the
+// AUDIENCE primary is optional, and a deployment running with audience
+// intentionally disabled can still have the chart emit a default MODE.
 func loadValkeyBlock(prefix string) (ValkeyBlock, []error) {
 	var errs []error
 	shardsRaw := os.Getenv(prefix + "_VALKEY_SHARDS")
-	if shardsRaw == "" {
-		return ValkeyBlock{}, nil
-	}
+	shardsEmpty := shardsRaw == ""
 
 	shards := map[string]string{}
-	if err := json.Unmarshal([]byte(shardsRaw), &shards); err != nil {
-		return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_SHARDS is not a JSON object: %w", prefix, err)}
+	if !shardsEmpty {
+		if err := json.Unmarshal([]byte(shardsRaw), &shards); err != nil {
+			return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_SHARDS is not a JSON object: %w", prefix, err)}
+		}
+	}
+	if len(shards) == 0 {
+		if strings.HasSuffix(prefix, "_FALLBACK") {
+			if mode, ok := os.LookupEnv(prefix + "_VALKEY_MODE"); ok && mode != "" {
+				return ValkeyBlock{}, []error{fmt.Errorf("%s_VALKEY_MODE is set but %s_VALKEY_SHARDS is empty or {}; either configure both or unset both", prefix, prefix)}
+			}
+		}
+		return ValkeyBlock{}, nil
 	}
 
 	mode := lookupString(prefix+"_VALKEY_MODE", string(redisstore.ModeStandalone))
