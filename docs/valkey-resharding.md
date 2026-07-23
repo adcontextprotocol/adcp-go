@@ -234,19 +234,45 @@ func main() { fmt.Println(clusterslot.NewShardMap(2).LastSlots()) }
 // prints: [8191 16383]
 ```
 
-Then reshard:
+Reshard, moving the **upper** half of the slot space (slots 8192-16383
+for the N=1→2 case; use the ranges above `clusterslot.NewShardMap(N+1)
+.LastSlots()` returns for other splits) to the new primary. Loop the
+low-level cluster primitives per slot instead of `valkey-cli --cluster
+reshard --cluster-slots N`:
+
 ```
-valkey-cli --cluster reshard <old-primary>:6379 \
-  --cluster-from <old-primary-node-id> \
-  --cluster-to   <new-primary-node-id> \
-  --cluster-slots 8192 \
-  --cluster-yes
+# For every slot in the target range (adjust per N):
+for slot in $(seq 8192 16383); do
+  valkey-cli -h <new-primary> cluster setslot "$slot" importing <old-node-id>
+  valkey-cli -h <old-primary> cluster setslot "$slot" migrating <new-node-id>
+  # Drain keys in the slot:
+  while :; do
+    keys=$(valkey-cli -h <old-primary> cluster getkeysinslot "$slot" 100)
+    [ -z "$keys" ] && break
+    valkey-cli -h <old-primary> migrate <new-primary-ip> 6379 "" 0 5000 \
+      AUTH <password> KEYS $keys
+  done
+  valkey-cli -h <old-primary> cluster setslot "$slot" node <new-node-id>
+  valkey-cli -h <new-primary> cluster setslot "$slot" node <new-node-id>
+done
 ```
 
-Progress prints slot-by-slot. During the migration, individual keys are
-`MIGRATE`d from source to destination; each key exists on exactly one
-side at any instant. Union-read on the shadow tier keeps request-path
-answers correct throughout because:
+`valkey-cli --cluster reshard --cluster-slots N` with `--cluster-yes`
+does NOT do this — its `clusterManagerComputeReshardTable` walks the
+source's slot bitmap in ascending order and picks the FIRST N slots
+from source. On a 1→2 growth the source owns 0-16383, so the tool moves
+slots 0-8191 to the new primary — leaving the OLD primary holding
+8192-16383. The reader's `NewShardMap(2)` still expects the OLD primary
+to hold 0-8191 (via ordinal 0 → endpoint mapping), so every read for a
+slot in 0-8191 would land on the new primary's endpoint via CRC16, get
+MOVED, and fail. The per-slot loop is the only way to specify which
+slots move; `valkey-cli --cluster reshard` has no `--cluster-from-slot`
+or `--cluster-to-slot` flag.
+
+During the migration, individual keys are `MIGRATE`d from source to
+destination; each key exists on exactly one side at any instant.
+Union-read on the shadow tier keeps request-path answers correct
+throughout because:
 - Slot ownership at the primary changes as slots move.
 - Each shadow replicates its primary — old-primary shadow drains keys
   that moved out (via the DEL propagated by replication), new-primary
@@ -289,8 +315,8 @@ Optional cleanup:
 | 1–2 | Delete the new pods; retract terraform IPs. | None. |
 | 3 | Redeploy reader with fallback env unset; wrapper unwraps. Old topology only. | None. New instances stay idle. |
 | 4 | Cluster `meet` is reversible: `cluster forget <new-primary-id>` from every remaining master. No slots have moved yet. | None. |
-| 5 mid-reshard | Rerun `valkey-cli --cluster reshard` in the reverse direction to move slots back. Fallback masks the intermediate state throughout. | None. |
-| 5 completed but before step 7 | Same as mid-reshard: rerun in reverse. All keys land back on shard-0. Fallback still active on readers. | None. |
+| 5 mid-reshard | Rerun the step-5 per-slot loop with source and destination swapped, moving the same slot range back to the old primary. Fallback masks the intermediate state throughout. | None. |
+| 5 completed but before step 7 | Same as mid-reshard: rerun the per-slot loop in reverse for the moved slot range. All keys land back on shard-0. Fallback still active on readers. | None. |
 | 7 | Redeploy reader with fallback re-enabled if you spotted issues after removal. | Depends: if reader was running fallback-free for hours before rollback and writes accumulated on the new topology, you must reverse-reshard before the fallback is meaningful again. |
 
 ## Shrinking (N+1 → N)
@@ -309,11 +335,19 @@ N+1 topology answers correctly at every point.
 
 ## What NOT to do
 
-- **Do not use a non-positional reshard.** `valkey-cli --cluster reshard`
-  lets operators specify custom slot counts and non-contiguous slot
-  sets. That will produce a slot-to-shard mapping the reader can't
-  reproduce with `NewShardMap(N)`, and reads will end up at the wrong
-  shadow. Always match the positional distribution.
+- **Do not use `valkey-cli --cluster reshard` for the slot movement in
+  step 5.** Non-interactive `--cluster reshard --cluster-slots N
+  --cluster-from X --cluster-to Y --cluster-yes` picks the FIRST N slots
+  from source (ascending scan of its slot bitmap) — the LOWER half —
+  which is the wrong direction for a 1→2 growth: it leaves the old
+  primary owning slots 8192-16383, while the reader's `NewShardMap(2)`
+  still routes those slots to the new primary via ordinal 1. Every
+  request in the moved slot range would land on the wrong endpoint and
+  fail with MOVED. Interactive mode fares no better — it also asks
+  only for a slot COUNT, never a range. Use the per-slot
+  `setslot importing / migrating / migrate / setslot node` loop in
+  step 5 instead; it's the only way to specify the upper-half range
+  that matches the positional distribution.
 - **Do not run the reader with fallback enabled long-term.** Every read
   becomes two shadow round-trips. Remove the fallback as soon as the
   primary side has been steady for the soak window.
