@@ -42,13 +42,13 @@ its package snapshot. TMP signature verification is turned off
 
 ```
 # Clone the repo on the target server, then:
-cd bench/perf
+cd bench/identity-perf
 ./run.sh
 ```
 
 The full matrix (7 CPU/memory configurations × 2 scenarios × 7 QPS steps)
 takes roughly 90 minutes at the defaults. Each run writes a report under
-`bench/perf/results/<UTC-timestamp>/` and appends a row to `summary.csv`
+`bench/identity-perf/results/<UTC-timestamp>/` and appends a row to `summary.csv`
 in the same directory.
 
 ## Subsets
@@ -170,3 +170,96 @@ The identity-agent's `/metrics` is available on the compose network at
   compose down. `run.sh` re-seeds on every CPU/memory config change.
 - `MAX_OPEN_CONNECTIONS` on the agent is raised to 4096 (from the default
   1024). Raise it further if the loadgen's `concurrency` exceeds this.
+
+## Reference results (2026-07-23, main)
+
+Full-matrix sweep of `./run.sh` on a clean `origin/main` checkout at
+commit `775dbae`. Sweep = 2 scenarios × 7 CPU/mem configs × 7 QPS steps
+= 98 runs. Wall time ~50 min.
+
+**Hardware / OS:**
+
+| | |
+|---|---|
+| CPU | AMD EPYC 9254 (24 cores / 48 threads, 4.15 GHz max) |
+| RAM | 384 GiB (DDR5) |
+| OS | Ubuntu 24.04.4 LTS (kernel 6.8.0-134-generic) |
+| Docker | 29.1.3 (compose v2.40.3) |
+| Host | Latitude bare metal, no neighbor workload (load avg ~0.5) |
+
+### Saturation ceiling per CPU allocation
+
+Achieved QPS at target=32,000 (loadgen ticker becomes the bottleneck
+past that). `_2g` and `_4g` variants of each CPU count matched to
+within noise — memory is not the constraint.
+
+| CPUs | fcap-only achieved | fcap-audience achieved | identity-agent CPU peak |
+|-----:|-------------------:|-----------------------:|------------------------:|
+| 1    |  7,222             |  4,693                 | 101% (cgroup ceiling)   |
+| 2    | 15,092             |  9,411                 | 201% / 202%             |
+| 4    | 25,737             | 17,023                 | 399% / 402%             |
+| 8    | 31,899             | 28,313                 | 570% / 775% (has headroom) |
+
+`ok_2xx == total` on every one of the 98 rows; `non_2xx = errors = 0`
+across the full matrix.
+
+### qps-per-core
+
+| CPUs | fcap-only | fcap-audience |
+|-----:|----------:|--------------:|
+| 1    | 7,222     | 4,693         |
+| 2    | 7,546     | 4,706         |
+| 4    | 6,434     | 4,256         |
+| 8    | 3,987     | 3,539         |
+
+Per-core efficiency peaks at **2 CPUs**. Diminishing returns start at
+4; 8 CPU is loadgen-bound before it saturates the SUT (identity CPU
+peak 570% on fcap-only and 775% on fcap-audience — the container has
+2-3 cores of headroom).
+
+### Memory
+
+Identity-agent container RSS stays between **13 MB and 68 MB** across
+the entire matrix. Memory cap doesn't influence throughput at any
+config; **512 MB is enough, 1 GB is comfortable**.
+
+Audience-Valkey and fcap-Valkey RSS: 4-5 MB and 37-39 MB respectively
+across the sweep — dominated by the seeded key set, not by request
+load.
+
+### Latency at saturation (target 32k qps, fcap-audience)
+
+| CPUs | p50 | p99  | p99.9 |
+|-----:|----:|-----:|------:|
+| 1    | 60 ms  | 105 ms | 147 ms |
+| 2    | 27 ms  |  43 ms |  49 ms |
+| 4    | 15 ms  |  24 ms |  28 ms |
+| 8    |  9 ms  |  14 ms |  18 ms |
+
+### Cross-check with PR #413 baseline
+
+PR #413 (merged 2026-07-22, commit before the post-#413 identityagent
+follow-ups) recorded these `achieved_qps` at target=32k on the same
+CPU model:
+
+| CPUs | fcap-only #413 → main | fcap-audience #413 → main |
+|-----:|----------------------:|--------------------------:|
+| 1    | 8,300 → 7,222 (**-13%**) | 6,500 → 4,693 (**-28%**) |
+| 2    | 19,300 → 15,092 (**-22%**) | 15,000 → 9,411 (**-37%**) |
+| 4    | 31,900 → 25,737 (**-19%**) | 26,700 → 17,023 (**-36%**) |
+| 8    | 31,900 → 31,899 (0%) | 31,900 → 28,313 (-11%) |
+
+**A consistent 15-25% regression on the fcap-only path and 30-40% on
+the fcap-audience path at CPU-bound configs, on identical hardware,
+between #413 baseline and current main.** The 8c fcap-only number
+matches exactly (both are loadgen-ticker-bound). Non-2xx and errors
+are 0 in both datasets, so this isn't a correctness change reducing
+work — it's per-request cost going up. Post-#413 commits that touched
+the request path are the natural suspects (notably `3f8d1a6`
+identityagent audience fail-closed on store error and `103cbdb`
+union-read shadow-mode fallback); worth bisecting.
+
+Follow-up ticket to bisect the regression: TBD.
+
+Raw `summary.csv` and per-step JSON reports are archived on the
+benchmark host under `bench/perf/results/main-20260723T174449Z/`.

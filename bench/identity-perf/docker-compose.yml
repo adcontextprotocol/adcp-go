@@ -45,7 +45,7 @@ services:
   configserver:
     build:
       context: ../..
-      dockerfile: bench/perf/Dockerfile
+      dockerfile: bench/identity-perf/Dockerfile
     image: adcp-perf-tools:latest
     entrypoint: ["/sbin/tini", "--", "/usr/local/bin/configserver"]
     environment:
@@ -62,7 +62,7 @@ services:
     image: adcp-perf-tools:latest
     build:
       context: ../..
-      dockerfile: bench/perf/Dockerfile
+      dockerfile: bench/identity-perf/Dockerfile
     entrypoint: ["/sbin/tini", "--", "/usr/local/bin/seeder"]
     environment:
       # Seeder honors the same *_VALKEY_{MODE,SHARDS} contract identity-agent
@@ -158,7 +158,7 @@ services:
     image: adcp-perf-tools:latest
     build:
       context: ../..
-      dockerfile: bench/perf/Dockerfile
+      dockerfile: bench/identity-perf/Dockerfile
     entrypoint: ["/sbin/tini", "--", "/usr/local/bin/writer"]
     environment:
       AUDIENCE_VALKEY_MODE: "${AUDIENCE_VALKEY_MODE:-standalone}"
@@ -182,7 +182,7 @@ services:
     image: adcp-perf-tools:latest
     build:
       context: ../..
-      dockerfile: bench/perf/Dockerfile
+      dockerfile: bench/identity-perf/Dockerfile
     entrypoint: ["/sbin/tini", "--", "/usr/local/bin/loadgen"]
     environment:
       TARGET: "http://identity-agent:8080/identity"

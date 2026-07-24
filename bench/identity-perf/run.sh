@@ -7,7 +7,7 @@
 #   ./run.sh fcap-only                # single scenario
 #   ./run.sh fcap-audience 2 4g       # single scenario, single config
 #
-# Requires: docker >= 24 with compose v2. Run from bench/perf/.
+# Requires: docker >= 24 with compose v2. Run from bench/identity-perf/.
 set -euo pipefail
 
 cd "$(dirname "$0")"

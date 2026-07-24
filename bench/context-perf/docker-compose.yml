@@ -1,0 +1,152 @@
+# docker-compose stack for context-agent perf benchmarking.
+#
+# Services:
+#   valkey — single Valkey shard the context-agent reads every request
+#     against (media buys, package configs, topics, signals,
+#     suppressions). No CONFIG_SOURCE server: unlike identity-agent,
+#     context-agent has no polling snapshot — every read hits Valkey
+#     (optionally fronted by its per-domain LRU caches).
+#   seeder — one-shot; populates the Valkey stores through the same
+#     mediabuystore / pkgconfigstore / topicstore / signalstore
+#     packages the agent reads through, so key layouts stay in
+#     lockstep.
+#   context-agent — the SUT. CPU/memory caps read from env vars so
+#     the runner can sweep configurations.
+#   loadgen — one-shot; drives QPS-paced load.
+services:
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    command: ["valkey-server", "--maxmemory-policy", "allkeys-lru", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+
+  seeder:
+    image: adcp-context-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/context-perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/seeder"]
+    # perf.env is the single source of truth for values that must
+    # agree across seeder, loadgen, and context-agent (currently
+    # PROPERTY_RIDS). Every service that needs those values loads
+    # this file so drift between services is impossible.
+    env_file:
+      - perf.env
+    environment:
+      VALKEY_ADDR: "valkey:6379"
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      PROVIDER_ID: "${PROVIDER_ID:-perf-provider}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      TOTAL_ARTIFACTS: "${TOTAL_ARTIFACTS:-1000}"
+      TOPIC_TARGETS_ENABLED: "${TOPIC_TARGETS_ENABLED:-false}"
+      TOTAL_TOPICS: "${TOTAL_TOPICS:-500}"
+      TOPICS_PER_PACKAGE: "${TOPICS_PER_PACKAGE:-5}"
+      TOPICS_PER_ARTIFACT: "${TOPICS_PER_ARTIFACT:-10}"
+      SIGNALS_ENABLED: "${SIGNALS_ENABLED:-false}"
+    depends_on:
+      valkey:
+        condition: service_healthy
+
+  context-agent:
+    build:
+      context: ../..
+      dockerfile: cmd/context-agent/Dockerfile
+    image: adcp-context-agent:latest
+    restart: unless-stopped
+    depends_on:
+      valkey:
+        condition: service_healthy
+    # CPU/memory caps — set by run.sh via CONTEXT_CPUS / CONTEXT_MEMORY.
+    # Uses top-level `cpus` and `mem_limit` (Compose v2 non-swarm honors
+    # these directly). run.sh additionally calls `docker update` and
+    # verifies HostConfig.NanoCpus / HostConfig.Memory as belt-and-braces.
+    cpus: "${CONTEXT_CPUS:-2}"
+    mem_limit: "${CONTEXT_MEMORY:-2g}"
+    memswap_limit: "${CONTEXT_MEMORY:-2g}"
+    env_file:
+      - perf.env
+    environment:
+      HTTP_PORT: "8081"
+      LOG_LEVEL: "warn"
+      # Deliberately generous so the deadline never clips p99 during
+      # the saturation sweep — we measure the SUT's real latency, not
+      # a truncated distribution. Production example.env uses 40ms.
+      REQUEST_TIMEOUT: "1s"
+      HTTP_READ_HEADER_TIMEOUT: "200ms"
+      HTTP_READ_TIMEOUT: "500ms"
+      HTTP_WRITE_TIMEOUT: "2s"
+      HTTP_IDLE_TIMEOUT: "30s"
+      MAX_OPEN_CONNECTIONS: "${MAX_OPEN_CONNECTIONS:-4096}"
+      REQUEST_BODY_LIMIT_BYTES: "262144"
+      RESPONSE_TTL: "60s"
+      STRICT_CONTENT_TYPE: "true"
+      SUPPORTED_ADCP_MAJOR_VERSIONS: "3"
+      # No TMP signature verification for the benchmark.
+      TMP_ALLOW_UNSIGNED: "true"
+      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081/context"
+      # Provider + property bitmap (static — no registry sync).
+      PROVIDER_ID: "${PROVIDER_ID:-perf-provider}"
+      # PROPERTY_RIDS comes from env_file (perf.env) — see comment on
+      # the seeder service. Do not duplicate the value here.
+      ACCEPTED_TAXONOMIES: "iab:7"
+      REGISTRY_ENABLED: "false"
+      # Valkey backend. Single standalone shard is enough — the sweep is
+      # about CPU/memory scaling of the agent, not the store.
+      VALKEY_MODE: "standalone"
+      VALKEY_SHARDS: '{"0":"valkey:6379"}'
+      VALKEY_DB: "0"
+      VALKEY_DIAL_TIMEOUT: "5s"
+      VALKEY_READ_TIMEOUT: "20ms"
+      VALKEY_WRITE_TIMEOUT: "50ms"
+      VALKEY_POOL_SIZE: "${VALKEY_POOL_SIZE:-64}"
+      # Cache defaults on — matches production; disable per-scenario via
+      # scenarios/*.env if you want to measure the cold path.
+      CACHE_ENABLED: "${CACHE_ENABLED:-true}"
+      SUPPRESSION_REFRESH_INTERVAL: "5m"
+      # Split observability onto ADMIN_PORT so /metrics and /debug/pprof
+      # never share the request listener — the agent's config validator
+      # rejects METRICS_ENABLED=true with ADMIN_PORT=0.
+      ADMIN_PORT: "8082"
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: "context_agent"
+      PPROF_ENABLED: "true"
+    ports:
+      # Request port exposed so wait_healthy can poll /health (only
+      # mounted on the request mux) and operators can hit /context
+      # from the host for one-off debugging.
+      - "${HOST_HTTP_PORT:-9464}:8081"
+      - "${HOST_METRICS_PORT:-9465}:8082"
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+
+  loadgen:
+    image: adcp-context-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/context-perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/loadgen"]
+    env_file:
+      - perf.env
+    environment:
+      TARGET: "http://context-agent:8081/context"
+      SELLER_AGENT_URL: "${SELLER_AGENT_URL:-https://seller.perf.local/agent}"
+      TOTAL_PACKAGES: "${TOTAL_PACKAGES:-200}"
+      TOTAL_ARTIFACTS: "${TOTAL_ARTIFACTS:-1000}"
+      PACKAGES_PER_REQ: "${PACKAGES_PER_REQ:-0}"
+      ARTIFACT_REFS_PER_REQ: "${ARTIFACT_REFS_PER_REQ:-0}"
+      QPS: "${QPS:-1000}"
+      CONCURRENCY: "${CONCURRENCY:-128}"
+      DURATION: "${DURATION:-30s}"
+      WARMUP: "${WARMUP:-5s}"
+      REPORT: "${REPORT:-/results/report.json}"
+      LABEL: "${LABEL:-}"
+    volumes:
+      - ${RESULTS_DIR:-./results}:/results
+    depends_on:
+      - context-agent

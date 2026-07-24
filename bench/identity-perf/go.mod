@@ -1,4 +1,4 @@
-module github.com/adcontextprotocol/adcp-go/bench/perf
+module github.com/adcontextprotocol/adcp-go/bench/identity-perf
 
 go 1.25.0
 
