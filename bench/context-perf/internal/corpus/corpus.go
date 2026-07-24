@@ -26,9 +26,9 @@ const SellerAgentURL = "https://seller.perf.local/agent"
 
 // defaultPropertyRIDs is the fallback list used only when the
 // PROPERTY_RIDS env var is unset (dev / test invocations). Under
-// docker compose, bench/context-perf/.env provides PROPERTY_RIDS to
-// every service so the seeder, loadgen, and context-agent agree on
-// exactly one list with no code-side duplication.
+// docker compose, bench/context-perf/perf.env is wired into every
+// service via `env_file:` so the seeder, loadgen, and context-agent
+// agree on exactly one list with no code-side duplication.
 var defaultPropertyRIDs = []string{
 	"019700ff-0001-7000-8000-000000000001",
 	"019700ff-0001-7000-8000-000000000002",
