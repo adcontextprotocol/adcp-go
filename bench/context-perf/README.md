@@ -307,3 +307,29 @@ in the CSV before saturation kicks in).
 
 Raw `summary.csv` and per-step JSON reports are archived on the
 benchmark host under `bench/context-perf/results/main-20260723T190414Z/`.
+
+## Signed-mode reference (2026-07-24)
+
+Smoke sweep at `4c/4g packages-only` on the same hardware as above,
+comparing baseline unsigned against `SIGN_REQUESTS=true`. Both runs on
+the AI-4641 branch. Full 7-step QPS ladder each; only the saturation
+steps shown — at low QPS the two are indistinguishable within noise.
+
+| target QPS | unsigned achieved | signed achieved | unsigned p99 | signed p99 | qps/core (unsigned → signed) |
+|-----------:|------------------:|----------------:|-------------:|-----------:|-----------------------------:|
+|  4,000     |  3,996            |  3,998          |   2.81 ms    |   5.14 ms  | 999 → 999 (~0%)              |
+|  8,000     |  6,088            |  5,805          | 124.87 ms    | 153.93 ms  | 1,522 → 1,451 (-5%)          |
+| 16,000     |  6,100            |  5,771          | 123.01 ms    | 152.63 ms  | 1,525 → 1,443 (-5%)          |
+| 32,000     |  6,092            |  5,791          | 124.78 ms    | 153.38 ms  | **1,523 → 1,448 (-5%)**      |
+
+context-agent CPU peak sat at ~395 % in both runs. `ok_2xx == total`
+on every step; signature verification passed on 100 % of the 174k
+signed requests at target 32k qps.
+
+The **-5 % qps-per-core** drop is much smaller than identity-perf's
+-36 % because context-match signing uses newline-joined string signing
+(no JCS canonicalization), so the added per-request cost is dominated
+by Ed25519 verify itself — ~34 μs / req derived from the qps-per-core
+delta (656 μs CPU / req unsigned → 690 μs signed on 4 cores). The
++28 ms p99 shift is tail-latency jitter at an already-saturated
+handler + Valkey ceiling, not incremental crypto load.

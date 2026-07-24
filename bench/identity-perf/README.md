@@ -299,3 +299,26 @@ Follow-up ticket to bisect the regression: TBD.
 
 Raw `summary.csv` and per-step JSON reports are archived on the
 benchmark host under `bench/perf/results/main-20260723T174449Z/`.
+
+## Signed-mode reference (2026-07-24)
+
+Smoke sweep at `4c/4g fcap-only` on the same hardware as above,
+comparing baseline unsigned against `SIGN_REQUESTS=true`. Both runs on
+the AI-4641 branch. Full 7-step QPS ladder each; only the top steps
+shown — at low QPS the two are indistinguishable.
+
+| target QPS | unsigned achieved | signed achieved | unsigned p99 | signed p99 | qps/core (unsigned → signed) |
+|-----------:|------------------:|----------------:|-------------:|-----------:|-----------------------------:|
+|  8,000     |  7,990            |  7,986          |  1.80 ms     |  2.16 ms   | 1,997 → 1,996 (~0%)          |
+| 16,000     | 15,960            | 15,958          |  2.13 ms     | 27.05 ms   | 3,990 → 3,990 (0%; signed near saturation) |
+| 32,000     | 25,657            | 16,470          | 17.52 ms     | 29.96 ms   | **6,414 → 4,118 (-36%)**     |
+
+identity-agent CPU peak sat at 400 %/401 % in both runs — the difference
+is per-request cost, not headroom. `ok_2xx == total` on every step;
+signature verification passed on 100 % of the 495k signed requests at
+target 32k qps.
+
+The **-36 % qps-per-core** drop under signing is at the upper end of
+the ticket's expected 15–30 % range for CPU-bound configs, and the
++12.5 ms p99 shift matches ~40–70 μs of Ed25519 verify + ~5–20 μs of
+JCS canonicalization per request amortized under queueing.
