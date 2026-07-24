@@ -461,7 +461,6 @@ func envBool(name string, def bool) bool {
 	case "0", "f", "false", "n", "no", "off":
 		return false
 	default:
-		log.Fatalf("%s=%q is not a boolean", name, v)
+		panic(fmt.Sprintf("%s=%q is not a boolean", name, v))
 	}
-	return def
 }
