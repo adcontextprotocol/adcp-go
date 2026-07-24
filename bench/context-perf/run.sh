@@ -32,6 +32,36 @@ DURATION="${DURATION:-30s}"
 WARMUP="${WARMUP:-5s}"
 CONCURRENCY="${CONCURRENCY:-256}"
 
+# SIGN_REQUESTS toggles the whole matrix between unsigned baseline and
+# Ed25519-signed request path. When true: the mock `tmpregistry` service
+# comes up under `--profile signed`, agent enforces signatures
+# (TMP_ALLOW_UNSIGNED=false), and loadgen stamps X-AdCP-Signature/
+# X-AdCP-Key-Id on every request. Default false keeps the existing
+# scenarios comparable without a re-run.
+#
+# Accepted spellings match loadgen's envBool (true/false/1/0/yes/no/on/off).
+# Anything else is a typo — fail loud rather than silently running the
+# wrong matrix half-configured.
+case "${SIGN_REQUESTS:-false}" in
+  true|1|yes|y|on|t)   SIGN_REQUESTS=true ;;
+  false|0|no|n|off|f)  SIGN_REQUESTS=false ;;
+  *)
+    echo "!! SIGN_REQUESTS=${SIGN_REQUESTS} is not a recognized boolean (use true|false|1|0|yes|no|on|off)" >&2
+    exit 2
+    ;;
+esac
+if [[ "$SIGN_REQUESTS" == "true" ]]; then
+  SIGNED_LABEL="signed"
+  SIGNED_PROFILE=(--profile signed)
+  export TMP_ALLOW_UNSIGNED="false"
+  export TMP_REGISTRY_URL="http://tmpregistry:9002/registry/snapshot"
+  export TMP_REGISTRY_ALLOW_INSECURE_SCHEME="true"
+else
+  SIGNED_LABEL="unsigned"
+  SIGNED_PROFILE=()
+fi
+export SIGN_REQUESTS
+
 SCENARIOS=(packages-only packages-topics packages-signals)
 case $# in
   0) ;;
@@ -46,7 +76,7 @@ case $# in
     ;;
 esac
 
-echo "scenario,cpus,memory_gb,target_qps,concurrency,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_core,context_rss_peak_mb,valkey_rss_peak_mb,context_cpu_peak_pct,valkey_cpu_peak_pct" > "$SUMMARY_CSV"
+echo "scenario,signed,cpus,memory_gb,target_qps,concurrency,achieved_qps,p50_latency_ms,p90_latency_ms,p99_latency_ms,p999_latency_ms,ok_2xx,non_2xx,errors,qps_per_core,context_rss_peak_mb,valkey_rss_peak_mb,context_cpu_peak_pct,valkey_cpu_peak_pct" > "$SUMMARY_CSV"
 
 # --- helpers -----------------------------------------------------------------
 wait_healthy() {
@@ -97,8 +127,12 @@ peak_from_stats() {
 
 # --- build once --------------------------------------------------------------
 echo "==> building images"
-for svc in context-agent seeder loadgen; do
-  docker compose build "$svc"
+build_services=(context-agent seeder loadgen)
+if [[ "$SIGN_REQUESTS" == "true" ]]; then
+  build_services+=(tmpregistry)
+fi
+for svc in "${build_services[@]}"; do
+  docker compose "${SIGNED_PROFILE[@]}" build "$svc"
 done
 
 for scenario in "${SCENARIOS[@]}"; do
@@ -125,10 +159,16 @@ for scenario in "${SCENARIOS[@]}"; do
     echo "SCENARIO=$scenario CPUS=$cpus MEMORY=$memory"
     echo "==================================================================="
 
+    # Bring up the tmpregistry first on signed runs so the agent's initial
+    # keystore fetch succeeds — the agent Refresh is synchronous at boot.
+    if [[ "$SIGN_REQUESTS" == "true" ]]; then
+      CONTEXT_CPUS="$cpus" CONTEXT_MEMORY="$memory" \
+        docker compose --profile signed up -d tmpregistry
+    fi
     CONTEXT_CPUS="$cpus" CONTEXT_MEMORY="$memory" \
-      docker compose up -d valkey
+      docker compose "${SIGNED_PROFILE[@]}" up -d valkey
     CONTEXT_CPUS="$cpus" CONTEXT_MEMORY="$memory" \
-      docker compose up -d --force-recreate context-agent
+      docker compose "${SIGNED_PROFILE[@]}" up -d --force-recreate context-agent
 
     # docker compose's `deploy.resources.limits` isn't reliably honored
     # outside swarm mode on Linux/cgroup-v2, so force the cgroup via
@@ -188,7 +228,7 @@ for scenario in "${SCENARIOS[@]}"; do
       CONTEXT_CPUS="$cpus" CONTEXT_MEMORY="$memory" \
       QPS="$qps" DURATION="$DURATION" WARMUP="$WARMUP" CONCURRENCY="$CONCURRENCY" \
         LABEL="$label" REPORT="$report_path" \
-        docker compose run --rm loadgen 2>&1 | tee "$scenario_dir/loadgen_${qps}qps.log" || true
+        docker compose "${SIGNED_PROFILE[@]}" run --rm loadgen 2>&1 | tee "$scenario_dir/loadgen_${qps}qps.log" || true
 
       # Recheck the container ID didn't change out from under us.
       post_cid=$(docker compose ps -q context-agent)
@@ -210,15 +250,15 @@ for scenario in "${SCENARIOS[@]}"; do
         vk_rss=$(peak_from_stats "$stats_log" "valkey"          2)
         ctx_cpu=$(peak_from_stats "$stats_log" "context-agent" 3)
         vk_cpu=$(peak_from_stats "$stats_log" "valkey"          3)
-        python3 - "$host_report" "$scenario" "$cpus" "$memory" "$CONCURRENCY" \
+        python3 - "$host_report" "$scenario" "$SIGNED_LABEL" "$cpus" "$memory" "$CONCURRENCY" \
           "$ctx_rss" "$vk_rss" "$ctx_cpu" "$vk_cpu" \
           >> "$SUMMARY_CSV" <<'PY'
 import json, sys
-p, scenario, cpus, memory, conc, ctx_rss, vk_rss, ctx_cpu, vk_cpu = sys.argv[1:]
+p, scenario, signed, cpus, memory, conc, ctx_rss, vk_rss, ctx_cpu, vk_cpu = sys.argv[1:]
 r = json.load(open(p))
 qps_per_core = r.get("achieved_qps",0) / max(float(cpus),1e-9)
 row = [
-    scenario, cpus, memory, r.get("target_qps",""), conc,
+    scenario, signed, cpus, memory, r.get("target_qps",""), conc,
     f"{r.get('achieved_qps',0):.1f}",
     f"{r.get('p50_ms',0):.2f}",
     f"{r.get('p90_ms',0):.2f}",

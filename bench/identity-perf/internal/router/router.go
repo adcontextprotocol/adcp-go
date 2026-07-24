@@ -30,10 +30,10 @@ import (
 
 // Router is safe for concurrent use.
 type Router struct {
-	Mode   string
-	sm     *shardMap
-	shard  []*redis.Client
-	one    redis.UniversalClient
+	Mode  string
+	sm    *shardMap
+	shard []*redis.Client
+	one   redis.UniversalClient
 }
 
 // New constructs a Router from `${prefix}_VALKEY_*` env vars, matching

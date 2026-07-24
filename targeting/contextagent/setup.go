@@ -463,7 +463,10 @@ func buildKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger
 }
 
 func buildSnapshotKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder, logger *slog.Logger) (tmproto.KeyStore, error) {
-	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{URL: cfg.RegistryURL})
+	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{
+		URL:                 cfg.RegistryURL,
+		AllowInsecureScheme: cfg.RegistryAllowInsecureScheme,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -497,9 +500,10 @@ func buildSnapshotKeyStore(ctx context.Context, cfg TMPConfig, recorder Recorder
 // without caring which mode is running.
 func buildAuthzKeyStore(cfg TMPConfig, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
 	opts := tmproto.LazyAuthorizationKeyStoreOptions{
-		BaseURL:     cfg.RegistryURL,
-		BearerToken: cfg.RegistryBearer,
-		Logger:      logger,
+		BaseURL:             cfg.RegistryURL,
+		BearerToken:         cfg.RegistryBearer,
+		AllowInsecureScheme: cfg.RegistryAllowInsecureScheme,
+		Logger:              logger,
 	}
 	if recorder != nil {
 		opts.OnFetchOutcome = func(ctx context.Context, outcome string) {

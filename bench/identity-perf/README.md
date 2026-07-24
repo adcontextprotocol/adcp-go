@@ -9,9 +9,10 @@ and memory caps. Two scenarios are supported out of the box:
 
 No external services or auth are required — the stack ships its own Valkey
 instances and a mock CONFIG_SOURCE server that the identity-agent polls for
-its package snapshot. TMP signature verification is turned off
+its package snapshot. TMP signature verification defaults to off
 (`TMP_ALLOW_UNSIGNED=true`) so the load generator can emit plain
-`IdentityMatchRequest` JSON.
+`IdentityMatchRequest` JSON; `SIGN_REQUESTS=true ./run.sh` flips the whole
+matrix to signed mode (see below).
 
 ## Stack
 
@@ -62,7 +63,40 @@ in the same directory.
 
 # Custom QPS points and duration:
 QPS_STEPS="1000 5000 10000" DURATION=60s ./run.sh fcap-only 4 4g
+
+# Signed-mode sweep — same matrix, X-AdCP-Signature on every request.
+# Brings up a mock tmpregistry service, enforces TMP_ALLOW_UNSIGNED=false
+# on the agent, and stamps the CSV rows with `signed=signed`.
+SIGN_REQUESTS=true ./run.sh fcap-only
 ```
+
+## Signed-mode sweep
+
+`SIGN_REQUESTS=true` runs the whole scenario × config matrix with
+Ed25519-signed requests so ops can directly compare "with signing" vs
+"without" at the same load point. What changes when the flag is set:
+
+- The `tmpregistry` compose service comes up under `--profile signed` and
+  publishes an Ed25519 public JWK at `GET /registry/snapshot` (single
+  property, single key). The keypair is generated on first boot into a
+  shared `bench-signer-keys` volume so subsequent restarts stay stable.
+- The identity-agent runs with `TMP_ALLOW_UNSIGNED=false`,
+  `TMP_REGISTRY_URL=http://tmpregistry:9002/registry/snapshot`,
+  `TMP_REGISTRY_ALLOW_INSECURE_SCHEME=true` (the compose network makes TLS
+  unnecessary and self-signed certs a distraction).
+- The loadgen loads the shared private key, builds a `tmproto.Signer`,
+  and stamps `X-AdCP-Signature` / `X-AdCP-Key-Id` on every request. The
+  provider_endpoint_url in the signing input matches the agent's
+  `TMP_OWN_ENDPOINT_URL` so verification succeeds.
+- The CSV `signed` column is `signed` on such runs and `unsigned`
+  otherwise.
+
+Order-of-magnitude signed-mode delta expected on a modern x86 CPU
+(reject the run if these do not show up):
+
+- +80–120 μs at p50, +200–500 μs at p99 (Ed25519 verify + JCS canonicalization).
+- ~2 cores burned on crypto at 32 000 QPS × ~60 μs/req.
+- 15–30 % drop in `qps_per_core` at CPU-bound configs.
 
 Any of the following can be overridden via env:
 `DURATION` (default `30s`), `WARMUP` (`5s`), `CONCURRENCY` (`256`),
@@ -159,9 +193,11 @@ The identity-agent's `/metrics` is available on the compose network at
 
 ## Notes / caveats
 
-- TMP signature verification is off. Enabling it in this stack would
-  require standing up a signing key server; not useful for a raw
-  throughput measurement of the handler + Valkey path.
+- TMP signature verification is off by default so the baseline scenarios
+  measure the handler + Valkey path in isolation. Set `SIGN_REQUESTS=true`
+  to include Ed25519 verify + JCS canonicalization in the measured cost;
+  see the "Signed-mode sweep" section above for what changes and the
+  expected magnitude of the delta.
 - The mock config server returns a static snapshot. Refresh churn is
   therefore not part of the measurement — reasonable because refresh is a
   background goroutine on a 5-minute cadence in production.
@@ -263,3 +299,26 @@ Follow-up ticket to bisect the regression: TBD.
 
 Raw `summary.csv` and per-step JSON reports are archived on the
 benchmark host under `bench/perf/results/main-20260723T174449Z/`.
+
+## Signed-mode reference (2026-07-24)
+
+Smoke sweep at `4c/4g fcap-only` on the same hardware as above,
+comparing baseline unsigned against `SIGN_REQUESTS=true`. Both runs on
+the AI-4641 branch. Full 7-step QPS ladder each; only the top steps
+shown — at low QPS the two are indistinguishable.
+
+| target QPS | unsigned achieved | signed achieved | unsigned p99 | signed p99 | qps/core (unsigned → signed) |
+|-----------:|------------------:|----------------:|-------------:|-----------:|-----------------------------:|
+|  8,000     |  7,990            |  7,986          |  1.80 ms     |  2.16 ms   | 1,997 → 1,996 (~0%)          |
+| 16,000     | 15,960            | 15,958          |  2.13 ms     | 27.05 ms   | 3,990 → 3,990 (0%; signed near saturation) |
+| 32,000     | 25,657            | 16,470          | 17.52 ms     | 29.96 ms   | **6,414 → 4,118 (-36%)**     |
+
+identity-agent CPU peak sat at 400 %/401 % in both runs — the difference
+is per-request cost, not headroom. `ok_2xx == total` on every step;
+signature verification passed on 100 % of the 495k signed requests at
+target 32k qps.
+
+The **-36 % qps-per-core** drop under signing is at the upper end of
+the ticket's expected 15–30 % range for CPU-bound configs, and the
++12.5 ms p99 shift matches ~40–70 μs of Ed25519 verify + ~5–20 μs of
+JCS canonicalization per request amortized under queueing.

@@ -134,6 +134,11 @@ type TMPConfig struct {
 	RegistryBearer string
 	OwnEndpointURL string
 	AllowUnsigned  bool
+	// RegistryAllowInsecureScheme permits an http:// RegistryURL. Intended
+	// for local development and perf harnesses that colocate a mock
+	// registry on a compose network; production deployments must leave
+	// this false so key material is fetched over TLS.
+	RegistryAllowInsecureScheme bool
 }
 
 // Registry mode enum values.
@@ -374,6 +379,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	registryInsecureScheme, err := lookupBool("TMP_REGISTRY_ALLOW_INSECURE_SCHEME", false)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	jwksTTL, err := lookupDuration("TMPX_ENCRYPT_JWKS_TTL", defaultJWKSTTL)
 	if err != nil {
 		errs = append(errs, err)
@@ -465,11 +474,12 @@ func LoadConfigFromEnv() (Config, error) {
 			// a padded mode string hits the `default` branch and fails
 			// startup. Both are foot-guns operators hit with env-file
 			// injection tools that append newlines.
-			RegistryURL:    strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
-			RegistryMode:   strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
-			RegistryBearer: strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
-			OwnEndpointURL: strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
-			AllowUnsigned:  allowUnsigned,
+			RegistryURL:                 strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
+			RegistryMode:                strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
+			RegistryBearer:              strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
+			OwnEndpointURL:              strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
+			AllowUnsigned:               allowUnsigned,
+			RegistryAllowInsecureScheme: registryInsecureScheme,
 		},
 		TMPX: TMPXConfig{
 			EncryptJWKSURL: os.Getenv("TMPX_ENCRYPT_JWKS_URL"),

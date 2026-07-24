@@ -116,8 +116,13 @@ services:
       STRICT_CONTENT_TYPE: "true"
       ACCESS_LOG_ENABLED: "false"
       SUPPORTED_ADCP_MAJOR_VERSIONS: "3"
-      # No TMP signature verification for the benchmark.
-      TMP_ALLOW_UNSIGNED: "true"
+      # TMP signature verification. Default: off (baseline scenarios).
+      # SIGN_REQUESTS=true on run.sh flips TMP_ALLOW_UNSIGNED to false and
+      # points the agent at the mock tmpregistry (activated under the
+      # `signed` profile so unsigned runs don't spin the mock up idle).
+      TMP_ALLOW_UNSIGNED: "${TMP_ALLOW_UNSIGNED:-true}"
+      TMP_REGISTRY_URL: "${TMP_REGISTRY_URL:-}"
+      TMP_REGISTRY_ALLOW_INSECURE_SCHEME: "${TMP_REGISTRY_ALLOW_INSECURE_SCHEME:-false}"
       TMP_OWN_ENDPOINT_URL: "http://identity-agent:8080/identity"
       # Config source — the mock serves the whole seller/package set.
       CONFIG_SOURCE_URL: "http://configserver:9001/v1/identity-configs"
@@ -197,10 +202,40 @@ services:
       WARMUP: "${WARMUP:-5s}"
       REPORT: "${REPORT:-/results/report.json}"
       LABEL: "${LABEL:-}"
+      # SIGN_REQUESTS=true makes the loadgen read the shared signer key
+      # from /keys/signer.json and stamp X-AdCP-Signature/X-AdCP-Key-Id on
+      # every request. TMP_OWN_ENDPOINT_URL must match the agent's env
+      # value so the provider_endpoint_url in the signing input agrees.
+      SIGN_REQUESTS: "${SIGN_REQUESTS:-false}"
+      SIGNER_KEY_PATH: "/keys/signer.json"
+      TMP_OWN_ENDPOINT_URL: "http://identity-agent:8080/identity"
     volumes:
       - ${RESULTS_DIR:-./results}:/results
+      - bench-signer-keys:/keys
     depends_on:
       - identity-agent
+
+  # Mock TMP registry that publishes the loadgen's public JWK on
+  # /registry/snapshot in the exact shape tmproto.RemoteKeyStore expects.
+  # Profile-gated so it only spins up on signed-mode runs.
+  tmpregistry:
+    image: adcp-perf-tools:latest
+    build:
+      context: ../..
+      dockerfile: bench/identity-perf/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/tmpregistry"]
+    profiles: [signed]
+    environment:
+      PORT: "9002"
+      SIGNER_KEY_PATH: "/keys/signer.json"
+      SIGNER_KID: "${SIGNER_KID:-bench-signer-1}"
+    volumes:
+      - bench-signer-keys:/keys
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9002/healthz"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
 
   # ------------------------------------------------------------------
   # Multi-shard shadow-mode nodes (extra standalone Valkeys). Combined
@@ -290,3 +325,9 @@ services:
   audience-cluster-6:
     <<: *audience_cluster
     profiles: [cluster-large]
+
+# Named volume backing the signer keypair shared between tmpregistry (writes
+# it on first boot, serves the public half) and loadgen (reads to construct
+# the tmproto.Signer). Cleared by `docker compose down -v`.
+volumes:
+  bench-signer-keys:

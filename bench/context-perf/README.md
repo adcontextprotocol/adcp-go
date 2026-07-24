@@ -14,8 +14,10 @@ of CPU and memory caps. Three scenarios are supported out of the box:
 No external services or auth are required — the stack ships its own
 Valkey instance and the seeder pre-populates every read path through
 the same store packages the context-agent reads through. TMP signature
-verification is turned off (`TMP_ALLOW_UNSIGNED=true`) so the load
-generator can emit plain `ContextMatchRequest` JSON.
+verification defaults to off (`TMP_ALLOW_UNSIGNED=true`) so the load
+generator can emit plain `ContextMatchRequest` JSON;
+`SIGN_REQUESTS=true ./run.sh` flips the whole matrix to signed mode
+(see below).
 
 ## Stack
 
@@ -60,11 +62,41 @@ appends a row to `summary.csv` in the same directory.
 
 # Custom QPS points and duration:
 QPS_STEPS="1000 5000 10000" DURATION=60s ./run.sh packages-only 4 4g
+
+# Signed-mode sweep — same matrix, X-AdCP-Signature on every request.
+# Brings up a mock tmpregistry service, enforces TMP_ALLOW_UNSIGNED=false
+# on the agent, and stamps the CSV rows with `signed=signed`.
+SIGN_REQUESTS=true ./run.sh packages-only
 ```
 
 Any of the following can be overridden via env:
 `DURATION` (default `30s`), `WARMUP` (`5s`), `CONCURRENCY` (`256`),
 `RESULTS_DIR`.
+
+## Signed-mode sweep
+
+`SIGN_REQUESTS=true` runs the whole scenario × config matrix with
+Ed25519-signed requests so ops can directly compare "with signing" vs
+"without" at the same load point. What changes when the flag is set:
+
+- The `tmpregistry` compose service comes up under `--profile signed` and
+  publishes an Ed25519 public JWK at `GET /registry/snapshot` (single
+  property, single key). The keypair is generated on first boot into a
+  shared `bench-signer-keys` volume so subsequent restarts stay stable.
+- The context-agent runs with `TMP_ALLOW_UNSIGNED=false`,
+  `TMP_REGISTRY_URL=http://tmpregistry:9002/registry/snapshot`,
+  `TMP_REGISTRY_ALLOW_INSECURE_SCHEME=true` (the compose network makes TLS
+  unnecessary and self-signed certs a distraction).
+- The loadgen loads the shared private key, builds a `tmproto.Signer`,
+  and stamps `X-AdCP-Signature` / `X-AdCP-Key-Id` on every request. The
+  provider_endpoint_url in the signing input matches the agent's
+  `TMP_OWN_ENDPOINT_URL` so verification succeeds.
+- The CSV `signed` column is `signed` on such runs and `unsigned`
+  otherwise.
+
+Context-match uses newline-joined string signing (much cheaper than
+identity-match's JCS+SHA-256), so the expected delta is smaller than
+the identity harness — dominated by Ed25519 verify itself.
 
 Scenario-level overrides come from `scenarios/*.env`; edit those to
 change the seeded corpus (packages, topics, signals) or the request
@@ -165,9 +197,10 @@ The context-agent's `/metrics` is on the compose network at
 
 ## Notes / caveats
 
-- TMP signature verification is off. Enabling it in this stack would
-  require standing up a signing key server; not useful for a raw
-  throughput measurement of the handler + Valkey path.
+- TMP signature verification is off by default so the baseline scenarios
+  measure the handler + Valkey path in isolation. Set `SIGN_REQUESTS=true`
+  to include Ed25519 verify in the measured cost; see the "Signed-mode
+  sweep" section above for what changes.
 - Unlike the identity-agent harness (`bench/identity-perf`), there is no
   configserver: the context-agent has no polling snapshot source.
   Every read hits Valkey — optionally fronted by the per-domain LRU
@@ -274,3 +307,29 @@ in the CSV before saturation kicks in).
 
 Raw `summary.csv` and per-step JSON reports are archived on the
 benchmark host under `bench/context-perf/results/main-20260723T190414Z/`.
+
+## Signed-mode reference (2026-07-24)
+
+Smoke sweep at `4c/4g packages-only` on the same hardware as above,
+comparing baseline unsigned against `SIGN_REQUESTS=true`. Both runs on
+the AI-4641 branch. Full 7-step QPS ladder each; only the saturation
+steps shown — at low QPS the two are indistinguishable within noise.
+
+| target QPS | unsigned achieved | signed achieved | unsigned p99 | signed p99 | qps/core (unsigned → signed) |
+|-----------:|------------------:|----------------:|-------------:|-----------:|-----------------------------:|
+|  4,000     |  3,996            |  3,998          |   2.81 ms    |   5.14 ms  | 999 → 999 (~0%)              |
+|  8,000     |  6,088            |  5,805          | 124.87 ms    | 153.93 ms  | 1,522 → 1,451 (-5%)          |
+| 16,000     |  6,100            |  5,771          | 123.01 ms    | 152.63 ms  | 1,525 → 1,443 (-5%)          |
+| 32,000     |  6,092            |  5,791          | 124.78 ms    | 153.38 ms  | **1,523 → 1,448 (-5%)**      |
+
+context-agent CPU peak sat at ~395 % in both runs. `ok_2xx == total`
+on every step; signature verification passed on 100 % of the 174k
+signed requests at target 32k qps.
+
+The **-5 % qps-per-core** drop is much smaller than identity-perf's
+-36 % because context-match signing uses newline-joined string signing
+(no JCS canonicalization), so the added per-request cost is dominated
+by Ed25519 verify itself — ~34 μs / req derived from the qps-per-core
+delta (656 μs CPU / req unsigned → 690 μs signed on 4 cores). The
++28 ms p99 shift is tail-latency jitter at an already-saturated
+handler + Valkey ceiling, not incremental crypto load.

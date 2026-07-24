@@ -93,6 +93,11 @@ type TMPConfig struct {
 	RegistryBearer string
 	OwnEndpointURL string
 	AllowUnsigned  bool
+	// RegistryAllowInsecureScheme permits an http:// RegistryURL. Intended
+	// for local development and perf harnesses that colocate a mock
+	// registry on a compose network; production deployments must leave
+	// this false so key material is fetched over TLS.
+	RegistryAllowInsecureScheme bool
 }
 
 // Registry mode enum values (mirrors identityagent).
@@ -270,6 +275,8 @@ func LoadConfigFromEnv() (Config, error) {
 	errs = appendErr(errs, err)
 	allowUnsigned, err := lookupBool("TMP_ALLOW_UNSIGNED", false)
 	errs = appendErr(errs, err)
+	registryInsecureScheme, err := lookupBool("TMP_REGISTRY_ALLOW_INSECURE_SCHEME", false)
+	errs = appendErr(errs, err)
 	suppressionRefresh, err := lookupDuration("SUPPRESSION_REFRESH_INTERVAL", defaultSuppressionRefresh)
 	errs = appendErr(errs, err)
 
@@ -314,11 +321,12 @@ func LoadConfigFromEnv() (Config, error) {
 		PropertyRIDs:               propertyRIDs,
 		SuppressionRefreshInterval: suppressionRefresh,
 		TMP: TMPConfig{
-			RegistryURL:    strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
-			RegistryMode:   strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
-			RegistryBearer: strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
-			OwnEndpointURL: strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
-			AllowUnsigned:  allowUnsigned,
+			RegistryURL:                 strings.TrimSpace(os.Getenv("TMP_REGISTRY_URL")),
+			RegistryMode:                strings.TrimSpace(os.Getenv("TMP_REGISTRY_MODE")),
+			RegistryBearer:              strings.TrimSpace(os.Getenv("TMP_REGISTRY_BEARER")),
+			OwnEndpointURL:              strings.TrimSpace(os.Getenv("TMP_OWN_ENDPOINT_URL")),
+			AllowUnsigned:               allowUnsigned,
+			RegistryAllowInsecureScheme: registryInsecureScheme,
 		},
 		Valkey: valkeyCfg,
 		Cache:  cacheCfg,
