@@ -523,6 +523,6 @@ func envBool(name string, def bool) bool {
 		return false
 	default:
 		log.Fatalf("%s=%q is not a boolean", name, v)
-		return def
 	}
+	return def
 }
