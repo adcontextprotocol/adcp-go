@@ -1,8 +1,8 @@
 // loadgen is a closed-loop QPS-paced HTTP load generator targeted at the
 // identity-agent's /identity endpoint. It picks user tokens from the seeded
-// pool, builds a valid IdentityMatchRequest (unsigned — the agent must run
-// with TMP_ALLOW_UNSIGNED=true), fires at the configured rate, and reports
-// latency percentiles + status/error breakdown + observed throughput.
+// pool, builds a valid IdentityMatchRequest, fires at the configured rate,
+// and reports latency percentiles + status/error breakdown + observed
+// throughput.
 //
 // Two knobs together determine the offered load:
 //   - QPS: target requests per second
@@ -11,6 +11,13 @@
 // The generator tracks the QPS rate even when the target lags; if backpressure
 // (all workers busy) prevents hitting QPS the achieved rate is what surfaces
 // in the report, which is what a saturation sweep wants.
+//
+// SIGN_REQUESTS=true switches the wire path from unsigned (TMP_ALLOW_UNSIGNED
+// on the SUT) to Ed25519-signed via tmproto.Signer, so the sweep exercises
+// the same signature-verification path a signed-mode production deployment
+// pays on every request. The keypair is read from SIGNER_KEY_PATH — the mock
+// tmpregistry service publishes the matching public JWK on its snapshot
+// endpoint.
 package main
 
 import (
@@ -28,24 +35,14 @@ import (
 	"os/signal"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/bench/identity-perf/internal/signkey"
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
-
-type identityToken struct {
-	UIDType   string `json:"uid_type"`
-	UserToken string `json:"user_token"`
-}
-
-type identityMatchRequest struct {
-	AdcpVersion    string          `json:"adcp_version"`
-	Type           string          `json:"type"`
-	RequestID      string          `json:"request_id"`
-	SellerAgentURL string          `json:"seller_agent_url"`
-	Identities     []identityToken `json:"identities"`
-	PackageIDs     []string        `json:"package_ids,omitempty"`
-}
 
 type sample struct {
 	latency time.Duration
@@ -67,6 +64,10 @@ func main() {
 	warmup := flag.Duration("warmup", envDur("WARMUP", 3*time.Second), "warmup discarded from stats")
 	reportPath := flag.String("report", envStr("REPORT", ""), "optional path to write JSON report")
 	label := flag.String("label", envStr("LABEL", ""), "label included in the report")
+	signRequests := flag.Bool("sign-requests", envBool("SIGN_REQUESTS", false), "when true, sign every request with the shared bench keypair")
+	signerKeyPath := flag.String("signer-key-path", envStr("SIGNER_KEY_PATH", "/keys/signer.json"), "path to the loadgen ed25519 keypair (shared with tmpregistry)")
+	signerKeyWait := flag.Duration("signer-key-wait", envDur("SIGNER_KEY_WAIT", 30*time.Second), "max time to wait for the signer key file to appear before failing")
+	providerEndpoint := flag.String("provider-endpoint-url", envStr("TMP_OWN_ENDPOINT_URL", "http://identity-agent:8080/identity"), "provider_endpoint_url the SUT verifies against — must match the SUT's TMP_OWN_ENDPOINT_URL")
 	flag.Parse()
 
 	if *identitiesPerReq != 1 {
@@ -87,6 +88,20 @@ func main() {
 		// and teach the seeder to write under each canonical form. The
 		// harness stays at 1 identity/request until that lands.
 		log.Fatalf("identities-per-req=%d is not supported; only 1 is measurable today (see comment in loadgen/main.go)", *identitiesPerReq)
+	}
+
+	var signer *tmproto.Signer
+	if *signRequests {
+		kp, err := signkey.WaitFor(*signerKeyPath, *signerKeyWait, 500*time.Millisecond)
+		if err != nil {
+			log.Fatalf("load signer keypair: %v", err)
+		}
+		s, err := tmproto.NewSigner(kp.Kid, kp.PrivateKey)
+		if err != nil {
+			log.Fatalf("construct signer: %v", err)
+		}
+		signer = s
+		log.Printf("signing enabled: kid=%s provider_endpoint_url=%s", kp.Kid, *providerEndpoint)
 	}
 
 	client := &http.Client{
@@ -112,14 +127,17 @@ func main() {
 		cancel()
 	}()
 
-	log.Printf("warmup %s @ %d qps against %s", *warmup, *qps, *target)
-	warmupCtx, warmupCancel := context.WithTimeout(ctx, *warmup)
-	runWave(warmupCtx, client, waveParams{
+	wp := waveParams{
 		target: *target, sellerAgent: *sellerAgent, adcpVersion: *adcpVersion,
 		totalUsers: *totalUsers, totalPackages: *totalPackages,
 		packagesPerReq: *packagesPerReq, identitiesPerReq: *identitiesPerReq,
-		qps: *qps, concurrency: *concurrency, samples: nil,
-	})
+		qps: *qps, concurrency: *concurrency,
+		signer: signer, providerEndpoint: *providerEndpoint,
+	}
+
+	log.Printf("warmup %s @ %d qps against %s", *warmup, *qps, *target)
+	warmupCtx, warmupCancel := context.WithTimeout(ctx, *warmup)
+	runWave(warmupCtx, client, wp)
 	warmupCancel()
 
 	log.Printf("measuring %s @ %d qps (concurrency %d)", *duration, *qps, *concurrency)
@@ -129,12 +147,8 @@ func main() {
 
 	measureCtx, measureCancel := context.WithTimeout(ctx, *duration)
 	elapsed := time.Now()
-	runWave(measureCtx, client, waveParams{
-		target: *target, sellerAgent: *sellerAgent, adcpVersion: *adcpVersion,
-		totalUsers: *totalUsers, totalPackages: *totalPackages,
-		packagesPerReq: *packagesPerReq, identitiesPerReq: *identitiesPerReq,
-		qps: *qps, concurrency: *concurrency, samples: samples,
-	})
+	wp.samples = samples
+	runWave(measureCtx, client, wp)
 	measureCancel()
 	close(samples)
 	rep := <-statsDone
@@ -146,6 +160,7 @@ func main() {
 	rep.PackagesPerReq = *packagesPerReq
 	rep.IdentitiesPerReq = *identitiesPerReq
 
+	rep.Signed = *signRequests
 	rep.print(os.Stdout)
 	if *reportPath != "" {
 		if err := writeJSON(*reportPath, rep); err != nil {
@@ -165,6 +180,8 @@ type waveParams struct {
 	qps              int
 	concurrency      int
 	samples          chan<- sample
+	signer           *tmproto.Signer
+	providerEndpoint string
 }
 
 // runWave paces work at qps and executes each request on a bounded worker
@@ -246,8 +263,26 @@ loop:
 
 func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.Buffer, p waveParams) {
 	req := buildRequest(r, p)
+	// The signing input is derived from the struct, not from the encoded
+	// bytes — the agent side reconstructs the canonical form from its
+	// decoded copy of the request, so signer and verifier converge on the
+	// same input as long as the struct is stable. json.Encoder appends a
+	// trailing newline; the agent side accepts it (net/http body reader),
+	// so no post-encode trim is required.
+	var sig, kid string
+	if p.signer != nil {
+		s, err := p.signer.SignIdentityMatch(&req, p.providerEndpoint, tmproto.CurrentEpoch())
+		if err != nil {
+			if p.samples != nil {
+				p.samples <- sample{err: true}
+			}
+			return
+		}
+		sig = s
+		kid = p.signer.KeyID
+	}
 	buf.Reset()
-	if err := json.NewEncoder(buf).Encode(req); err != nil {
+	if err := json.NewEncoder(buf).Encode(&req); err != nil {
 		if p.samples != nil {
 			p.samples <- sample{err: true}
 		}
@@ -262,6 +297,10 @@ func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.
 		return
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if sig != "" {
+		httpReq.Header.Set(tmproto.HeaderTMPSignature, sig)
+		httpReq.Header.Set(tmproto.HeaderTMPKeyID, kid)
+	}
 
 	start := time.Now()
 	resp, err := client.Do(httpReq)
@@ -284,21 +323,21 @@ func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.
 	}
 }
 
-func buildRequest(r *rand.Rand, p waveParams) identityMatchRequest {
+func buildRequest(r *rand.Rand, p waveParams) tmproto.IdentityMatchRequest {
 	// UserToken must match the seeder's UserToken function AND survive the
 	// identity-agent's canonicalizer. We emit MAID-shaped tokens: 32 lowercase
 	// hex chars → decoder produces 16 bytes → Canonical() encodes them back
 	// to the same 32 hex chars, so the fcap/audience key the agent computes
 	// (sha256(canonical)[:16]) matches what the seeder wrote.
-	idents := make([]identityToken, 0, p.identitiesPerReq)
+	idents := make([]tmproto.IdentityToken, 0, p.identitiesPerReq)
 	for i := 0; i < p.identitiesPerReq; i++ {
 		u := r.IntN(p.totalUsers)
-		idents = append(idents, identityToken{
+		idents = append(idents, tmproto.IdentityToken{
 			UIDType:   uidTypeFor(i),
 			UserToken: userToken(u),
 		})
 	}
-	req := identityMatchRequest{
+	req := tmproto.IdentityMatchRequest{
 		AdcpVersion:    p.adcpVersion,
 		Type:           "identity_match_request",
 		RequestID:      fmt.Sprintf("req-%x-%x", r.Uint64(), r.Uint64()),
@@ -319,11 +358,11 @@ func buildRequest(r *rand.Rand, p waveParams) identityMatchRequest {
 // request. Only i=0 is exercised today (the loadgen gates
 // identities-per-req at 1). Kept in place with a single MAID entry so a
 // future multi-identity extension has an obvious hook.
-func uidTypeFor(i int) string {
+func uidTypeFor(i int) tmproto.UIDType {
 	// MAID: 32 hex chars → decoder produces 16 bytes → Canonical()
 	// re-encodes to the same 32 hex chars → identityhash matches the
 	// seeder's Hash(userToken(u)).
-	return "maid"
+	return tmproto.UIDType("maid")
 }
 
 // userToken returns a 32-char lowercase hex string deterministic in the
@@ -343,6 +382,7 @@ type report struct {
 	Concurrency      int           `json:"concurrency"`
 	PackagesPerReq   int           `json:"packages_per_req"`
 	IdentitiesPerReq int           `json:"identities_per_req"`
+	Signed           bool          `json:"signed"`
 	WallSeconds      float64       `json:"wall_seconds"`
 	Total            int64         `json:"total"`
 	OK               int64         `json:"ok_2xx"`
@@ -469,4 +509,20 @@ func envDur(name string, def time.Duration) time.Duration {
 		log.Fatalf("%s=%q is not a duration: %v", name, v, err)
 	}
 	return d
+}
+
+func envBool(name string, def bool) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	case "0", "f", "false", "n", "no", "off":
+		return false
+	default:
+		log.Fatalf("%s=%q is not a boolean", name, v)
+		return def
+	}
 }

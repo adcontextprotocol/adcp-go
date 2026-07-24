@@ -1,10 +1,16 @@
 // loadgen is a closed-loop QPS-paced HTTP load generator targeted at
 // the context-agent's /context endpoint. It draws property_rid,
 // placement_id, and (optionally) artifact_refs from the seeded pool,
-// builds a valid ContextMatchRequest (unsigned — the agent must run
-// with TMP_ALLOW_UNSIGNED=true), fires at the configured rate, and
+// builds a valid ContextMatchRequest, fires at the configured rate, and
 // reports latency percentiles + status/error breakdown + observed
 // throughput.
+//
+// SIGN_REQUESTS=true switches the wire path from unsigned (TMP_ALLOW_UNSIGNED
+// on the SUT) to Ed25519-signed via tmproto.Signer, so the sweep exercises
+// the same signature-verification path a signed-mode production deployment
+// pays on every request. The keypair is read from SIGNER_KEY_PATH — the mock
+// tmpregistry service publishes the matching public JWK on its snapshot
+// endpoint.
 //
 // Pacer + reporting semantics mirror bench/identity-perf/cmd/loadgen so the
 // two harnesses' reports slot into the same summary CSV shape.
@@ -26,11 +32,13 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/bench/context-perf/internal/corpus"
+	"github.com/adcontextprotocol/adcp-go/bench/context-perf/internal/signkey"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -54,11 +62,29 @@ func main() {
 	warmup := flag.Duration("warmup", envDur("WARMUP", 3*time.Second), "warmup discarded from stats")
 	reportPath := flag.String("report", envStr("REPORT", ""), "optional path to write JSON report")
 	label := flag.String("label", envStr("LABEL", ""), "label included in the report")
+	signRequests := flag.Bool("sign-requests", envBool("SIGN_REQUESTS", false), "when true, sign every request with the shared bench keypair")
+	signerKeyPath := flag.String("signer-key-path", envStr("SIGNER_KEY_PATH", "/keys/signer.json"), "path to the loadgen ed25519 keypair (shared with tmpregistry)")
+	signerKeyWait := flag.Duration("signer-key-wait", envDur("SIGNER_KEY_WAIT", 30*time.Second), "max time to wait for the signer key file to appear before failing")
+	providerEndpoint := flag.String("provider-endpoint-url", envStr("TMP_OWN_ENDPOINT_URL", "http://context-agent:8081/context"), "provider_endpoint_url the SUT verifies against — must match the SUT's TMP_OWN_ENDPOINT_URL")
 	flag.Parse()
 
 	propertyRIDs := corpus.PropertyRIDs()
 	if len(propertyRIDs) == 0 {
 		log.Fatalf("corpus.PropertyRIDs returned empty list — PROPERTY_RIDS misconfigured")
+	}
+
+	var signer *tmproto.Signer
+	if *signRequests {
+		kp, err := signkey.WaitFor(*signerKeyPath, *signerKeyWait, 500*time.Millisecond)
+		if err != nil {
+			log.Fatalf("load signer keypair: %v", err)
+		}
+		s, err := tmproto.NewSigner(kp.Kid, kp.PrivateKey)
+		if err != nil {
+			log.Fatalf("construct signer: %v", err)
+		}
+		signer = s
+		log.Printf("signing enabled: kid=%s provider_endpoint_url=%s", kp.Kid, *providerEndpoint)
 	}
 
 	client := &http.Client{
@@ -90,6 +116,7 @@ func main() {
 		totalPackages: *totalPackages, packagesPerReq: *packagesPerReq,
 		totalArtifacts: *totalArtifacts, artifactRefsPerReq: *artifactRefsPerReq,
 		qps: *qps, concurrency: *concurrency,
+		signer: signer, providerEndpoint: *providerEndpoint,
 	}
 
 	log.Printf("warmup %s @ %d qps against %s", *warmup, *qps, *target)
@@ -116,6 +143,7 @@ func main() {
 	rep.Concurrency = *concurrency
 	rep.PackagesPerReq = *packagesPerReq
 	rep.ArtifactRefsPerReq = *artifactRefsPerReq
+	rep.Signed = *signRequests
 
 	rep.print(os.Stdout)
 	if *reportPath != "" {
@@ -137,6 +165,8 @@ type waveParams struct {
 	qps                int
 	concurrency        int
 	samples            chan<- sample
+	signer             *tmproto.Signer
+	providerEndpoint   string
 }
 
 // runWave — same pacer as bench/identity-perf's loadgen. See that file for the
@@ -202,6 +232,11 @@ loop:
 
 func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.Buffer, p waveParams) {
 	req := buildRequest(r, p)
+	var sig, kid string
+	if p.signer != nil {
+		sig = p.signer.SignContextMatch(req, p.providerEndpoint, tmproto.CurrentEpoch())
+		kid = p.signer.KeyID
+	}
 	buf.Reset()
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		if p.samples != nil {
@@ -218,6 +253,10 @@ func fireOne(ctx context.Context, client *http.Client, r *rand.Rand, buf *bytes.
 		return
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if sig != "" {
+		httpReq.Header.Set(tmproto.HeaderTMPSignature, sig)
+		httpReq.Header.Set(tmproto.HeaderTMPKeyID, kid)
+	}
 
 	start := time.Now()
 	resp, err := client.Do(httpReq)
@@ -280,6 +319,7 @@ type report struct {
 	Concurrency        int           `json:"concurrency"`
 	PackagesPerReq     int           `json:"packages_per_req"`
 	ArtifactRefsPerReq int           `json:"artifact_refs_per_req"`
+	Signed             bool          `json:"signed"`
 	WallSeconds        float64       `json:"wall_seconds"`
 	Total              int64         `json:"total"`
 	OK                 int64         `json:"ok_2xx"`
@@ -408,4 +448,20 @@ func envDur(name string, def time.Duration) time.Duration {
 		log.Fatalf("%s=%q is not a duration: %v", name, v, err)
 	}
 	return d
+}
+
+func envBool(name string, def bool) bool {
+	v := os.Getenv(name)
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	case "0", "f", "false", "n", "no", "off":
+		return false
+	default:
+		log.Fatalf("%s=%q is not a boolean", name, v)
+		return def
+	}
 }

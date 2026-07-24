@@ -42,7 +42,7 @@ func BuildKeyStore(runCtx context.Context, cfg TMPConfig, logger *slog.Logger, r
 	case RegistryModeAuthorization:
 		return buildAuthorizationKeyStore(cfg, logger, recorder)
 	case RegistryModeSnapshot:
-		return buildSnapshotKeyStore(runCtx, cfg.RegistryURL, logger, recorder)
+		return buildSnapshotKeyStore(runCtx, cfg, logger, recorder)
 	default:
 		return nil, fmt.Errorf("unknown TMP_REGISTRY_MODE %q; expected %q or %q", mode, RegistryModeSnapshot, RegistryModeAuthorization)
 	}
@@ -51,15 +51,18 @@ func BuildKeyStore(runCtx context.Context, cfg TMPConfig, logger *slog.Logger, r
 // buildSnapshotKeyStore polls a bulk snapshot URL for signing keys. Used
 // when the verifier's caller set is known and bounded — typically when
 // pointing at a router's /registry/snapshot.
-func buildSnapshotKeyStore(runCtx context.Context, registryURL string, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
-	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{URL: registryURL})
+func buildSnapshotKeyStore(runCtx context.Context, cfg TMPConfig, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
+	ks, err := tmproto.NewRemoteKeyStore(tmproto.RemoteKeyStoreOptions{
+		URL:                 cfg.RegistryURL,
+		AllowInsecureScheme: cfg.RegistryAllowInsecureScheme,
+	})
 	if err != nil {
 		return nil, err
 	}
 	fetchCtx, cancel := context.WithTimeout(runCtx, 10*time.Second)
 	defer cancel()
 	if _, err := ks.Refresh(fetchCtx); err != nil {
-		return nil, fmt.Errorf("initial registry fetch from %s: %w", registryURL, err)
+		return nil, fmt.Errorf("initial registry fetch from %s: %w", cfg.RegistryURL, err)
 	}
 	safeGo(logger, recorder, "keystore-refresh", func() {
 		// A non-Canceled return from Run means the keystore has stopped
@@ -67,7 +70,7 @@ func buildSnapshotKeyStore(runCtx context.Context, registryURL string, logger *s
 		// registry until the keys age out — surface at ERROR so an
 		// alert fires.
 		if err := ks.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Error("registry keystore Run terminated", "url", registryURL, "error", err)
+			logger.Error("registry keystore Run terminated", "url", cfg.RegistryURL, "error", err)
 		}
 	})
 	return ks, nil
@@ -86,9 +89,10 @@ func buildSnapshotKeyStore(runCtx context.Context, registryURL string, logger *s
 // they picked.
 func buildAuthorizationKeyStore(cfg TMPConfig, logger *slog.Logger, recorder Recorder) (tmproto.KeyStore, error) {
 	opts := tmproto.LazyAuthorizationKeyStoreOptions{
-		BaseURL:     cfg.RegistryURL,
-		BearerToken: cfg.RegistryBearer,
-		Logger:      logger,
+		BaseURL:             cfg.RegistryURL,
+		BearerToken:         cfg.RegistryBearer,
+		AllowInsecureScheme: cfg.RegistryAllowInsecureScheme,
+		Logger:              logger,
 	}
 	if recorder != nil {
 		opts.OnFetchOutcome = func(ctx context.Context, outcome string) {
