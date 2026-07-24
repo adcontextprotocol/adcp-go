@@ -196,3 +196,81 @@ The context-agent's `/metrics` is on the compose network at
   context-agent all pick it up automatically (Go-side fallback in
   `internal/corpus` applies only when the env var is unset, e.g.
   local dev / tests).
+
+## Reference results (2026-07-23, main)
+
+Full-matrix sweep of `./run.sh` on a clean checkout of the branch this
+harness landed on (`bench/context-perf/` committed at `346df5a`).
+Sweep = 3 scenarios × 7 CPU/mem configs × 7 QPS steps = 147 runs.
+Wall time ~90 min.
+
+**Hardware / OS:** same host as identity-perf — AMD EPYC 9254 (24 c /
+48 t, 4.15 GHz max), 384 GiB DDR5, Ubuntu 24.04.4, Docker 29.1.3
+(compose v2.40.3), bare metal.
+
+### Saturation ceiling per CPU allocation
+
+Achieved QPS at target=32,000. `_2g` / `_4g` / `_8g` variants of each
+CPU count matched to within noise — memory is not the constraint on
+any scenario.
+
+| CPUs | packages-only | packages-topics | packages-signals | context-agent CPU peak |
+|-----:|--------------:|----------------:|-----------------:|-----------------------:|
+| 1    | 1,929         | 1,406           | 1,094            | 101–104% (cgroup ceiling) |
+| 2    | 4,090         | 2,803           | 2,244            | 200% |
+| 4    | 6,132         | 4,266           | 3,763            | 395–399% |
+| 8    | 6,652         | 4,972           | 5,103            | 700 / 723 / 770% (near-saturation on topics + signals; some headroom on packages-only) |
+
+Errors across the whole 147-row matrix: **0 transport errors** and
+**≤ 11 non-2xx per 32k-target run** (total 79 non-2xx across ~15 M
+requests — all 1-CPU packages-only + packages-topics rows hitting the
+1 s `REQUEST_TIMEOUT` under queue pressure). Every other row has
+`non_2xx = 0`.
+
+### qps-per-core
+
+| CPUs | packages-only | packages-topics | packages-signals |
+|-----:|--------------:|----------------:|-----------------:|
+| 1    | 1,929         | 1,406           | 1,094            |
+| 2    | 2,045         | 1,402           | 1,122            |
+| 4    | 1,533         | 1,067           | 941              |
+| 8    | 832           | 622             | 638              |
+
+Per-core efficiency peaks at **2 CPUs** (same shape as identity-agent).
+Real diminishing returns past 4 CPU on every scenario. 8 CPU
+packages-only is ~87 % of cgroup — some headroom but achieved_qps flat
+across 8k / 16k / 32k targets → work coming from the loadgen isn't the
+limit.
+
+### Cost relative to identity-agent
+
+context-agent is roughly **3–4× more expensive per core** than
+identity-agent at comparable CPU allocations (identity-agent 1 c
+fcap-only = 7,222 qps; context-agent 1 c packages-only = 1,929 qps).
+Expected: identity-agent does 1 fcap MGet + 1 audience HEXISTS per
+request against ~10 pkgs, whereas context-agent evaluates 200 active
+packages per request including pkgconfig MGets, per-artifact topic /
+signal fan-out, and suppression checks.
+
+### Memory
+
+context-agent container RSS: **37–100 MB** across the entire matrix,
+scenario-independent. Valkey RSS: 4.6–7.9 MB (dominated by the seeded
+corpus, not by request load). Memory cap doesn't influence throughput
+at any config; **512 MB is enough, 1 GB is comfortable**.
+
+### Latency at saturation (target 32 k qps, packages-signals)
+
+| CPUs | p50 | p99   | p99.9 |
+|-----:|----:|------:|------:|
+| 1    | 217 ms | 367 ms | 405 ms |
+| 2    | 113 ms | 163 ms | 188 ms |
+| 4    |  65 ms | 138 ms | 202 ms |
+| 8    |  49 ms | 111 ms | 138 ms |
+
+Tail is dominated by queueing at the 1 s `REQUEST_TIMEOUT`; the
+underlying handler latency at low load is ~2 ms p50 (see the 8k rows
+in the CSV before saturation kicks in).
+
+Raw `summary.csv` and per-step JSON reports are archived on the
+benchmark host under `bench/context-perf/results/main-20260723T190414Z/`.
