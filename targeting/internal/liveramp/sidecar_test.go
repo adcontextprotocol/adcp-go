@@ -96,6 +96,21 @@ func TestMappedID_Non200IsError(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrNoMapping, "500 must not be conflated with miss")
 }
 
+func TestMappedID_GoneMeansNoMapping(t *testing.T) {
+	// 410 Gone is LiveRamp's signal for a permanently unresolvable envelope
+	// (expired / revoked). Semantically a miss — callers must be able to
+	// distinguish it from a transport error via errors.Is(err, ErrNoMapping).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "envelope expired", http.StatusGone)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Config{URL: srv.URL, HTTPClient: srv.Client()})
+	require.NoError(t, err)
+	_, err = c.MappedID(t.Context(), "expired-env")
+	require.ErrorIs(t, err, ErrNoMapping)
+}
+
 func TestMappedID_MalformedJSONIsError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("not json"))

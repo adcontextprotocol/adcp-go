@@ -63,8 +63,17 @@ const (
 )
 
 // ErrNoMapping is the sentinel returned by MappedID when the sidecar
-// reachably responds but has no mapping for the supplied env. Distinguished
-// from transport errors so callers can treat "miss" as a routine outcome.
+// reachably responds but has no mapping for the supplied env. Two sidecar
+// responses map to this sentinel:
+//
+//   - 200 with an empty (or Scope3-key-absent) body: the env was accepted but
+//     no platform-mapped value is available.
+//   - 410 Gone: LiveRamp knows the env but treats it as permanently
+//     unresolvable (expired / revoked envelope). Semantically a miss, not a
+//     transport failure — envelopes rotate as part of normal cookie lifetime.
+//
+// Distinguished from transport errors so callers can treat "miss" as a
+// routine outcome.
 var ErrNoMapping = errors.New("liveramp: no mapping")
 
 // Config carries the connection parameters for a LiveRamp sidecar Client.
@@ -143,8 +152,9 @@ type mapping struct {
 // platform-mapped value (the value the sidecar publishes under the
 // scope3SeatID wire key).
 // Returns ErrNoMapping when the sidecar reachably responds but has no
-// mapping. Transport, decode, and non-OK status errors are returned as-is
-// so the caller can decide whether to alert.
+// mapping — either 200 with an empty/Scope3-key-absent body, or 410 Gone
+// for an expired/revoked envelope. Transport, decode, and other non-OK
+// status errors are returned as-is so the caller can decide whether to alert.
 //
 // env is sent unmodified as the ?env= query parameter; the caller is
 // responsible for URL-encoding constraints (the underlying net/url machinery
@@ -174,6 +184,13 @@ func (c *Client) MappedID(ctx context.Context, env string) (string, error) {
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusGone {
+		// LiveRamp knows the env but the envelope is permanently
+		// unresolvable (expired / revoked). Same downstream treatment as
+		// the 200-empty-body miss.
+		_, _ = io.CopyN(io.Discard, resp.Body, 4*1024)
+		return "", ErrNoMapping
+	}
 	if resp.StatusCode != http.StatusOK {
 		// Drain a bounded prefix so the connection can be reused. A misbehaving
 		// sidecar shouldn't be allowed to wedge connections by holding the
