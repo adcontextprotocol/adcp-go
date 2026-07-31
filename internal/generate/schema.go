@@ -14,7 +14,7 @@ import (
 
 var (
 	identifierRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	goTypeRe     = regexp.MustCompile(`^[\[\]*]*(?:map\[string\])?[A-Za-z_][A-Za-z0-9_.]*$`)
+	goTypeRe     = regexp.MustCompile(`^[\[\]*]*(?:map\[string\])*[A-Za-z_][A-Za-z0-9_.]*$`)
 	enumValueRe  = regexp.MustCompile(`^[a-zA-Z0-9_./-]+$`)
 )
 

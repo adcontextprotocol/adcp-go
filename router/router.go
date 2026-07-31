@@ -330,7 +330,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 
 	// Merge — extract parallel slices for provider IDs and responses.
 	providerIDs := make([]string, len(results))
-	responses := make([]*tmproto.IdentityMatchResponse, len(results))
+	responses := make([]*tmproto.ProviderIdentityMatchResponse, len(results))
 	for i, r := range results {
 		providerIDs[i] = r.providerID
 		responses[i] = r.response
@@ -523,7 +523,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 type identityResult struct {
 	providerID string
-	response   *tmproto.IdentityMatchResponse
+	response   *tmproto.ProviderIdentityMatchResponse
 }
 
 func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest) []identityResult {
@@ -578,7 +578,7 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			callStart := time.Now()
-			var imResp tmproto.IdentityMatchResponse
+			var imResp tmproto.ProviderIdentityMatchResponse
 			err = r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp)
 			elapsed := time.Since(callStart)
 			timeout, parentCancelled := classifyCallFailure(callCtx)
@@ -712,18 +712,23 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 // both" rule collapses to union when only yes-responses are observable).
 //
 // TMPX collection per the spec §"TMPX collection":
-//   - Each agent's TmpxMacros[] is folded into tmpx_providers[provider_id] so
-//     per-provider attribution survives the fan-out.
-//   - The legacy singular `tmpx` field stays populated on the merged response
-//     for back-compat with consumers that haven't moved to tmpx_providers
-//     (deprecated, removed in 4.0). Source order: prefer the first provider's
-//     first macro value when TmpxMacros[] is present; otherwise fall back to
-//     the agent's legacy `tmpx` field (legacy-only agents during transition).
-//   - The router MUST NOT carry tmpx_macros[] at the root of the outbound
+//   - Each agent's TmpxChunks[] is folded into tmpx_providers[provider_id]
+//     so per-provider attribution survives the fan-out. Each chunk carries
+//     the provider-local slot_id from the agent's registered tmpx_slots;
+//     the publisher's deployment configuration
+//     (publisher-tmpx-config.json) resolves (provider_id, slot_id) to the
+//     local ad-server destination.
+//   - The legacy singular `tmpx` field stays populated on the merged
+//     response for back-compat with consumers that haven't moved to
+//     tmpx_providers (deprecated, removed in 4.0). Source: the first
+//     agent's single-chunk value when it emitted exactly one chunk.
+//     Multi-chunk emissions never populate this field because the single
+//     string cannot represent multiple chunks.
+//   - The router MUST NOT carry tmpx_chunks[] at the root of the outbound
 //     response — that field is the agent → router carrier only; leaking it
-//     alongside tmpx_providers would give the publisher no schema signal for
-//     which to read.
-func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
+//     alongside tmpx_providers would give the publisher no schema signal
+//     for which to read.
+func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.ProviderIdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
 	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
 	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
@@ -742,34 +747,25 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		if i < len(providerIDs) {
 			providerID = providerIDs[i]
 		}
-		// TMPX: prefer the new TmpxMacros[] carrier — collect into the
-		// per-provider map. Skip empty providerID entries (defensive: a
-		// fan-out with mis-aligned parallel slices would otherwise stash
-		// macros under "", which any consumer would treat as garbage).
-		if len(resp.TmpxMacros) > 0 && providerID != "" {
+		// TMPX: fold the provider's emitted chunks into the per-provider
+		// map. Skip empty providerID entries (defensive: a fan-out with
+		// mis-aligned parallel slices would otherwise stash chunks under
+		// "", which any consumer would treat as garbage).
+		if len(resp.TmpxChunks) > 0 && providerID != "" {
 			tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
-				Macros: append([]tmproto.TmpxMacro(nil), resp.TmpxMacros...),
+				Chunks: append([]tmproto.TmpxChunk(nil), resp.TmpxChunks...),
 			}
-			// The deprecated single-string `tmpx` carrier can only represent
-			// tokens that fit in one macro slot. Multi-chunk responses (>1
-			// TmpxMacros entry) produce a wire that spans multiple slots —
-			// any single chunk on its own is a broken ciphertext half that
-			// fails AEAD open silently. Populate the legacy field only when
-			// the emitting agent produced exactly one chunk; a multi-chunk
-			// emission leaves it empty so consumers still reading the
-			// deprecated field skip it rather than get identity loss. See
-			// the mirror guard in identityagent/handler.go's
-			// assignTmpxToResponse.
-			if legacyTmpx == "" && len(resp.TmpxMacros) == 1 {
-				legacyTmpx = resp.TmpxMacros[0].Value
-			}
-		} else if resp.Tmpx != "" {
-			// Legacy-only agent during transition — preserve in legacy
-			// carrier so single-string consumers keep working. No
-			// tmpx_providers entry: the router does not synthesize names
-			// from registration metadata in this version.
-			if legacyTmpx == "" {
-				legacyTmpx = resp.Tmpx
+			// The deprecated single-string `tmpx` carrier can only
+			// represent tokens that fit in one macro slot. Multi-chunk
+			// responses (>1 TmpxChunks entry) produce a wire that spans
+			// multiple slots — any single chunk on its own is a broken
+			// ciphertext half that fails AEAD open silently. Populate the
+			// legacy field only when the emitting agent produced exactly
+			// one chunk; a multi-chunk emission leaves it empty so
+			// consumers still reading the deprecated field skip it rather
+			// than get identity loss.
+			if legacyTmpx == "" && len(resp.TmpxChunks) == 1 {
+				legacyTmpx = resp.TmpxChunks[0].Value
 			}
 		}
 		// Track DISTINCT providers per package_id and remember if any single

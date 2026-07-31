@@ -415,39 +415,39 @@ func TestLoadConfigFromEnv_ExtraHeaders(t *testing.T) {
 	})
 }
 
-// TestLoadConfigFromEnv_TmpxMacroNames pins the Blocker 3 guard: the v1 spec
-// caps the registered `tmpx_macros` list at TmpxMaxSlots. A permissive parser
-// would emit a wire the sealer's own OpenTmpx receiver refuses to open; reject
-// oversized configs at startup with a clear message.
-func TestLoadConfigFromEnv_TmpxMacroNames(t *testing.T) {
+// TestLoadConfigFromEnv_TmpxSlotIDs pins the v1 cap on the registered
+// `tmpx_slots` list — TmpxMaxSlots. A permissive parser would emit a wire
+// the sealer's own OpenTmpx receiver refuses to open; reject oversized
+// configs at startup with a clear message.
+func TestLoadConfigFromEnv_TmpxSlotIDs(t *testing.T) {
 	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
 	t.Setenv("CONFIG_SOURCE_TOKEN", "tok")
 
-	t.Run("empty yields nil (legacy single-tmpx shape)", func(t *testing.T) {
+	t.Run("empty yields nil (no chunks emitted)", func(t *testing.T) {
 		cfg, err := LoadConfigFromEnv()
 		require.NoError(t, err)
-		assert.Nil(t, cfg.TMPX.MacroNames)
+		assert.Nil(t, cfg.TMPX.SlotIDs)
 	})
 
 	t.Run("one entry within the cap", func(t *testing.T) {
-		t.Setenv("TMPX_MACRO_NAMES", "S3_TMPX")
+		t.Setenv("TMPX_SLOT_IDS", "primary")
 		cfg, err := LoadConfigFromEnv()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"S3_TMPX"}, cfg.TMPX.MacroNames)
+		assert.Equal(t, []string{"primary"}, cfg.TMPX.SlotIDs)
 	})
 
 	t.Run("two entries within the cap", func(t *testing.T) {
-		t.Setenv("TMPX_MACRO_NAMES", "PIN_TMPX_1,PIN_TMPX_2")
+		t.Setenv("TMPX_SLOT_IDS", "primary,secondary")
 		cfg, err := LoadConfigFromEnv()
 		require.NoError(t, err)
-		assert.Equal(t, []string{"PIN_TMPX_1", "PIN_TMPX_2"}, cfg.TMPX.MacroNames)
+		assert.Equal(t, []string{"primary", "secondary"}, cfg.TMPX.SlotIDs)
 	})
 
 	t.Run("three entries fails validation with a clear message", func(t *testing.T) {
-		t.Setenv("TMPX_MACRO_NAMES", "A,B,C")
+		t.Setenv("TMPX_SLOT_IDS", "a,b,c")
 		_, err := LoadConfigFromEnv()
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "TMPX_MACRO_NAMES")
+		assert.Contains(t, err.Error(), "TMPX_SLOT_IDS")
 		assert.Contains(t, err.Error(), "exceeds")
 	})
 }
