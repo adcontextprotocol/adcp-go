@@ -143,7 +143,7 @@ func TestMergeIdentityResponses(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, [][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
 
 	eligible := map[string]bool{}
 	for _, id := range merged.EligiblePackageIDs {
@@ -188,7 +188,7 @@ func TestMergeIdentityResponses_TmpxProvidersFromChunks(t *testing.T) {
 	}
 
 	merged := mergeIdentityResponses("id-tmpx", []string{"pinnacle_id", "nova_id"},
-		[]*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+		[][]string{{"primary"}, {"primary"}}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
 
 	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST be populated when any agent emitted tmpx_chunks")
 	require.Len(t, merged.TmpxProviders, 2)
@@ -229,7 +229,7 @@ func TestMergeIdentityResponses_MultiChunkClearsLegacyTmpx(t *testing.T) {
 	}
 
 	merged := mergeIdentityResponses("id-multi", []string{"pinnacle_id"},
-		[]*tmproto.ProviderIdentityMatchResponse{multi}, nil)
+		[][]string{{"primary", "secondary"}}, []*tmproto.ProviderIdentityMatchResponse{multi}, nil)
 
 	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST carry the multi-chunk data")
 	pin, ok := merged.TmpxProviders["pinnacle_id"]
@@ -242,6 +242,82 @@ func TestMergeIdentityResponses_MultiChunkClearsLegacyTmpx(t *testing.T) {
 
 	assert.Empty(t, merged.Tmpx,
 		"multi-chunk emissions MUST leave the deprecated legacy `tmpx` field empty — a single chunk is a broken half-token")
+}
+
+// TestMergeIdentityResponses_DropsChunksOnSlotContractBreach pins the
+// router MUST from adcontextprotocol/adcp#5971: when a provider's emitted
+// slot_id sequence is not an exact non-empty ordered prefix of its
+// registered tmpx_slots, the router MUST drop that provider's chunks
+// atomically. Other providers on the same response are unaffected. A
+// warning is logged so misconfig is observable.
+func TestMergeIdentityResponses_DropsChunksOnSlotContractBreach(t *testing.T) {
+	// Good provider — registered ["primary","secondary"], emits ordered prefix.
+	good := &tmproto.ProviderIdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		TmpxChunks: []tmproto.TmpxChunk{
+			{SlotID: "primary", Value: "k1.good-value"},
+		},
+	}
+	// Bad provider — registered ["primary","secondary"], emits reordered.
+	bad := &tmproto.ProviderIdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-2"},
+		ServeWindowSec:     300,
+		TmpxChunks: []tmproto.TmpxChunk{
+			{SlotID: "secondary", Value: "k2.reordered"},
+			{SlotID: "primary", Value: "k2.also-reordered"},
+		},
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeIdentityResponses("id-contract",
+		[]string{"good_provider", "bad_provider"},
+		[][]string{{"primary", "secondary"}, {"primary", "secondary"}},
+		[]*tmproto.ProviderIdentityMatchResponse{good, bad}, logger)
+
+	// Good provider's chunks survive.
+	entry, ok := merged.TmpxProviders["good_provider"]
+	require.True(t, ok, "good provider's chunks must be preserved")
+	require.Len(t, entry.Chunks, 1)
+	assert.Equal(t, "primary", entry.Chunks[0].SlotID)
+
+	// Bad provider's chunks are dropped atomically — no partial entry.
+	_, badExists := merged.TmpxProviders["bad_provider"]
+	assert.False(t, badExists, "bad provider's chunks MUST be dropped atomically when slot-contract breaks")
+
+	logText := logs.String()
+	assert.Contains(t, logText, "dropping provider's tmpx_chunks")
+	assert.Contains(t, logText, `"provider":"bad_provider"`)
+	assert.NotContains(t, logText, `"provider":"good_provider"`,
+		"good provider must not appear in the drop warnings")
+}
+
+// TestMergeIdentityResponses_DropsChunksWhenProviderNotRegistered covers
+// the case where a provider emits chunks but has no registered
+// tmpx_slots — the router treats this as a broken contract and drops
+// atomically (same as any other prefix mismatch).
+func TestMergeIdentityResponses_DropsChunksWhenProviderNotRegistered(t *testing.T) {
+	unregistered := &tmproto.ProviderIdentityMatchResponse{
+		EligiblePackageIDs: []string{"pkg-1"},
+		ServeWindowSec:     300,
+		TmpxChunks: []tmproto.TmpxChunk{
+			{SlotID: "primary", Value: "k1.value"},
+		},
+	}
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	merged := mergeIdentityResponses("id-noreg",
+		[]string{"unreg_provider"},
+		[][]string{nil}, // provider registered no tmpx_slots
+		[]*tmproto.ProviderIdentityMatchResponse{unregistered}, logger)
+
+	assert.Empty(t, merged.TmpxProviders,
+		"provider that emitted chunks without registering tmpx_slots MUST have its chunks dropped")
+	assert.Contains(t, logs.String(), "dropping provider's tmpx_chunks")
 }
 
 // TestMergeIdentityResponses_MixedEmission covers a fan-out where one
@@ -264,7 +340,7 @@ func TestMergeIdentityResponses_MixedEmission(t *testing.T) {
 
 	merged := mergeIdentityResponses("id-mixed",
 		[]string{"silent_provider", "emitting_provider"},
-		[]*tmproto.ProviderIdentityMatchResponse{silentAgent, emittingAgent}, nil)
+		[][]string{nil, {"primary"}}, []*tmproto.ProviderIdentityMatchResponse{silentAgent, emittingAgent}, nil)
 
 	require.Len(t, merged.TmpxProviders, 1,
 		"only the agent that emitted chunks contributes to tmpx_providers")
@@ -345,7 +421,7 @@ func TestMergeIdentityResponses_LogsDuplicateWarning(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
 	merged := mergeIdentityResponses("id-dup", []string{"alpha", "beta"},
-		[]*tmproto.ProviderIdentityMatchResponse{r1, r2}, logger)
+		[][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, logger)
 
 	require.Len(t, merged.EligiblePackageIDs, 3, "union eligibility — all listed packages remain eligible")
 	logText := logs.String()
@@ -517,7 +593,7 @@ func TestMergeIdentityResponses_SingleProviderRepeat(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
 	merged := mergeIdentityResponses("id-self-dup", []string{"alpha"},
-		[]*tmproto.ProviderIdentityMatchResponse{r1}, logger)
+		[][]string{nil}, []*tmproto.ProviderIdentityMatchResponse{r1}, logger)
 
 	// Eligibility is built from a set, so the merged response is still correct.
 	require.Len(t, merged.EligiblePackageIDs, 2, "self-repeat dedups in the eligible set")
@@ -841,7 +917,7 @@ func TestRouterIdentityMatch_StripsCountry(t *testing.T) {
 	defer provider.Close()
 
 	router := testRouter([]ProviderConfig{
-		{ID: "test-provider", Endpoint: provider.URL, IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []string{"uid2"}, Timeout: 5 * time.Second},
+		{ID: "test-provider", Endpoint: provider.URL, IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []string{"uid2"}, TmpxSlots: []string{"primary"}, Timeout: 5 * time.Second},
 	})
 
 	reqBody := `{
@@ -884,14 +960,14 @@ func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, [][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
 
 	require.Len(t, merged.EligiblePackageIDs, 3)
 	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
 func TestMergeIdentityResponses_UsesMostRestrictiveServeWindow(t *testing.T) {
-	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, []*tmproto.ProviderIdentityMatchResponse{
+	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, [][]string{nil, nil, nil}, []*tmproto.ProviderIdentityMatchResponse{
 		{EligiblePackageIDs: []string{"pkg-1"}, ServeWindowSec: 120},
 		{EligiblePackageIDs: []string{"pkg-2"}, ServeWindowSec: 45},
 		{EligiblePackageIDs: []string{"pkg-3"}, ServeWindowSec: 300},

@@ -328,14 +328,17 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	// than reusing one body.
 	results := r.fanOutIdentity(req.Context(), matching, &imReq)
 
-	// Merge — extract parallel slices for provider IDs and responses.
+	// Merge — extract parallel slices for provider IDs, registered slot
+	// contracts, and responses.
 	providerIDs := make([]string, len(results))
+	registeredSlots := make([][]string, len(results))
 	responses := make([]*tmproto.ProviderIdentityMatchResponse, len(results))
 	for i, r := range results {
 		providerIDs[i] = r.providerID
+		registeredSlots[i] = r.registeredSlots
 		responses[i] = r.response
 	}
-	merged := mergeIdentityResponses(imReq.RequestID, providerIDs, responses, r.logger)
+	merged := mergeIdentityResponses(imReq.RequestID, providerIDs, registeredSlots, responses, r.logger)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
@@ -522,8 +525,9 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 }
 
 type identityResult struct {
-	providerID string
-	response   *tmproto.ProviderIdentityMatchResponse
+	providerID      string
+	registeredSlots []string
+	response        *tmproto.ProviderIdentityMatchResponse
 }
 
 func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest) []identityResult {
@@ -610,7 +614,11 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			mu.Lock()
-			results = append(results, identityResult{providerID: p.ID, response: &imResp})
+			results = append(results, identityResult{
+				providerID:      p.ID,
+				registeredSlots: p.TmpxSlots,
+				response:        &imResp,
+			})
 			mu.Unlock()
 		})
 	}
@@ -718,6 +726,14 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 //     the publisher's deployment configuration
 //     (publisher-tmpx-config.json) resolves (provider_id, slot_id) to the
 //     local ad-server destination.
+//   - Slot-contract enforcement (MUST from adcontextprotocol/adcp#5971):
+//     before folding, each provider's emitted slot_id sequence is
+//     validated against its registered tmpx_slots via
+//     enforceProviderSlotContract. A provider whose sequence is empty,
+//     unregistered, reordered, sparse, duplicate, or longer than the
+//     registered list has its chunks dropped atomically — the other
+//     providers on the same response are unaffected. A warning is
+//     logged so a misconfigured provider is observable.
 //   - The legacy singular `tmpx` field stays populated on the merged
 //     response for back-compat with consumers that haven't moved to
 //     tmpx_providers (deprecated, removed in 4.0). Source: the first
@@ -728,7 +744,7 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 //     response — that field is the agent → router carrier only; leaking it
 //     alongside tmpx_providers would give the publisher no schema signal
 //     for which to read.
-func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.ProviderIdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
+func mergeIdentityResponses(requestID string, providerIDs []string, registeredSlots [][]string, responses []*tmproto.ProviderIdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
 	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
 	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
@@ -747,25 +763,48 @@ func mergeIdentityResponses(requestID string, providerIDs []string, responses []
 		if i < len(providerIDs) {
 			providerID = providerIDs[i]
 		}
+		var registered []string
+		if i < len(registeredSlots) {
+			registered = registeredSlots[i]
+		}
 		// TMPX: fold the provider's emitted chunks into the per-provider
 		// map. Skip empty providerID entries (defensive: a fan-out with
 		// mis-aligned parallel slices would otherwise stash chunks under
 		// "", which any consumer would treat as garbage).
 		if len(resp.TmpxChunks) > 0 && providerID != "" {
-			tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
-				Chunks: append([]tmproto.TmpxChunk(nil), resp.TmpxChunks...),
+			emittedSlots := make([]string, len(resp.TmpxChunks))
+			for j, c := range resp.TmpxChunks {
+				emittedSlots[j] = c.SlotID
 			}
-			// The deprecated single-string `tmpx` carrier can only
-			// represent tokens that fit in one macro slot. Multi-chunk
-			// responses (>1 TmpxChunks entry) produce a wire that spans
-			// multiple slots — any single chunk on its own is a broken
-			// ciphertext half that fails AEAD open silently. Populate the
-			// legacy field only when the emitting agent produced exactly
-			// one chunk; a multi-chunk emission leaves it empty so
-			// consumers still reading the deprecated field skip it rather
-			// than get identity loss.
-			if legacyTmpx == "" && len(resp.TmpxChunks) == 1 {
-				legacyTmpx = resp.TmpxChunks[0].Value
+			if !enforceProviderSlotContract(registered, emittedSlots) {
+				// Contract broken: drop this provider's chunks atomically
+				// (do NOT partially trim). Other providers on the same
+				// response are unaffected. Surface the misconfig so
+				// operators can observe it.
+				if logger != nil {
+					logger.Warn("dropping provider's tmpx_chunks: sequence is not an ordered prefix of registered tmpx_slots",
+						"request_id", requestID,
+						"provider", providerID,
+						"registered_slots", registered,
+						"emitted_slots", emittedSlots,
+					)
+				}
+			} else {
+				tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
+					Chunks: append([]tmproto.TmpxChunk(nil), resp.TmpxChunks...),
+				}
+				// The deprecated single-string `tmpx` carrier can only
+				// represent tokens that fit in one macro slot. Multi-chunk
+				// responses (>1 TmpxChunks entry) produce a wire that
+				// spans multiple slots — any single chunk on its own is a
+				// broken ciphertext half that fails AEAD open silently.
+				// Populate the legacy field only when the emitting agent
+				// produced exactly one chunk; a multi-chunk emission
+				// leaves it empty so consumers still reading the
+				// deprecated field skip it rather than get identity loss.
+				if legacyTmpx == "" && len(resp.TmpxChunks) == 1 {
+					legacyTmpx = resp.TmpxChunks[0].Value
+				}
 			}
 		}
 		// Track DISTINCT providers per package_id and remember if any single

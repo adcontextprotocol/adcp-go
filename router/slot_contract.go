@@ -1,4 +1,4 @@
-package identityagent
+package router
 
 // enforceProviderSlotContract implements the router MUST introduced by
 // adcontextprotocol/adcp#5971: a provider's emitted `tmpx_chunks` sequence
