@@ -22,29 +22,28 @@ import (
 
 const testNullifier = "0x" + "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-// ChunkEntries pairs the sealed token with the provider's registered slot IDs
-// names. Single-slot deployments emit exactly one entry carrying the whole
-// token — the legacy shape before multi-chunk encoding was implemented.
+// ChunkEntries pairs the sealed token with the provider's registered slot
+// IDs. Single-slot deployments emit exactly one entry carrying the whole
+// token.
 func TestChunkEntries_SingleSlotEmitsWholeToken(t *testing.T) {
-	s := &TMPXSealer{slotIDs: []string{"S3_TMPX"}}
+	s := &TMPXSealer{slotIDs: []string{"primary"}}
 	entries := s.ChunkEntries("k1.token")
 	require.Len(t, entries, 1)
-	assert.Equal(t, "S3_TMPX", entries[0].SlotID)
+	assert.Equal(t, "primary", entries[0].SlotID)
 	assert.Equal(t, "k1.token", entries[0].Value)
 }
 
 // ChunkEntries returns nil on three independently-disabling conditions:
-// nil receiver, empty token, no registered macro names. Without either
-// side the pair is meaningless and the response falls back to the legacy
-// single-`tmpx` carrier.
+// nil receiver, empty token, no registered slot IDs. Without either side
+// the pair is meaningless and no chunks are emitted.
 func TestChunkEntries_NotEmittedWhenDisabled(t *testing.T) {
 	var nilSealer *TMPXSealer
 	assert.Nil(t, nilSealer.ChunkEntries("k1.token"), "nil sealer must not produce entries")
 
-	noMacros := &TMPXSealer{}
-	assert.Nil(t, noMacros.ChunkEntries("k1.token"), "sealer without registered macro names must not produce entries")
+	noSlots := &TMPXSealer{}
+	assert.Nil(t, noSlots.ChunkEntries("k1.token"), "sealer without registered slot IDs must not produce entries")
 
-	noToken := &TMPXSealer{slotIDs: []string{"S3_TMPX"}}
+	noToken := &TMPXSealer{slotIDs: []string{"primary"}}
 	assert.Nil(t, noToken.ChunkEntries(""), "empty token must not produce entries")
 }
 
@@ -629,8 +628,8 @@ func TestSelectEntries_TwoSlotBudget_PriorityTruncatesOnOverflow(t *testing.T) {
 		tmproto.UIDTypeMAID,
 	}
 	cfg := &TMPXSealer{
-		slotIDs: []string{"PIN_TMPX_1", "PIN_TMPX_2"},
-		priority:   priority,
+		slotIDs:  []string{"PIN_TMPX_1", "PIN_TMPX_2"},
+		priority: priority,
 	}
 	survivors := make([]DecodedIdentity, 0, len(priority))
 	for _, uid := range priority {
@@ -690,9 +689,9 @@ func TestSelectEntries_NoPriorityPassesUnderBudget(t *testing.T) {
 // contract with the reassembler on the receiver side.
 func TestSeal_TwoSlotEndToEnd(t *testing.T) {
 	cfg := &TMPXSealer{
-		country:    "US",
-		encStore:   newFakeResolver(t, "kid-8chr"),
-		slotIDs: []string{"PIN_TMPX_1", "PIN_TMPX_2"},
+		country:  "US",
+		encStore: newFakeResolver(t, "kid-8chr"),
+		slotIDs:  []string{"PIN_TMPX_1", "PIN_TMPX_2"},
 		priority: []tmproto.UIDType{
 			tmproto.UIDTypeRampIDDerived, tmproto.UIDTypeRampID, tmproto.UIDTypeID5,
 			tmproto.UIDTypeHashedEmail, tmproto.UIDTypeMAID,

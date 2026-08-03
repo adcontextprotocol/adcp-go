@@ -233,12 +233,28 @@ func LoadSchemas(schemaDir, enumDir, mergeDir, overlayPath string) (*IR, error) 
 		sort.Slice(ir.Enums, func(i, j int) bool { return ir.Enums[i].Name < ir.Enums[j].Name })
 	}
 
-	// Apply struct renames from overlay.
+	// Apply struct renames from overlay. Fail loudly when an overlay key
+	// does not match any generator-produced struct name: silent no-op leaves
+	// the ugly generator-derived name exposed to downstream consumers when
+	// an upstream schema title changes, which is exactly the drift the
+	// overlay is meant to prevent.
 	if overlay != nil && len(overlay.Structs) > 0 {
+		applied := make(map[string]bool, len(overlay.Structs))
 		for i, s := range ir.Structs {
 			if newName, ok := overlay.Structs[s.Name]; ok {
 				ir.Structs[i].Name = newName
+				applied[s.Name] = true
 			}
+		}
+		var unmatched []string
+		for key := range overlay.Structs {
+			if !applied[key] {
+				unmatched = append(unmatched, key)
+			}
+		}
+		if len(unmatched) > 0 {
+			sort.Strings(unmatched)
+			return nil, fmt.Errorf("overlay: struct rename keys did not match any generated struct (upstream schema title likely changed): %s", strings.Join(unmatched, ", "))
 		}
 	}
 

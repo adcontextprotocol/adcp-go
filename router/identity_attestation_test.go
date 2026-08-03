@@ -31,7 +31,7 @@ func mkIdentityProvider(slot *atomic.Value) *httptest.Server {
 			sig:  r.Header.Get(tmproto.HeaderTMPSignature),
 			kid:  r.Header.Get(tmproto.HeaderTMPKeyID),
 		})
-		_ = json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderIdentityMatchResponse{
 			RequestID:          "id-att",
 			EligiblePackageIDs: []string{"pkg"},
 			ServeWindowSec:     60,

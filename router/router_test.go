@@ -143,7 +143,7 @@ func TestMergeIdentityResponses(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("id-test", []string{"p1", "p2"}, [][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+	merged := mergeIdentityResponses("id-test", []identityResult{{providerID: "p1", response: r1}, {providerID: "p2", response: r2}}, nil)
 
 	eligible := map[string]bool{}
 	for _, id := range merged.EligiblePackageIDs {
@@ -187,8 +187,10 @@ func TestMergeIdentityResponses_TmpxProvidersFromChunks(t *testing.T) {
 		},
 	}
 
-	merged := mergeIdentityResponses("id-tmpx", []string{"pinnacle_id", "nova_id"},
-		[][]string{{"primary"}, {"primary"}}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+	merged := mergeIdentityResponses("id-tmpx", []identityResult{
+		{providerID: "pinnacle_id", registeredSlots: []string{"primary"}, response: r1},
+		{providerID: "nova_id", registeredSlots: []string{"primary"}, response: r2},
+	}, nil)
 
 	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST be populated when any agent emitted tmpx_chunks")
 	require.Len(t, merged.TmpxProviders, 2)
@@ -228,8 +230,9 @@ func TestMergeIdentityResponses_MultiChunkClearsLegacyTmpx(t *testing.T) {
 		},
 	}
 
-	merged := mergeIdentityResponses("id-multi", []string{"pinnacle_id"},
-		[][]string{{"primary", "secondary"}}, []*tmproto.ProviderIdentityMatchResponse{multi}, nil)
+	merged := mergeIdentityResponses("id-multi", []identityResult{
+		{providerID: "pinnacle_id", registeredSlots: []string{"primary", "secondary"}, response: multi},
+	}, nil)
 
 	require.NotNil(t, merged.TmpxProviders, "tmpx_providers MUST carry the multi-chunk data")
 	pin, ok := merged.TmpxProviders["pinnacle_id"]
@@ -272,10 +275,10 @@ func TestMergeIdentityResponses_DropsChunksOnSlotContractBreach(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
-	merged := mergeIdentityResponses("id-contract",
-		[]string{"good_provider", "bad_provider"},
-		[][]string{{"primary", "secondary"}, {"primary", "secondary"}},
-		[]*tmproto.ProviderIdentityMatchResponse{good, bad}, logger)
+	merged := mergeIdentityResponses("id-contract", []identityResult{
+		{providerID: "good_provider", registeredSlots: []string{"primary", "secondary"}, response: good},
+		{providerID: "bad_provider", registeredSlots: []string{"primary", "secondary"}, response: bad},
+	}, logger)
 
 	// Good provider's chunks survive.
 	entry, ok := merged.TmpxProviders["good_provider"]
@@ -310,10 +313,10 @@ func TestMergeIdentityResponses_DropsChunksWhenProviderNotRegistered(t *testing.
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
-	merged := mergeIdentityResponses("id-noreg",
-		[]string{"unreg_provider"},
-		[][]string{nil}, // provider registered no tmpx_slots
-		[]*tmproto.ProviderIdentityMatchResponse{unregistered}, logger)
+	merged := mergeIdentityResponses("id-noreg", []identityResult{
+		// provider registered no tmpx_slots
+		{providerID: "unreg_provider", response: unregistered},
+	}, logger)
 
 	assert.Empty(t, merged.TmpxProviders,
 		"provider that emitted chunks without registering tmpx_slots MUST have its chunks dropped")
@@ -338,9 +341,10 @@ func TestMergeIdentityResponses_MixedEmission(t *testing.T) {
 		},
 	}
 
-	merged := mergeIdentityResponses("id-mixed",
-		[]string{"silent_provider", "emitting_provider"},
-		[][]string{nil, {"primary"}}, []*tmproto.ProviderIdentityMatchResponse{silentAgent, emittingAgent}, nil)
+	merged := mergeIdentityResponses("id-mixed", []identityResult{
+		{providerID: "silent_provider", response: silentAgent},
+		{providerID: "emitting_provider", registeredSlots: []string{"primary"}, response: emittingAgent},
+	}, nil)
 
 	require.Len(t, merged.TmpxProviders, 1,
 		"only the agent that emitted chunks contributes to tmpx_providers")
@@ -420,8 +424,10 @@ func TestMergeIdentityResponses_LogsDuplicateWarning(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
-	merged := mergeIdentityResponses("id-dup", []string{"alpha", "beta"},
-		[][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, logger)
+	merged := mergeIdentityResponses("id-dup", []identityResult{
+		{providerID: "alpha", response: r1},
+		{providerID: "beta", response: r2},
+	}, logger)
 
 	require.Len(t, merged.EligiblePackageIDs, 3, "union eligibility — all listed packages remain eligible")
 	logText := logs.String()
@@ -436,12 +442,12 @@ func TestMergeIdentityResponses_LogsDuplicateWarning(t *testing.T) {
 // recordingMetrics is a FanOutMetricsExt impl that captures every callback
 // invocation for assertion. Safe for parallel fan-out calls.
 type recordingMetrics struct {
-	mu              sync.Mutex
-	excluded        []string
-	durations       []durationSample
-	timeoutInc      []string
-	errorInc        []string
-	offersTotal     int
+	mu          sync.Mutex
+	excluded    []string
+	durations   []durationSample
+	timeoutInc  []string
+	errorInc    []string
+	offersTotal int
 }
 
 type durationSample struct {
@@ -592,8 +598,9 @@ func TestMergeIdentityResponses_SingleProviderRepeat(t *testing.T) {
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
-	merged := mergeIdentityResponses("id-self-dup", []string{"alpha"},
-		[][]string{nil}, []*tmproto.ProviderIdentityMatchResponse{r1}, logger)
+	merged := mergeIdentityResponses("id-self-dup", []identityResult{
+		{providerID: "alpha", response: r1},
+	}, logger)
 
 	// Eligibility is built from a set, so the merged response is still correct.
 	require.Len(t, merged.EligiblePackageIDs, 2, "self-repeat dedups in the eligible set")
@@ -831,6 +838,58 @@ func TestRouterIdentityMatch_EndToEnd(t *testing.T) {
 	assert.Equal(t, 300, resp.ServeWindowSec)
 }
 
+// TestRouterIdentityMatch_RejectsRouterHopFieldsOnProviderResponse pins
+// the MUST from adcontextprotocol/adcp#5971's provider-identity-match-
+// response.json: router-hop fields (tmpx_providers, tmpx) MUST NOT appear
+// on the provider→router hop, and envelope-extension fields (context,
+// ext) MUST NOT leak across the identity privacy boundary. A provider
+// that emits any of these keys has its response rejected, so the router
+// treats the fan-out as if that provider returned an error rather than
+// silently accepting the forbidden keys and dropping them at decode.
+func TestRouterIdentityMatch_RejectsRouterHopFieldsOnProviderResponse(t *testing.T) {
+	cases := []struct {
+		name       string
+		forbidden  string
+		wireBody   string
+		wantDropID string
+	}{
+		{name: "tmpx_providers", forbidden: "tmpx_providers", wireBody: `{"request_id":"id-reject","eligible_package_ids":["pkg-1"],"serve_window_sec":300,"tmpx_providers":{"attacker":{"chunks":[{"slot_id":"primary","value":"forged"}]}}}`},
+		{name: "tmpx", forbidden: "tmpx", wireBody: `{"request_id":"id-reject","eligible_package_ids":["pkg-1"],"serve_window_sec":300,"tmpx":"legacy-forbidden"}`},
+		{name: "context", forbidden: "context", wireBody: `{"request_id":"id-reject","eligible_package_ids":["pkg-1"],"serve_window_sec":300,"context":{"leak":"forbidden"}}`},
+		{name: "ext", forbidden: "ext", wireBody: `{"request_id":"id-reject","eligible_package_ids":["pkg-1"],"serve_window_sec":300,"ext":{"leak":"forbidden"}}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.wireBody))
+			}))
+			defer provider.Close()
+
+			router := testRouter([]ProviderConfig{
+				{ID: "bad-provider", Endpoint: provider.URL, IdentityMatch: true, Timeout: 5 * time.Second},
+			})
+
+			reqBody := `{
+				"type": "identity_match_request",
+				"request_id": "id-reject",
+				"seller_agent_url": "https://seller.example.com/agent",
+				"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}],
+				"package_ids": ["pkg-1"]
+			}`
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("POST", "/tmp/identity", strings.NewReader(reqBody))
+			router.HandleIdentityMatch(w, req)
+
+			require.Equal(t, 200, w.Code, w.Body.String())
+			var resp tmproto.IdentityMatchResponse
+			_ = json.NewDecoder(w.Body).Decode(&resp)
+			assert.Empty(t, resp.EligiblePackageIDs,
+				"provider that emitted forbidden %q key must be treated as errored, not merged into eligibility", tc.forbidden)
+		})
+	}
+}
+
 func TestIdentityFiltering_Country(t *testing.T) {
 	usProvider := &ProviderConfig{
 		ID:            "buyer-us",
@@ -960,17 +1019,17 @@ func TestMergeIdentityResponses_Eligibility(t *testing.T) {
 		ServeWindowSec:     600,
 	}
 
-	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, [][]string{nil, nil}, []*tmproto.ProviderIdentityMatchResponse{r1, r2}, nil)
+	merged := mergeIdentityResponses("test", []identityResult{{providerID: "acme", response: r1}, {providerID: "nova", response: r2}}, nil)
 
 	require.Len(t, merged.EligiblePackageIDs, 3)
 	assert.Equal(t, 300, merged.ServeWindowSec)
 }
 
 func TestMergeIdentityResponses_UsesMostRestrictiveServeWindow(t *testing.T) {
-	merged := mergeIdentityResponses("test", []string{"acme", "nova"}, [][]string{nil, nil, nil}, []*tmproto.ProviderIdentityMatchResponse{
-		{EligiblePackageIDs: []string{"pkg-1"}, ServeWindowSec: 120},
-		{EligiblePackageIDs: []string{"pkg-2"}, ServeWindowSec: 45},
-		{EligiblePackageIDs: []string{"pkg-3"}, ServeWindowSec: 300},
+	merged := mergeIdentityResponses("test", []identityResult{
+		{providerID: "acme", response: &tmproto.ProviderIdentityMatchResponse{EligiblePackageIDs: []string{"pkg-1"}, ServeWindowSec: 120}},
+		{providerID: "nova", response: &tmproto.ProviderIdentityMatchResponse{EligiblePackageIDs: []string{"pkg-2"}, ServeWindowSec: 45}},
+		{providerID: "extra", response: &tmproto.ProviderIdentityMatchResponse{EligiblePackageIDs: []string{"pkg-3"}, ServeWindowSec: 300}},
 	}, nil)
 
 	assert.Equal(t, 45, merged.ServeWindowSec)

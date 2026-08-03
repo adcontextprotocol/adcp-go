@@ -328,17 +328,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	// than reusing one body.
 	results := r.fanOutIdentity(req.Context(), matching, &imReq)
 
-	// Merge — extract parallel slices for provider IDs, registered slot
-	// contracts, and responses.
-	providerIDs := make([]string, len(results))
-	registeredSlots := make([][]string, len(results))
-	responses := make([]*tmproto.ProviderIdentityMatchResponse, len(results))
-	for i, r := range results {
-		providerIDs[i] = r.providerID
-		registeredSlots[i] = r.registeredSlots
-		responses[i] = r.response
-	}
-	merged := mergeIdentityResponses(imReq.RequestID, providerIDs, registeredSlots, responses, r.logger)
+	merged := mergeIdentityResponses(imReq.RequestID, results, r.logger)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
@@ -583,7 +573,7 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 
 			callStart := time.Now()
 			var imResp tmproto.ProviderIdentityMatchResponse
-			err = r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp)
+			err = r.callProviderStrict(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp, providerHopForbiddenFields)
 			elapsed := time.Since(callStart)
 			timeout, parentCancelled := classifyCallFailure(callCtx)
 			// Observe duration on every terminal outcome except parent
@@ -628,6 +618,17 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 }
 
 func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any) error {
+	return r.callProviderStrict(ctx, endpoint, body, headers, target, nil)
+}
+
+// callProviderStrict issues the provider call and rejects the response
+// when any top-level JSON key in forbiddenTopLevelKeys is present. Callers
+// use this to enforce hop-scoped `not: {anyOf: [{required: [<key>]}, ...]}`
+// clauses from the schema — the identity-match path uses it to reject
+// router-hop fields (`tmpx_providers`, `tmpx`, ...) and envelope-extension
+// fields (`context`, `ext`) that MUST NOT appear on the provider hop per
+// provider-identity-match-response.json.
+func (r *Router) callProviderStrict(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any, forbiddenTopLevelKeys []string) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -647,10 +648,42 @@ func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte,
 		return fmt.Errorf("provider returned %d", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(target); err != nil {
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return fmt.Errorf("read provider response: %w", err)
+	}
+
+	if len(forbiddenTopLevelKeys) > 0 {
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(respBody, &probe); err != nil {
+			return fmt.Errorf("decode provider response: %w", err)
+		}
+		for _, key := range forbiddenTopLevelKeys {
+			if _, present := probe[key]; present {
+				return fmt.Errorf("provider response carries forbidden top-level key %q for this hop", key)
+			}
+		}
+	}
+
+	if err := json.Unmarshal(respBody, target); err != nil {
 		return fmt.Errorf("decode provider response: %w", err)
 	}
 	return nil
+}
+
+// providerHopForbiddenFields lists the top-level JSON keys that MUST NOT
+// appear on a provider→router identity-match response — router-hop
+// carriers (tmpx_providers, tmpx), pre-3.1.9 legacy carriers
+// (tmpx_values, tmpx_macros), and envelope-extension fields (context,
+// ext) that would leak across the identity privacy boundary. Mirrors the
+// `not` clause in provider-identity-match-response.json.
+var providerHopForbiddenFields = []string{
+	"tmpx_providers",
+	"tmpx",
+	"tmpx_values",
+	"tmpx_macros",
+	"context",
+	"ext",
 }
 
 // mergeContextResponses combines offers and signals from multiple providers.
@@ -744,49 +777,45 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 //     response — that field is the agent → router carrier only; leaking it
 //     alongside tmpx_providers would give the publisher no schema signal
 //     for which to read.
-func mergeIdentityResponses(requestID string, providerIDs []string, registeredSlots [][]string, responses []*tmproto.ProviderIdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
+func mergeIdentityResponses(requestID string, results []identityResult, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
-	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
-	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
+	pkgProviders := make(map[string][]string)           // package_id -> distinct provider IDs that listed it
+	providerRepeats := make(map[string]map[string]bool) // package_id -> set of providers that repeated it within their own response
 	minServeWindowSec := -1
 	var legacyTmpx string
 	tmpxProviders := make(map[string]tmproto.TmpxProviderEntry)
 
-	for i, resp := range responses {
+	for _, res := range results {
+		resp := res.response
 		if resp == nil {
 			continue
 		}
 		if minServeWindowSec < 0 || resp.ServeWindowSec < minServeWindowSec {
 			minServeWindowSec = resp.ServeWindowSec
 		}
-		providerID := ""
-		if i < len(providerIDs) {
-			providerID = providerIDs[i]
-		}
-		var registered []string
-		if i < len(registeredSlots) {
-			registered = registeredSlots[i]
-		}
+		providerID := res.providerID
 		// TMPX: fold the provider's emitted chunks into the per-provider
-		// map. Skip empty providerID entries (defensive: a fan-out with
-		// mis-aligned parallel slices would otherwise stash chunks under
-		// "", which any consumer would treat as garbage).
+		// map. Skip empty providerID entries (defensive: a fan-out result
+		// without a provider_id would otherwise stash chunks under "",
+		// which any consumer would treat as garbage).
 		if len(resp.TmpxChunks) > 0 && providerID != "" {
-			emittedSlots := make([]string, len(resp.TmpxChunks))
-			for j, c := range resp.TmpxChunks {
-				emittedSlots[j] = c.SlotID
-			}
-			if !enforceProviderSlotContract(registered, emittedSlots) {
+			if !enforceProviderSlotContract(res.registeredSlots, resp.TmpxChunks) {
 				// Contract broken: drop this provider's chunks atomically
 				// (do NOT partially trim). Other providers on the same
 				// response are unaffected. Surface the misconfig so
-				// operators can observe it.
+				// operators can observe it — the log carries both the
+				// registered and emitted slot sequences so the drop
+				// reason is diagnosable from the log line alone.
 				if logger != nil {
+					emitted := make([]string, len(resp.TmpxChunks))
+					for i, c := range resp.TmpxChunks {
+						emitted[i] = c.SlotID
+					}
 					logger.Warn("dropping provider's tmpx_chunks: sequence is not an ordered prefix of registered tmpx_slots",
 						"request_id", requestID,
 						"provider", providerID,
-						"registered_slots", registered,
-						"emitted_slots", emittedSlots,
+						"registered_slots", res.registeredSlots,
+						"emitted_slots", emitted,
 					)
 				}
 			} else {

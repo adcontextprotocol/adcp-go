@@ -251,7 +251,7 @@ func (a *simulatedIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.ProviderIdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
 		ServeWindowSec:     60,

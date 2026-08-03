@@ -208,10 +208,19 @@ func TestConfigValidate(t *testing.T) {
 			wantErr: "TMPX_COUNTRY",
 		},
 		{
+			name: "tmpx missing slot ids",
+			mutate: func(c *Config) {
+				c.TMPX.EncryptJWKSURL = "https://jwks.example"
+				c.TMPX.Country = "US"
+			},
+			wantErr: "TMPX_SLOT_IDS",
+		},
+		{
 			name: "tmpx full ok",
 			mutate: func(c *Config) {
 				c.TMPX.EncryptJWKSURL = "https://jwks.example"
 				c.TMPX.Country = "US"
+				c.TMPX.SlotIDs = []string{"primary"}
 			},
 		},
 		{

@@ -656,12 +656,15 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("AUDIENCE_FALLBACK_VALKEY: %w", err))
 		}
 	}
-	if c.TMPX.EncryptJWKSURL != "" || c.TMPX.Country != "" || c.TMPX.Priority != "" {
+	if c.TMPX.EncryptJWKSURL != "" || c.TMPX.Country != "" || c.TMPX.Priority != "" || len(c.TMPX.SlotIDs) > 0 {
 		if c.TMPX.EncryptJWKSURL == "" {
 			errs = append(errs, errors.New("TMPX_ENCRYPT_JWKS_URL is required when any TMPX_* is set"))
 		}
 		if c.TMPX.Country == "" {
 			errs = append(errs, errors.New("TMPX_COUNTRY is required when any TMPX_* is set"))
+		}
+		if len(c.TMPX.SlotIDs) == 0 {
+			errs = append(errs, errors.New("TMPX_SLOT_IDS is required when TMPX sealing is configured — the sealer emits chunks paired with these slot IDs; without them the router's slot-contract enforcement drops every chunk"))
 		}
 	}
 	if c.LiveRamp.URL != "" {
