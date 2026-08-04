@@ -2,7 +2,10 @@ module github.com/adcontextprotocol/adcp-go/cmd/identity-agent
 
 go 1.25.0
 
-require github.com/adcontextprotocol/adcp-go v0.0.0
+require (
+	github.com/adcontextprotocol/adcp-go v0.0.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.0.0
+)
 
 require (
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 // indirect
@@ -39,3 +42,5 @@ require (
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
+
+replace github.com/adcontextprotocol/adcp-go/tmproto => ../../tmproto

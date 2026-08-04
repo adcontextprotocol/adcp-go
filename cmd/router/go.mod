@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
 	github.com/adcontextprotocol/adcp-go/registry v0.0.0-20260716182726-fdf3ef034a47
+	github.com/adcontextprotocol/adcp-go/tmproto v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -23,3 +24,5 @@ require (
 replace github.com/adcontextprotocol/adcp-go => ../../
 
 replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
+
+replace github.com/adcontextprotocol/adcp-go/tmproto => ../../tmproto
