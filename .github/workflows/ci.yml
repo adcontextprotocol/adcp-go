@@ -88,6 +88,10 @@ jobs:
         working-directory: tmproto
         run: go test -race -count=1 ./...
 
+      - name: Test tmpclient module
+        working-directory: tmpclient
+        run: go test -race -count=1 ./...
+
       - name: Test adcp module
         working-directory: adcp
         run: go test -race -count=1 ./...
