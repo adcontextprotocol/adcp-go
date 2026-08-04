@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/registry/glidestore
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/registry v0.0.0
+	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/valkey-io/valkey-glide/go/v2 v2.3.1
@@ -61,5 +61,3 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/adcontextprotocol/adcp-go/registry => ../
