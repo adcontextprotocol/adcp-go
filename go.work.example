@@ -1,16 +1,22 @@
 // Copy this file to go.work for multi-module development.
 // Do not commit go.work to version control.
-go 1.25
+go 1.26.2
 
 use (
 	.
+	./adcp
 	./bench
+	./bench/context-perf
+	./bench/identity-perf
+	./cmd/context-agent
 	./cmd/identity-agent
 	./cmd/router
 	./e2e
 	./internal/generate
 	./reference/context-agent
+	./reference/seller-agent
 	./registry
 	./registry/glidestore
 	./registry/redisstore
+	./urlcanon
 )
