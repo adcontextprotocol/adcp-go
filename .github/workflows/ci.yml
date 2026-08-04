@@ -78,10 +78,14 @@ jobs:
 
       - name: Check generated code is up to date
         run: |
-          go generate ./tmproto/...
+          (cd tmproto && go generate ./...)
           git diff --exit-code tmproto/types_gen.go
 
       - name: Test root module
+        run: go test -race -count=1 ./...
+
+      - name: Test tmproto module
+        working-directory: tmproto
         run: go test -race -count=1 ./...
 
       - name: Test adcp module

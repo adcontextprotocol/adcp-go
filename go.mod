@@ -3,6 +3,7 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
+	github.com/adcontextprotocol/adcp-go/tmproto v0.0.0
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
@@ -16,10 +17,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
-	golang.org/x/crypto v0.51.0
 	golang.org/x/net v0.54.0
 	gopkg.in/yaml.v3 v3.0.1
-	lukechampine.com/blake3 v1.4.1
 )
 
 require (
@@ -75,6 +74,10 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
+	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	lukechampine.com/blake3 v1.4.1 // indirect
 )
+
+replace github.com/adcontextprotocol/adcp-go/tmproto => ./tmproto
