@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/tmproto v0.0.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
@@ -79,5 +79,3 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
-
-replace github.com/adcontextprotocol/adcp-go/tmproto => ./tmproto
