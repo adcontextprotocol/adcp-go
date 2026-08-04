@@ -155,7 +155,7 @@ func (a *chatIdentityAgent) handleIdentity(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tmproto.IdentityMatchResponse{
+	json.NewEncoder(w).Encode(tmproto.ProviderIdentityMatchResponse{
 		RequestID:          req.RequestID,
 		EligiblePackageIDs: eligible,
 		ServeWindowSec:     60,

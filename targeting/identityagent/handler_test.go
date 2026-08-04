@@ -16,45 +16,39 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// TestAssignTmpxToResponse_SingleSlotFillsBothCarriers pins the legacy /
-// new-field wiring for a single-slot deployment. The sealed token fits in
-// one macro slot, so TmpxMacros has one entry AND the legacy Tmpx string
-// is set for back-compat.
-func TestAssignTmpxToResponse_SingleSlotFillsBothCarriers(t *testing.T) {
-	sealer := &TMPXSealer{macroNames: []string{"S3_TMPX"}}
-	resp := &tmproto.IdentityMatchResponse{}
+// TestAssignTmpxToResponse_SingleSlotEmitsOneChunk pins the chunk wiring
+// for a single-slot deployment. The sealed token fits in one slot, so
+// TmpxChunks has one entry pairing the registered slot_id with the token.
+func TestAssignTmpxToResponse_SingleSlotEmitsOneChunk(t *testing.T) {
+	sealer := &TMPXSealer{slotIDs: []string{"primary"}}
+	resp := &tmproto.ProviderIdentityMatchResponse{}
 	assignTmpxToResponse(resp, sealer, "k1.short-token")
-	require.Len(t, resp.TmpxMacros, 1)
-	assert.Equal(t, "S3_TMPX", resp.TmpxMacros[0].Name)
-	assert.Equal(t, "k1.short-token", resp.TmpxMacros[0].Value)
-	assert.Equal(t, "k1.short-token", resp.Tmpx, "single-slot token fits in the legacy carrier")
+	require.Len(t, resp.TmpxChunks, 1)
+	assert.Equal(t, "primary", resp.TmpxChunks[0].SlotID)
+	assert.Equal(t, "k1.short-token", resp.TmpxChunks[0].Value)
 }
 
-// TestAssignTmpxToResponse_MultiChunkOmitsLegacyTmpx locks the contract
-// that a token that exceeds one macro slot leaves the legacy Tmpx field
-// empty — that field is a single 255-byte carrier and cannot represent a
-// chunked value; consumers on those deployments must read the ordered
-// TmpxMacros / tmpx_providers shape.
-func TestAssignTmpxToResponse_MultiChunkOmitsLegacyTmpx(t *testing.T) {
-	sealer := &TMPXSealer{macroNames: []string{"PIN_TMPX_1", "PIN_TMPX_2"}}
-	// 300-byte token: first chunk fills a whole slot, second slot carries the tail.
+// TestAssignTmpxToResponse_MultiSlotSplitsToken locks the split-across-slots
+// behavior: a token exceeding one slot's byte budget yields one chunk per
+// registered slot, in slot order.
+func TestAssignTmpxToResponse_MultiSlotSplitsToken(t *testing.T) {
+	sealer := &TMPXSealer{slotIDs: []string{"primary", "secondary"}}
 	token := strings.Repeat("a", tmproto.TmpxMaxWireBytes) + strings.Repeat("b", 45)
-	resp := &tmproto.IdentityMatchResponse{}
+	resp := &tmproto.ProviderIdentityMatchResponse{}
 	assignTmpxToResponse(resp, sealer, token)
-	require.Len(t, resp.TmpxMacros, 2, "TmpxMacros slice length matches the number of chunks emitted")
-	assert.Empty(t, resp.Tmpx, "legacy single-string carrier must be omitted for multi-chunk tokens")
+	require.Len(t, resp.TmpxChunks, 2, "TmpxChunks slice length matches the number of chunks emitted")
+	assert.Equal(t, "primary", resp.TmpxChunks[0].SlotID)
+	assert.Equal(t, "secondary", resp.TmpxChunks[1].SlotID)
 }
 
-// TestAssignTmpxToResponse_NoMacrosKeepsOnlyLegacyTmpx covers the
-// no-macro-names deployment: TmpxMacros stays empty, the legacy Tmpx
-// carrier is filled. This is the shape existing single-slot deployments
-// see, and it must remain identical to the pre-multi-chunk behavior.
-func TestAssignTmpxToResponse_NoMacrosKeepsOnlyLegacyTmpx(t *testing.T) {
-	sealer := &TMPXSealer{} // no macroNames configured
-	resp := &tmproto.IdentityMatchResponse{}
+// TestAssignTmpxToResponse_NoSlotsEmitsNoChunks covers the no-slots
+// deployment: TmpxChunks stays empty because the sealer has no registered
+// slot list to pair a chunk with.
+func TestAssignTmpxToResponse_NoSlotsEmitsNoChunks(t *testing.T) {
+	sealer := &TMPXSealer{} // no slotIDs configured
+	resp := &tmproto.ProviderIdentityMatchResponse{}
 	assignTmpxToResponse(resp, sealer, "k1.tok")
-	assert.Empty(t, resp.TmpxMacros)
-	assert.Equal(t, "k1.tok", resp.Tmpx)
+	assert.Empty(t, resp.TmpxChunks)
 }
 
 func TestIdentityHandlerValidationErrorIsGenericAndLogged(t *testing.T) {

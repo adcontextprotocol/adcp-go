@@ -44,6 +44,15 @@ type ProviderConfig struct {
 	Countries []string `json:"countries,omitempty"` // ISO 3166-1 alpha-2 codes this provider serves
 	UIDTypes  []string `json:"uid_types,omitempty"` // Identity types this provider can resolve
 
+	// TmpxSlots is the provider's registered ordered slot_id list from
+	// provider-registration.json's `tmpx_slots`. Used by the router at
+	// merge time to enforce the slot-contract MUST from
+	// adcontextprotocol/adcp#5971: a provider's emitted `tmpx_chunks`
+	// sequence must be an exact non-empty ordered prefix of this list,
+	// else the router drops that provider's chunks atomically before
+	// forwarding under `tmpx_providers`.
+	TmpxSlots []string `json:"tmpx_slots,omitempty"`
+
 	// Verified-identity attestation (experimental, trusted_match.verified_identity).
 	// HPKE key ids this provider can open. The router forwards a
 	// sealed_credentials[] entry only to the provider whose AudienceKIDs
@@ -148,6 +157,7 @@ func ProviderConfigFromRegistration(r *tmproto.ProviderRegistration) ProviderCon
 		UIDTypes:      uidTypes,
 		PropertyRIDs:  r.Properties, // Properties in the spec are registry RIDs (UUIDs), not slugs.
 		Timeout:       time.Duration(r.TimeoutMs) * time.Millisecond,
+		TmpxSlots:     append([]string(nil), r.TmpxSlots...),
 	}
 }
 

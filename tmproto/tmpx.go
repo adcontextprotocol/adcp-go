@@ -54,12 +54,12 @@ const TmpxHPKEOverheadBytes = 48
 // cannot be inlined into creative tracking URLs without truncation.
 const TmpxMaxWireBytes = 255
 
-// TmpxMaxSlots is the v1 spec cap on the number of ad-server macro slots a
-// provider may register in `tmpx_macros` (provider-registration.json). Each
-// slot carries at most TmpxMaxWireBytes of the sealed wire — so a reassembled
-// multi-chunk token is bounded by TmpxMaxSlots * TmpxMaxWireBytes. The cap MAY
-// rise in a later version without a shape change; senders and receivers MUST
-// treat it as the maximum-permitted upper bound, not a required count.
+// TmpxMaxSlots is the v1 spec cap on the number of slots a provider may
+// register in `tmpx_slots` (provider-registration.json). Each slot carries
+// at most TmpxMaxWireBytes of the sealed wire — so a reassembled multi-chunk
+// token is bounded by TmpxMaxSlots * TmpxMaxWireBytes. The cap MAY rise in
+// a later version without a shape change; senders and receivers MUST treat
+// it as the maximum-permitted upper bound, not a required count.
 const TmpxMaxSlots = 2
 
 // TmpxMaxReassembledWireBytes bounds the reassembled (concatenated) wire the

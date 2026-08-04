@@ -148,7 +148,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// fail-closed outcome. RequestID is preserved so the buyer can correlate.
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		status := "timeout"
-		if !h.writeResponse(w, &tmproto.IdentityMatchResponse{
+		if !h.writeResponse(w, &tmproto.ProviderIdentityMatchResponse{
 			Type:               tmproto.TypeIdentityMatchResponse,
 			RequestID:          req.RequestID,
 			EligiblePackageIDs: []string{},
@@ -167,7 +167,7 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp := &tmproto.IdentityMatchResponse{
+	resp := &tmproto.ProviderIdentityMatchResponse{
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          result.RequestID,
 		EligiblePackageIDs: eligible,
@@ -212,28 +212,19 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.recordCompletion(ctx, start, status)
 }
 
-// assignTmpxToResponse populates the TMPX-carrying fields on an
-// IdentityMatchResponse from a freshly sealed wire token.
-//
-//   - TmpxMacros carries the sealer's ordered chunks (one per configured
-//     macro slot at TmpxMaxWireBytes boundaries). Multi-slot deployments
-//     traffic these; the router folds them into tmpx_providers[provider_id].
-//     Empty when no macro slots are configured.
-//   - Tmpx is the legacy single-string carrier. Populated only when the
-//     sealed token fits within one macro slot (255 bytes; the GAM
-//     `%%PATTERN_MACRO%%` substitution limit). Multi-chunk tokens cannot
-//     be represented in this single-string field — the field is
-//     deprecated and removed in AdCP 4.0 — so we omit it rather than
-//     emit a truncated value.
+// assignTmpxToResponse populates TmpxChunks on a
+// ProviderIdentityMatchResponse from a freshly sealed wire token. Each
+// chunk carries the provider-local slot_id (from the registered
+// tmpx_slots) that the value fills; the router places the emitted
+// tmpx_chunks under tmpx_providers[provider_id] on the router→publisher
+// hop, and the publisher's deployment configuration resolves
+// (provider_id, slot_id) to the local ad-server destination.
 //
 // Extracted from ServeHTTP as a package-private helper so the
-// legacy/new-field bookkeeping can be unit-tested without spinning up a
+// slot-pairing bookkeeping can be unit-tested without spinning up a
 // full request lifecycle.
-func assignTmpxToResponse(resp *tmproto.IdentityMatchResponse, sealer *TMPXSealer, token string) {
-	resp.TmpxMacros = sealer.MacroEntries(token)
-	if len(token) <= tmproto.TmpxMaxWireBytes {
-		resp.Tmpx = token
-	}
+func assignTmpxToResponse(resp *tmproto.ProviderIdentityMatchResponse, sealer *TMPXSealer, token string) {
+	resp.TmpxChunks = sealer.ChunkEntries(token)
 }
 
 // writeResponse marshals payload to JSON in one shot and writes it. Using
@@ -243,7 +234,7 @@ func assignTmpxToResponse(resp *tmproto.IdentityMatchResponse, sealer *TMPXSeale
 // Returns true on success and false when either marshal or write failed —
 // the caller stamps this onto the request-completion metric so a write
 // failure shows up distinctly from "ok".
-func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.IdentityMatchResponse) bool {
+func (h *identityHandler) writeResponse(w http.ResponseWriter, resp *tmproto.ProviderIdentityMatchResponse) bool {
 	w.Header().Set("Content-Type", "application/json")
 	body, err := json.Marshal(resp)
 	if err != nil {

@@ -155,18 +155,21 @@ type TMPXConfig struct {
 	Country        string
 	Priority       string
 
-	// MacroNames is the ordered list of ad-server macro slot names this
+	// SlotIDs is the ordered list of provider-local slot identifiers this
 	// provider's TMPX response fills, matching the provider's registered
-	// `tmpx_macros` (provider-registration.json). The sealer pairs the
-	// sealed token with these names to populate IdentityMatchResponse's
-	// `tmpx_macros[]`. When empty the response carries only the legacy
-	// singular `tmpx` field (deprecated, removed in 4.0). The v1 spec
-	// caps the registered list at 2 entries — enforced at registration
-	// time, not here. When more than one name is configured the sealed
-	// token is split into up to len(MacroNames) chunks of at most 255
-	// bytes each (the GAM `%%PATTERN_MACRO%%` substitution limit), one
+	// `tmpx_slots` (provider-registration.json). The sealer pairs the
+	// sealed token with these slot IDs to populate
+	// ProviderIdentityMatchResponse's `tmpx_chunks[]`. Slot IDs are opaque
+	// provider-namespaced tokens (e.g. `["primary","secondary"]`), NOT
+	// ad-server macro names — the publisher's deployment configuration
+	// (publisher-tmpx-config.json) resolves `(provider_id, slot_id)` to the
+	// local destination. When empty the sealer emits no chunks. The v1
+	// spec caps the registered list at 2 entries — enforced at
+	// registration time, not here. When more than one slot is configured
+	// the sealed token is split into up to len(SlotIDs) chunks of at most
+	// 255 bytes each (the GAM `%%PATTERN_MACRO%%` substitution limit), one
 	// per slot in the configured order.
-	MacroNames []string
+	SlotIDs []string
 }
 
 // LiveRampSidecarConfig optionally enables calls to the Scope3 LiveRamp
@@ -411,7 +414,7 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
-	macroNames, err := parseTmpxMacroNames(os.Getenv("TMPX_MACRO_NAMES"))
+	slotIDs, err := parseTmpxSlotIDs(os.Getenv("TMPX_SLOT_IDS"))
 	if err != nil {
 		errs = append(errs, err)
 	}
@@ -486,7 +489,7 @@ func LoadConfigFromEnv() (Config, error) {
 			EncryptJWKSTTL: jwksTTL,
 			Country:        os.Getenv("TMPX_COUNTRY"),
 			Priority:       os.Getenv("TMPX_PRIORITY"),
-			MacroNames:     macroNames,
+			SlotIDs:        slotIDs,
 		},
 		LiveRamp: LiveRampSidecarConfig{
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
@@ -653,12 +656,15 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("AUDIENCE_FALLBACK_VALKEY: %w", err))
 		}
 	}
-	if c.TMPX.EncryptJWKSURL != "" || c.TMPX.Country != "" || c.TMPX.Priority != "" {
+	if c.TMPX.EncryptJWKSURL != "" || c.TMPX.Country != "" || c.TMPX.Priority != "" || len(c.TMPX.SlotIDs) > 0 {
 		if c.TMPX.EncryptJWKSURL == "" {
 			errs = append(errs, errors.New("TMPX_ENCRYPT_JWKS_URL is required when any TMPX_* is set"))
 		}
 		if c.TMPX.Country == "" {
 			errs = append(errs, errors.New("TMPX_COUNTRY is required when any TMPX_* is set"))
+		}
+		if len(c.TMPX.SlotIDs) == 0 {
+			errs = append(errs, errors.New("TMPX_SLOT_IDS is required when TMPX sealing is configured — the sealer emits chunks paired with these slot IDs; without them the router's slot-contract enforcement drops every chunk"))
 		}
 	}
 	if c.LiveRamp.URL != "" {
@@ -761,41 +767,40 @@ func lookupString(name, def string) string {
 	return def
 }
 
-// parseTmpxMacroNames splits TMPX_MACRO_NAMES (comma-separated, e.g.
-// `S3_TMPX` or `S3_TMPX_1,S3_TMPX_2`) into the ordered slot list emitted on
-// IdentityMatchResponse.tmpx_macros[]. Empty / whitespace-only values yield
-// nil, which keeps the legacy single-`tmpx`-string emission shape — no new
-// behavior until the env var is set.
+// parseTmpxSlotIDs splits TMPX_SLOT_IDS (comma-separated, e.g. `primary`
+// or `primary,secondary`) into the ordered slot list emitted on
+// ProviderIdentityMatchResponse.tmpx_chunks[]. Empty / whitespace-only
+// values yield nil, which means the sealer emits no chunks.
 //
 // The v1 spec caps the registered list at tmproto.TmpxMaxSlots
-// (provider-registration.json `tmpx_macros.maxItems`) because each slot carries
-// at most TmpxMaxWireBytes of the sealed wire and the receiver's OpenTmpx
-// bound is TmpxMaxSlots * TmpxMaxWireBytes. An unbounded name list would
-// silently produce a wire the sealer's own conformant receiver refuses;
-// reject it at startup with a clear message rather than corrupt tokens at
-// serving time.
-func parseTmpxMacroNames(raw string) ([]string, error) {
+// (provider-registration.json `tmpx_slots.maxItems`) because each slot
+// carries at most TmpxMaxWireBytes of the sealed wire and the receiver's
+// OpenTmpx bound is TmpxMaxSlots * TmpxMaxWireBytes. An unbounded slot
+// list would silently produce a wire the sealer's own conformant
+// receiver refuses; reject it at startup with a clear message rather
+// than corrupt tokens at serving time.
+func parseTmpxSlotIDs(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	parts := strings.Split(raw, ",")
-	names := make([]string, 0, len(parts))
+	slotIDs := make([]string, 0, len(parts))
 	for _, p := range parts {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		names = append(names, p)
+		slotIDs = append(slotIDs, p)
 	}
-	if len(names) == 0 {
+	if len(slotIDs) == 0 {
 		return nil, nil
 	}
-	if len(names) > tmproto.TmpxMaxSlots {
-		return nil, fmt.Errorf("TMPX_MACRO_NAMES has %d entries, exceeds the v1 cap of %d (provider-registration.json `tmpx_macros.maxItems`); each slot carries at most %d bytes of the sealed wire and the receiver's OpenTmpx bound is %d * %d bytes",
-			len(names), tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes, tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes)
+	if len(slotIDs) > tmproto.TmpxMaxSlots {
+		return nil, fmt.Errorf("TMPX_SLOT_IDS has %d entries, exceeds the v1 cap of %d (provider-registration.json `tmpx_slots.maxItems`); each slot carries at most %d bytes of the sealed wire and the receiver's OpenTmpx bound is %d * %d bytes",
+			len(slotIDs), tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes, tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes)
 	}
-	return names, nil
+	return slotIDs, nil
 }
 
 func lookupInt(name string, def int) (int, error) {

@@ -35,7 +35,9 @@
   },
   "structs": {
     "TmpError": "ErrorResponse",
-    "TmpProviderRegistration": "ProviderRegistration"
+    "TmpProviderRegistration": "ProviderRegistration",
+    "IdentityMatchResponseRouterPublisher": "IdentityMatchResponse",
+    "IdentityMatchResponseProviderRouter": "ProviderIdentityMatchResponse"
   },
   "fields": {
     "ContextMatchRequest.artifact": {"type": "Artifact", "pointer": true},

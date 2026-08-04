@@ -109,20 +109,19 @@ type TMPXSealer struct {
 	country  string
 	encStore tmpxRecipientResolver
 
-	// macroNames is the ordered list of ad-server macro slot names this
-	// provider's sealed token fills on IdentityMatchResponse.tmpx_macros[].
-	// Sourced from TMPXConfig.MacroNames (env: TMPX_MACRO_NAMES) and MUST
-	// match the provider's registered tmpx_macros list in
-	// provider-registration.json. When empty the response carries only the
-	// legacy singular `tmpx` field (deprecated, removed in 4.0). The v1
-	// spec caps the registered list at 2 entries (enforced at registration
-	// time in provider-registration.json — not here); the sealer does not
-	// impose an extra cap so an operator can experiment beyond v1 without
-	// this code needing a bump. When more than one name is configured, the
-	// sealed token is chunked at 255-byte boundaries (one boundary per
-	// slot; the GAM `%%PATTERN_MACRO%%` substitution limit) and each
-	// chunk is emitted in slot order.
-	macroNames []string
+	// slotIDs is the ordered list of provider-local slot identifiers this
+	// provider's sealed token fills on ProviderIdentityMatchResponse.tmpx_chunks[].
+	// Sourced from TMPXConfig.SlotIDs (env: TMPX_SLOT_IDS) and MUST match
+	// the provider's registered tmpx_slots list in provider-registration.json.
+	// When empty the sealer emits no chunks. The v1 spec caps the registered
+	// list at 2 entries (enforced at registration time in
+	// provider-registration.json — not here); the sealer does not impose an
+	// extra cap so an operator can experiment beyond v1 without this code
+	// needing a bump. When more than one slot is configured, the sealed
+	// token is chunked at TmpxMaxWireBytes boundaries (255 bytes; the GAM
+	// `%%PATTERN_MACRO%%` substitution limit) and each chunk is emitted in
+	// slot order.
+	slotIDs []string
 
 	// priority is the explicit per-spec priority ordering used when the
 	// resolved identities exceed the sealer's wireBudget (one macro slot
@@ -228,7 +227,7 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	return &TMPXSealer{
 		country:    cfg.Country,
 		encStore:   store,
-		macroNames: append([]string(nil), cfg.MacroNames...),
+		slotIDs:    append([]string(nil), cfg.SlotIDs...),
 		priority:   order,
 		decoders:   decoders,
 		logger:     logger,
@@ -237,52 +236,54 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 }
 
 // wireBudget is the maximum sealed-wire size the sealer targets for the
-// current macro-slot configuration. Each configured slot contributes one
+// current slot configuration. Each configured slot contributes one
 // TmpxMaxWireBytes-sized chunk (the GAM `%%PATTERN_MACRO%%` substitution
-// limit); a deployment with no macro slots configured falls back to the
-// legacy single-`tmpx` carrier and gets a one-slot budget.
+// limit); a deployment with no slots configured gets a one-slot budget.
 //
-// The v1 spec caps the registered macro list at 2 entries — enforced at
+// The v1 spec caps the registered slot list at 2 entries — enforced at
 // registration time in provider-registration.json rather than here — so
-// this returns len(macroNames)*TmpxMaxWireBytes without an extra ceiling.
+// this returns len(slotIDs)*TmpxMaxWireBytes without an extra ceiling.
 func (s *TMPXSealer) wireBudget() int {
-	slots := max(len(s.macroNames), 1)
+	slots := max(len(s.slotIDs), 1)
 	return slots * tmproto.TmpxMaxWireBytes
 }
 
-// MacroEntries pairs the sealed wire token with the provider's registered
-// macro slot names, splitting the token at TmpxMaxWireBytes boundaries so
-// each entry fits inside one ad-server macro slot (255 bytes; the GAM
+// ChunkEntries pairs the sealed wire token with the provider's registered
+// slot IDs, splitting the token at TmpxMaxWireBytes boundaries so each
+// entry fits inside one ad-server macro slot (255 bytes; the GAM
 // `%%PATTERN_MACRO%%` substitution limit). Entries are returned in slot
 // order — the receiver reassembles by concatenating in the same order.
+// Each chunk carries the provider-local slot_id from the registered
+// tmpx_slots; the publisher's deployment configuration
+// (publisher-tmpx-config.json) resolves (provider_id, slot_id) to the
+// local ad-server destination.
 //
-// Returns nil when there is no token to place, no macro names are
-// configured (the response falls back to the legacy `tmpx` string), or
-// the receiver is nil. Never emits more entries than macroNames and
-// never emits an entry whose value exceeds TmpxMaxWireBytes.
+// Returns nil when there is no token to place, no slot IDs are
+// configured, or the receiver is nil. Never emits more entries than
+// slotIDs and never emits an entry whose value exceeds TmpxMaxWireBytes.
 //
-// A token longer than len(macroNames) * TmpxMaxWireBytes would not fit into
+// A token longer than len(slotIDs) * TmpxMaxWireBytes would not fit into
 // the configured slots; fail closed and return nil rather than emit truncated
 // chunks that cannot be reassembled by the receiver. The sealer's
 // selectEntries pass keeps produced tokens within wireBudget(), so this is a
 // defensive floor against a future change raising the seal budget without
 // bumping the slot count — surface a wire that can't be trafficked as "no
 // TMPX" (identity drop) rather than silently corrupting downstream reassembly.
-func (s *TMPXSealer) MacroEntries(token string) []tmproto.TmpxMacro {
-	if s == nil || token == "" || len(s.macroNames) == 0 {
+func (s *TMPXSealer) ChunkEntries(token string) []tmproto.TmpxChunk {
+	if s == nil || token == "" || len(s.slotIDs) == 0 {
 		return nil
 	}
-	if len(token) > len(s.macroNames)*tmproto.TmpxMaxWireBytes {
+	if len(token) > len(s.slotIDs)*tmproto.TmpxMaxWireBytes {
 		return nil
 	}
-	entries := make([]tmproto.TmpxMacro, 0, len(s.macroNames))
-	for i, name := range s.macroNames {
+	entries := make([]tmproto.TmpxChunk, 0, len(s.slotIDs))
+	for i, slotID := range s.slotIDs {
 		start := i * tmproto.TmpxMaxWireBytes
 		if start >= len(token) {
 			break
 		}
 		end := min(start+tmproto.TmpxMaxWireBytes, len(token))
-		entries = append(entries, tmproto.TmpxMacro{Name: name, Value: token[start:end]})
+		entries = append(entries, tmproto.TmpxChunk{SlotID: slotID, Value: token[start:end]})
 	}
 	return entries
 }

@@ -328,14 +328,7 @@ func (r *Router) HandleIdentityMatch(w http.ResponseWriter, req *http.Request) {
 	// than reusing one body.
 	results := r.fanOutIdentity(req.Context(), matching, &imReq)
 
-	// Merge — extract parallel slices for provider IDs and responses.
-	providerIDs := make([]string, len(results))
-	responses := make([]*tmproto.IdentityMatchResponse, len(results))
-	for i, r := range results {
-		providerIDs[i] = r.providerID
-		responses[i] = r.response
-	}
-	merged := mergeIdentityResponses(imReq.RequestID, providerIDs, responses, r.logger)
+	merged := mergeIdentityResponses(imReq.RequestID, results, r.logger)
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(merged); err != nil {
@@ -522,8 +515,9 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 }
 
 type identityResult struct {
-	providerID string
-	response   *tmproto.IdentityMatchResponse
+	providerID      string
+	registeredSlots []string
+	response        *tmproto.ProviderIdentityMatchResponse
 }
 
 func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig, imReq *tmproto.IdentityMatchRequest) []identityResult {
@@ -578,8 +572,8 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			callStart := time.Now()
-			var imResp tmproto.IdentityMatchResponse
-			err = r.callProvider(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp)
+			var imResp tmproto.ProviderIdentityMatchResponse
+			err = r.callProviderStrict(callCtx, p.Endpoint+"/identity", callBody, sigHeaders, &imResp, providerHopForbiddenFields)
 			elapsed := time.Since(callStart)
 			timeout, parentCancelled := classifyCallFailure(callCtx)
 			// Observe duration on every terminal outcome except parent
@@ -610,7 +604,11 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 			}
 
 			mu.Lock()
-			results = append(results, identityResult{providerID: p.ID, response: &imResp})
+			results = append(results, identityResult{
+				providerID:      p.ID,
+				registeredSlots: p.TmpxSlots,
+				response:        &imResp,
+			})
 			mu.Unlock()
 		})
 	}
@@ -620,6 +618,17 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 }
 
 func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any) error {
+	return r.callProviderStrict(ctx, endpoint, body, headers, target, nil)
+}
+
+// callProviderStrict issues the provider call and rejects the response
+// when any top-level JSON key in forbiddenTopLevelKeys is present. Callers
+// use this to enforce hop-scoped `not: {anyOf: [{required: [<key>]}, ...]}`
+// clauses from the schema — the identity-match path uses it to reject
+// router-hop fields (`tmpx_providers`, `tmpx`, ...) and envelope-extension
+// fields (`context`, `ext`) that MUST NOT appear on the provider hop per
+// provider-identity-match-response.json.
+func (r *Router) callProviderStrict(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any, forbiddenTopLevelKeys []string) error {
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -639,10 +648,42 @@ func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte,
 		return fmt.Errorf("provider returned %d", resp.StatusCode)
 	}
 
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1024*1024)).Decode(target); err != nil {
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		return fmt.Errorf("read provider response: %w", err)
+	}
+
+	if len(forbiddenTopLevelKeys) > 0 {
+		var probe map[string]json.RawMessage
+		if err := json.Unmarshal(respBody, &probe); err != nil {
+			return fmt.Errorf("decode provider response: %w", err)
+		}
+		for _, key := range forbiddenTopLevelKeys {
+			if _, present := probe[key]; present {
+				return fmt.Errorf("provider response carries forbidden top-level key %q for this hop", key)
+			}
+		}
+	}
+
+	if err := json.Unmarshal(respBody, target); err != nil {
 		return fmt.Errorf("decode provider response: %w", err)
 	}
 	return nil
+}
+
+// providerHopForbiddenFields lists the top-level JSON keys that MUST NOT
+// appear on a provider→router identity-match response — router-hop
+// carriers (tmpx_providers, tmpx), pre-3.1.9 legacy carriers
+// (tmpx_values, tmpx_macros), and envelope-extension fields (context,
+// ext) that would leak across the identity privacy boundary. Mirrors the
+// `not` clause in provider-identity-match-response.json.
+var providerHopForbiddenFields = []string{
+	"tmpx_providers",
+	"tmpx",
+	"tmpx_values",
+	"tmpx_macros",
+	"context",
+	"ext",
 }
 
 // mergeContextResponses combines offers and signals from multiple providers.
@@ -712,64 +753,87 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 // both" rule collapses to union when only yes-responses are observable).
 //
 // TMPX collection per the spec §"TMPX collection":
-//   - Each agent's TmpxMacros[] is folded into tmpx_providers[provider_id] so
-//     per-provider attribution survives the fan-out.
-//   - The legacy singular `tmpx` field stays populated on the merged response
-//     for back-compat with consumers that haven't moved to tmpx_providers
-//     (deprecated, removed in 4.0). Source order: prefer the first provider's
-//     first macro value when TmpxMacros[] is present; otherwise fall back to
-//     the agent's legacy `tmpx` field (legacy-only agents during transition).
-//   - The router MUST NOT carry tmpx_macros[] at the root of the outbound
+//   - Each agent's TmpxChunks[] is folded into tmpx_providers[provider_id]
+//     so per-provider attribution survives the fan-out. Each chunk carries
+//     the provider-local slot_id from the agent's registered tmpx_slots;
+//     the publisher's deployment configuration
+//     (publisher-tmpx-config.json) resolves (provider_id, slot_id) to the
+//     local ad-server destination.
+//   - Slot-contract enforcement (MUST from adcontextprotocol/adcp#5971):
+//     before folding, each provider's emitted slot_id sequence is
+//     validated against its registered tmpx_slots via
+//     enforceProviderSlotContract. A provider whose sequence is empty,
+//     unregistered, reordered, sparse, duplicate, or longer than the
+//     registered list has its chunks dropped atomically — the other
+//     providers on the same response are unaffected. A warning is
+//     logged so a misconfigured provider is observable.
+//   - The legacy singular `tmpx` field stays populated on the merged
+//     response for back-compat with consumers that haven't moved to
+//     tmpx_providers (deprecated, removed in 4.0). Source: the first
+//     agent's single-chunk value when it emitted exactly one chunk.
+//     Multi-chunk emissions never populate this field because the single
+//     string cannot represent multiple chunks.
+//   - The router MUST NOT carry tmpx_chunks[] at the root of the outbound
 //     response — that field is the agent → router carrier only; leaking it
-//     alongside tmpx_providers would give the publisher no schema signal for
-//     which to read.
-func mergeIdentityResponses(requestID string, providerIDs []string, responses []*tmproto.IdentityMatchResponse, logger *slog.Logger) *tmproto.IdentityMatchResponse {
+//     alongside tmpx_providers would give the publisher no schema signal
+//     for which to read.
+func mergeIdentityResponses(requestID string, results []identityResult, logger *slog.Logger) *tmproto.IdentityMatchResponse {
 	eligibleSet := make(map[string]struct{})
-	pkgProviders := make(map[string][]string)             // package_id -> distinct provider IDs that listed it
-	providerRepeats := make(map[string]map[string]bool)   // package_id -> set of providers that repeated it within their own response
+	pkgProviders := make(map[string][]string)           // package_id -> distinct provider IDs that listed it
+	providerRepeats := make(map[string]map[string]bool) // package_id -> set of providers that repeated it within their own response
 	minServeWindowSec := -1
 	var legacyTmpx string
 	tmpxProviders := make(map[string]tmproto.TmpxProviderEntry)
 
-	for i, resp := range responses {
+	for _, res := range results {
+		resp := res.response
 		if resp == nil {
 			continue
 		}
 		if minServeWindowSec < 0 || resp.ServeWindowSec < minServeWindowSec {
 			minServeWindowSec = resp.ServeWindowSec
 		}
-		providerID := ""
-		if i < len(providerIDs) {
-			providerID = providerIDs[i]
-		}
-		// TMPX: prefer the new TmpxMacros[] carrier — collect into the
-		// per-provider map. Skip empty providerID entries (defensive: a
-		// fan-out with mis-aligned parallel slices would otherwise stash
-		// macros under "", which any consumer would treat as garbage).
-		if len(resp.TmpxMacros) > 0 && providerID != "" {
-			tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
-				Macros: append([]tmproto.TmpxMacro(nil), resp.TmpxMacros...),
-			}
-			// The deprecated single-string `tmpx` carrier can only represent
-			// tokens that fit in one macro slot. Multi-chunk responses (>1
-			// TmpxMacros entry) produce a wire that spans multiple slots —
-			// any single chunk on its own is a broken ciphertext half that
-			// fails AEAD open silently. Populate the legacy field only when
-			// the emitting agent produced exactly one chunk; a multi-chunk
-			// emission leaves it empty so consumers still reading the
-			// deprecated field skip it rather than get identity loss. See
-			// the mirror guard in identityagent/handler.go's
-			// assignTmpxToResponse.
-			if legacyTmpx == "" && len(resp.TmpxMacros) == 1 {
-				legacyTmpx = resp.TmpxMacros[0].Value
-			}
-		} else if resp.Tmpx != "" {
-			// Legacy-only agent during transition — preserve in legacy
-			// carrier so single-string consumers keep working. No
-			// tmpx_providers entry: the router does not synthesize names
-			// from registration metadata in this version.
-			if legacyTmpx == "" {
-				legacyTmpx = resp.Tmpx
+		providerID := res.providerID
+		// TMPX: fold the provider's emitted chunks into the per-provider
+		// map. Skip empty providerID entries (defensive: a fan-out result
+		// without a provider_id would otherwise stash chunks under "",
+		// which any consumer would treat as garbage).
+		if len(resp.TmpxChunks) > 0 && providerID != "" {
+			if !enforceProviderSlotContract(res.registeredSlots, resp.TmpxChunks) {
+				// Contract broken: drop this provider's chunks atomically
+				// (do NOT partially trim). Other providers on the same
+				// response are unaffected. Surface the misconfig so
+				// operators can observe it — the log carries both the
+				// registered and emitted slot sequences so the drop
+				// reason is diagnosable from the log line alone.
+				if logger != nil {
+					emitted := make([]string, len(resp.TmpxChunks))
+					for i, c := range resp.TmpxChunks {
+						emitted[i] = c.SlotID
+					}
+					logger.Warn("dropping provider's tmpx_chunks: sequence is not an ordered prefix of registered tmpx_slots",
+						"request_id", requestID,
+						"provider", providerID,
+						"registered_slots", res.registeredSlots,
+						"emitted_slots", emitted,
+					)
+				}
+			} else {
+				tmpxProviders[providerID] = tmproto.TmpxProviderEntry{
+					Chunks: append([]tmproto.TmpxChunk(nil), resp.TmpxChunks...),
+				}
+				// The deprecated single-string `tmpx` carrier can only
+				// represent tokens that fit in one macro slot. Multi-chunk
+				// responses (>1 TmpxChunks entry) produce a wire that
+				// spans multiple slots — any single chunk on its own is a
+				// broken ciphertext half that fails AEAD open silently.
+				// Populate the legacy field only when the emitting agent
+				// produced exactly one chunk; a multi-chunk emission
+				// leaves it empty so consumers still reading the
+				// deprecated field skip it rather than get identity loss.
+				if legacyTmpx == "" && len(resp.TmpxChunks) == 1 {
+					legacyTmpx = resp.TmpxChunks[0].Value
+				}
 			}
 		}
 		// Track DISTINCT providers per package_id and remember if any single
