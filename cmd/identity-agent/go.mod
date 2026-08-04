@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
-	github.com/adcontextprotocol/adcp-go/tmproto v0.0.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
 )
 
 require (
@@ -42,5 +42,3 @@ require (
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
-
-replace github.com/adcontextprotocol/adcp-go/tmproto => ../../tmproto
