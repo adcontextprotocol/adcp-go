@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/registry/redisstore
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/registry v0.0.0
+	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
@@ -61,5 +61,3 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/adcontextprotocol/adcp-go/registry => ../
