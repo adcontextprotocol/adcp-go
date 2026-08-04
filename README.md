@@ -2,6 +2,17 @@
 
 Go SDK for the [Ad Context Protocol (AdCP)](https://adcontextprotocol.org). Build advertising agents that sell inventory, serve audience data, manage creatives, and pass storyboard compliance validation.
 
+## Local development
+
+This repo is a multi-module Go workspace. To work on multiple modules at once with unpublished changes visible across them, copy `go.work.example` to `go.work`:
+
+```sh
+cp go.work.example go.work
+go build ./...
+```
+
+`go.work` is intentionally gitignored so CI and downstream consumers resolve real tagged versions of each sub-module, while local development uses your working tree directly.
+
 ## Building an Agent
 
 ```bash
