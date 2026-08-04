@@ -1,7 +1,7 @@
 {
   "adcp": "2.1.1",
   "urlcanon": "0.1.0",
-  "registry": "0.1.0",
+  "registry": "0.2.0",
   "registry/redisstore": "0.0.0",
   "registry/glidestore": "0.0.0"
 }
