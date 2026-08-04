@@ -1,10 +1,39 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "separate-pull-requests": true,
   "packages": {
     "adcp": {
       "release-type": "go",
       "package-name": "adcp",
       "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "urlcanon": {
+      "release-type": "go",
+      "component": "urlcanon",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "registry": {
+      "release-type": "go",
+      "component": "registry",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "registry/redisstore": {
+      "release-type": "go",
+      "component": "registry/redisstore",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "registry/glidestore": {
+      "release-type": "go",
+      "component": "registry/glidestore",
+      "tag-separator": "/",
       "bump-minor-pre-major": true,
       "include-component-in-tag": true
     }
