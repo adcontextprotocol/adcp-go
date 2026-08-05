@@ -3,13 +3,6 @@
   "separate-pull-requests": true,
   "bootstrap-sha": "a657544f714b776b8042a5a04f634d805a429b53",
   "packages": {
-    "adcp": {
-      "release-type": "go",
-      "package-name": "adcp",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "include-component-in-tag": true
-    },
     "urlcanon": {
       "release-type": "go",
       "component": "urlcanon",
@@ -55,6 +48,15 @@
     "targeting": {
       "release-type": "go",
       "component": "targeting",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "adcp/v3": {
+      "release-type": "go",
+      "package-name": "adcp/v3",
+      "component": "adcp",
+      "changelog-path": "CHANGELOG.md",
       "tag-separator": "/",
       "bump-minor-pre-major": true,
       "include-component-in-tag": true
