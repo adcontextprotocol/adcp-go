@@ -40,8 +40,6 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/adcontextprotocol/adcp-go => ../../
-
 replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
 
 replace github.com/adcontextprotocol/adcp-go/registry/redisstore => ../../registry/redisstore
