@@ -8,7 +8,9 @@
       "package-name": "adcp",
       "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "release-as": "2.1.1",
+      "skip-github-release": true
     },
     "urlcanon": {
       "release-type": "go",
@@ -55,6 +57,15 @@
     "targeting": {
       "release-type": "go",
       "component": "targeting",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
+    "adcp/v3": {
+      "release-type": "go",
+      "package-name": "adcp/v3",
+      "component": "adcp",
+      "changelog-path": "CHANGELOG.md",
       "tag-separator": "/",
       "bump-minor-pre-major": true,
       "include-component-in-tag": true
