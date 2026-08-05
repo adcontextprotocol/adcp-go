@@ -1,5 +1,327 @@
 # Migrating adcp-go
 
+## Migrating to adcp-go v3 / sub-modules
+
+`adcp-go` 3.0 reshapes the repository into a Go multi-module workspace. If you
+consume this repository from a downstream Go service, read this section before
+upgrading.
+
+### What changed at a glance
+
+- **`adcp/v3` replaces `adcp` for new work.** The generated schema types and
+  MCP helpers now live under `github.com/adcontextprotocol/adcp-go/adcp/v3`.
+  The legacy `github.com/adcontextprotocol/adcp-go/adcp` module is frozen at
+  `v2.1.1` and will only receive security backports (see the support window
+  section below).
+- **`tmproto`, `tmpclient`, and `targeting` are their own modules.** Each has
+  an independent tag prefix (`tmproto/vX.Y.Z`, etc.) and its own SemVer
+  cadence. Their Go import paths did not change — only the module boundary
+  did, so in-repo `.go` code keeps the same `import` statements. Downstream
+  `go.mod` files, however, need explicit `require` lines for each sub-module
+  the service actually imports.
+- **`urlcanon` and the `registry` family became sub-modules.** `registry` and
+  `urlcanon` are already published at `v0.1.0`. The optional
+  `registry/redisstore` and `registry/glidestore` backends live in the tree
+  and can be tagged on demand.
+- **`adcp/vN` majors track the AdCP protocol spec's major version.** `adcp/v3`
+  speaks AdCP 3.x. When the AdCP protocol spec bumps to 4.0 (upstream cadence
+  targets early 2027), `adcp/v4` gets cut. There will be no Go-only major
+  bumps of `adcp` inside a spec-major lifecycle. See the alignment policy
+  below for details.
+
+### Import path map
+
+The table below covers every import path a downstream Go service is likely to
+hold today. The right-hand column is the go-forward path.
+
+| Old import path | New import path | Notes |
+| --- | --- | --- |
+| `github.com/adcontextprotocol/adcp-go/adcp` | `github.com/adcontextprotocol/adcp-go/adcp/v3` | Package name stays `adcp` (Go SIV). |
+| `github.com/adcontextprotocol/adcp-go/adcp/signing` | `github.com/adcontextprotocol/adcp-go/adcp/v3/signing` | Moves with the parent module. |
+| `github.com/adcontextprotocol/adcp-go/adcp/cmd/adcp-signing-keygen` | `github.com/adcontextprotocol/adcp-go/adcp/v3/cmd/adcp-signing-keygen` | `go run` target relocated. |
+| `github.com/adcontextprotocol/adcp-go/tmproto` | `github.com/adcontextprotocol/adcp-go/tmproto` | Same path, now its own module. |
+| `github.com/adcontextprotocol/adcp-go/tmpclient` | `github.com/adcontextprotocol/adcp-go/tmpclient` | Same path, now its own module. |
+| `github.com/adcontextprotocol/adcp-go/targeting` | `github.com/adcontextprotocol/adcp-go/targeting` | Same path, now its own module. |
+| `github.com/adcontextprotocol/adcp-go/targeting/fcap` | `github.com/adcontextprotocol/adcp-go/targeting/fcap` | Sub-package of the `targeting` module. |
+| `github.com/adcontextprotocol/adcp-go/urlcanon` | `github.com/adcontextprotocol/adcp-go/urlcanon` | Same path, now its own module. |
+| `github.com/adcontextprotocol/adcp-go/registry` | `github.com/adcontextprotocol/adcp-go/registry` | Same path, now its own module. |
+| `github.com/adcontextprotocol/adcp-go/registry/redisstore` | `github.com/adcontextprotocol/adcp-go/registry/redisstore` | Nested module — separate `require` line if used. |
+| `github.com/adcontextprotocol/adcp-go/registry/glidestore` | `github.com/adcontextprotocol/adcp-go/registry/glidestore` | Nested module — separate `require` line if used. |
+
+For everything except `adcp`, the Go `import` statements in downstream code
+stay byte-identical. Only the `go.mod` `require` block needs updating so the
+Go toolchain resolves each sub-module against its own tag.
+
+For `adcp`, every occurrence of `.../adcp` in an `import` line needs to become
+`.../adcp/v3`. Per Go's Semantic Import Versioning rule, the package name is
+still `adcp`; only the import path suffix changes. `adcp.Foo` in your code
+does not need to change — the identifier resolves via the import.
+
+### Currently-published modules
+
+| Import path | Current version | Tag format |
+| --- | --- | --- |
+| `github.com/adcontextprotocol/adcp-go/urlcanon` | `v0.1.0` | `urlcanon/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry` | `v0.1.0` | `registry/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry/redisstore` | (not yet cut) | `registry/redisstore/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry/glidestore` | (not yet cut) | `registry/glidestore/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/tmproto` | `v0.1.0` | `tmproto/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/tmpclient` | `v0.1.0` | `tmpclient/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/targeting` | `v0.1.0` | `targeting/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/adcp/v3` | `v3.0.0` | `adcp/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/adcp` (frozen v2) | `v2.1.1` | `adcp-vX.Y.Z` (legacy hyphen — see history below) |
+
+The top-level module `github.com/adcontextprotocol/adcp-go` remains untagged
+and is not an intended external import target. It contains internal glue —
+test helpers, workspace scaffolding, and cross-module examples — that stitch
+the sub-modules together for in-repo development.
+
+### Sample `go.mod` diff — downstream service
+
+Assume a service today imports `.../adcp` for schema types and
+`.../targeting/fcap` for the frequency-cap helpers. Before the reshape:
+
+```gomod
+module example.com/my-service
+
+go 1.23
+
+require (
+    github.com/adcontextprotocol/adcp-go v0.0.0-20260701123456-abcdef012345
+)
+```
+
+The service pinned the root module at a pseudo-version because no
+`go get`-able `adcp` semver tag ever existed (see the tag-naming history
+below). After the reshape:
+
+```gomod
+module example.com/my-service
+
+go 1.23
+
+require (
+    github.com/adcontextprotocol/adcp-go/adcp/v3 v3.0.0
+    github.com/adcontextprotocol/adcp-go/targeting v0.1.0
+)
+```
+
+Each sub-module is now pinned to a real tag independently. Bumping the
+targeting engine no longer forces a schema-types bump, and vice versa.
+
+If the service also uses TMP message types, add the wire-types module:
+
+```gomod
+require github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+```
+
+If the service embeds the publisher-side TMP client, add:
+
+```gomod
+require github.com/adcontextprotocol/adcp-go/tmpclient v0.1.0
+```
+
+The corresponding `go.sum` entries are added automatically by `go mod tidy`.
+
+### Recipe: keeping v2
+
+Some downstream services will want to stay on the pre-reshape SDK for one
+more release cycle. The frozen module continues to build; existing
+pseudo-version pins keep resolving.
+
+```sh
+# Keep or add this to your go.mod:
+require github.com/adcontextprotocol/adcp-go/adcp v2.1.1
+```
+
+Historical note: the `adcp-v2.1.1` tag on this repository does not match Go's
+nested-module tag convention (see the tag-naming history section below), so
+`go get github.com/adcontextprotocol/adcp-go/adcp@v2.1.1` was never
+guaranteed to resolve to that exact tag. In practice, downstream services
+pinned the root module at a pseudo-version off `main` at the commit that
+carried the v2.1.1 tag, or used a `replace` directive against a local
+checkout. That behaviour is stable and unchanged — v2.1.1 remains the last
+non-security release of the v2 line, and no new v2 tags will be cut except
+under the security backport policy below.
+
+### Recipe: migrating to v3
+
+The mechanical steps for a downstream service:
+
+```sh
+go get github.com/adcontextprotocol/adcp-go/adcp/v3@v3.0.0
+```
+
+Then update every `import` statement:
+
+```go
+// before
+import "github.com/adcontextprotocol/adcp-go/adcp"
+
+// after
+import "github.com/adcontextprotocol/adcp-go/adcp/v3"
+```
+
+`gofmt`-friendly one-liner across the tree:
+
+```sh
+find . -name '*.go' -print0 | xargs -0 sed -i '' \
+  's#github.com/adcontextprotocol/adcp-go/adcp"#github.com/adcontextprotocol/adcp-go/adcp/v3"#g'
+```
+
+(On GNU sed drop the `''` after `-i`.) Cover sub-packages under `adcp/` the
+same way — e.g. `adcp/signing` becomes `adcp/v3/signing`.
+
+The package identifier does not change. `adcp.CreateMediaBuyRequest` is still
+`adcp.CreateMediaBuyRequest` after the switch; only the module resolution
+path is different. Nothing in call sites, struct construction, or interface
+implementations needs to be rewritten for the SIV rename alone.
+
+The remainder of this document (below) describes the schema-level changes
+introduced within the v3 line — those code updates are the actual work of
+the upgrade. Field-level breaking changes are called out per section.
+
+After updating imports, run:
+
+```sh
+go mod tidy
+go build ./...
+go test ./...
+```
+
+`go mod tidy` will pull in the new sub-module `require` lines automatically
+based on the imports it discovers.
+
+### Recipe: rollback
+
+If a v3 upgrade fails in staging, reverting is safe:
+
+```sh
+# undo the require on adcp/v3
+go mod edit -droprequire=github.com/adcontextprotocol/adcp-go/adcp/v3
+
+# re-pin the frozen v2 module at a pseudo-version if you never had a
+# resolvable adcp-v* tag (see history), or at v2.1.1 if you did
+go get github.com/adcontextprotocol/adcp-go/adcp@v2.1.1
+
+go mod tidy
+```
+
+Then revert the `import` path updates. `git checkout -- '*.go'` on a clean
+branch is often faster than a scripted rename.
+
+Caveat: the frozen v2 module receives security patches only. If the reason
+for rollback is a v3 API mismatch, plan the re-migration within the v2
+security-support window (12 months post-v3 GA — see below).
+
+### Tag-naming history
+
+The `adcp` v1 and v2 tags on this repository use a hyphen prefix
+(`adcp-v1.0.0` through `adcp-v2.1.1`) rather than the slash prefix that Go's
+nested-module tag convention requires (`adcp/vX.Y.Z`). The Go toolchain
+resolves nested-module tags by looking for `<module-path>/vX.Y.Z` in the
+repository's git tags; a tag named `adcp-v2.1.1` does not match that lookup
+for the module `github.com/adcontextprotocol/adcp-go/adcp`.
+
+Consequence: **no `adcp` semver tag has actually been resolvable via
+`go get` on the v1 or v2 line.** Every downstream service that ever
+integrated a versioned `adcp` was in practice on:
+
+- a pseudo-version off `main` at a chosen commit (`v0.0.0-YYYYMMDDHHMMSS-<sha>`), or
+- a `replace` directive against a local checkout or fork.
+
+This is not being fixed retroactively. Retagging historical commits with the
+slash-prefixed convention would create new module versions that resolve to
+the same source, but any consumer already pinned by pseudo-version SHA would
+see a superset of versions available and could accidentally upgrade past
+what they had validated. The v2 line is frozen as it stands.
+
+Going forward, **all `adcp/vN` releases use the canonical Go nested-module
+tag format** (`adcp/vX.Y.Z`). `adcp/v3.0.0` is the first `adcp` version that
+is directly resolvable via `go get github.com/adcontextprotocol/adcp-go/adcp/v3@v3.0.0`
+without pseudo-version workarounds.
+
+Do not expect new `adcp-v*` (hyphen) tags. If you see one on this
+repository, it is either a legacy tag from the v1/v2 era or a security
+backport cut from the `adcp-v2.1.1` maintenance branch (see below).
+
+### Spec-major alignment policy
+
+Starting with v3, the major version of `adcp/vN` tracks the major version of
+the AdCP protocol specification 1:1:
+
+| `adcp/vN` module version | AdCP protocol spec | Status |
+| --- | --- | --- |
+| `adcp/v3.x.y` | AdCP 3.x | Current |
+| `adcp/v4.x.y` (future) | AdCP 4.x | When the spec bumps to 4.0 |
+
+Rules that follow from this alignment:
+
+- **No Go-only major bumps of `adcp` inside a spec-major lifecycle.**
+  Breaking Go-side API changes — struct field type flips that are not
+  additive, package restructures under `adcp/vN/`, or interface method
+  additions on interfaces intended to be implemented by callers — either
+  wait for the next AdCP protocol spec major, or ship inside the current
+  major as deprecated-plus-added pairs.
+- **Additive schema changes ship as minors.** New AdCP 3.x fields, new
+  optional request parameters, new response variants, and new tools land as
+  `adcp/v3.N.0` releases. Downstream services can adopt them at their own
+  pace.
+- **Bug fixes ship as patches.** `adcp/v3.x.Y` patch releases fix codegen
+  bugs, validator issues, and non-breaking schema-conformance corrections.
+- **Spec-major bumps are rare and telegraphed.** The AdCP protocol spec's
+  own cadence commitment is a minimum 18-month floor between majors, and at
+  least 12 months of security support for the prior major after a new one
+  ships. `adcp-go` inherits that cadence: `adcp/v4` is not on the near-term
+  roadmap and will not appear until AdCP 4.0 does.
+
+This alignment applies **only to the `adcp/` module.** The other sub-modules
+(`tmproto`, `tmpclient`, `targeting`, `urlcanon`, `registry`, and the
+`registry/*` backends) stay on independent SemVer with their own cadences.
+`tmproto v1.0.0` and `targeting v2.0.0` will happen when those modules'
+public Go APIs require it, on schedules independent of the AdCP spec's own
+major-version cadence.
+
+### Version support windows
+
+The maintainer commitments for the currently-published modules:
+
+| Module | Current version | Support commitment |
+| --- | --- | --- |
+| `adcp/v3` | `v3.0.0` | Active development. Additive minors, patch fixes. |
+| `adcp` (frozen v2) | `v2.1.1` | Security backports for 12 months post-`adcp/v3.0.0` GA. Hand-cut from a maintenance branch. |
+| `tmproto` | `v0.1.0` | Standard SemVer. Patches safe; minors additive. |
+| `tmpclient` | `v0.1.0` | Standard SemVer. Patches safe; minors additive. |
+| `targeting` | `v0.1.0` | Standard SemVer. Patches safe; minors additive. |
+| `urlcanon` | `v0.1.0` | Standard SemVer. Patches safe; minors additive. |
+| `registry` | `v0.1.0` | Standard SemVer. Patches safe; minors additive. |
+| `registry/redisstore` | (not yet cut) | Cut on demand. Standard SemVer once tagged. |
+| `registry/glidestore` | (not yet cut) | Cut on demand. Standard SemVer once tagged. |
+
+The 12-month v2 security window aligns with the AdCP protocol spec's own
+"minimum 12 months of prior-major security support" commitment. If a
+critical patch is required against `adcp v2.1.1` during that window, it is
+hand-cut from a maintenance branch off the `adcp-v2.1.1` tag using the
+legacy hyphen tag format (`adcp-v2.1.2`, etc.). Consumers on
+pseudo-versions off the frozen v2 module path pick up the fix by rebasing
+onto the new pseudo-version. After the 12-month window closes, no further
+v2 patches will be cut except by mutual agreement.
+
+Two-phase extraction note: every sub-module in the reshape was extracted in
+two steps — first with `require v0.0.0 + replace` in consumers, then a real
+tag plus dropping the replaces. Downstream services see only the finished
+state; the transitional state was carried inside this repository's history.
+
+### Where to file bugs
+
+- Import-path or module-boundary confusion: file an issue on this
+  repository and reference the module by its full path.
+- Field-level schema questions (e.g. "what shape should `X` have?"):
+  cross-check the AdCP protocol spec first, then file here.
+- Spec-level ambiguity: file on the AdCP protocol spec repository, not
+  here. `adcp-go` follows the spec — if two implementations disagree, the
+  spec is the arbiter.
+
 ## Next: schema-backed typed SDK fields
 
 This release tightens buyer, seller, and governance SDK surfaces around AdCP
