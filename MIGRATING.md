@@ -129,20 +129,30 @@ Some downstream services will want to stay on the pre-reshape SDK for one
 more release cycle. The frozen module continues to build; existing
 pseudo-version pins keep resolving.
 
+Because no `adcp` semver tag was ever `go get`-resolvable (see the
+[tag-naming history](#tag-naming-history) below — the v1/v2 tags use the
+hyphenated `adcp-v*` form, and the module path lacks the `/v2` SIV suffix
+Go would require to accept a `v2.x.y` version), the frozen v2 module is
+pinned by pseudo-version pointing at the commit the `adcp-v2.1.1` tag
+marks. Update the pin by SHA — Go computes the pseudo-version for you:
+
 ```sh
-# Keep or add this to your go.mod:
-require github.com/adcontextprotocol/adcp-go/adcp v2.1.1
+# SHA that adcp-v2.1.1 tags:
+go get github.com/adcontextprotocol/adcp-go/adcp@362d0d38eb10e36316f55560ddd240796c33b6cc
 ```
 
-Historical note: the `adcp-v2.1.1` tag on this repository does not match Go's
-nested-module tag convention (see the tag-naming history section below), so
-`go get github.com/adcontextprotocol/adcp-go/adcp@v2.1.1` was never
-guaranteed to resolve to that exact tag. In practice, downstream services
-pinned the root module at a pseudo-version off `main` at the commit that
-carried the v2.1.1 tag, or used a `replace` directive against a local
-checkout. That behaviour is stable and unchanged — v2.1.1 remains the last
-non-security release of the v2 line, and no new v2 tags will be cut except
-under the security backport policy below.
+The resulting `go.mod` require line looks like:
+
+```gomod
+require github.com/adcontextprotocol/adcp-go/adcp v0.0.0-20260722171107-362d0d38eb10
+```
+
+Go's pseudo-version encoder builds the `v0.0.0-YYYYMMDDHHMMSS-<12-char-sha>`
+form from the commit's UTC timestamp and the abbreviated SHA. That
+pseudo-version is stable and is what every downstream service on the v2
+line has actually been pinned to. `v2.1.1` remains the last non-security
+release of the v2 line, and no new v2 tags will be cut except under the
+security backport policy below.
 
 ### Recipe: migrating to v3
 
@@ -194,17 +204,25 @@ based on the imports it discovers.
 
 ### Recipe: rollback
 
-If a v3 upgrade fails in staging, reverting is safe:
+If a v3 upgrade fails in staging, reverting is safe. Rolling back means
+re-pinning the frozen v2 module — and because no `adcp` semver tag is
+`go get`-resolvable (see the [tag-naming history](#tag-naming-history)
+below), the pin is by SHA-driven pseudo-version, not by `v2.1.1`:
 
 ```sh
 # undo the require on adcp/v3
 go mod edit -droprequire=github.com/adcontextprotocol/adcp-go/adcp/v3
 
-# re-pin the frozen v2 module at a pseudo-version if you never had a
-# resolvable adcp-v* tag (see history), or at v2.1.1 if you did
-go get github.com/adcontextprotocol/adcp-go/adcp@v2.1.1
+# re-pin the frozen v2 module by the commit that adcp-v2.1.1 tags
+go get github.com/adcontextprotocol/adcp-go/adcp@362d0d38eb10e36316f55560ddd240796c33b6cc
 
 go mod tidy
+```
+
+Go rewrites that `go get` into a pseudo-version require:
+
+```gomod
+require github.com/adcontextprotocol/adcp-go/adcp v0.0.0-20260722171107-362d0d38eb10
 ```
 
 Then revert the `import` path updates. `git checkout -- '*.go'` on a clean
