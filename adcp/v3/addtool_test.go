@@ -1,0 +1,349 @@
+package adcp
+
+import (
+	"context"
+	"encoding/json"
+	"reflect"
+	"testing"
+
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+type testInput struct {
+	Name   string  `json:"name"`
+	Age    int     `json:"age,omitempty"`
+	Nested *nested `json:"nested,omitempty"`
+}
+
+type nested struct {
+	Value string `json:"value"`
+}
+
+func TestPermissiveSchemaFor(t *testing.T) {
+	schema := permissiveSchemaFor[testInput]()
+
+	require.Equal(t, "object", schema.Type, "expected type object")
+
+	// AdditionalProperties should be nil (permissive), not false
+	require.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil (permissive)")
+
+	// Properties should still be documented
+	require.NotNil(t, schema.Properties, "expected properties to be set")
+	assert.Contains(t, schema.Properties, "name", "expected 'name' property")
+	assert.Contains(t, schema.Properties, "age", "expected 'age' property")
+}
+
+func TestAddToolAllowsExtraFieldsToReachHandler(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "addtool-test", Version: "v0.0.1"}, nil)
+	called := false
+	var got testInput
+	AddTool(server, "echo_input", "Echo input",
+		func(_ context.Context, _ *mcp.CallToolRequest, input testInput) (*mcp.CallToolResult, any, error) {
+			called = true
+			got = input
+			return Result(map[string]any{"ok": true}, "ok")
+		})
+
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "addtool-test-client", Version: "v0.0.1"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = clientSession.Close() }()
+
+	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
+		Name: "echo_input",
+		Arguments: map[string]any{
+			"name":               "Ada",
+			"adcp_major_version": 3,
+			"nested": map[string]any{
+				"value":    "nested-ok",
+				"metadata": "extra",
+			},
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.True(t, called, "handler should run despite unknown root and nested fields")
+	assert.Equal(t, "Ada", got.Name)
+	require.NotNil(t, got.Nested)
+	assert.Equal(t, "nested-ok", got.Nested.Value)
+}
+
+func TestPermissiveSchemaForNested(t *testing.T) {
+	schema := permissiveSchemaFor[testInput]()
+
+	// Check that nested object types also have additionalProperties removed.
+	// The nested type might be in $defs or inline.
+	nestedProp := schema.Properties["nested"]
+	require.NotNil(t, nestedProp, "expected 'nested' property")
+
+	// The nested schema might be a $ref. Walk $defs too.
+	for _, def := range schema.Defs {
+		if def.Type == "object" {
+			assert.Nil(t, def.AdditionalProperties, "expected nested object $def to have nil AdditionalProperties")
+		}
+	}
+}
+
+func TestAllowAdditionalProperties(t *testing.T) {
+	// Create a schema with additionalProperties: false (the false schema pattern)
+	schema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"foo": {Type: "string"},
+		},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}}, // false schema
+	}
+
+	allowAdditionalProperties(schema)
+
+	assert.Nil(t, schema.AdditionalProperties, "expected AdditionalProperties to be nil after patching")
+	assert.NotNil(t, schema.Properties["foo"], "expected properties to be preserved")
+}
+
+func TestAllowAdditionalPropertiesWalksTupleAndMapValueSchemas(t *testing.T) {
+	falseSchema := func() *jsonschema.Schema {
+		return &jsonschema.Schema{Not: &jsonschema.Schema{}}
+	}
+	itemsObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	prefixObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	mapValueObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	dependencyObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	dependentObject := &jsonschema.Schema{Type: "object", AdditionalProperties: falseSchema()}
+	mapSchema := &jsonschema.Schema{Type: "object", AdditionalProperties: mapValueObject}
+	schema := &jsonschema.Schema{
+		Type: "object",
+		Properties: map[string]*jsonschema.Schema{
+			"items_array": {
+				Type:       "array",
+				ItemsArray: []*jsonschema.Schema{itemsObject},
+			},
+			"prefix_items": {
+				Type:        "array",
+				PrefixItems: []*jsonschema.Schema{prefixObject},
+			},
+			"typed_map": mapSchema,
+		},
+		DependencySchemas: map[string]*jsonschema.Schema{
+			"items_array": dependencyObject,
+		},
+		DependentSchemas: map[string]*jsonschema.Schema{
+			"prefix_items": dependentObject,
+		},
+	}
+
+	allowAdditionalProperties(schema)
+
+	assert.Nil(t, itemsObject.AdditionalProperties, "expected itemsArray object to be permissive")
+	assert.Nil(t, prefixObject.AdditionalProperties, "expected prefixItems object to be permissive")
+	assert.Same(t, mapValueObject, mapSchema.AdditionalProperties, "expected typed-map schema to be preserved")
+	assert.Nil(t, mapValueObject.AdditionalProperties, "expected typed-map object values to be permissive")
+	assert.Nil(t, dependencyObject.AdditionalProperties, "expected legacy dependency schema object to be permissive")
+	assert.Nil(t, dependentObject.AdditionalProperties, "expected dependentSchemas object to be permissive")
+}
+
+func TestJsonRoundTrip(t *testing.T) {
+	type sample struct {
+		ProductID string `json:"product_id"`
+		Name      string `json:"name"`
+	}
+
+	input := sample{ProductID: "p1", Name: "Test"}
+	result := jsonRoundTrip(input)
+
+	m, ok := result.(map[string]any)
+	require.True(t, ok, "expected map[string]any, got %T", result)
+
+	// Verify struct tags were respected (product_id not ProductID)
+	assert.Contains(t, m, "product_id", "expected 'product_id' key (from json tag)")
+	assert.NotContains(t, m, "ProductID", "unexpected 'ProductID' key (struct tag not applied)")
+}
+
+func TestBuildResultSetsStructuredContent(t *testing.T) {
+	data := map[string]any{"foo": "bar"}
+	result := buildResult("test", data)
+
+	require.NotNil(t, result.StructuredContent, "expected StructuredContent to be set")
+
+	sc, ok := result.StructuredContent.(map[string]any)
+	require.True(t, ok, "expected map[string]any, got %T", result.StructuredContent)
+	require.Equal(t, "bar", sc["foo"], "expected foo=bar")
+}
+
+func TestPermissiveSchemaPreservesRequired(t *testing.T) {
+	schema := permissiveSchemaFor[testInput]()
+
+	// "name" should be required (no omitempty), "age" should not
+	assert.Contains(t, schema.Required, "name", "expected 'name' to be required")
+	assert.NotContains(t, schema.Required, "age", "'age' should not be required (has omitempty)")
+}
+
+func TestPermissiveSchemaForAny(t *testing.T) {
+	// any type falls back to empty object schema since jsonschema can't infer interface{}
+	schema := permissiveSchemaFor[any]()
+	// Should at least not panic and return a usable schema
+	require.NotNil(t, schema, "expected non-nil schema")
+}
+
+func TestPermissiveSchemaSerializesToJSON(t *testing.T) {
+	schema := permissiveSchemaFor[testInput]()
+
+	b, err := json.Marshal(schema)
+	require.NoError(t, err, "failed to marshal schema")
+
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(b, &m))
+
+	// Should have type: "object" and properties but NO additionalProperties
+	assert.Equal(t, "object", m["type"], "expected type=object in JSON")
+	assert.NotContains(t, m, "additionalProperties", "expected no additionalProperties key in JSON")
+	assert.NotNil(t, m["properties"], "expected properties in JSON")
+}
+
+func TestPermissiveSchemaVsDefaultSchema(t *testing.T) {
+	// Generate the default schema (which has additionalProperties: false)
+	rt := reflect.TypeFor[testInput]()
+	defaultSchema, err := jsonschema.ForType(rt, &jsonschema.ForOptions{})
+	require.NoError(t, err)
+
+	// Default should have additionalProperties set (false schema)
+	require.NotNil(t, defaultSchema.AdditionalProperties, "expected default schema to have additionalProperties set")
+
+	// Our permissive schema should NOT
+	permissive := permissiveSchemaFor[testInput]()
+	assert.Nil(t, permissive.AdditionalProperties, "expected permissive schema to have nil additionalProperties")
+}
+
+func TestPermissiveSchemaPreservesOptimizationGoalTarget(t *testing.T) {
+	schema := permissiveSchemaFor[PackageInput]()
+
+	goalSchema := findOptimizationGoalSchema(t, schema)
+	assertOptimizationGoalBranches(t, goalSchema)
+}
+
+func TestPermissiveSchemaForOptimizationGoalUsesProtocolBranches(t *testing.T) {
+	schema := permissiveSchemaFor[OptimizationGoal]()
+
+	assertOptimizationGoalBranches(t, schema)
+}
+
+func assertOptimizationGoalBranches(t *testing.T, goalSchema *jsonschema.Schema) {
+	t.Helper()
+
+	require.Len(t, goalSchema.OneOf, 2, "expected metric and event optimization goal branches")
+
+	metricBranch := optimizationGoalBranchByKind(t, goalSchema, "metric")
+	assert.Nil(t, metricBranch.AdditionalProperties, "metric branch should remain permissive")
+	assert.NotContains(t, metricBranch.Required, "target", "metric target should remain optional")
+	metricTarget := metricBranch.Properties["target"]
+	require.NotNil(t, metricTarget, "expected metric target schema")
+	assertTargetKinds(t, metricTarget, "cost_per", "threshold_rate")
+
+	eventBranch := optimizationGoalBranchByKind(t, goalSchema, "event")
+	assert.Nil(t, eventBranch.AdditionalProperties, "event branch should remain permissive")
+	assert.NotContains(t, eventBranch.Required, "target", "event target should remain optional")
+	eventTarget := eventBranch.Properties["target"]
+	require.NotNil(t, eventTarget, "expected event target schema")
+	assertTargetKinds(t, eventTarget, "cost_per", "per_ad_spend", "maximize_value")
+}
+
+func findOptimizationGoalSchema(t *testing.T, schema *jsonschema.Schema) *jsonschema.Schema {
+	t.Helper()
+	seen := map[*jsonschema.Schema]bool{}
+	var walk func(*jsonschema.Schema) *jsonschema.Schema
+	walk = func(s *jsonschema.Schema) *jsonschema.Schema {
+		if s == nil || seen[s] {
+			return nil
+		}
+		seen[s] = true
+		if len(s.OneOf) == 2 {
+			if branchHasKind(s.OneOf[0], "metric") && branchHasKind(s.OneOf[1], "event") {
+				return s
+			}
+			if branchHasKind(s.OneOf[0], "event") && branchHasKind(s.OneOf[1], "metric") {
+				return s
+			}
+		}
+		for _, prop := range s.Properties {
+			if found := walk(prop); found != nil {
+				return found
+			}
+		}
+		if found := walk(s.Items); found != nil {
+			return found
+		}
+		for _, sub := range s.OneOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, sub := range s.AnyOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, sub := range s.AllOf {
+			if found := walk(sub); found != nil {
+				return found
+			}
+		}
+		for _, def := range s.Defs {
+			if found := walk(def); found != nil {
+				return found
+			}
+		}
+		return nil
+	}
+	found := walk(schema)
+	require.NotNil(t, found, "expected optimization goal schema")
+	return found
+}
+
+func optimizationGoalBranchByKind(t *testing.T, schema *jsonschema.Schema, kind string) *jsonschema.Schema {
+	t.Helper()
+	for _, branch := range schema.OneOf {
+		if branchHasKind(branch, kind) {
+			return branch
+		}
+	}
+	t.Fatalf("expected optimization goal branch kind %q", kind)
+	return nil
+}
+
+func branchHasKind(schema *jsonschema.Schema, kind string) bool {
+	if schema == nil || schema.Properties == nil {
+		return false
+	}
+	kindSchema := schema.Properties["kind"]
+	if kindSchema == nil || kindSchema.Const == nil {
+		return false
+	}
+	value, ok := (*kindSchema.Const).(string)
+	return ok && value == kind
+}
+
+func assertTargetKinds(t *testing.T, schema *jsonschema.Schema, kinds ...string) {
+	t.Helper()
+	require.Len(t, schema.OneOf, len(kinds), "target branch count")
+	for _, want := range kinds {
+		found := false
+		for _, branch := range schema.OneOf {
+			assert.Nil(t, branch.AdditionalProperties, "target branch should remain permissive")
+			if branchHasKind(branch, want) {
+				found = true
+				break
+			}
+		}
+		assert.True(t, found, "expected target kind %q", want)
+	}
+}

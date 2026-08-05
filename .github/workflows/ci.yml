@@ -59,6 +59,12 @@ jobs:
           ADCP_TRUST_PINNED_BUNDLE: ${{ steps.schema-bundle.outputs.trust-pinned-bundle }}
         run: ./download.sh
 
+      - name: Download upstream schemas (adcp/v3)
+        working-directory: adcp/v3/schemas
+        env:
+          ADCP_TRUST_PINNED_BUNDLE: ${{ steps.schema-bundle.outputs.trust-pinned-bundle }}
+        run: ./download.sh
+
       - name: Test schema generator
         working-directory: adcp/schemas
         run: python3 -m unittest discover -p '*_test.py'
@@ -67,6 +73,11 @@ jobs:
         run: |
           (cd adcp/schemas && python3 generate.py > ../types_gen.go)
           git diff --exit-code adcp/types_gen.go
+
+      - name: Check adcp/v3/types_gen.go is up to date
+        run: |
+          (cd adcp/v3/schemas && python3 generate.py > ../types_gen.go)
+          git diff --exit-code adcp/v3/types_gen.go
 
       - name: Check hand-written types match schema
         working-directory: adcp/schemas
@@ -94,6 +105,10 @@ jobs:
 
       - name: Test adcp module
         working-directory: adcp
+        run: go test -race -count=1 ./...
+
+      - name: Test adcp/v3 module
+        working-directory: adcp/v3
         run: go test -race -count=1 ./...
 
       - name: Test context agent
