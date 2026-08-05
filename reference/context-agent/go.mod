@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/reference/context-agent
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go v0.0.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.0.0
 	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
 	github.com/stretchr/testify v1.11.1
 )
@@ -13,11 +13,16 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
+
+replace github.com/adcontextprotocol/adcp-go/targeting => ../../targeting
