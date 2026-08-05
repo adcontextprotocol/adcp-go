@@ -19,6 +19,7 @@ use (
 	./registry
 	./registry/glidestore
 	./registry/redisstore
+	./targeting
 	./tmpclient
 	./tmproto
 	./urlcanon

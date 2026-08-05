@@ -123,6 +123,10 @@ jobs:
         working-directory: adcp/v3
         run: go test -race -count=1 ./...
 
+      - name: Test targeting module
+        working-directory: targeting
+        run: go test -race -count=1 ./...
+
       - name: Test context agent
         working-directory: reference/context-agent
         run: go test -race -count=1 ./...
@@ -178,6 +182,13 @@ jobs:
         with:
           version: v2.11
           working-directory: adcp/v3
+          args: ./...
+
+      - name: Run golangci-lint (targeting)
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: v2.11
+          working-directory: targeting
           args: ./...
 
   storyboard:
