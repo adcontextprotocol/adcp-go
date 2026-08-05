@@ -1,5 +1,5 @@
 {
-  "adcp": "2.1.1",
+  "adcp": "2.2.0",
   "urlcanon": "0.1.0",
   "registry": "0.1.0",
   "registry/redisstore": "0.0.0",

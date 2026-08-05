@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.1.1...adcp-v2.2.0) (2026-08-05)
+
+
+### Features
+
+* **adcp:** introduce v3 module path at adcp/v3/ ([e28b5c4](https://github.com/adcontextprotocol/adcp-go/commit/e28b5c4a2812006f84b753eb095513437eed835d))
+* **adcp:** introduce v3 module path at adcp/v3/ ([5d1a289](https://github.com/adcontextprotocol/adcp-go/commit/5d1a289d9836f306c84afa1a22cdf8865663bb16))
+
 ## [2.1.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.0.1...adcp-v2.1.0) (2026-06-18)
 
 
