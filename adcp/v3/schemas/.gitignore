@@ -1,0 +1,10 @@
+# Downloaded schema files — regenerate with ./download.sh
+*.json
+!generate.py
+!lint.py
+!download.sh
+!check-freshness.sh
+!VERSION
+!.bundle-sha256
+!.gitignore
+__pycache__/

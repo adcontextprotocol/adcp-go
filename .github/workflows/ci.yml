@@ -59,8 +59,18 @@ jobs:
           ADCP_TRUST_PINNED_BUNDLE: ${{ steps.schema-bundle.outputs.trust-pinned-bundle }}
         run: ./download.sh
 
+      - name: Download upstream schemas (adcp/v3)
+        working-directory: adcp/v3/schemas
+        env:
+          ADCP_TRUST_PINNED_BUNDLE: ${{ steps.schema-bundle.outputs.trust-pinned-bundle }}
+        run: ./download.sh
+
       - name: Test schema generator
         working-directory: adcp/schemas
+        run: python3 -m unittest discover -p '*_test.py'
+
+      - name: Test schema generator (adcp/v3)
+        working-directory: adcp/v3/schemas
         run: python3 -m unittest discover -p '*_test.py'
 
       - name: Check adcp/types_gen.go is up to date
@@ -68,12 +78,25 @@ jobs:
           (cd adcp/schemas && python3 generate.py > ../types_gen.go)
           git diff --exit-code adcp/types_gen.go
 
+      - name: Check adcp/v3/types_gen.go is up to date
+        run: |
+          (cd adcp/v3/schemas && python3 generate.py > ../types_gen.go)
+          git diff --exit-code adcp/v3/types_gen.go
+
       - name: Check hand-written types match schema
         working-directory: adcp/schemas
         run: python3 lint.py --strict
 
+      - name: Check hand-written types match schema (adcp/v3)
+        working-directory: adcp/v3/schemas
+        run: python3 lint.py --strict
+
       - name: Check generated any coverage
         working-directory: adcp/schemas
+        run: python3 generate.py --coverage-max-unreviewed-any 0
+
+      - name: Check generated any coverage (adcp/v3)
+        working-directory: adcp/v3/schemas
         run: python3 generate.py --coverage-max-unreviewed-any 0
 
       - name: Check generated code is up to date
@@ -94,6 +117,10 @@ jobs:
 
       - name: Test adcp module
         working-directory: adcp
+        run: go test -race -count=1 ./...
+
+      - name: Test adcp/v3 module
+        working-directory: adcp/v3
         run: go test -race -count=1 ./...
 
       - name: Test context agent
@@ -144,6 +171,13 @@ jobs:
         with:
           version: v2.11
           working-directory: reference/seller-agent
+          args: ./...
+
+      - name: Run golangci-lint (adcp/v3)
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: v2.11
+          working-directory: adcp/v3
           args: ./...
 
   storyboard:
