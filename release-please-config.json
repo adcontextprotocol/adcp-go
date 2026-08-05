@@ -3,15 +3,6 @@
   "separate-pull-requests": true,
   "bootstrap-sha": "a657544f714b776b8042a5a04f634d805a429b53",
   "packages": {
-    "adcp": {
-      "release-type": "go",
-      "package-name": "adcp",
-      "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "include-component-in-tag": true,
-      "release-as": "2.1.1",
-      "skip-github-release": true
-    },
     "urlcanon": {
       "release-type": "go",
       "component": "urlcanon",
