@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/reference/seller-agent
 go 1.26.2
 
 require (
-	github.com/adcontextprotocol/adcp-go/adcp v0.0.0
+	github.com/adcontextprotocol/adcp-go/adcp/v3 v3.0.0
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 )
 
@@ -16,4 +16,4 @@ require (
 	golang.org/x/sys v0.41.0 // indirect
 )
 
-replace github.com/adcontextprotocol/adcp-go/adcp => ../../adcp
+replace github.com/adcontextprotocol/adcp-go/adcp/v3 => ../../adcp/v3
