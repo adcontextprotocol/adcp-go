@@ -1,3 +1,5 @@
+github.com/adcontextprotocol/adcp-go/adcp/v3 v3.0.0 h1:uNF/mgr6prXsPKKBcFKCh4vu8RmFoaHEV2BHBuQ9nmI=
+github.com/adcontextprotocol/adcp-go/adcp/v3 v3.0.0/go.mod h1:KV2eR/I8At1vXfMt1BEmxjhLaduPtk+CRr8ruYaq8Nk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
