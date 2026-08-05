@@ -13,6 +13,35 @@ go build ./...
 
 `go.work` is intentionally gitignored so CI and downstream consumers resolve real tagged versions of each sub-module, while local development uses your working tree directly.
 
+## Modules & versioning
+
+This repository is a Go multi-module workspace. The top-level module
+(`github.com/adcontextprotocol/adcp-go`) is internal glue — test helpers,
+workspace scaffolding, and cross-module examples — and is not intended for
+external import. The published API surface is delivered through the sub-modules
+below, each with its own tag prefix and SemVer cadence.
+
+| Import path | Current version | Tag format |
+| --- | --- | --- |
+| `github.com/adcontextprotocol/adcp-go/adcp/v3` | `v3.0.0` | `adcp/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/adcp` (frozen v2) | `v2.1.1` | `adcp-vX.Y.Z` (legacy hyphen) |
+| `github.com/adcontextprotocol/adcp-go/tmproto` | `v0.1.0` | `tmproto/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/tmpclient` | `v0.1.0` | `tmpclient/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/targeting` | `v0.1.0` | `targeting/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/urlcanon` | `v0.1.0` | `urlcanon/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry` | `v0.1.0` | `registry/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry/redisstore` | (not yet cut) | `registry/redisstore/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/registry/glidestore` | (not yet cut) | `registry/glidestore/vX.Y.Z` |
+
+The `adcp/vN` major version tracks the AdCP protocol spec's major version 1:1.
+`adcp/v3` speaks AdCP 3.x; a hypothetical future `adcp/v4` will ship when the
+protocol spec bumps to 4.0. Other sub-modules stay on independent SemVer.
+
+Upgrading from `adcp` v2 or an earlier root-module pseudo-version? See
+[`MIGRATING.md`](MIGRATING.md) for the full recipe — import path map, sample
+`go.mod` diffs, rollback steps, and the tag-naming history behind the v2
+module.
+
 ## Building an Agent
 
 ```bash
