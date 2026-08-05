@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/adcp"
+	"github.com/adcontextprotocol/adcp-go/adcp/v3"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
