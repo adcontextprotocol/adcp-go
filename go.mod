@@ -2,10 +2,8 @@ module github.com/adcontextprotocol/adcp-go
 
 go 1.25.0
 
-replace github.com/adcontextprotocol/adcp-go/targeting => ./targeting
-
 require (
-	github.com/adcontextprotocol/adcp-go/targeting v0.0.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
 	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/stretchr/testify v1.11.1
