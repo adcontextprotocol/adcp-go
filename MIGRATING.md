@@ -209,13 +209,24 @@ re-pinning the frozen v2 module — and because no `adcp` semver tag is
 `go get`-resolvable (see the [tag-naming history](#tag-naming-history)
 below), the pin is by SHA-driven pseudo-version, not by `v2.1.1`:
 
+Order matters here. `go mod tidy` derives the `require` set from the
+actual import graph, so it must run *after* the `.go` imports and the
+`require` block already agree — otherwise it will re-add the `adcp/v3`
+require you just dropped and remove the frozen v2 pin you just added.
+
 ```sh
-# undo the require on adcp/v3
+# 1. Revert your service's .go imports from .../adcp/v3 back to .../adcp.
+#    On a clean branch, `git checkout -- '*.go'` is the fastest option;
+#    services that layered custom changes on top of the migration will
+#    want a scripted rewrite (the inverse of the sed one-liner above).
+
+# 2. Drop the v3 require
 go mod edit -droprequire=github.com/adcontextprotocol/adcp-go/adcp/v3
 
-# re-pin the frozen v2 module by the commit that adcp-v2.1.1 tags
+# 3. Re-pin the frozen v2 module by the commit that adcp-v2.1.1 tags
 go get github.com/adcontextprotocol/adcp-go/adcp@362d0d38eb10e36316f55560ddd240796c33b6cc
 
+# 4. Now that imports and the require block match, settle transitives
 go mod tidy
 ```
 
@@ -224,9 +235,6 @@ Go rewrites that `go get` into a pseudo-version require:
 ```gomod
 require github.com/adcontextprotocol/adcp-go/adcp v0.0.0-20260722171107-362d0d38eb10
 ```
-
-Then revert the `import` path updates. `git checkout -- '*.go'` on a clean
-branch is often faster than a scripted rename.
 
 Caveat: the frozen v2 module receives security patches only. If the reason
 for rollback is a v3 API mismatch, plan the re-migration within the v2
