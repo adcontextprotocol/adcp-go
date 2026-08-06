@@ -214,7 +214,7 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 
 - Router inbound authentication: the spec requires the router to authenticate publisher requests *before* it signs and fans them out, so a compromised
   publisher-side component cannot launder unauthenticated requests through the router's signature. Configure a shared secret
-  (`TMP_ROUTER_AUTH_API_KEYS`), mTLS (`TMP_ROUTER_AUTH_CLIENT_CA`), or both. **When both are configured, both are required on every request** — they are
+  (`TMP_ROUTER_AUTH_API_KEYS`, presented as `Authorization: Bearer <key>`), mTLS (`TMP_ROUTER_AUTH_CLIENT_CA`), or both. **When both are configured, both are required on every request** — they are
   checked in series (client certificate first, then key), not as alternatives. mTLS requires the router to terminate TLS, so `TMP_ROUTER_AUTH_CLIENT_CA`
   must be paired with `TMP_ROUTER_TLS_{CERT,KEY}`; startup rejects the combination otherwise. The router fails to start when neither mechanism is set
   unless `TMP_ROUTER_AUTH_DISABLED=true` declares that a mesh or ingress enforces it upstream — that opt-out also disables mTLS, so a leftover
@@ -306,7 +306,7 @@ receives, so they are called out here rather than only in code:
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |
 | `TMP_ROUTER_SIGNING_DISABLED` | Router | Disable request signing (dev only — fail-closed otherwise) | `false` |
 | `TMP_ROUTER_AUTH_API_KEYS` | Router | Comma-separated shared secrets accepted on inbound publisher requests, as `Authorization: Bearer <key>` or the key header. Multiple values allow rotation. Minimum 32 characters each. | (none) |
-| `TMP_ROUTER_AUTH_KEY_HEADER` | Router | Header carrying the shared secret when the publisher does not use `Authorization`. | `X-AdCP-Router-Key` |
+| `TMP_ROUTER_AUTH_KEY_HEADER` | Router | Additional header to accept the shared secret on, for ingresses that consume `Authorization`. Unset means only `Authorization: Bearer` is accepted; the router claims no header in the spec-owned `X-AdCP-*` namespace. | (none) |
 | `TMP_ROUTER_AUTH_CLIENT_CA` | Router | PEM bundle of client-certificate CAs. Requires a verified client cert on every inbound request (mTLS). Requires `TMP_ROUTER_TLS_{CERT,KEY}` — the trust anchor lives on the router's own listener. | (none) |
 | `TMP_ROUTER_AUTH_DISABLED` | Router | Disable inbound publisher authentication (fail-closed otherwise). Use only when a mesh or ingress enforces it upstream. | `false` |
 | `TMP_CONTEXT_ADDR` | Context Agent | Listen address | `:8081` |

@@ -16,9 +16,15 @@ import (
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
-// DefaultAuthKeyHeader carries the shared secret when the publisher does not
-// use the standard Authorization header.
-const DefaultAuthKeyHeader = "X-AdCP-Router-Key"
+// authorizationHeader is the standard credential header, and the only one
+// accepted unless the operator names an additional one via AuthConfig.KeyHeader.
+//
+// There is deliberately no default in the `X-AdCP-*` namespace: that namespace
+// belongs to the spec, which defines exactly two members (X-AdCP-Signature,
+// X-AdCP-Key-Id) and explicitly places publisher-to-router authentication
+// "outside the scope of TMP signing". Minting an X-AdCP-Router-Key would claim
+// protocol namespace for a deployment concern the protocol declines to own.
+const authorizationHeader = "Authorization"
 
 // MinAuthAPIKeyLength is the shortest shared secret the router accepts. It is
 // a floor on length, not a measure of entropy — nothing here can tell a
@@ -51,9 +57,10 @@ const (
 // they are evaluated in series, not as alternatives, so adding one to a running
 // deployment locks out every caller that cannot yet satisfy it:
 //
-//   - APIKeys — a shared secret presented as `Authorization: Bearer <key>` or
-//     in KeyHeader. Multiple keys are accepted so a secret can be rotated
-//     without a window where neither the old nor the new key works.
+//   - APIKeys — a shared secret presented as `Authorization: Bearer <key>`, or
+//     in KeyHeader when the operator names one (for ingresses that consume the
+//     Authorization header). Multiple keys are accepted so a secret can be
+//     rotated without a window where neither the old nor the new key works.
 //   - ClientCAPath — mTLS. The PEM's certificates become the router
 //     listener's client-cert trust anchor and the handshake requires a
 //     verified client cert. Requires the router to terminate TLS itself
@@ -76,13 +83,10 @@ type AuthConfig struct {
 // Enabled reports whether the router should enforce inbound authentication.
 func (c AuthConfig) Enabled() bool { return !c.Disabled }
 
-// EffectiveKeyHeader returns the configured header name, defaulting to
-// DefaultAuthKeyHeader.
+// EffectiveKeyHeader returns the additional credential header the operator
+// named, or "" when only Authorization is accepted.
 func (c AuthConfig) EffectiveKeyHeader() string {
-	if h := strings.TrimSpace(c.KeyHeader); h != "" {
-		return h
-	}
-	return DefaultAuthKeyHeader
+	return strings.TrimSpace(c.KeyHeader)
 }
 
 // Validate reports a configuration error when authentication is enabled but no
@@ -101,7 +105,7 @@ func (c AuthConfig) Validate() error {
 			return fmt.Errorf("auth: api_keys[%d] is %d characters, minimum is %d", i, len(key), MinAuthAPIKeyLength)
 		}
 	}
-	if strings.ContainsAny(c.EffectiveKeyHeader(), " \t\r\n:") {
+	if h := c.EffectiveKeyHeader(); h != "" && strings.ContainsAny(h, " \t\r\n:") {
 		return fmt.Errorf("auth: key_header %q is not a valid HTTP header name", c.KeyHeader)
 	}
 	return nil
@@ -234,10 +238,11 @@ func (a *InboundAuth) Middleware(next http.Handler) http.Handler {
 	})
 }
 
-// presentedKey pulls the shared secret from `Authorization: Bearer <key>` or
-// from the configured key header, in that order.
+// presentedKey pulls the shared secret from `Authorization: Bearer <key>`, then
+// from the operator-named header when one is configured. The first credential
+// present is the one evaluated.
 func (a *InboundAuth) presentedKey(req *http.Request) (string, bool) {
-	if authz := req.Header.Get("Authorization"); authz != "" {
+	if authz := req.Header.Get(authorizationHeader); authz != "" {
 		if rest, found := cutBearerPrefix(authz); found {
 			if rest != "" {
 				return rest, true
@@ -245,8 +250,10 @@ func (a *InboundAuth) presentedKey(req *http.Request) (string, bool) {
 			return "", false
 		}
 	}
-	if key := req.Header.Get(a.keyHeader); key != "" {
-		return key, true
+	if a.keyHeader != "" {
+		if key := req.Header.Get(a.keyHeader); key != "" {
+			return key, true
+		}
 	}
 	return "", false
 }

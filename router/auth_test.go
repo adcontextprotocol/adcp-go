@@ -25,6 +25,10 @@ import (
 // testAuthKey is long enough to clear MinAuthAPIKeyLength.
 const testAuthKey = "ZmFrZS1yb3V0ZXIta2V5LWZvci11bml0LXRlc3Rz"
 
+// testKeyHeader is an operator-named credential header. There is no default in
+// the X-AdCP-* namespace, so tests that exercise the header path name their own.
+const testKeyHeader = "X-Deployment-Router-Key"
+
 type countingAuthMetrics struct {
 	reasons []string
 }
@@ -53,6 +57,7 @@ func TestAuthConfigValidate(t *testing.T) {
 		{"enabled with no mechanism", AuthConfig{}, "configure api_keys or client_ca_path"},
 		{"short key", AuthConfig{APIKeys: []string{"short"}}, "minimum is 32"},
 		{"bad header", AuthConfig{APIKeys: []string{testAuthKey}, KeyHeader: "X Bad Header"}, "not a valid HTTP header name"},
+		{"no key header is fine", AuthConfig{APIKeys: []string{testAuthKey}}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,11 +94,11 @@ func TestAuthAcceptsBearerAndKeyHeader(t *testing.T) {
 	}{
 		{"bearer", map[string]string{"Authorization": "Bearer " + testAuthKey}},
 		{"bearer lowercase scheme", map[string]string{"Authorization": "bearer " + testAuthKey}},
-		{"key header", map[string]string{DefaultAuthKeyHeader: testAuthKey}},
+		{"key header", map[string]string{testKeyHeader: testAuthKey}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey}})
+			auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey}, KeyHeader: testKeyHeader})
 			require.NoError(t, err)
 
 			reached := false
@@ -120,14 +125,14 @@ func TestAuthRejectsBadCredentials(t *testing.T) {
 		wantReason string
 	}{
 		{"no credential", nil, AuthRejectMissingCredential},
-		{"wrong key", map[string]string{DefaultAuthKeyHeader: "wrong-but-long-enough-key-value-here"}, AuthRejectInvalidKey},
+		{"wrong key", map[string]string{testKeyHeader: "wrong-but-long-enough-key-value-here"}, AuthRejectInvalidKey},
 		{"empty bearer", map[string]string{"Authorization": "Bearer "}, AuthRejectMissingCredential},
 		{"wrong scheme", map[string]string{"Authorization": "Basic " + testAuthKey}, AuthRejectMissingCredential},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			metrics := &countingAuthMetrics{}
-			auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey}}, WithAuthMetrics(metrics))
+			auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey}, KeyHeader: testKeyHeader}, WithAuthMetrics(metrics))
 			require.NoError(t, err)
 
 			reached := false
@@ -155,13 +160,13 @@ func TestAuthRejectsBadCredentials(t *testing.T) {
 // incoming secret work while the publisher migrates.
 func TestAuthAcceptsAnyConfiguredKey(t *testing.T) {
 	const second = "c2Vjb25kLXJvdXRlci1rZXktZm9yLXVuaXQtdGVzdHM"
-	auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey, second}})
+	auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey, second}, KeyHeader: testKeyHeader})
 	require.NoError(t, err)
 
 	for _, key := range []string{testAuthKey, second} {
 		reached := false
 		req := httptest.NewRequest("POST", "/tmp/context", nil)
-		req.Header.Set(DefaultAuthKeyHeader, key)
+		req.Header.Set(testKeyHeader, key)
 		auth.Middleware(authTestHandler(&reached)).ServeHTTP(httptest.NewRecorder(), req)
 		assert.True(t, reached, "key %q should be accepted during rotation", key)
 	}
@@ -215,6 +220,7 @@ func TestAuthRequiresClientCert(t *testing.T) {
 func TestAuthBothMechanismsAreRequired(t *testing.T) {
 	auth, err := NewInboundAuth(AuthConfig{
 		APIKeys:      []string{testAuthKey},
+		KeyHeader:    testKeyHeader,
 		ClientCAPath: writeTestCAPEM(t),
 	})
 	require.NoError(t, err)
@@ -227,7 +233,7 @@ func TestAuthBothMechanismsAreRequired(t *testing.T) {
 	// Valid key, no client cert → rejected.
 	reached := false
 	keyOnly := httptest.NewRequest("POST", "/tmp/context", nil)
-	keyOnly.Header.Set(DefaultAuthKeyHeader, testAuthKey)
+	keyOnly.Header.Set(testKeyHeader, testAuthKey)
 	auth.Middleware(authTestHandler(&reached)).ServeHTTP(httptest.NewRecorder(), keyOnly)
 	assert.False(t, reached, "a valid key alone must not satisfy a config that also requires mTLS")
 
@@ -242,7 +248,7 @@ func TestAuthBothMechanismsAreRequired(t *testing.T) {
 	reached = false
 	both := httptest.NewRequest("POST", "/tmp/context", nil)
 	both.TLS = verifiedTLS
-	both.Header.Set(DefaultAuthKeyHeader, testAuthKey)
+	both.Header.Set(testKeyHeader, testAuthKey)
 	auth.Middleware(authTestHandler(&reached)).ServeHTTP(httptest.NewRecorder(), both)
 	assert.True(t, reached)
 }
@@ -338,4 +344,33 @@ func writeTestCAPEM(t *testing.T) string {
 	encoded := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	require.NoError(t, os.WriteFile(path, encoded, 0o600))
 	return path
+}
+
+// TestAuthNoDefaultKeyHeader pins that the router claims no header in the
+// X-AdCP-* namespace. That namespace is the spec's — it defines exactly
+// X-AdCP-Signature and X-AdCP-Key-Id — and the spec explicitly places
+// publisher-to-router authentication outside the scope of TMP signing, so a
+// router-invented X-AdCP-Router-Key would squat protocol namespace for a
+// deployment concern. With no KeyHeader configured, only Authorization counts.
+func TestAuthNoDefaultKeyHeader(t *testing.T) {
+	auth, err := NewInboundAuth(AuthConfig{APIKeys: []string{testAuthKey}})
+	require.NoError(t, err)
+	assert.Empty(t, AuthConfig{APIKeys: []string{testAuthKey}}.EffectiveKeyHeader())
+
+	for _, header := range []string{"X-AdCP-Router-Key", testKeyHeader} {
+		reached := false
+		req := httptest.NewRequest("POST", "/tmp/context", nil)
+		req.Header.Set(header, testAuthKey)
+		w := httptest.NewRecorder()
+		auth.Middleware(authTestHandler(&reached)).ServeHTTP(w, req)
+		assert.False(t, reached, "%s must not be honored when no key_header is configured", header)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	}
+
+	// Authorization still works.
+	reached := false
+	req := httptest.NewRequest("POST", "/tmp/context", nil)
+	req.Header.Set("Authorization", "Bearer "+testAuthKey)
+	auth.Middleware(authTestHandler(&reached)).ServeHTTP(httptest.NewRecorder(), req)
+	assert.True(t, reached)
 }
