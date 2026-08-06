@@ -32,7 +32,18 @@ type identityHandler struct {
 	logger                     *slog.Logger
 }
 
-const maxServeWindowSec = 300
+// serve_window_sec bounds from the identity-match response schemas. The field
+// is required on the provider→router hop, so a sub-second ResponseTTL must not
+// truncate to a schema-invalid 0 — the router would then take that 0 as the
+// minimum across its fan-out and emit it to the publisher.
+//
+// router.MinServeWindowSec / MaxServeWindowSec is the same pair in the router
+// module; see the comment there for why the two are not shared and what to check
+// when the schema bundle moves.
+const (
+	minServeWindowSec = 1
+	maxServeWindowSec = 300
+)
 
 // IdentityHandlerConfig packages the inputs for NewIdentityHandler.
 type IdentityHandlerConfig struct {
@@ -91,6 +102,9 @@ func serveWindowSeconds(ttl time.Duration) int {
 	seconds := int(ttl.Seconds())
 	if seconds > maxServeWindowSec {
 		return maxServeWindowSec
+	}
+	if seconds < minServeWindowSec {
+		return minServeWindowSec
 	}
 	return seconds
 }

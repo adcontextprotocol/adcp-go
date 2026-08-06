@@ -31,8 +31,10 @@ func baseValidConfig() Config {
 		SuppressionRefreshInterval: 5 * time.Minute,
 		SupportedADCPMajorVersions: []int{3},
 		TMP: TMPConfig{
-			RegistryURL:    "https://router.example/registry/snapshot",
-			OwnEndpointURL: "https://context.example/context",
+			RegistryURL: "https://router.example/registry/snapshot",
+			// Registered BASE url — the router appends /context when it
+			// dispatches, and binds the signature to this value.
+			OwnEndpointURL: "https://context.example",
 		},
 		Valkey: ValkeyBlock{
 			Enabled: true,
@@ -69,6 +71,15 @@ func TestConfigValidate_RequiredFields(t *testing.T) {
 		{"missing provider_id", func(c *Config) { c.ProviderID = "" }, "PROVIDER_ID"},
 		{"missing tmp registry url", func(c *Config) { c.TMP.RegistryURL = "" }, "TMP_REGISTRY_URL"},
 		{"missing tmp own endpoint", func(c *Config) { c.TMP.OwnEndpointURL = "" }, "TMP_OWN_ENDPOINT_URL"},
+		// The router signs provider_endpoint_url from the registered base URL
+		// and appends /context only when dispatching, so configuring the
+		// path-inclusive URL fails every signature verification at runtime.
+		{"tmp own endpoint includes the operation path", func(c *Config) {
+			c.TMP.OwnEndpointURL = "https://context.example/context"
+		}, `ending in "/context"`},
+		{"tmp own endpoint is not absolute", func(c *Config) {
+			c.TMP.OwnEndpointURL = "context.example"
+		}, "http or https scheme"},
 		{"missing valkey shards", func(c *Config) {
 			c.Valkey.Enabled = false
 			c.Valkey.Shards = nil

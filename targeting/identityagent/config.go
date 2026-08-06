@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/tmpendpoint"
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -582,8 +583,12 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("ADMIN_PORT (%d) must differ from HTTP_PORT", c.AdminPort))
 		}
 	}
-	if c.ResponseTTL <= 0 {
-		errs = append(errs, errors.New("RESPONSE_TTL must be positive"))
+	// RESPONSE_TTL becomes serve_window_sec on the wire, which the schema
+	// bounds to [1, 300] whole seconds. A sub-second value has no
+	// representation there, so reject it at startup rather than silently
+	// rounding it up to the 1s floor the handler applies.
+	if c.ResponseTTL < time.Duration(minServeWindowSec)*time.Second {
+		errs = append(errs, fmt.Errorf("RESPONSE_TTL must be >= %ds — it is emitted as serve_window_sec, which the schema bounds to whole seconds in [%d, %d]", minServeWindowSec, minServeWindowSec, maxServeWindowSec))
 	}
 	if c.ResponseTTL > time.Duration(maxServeWindowSec)*time.Second {
 		errs = append(errs, fmt.Errorf("RESPONSE_TTL must be <= %ds", maxServeWindowSec))
@@ -628,6 +633,8 @@ func (c Config) Validate() error {
 		}
 		if c.TMP.OwnEndpointURL == "" {
 			errs = append(errs, errors.New("TMP_OWN_ENDPOINT_URL is required when TMP_ALLOW_UNSIGNED=false"))
+		} else if err := tmpendpoint.Validate(c.TMP.OwnEndpointURL); err != nil {
+			errs = append(errs, fmt.Errorf("TMP_OWN_ENDPOINT_URL: %w", err))
 		}
 	}
 	if !c.FCapValkey.Enabled {
