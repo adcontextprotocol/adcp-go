@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -87,6 +88,10 @@ func main() {
 	if contextCache != nil {
 		routerOpts = append(routerOpts, router.WithContextCache(contextCache))
 	}
+	if cfg.Signals.DisableTargetingKVNamespacing {
+		slog.Warn("targeting_kv namespacing is disabled — the spec requires provider_id namespacing of merged signals.targeting_kvs; re-enable once ad-server line items target the namespaced keys")
+		routerOpts = append(routerOpts, router.WithoutTargetingKVNamespacing())
+	}
 	r, err := router.NewRouter(cfg.Providers, registry, health, routerOpts...)
 	if err != nil {
 		slog.Error("invalid router configuration", "error", err)
@@ -116,6 +121,7 @@ func main() {
 	reg.DefineCounter("tmp_offers_total", "Total offers returned across all providers.", nil)
 	reg.DefineCounter("tmp_context_cache_hits_total", "Context Match cache hits by provider.", []string{"provider"})
 	reg.DefineCounter("tmp_context_cache_misses_total", "Context Match cache misses by provider.", []string{"provider"})
+	reg.DefineCounter("tmp_router_auth_rejected_total", "Inbound publisher requests rejected by authentication.", []string{"reason"})
 
 	// Wire fan-out metrics now that registry exists.
 	fanOutMetrics.reg = reg
@@ -135,25 +141,48 @@ func main() {
 		disc.Start()
 	}
 
+	// Inbound publisher authentication (spec §Signature verification). nil
+	// when the operator opted out via auth.disabled, in which case Middleware
+	// is a pass-through.
+	inboundAuth, authErr := router.NewInboundAuth(cfg.Auth,
+		router.WithAuthMetrics(&authMetricsAdapter{reg: reg}),
+		router.WithAuthLogger(slog.Default()),
+	)
+	if authErr != nil {
+		slog.Error("invalid inbound authentication configuration", "error", authErr)
+		os.Exit(1)
+	}
+	if inboundAuth == nil {
+		slog.Warn("inbound publisher authentication is disabled — the spec requires the router to authenticate publisher requests before signing and fanning out; enforce it upstream (mesh mTLS, ingress auth) or set TMP_ROUTER_AUTH_API_KEYS")
+	}
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("POST /tmp/context", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "context")
 		r.HandleContextMatch(w, req)
 		elapsed := time.Since(start)
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "context")
 		reg.HistogramObserve("tmp_context_match_duration_ms", float64(elapsed.Milliseconds()))
-		slog.Debug("context match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
-	})
-	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, req *http.Request) {
+		// Sanitize before logging: the header is caller-supplied, and
+		// SafeRequestIDForEcho drops control bytes that would otherwise reach
+		// operator logs and anything downstream that re-echoes them.
+		//nolint:gosec // G706: value is sanitized by SafeRequestIDForEcho, which gosec's taint analysis cannot see through
+		slog.Debug("context match", "request_id", tmproto.SafeRequestIDForEcho(req.Header.Get("X-Request-ID")), "latency_ms", elapsed.Milliseconds())
+	})))
+	mux.Handle("POST /tmp/identity", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "identity")
 		r.HandleIdentityMatch(w, req)
 		elapsed := time.Since(start)
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "identity")
 		reg.HistogramObserve("tmp_identity_match_duration_ms", float64(elapsed.Milliseconds()))
-		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
-	})
+		//nolint:gosec // G706: value is sanitized by SafeRequestIDForEcho, which gosec's taint analysis cannot see through
+		slog.Debug("identity match", "request_id", tmproto.SafeRequestIDForEcho(req.Header.Get("X-Request-ID")), "latency_ms", elapsed.Milliseconds())
+	})))
+	// Unauthenticated by design: providers fetch the snapshot to resolve the
+	// router's signing keys, so requiring a publisher credential here would
+	// break signature verification on the fan-out.
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	mux.Handle("GET /metrics", reg.Handler())
 	// /healthz is the route the spec advertises; /health is kept for back-compat
@@ -167,7 +196,9 @@ func main() {
 	}
 	mux.HandleFunc("GET /healthz", healthHandler)
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /providers", func(w http.ResponseWriter, _ *http.Request) {
+	// Authenticated: the payload is the full provider registration set
+	// (endpoints, capabilities, audience keys) plus per-provider health.
+	mux.Handle("GET /providers", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		type providerInfo struct {
 			router.ProviderConfig
 			Health router.ProviderStatsSnapshot `json:"health"`
@@ -180,7 +211,13 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
-	})
+	})))
+
+	clientCAs, caErr := cfg.Auth.ClientCAPool()
+	if caErr != nil {
+		slog.Error("invalid client CA configuration", "error", caErr)
+		os.Exit(1)
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -221,7 +258,7 @@ func main() {
 		"tls", cfg.TLS.Enabled(),
 		"version", version,
 	)
-	serveErr := listenAndServe(srv, cfg.TLS)
+	serveErr := listenAndServe(srv, cfg.TLS, clientCAs)
 	if serveErr != nil && serveErr != http.ErrServerClosed {
 		slog.Error("listen error", "error", serveErr)
 		os.Exit(1)
@@ -236,8 +273,14 @@ func main() {
 //
 // When HTTPS is served, TLS 1.2 is pinned as the floor explicitly so future
 // Go crypto/tls default changes or GODEBUG overrides cannot silently lower
-// it for a binary whose stated purpose is public HTTPS.
-func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
+// it for a binary whose stated purpose is public HTTPS. Leaving TLSNextProto
+// nil lets ListenAndServeTLS auto-configure HTTP/2, so the publisher→router
+// hop negotiates h2 via ALPN (spec §Transport).
+//
+// clientCAs, when non-nil, makes a verified client certificate mandatory —
+// the mTLS half of publisher→router authentication. ServerConfig.Validate has
+// already established that TLS is terminated here whenever clientCAs is set.
+func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig, clientCAs *x509.CertPool) error {
 	if tlsCfg.Enabled() {
 		if srv.TLSConfig == nil {
 			srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
@@ -246,6 +289,10 @@ func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
 				"previous", srv.TLSConfig.MinVersion,
 			)
 			srv.TLSConfig.MinVersion = tls.VersionTLS12
+		}
+		if clientCAs != nil {
+			srv.TLSConfig.ClientCAs = clientCAs
+			srv.TLSConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		}
 		return srv.ListenAndServeTLS(tlsCfg.CertPath, tlsCfg.KeyPath)
 	}
@@ -268,6 +315,7 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 		var err error
 		cfg, err = router.LoadServerConfig(envConfig)
 		if err != nil {
+			//nolint:gosec // G706: the path comes from the operator's own process environment, not from a request
 			slog.Error("failed to load config from TMP_ROUTER_CONFIG", "path", envConfig, "error", err)
 			os.Exit(1)
 		}
@@ -277,8 +325,8 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 
 	applyEnvOverrides(cfg, addr, os.Getenv)
 
-	if err := cfg.TLS.Validate(); err != nil {
-		slog.Error("invalid TLS configuration", "error", err)
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid router configuration", "error", err)
 		os.Exit(1)
 	}
 
@@ -297,6 +345,22 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 		cfg.Addr = addrFlag
 	} else if v := getenv("TMP_ROUTER_ADDR"); v != "" {
 		cfg.Addr = v
+	}
+
+	// Inbound authentication — env vars override JSON. Leaving all three
+	// unset makes ServerConfig.Validate fail closed; TMP_ROUTER_AUTH_DISABLED
+	// is the explicit opt-out for deployments that authenticate upstream.
+	if v := getenv("TMP_ROUTER_AUTH_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
+		cfg.Auth.Disabled = true
+	}
+	if v := getenv("TMP_ROUTER_AUTH_API_KEYS"); v != "" {
+		cfg.Auth.APIKeys = splitAndTrim(v)
+	}
+	if v := getenv("TMP_ROUTER_AUTH_KEY_HEADER"); v != "" {
+		cfg.Auth.KeyHeader = v
+	}
+	if v := getenv("TMP_ROUTER_AUTH_CLIENT_CA"); v != "" {
+		cfg.Auth.ClientCAPath = v
 	}
 
 	// Signing config — env vars override JSON, no flags exposed today.
@@ -358,6 +422,12 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Cache.DefaultTTLSeconds = n
 		}
+	}
+	// Signals merge — spec-conformant namespacing is the default; this is the
+	// migration lever for publishers with line items already trafficked against
+	// a provider's raw targeting key.
+	if v := getenv("TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING"); v == "1" || strings.EqualFold(v, "true") {
+		cfg.Signals.DisableTargetingKVNamespacing = true
 	}
 	if v := getenv("TMP_ROUTER_CACHE_MAX_ENTRIES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -487,6 +557,19 @@ func (a *fanOutMetricsAdapter) IncProviderError(providerID string) {
 func (a *fanOutMetricsAdapter) AddOffers(n int) {
 	if a.reg != nil {
 		a.reg.CounterAdd("tmp_offers_total", int64(n))
+	}
+}
+
+// authMetricsAdapter bridges router.AuthMetrics to prommetrics. The reason
+// label is drawn from the router.AuthReject* constants, so cardinality is
+// fixed regardless of caller behavior.
+type authMetricsAdapter struct {
+	reg *prommetrics.Registry
+}
+
+func (a *authMetricsAdapter) IncAuthRejected(reason string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_router_auth_rejected_total", reason)
 	}
 }
 

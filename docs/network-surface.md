@@ -48,17 +48,25 @@ AgenticAdvertising.org ◄── Registry Syncer (outbound HTTPS polling)
 
 ### Context Agent
 
+The router appends the operation path to the provider's registered base
+`endpoint`, so these paths are relative to that base — a provider registered as
+`https://ctx.example.com` is called at `https://ctx.example.com/context`. The
+reference agent under `reference/context-agent` serves `POST /tmp/context`
+instead, so its registered base ends in `/tmp`.
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/tmp/context` | Evaluate context match |
+| `POST` | `/context` | Evaluate context match |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/health` | Health check |
 
 ### Identity Agent
 
+Relative to the provider's registered base `endpoint`, as above.
+
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/tmp/identity` | Evaluate identity match |
+| `POST` | `/identity` | Evaluate identity match |
 | `GET` | `/metrics` | Prometheus metrics |
 | `GET` | `/health` | Health check |
 
@@ -203,7 +211,47 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 **Configuration:**
 
 - Router: `TMP_ROUTER_SIGNING_KID`, `TMP_ROUTER_SIGNING_KEY_PATH` (PEM PKCS#8 Ed25519), `TMP_ROUTER_SIGNING_PROPERTY_RIDS` (comma-separated RIDs the router is authorized to sign for). Set `TMP_ROUTER_SIGNING_DISABLED=true` to opt out (dev only).
+
+- Router inbound authentication: the spec requires the router to authenticate publisher requests *before* it signs and fans them out, so a compromised
+  publisher-side component cannot launder unauthenticated requests through the router's signature. Configure a shared secret
+  (`TMP_ROUTER_AUTH_API_KEYS`), mTLS (`TMP_ROUTER_AUTH_CLIENT_CA`), or both. **When both are configured, both are required on every request** — they are
+  checked in series (client certificate first, then key), not as alternatives. mTLS requires the router to terminate TLS, so `TMP_ROUTER_AUTH_CLIENT_CA`
+  must be paired with `TMP_ROUTER_TLS_{CERT,KEY}`; startup rejects the combination otherwise. The router fails to start when neither mechanism is set
+  unless `TMP_ROUTER_AUTH_DISABLED=true` declares that a mesh or ingress enforces it upstream — that opt-out also disables mTLS, so a leftover
+  `client_ca_path` will not keep demanding client certificates.
+
+  Authentication covers `POST /tmp/context`, `POST /tmp/identity`, and `GET /providers`. `GET /registry/snapshot` stays open because providers fetch it to
+  resolve the router's signing keys. `GET /metrics` and `GET /healthz` also stay open: metrics carry per-provider series
+  (`tmp_provider_*{provider="..."}`), so they disclose the configured provider IDs and their live error/latency profile — the same class of information
+  `GET /providers` is closed off for. Restrict them at the network layer; the router has no separate admin listener. Rejections increment
+  `tmp_router_auth_rejected_total{reason}`.
 - Reference agents: `--registry-url` (default off — accepts unsigned), `--require-signature`, `--own-endpoint-url`. Env equivalents: `TMP_{IDENTITY,CONTEXT}_REGISTRY_URL`, `TMP_{IDENTITY,CONTEXT}_REQUIRE_SIGNATURE`, `TMP_{IDENTITY,CONTEXT}_ENDPOINT_URL`.
+
+## Signal merging (publisher-visible)
+
+The router merges each provider's `signals` object into one response per the spec's
+Context Match fan-out rules. Two of those rules change what a publisher's ad server
+receives, so they are called out here rather than only in code:
+
+- **`targeting_kvs` keys are namespaced.** Every key is rewritten to
+  `<provider_id>_<key>`, unconditionally — not only when two providers collide, because
+  a key whose name depended on which providers happened to respond could not be targeted
+  reliably. Line items trafficked against a provider's raw key (`sport`) stop matching once
+  namespacing is in effect and must be re-pointed at the namespaced key (`acme_sport`).
+  There is no error when this happens, just no match, so re-traffic before rolling out.
+  `TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING=true` restores pass-through as a temporary
+  lever; it is a non-conformant mode and logs a warning at startup. The `_` separator is
+  part of the publisher-facing contract — changing it breaks line items again.
+
+- **`segments` are concatenated, not overwritten.** Every provider's segments reach the
+  response, with exact duplicates dropped. Previously a later provider's list replaced an
+  earlier one, so publishers may now see segments that were silently being discarded.
+
+- **Extension keys resolve first-provider-wins.** `signals` permits additional properties,
+  and the spec defines no merge rule for them. The first provider to supply a key keeps it
+  and a conflicting provider is logged; previously the last provider merged won. Provider
+  order is arrival order, so a key supplied by more than one provider was — and remains —
+  nondeterministic; the change is which one is kept, not whether it is stable.
 
 ## Environment Variables
 
@@ -221,18 +269,24 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 | `TMP_ROUTER_CACHE_DISABLED` | Router | Disable the per-provider Context Match cache. Fans out on every request. | `false` |
 | `TMP_ROUTER_CACHE_DEFAULT_TTL_SEC` | Router | Fallback TTL when a provider response omits `cache_ttl`. | `300` |
 | `TMP_ROUTER_CACHE_MAX_ENTRIES` | Router | Cap on live cache entries; expired-then-oldest evicted on overflow. | `10000` |
+| `TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING` | Router | Stop prefixing merged `signals.targeting_kvs` keys with the emitting `provider_id`. Non-conformant migration lever — see Signal merging below. | `false` |
 | `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |
 | `TMP_ROUTER_SIGNING_DISABLED` | Router | Disable request signing (dev only — fail-closed otherwise) | `false` |
+| `TMP_ROUTER_AUTH_API_KEYS` | Router | Comma-separated shared secrets accepted on inbound publisher requests, as `Authorization: Bearer <key>` or the key header. Multiple values allow rotation. Minimum 32 characters each. | (none) |
+| `TMP_ROUTER_AUTH_KEY_HEADER` | Router | Header carrying the shared secret when the publisher does not use `Authorization`. | `X-AdCP-Router-Key` |
+| `TMP_ROUTER_AUTH_CLIENT_CA` | Router | PEM bundle of client-certificate CAs. Requires a verified client cert on every inbound request (mTLS). Requires `TMP_ROUTER_TLS_{CERT,KEY}` — the trust anchor lives on the router's own listener. | (none) |
+| `TMP_ROUTER_AUTH_DISABLED` | Router | Disable inbound publisher authentication (fail-closed otherwise). Use only when a mesh or ingress enforces it upstream. | `false` |
 | `TMP_CONTEXT_ADDR` | Context Agent | Listen address | `:8081` |
-| `TMP_CONTEXT_REGISTRY` | Context Agent | Path to local registry snapshot | (none) |
-| `TMP_CONTEXT_REGISTRY_URL` | Context Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
-| `TMP_CONTEXT_ENDPOINT_URL` | Context Agent | Own registered endpoint URL (signed-binding check) | (none) |
-| `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent | Reject unsigned requests | `false` |
+| `TMP_CONTEXT_REGISTRY` | Context Agent (reference) | Path to local registry snapshot | (none) |
+| `TMP_CONTEXT_REGISTRY_URL` | Context Agent (reference) | URL of router's `/registry/snapshot` for signing keys | (none) |
+| `TMP_CONTEXT_ENDPOINT_URL` | Context Agent (reference) | Own registered **base** endpoint URL — the router appends `/context`, so no `/context` suffix here (signed-binding check) | (none) |
+| `TMP_CONTEXT_REQUIRE_SIGNATURE` | Context Agent (reference) | Reject unsigned requests | `false` |
+| `TMP_OWN_ENDPOINT_URL` | Context Agent | Own registered **base** endpoint URL — the router appends `/context`, so no `/context` suffix here (signed-binding check). The production agent under `cmd/context-agent` uses this, not `TMP_CONTEXT_ENDPOINT_URL`. | (none) |
 | `HTTP_PORT` | Identity Agent | Listen port | `8080` |
 | `TMP_REGISTRY_URL` | Identity Agent | URL of router's `/registry/snapshot` for signing keys | (none) |
-| `TMP_OWN_ENDPOINT_URL` | Identity Agent | Own registered endpoint URL (signed-binding check) | (none) |
+| `TMP_OWN_ENDPOINT_URL` | Identity Agent | Own registered **base** endpoint URL, no `/identity` suffix (signed-binding check) | (none) |
 | `TMP_ALLOW_UNSIGNED` | Identity Agent | Accept unsigned requests (dev only) | `false` |
 | `TMPX_ENCRYPT_JWKS_URL` | Identity Agent | Buyer JWKS URL publishing the TMPX recipient key | (none) |
 | `TMPX_COUNTRY` | Identity Agent | Country stamped into TMPX plaintext header | (none) |

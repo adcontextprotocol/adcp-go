@@ -22,9 +22,41 @@ type ServerConfig struct {
 	Discovery       DiscoveryConfig   `json:"discovery"`
 	Shutdown        ShutdownConfig    `json:"shutdown"`
 	Signing         SigningConfig     `json:"signing"`
+	Auth            AuthConfig        `json:"auth"`
 	TLS             TLSConfig         `json:"tls"`
 	Registry        RegistryConfig    `json:"registry"`
 	Cache           CacheConfig       `json:"cache"`
+	Signals         SignalsConfig     `json:"signals"`
+}
+
+// SignalsConfig controls how the router merges enrichment signals across
+// providers (spec §"Context Match fan-out").
+type SignalsConfig struct {
+	// DisableTargetingKVNamespacing turns off provider_id namespacing of merged
+	// `targeting_kvs` keys. The spec requires namespacing, so this is a
+	// non-conformant migration lever — see
+	// router.WithoutTargetingKVNamespacing for why it exists.
+	DisableTargetingKVNamespacing bool `json:"disable_targeting_kv_namespacing,omitempty"`
+}
+
+// Validate checks the config's cross-field invariants. Call this after all
+// override layers (flags, env, file) have been applied — individual sections
+// cannot see each other, and the mTLS rule below spans two of them.
+func (c *ServerConfig) Validate() error {
+	if err := c.TLS.Validate(); err != nil {
+		return err
+	}
+	if err := c.Auth.Validate(); err != nil {
+		return err
+	}
+	// mTLS needs the router to terminate TLS: the client-cert trust anchor is
+	// installed on the router's own listener. With TLS terminated upstream the
+	// router never sees a peer certificate, so every request would be rejected
+	// for a missing client cert — fail at startup instead.
+	if c.Auth.ClientCAPath != "" && !c.TLS.Enabled() {
+		return fmt.Errorf("auth: client_ca_path requires the router to terminate TLS — set tls.cert and tls.key, or authenticate with auth.api_keys instead")
+	}
+	return nil
 }
 
 // CacheConfig controls the per-provider Context Match response cache
@@ -142,8 +174,8 @@ func (c *ServerConfig) UnmarshalJSON(data []byte) error {
 	type serverConfigAlias ServerConfig
 	aux := struct {
 		*serverConfigAlias
-		Listen                  string `json:"listen"`
-		HealthCheckIntervalSec  *int   `json:"health_check_interval_sec"`
+		Listen                 string `json:"listen"`
+		HealthCheckIntervalSec *int   `json:"health_check_interval_sec"`
 	}{serverConfigAlias: (*serverConfigAlias)(c)}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -181,8 +213,8 @@ func (c *ServerConfig) LatencyBudget() time.Duration {
 
 // HealthConfig controls circuit breaker behavior.
 type HealthConfig struct {
-	FailureThreshold int    `json:"failure_threshold"`
-	CooldownSeconds  int    `json:"cooldown_seconds"`
+	FailureThreshold int `json:"failure_threshold"`
+	CooldownSeconds  int `json:"cooldown_seconds"`
 }
 
 // HealthCheckConfig controls active provider health polling.

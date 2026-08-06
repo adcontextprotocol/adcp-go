@@ -57,6 +57,40 @@ func TestApplyEnvOverrides_SigningLayering(t *testing.T) {
 	assert.True(t, cfg.Signing.Disabled)
 }
 
+// All TMP_ROUTER_AUTH_* env vars override JSON values.
+func TestApplyEnvOverrides_AuthLayering(t *testing.T) {
+	cfg := &router.ServerConfig{
+		Auth: router.AuthConfig{
+			APIKeys:      []string{"json-key-that-is-long-enough-to-pass"},
+			KeyHeader:    "X-Json-Key",
+			ClientCAPath: "/json/ca.pem",
+		},
+	}
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{
+		"TMP_ROUTER_AUTH_API_KEYS":   "env-key-one-long-enough-to-pass-min, env-key-two-long-enough-to-pass-min",
+		"TMP_ROUTER_AUTH_KEY_HEADER": "X-Env-Key",
+		"TMP_ROUTER_AUTH_CLIENT_CA":  "/env/ca.pem",
+	}))
+	assert.Equal(t, []string{
+		"env-key-one-long-enough-to-pass-min",
+		"env-key-two-long-enough-to-pass-min",
+	}, cfg.Auth.APIKeys)
+	assert.Equal(t, "X-Env-Key", cfg.Auth.KeyHeader)
+	assert.Equal(t, "/env/ca.pem", cfg.Auth.ClientCAPath)
+	assert.False(t, cfg.Auth.Disabled)
+}
+
+// TMP_ROUTER_AUTH_DISABLED is the explicit opt-out that lets Validate pass
+// with no authentication mechanism configured.
+func TestApplyEnvOverrides_AuthDisabledOptOut(t *testing.T) {
+	cfg := &router.ServerConfig{}
+	assert.Error(t, cfg.Validate(), "an unauthenticated router must not start by omission")
+
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{"TMP_ROUTER_AUTH_DISABLED": "1"}))
+	assert.True(t, cfg.Auth.Disabled)
+	assert.NoError(t, cfg.Validate())
+}
+
 // TLS env vars flow through and Validate then catches half-config —
 // covering the layering path the reviewer flagged as untested on PR-A.
 func TestApplyEnvOverrides_TLSHalfConfigCaughtAfterMerge(t *testing.T) {

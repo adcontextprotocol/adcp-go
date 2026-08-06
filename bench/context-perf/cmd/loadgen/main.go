@@ -30,7 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,7 +65,7 @@ func main() {
 	signRequests := flag.Bool("sign-requests", envBool("SIGN_REQUESTS", false), "when true, sign every request with the shared bench keypair")
 	signerKeyPath := flag.String("signer-key-path", envStr("SIGNER_KEY_PATH", "/keys/signer.json"), "path to the loadgen ed25519 keypair (shared with tmpregistry)")
 	signerKeyWait := flag.Duration("signer-key-wait", envDur("SIGNER_KEY_WAIT", 30*time.Second), "max time to wait for the signer key file to appear before failing")
-	providerEndpoint := flag.String("provider-endpoint-url", envStr("TMP_OWN_ENDPOINT_URL", "http://context-agent:8081/context"), "provider_endpoint_url the SUT verifies against — must match the SUT's TMP_OWN_ENDPOINT_URL")
+	providerEndpoint := flag.String("provider-endpoint-url", envStr("TMP_OWN_ENDPOINT_URL", "http://context-agent:8081"), "provider_endpoint_url the SUT verifies against — the SUT's registered BASE url (no /context suffix), matching its TMP_OWN_ENDPOINT_URL")
 	flag.Parse()
 
 	propertyRIDs := corpus.PropertyRIDs()
@@ -355,7 +355,7 @@ func collectStats(samples <-chan sample) report {
 		lats = append(lats, s.latency)
 		sumLat += s.latency
 	}
-	sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
+	slices.Sort(lats)
 	pct := func(p float64) float64 {
 		if len(lats) == 0 {
 			return 0

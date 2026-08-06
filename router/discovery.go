@@ -63,8 +63,14 @@ func NewDiscovery(providers *ProviderSet, health *ProviderHealth, cfg DiscoveryC
 		providers:     providers,
 		health:        health,
 		client: &http.Client{
-			Timeout:   timeout,
-			Transport: &http.Transport{DialContext: safeDialContext},
+			Timeout: timeout,
+			Transport: &http.Transport{
+				DialContext: safeDialContext,
+				// Setting DialContext disables HTTP/2 in net/http; opt
+				// back in so discovery polls use the same protocol as the
+				// fan-out.
+				ForceAttemptHTTP2: true,
+			},
 		},
 		logger:        slog.Default(),
 		endpoint:      cfg.Endpoint,

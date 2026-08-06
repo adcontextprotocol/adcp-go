@@ -64,8 +64,14 @@ func NewHealthChecker(providers *ProviderSet, health *ProviderHealth, cfg Health
 		providers: providers,
 		health:    health,
 		client: &http.Client{
-			Timeout:   timeout,
-			Transport: &http.Transport{DialContext: safeDialContext},
+			Timeout: timeout,
+			Transport: &http.Transport{
+				DialContext: safeDialContext,
+				// Setting DialContext disables HTTP/2 in net/http; opt
+				// back in so health probes ride the same protocol as the
+				// fan-out and reuse its ALPN-negotiated connections.
+				ForceAttemptHTTP2: true,
+			},
 		},
 		logger:    slog.Default(),
 		interval:  interval,
