@@ -6,6 +6,7 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/router"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubGetenv returns a getenv function backed by a static map so env
@@ -181,4 +182,31 @@ func TestApplyEnvOverrides_RegistryIgnoresBadNumbers(t *testing.T) {
 	assert.Equal(t, 60, cfg.Registry.PollIntervalSeconds, "bad value must not clobber JSON")
 	assert.Equal(t, 2000, cfg.Registry.BootstrapLimit)
 	assert.Equal(t, 100, cfg.Registry.FeedLimit)
+}
+
+// TMP_ROUTER_ADMIN_ADDR moves the operator endpoints onto their own listener.
+func TestApplyEnvOverrides_AdminAddr(t *testing.T) {
+	cfg := &router.ServerConfig{Addr: ":8080", Auth: router.AuthConfig{Disabled: true}}
+	assert.False(t, cfg.AdminEnabled(), "unset keeps operator endpoints on the main listener")
+
+	applyEnvOverrides(cfg, "", stubGetenv(map[string]string{"TMP_ROUTER_ADMIN_ADDR": "127.0.0.1:9090"}))
+	assert.Equal(t, "127.0.0.1:9090", cfg.AdminAddr)
+	assert.True(t, cfg.AdminEnabled())
+	assert.NoError(t, cfg.Validate())
+}
+
+// A shared address would silently collapse the split, putting /providers back on
+// the public listener.
+func TestServerConfigValidate_AdminAddrMustDiffer(t *testing.T) {
+	cfg := &router.ServerConfig{
+		Addr:      ":8080",
+		AdminAddr: ":8080",
+		Auth:      router.AuthConfig{Disabled: true},
+	}
+	err := cfg.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must differ from addr")
+
+	cfg.AdminAddr = ":9090"
+	assert.NoError(t, cfg.Validate())
 }

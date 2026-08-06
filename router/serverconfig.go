@@ -14,7 +14,13 @@ import (
 
 // ServerConfig is the JSON/YAML config file format for the router.
 type ServerConfig struct {
-	Addr            string            `json:"addr"`
+	Addr string `json:"addr"`
+	// AdminAddr, when set, moves the operator endpoints (/metrics, /providers)
+	// onto a second listener. Empty keeps them on the main listener, which is
+	// the pre-existing behavior. Mirrors ADMIN_PORT on the identity and context
+	// agents; /healthz stays on the protocol listener either way because that
+	// is the address load balancers probe.
+	AdminAddr       string            `json:"admin_addr"`
 	LatencyBudgetMs int               `json:"latency_budget_ms"`
 	Providers       []ProviderConfig  `json:"providers"`
 	Health          HealthConfig      `json:"health"`
@@ -39,6 +45,10 @@ type SignalsConfig struct {
 	DisableTargetingKVNamespacing bool `json:"disable_targeting_kv_namespacing,omitempty"`
 }
 
+// AdminEnabled reports whether the operator endpoints should be served on a
+// separate listener.
+func (c *ServerConfig) AdminEnabled() bool { return strings.TrimSpace(c.AdminAddr) != "" }
+
 // Validate checks the config's cross-field invariants. Call this after all
 // override layers (flags, env, file) have been applied — individual sections
 // cannot see each other, and the mTLS rule below spans two of them.
@@ -55,6 +65,11 @@ func (c *ServerConfig) Validate() error {
 	// for a missing client cert — fail at startup instead.
 	if c.Auth.ClientCAPath != "" && !c.TLS.Enabled() {
 		return fmt.Errorf("auth: client_ca_path requires the router to terminate TLS — set tls.cert and tls.key, or authenticate with auth.api_keys instead")
+	}
+	// Sharing the address would silently collapse the split the admin listener
+	// exists to create, putting /providers back on the public port.
+	if c.AdminEnabled() && strings.TrimSpace(c.AdminAddr) == strings.TrimSpace(c.Addr) {
+		return fmt.Errorf("admin_addr (%q) must differ from addr — the operator endpoints would otherwise stay on the public listener", c.AdminAddr)
 	}
 	return nil
 }

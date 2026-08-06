@@ -220,12 +220,39 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
   unless `TMP_ROUTER_AUTH_DISABLED=true` declares that a mesh or ingress enforces it upstream — that opt-out also disables mTLS, so a leftover
   `client_ca_path` will not keep demanding client certificates.
 
-  Authentication covers `POST /tmp/context`, `POST /tmp/identity`, and `GET /providers`. `GET /registry/snapshot` stays open because providers fetch it to
-  resolve the router's signing keys. `GET /metrics` and `GET /healthz` also stay open: metrics carry per-provider series
-  (`tmp_provider_*{provider="..."}`), so they disclose the configured provider IDs and their live error/latency profile — the same class of information
-  `GET /providers` is closed off for. Restrict them at the network layer; the router has no separate admin listener. Rejections increment
-  `tmp_router_auth_rejected_total{reason}`.
+  Authentication covers exactly the two spec-mandated match endpoints, `POST /tmp/context` and `POST /tmp/identity`. `GET /registry/snapshot` stays open
+  because providers fetch it to resolve the router's signing keys. The operator endpoints are *not* behind this credential — a publisher key authorizes
+  asking for a match, and reusing it for operator access would let any authenticated publisher enumerate every provider's configuration. Use
+  `TMP_ROUTER_ADMIN_ADDR` for those instead (see below). Rejections increment `tmp_router_auth_rejected_total{reason}`.
 - Reference agents: `--registry-url` (default off — accepts unsigned), `--require-signature`, `--own-endpoint-url`. Env equivalents: `TMP_{IDENTITY,CONTEXT}_REGISTRY_URL`, `TMP_{IDENTITY,CONTEXT}_REQUIRE_SIGNATURE`, `TMP_{IDENTITY,CONTEXT}_ENDPOINT_URL`.
+
+## Listeners
+
+The router serves the protocol surface and the operator surface from one process.
+`TMP_ROUTER_ADMIN_ADDR` decides whether they share a listener:
+
+| Endpoint | Listener | In the TMP spec? |
+|---|---|---|
+| `POST /tmp/context`, `POST /tmp/identity` | protocol (`TMP_ROUTER_ADDR`) | yes — authenticated |
+| `GET /registry/snapshot` | protocol | no — adcp-go's signing-key distribution; must stay reachable by providers |
+| `GET /healthz`, `GET /health` | protocol | `/healthz` yes — load balancers probe this address |
+| `GET /metrics` | admin when set, else protocol | path is spec-named; the listener is not |
+| `GET /providers` | admin when set, else protocol | no — adcp-go extra |
+
+`GET /providers` returns every provider's full registration — `endpoint`,
+`audience_kids`, `package_ids`, `property_rids`, `countries`, `uid_types` — plus
+per-provider health. `GET /metrics` carries per-provider series
+(`tmp_provider_*{provider="..."}`), so it discloses the configured provider IDs
+and their live error and latency profile. Neither belongs on a publicly reachable
+address.
+
+Set `TMP_ROUTER_ADMIN_ADDR` (e.g. `127.0.0.1:9090`) to move both onto a private
+listener, mirroring `ADMIN_PORT` on the identity and context agents. It must
+differ from `TMP_ROUTER_ADDR`; startup rejects the two being equal. The admin
+listener is always cleartext HTTP and never receives the client-CA pool — bind it
+to localhost or a private interface. Leaving it unset keeps both endpoints on the
+main listener (the pre-existing behavior) and logs a warning at startup; restrict
+them at the network layer in that case.
 
 ## Signal merging (publisher-visible)
 
@@ -259,6 +286,7 @@ receives, so they are called out here rather than only in code:
 |----------|---------|---------|---------|
 | `TMP_ROUTER_ADDR` | Router | Listen address | `:8080` |
 | `TMP_ROUTER_CONFIG` | Router | Path to JSON config file | (none) |
+| `TMP_ROUTER_ADMIN_ADDR` | Router | Address for the operator endpoints (`/metrics`, `/providers`). Unset keeps them on the main listener. Must differ from `TMP_ROUTER_ADDR`. | (none) |
 | `TMP_ROUTER_TLS_CERT` | Router | Path to TLS certificate (PEM). Setting both cert and key serves HTTPS. Leave both unset to serve HTTP (typical when TLS is terminated by upstream ingress). | (none) |
 | `TMP_ROUTER_TLS_KEY` | Router | Path to TLS private key (PEM). Must be set together with `TMP_ROUTER_TLS_CERT`. | (none) |
 | `TMP_ROUTER_REGISTRY_FEED_URL` | Router | AdCP registry base URL. Setting this enables live property sync so `/registry/snapshot` serves real property metadata; leaving it empty falls back to seeding only the router's authorized property RIDs. | (none) |
