@@ -287,7 +287,7 @@ func (a *InboundAuth) keyMatches(presented string) bool {
 //
 // The error code is invalid_request because error.json's `code` enum has no
 // authentication value — the same gap the identity agent works around for
-// unsupported adcp_major_version.
+// unsupported adcp_major_version. Filed as adcontextprotocol/adcp#6253.
 func (a *InboundAuth) reject(w http.ResponseWriter, req *http.Request, reason string) {
 	if a.metrics != nil {
 		a.metrics.IncAuthRejected(reason)
