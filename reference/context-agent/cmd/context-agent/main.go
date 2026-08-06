@@ -16,9 +16,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	contextagentref "github.com/adcontextprotocol/adcp-go/reference/context-agent"
@@ -114,12 +112,6 @@ func main() {
 		slog.Error("--own-endpoint-url is required when signature verification is enabled")
 		os.Exit(1)
 	}
-	if requireSig {
-		if err := validateOwnEndpointURL(ownURL); err != nil {
-			slog.Error("invalid --own-endpoint-url / TMP_CONTEXT_ENDPOINT_URL", "error", err)
-			os.Exit(1)
-		}
-	}
 	if !requireSig {
 		slog.Warn("/tmp/context accepts unsigned requests — TMP signing should be required in production")
 	}
@@ -198,41 +190,6 @@ func main() {
 		slog.Error("listen error", "error", err)
 		os.Exit(1)
 	}
-}
-
-// validateOwnEndpointURL checks that the configured endpoint is the registered
-// BASE url the router signs `provider_endpoint_url` over, not the full path it
-// POSTs to. The router appends the operation path when dispatching, so a
-// path-inclusive value produces a different signing input and every request
-// fails verification — silent at startup, total at runtime.
-//
-// This agent serves POST /tmp/context, so its registered base is the URL up to
-// and including /tmp (e.g. https://ctx.example.com/tmp), and the router calls
-// https://ctx.example.com/tmp/context.
-//
-// Deliberately duplicated rather than shared: the production agents use
-// targeting/internal/tmpendpoint, which this separate module cannot import, and
-// a self-contained reference implementation is easier to read than one that
-// reaches across modules for twenty lines.
-func validateOwnEndpointURL(raw string) error {
-	normalized := strings.TrimRight(strings.TrimSpace(raw), "/")
-	u, err := url.Parse(normalized)
-	if err != nil {
-		return fmt.Errorf("own endpoint URL %q is not a valid URL: %w", raw, err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("own endpoint URL %q must use the http or https scheme", raw)
-	}
-	if u.Host == "" {
-		return fmt.Errorf("own endpoint URL %q must be absolute, with a scheme and host", raw)
-	}
-	path := strings.TrimRight(u.Path, "/")
-	for _, opPath := range []string{"/context", "/identity"} {
-		if strings.HasSuffix(path, opPath) {
-			return fmt.Errorf("own endpoint URL %q has a path ending in %q, but signatures bind to the registered BASE url the router appends %q to — drop the suffix so this matches the `endpoint` in the router's provider registration", raw, opPath, opPath)
-		}
-	}
-	return nil
 }
 
 func resolveAddr(flagVal string) string {

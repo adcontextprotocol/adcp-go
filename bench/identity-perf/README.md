@@ -87,9 +87,7 @@ Ed25519-signed requests so ops can directly compare "with signing" vs
 - The loadgen loads the shared private key, builds a `tmproto.Signer`,
   and stamps `X-AdCP-Signature` / `X-AdCP-Key-Id` on every request. The
   provider_endpoint_url in the signing input matches the agent's
-  `TMP_OWN_ENDPOINT_URL` so verification succeeds. Both are the agent's
-  registered **base** url — the operation path (`/identity`, `/context`)
-  belongs on the POST target, never on the signed binding.
+  `TMP_OWN_ENDPOINT_URL` so verification succeeds.
 - The CSV `signed` column is `signed` on such runs and `unsigned`
   otherwise.
 

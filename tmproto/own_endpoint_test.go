@@ -40,9 +40,10 @@ func TestOwnEndpointURLConventionMatchesRouterSigning(t *testing.T) {
 	require.NoError(t, VerifyIdentityMatch(req, registeredEndpoint, sig, signer.KeyID, ks, time.Now()),
 		"the registered base URL is what the router binds the signature to")
 
-	// The dispatch URL does not — this is the silent-at-startup, total-at-runtime
-	// failure that targeting/internal/tmpendpoint.Validate turns into a startup
-	// error for the agents in this repo.
+	// The dispatch URL does not. This is the failure an agent gets when it is
+	// configured with the URL the router POSTs to instead of the base URL the
+	// router signs over — silent at startup, total at runtime. The shipped agent
+	// examples documented the wrong one; see cmd/*-agent/example.*.env.
 	assert.ErrorIs(t, VerifyIdentityMatch(req, dispatchURL, sig, signer.KeyID, ks, time.Now()), ErrSignatureInvalid,
 		"configuring the path-inclusive URL must not verify")
 	// targeting/internal/tmpendpoint rejects this at agent startup so the

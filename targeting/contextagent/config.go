@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adcontextprotocol/adcp-go/targeting/internal/tmpendpoint"
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
 	"github.com/adcontextprotocol/adcp-go/targeting/topicstore"
 )
@@ -376,8 +375,6 @@ func (c Config) Validate() error {
 		}
 		if c.TMP.OwnEndpointURL == "" {
 			errs = append(errs, errors.New("TMP_OWN_ENDPOINT_URL is required unless TMP_ALLOW_UNSIGNED=true"))
-		} else if err := tmpendpoint.Validate(c.TMP.OwnEndpointURL); err != nil {
-			errs = append(errs, fmt.Errorf("TMP_OWN_ENDPOINT_URL: %w", err))
 		}
 	}
 	// Only emit "VALKEY_SHARDS is required" when no value at all was

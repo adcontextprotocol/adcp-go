@@ -73,10 +73,12 @@ func main() {
 		defer fcapR.Close()
 		log.Printf("fcap writer: %d qps, %d packages/write, ttl=%s, topology=%s shards=%d",
 			writeQpsFcap, packagesPerWrite, serveWindow, fcapR.Mode, fcapR.NumShards())
-		wg.Go(func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			runFcapWriter(ctx, fcapR, writeQpsFcap, concurrency,
 				totalUsers, totalPackages, packagesPerWrite, sellerAgentURL, serveWindow)
-		})
+		}()
 	}
 	if writeQpsAudience > 0 {
 		audR, err := router.New(context.Background(), "AUDIENCE")
@@ -86,10 +88,12 @@ func main() {
 		defer audR.Close()
 		log.Printf("audience writer: %d qps, %d audiences/write, topology=%s shards=%d",
 			writeQpsAudience, audiencesPerWrite, audR.Mode, audR.NumShards())
-		wg.Go(func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			runAudienceWriter(ctx, audR, writeQpsAudience, concurrency,
 				totalUsers, totalAudiences, audiencesPerWrite)
-		})
+		}()
 	}
 	wg.Wait()
 }
@@ -102,7 +106,7 @@ func runFcapWriter(ctx context.Context, r *router.Router, qps, concurrency, tota
 	)
 	tickets := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
-	for i := range concurrency {
+	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(seed uint64) {
 			defer wg.Done()
@@ -112,7 +116,7 @@ func runFcapWriter(ctx context.Context, r *router.Router, qps, concurrency, tota
 				key := "fcap:" + identityhash.Hash(fmt.Sprintf("%032x", u))
 				// HSETEX with N fields, matching redisstore.Store.SetFields.
 				args := make([]string, 0, pkgsPerWrite*2)
-				for range pkgsPerWrite {
+				for j := 0; j < pkgsPerWrite; j++ {
 					pkgID := rng.IntN(totalPkgs)
 					field := sellerURL + ":" + fmt.Sprintf("pkg-%05d", pkgID)
 					args = append(args, field, "1")
@@ -157,7 +161,7 @@ func runAudienceWriter(ctx context.Context, r *router.Router, qps, concurrency, 
 	)
 	tickets := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
-	for i := range concurrency {
+	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go func(seed uint64) {
 			defer wg.Done()
@@ -166,7 +170,7 @@ func runAudienceWriter(ctx context.Context, r *router.Router, qps, concurrency, 
 				u := rng.IntN(totalUsers)
 				key := "audience:user:" + identityhash.Hash(fmt.Sprintf("%032x", u))
 				fields := make(map[string]any, audsPerWrite)
-				for range audsPerWrite {
+				for j := 0; j < audsPerWrite; j++ {
 					id := rng.IntN(totalAuds)
 					fields[fmt.Sprintf("aud-%05d", id)] = "1.0"
 				}

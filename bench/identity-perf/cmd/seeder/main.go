@@ -90,24 +90,26 @@ func UserToken(i int) string { return fmt.Sprintf("%032x", i) }
 func seedAudience(ctx context.Context, r *router.Router, totalUsers, audsPerUser, totalAuds, workers, pipeSize int) {
 	work := make(chan int, workers*4)
 	var wg sync.WaitGroup
-	for range workers {
-		wg.Go(func() {
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			seedWorker(ctx, r, work, pipeSize, func(u int, add func(key string, fields map[string]any, ttl time.Duration)) {
 				token := UserToken(u)
 				key := "audience:user:" + identityhash.Hash(token)
 				fields := make(map[string]any, audsPerUser)
-				for j := range audsPerUser {
+				for j := 0; j < audsPerUser; j++ {
 					id := (u*audsPerUser + j) % totalAuds
 					fields[fmt.Sprintf("aud-%05d", id)] = "1.0"
 				}
 				add(key, fields, 0)
 			})
-		})
+		}()
 	}
 	tick := time.NewTicker(10 * time.Second)
 	defer tick.Stop()
 	start := time.Now()
-	for i := range totalUsers {
+	for i := 0; i < totalUsers; i++ {
 		select {
 		case work <- i:
 		case <-tick.C:
@@ -127,22 +129,24 @@ func seedFCap(ctx context.Context, r *router.Router, totalUsers int, userFractio
 	}
 	work := make(chan int, workers*4)
 	var wg sync.WaitGroup
-	for range workers {
-		wg.Go(func() {
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			seedWorker(ctx, r, work, pipeSize, func(u int, add func(key string, fields map[string]any, ttl time.Duration)) {
 				token := UserToken(u)
 				key := "fcap:" + identityhash.Hash(token)
 				fields := make(map[string]any, pkgsPerUser)
-				for j := range pkgsPerUser {
+				for j := 0; j < pkgsPerUser; j++ {
 					id := (u*pkgsPerUser + j) % totalPkgs
 					fields[sellerURL+":"+fmt.Sprintf("pkg-%05d", id)] = "1"
 				}
 				add(key, fields, 24*time.Hour)
 			})
-		})
+		}()
 	}
 	start := time.Now()
-	for i := range capped {
+	for i := 0; i < capped; i++ {
 		work <- i
 	}
 	close(work)

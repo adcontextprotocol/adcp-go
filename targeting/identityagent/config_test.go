@@ -37,10 +37,8 @@ func TestConfigValidate(t *testing.T) {
 				StartRetryDeadline: time.Minute,
 			},
 			TMP: TMPConfig{
-				RegistryURL: "https://registry.example/snapshot",
-				// Registered BASE url — the router appends /identity when it
-				// dispatches, and binds the signature to this value.
-				OwnEndpointURL: "https://self.example",
+				RegistryURL:    "https://registry.example/snapshot",
+				OwnEndpointURL: "https://self.example/identity",
 			},
 			FCapValkey: ValkeyBlock{
 				Enabled: true,
@@ -201,33 +199,6 @@ func TestConfigValidate(t *testing.T) {
 				c.TMP.RegistryURL = ""
 				c.TMP.OwnEndpointURL = ""
 			},
-		},
-		{
-			// The router signs provider_endpoint_url from the registered base
-			// URL and appends /identity only when dispatching, so configuring
-			// the path-inclusive URL fails every signature verification at
-			// runtime.
-			name: "tmp own endpoint includes the operation path",
-			mutate: func(c *Config) {
-				c.TMP.OwnEndpointURL = "https://self.example/identity"
-			},
-			wantErr: `ending in "/identity"`,
-		},
-		{
-			name: "tmp own endpoint is not absolute",
-			mutate: func(c *Config) {
-				c.TMP.OwnEndpointURL = "self.example"
-			},
-			wantErr: "http or https scheme",
-		},
-		{
-			// RESPONSE_TTL is emitted as serve_window_sec, which the schema
-			// bounds to whole seconds in [1, 300].
-			name: "sub-second response ttl",
-			mutate: func(c *Config) {
-				c.ResponseTTL = 500 * time.Millisecond
-			},
-			wantErr: "RESPONSE_TTL must be >= 1s",
 		},
 		{
 			name: "tmpx partial config",

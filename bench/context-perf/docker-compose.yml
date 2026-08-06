@@ -92,7 +92,7 @@ services:
       TMP_ALLOW_UNSIGNED: "${TMP_ALLOW_UNSIGNED:-true}"
       TMP_REGISTRY_URL: "${TMP_REGISTRY_URL:-}"
       TMP_REGISTRY_ALLOW_INSECURE_SCHEME: "${TMP_REGISTRY_ALLOW_INSECURE_SCHEME:-false}"
-      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081"
+      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081/context"
       # Provider + property bitmap (static — no registry sync).
       PROVIDER_ID: "${PROVIDER_ID:-perf-provider}"
       # PROPERTY_RIDS comes from env_file (perf.env) — see comment on
@@ -157,7 +157,7 @@ services:
       # value so the provider_endpoint_url in the signing input agrees.
       SIGN_REQUESTS: "${SIGN_REQUESTS:-false}"
       SIGNER_KEY_PATH: "/keys/signer.json"
-      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081"
+      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081/context"
     volumes:
       - ${RESULTS_DIR:-./results}:/results
       - bench-signer-keys:/keys
