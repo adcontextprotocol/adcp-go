@@ -93,25 +93,6 @@ func TestMergeSignals_TargetingKVsConcatenatedVerbatim(t *testing.T) {
 	}, wire["targeting_kvs"], "every provider's key-values survive, unrenamed")
 }
 
-// TestMergeSignals_ExtensionKeyFirstProviderWins covers the keys the schema
-// admits via additionalProperties but the spec defines no merge rule for. The
-// first provider keeps the key and the conflict is logged rather than silently
-// overwritten.
-func TestMergeSignals_ExtensionKeyFirstProviderWins(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	merged := mergedSignalsFor(t, logger,
-		map[string]any{"vendor_score": "high"},
-		map[string]any{"vendor_score": "low"},
-	)
-
-	assert.Equal(t, "high", merged["vendor_score"], "first provider to supply the key keeps it")
-	assert.Contains(t, buf.String(), "conflicting extension key in signals")
-	assert.Contains(t, buf.String(), "first_provider=p1")
-	assert.Contains(t, buf.String(), "conflicting_provider=p2")
-}
-
 // TestMergeSignals_MalformedEntrySkipped checks that a provider emitting the
 // wrong shape for a spec-defined key loses only that key, without corrupting
 // the merged list or dropping the other provider's contribution.

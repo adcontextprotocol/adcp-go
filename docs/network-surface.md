@@ -278,11 +278,6 @@ receives, so they are called out here rather than only in code:
   response, with exact duplicates dropped. Previously a later provider's list replaced an
   earlier one, so publishers may now see segments that were silently being discarded.
 
-- **Extension keys resolve first-provider-wins.** `signals` permits additional properties,
-  and the spec defines no merge rule for them. The first provider to supply a key keeps it
-  and a conflicting provider is logged; previously the last provider merged won. Provider
-  order is arrival order, so a key supplied by more than one provider was — and remains —
-  nondeterministic; the change is which one is kept, not whether it is stable.
 
 ## Environment Variables
 

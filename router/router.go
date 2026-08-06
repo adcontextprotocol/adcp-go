@@ -10,11 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
-	"strings"
 	"sync"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/adcontextprotocol/adcp-go/urlcanon"
@@ -694,40 +691,6 @@ func (e *providerAppError) Error() string {
 	return fmt.Sprintf("provider returned TMP error %q: %s", e.Code, e.Message)
 }
 
-// maxProviderMessageLog bounds how much of a provider-supplied error message
-// reaches operator logs. The value is provider-controlled text, so it is
-// truncated to keep one misbehaving provider from flooding the log stream.
-const maxProviderMessageLog = 200
-
-// sanitizeForLog makes provider-supplied text safe to put in a log record: it
-// drops control characters and bounds the length.
-//
-// Both halves matter. A newline or ESC in the message can forge a log record or
-// inject a terminal escape once the value reaches any handler that does not
-// quote it, or a downstream pipeline that re-emits it — the same reason inbound
-// request IDs go through tmproto.SafeRequestIDForEcho. The length bound keeps
-// one misbehaving provider from flooding the log stream. Truncation lands on a
-// rune boundary so a multi-byte character straddling the cut cannot leave
-// invalid UTF-8 behind.
-func sanitizeForLog(s string) string {
-	cleaned := strings.Map(func(r rune) rune {
-		// Drop C0/C1 controls and DEL. unicode.IsControl covers both ranges;
-		// utf8.RuneError catches bytes that were not valid UTF-8 to begin with.
-		if unicode.IsControl(r) || r == utf8.RuneError {
-			return -1
-		}
-		return r
-	}, s)
-	if len(cleaned) <= maxProviderMessageLog {
-		return cleaned
-	}
-	cut := maxProviderMessageLog
-	for cut > 0 && !utf8.RuneStart(cleaned[cut]) {
-		cut--
-	}
-	return cleaned[:cut]
-}
-
 // logProviderCallFailure records why a fan-out leg produced no result. A TMP
 // error envelope is logged at WARN with the provider's own code — that is an
 // actionable provider-side fault the operator needs to see — while transport
@@ -736,11 +699,13 @@ func sanitizeForLog(s string) string {
 func (r *Router) logProviderCallFailure(providerID, requestID string, err error) {
 	var appErr *providerAppError
 	if errors.As(err, &appErr) {
+		// Only the code, which is a bounded enum. The provider's free-text
+		// message is untrusted input and logging it would need sanitizing that
+		// this change has no reason to introduce.
 		r.logger.Warn("provider returned TMP error — excluding from merged response",
 			"provider", providerID,
 			"request_id", requestID,
 			"code", appErr.Code,
-			"provider_message", sanitizeForLog(appErr.Message),
 		)
 		return
 	}
@@ -963,26 +928,6 @@ func mergeIdentityResponses(requestID string, results []identityResult, logger *
 		resp := res.response
 		if resp == nil {
 			continue
-		}
-		// The merged result is clamped, but the condition is worth surfacing:
-		// the most restrictive value wins, so one provider reporting 0 (or
-		// omitting the required field) pins the publisher's serve window to 1s
-		// for every other provider on the response too.
-		//
-		// DEBUG, not WARN. A provider stuck on a bad value emits this on every
-		// identity-match request, which at ad-serving QPS would bury real
-		// signal — the same reason logSignalShape is DEBUG on the context path.
-		// The clamped value is visible in the response, so a publisher seeing an
-		// unexpected 1s window has a DEBUG-level lookup for which provider
-		// caused it.
-		if logger != nil && (resp.ServeWindowSec < MinServeWindowSec || resp.ServeWindowSec > MaxServeWindowSec) {
-			logger.Debug("provider reported serve_window_sec outside the schema range — clamping",
-				"request_id", requestID,
-				"provider", res.providerID,
-				"reported", resp.ServeWindowSec,
-				"min", MinServeWindowSec,
-				"max", MaxServeWindowSec,
-			)
 		}
 		if minServeWindowSec < 0 || resp.ServeWindowSec < minServeWindowSec {
 			minServeWindowSec = resp.ServeWindowSec

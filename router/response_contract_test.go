@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -78,63 +77,6 @@ func TestMergeIdentityResponses_ServeWindowClampedToSchemaRange(t *testing.T) {
 	}
 }
 
-// TestMergeIdentityResponses_WarnsOnOutOfRangeServeWindow pins that clamping is
-// observable. The most restrictive value wins, so one provider reporting 0 — or
-// omitting the required field — pins the publisher's window to 1s for every
-// other provider on the same response. Clamping silently would make that look
-// like correct behavior.
-func TestMergeIdentityResponses_WarnsOnOutOfRangeServeWindow(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-
-	merged := mergeIdentityResponses("id-warn", []identityResult{
-		{providerID: "broken", response: &tmproto.ProviderIdentityMatchResponse{
-			EligiblePackageIDs: []string{"pkg-1"},
-			// serve_window_sec omitted on the wire decodes to 0.
-		}},
-		{providerID: "healthy", response: &tmproto.ProviderIdentityMatchResponse{
-			EligiblePackageIDs: []string{"pkg-2"},
-			ServeWindowSec:     300,
-		}},
-	}, logger)
-
-	assert.Equal(t, MinServeWindowSec, merged.ServeWindowSec)
-	assert.Contains(t, buf.String(), "serve_window_sec outside the schema range")
-	assert.Contains(t, buf.String(), "provider=broken")
-	assert.NotContains(t, buf.String(), "provider=healthy",
-		"an in-range provider must not be warned about")
-}
-
-// TestSanitizeForLog covers both halves of making provider-supplied text safe to
-// log: control bytes stripped so the value cannot forge a log record, and length
-// bounded on a rune boundary so truncation cannot emit invalid UTF-8.
-func TestSanitizeForLog(t *testing.T) {
-	assert.Equal(t, "short", sanitizeForLog("short"))
-
-	// Log-record forgery: a newline plus a fabricated record. Both the newline
-	// and the ESC/CSI sequence must be gone.
-	forged := "ok\n2026-08-06 level=ERROR msg=\"router key compromised\""
-	got := sanitizeForLog(forged)
-	assert.NotContains(t, got, "\n", "newlines must not survive into a log record")
-	assert.Contains(t, got, "router key compromised", "the text itself is kept, only framing is stripped")
-
-	for _, ctrl := range []string{"\r", "\t", "\x1b[31m", "\x07", "\x7f", "\x00"} {
-		assert.NotContains(t, sanitizeForLog("a"+ctrl+"b"), ctrl)
-	}
-
-	exact := strings.Repeat("a", maxProviderMessageLog)
-	assert.Equal(t, exact, sanitizeForLog(exact))
-
-	long := strings.Repeat("a", maxProviderMessageLog+50)
-	assert.Len(t, sanitizeForLog(long), maxProviderMessageLog)
-
-	// "é" is two bytes, so the cut lands mid-rune without the boundary walk.
-	multibyte := strings.Repeat("é", maxProviderMessageLog)
-	cut := sanitizeForLog(multibyte)
-	assert.True(t, utf8.ValidString(cut), "truncation must not produce invalid UTF-8")
-	assert.LessOrEqual(t, len(cut), maxProviderMessageLog)
-}
-
 // TestRouterIdentityMatch_ProviderErrorEnvelopeExcluded pins the §Error
 // Response rule ("The router SHOULD exclude providers that return errors from
 // the merged response") against the wire shape §HTTP Status Codes defines for
@@ -184,7 +126,7 @@ func TestRouterIdentityMatch_ProviderErrorEnvelopeExcluded(t *testing.T) {
 	assert.Equal(t, []string{"broken"}, metrics.errorInc,
 		"a TMP error envelope counts against the provider's error rate")
 	assert.Contains(t, buf.String(), "provider returned TMP error")
-	assert.Contains(t, buf.String(), "downstream store unavailable")
+	assert.Contains(t, buf.String(), "code=internal_error")
 }
 
 // TestRouterIdentityMatch_RejectsMismatchedResponseType covers a provider

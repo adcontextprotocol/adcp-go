@@ -45,11 +45,11 @@ type SignalKV struct {
 //     ad-server namespace. Renaming is therefore left to the publisher, who has
 //     the mapping config; see adcontextprotocol/adcp#6252.
 //
-//   - anything else — `signals` is additionalProperties: true, so providers
-//     may add their own keys and the spec defines no merge rule for them. The
-//     first provider to supply a key keeps it, mirroring the offers path's
-//     first-response-wins, and a later conflicting provider is logged instead
-//     of silently overwriting.
+//   - anything else — `signals` is additionalProperties: true, so providers may
+//     add their own keys, and the spec defines no merge rule for them. Left as
+//     a plain overwrite in merge order, unchanged from before: picking a
+//     different tie-break would be substituting one arbitrary rule for another
+//     with no spec basis.
 //
 // Concatenation order follows the order responses were merged, which is
 // arrival order — the same nondeterminism the spec already accepts for offers
@@ -59,20 +59,17 @@ type signalsMerger struct {
 	seenSegments map[string]struct{}
 	targetingKVs []SignalKV
 	extra        map[string]any
-	extraOwner   map[string]string
 }
 
 func newSignalsMerger() *signalsMerger {
 	return &signalsMerger{
 		seenSegments: make(map[string]struct{}),
 		extra:        make(map[string]any),
-		extraOwner:   make(map[string]string),
 	}
 }
 
-// add folds one provider's signals object into the merge. providerID is used for
-// attributing extension-key conflicts and shape warnings, not for rewriting any
-// value the provider sent.
+// add folds one provider's signals object into the merge. providerID is used only
+// to attribute shape warnings, never to rewrite a value the provider sent.
 func (m *signalsMerger) add(providerID string, signals map[string]any, requestID string, logger *slog.Logger) {
 	for key, value := range signals {
 		switch key {
@@ -97,18 +94,6 @@ func (m *signalsMerger) add(providerID string, signals map[string]any, requestID
 			}
 			m.targetingKVs = append(m.targetingKVs, kvs...)
 		default:
-			if owner, taken := m.extraOwner[key]; taken {
-				if owner != providerID && logger != nil {
-					logger.Warn("conflicting extension key in signals — keeping the first provider's value",
-						"request_id", requestID,
-						"signal_key", key,
-						"first_provider", owner,
-						"conflicting_provider", providerID,
-					)
-				}
-				continue
-			}
-			m.extraOwner[key] = providerID
 			m.extra[key] = value
 		}
 	}

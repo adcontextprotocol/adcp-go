@@ -160,11 +160,7 @@ func main() {
 		elapsed := time.Since(start)
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "context")
 		reg.HistogramObserve("tmp_context_match_duration_ms", float64(elapsed.Milliseconds()))
-		// Sanitize before logging: the header is caller-supplied, and
-		// SafeRequestIDForEcho drops control bytes that would otherwise reach
-		// operator logs and anything downstream that re-echoes them.
-		//nolint:gosec // G706: value is sanitized by SafeRequestIDForEcho, which gosec's taint analysis cannot see through
-		slog.Debug("context match", "request_id", tmproto.SafeRequestIDForEcho(req.Header.Get("X-Request-ID")), "latency_ms", elapsed.Milliseconds())
+		slog.Debug("context match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
 	})))
 	mux.Handle("POST /tmp/identity", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
@@ -173,8 +169,7 @@ func main() {
 		elapsed := time.Since(start)
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "identity")
 		reg.HistogramObserve("tmp_identity_match_duration_ms", float64(elapsed.Milliseconds()))
-		//nolint:gosec // G706: value is sanitized by SafeRequestIDForEcho, which gosec's taint analysis cannot see through
-		slog.Debug("identity match", "request_id", tmproto.SafeRequestIDForEcho(req.Header.Get("X-Request-ID")), "latency_ms", elapsed.Milliseconds())
+		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
 	})))
 	// Unauthenticated by design: providers fetch the snapshot to resolve the
 	// router's signing keys, so requiring a publisher credential here would
@@ -361,7 +356,6 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 		var err error
 		cfg, err = router.LoadServerConfig(envConfig)
 		if err != nil {
-			//nolint:gosec // G706: the path comes from the operator's own process environment, not from a request
 			slog.Error("failed to load config from TMP_ROUTER_CONFIG", "path", envConfig, "error", err)
 			os.Exit(1)
 		}
