@@ -260,15 +260,19 @@ The router merges each provider's `signals` object into one response per the spe
 Context Match fan-out rules. Two of those rules change what a publisher's ad server
 receives, so they are called out here rather than only in code:
 
-- **`targeting_kvs` keys are namespaced.** Every key is rewritten to
-  `<provider_id>_<key>`, unconditionally — not only when two providers collide, because
-  a key whose name depended on which providers happened to respond could not be targeted
-  reliably. Line items trafficked against a provider's raw key (`sport`) stop matching once
-  namespacing is in effect and must be re-pointed at the namespaced key (`acme_sport`).
-  There is no error when this happens, just no match, so re-traffic before rolling out.
-  `TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING=true` restores pass-through as a temporary
-  lever; it is a non-conformant mode and logs a warning at startup. The `_` separator is
-  part of the publisher-facing contract — changing it breaks line items again.
+- **`targeting_kvs` are concatenated, not overwritten, and keys are passed through
+  verbatim.** Previously a later provider's list replaced an earlier one. Because the field
+  is an array, two providers both returning `sport` now yield two entries rather than one
+  winning — nothing is lost and no key is renamed.
+
+  The spec adds "targeting key-values from different providers are namespaced to prevent
+  collisions", but pins no scheme — no separator, no format. The router does not invent one:
+  a router-chosen prefix would not be portable (a publisher's line items would break moving
+  between two conformant routers) and it would put the router inside the publisher's
+  ad-server namespace, which the spec's TMPX design explicitly forbids — there, destination
+  naming is publisher-owned and resolved from `(provider_id, slot_id)` via
+  `tmpx_macro_mapping`. Disambiguation is left to the publisher, who holds that mapping.
+  Tracked upstream at adcontextprotocol/adcp#6252.
 
 - **`segments` are concatenated, not overwritten.** Every provider's segments reach the
   response, with exact duplicates dropped. Previously a later provider's list replaced an
@@ -297,7 +301,6 @@ receives, so they are called out here rather than only in code:
 | `TMP_ROUTER_CACHE_DISABLED` | Router | Disable the per-provider Context Match cache. Fans out on every request. | `false` |
 | `TMP_ROUTER_CACHE_DEFAULT_TTL_SEC` | Router | Fallback TTL when a provider response omits `cache_ttl`. | `300` |
 | `TMP_ROUTER_CACHE_MAX_ENTRIES` | Router | Cap on live cache entries; expired-then-oldest evicted on overflow. | `10000` |
-| `TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING` | Router | Stop prefixing merged `signals.targeting_kvs` keys with the emitting `provider_id`. Non-conformant migration lever — see Signal merging below. | `false` |
 | `TMP_ROUTER_SIGNING_KID` | Router | Key identifier for outbound signatures | (none) |
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |

@@ -88,10 +88,6 @@ func main() {
 	if contextCache != nil {
 		routerOpts = append(routerOpts, router.WithContextCache(contextCache))
 	}
-	if cfg.Signals.DisableTargetingKVNamespacing {
-		slog.Warn("targeting_kv namespacing is disabled — the spec requires provider_id namespacing of merged signals.targeting_kvs; re-enable once ad-server line items target the namespaced keys")
-		routerOpts = append(routerOpts, router.WithoutTargetingKVNamespacing())
-	}
 	r, err := router.NewRouter(cfg.Providers, registry, health, routerOpts...)
 	if err != nil {
 		slog.Error("invalid router configuration", "error", err)
@@ -476,12 +472,6 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			cfg.Cache.DefaultTTLSeconds = n
 		}
-	}
-	// Signals merge — spec-conformant namespacing is the default; this is the
-	// migration lever for publishers with line items already trafficked against
-	// a provider's raw targeting key.
-	if v := getenv("TMP_ROUTER_SIGNALS_DISABLE_KV_NAMESPACING"); v == "1" || strings.EqualFold(v, "true") {
-		cfg.Signals.DisableTargetingKVNamespacing = true
 	}
 	if v := getenv("TMP_ROUTER_CACHE_MAX_ENTRIES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

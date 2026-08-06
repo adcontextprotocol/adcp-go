@@ -12,14 +12,6 @@ const (
 	signalTargetingKVsKey = "targeting_kvs"
 )
 
-// signalNamespaceSeparator joins a provider_id to a targeting key when the
-// router namespaces enrichment key-values. The spec mandates namespacing but
-// does not pin a scheme, so this is the router's choice: "_" keeps the result
-// inside the `provider_id` charset (^[A-Za-z0-9_]+$) and inside what ad
-// servers accept as a targeting key. Publishers must target the namespaced
-// key, so changing this separator is a breaking change for their line items.
-const signalNamespaceSeparator = "_"
-
 // SignalKV is the KeyValuePair shape carried in a Context Match response's
 // `signals.targeting_kvs` (context-match-response.json §KeyValuePair).
 type SignalKV struct {
@@ -39,14 +31,19 @@ type SignalKV struct {
 //     exact repeats so a segment two providers both return reaches the ad
 //     server once.
 //
-//   - `targeting_kvs` — concatenated with every key rewritten to
-//     "<provider_id><sep><key>". Namespacing is unconditional rather than
-//     collision-triggered: a key whose name changed only when a second
-//     provider happened to respond would leave publishers unable to write a
-//     stable line-item target. It is publisher-visible — line items trafficked
-//     against a provider's raw key stop matching — so
-//     WithoutTargetingKVNamespacing exists as a migration lever; see that
-//     option for why it is opt-out rather than opt-in.
+//   - `targeting_kvs` — concatenated, with keys left exactly as the provider
+//     sent them. The list is an array, so two providers both returning `sport`
+//     yield two entries rather than one overwriting the other; nothing is lost
+//     without renaming anything.
+//
+//     The spec sentence above adds "namespaced to prevent collisions", but it
+//     pins no scheme — no separator, no format — so any prefix a router invented
+//     would be unportable: a publisher's line items would break moving between
+//     two conformant routers. It would also contradict how the spec handles the
+//     same problem for TMPX, where destination naming is explicitly
+//     publisher-owned and the router never mints a name in the publisher's
+//     ad-server namespace. Renaming is therefore left to the publisher, who has
+//     the mapping config; see adcontextprotocol/adcp#6252.
 //
 //   - anything else — `signals` is additionalProperties: true, so providers
 //     may add their own keys and the spec defines no merge rule for them. The
@@ -63,24 +60,19 @@ type signalsMerger struct {
 	targetingKVs []SignalKV
 	extra        map[string]any
 	extraOwner   map[string]string
-	// namespaceKVs is false only when the operator opted out via
-	// WithoutTargetingKVNamespacing. Colliding keys then resolve
-	// first-provider-wins, matching how extension keys are handled.
-	namespaceKVs bool
 }
 
-func newSignalsMerger(namespaceKVs bool) *signalsMerger {
+func newSignalsMerger() *signalsMerger {
 	return &signalsMerger{
 		seenSegments: make(map[string]struct{}),
 		extra:        make(map[string]any),
 		extraOwner:   make(map[string]string),
-		namespaceKVs: namespaceKVs,
 	}
 }
 
-// add folds one provider's signals object into the merge. providerID namespaces
-// that provider's targeting keys; an empty providerID leaves keys unprefixed
-// (defensive — the fan-out always supplies one).
+// add folds one provider's signals object into the merge. providerID is used for
+// attributing extension-key conflicts and shape warnings, not for rewriting any
+// value the provider sent.
 func (m *signalsMerger) add(providerID string, signals map[string]any, requestID string, logger *slog.Logger) {
 	for key, value := range signals {
 		switch key {
@@ -103,13 +95,7 @@ func (m *signalsMerger) add(providerID string, signals map[string]any, requestID
 				logSignalShape(logger, requestID, providerID, key)
 				continue
 			}
-			for _, kv := range kvs {
-				kvKey := kv.Key
-				if m.namespaceKVs {
-					kvKey = namespaceSignalKey(providerID, kv.Key)
-				}
-				m.targetingKVs = append(m.targetingKVs, SignalKV{Key: kvKey, Value: kv.Value})
-			}
+			m.targetingKVs = append(m.targetingKVs, kvs...)
 		default:
 			if owner, taken := m.extraOwner[key]; taken {
 				if owner != providerID && logger != nil {
@@ -143,14 +129,6 @@ func (m *signalsMerger) result() map[string]any {
 		return nil
 	}
 	return out
-}
-
-// namespaceSignalKey prefixes a provider's targeting key with its provider_id.
-func namespaceSignalKey(providerID, key string) string {
-	if providerID == "" {
-		return key
-	}
-	return providerID + signalNamespaceSeparator + key
 }
 
 // signalStrings reads a `segments` value. Responses arrive through

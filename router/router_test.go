@@ -125,12 +125,12 @@ func TestMergeContextResponses(t *testing.T) {
 	merged := mergeContextResponses("ctx-test", []contextResult{
 		{providerID: "p1", response: r1},
 		{providerID: "p2", response: r2},
-	}, nil, true)
+	}, nil)
 
 	assert.Len(t, merged.Offers, 3)
 	require.NotNil(t, merged.Signals)
 	// Both providers' segments survive — see signals_test.go for the full
-	// concatenate-and-namespace rules.
+	// per-key merge rules.
 	assert.Equal(t, []string{"cooking", "sustainability"}, merged.Signals["segments"])
 	assert.Equal(t, "pkg-1", merged.Signals["adcp_pkg"])
 }
@@ -378,7 +378,7 @@ func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
 	merged := mergeContextResponses("ctx-dup", []contextResult{
 		{providerID: "alpha", response: r1},
 		{providerID: "beta", response: r2},
-	}, logger, true)
+	}, logger)
 
 	require.Len(t, merged.Offers, 2, "duplicate package_id should be deduped, unique one kept")
 	assert.Equal(t, "first", merged.Offers[0].Summary, "first provider's offer wins on dup")
@@ -407,7 +407,7 @@ func TestMergeContextResponses_SingleProviderRepeat(t *testing.T) {
 
 	merged := mergeContextResponses("ctx-single-dup", []contextResult{
 		{providerID: "alpha", response: r1},
-	}, logger, true)
+	}, logger)
 
 	require.Len(t, merged.Offers, 1)
 	logText := logs.String()

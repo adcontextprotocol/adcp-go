@@ -16,12 +16,6 @@ import (
 // and returns the merged `signals` object. Provider order is the merge order,
 // which the concatenation rules preserve.
 func mergedSignalsFor(t *testing.T, logger *slog.Logger, providerSignals ...map[string]any) map[string]any {
-	return mergedSignalsWith(t, logger, true, providerSignals...)
-}
-
-// mergedSignalsWith is mergedSignalsFor with explicit control over targeting_kv
-// namespacing, for the opt-out path.
-func mergedSignalsWith(t *testing.T, logger *slog.Logger, namespaceKVs bool, providerSignals ...map[string]any) map[string]any {
 	t.Helper()
 	results := make([]contextResult, 0, len(providerSignals))
 	for i, sig := range providerSignals {
@@ -30,7 +24,7 @@ func mergedSignalsWith(t *testing.T, logger *slog.Logger, namespaceKVs bool, pro
 			response:   &tmproto.ContextMatchResponse{Signals: sig},
 		})
 	}
-	return mergeContextResponses("ctx-signals", results, logger, namespaceKVs).Signals
+	return mergeContextResponses("ctx-signals", results, logger).Signals
 }
 
 // decodeSignals round-trips the merged object through JSON, which is what a
@@ -73,37 +67,30 @@ func TestMergeSignals_SegmentsDeduplicated(t *testing.T) {
 	assert.Equal(t, []any{"cooking", "shared", "sustainability"}, wire["segments"])
 }
 
-// TestMergeSignals_TargetingKVsNamespaced pins the other half of step 4:
-// "Targeting key-values from different providers are namespaced to prevent
-// collisions." Two providers returning the same key must both survive.
-func TestMergeSignals_TargetingKVsNamespaced(t *testing.T) {
+// TestMergeSignals_TargetingKVsConcatenatedVerbatim pins the other half of step
+// 4. Two providers returning the same key both survive — targeting_kvs is an
+// array, so nothing has to be renamed to avoid losing one. Keys are passed
+// through exactly as sent: the spec's "namespaced to prevent collisions" pins no
+// scheme, and a router-invented prefix would be unportable across
+// implementations and would put the router in the publisher's ad-server
+// namespace, which the spec's TMPX design explicitly forbids.
+func TestMergeSignals_TargetingKVsConcatenatedVerbatim(t *testing.T) {
 	merged := mergedSignalsFor(t, nil,
 		map[string]any{"targeting_kvs": []any{
 			map[string]any{"key": "sport", "value": "nfl"},
 		}},
 		map[string]any{"targeting_kvs": []any{
 			map[string]any{"key": "sport", "value": "nba"},
+			map[string]any{"key": "genre", "value": "news"},
 		}},
 	)
 
 	wire := decodeSignals(t, merged)
 	assert.Equal(t, []any{
-		map[string]any{"key": "p1_sport", "value": "nfl"},
-		map[string]any{"key": "p2_sport", "value": "nba"},
-	}, wire["targeting_kvs"], "colliding keys must be namespaced by provider_id, not dropped")
-}
-
-// TestMergeSignals_TargetingKVsNamespacedForSingleProvider documents that
-// namespacing is unconditional. Making it collision-triggered would leave a
-// key's name dependent on which other providers happened to respond, which no
-// ad-server line item could target reliably.
-func TestMergeSignals_TargetingKVsNamespacedForSingleProvider(t *testing.T) {
-	merged := mergedSignalsFor(t, nil, map[string]any{"targeting_kvs": []any{
 		map[string]any{"key": "sport", "value": "nfl"},
-	}})
-
-	wire := decodeSignals(t, merged)
-	assert.Equal(t, []any{map[string]any{"key": "p1_sport", "value": "nfl"}}, wire["targeting_kvs"])
+		map[string]any{"key": "sport", "value": "nba"},
+		map[string]any{"key": "genre", "value": "news"},
+	}, wire["targeting_kvs"], "every provider's key-values survive, unrenamed")
 }
 
 // TestMergeSignals_ExtensionKeyFirstProviderWins covers the keys the schema
@@ -191,32 +178,4 @@ func TestSignalKVs(t *testing.T) {
 
 	_, ok = signalKVs([]any{map[string]any{"key": 1, "value": "v"}})
 	assert.False(t, ok, "key must be a string")
-}
-
-// TestMergeSignals_NamespacingOptOut covers WithoutTargetingKVNamespacing: keys
-// pass through unprefixed so a publisher whose line items already target the
-// provider's raw key keeps serving while they re-traffic. Colliding keys then
-// resolve first-provider-wins.
-func TestMergeSignals_NamespacingOptOut(t *testing.T) {
-	merged := mergedSignalsWith(t, nil, false,
-		map[string]any{"targeting_kvs": []any{map[string]any{"key": "sport", "value": "nfl"}}},
-		map[string]any{"targeting_kvs": []any{map[string]any{"key": "genre", "value": "news"}}},
-	)
-
-	wire := decodeSignals(t, merged)
-	assert.Equal(t, []any{
-		map[string]any{"key": "sport", "value": "nfl"},
-		map[string]any{"key": "genre", "value": "news"},
-	}, wire["targeting_kvs"], "opt-out must leave provider keys untouched")
-}
-
-// TestRouterOption_WithoutTargetingKVNamespacing pins that the option reaches
-// the merge, so the lever actually works end to end and not just in the merger.
-func TestRouterOption_WithoutTargetingKVNamespacing(t *testing.T) {
-	r := &Router{}
-	WithoutTargetingKVNamespacing()(r)
-	assert.True(t, r.noTargetingKVNamespace)
-
-	def := &Router{}
-	assert.False(t, def.noTargetingKVNamespace, "namespacing is on by default, per spec")
 }

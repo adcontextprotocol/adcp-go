@@ -148,10 +148,6 @@ type Router struct {
 	// the deployer did not wire it. Per spec §Caching, populated caches
 	// key on {property_rid, placement_id, provider_id}.
 	contextCache *ContextCache
-
-	// noTargetingKVNamespace disables provider_id namespacing of merged
-	// targeting_kvs keys. Default false = namespacing on, per spec.
-	noTargetingKVNamespace bool
 }
 
 // RouterOption configures a Router.
@@ -192,23 +188,6 @@ func WithFanOutMetrics(m FanOutMetrics) RouterOption {
 // router holds onto signer for the rest of its lifetime.
 func WithTMPSigner(signer *tmproto.Signer) RouterOption {
 	return func(r *Router) { r.signer = signer }
-}
-
-// WithoutTargetingKVNamespacing turns off provider_id namespacing of merged
-// `signals.targeting_kvs` keys, restoring the pre-namespacing pass-through.
-//
-// The spec requires namespacing ("Targeting key-values from different providers
-// are namespaced to prevent collisions"), so this is a non-conformant mode and
-// the default is on. It exists because the change is publisher-visible: an ad
-// server whose line items already target a provider's raw key stops matching the
-// moment namespacing lands, with no error — just zero fill until the publisher
-// re-traffics. This is the lever to unblock serving while that happens, in the
-// same shape as the existing signing/auth/cache opt-outs.
-//
-// With namespacing off, two providers returning the same key collide and the
-// first merged wins, matching how extension keys inside `signals` resolve.
-func WithoutTargetingKVNamespacing() RouterOption {
-	return func(r *Router) { r.noTargetingKVNamespace = true }
 }
 
 // WithContextCache attaches a per-provider Context Match response cache
@@ -343,7 +322,7 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 	responses := r.fanOutContext(req.Context(), matching, &cmReq, body)
 
 	// Merge responses
-	merged := mergeContextResponses(cmReq.RequestID, responses, r.logger, !r.noTargetingKVNamespace)
+	merged := mergeContextResponses(cmReq.RequestID, responses, r.logger)
 	if ext := r.metricsExt(); ext != nil {
 		ext.AddOffers(len(merged.Offers))
 	}
@@ -884,16 +863,16 @@ var providerHopForbiddenFields = []string{
 // emit a warning naming both providers when the same package_id appears in
 // more than one response.
 //
-// Enrichment signals follow the concatenate-and-namespace rules from the same
-// section — see signalsMerger for the per-key behavior.
-func mergeContextResponses(requestID string, responses []contextResult, logger *slog.Logger, namespaceKVs bool) *tmproto.ContextMatchResponse {
+// Enrichment signals are concatenated per the same section — see signalsMerger
+// for the per-key behavior.
+func mergeContextResponses(requestID string, responses []contextResult, logger *slog.Logger) *tmproto.ContextMatchResponse {
 	merged := &tmproto.ContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
 		RequestID: requestID,
 		Offers:    []tmproto.Offer{},
 	}
 
-	signals := newSignalsMerger(namespaceKVs)
+	signals := newSignalsMerger()
 	seenPkg := make(map[string]string) // package_id -> first provider that returned it
 
 	for _, res := range responses {

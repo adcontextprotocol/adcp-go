@@ -32,17 +32,6 @@ type ServerConfig struct {
 	TLS             TLSConfig         `json:"tls"`
 	Registry        RegistryConfig    `json:"registry"`
 	Cache           CacheConfig       `json:"cache"`
-	Signals         SignalsConfig     `json:"signals"`
-}
-
-// SignalsConfig controls how the router merges enrichment signals across
-// providers (spec §"Context Match fan-out").
-type SignalsConfig struct {
-	// DisableTargetingKVNamespacing turns off provider_id namespacing of merged
-	// `targeting_kvs` keys. The spec requires namespacing, so this is a
-	// non-conformant migration lever — see
-	// router.WithoutTargetingKVNamespacing for why it exists.
-	DisableTargetingKVNamespacing bool `json:"disable_targeting_kv_namespacing,omitempty"`
 }
 
 // AdminEnabled reports whether the operator endpoints should be served on a
