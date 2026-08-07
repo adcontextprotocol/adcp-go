@@ -1,9 +1,6 @@
 package router
 
-import (
-	"log/slog"
-	"maps"
-)
+import "maps"
 
 // Keys the spec defines inside a Context Match response's `signals` object
 // (context-match-response.json §signals).
@@ -12,87 +9,55 @@ const (
 	signalTargetingKVsKey = "targeting_kvs"
 )
 
-// SignalKV is the KeyValuePair shape carried in a Context Match response's
-// `signals.targeting_kvs` (context-match-response.json §KeyValuePair).
-type SignalKV struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// signalsMerger implements the enrichment-signal merge rules from
+// signalsMerger implements the enrichment-signal merge from
 // docs/trusted-match/router-architecture.mdx §"Context Match fan-out" step 4:
 // "Enrichment signals are concatenated. Segments from all providers are
 // combined into a single list. Targeting key-values from different providers
 // are namespaced to prevent collisions."
 //
-// Per key:
+// `segments` and `targeting_kvs` are both arrays, so concatenating them neither
+// inspects nor rewrites anything a provider sent. What that rules out is as
+// much the point as what it does:
 //
-//   - `segments` — concatenated across providers in merge order, dropping
-//     exact repeats so a segment two providers both return reaches the ad
-//     server once.
+//   - No per-entry validation. An entry that does not match the schema is the
+//     provider's defect. Validating would force a choice the spec does not
+//     make — drop the entry, or drop that provider's whole list — and either
+//     way the router would be discarding targeting the publisher was sent.
+//     Malformed entries pass through exactly as they did before this merge
+//     existed.
+//   - No deduplication. The spec says "combined into a single list", not
+//     deduplicated. If two providers return the same segment, the publisher
+//     receives it twice and decides what that means.
+//   - No key namespacing, despite the sentence above. It pins no scheme, so a
+//     router-invented prefix would not be portable between implementations,
+//     and it would put the router inside the publisher's ad-server namespace —
+//     which the spec's TMPX design explicitly forbids. See
+//     adcontextprotocol/adcp#6252.
 //
-//   - `targeting_kvs` — concatenated, with keys left exactly as the provider
-//     sent them. The list is an array, so two providers both returning `sport`
-//     yield two entries rather than one overwriting the other; nothing is lost
-//     without renaming anything.
+// Any other key: `signals` is additionalProperties: true and the spec defines
+// no merge rule for those, so they keep a plain overwrite in merge order.
 //
-//     The spec sentence above adds "namespaced to prevent collisions", but it
-//     pins no scheme — no separator, no format — so any prefix a router invented
-//     would be unportable: a publisher's line items would break moving between
-//     two conformant routers. It would also contradict how the spec handles the
-//     same problem for TMPX, where destination naming is explicitly
-//     publisher-owned and the router never mints a name in the publisher's
-//     ad-server namespace. Renaming is therefore left to the publisher, who has
-//     the mapping config; see adcontextprotocol/adcp#6252.
-//
-//   - anything else — `signals` is additionalProperties: true, so providers may
-//     add their own keys, and the spec defines no merge rule for them. Left as
-//     a plain overwrite in merge order, unchanged from before: picking a
-//     different tie-break would be substituting one arbitrary rule for another
-//     with no spec basis.
-//
-// Concatenation order follows the order responses were merged, which is
-// arrival order — the same nondeterminism the spec already accepts for offers
-// ("the router keeps the first response received").
+// Concatenation follows merge order, which is arrival order — the same
+// nondeterminism the spec already accepts for offers ("the router keeps the
+// first response received").
 type signalsMerger struct {
-	segments     []string
-	seenSegments map[string]struct{}
-	targetingKVs []SignalKV
+	segments     []any
+	targetingKVs []any
 	extra        map[string]any
 }
 
 func newSignalsMerger() *signalsMerger {
-	return &signalsMerger{
-		seenSegments: make(map[string]struct{}),
-		extra:        make(map[string]any),
-	}
+	return &signalsMerger{extra: make(map[string]any)}
 }
 
-// add folds one provider's signals object into the merge. providerID is used only
-// to attribute shape warnings, never to rewrite a value the provider sent.
-func (m *signalsMerger) add(providerID string, signals map[string]any, requestID string, logger *slog.Logger) {
+// add folds one provider's signals object into the merge.
+func (m *signalsMerger) add(signals map[string]any) {
 	for key, value := range signals {
 		switch key {
 		case signalSegmentsKey:
-			segments, ok := signalStrings(value)
-			if !ok {
-				logSignalShape(logger, requestID, providerID, key)
-				continue
-			}
-			for _, s := range segments {
-				if _, dup := m.seenSegments[s]; dup {
-					continue
-				}
-				m.seenSegments[s] = struct{}{}
-				m.segments = append(m.segments, s)
-			}
+			m.segments = appendSignalList(m.segments, value)
 		case signalTargetingKVsKey:
-			kvs, ok := signalKVs(value)
-			if !ok {
-				logSignalShape(logger, requestID, providerID, key)
-				continue
-			}
-			m.targetingKVs = append(m.targetingKVs, kvs...)
+			m.targetingKVs = appendSignalList(m.targetingKVs, value)
 		default:
 			m.extra[key] = value
 		}
@@ -116,95 +81,23 @@ func (m *signalsMerger) result() map[string]any {
 	return out
 }
 
-// signalStrings reads a `segments` value. Responses arrive through
-// json.Unmarshal so the wire shape is []any of string; the []string case
-// covers signals assembled in Go (tests, embedders). Reports false for any
-// other shape so the caller can skip it rather than emit a malformed list.
-func signalStrings(value any) ([]string, bool) {
+// appendSignalList concatenates one provider's array-valued signal onto the
+// accumulator. Responses arrive through json.Unmarshal so the wire shape is
+// []any; the []string case covers signals assembled in Go.
+//
+// A value that is not an array cannot be concatenated — the schema types both
+// fields as arrays — so it contributes nothing. It is not allowed to replace
+// what other providers sent, which is what the previous map-copy merge did.
+func appendSignalList(dst []any, value any) []any {
 	switch v := value.(type) {
+	case []any:
+		return append(dst, v...)
 	case []string:
-		return v, true
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, entry := range v {
-			s, ok := entry.(string)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, s)
+		for _, s := range v {
+			dst = append(dst, s)
 		}
-		return out, true
+		return dst
 	default:
-		return nil, false
+		return dst
 	}
-}
-
-// signalKVs reads a `targeting_kvs` value. Handles the wire shape ([]any of
-// map[string]any) plus the Go-assembled shapes. Both `key` and `value` are
-// required strings per the schema; an entry missing either makes the whole
-// value unusable, because partially emitting one provider's key-values would
-// silently drop targeting the publisher expects.
-func signalKVs(value any) ([]SignalKV, bool) {
-	switch v := value.(type) {
-	case []SignalKV:
-		return v, true
-	case []any:
-		out := make([]SignalKV, 0, len(v))
-		for _, entry := range v {
-			kv, ok := signalKVFromAny(entry)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, kv)
-		}
-		return out, true
-	case []map[string]any:
-		out := make([]SignalKV, 0, len(v))
-		for _, entry := range v {
-			kv, ok := signalKVFromMap(entry)
-			if !ok {
-				return nil, false
-			}
-			out = append(out, kv)
-		}
-		return out, true
-	default:
-		return nil, false
-	}
-}
-
-func signalKVFromAny(entry any) (SignalKV, bool) {
-	switch e := entry.(type) {
-	case SignalKV:
-		return e, true
-	case map[string]any:
-		return signalKVFromMap(e)
-	default:
-		return SignalKV{}, false
-	}
-}
-
-func signalKVFromMap(entry map[string]any) (SignalKV, bool) {
-	key, keyOK := entry["key"].(string)
-	value, valueOK := entry["value"].(string)
-	if !keyOK || !valueOK {
-		return SignalKV{}, false
-	}
-	return SignalKV{Key: key, Value: value}, true
-}
-
-// logSignalShape reports a provider whose signals entry did not match the
-// schema shape. DEBUG rather than WARN: the per-provider error counter is not
-// incremented for a malformed sub-field of an otherwise valid response, and a
-// provider stuck emitting the wrong shape would otherwise log on every
-// request.
-func logSignalShape(logger *slog.Logger, requestID, providerID, key string) {
-	if logger == nil {
-		return
-	}
-	logger.Debug("skipping signals entry with unexpected shape",
-		"request_id", requestID,
-		"provider", providerID,
-		"signal_key", key,
-	)
 }

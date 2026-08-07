@@ -258,7 +258,10 @@ receives, so they are called out here rather than only in code:
 - **`targeting_kvs` are concatenated, not overwritten, and keys are passed through
   verbatim.** Previously a later provider's list replaced an earlier one. Because the field
   is an array, two providers both returning `sport` now yield two entries rather than one
-  winning — nothing is lost and no key is renamed.
+  winning — nothing is lost and no key is renamed. Entries are forwarded exactly as sent,
+  including any that do not match the schema: that is the provider's defect to answer for,
+  and withholding targeting the publisher was sent is not something the spec asks the
+  router to do.
 
   The spec adds "targeting key-values from different providers are namespaced to prevent
   collisions", but pins no scheme — no separator, no format. The router does not invent one:
@@ -270,8 +273,10 @@ receives, so they are called out here rather than only in code:
   Tracked upstream at adcontextprotocol/adcp#6252.
 
 - **`segments` are concatenated, not overwritten.** Every provider's segments reach the
-  response, with exact duplicates dropped. Previously a later provider's list replaced an
-  earlier one, so publishers may now see segments that were silently being discarded.
+  response. Previously a later provider's list replaced an earlier one, so publishers may
+  now see segments that were silently being discarded. Repeats are **not** collapsed — the
+  spec says "combined into a single list", not deduplicated, so if two providers return the
+  same segment the publisher receives it twice and decides what that means.
 
 
 ## Environment Variables

@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"encoding/json"
 	"log/slog"
 	"testing"
@@ -55,16 +54,18 @@ func TestMergeSignals_SegmentsConcatenated(t *testing.T) {
 		"every provider's segments must survive the merge, in merge order")
 }
 
-// TestMergeSignals_SegmentsDeduplicated checks that a segment two providers
-// both return reaches the ad server once rather than twice.
-func TestMergeSignals_SegmentsDeduplicated(t *testing.T) {
+// TestMergeSignals_SegmentsNotDeduplicated pins that a segment two providers
+// both return appears twice. The spec says "combined into a single list", not
+// deduplicated — collapsing repeats would be the router deciding something the
+// publisher is entitled to decide.
+func TestMergeSignals_SegmentsNotDeduplicated(t *testing.T) {
 	merged := mergedSignalsFor(t, nil,
 		map[string]any{"segments": []any{"cooking", "shared"}},
 		map[string]any{"segments": []any{"shared", "sustainability"}},
 	)
 
 	wire := decodeSignals(t, merged)
-	assert.Equal(t, []any{"cooking", "shared", "sustainability"}, wire["segments"])
+	assert.Equal(t, []any{"cooking", "shared", "shared", "sustainability"}, wire["segments"])
 }
 
 // TestMergeSignals_TargetingKVsConcatenatedVerbatim pins the other half of step
@@ -93,26 +94,42 @@ func TestMergeSignals_TargetingKVsConcatenatedVerbatim(t *testing.T) {
 	}, wire["targeting_kvs"], "every provider's key-values survive, unrenamed")
 }
 
-// TestMergeSignals_MalformedEntrySkipped checks that a provider emitting the
-// wrong shape for a spec-defined key loses only that key, without corrupting
-// the merged list or dropping the other provider's contribution.
-func TestMergeSignals_MalformedEntrySkipped(t *testing.T) {
-	var buf bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+// TestMergeSignals_MalformedEntryForwardedNotDropped pins that a schema-invalid
+// entry is the provider's defect to answer for, not something the router
+// silently discards. Dropping it — or worse, dropping that provider's whole
+// list because one entry was bad — would mean the router deciding to withhold
+// targeting the publisher was sent, which the spec nowhere asks for.
+func TestMergeSignals_MalformedEntryForwardedNotDropped(t *testing.T) {
+	merged := mergedSignalsFor(t, nil,
+		map[string]any{"targeting_kvs": []any{
+			map[string]any{"key": "sport", "value": "nfl"},
+			map[string]any{"key": "broken"}, // missing `value`
+		}},
+		map[string]any{"targeting_kvs": []any{
+			map[string]any{"key": "genre", "value": "news"},
+		}},
+	)
 
-	merged := mergedSignalsFor(t, logger,
-		map[string]any{
-			// segments as a bare string, and a kv entry missing `value`.
-			"segments":      "cooking",
-			"targeting_kvs": []any{map[string]any{"key": "sport"}},
-		},
+	wire := decodeSignals(t, merged)
+	assert.Equal(t, []any{
+		map[string]any{"key": "sport", "value": "nfl"},
+		map[string]any{"key": "broken"},
+		map[string]any{"key": "genre", "value": "news"},
+	}, wire["targeting_kvs"], "one bad entry must not cost the provider its valid ones")
+}
+
+// TestMergeSignals_NonArrayCannotDisplaceOthers covers the one shape the merge
+// cannot concatenate. A provider sending `segments` as a bare string contributes
+// nothing, but must not replace what other providers sent — which is what the
+// previous map-copy merge did.
+func TestMergeSignals_NonArrayCannotDisplaceOthers(t *testing.T) {
+	merged := mergedSignalsFor(t, nil,
+		map[string]any{"segments": "cooking"},
 		map[string]any{"segments": []any{"sustainability"}},
 	)
 
 	wire := decodeSignals(t, merged)
 	assert.Equal(t, []any{"sustainability"}, wire["segments"])
-	assert.NotContains(t, wire, "targeting_kvs")
-	assert.Contains(t, buf.String(), "skipping signals entry with unexpected shape")
 }
 
 // TestMergeSignals_AbsentWhenNoProviderContributes keeps `signals` omitted
@@ -120,43 +137,4 @@ func TestMergeSignals_MalformedEntrySkipped(t *testing.T) {
 func TestMergeSignals_AbsentWhenNoProviderContributes(t *testing.T) {
 	merged := mergedSignalsFor(t, nil, nil, map[string]any{})
 	assert.Nil(t, merged)
-}
-
-// TestSignalStrings covers the shapes a segments list can arrive in: []any of
-// string off the wire, []string when assembled in Go.
-func TestSignalStrings(t *testing.T) {
-	got, ok := signalStrings([]any{"a", "b"})
-	require.True(t, ok)
-	assert.Equal(t, []string{"a", "b"}, got)
-
-	got, ok = signalStrings([]string{"a"})
-	require.True(t, ok)
-	assert.Equal(t, []string{"a"}, got)
-
-	_, ok = signalStrings([]any{"a", 7})
-	assert.False(t, ok, "a non-string element makes the whole list unusable")
-
-	_, ok = signalStrings("a")
-	assert.False(t, ok)
-}
-
-// TestSignalKVs covers the shapes a targeting_kvs list can arrive in.
-func TestSignalKVs(t *testing.T) {
-	got, ok := signalKVs([]any{map[string]any{"key": "k", "value": "v"}})
-	require.True(t, ok)
-	assert.Equal(t, []SignalKV{{Key: "k", Value: "v"}}, got)
-
-	got, ok = signalKVs([]SignalKV{{Key: "k", Value: "v"}})
-	require.True(t, ok)
-	assert.Equal(t, []SignalKV{{Key: "k", Value: "v"}}, got)
-
-	got, ok = signalKVs([]map[string]any{{"key": "k", "value": "v"}})
-	require.True(t, ok)
-	assert.Equal(t, []SignalKV{{Key: "k", Value: "v"}}, got)
-
-	_, ok = signalKVs([]any{map[string]any{"key": "k"}})
-	assert.False(t, ok, "value is required")
-
-	_, ok = signalKVs([]any{map[string]any{"key": 1, "value": "v"}})
-	assert.False(t, ok, "key must be a string")
 }

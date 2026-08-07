@@ -867,7 +867,7 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 			seenPkg[offer.PackageID] = res.providerID
 			merged.Offers = append(merged.Offers, offer)
 		}
-		signals.add(res.providerID, res.response.Signals, requestID, logger)
+		signals.add(res.response.Signals)
 	}
 
 	merged.Signals = signals.result()
