@@ -379,6 +379,7 @@ func (r *Router) effectiveTimeout(providerTimeout time.Duration) time.Duration {
 
 type contextResult struct {
 	providerID string
+	priority   int
 	response   *tmproto.ContextMatchResponse
 }
 
@@ -421,7 +422,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 					// don't touch cached.RequestID here — any assignment
 					// would be dead.
 					mu.Lock()
-					results = append(results, contextResult{providerID: p.ID, response: cached})
+					results = append(results, contextResult{providerID: p.ID, priority: p.Priority, response: cached})
 					mu.Unlock()
 					return
 				}
@@ -505,7 +506,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			}
 
 			mu.Lock()
-			results = append(results, contextResult{providerID: p.ID, response: &cmResp})
+			results = append(results, contextResult{providerID: p.ID, priority: p.Priority, response: &cmResp})
 			mu.Unlock()
 		})
 	}
@@ -690,10 +691,10 @@ var providerHopForbiddenFields = []string{
 //
 // Packages are provider-specific per docs/trusted-match/router-architecture.mdx
 // §"Response Aggregation": duplicate `package_id` across providers is a
-// configuration error. The router keeps the first response received for a
-// duplicated package and SHOULD log a warning, so we dedup by package_id and
-// emit a warning naming both providers when the same package_id appears in
-// more than one response.
+// configuration error. The router keeps the offer from the provider with the
+// lower numeric priority. Equal priorities are broken by response arrival
+// order. Every cross-provider duplicate emits a warning naming the providers
+// and the selected winner.
 func mergeContextResponses(requestID string, responses []contextResult, logger *slog.Logger) *tmproto.ContextMatchResponse {
 	merged := &tmproto.ContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
@@ -702,33 +703,58 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 	}
 
 	mergedSignals := make(map[string]any)
-	seenPkg := make(map[string]string) // package_id -> first provider that returned it
+	type offerWinner struct {
+		providerID string
+		priority   int
+		index      int
+	}
+	seenPkg := make(map[string]offerWinner)
 
 	for _, res := range responses {
 		if res.response == nil {
 			continue
 		}
 		for _, offer := range res.response.Offers {
-			if first, dup := seenPkg[offer.PackageID]; dup {
+			if current, dup := seenPkg[offer.PackageID]; dup {
 				if logger != nil {
-					if first == res.providerID {
+					if current.providerID == res.providerID {
 						logger.Warn("repeated package_id within a single provider's response — keeping first offer",
 							"request_id", requestID,
 							"package_id", offer.PackageID,
 							"provider", res.providerID,
 						)
 					} else {
-						logger.Warn("duplicate package_id across providers — keeping first response (configuration error)",
+						winnerID := current.providerID
+						winnerPriority := current.priority
+						if res.priority < current.priority {
+							winnerID = res.providerID
+							winnerPriority = res.priority
+						}
+						logger.Warn("duplicate package_id across providers — keeping higher-priority offer (configuration error)",
 							"request_id", requestID,
 							"package_id", offer.PackageID,
-							"first_provider", first,
+							"first_provider", current.providerID,
 							"duplicate_provider", res.providerID,
+							"winner_provider", winnerID,
+							"winner_priority", winnerPriority,
 						)
+					}
+				}
+				if current.providerID != res.providerID && res.priority < current.priority {
+					merged.Offers[current.index] = offer
+					seenPkg[offer.PackageID] = offerWinner{
+						providerID: res.providerID,
+						priority:   res.priority,
+						index:      current.index,
 					}
 				}
 				continue
 			}
-			seenPkg[offer.PackageID] = res.providerID
+			seenPkg[offer.PackageID] = offerWinner{
+				providerID: res.providerID,
+				priority:   res.priority,
+				index:      len(merged.Offers),
+			}
 			merged.Offers = append(merged.Offers, offer)
 		}
 		maps.Copy(mergedSignals, res.response.Signals)

@@ -63,14 +63,9 @@ type ProviderConfig struct {
 
 	Timeout time.Duration `json:"timeout"`
 
-	// Priority is documented in the schema (tmp/provider-registration.json) and
-	// the spec config sample. Accepted on the wire so spec-aligned configs
-	// parse, but has no effect on routing today: the upstream spec contradicts
-	// itself between provider-registration.json ("router keeps the offer from
-	// the higher-priority provider") and router-architecture.mdx (first-received
-	// wins on duplicate package_id) — tracked at
-	// https://github.com/adcontextprotocol/adcp/issues/5722. Wiring priority
-	// through dedup/conflict-resolution waits on that resolution.
+	// Priority resolves duplicate package_id offers returned by different
+	// Context Match providers. Lower values have higher priority; equal values
+	// are broken by response arrival order.
 	Priority int `json:"priority,omitempty"`
 }
 
@@ -138,10 +133,6 @@ func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) erro
 
 // ProviderConfigFromRegistration converts a schema-generated ProviderRegistration
 // (the wire format from discovery endpoints) into a router ProviderConfig.
-//
-// Note: Priority is not currently used by the router. It is captured on
-// ProviderRegistration in the spec for future use (merge conflict resolution,
-// adaptive timeout allocation) but has no effect on routing today.
 func ProviderConfigFromRegistration(r *tmproto.ProviderRegistration) ProviderConfig {
 	uidTypes := make([]string, len(r.UIDTypes))
 	for i, u := range r.UIDTypes {
@@ -157,6 +148,7 @@ func ProviderConfigFromRegistration(r *tmproto.ProviderRegistration) ProviderCon
 		UIDTypes:      uidTypes,
 		PropertyRIDs:  r.Properties, // Properties in the spec are registry RIDs (UUIDs), not slugs.
 		Timeout:       time.Duration(r.TimeoutMs) * time.Millisecond,
+		Priority:      r.Priority,
 		TmpxSlots:     append([]string(nil), r.TmpxSlots...),
 	}
 }

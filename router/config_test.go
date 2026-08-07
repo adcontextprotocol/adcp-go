@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/tmproto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,10 +157,22 @@ func TestEffectiveTimeout(t *testing.T) {
 	})
 }
 
+func TestProviderConfigFromRegistrationCarriesPriority(t *testing.T) {
+	registration := &tmproto.ProviderRegistration{
+		ProviderID: "priority-provider",
+		Endpoint:   "https://provider.example.com",
+		Priority:   7,
+	}
+
+	config := ProviderConfigFromRegistration(registration)
+
+	assert.Equal(t, 7, config.Priority)
+}
+
 func TestProviderSet_ActiveFiltersByStatus(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{
 		{ID: "active", Status: ProviderStatusActive, ContextMatch: true},
-		{ID: "empty-status", ContextMatch: true},         // defaults to active
+		{ID: "empty-status", ContextMatch: true}, // defaults to active
 		{ID: "inactive", Status: ProviderStatusInactive, ContextMatch: true},
 		{ID: "draining", Status: ProviderStatusDraining, ContextMatch: true},
 	})

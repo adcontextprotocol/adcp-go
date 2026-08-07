@@ -359,7 +359,7 @@ func TestMergeIdentityResponses_MixedEmission(t *testing.T) {
 
 // TestMergeContextResponses_DuplicatePackageID covers the dedup-warn path the
 // router-architecture spec calls out: same package_id from two providers MUST
-// keep the first response and SHOULD log a warning naming both providers.
+// keep the higher-priority offer and SHOULD log a warning naming the winner.
 func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
 	r1 := &tmproto.ContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "first"}},
@@ -372,18 +372,33 @@ func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
 
 	merged := mergeContextResponses("ctx-dup", []contextResult{
-		{providerID: "alpha", response: r1},
-		{providerID: "beta", response: r2},
+		{providerID: "alpha", priority: 20, response: r1},
+		{providerID: "beta", priority: 10, response: r2},
 	}, logger)
 
 	require.Len(t, merged.Offers, 2, "duplicate package_id should be deduped, unique one kept")
-	assert.Equal(t, "first", merged.Offers[0].Summary, "first provider's offer wins on dup")
+	assert.Equal(t, "second", merged.Offers[0].Summary, "lower numeric priority wins even when it responds later")
 
 	logText := logs.String()
 	assert.Contains(t, logText, "duplicate package_id across providers")
 	assert.Contains(t, logText, `"first_provider":"alpha"`)
 	assert.Contains(t, logText, `"duplicate_provider":"beta"`)
+	assert.Contains(t, logText, `"winner_provider":"beta"`)
+	assert.Contains(t, logText, `"winner_priority":10`)
 	assert.Contains(t, logText, `"package_id":"pkg-dup"`)
+}
+
+func TestMergeContextResponses_EqualPriorityKeepsFirstResponse(t *testing.T) {
+	first := &tmproto.ContextMatchResponse{Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "first"}}}
+	second := &tmproto.ContextMatchResponse{Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "second"}}}
+
+	merged := mergeContextResponses("ctx-priority-tie", []contextResult{
+		{providerID: "first", priority: 10, response: first},
+		{providerID: "second", priority: 10, response: second},
+	}, nil)
+
+	require.Len(t, merged.Offers, 1)
+	assert.Equal(t, "first", merged.Offers[0].Summary, "arrival order breaks equal-priority ties")
 }
 
 // TestMergeContextResponses_SingleProviderRepeat covers the within-response
