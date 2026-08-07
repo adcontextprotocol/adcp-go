@@ -212,18 +212,13 @@ The router signs every outbound `/tmp/context` and `/tmp/identity` request per t
 
 - Router: `TMP_ROUTER_SIGNING_KID`, `TMP_ROUTER_SIGNING_KEY_PATH` (PEM PKCS#8 Ed25519), `TMP_ROUTER_SIGNING_PROPERTY_RIDS` (comma-separated RIDs the router is authorized to sign for). Set `TMP_ROUTER_SIGNING_DISABLED=true` to opt out (dev only).
 
-- Router inbound authentication: the spec requires the router to authenticate publisher requests *before* it signs and fans them out, so a compromised
-  publisher-side component cannot launder unauthenticated requests through the router's signature. Configure a shared secret
-  (`TMP_ROUTER_AUTH_API_KEYS`, presented as `Authorization: Bearer <key>`), mTLS (`TMP_ROUTER_AUTH_CLIENT_CA`), or both. **When both are configured, both are required on every request** — they are
-  checked in series (client certificate first, then key), not as alternatives. mTLS requires the router to terminate TLS, so `TMP_ROUTER_AUTH_CLIENT_CA`
-  must be paired with `TMP_ROUTER_TLS_{CERT,KEY}`; startup rejects the combination otherwise. The router fails to start when neither mechanism is set
-  unless `TMP_ROUTER_AUTH_DISABLED=true` declares that a mesh or ingress enforces it upstream — that opt-out also disables mTLS, so a leftover
-  `client_ca_path` will not keep demanding client certificates.
+- Publisher→router authentication: §Signature verification requires it — "The router MUST authenticate incoming requests from the publisher before signing
+  and fanning out … but MUST be enforced" — and in the same breath places the mechanism "outside the scope of TMP signing", listing mTLS and API keys as
+  deployment choices. It appears in neither router conformance level. The router binary therefore implements no mechanism of its own: **deployments MUST
+  enforce publisher authentication upstream** (service-mesh mTLS, ingress auth, or equivalent) before traffic reaches `POST /tmp/context` and
+  `POST /tmp/identity`. Without it, anything that can reach those endpoints gets the router's signature applied to its requests on fan-out. Tracked at
+  adcontextprotocol/adcp#6266.
 
-  Authentication covers exactly the two spec-mandated match endpoints, `POST /tmp/context` and `POST /tmp/identity`. `GET /registry/snapshot` stays open
-  because providers fetch it to resolve the router's signing keys. The operator endpoints are *not* behind this credential — a publisher key authorizes
-  asking for a match, and reusing it for operator access would let any authenticated publisher enumerate every provider's configuration. Use
-  `TMP_ROUTER_ADMIN_ADDR` for those instead (see below). Rejections increment `tmp_router_auth_rejected_total{reason}`.
 - Reference agents: `--registry-url` (default off — accepts unsigned), `--require-signature`, `--own-endpoint-url`. Env equivalents: `TMP_{IDENTITY,CONTEXT}_REGISTRY_URL`, `TMP_{IDENTITY,CONTEXT}_REQUIRE_SIGNATURE`, `TMP_{IDENTITY,CONTEXT}_ENDPOINT_URL`.
 
 ## Listeners
@@ -300,10 +295,6 @@ receives, so they are called out here rather than only in code:
 | `TMP_ROUTER_SIGNING_KEY_PATH` | Router | PEM PKCS#8 Ed25519 private key path | (none) |
 | `TMP_ROUTER_SIGNING_PROPERTY_RIDS` | Router | Comma-separated property RIDs the router signs for | (none) |
 | `TMP_ROUTER_SIGNING_DISABLED` | Router | Disable request signing (dev only — fail-closed otherwise) | `false` |
-| `TMP_ROUTER_AUTH_API_KEYS` | Router | Comma-separated shared secrets accepted on inbound publisher requests, as `Authorization: Bearer <key>` or the key header. Multiple values allow rotation. Minimum 32 characters each. | (none) |
-| `TMP_ROUTER_AUTH_KEY_HEADER` | Router | Additional header to accept the shared secret on, for ingresses that consume `Authorization`. Unset means only `Authorization: Bearer` is accepted; the router claims no header in the spec-owned `X-AdCP-*` namespace. | (none) |
-| `TMP_ROUTER_AUTH_CLIENT_CA` | Router | PEM bundle of client-certificate CAs. Requires a verified client cert on every inbound request (mTLS). Requires `TMP_ROUTER_TLS_{CERT,KEY}` — the trust anchor lives on the router's own listener. | (none) |
-| `TMP_ROUTER_AUTH_DISABLED` | Router | Disable inbound publisher authentication (fail-closed otherwise). Use only when a mesh or ingress enforces it upstream. | `false` |
 | `TMP_CONTEXT_ADDR` | Context Agent | Listen address | `:8081` |
 | `TMP_CONTEXT_REGISTRY` | Context Agent (reference) | Path to local registry snapshot | (none) |
 | `TMP_CONTEXT_REGISTRY_URL` | Context Agent (reference) | URL of router's `/registry/snapshot` for signing keys | (none) |

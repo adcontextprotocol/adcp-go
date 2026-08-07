@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -117,7 +116,6 @@ func main() {
 	reg.DefineCounter("tmp_offers_total", "Total offers returned across all providers.", nil)
 	reg.DefineCounter("tmp_context_cache_hits_total", "Context Match cache hits by provider.", []string{"provider"})
 	reg.DefineCounter("tmp_context_cache_misses_total", "Context Match cache misses by provider.", []string{"provider"})
-	reg.DefineCounter("tmp_router_auth_rejected_total", "Inbound publisher requests rejected by authentication.", []string{"reason"})
 
 	// Wire fan-out metrics now that registry exists.
 	fanOutMetrics.reg = reg
@@ -137,23 +135,8 @@ func main() {
 		disc.Start()
 	}
 
-	// Inbound publisher authentication (spec §Signature verification). nil
-	// when the operator opted out via auth.disabled, in which case Middleware
-	// is a pass-through.
-	inboundAuth, authErr := router.NewInboundAuth(cfg.Auth,
-		router.WithAuthMetrics(&authMetricsAdapter{reg: reg}),
-		router.WithAuthLogger(slog.Default()),
-	)
-	if authErr != nil {
-		slog.Error("invalid inbound authentication configuration", "error", authErr)
-		os.Exit(1)
-	}
-	if inboundAuth == nil {
-		slog.Warn("inbound publisher authentication is disabled — the spec requires the router to authenticate publisher requests before signing and fanning out; enforce it upstream (mesh mTLS, ingress auth) or set TMP_ROUTER_AUTH_API_KEYS")
-	}
-
 	mux := http.NewServeMux()
-	mux.Handle("POST /tmp/context", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	mux.HandleFunc("POST /tmp/context", func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "context")
 		r.HandleContextMatch(w, req)
@@ -161,8 +144,8 @@ func main() {
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "context")
 		reg.HistogramObserve("tmp_context_match_duration_ms", float64(elapsed.Milliseconds()))
 		slog.Debug("context match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
-	})))
-	mux.Handle("POST /tmp/identity", inboundAuth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	})
+	mux.HandleFunc("POST /tmp/identity", func(w http.ResponseWriter, req *http.Request) {
 		start := time.Now()
 		reg.CounterInc("router_requests_total", "identity")
 		r.HandleIdentityMatch(w, req)
@@ -170,10 +153,9 @@ func main() {
 		reg.HistogramObserve("router_request_duration_seconds", elapsed.Seconds(), "identity")
 		reg.HistogramObserve("tmp_identity_match_duration_ms", float64(elapsed.Milliseconds()))
 		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
-	})))
-	// Unauthenticated by design: providers fetch the snapshot to resolve the
-	// router's signing keys, so requiring a publisher credential here would
-	// break signature verification on the fan-out.
+	})
+	// Providers fetch this to resolve the router's signing keys, so it has to
+	// stay reachable from the protocol listener.
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
 	// /healthz is the route the spec advertises; /health is kept for back-compat
 	// with existing probes that pre-date the spec wording. Both stay on the
@@ -199,11 +181,6 @@ func main() {
 	// protocol listener. When it is unset they stay on the main mux so existing
 	// deployments and scrapers keep working; operators must then restrict them
 	// at the network layer.
-	//
-	// Deliberately NOT behind inbound publisher authentication: that credential
-	// authorizes a publisher to ask for a match, and using it here would let any
-	// authenticated publisher enumerate every other provider's configuration.
-	// Operator access is a different trust domain.
 	operatorMux := mux
 	if cfg.AdminEnabled() {
 		operatorMux = http.NewServeMux()
@@ -223,12 +200,6 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
 	}))
-
-	clientCAs, caErr := cfg.Auth.ClientCAPool()
-	if caErr != nil {
-		slog.Error("invalid client CA configuration", "error", caErr)
-		os.Exit(1)
-	}
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -299,7 +270,7 @@ func main() {
 		"tls", cfg.TLS.Enabled(),
 		"version", version,
 	)
-	serveErr := listenAndServe(srv, cfg.TLS, clientCAs)
+	serveErr := listenAndServe(srv, cfg.TLS)
 	if serveErr != nil && serveErr != http.ErrServerClosed {
 		slog.Error("listen error", "error", serveErr)
 		os.Exit(1)
@@ -317,11 +288,7 @@ func main() {
 // it for a binary whose stated purpose is public HTTPS. Leaving TLSNextProto
 // nil lets ListenAndServeTLS auto-configure HTTP/2, so the publisher→router
 // hop negotiates h2 via ALPN (spec §Transport).
-//
-// clientCAs, when non-nil, makes a verified client certificate mandatory —
-// the mTLS half of publisher→router authentication. ServerConfig.Validate has
-// already established that TLS is terminated here whenever clientCAs is set.
-func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig, clientCAs *x509.CertPool) error {
+func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
 	if tlsCfg.Enabled() {
 		if srv.TLSConfig == nil {
 			srv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
@@ -330,10 +297,6 @@ func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig, clientCAs *x509.C
 				"previous", srv.TLSConfig.MinVersion,
 			)
 			srv.TLSConfig.MinVersion = tls.VersionTLS12
-		}
-		if clientCAs != nil {
-			srv.TLSConfig.ClientCAs = clientCAs
-			srv.TLSConfig.ClientAuth = tls.RequireAndVerifyClientCert
 		}
 		return srv.ListenAndServeTLS(tlsCfg.CertPath, tlsCfg.KeyPath)
 	}
@@ -389,22 +352,6 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 	// Admin listener for the operator endpoints (/metrics, /providers).
 	if v := getenv("TMP_ROUTER_ADMIN_ADDR"); v != "" {
 		cfg.AdminAddr = v
-	}
-
-	// Inbound authentication — env vars override JSON. Leaving all three
-	// unset makes ServerConfig.Validate fail closed; TMP_ROUTER_AUTH_DISABLED
-	// is the explicit opt-out for deployments that authenticate upstream.
-	if v := getenv("TMP_ROUTER_AUTH_DISABLED"); v == "1" || strings.EqualFold(v, "true") {
-		cfg.Auth.Disabled = true
-	}
-	if v := getenv("TMP_ROUTER_AUTH_API_KEYS"); v != "" {
-		cfg.Auth.APIKeys = splitAndTrim(v)
-	}
-	if v := getenv("TMP_ROUTER_AUTH_KEY_HEADER"); v != "" {
-		cfg.Auth.KeyHeader = v
-	}
-	if v := getenv("TMP_ROUTER_AUTH_CLIENT_CA"); v != "" {
-		cfg.Auth.ClientCAPath = v
 	}
 
 	// Signing config — env vars override JSON, no flags exposed today.
@@ -595,19 +542,6 @@ func (a *fanOutMetricsAdapter) IncProviderError(providerID string) {
 func (a *fanOutMetricsAdapter) AddOffers(n int) {
 	if a.reg != nil {
 		a.reg.CounterAdd("tmp_offers_total", int64(n))
-	}
-}
-
-// authMetricsAdapter bridges router.AuthMetrics to prommetrics. The reason
-// label is drawn from the router.AuthReject* constants, so cardinality is
-// fixed regardless of caller behavior.
-type authMetricsAdapter struct {
-	reg *prommetrics.Registry
-}
-
-func (a *authMetricsAdapter) IncAuthRejected(reason string) {
-	if a.reg != nil {
-		a.reg.CounterInc("tmp_router_auth_rejected_total", reason)
 	}
 }
 

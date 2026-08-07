@@ -28,7 +28,6 @@ type ServerConfig struct {
 	Discovery       DiscoveryConfig   `json:"discovery"`
 	Shutdown        ShutdownConfig    `json:"shutdown"`
 	Signing         SigningConfig     `json:"signing"`
-	Auth            AuthConfig        `json:"auth"`
 	TLS             TLSConfig         `json:"tls"`
 	Registry        RegistryConfig    `json:"registry"`
 	Cache           CacheConfig       `json:"cache"`
@@ -40,20 +39,10 @@ func (c *ServerConfig) AdminEnabled() bool { return strings.TrimSpace(c.AdminAdd
 
 // Validate checks the config's cross-field invariants. Call this after all
 // override layers (flags, env, file) have been applied — individual sections
-// cannot see each other, and the mTLS rule below spans two of them.
+// cannot see each other.
 func (c *ServerConfig) Validate() error {
 	if err := c.TLS.Validate(); err != nil {
 		return err
-	}
-	if err := c.Auth.Validate(); err != nil {
-		return err
-	}
-	// mTLS needs the router to terminate TLS: the client-cert trust anchor is
-	// installed on the router's own listener. With TLS terminated upstream the
-	// router never sees a peer certificate, so every request would be rejected
-	// for a missing client cert — fail at startup instead.
-	if c.Auth.ClientCAPath != "" && !c.TLS.Enabled() {
-		return fmt.Errorf("auth: client_ca_path requires the router to terminate TLS — set tls.cert and tls.key, or authenticate with auth.api_keys instead")
 	}
 	// Sharing the address would silently collapse the split the admin listener
 	// exists to create, putting /providers back on the public port.
