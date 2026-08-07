@@ -14,7 +14,13 @@ import (
 
 // ServerConfig is the JSON/YAML config file format for the router.
 type ServerConfig struct {
-	Addr            string            `json:"addr"`
+	Addr string `json:"addr"`
+	// AdminAddr, when set, moves the operator endpoints (/metrics, /providers)
+	// onto a second listener. Empty keeps them on the main listener, which is
+	// the pre-existing behavior. Mirrors ADMIN_PORT on the identity and context
+	// agents; /healthz stays on the protocol listener either way because that
+	// is the address load balancers probe.
+	AdminAddr       string            `json:"admin_addr"`
 	LatencyBudgetMs int               `json:"latency_budget_ms"`
 	Providers       []ProviderConfig  `json:"providers"`
 	Health          HealthConfig      `json:"health"`
@@ -25,6 +31,25 @@ type ServerConfig struct {
 	TLS             TLSConfig         `json:"tls"`
 	Registry        RegistryConfig    `json:"registry"`
 	Cache           CacheConfig       `json:"cache"`
+}
+
+// AdminEnabled reports whether the operator endpoints should be served on a
+// separate listener.
+func (c *ServerConfig) AdminEnabled() bool { return strings.TrimSpace(c.AdminAddr) != "" }
+
+// Validate checks the config's cross-field invariants. Call this after all
+// override layers (flags, env, file) have been applied — individual sections
+// cannot see each other.
+func (c *ServerConfig) Validate() error {
+	if err := c.TLS.Validate(); err != nil {
+		return err
+	}
+	// Sharing the address would silently collapse the split the admin listener
+	// exists to create, putting /providers back on the public port.
+	if c.AdminEnabled() && strings.TrimSpace(c.AdminAddr) == strings.TrimSpace(c.Addr) {
+		return fmt.Errorf("admin_addr (%q) must differ from addr — the operator endpoints would otherwise stay on the public listener", c.AdminAddr)
+	}
+	return nil
 }
 
 // CacheConfig controls the per-provider Context Match response cache
@@ -142,8 +167,8 @@ func (c *ServerConfig) UnmarshalJSON(data []byte) error {
 	type serverConfigAlias ServerConfig
 	aux := struct {
 		*serverConfigAlias
-		Listen                  string `json:"listen"`
-		HealthCheckIntervalSec  *int   `json:"health_check_interval_sec"`
+		Listen                 string `json:"listen"`
+		HealthCheckIntervalSec *int   `json:"health_check_interval_sec"`
 	}{serverConfigAlias: (*serverConfigAlias)(c)}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -181,8 +206,8 @@ func (c *ServerConfig) LatencyBudget() time.Duration {
 
 // HealthConfig controls circuit breaker behavior.
 type HealthConfig struct {
-	FailureThreshold int    `json:"failure_threshold"`
-	CooldownSeconds  int    `json:"cooldown_seconds"`
+	FailureThreshold int `json:"failure_threshold"`
+	CooldownSeconds  int `json:"cooldown_seconds"`
 }
 
 // HealthCheckConfig controls active provider health polling.

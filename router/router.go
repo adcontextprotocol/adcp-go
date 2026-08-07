@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net/http"
 	"sort"
 	"sync"
@@ -48,6 +47,43 @@ func contextCountry(geo map[string]any) string {
 	}
 	country, _ := geo["country"].(string)
 	return country
+}
+
+// serve_window_sec bounds from identity-match-response.json. The field is
+// required on the router→publisher hop, so the merged value MUST land inside
+// this range: emitting 0 when the fan-out produced no response — or passing an
+// out-of-range provider value straight through — yields a schema-invalid
+// response.
+//
+// Duplicated deliberately: targeting/identityagent/handler.go carries the same
+// pair. Both packages depend on tmproto, so tmproto is the obvious shared home —
+// but consumers pin a *released* tmproto (v0.1.0 today), so adding the constants
+// there means neither module can reference them until tmproto is tagged and both
+// go.mod files are bumped. Two copies of a schema bound beat a release-ordering
+// dependency on every future change to either side.
+//
+// Drift risk is real and unguarded: the bound originates in
+// identity-match-response.json and nothing checks the Go copies against it, so a
+// schema bundle that widens the range leaves both copies silently clamping to the
+// old one. Grep for MaxServeWindowSec / maxServeWindowSec when bumping
+// adcp/schemas/VERSION.
+const (
+	MinServeWindowSec = 1
+	MaxServeWindowSec = 300
+)
+
+// clampServeWindowSec constrains a merged serve window to the schema's range.
+// The floor also carries the right semantics for an empty fan-out: the
+// publisher re-queries on the next opportunity rather than caching a
+// no-eligibility answer.
+func clampServeWindowSec(n int) int {
+	if n < MinServeWindowSec {
+		return MinServeWindowSec
+	}
+	if n > MaxServeWindowSec {
+		return MaxServeWindowSec
+	}
+	return n
 }
 
 // MaxRequestBodyBytes caps an inbound request body the router reads
@@ -187,6 +223,17 @@ func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderH
 			MaxIdleConns:        100,
 			MaxIdleConnsPerHost: maxPerHost,
 			IdleConnTimeout:     90 * time.Second,
+			// Spec §Transport mandates JSON over HTTP/2 for provider
+			// calls. net/http disables HTTP/2 whenever DialContext is
+			// set, so ForceAttemptHTTP2 is required to get ALPN
+			// negotiation back on the https:// fan-out. The dialer still
+			// performs the SSRF/rebinding check — Transport uses it for
+			// the TCP connection and layers TLS on top itself, so SNI
+			// and certificate verification still use the hostname.
+			// Cleartext http:// endpoints stay HTTP/1.1: net/http has no
+			// h2c support, and provider endpoints MUST be HTTPS in
+			// production (provider-registration.json §endpoint).
+			ForceAttemptHTTP2: true,
 		}
 		if !r.skipEndpointValidation {
 			transport.DialContext = safeDialContext
@@ -476,6 +523,9 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 				ext.ObserveProviderDuration(p.ID, float64(elapsed.Milliseconds()))
 			}
 			if err != nil {
+				if !parentCancelled {
+					r.logProviderCallFailure(p.ID, cmReq.RequestID, err)
+				}
 				if r.health != nil {
 					switch {
 					case timeout:
@@ -582,6 +632,9 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 				ext.ObserveProviderDuration(p.ID, float64(elapsed.Milliseconds()))
 			}
 			if err != nil {
+				if !parentCancelled {
+					r.logProviderCallFailure(p.ID, imReq.RequestID, err)
+				}
 				if r.health != nil {
 					switch {
 					case timeout:
@@ -619,6 +672,86 @@ func (r *Router) fanOutIdentity(ctx context.Context, providers []ProviderConfig,
 
 func (r *Router) callProvider(ctx context.Context, endpoint string, body []byte, headers map[string]string, target any) error {
 	return r.callProviderStrict(ctx, endpoint, body, headers, target, nil)
+}
+
+// providerAppError reports that a provider answered HTTP 200 with a TMP error
+// envelope (`{"type": "error", ...}`). Spec §HTTP Status Codes makes this the
+// normal shape for an application-level failure, and §Error Response says the
+// router SHOULD exclude such providers from the merged response — so this is
+// surfaced as a call failure rather than decoded as a successful empty result.
+type providerAppError struct {
+	Code    tmproto.ErrorCode
+	Message string
+}
+
+func (e *providerAppError) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("provider returned TMP error %q", e.Code)
+	}
+	return fmt.Sprintf("provider returned TMP error %q: %s", e.Code, e.Message)
+}
+
+// logProviderCallFailure records why a fan-out leg produced no result. A TMP
+// error envelope is logged at WARN with the provider's own code — that is an
+// actionable provider-side fault the operator needs to see — while transport
+// and decode failures stay at DEBUG because the per-provider error counter is
+// the primary signal for those.
+func (r *Router) logProviderCallFailure(providerID, requestID string, err error) {
+	var appErr *providerAppError
+	if errors.As(err, &appErr) {
+		// Only the code, which is a bounded enum. The provider's free-text
+		// message is untrusted input and logging it would need sanitizing that
+		// this change has no reason to introduce.
+		r.logger.Warn("provider returned TMP error — excluding from merged response",
+			"provider", providerID,
+			"request_id", requestID,
+			"code", appErr.Code,
+		)
+		return
+	}
+	r.logger.Debug("provider call failed", "provider", providerID, "request_id", requestID, "error", err)
+}
+
+// responseMessageTypes reads the `type` discriminator off an already-decoded
+// provider response and reports the type that message shape must carry.
+// Implemented as a type switch rather than a second JSON pass so the check
+// costs nothing on the fan-out hot path. An unrecognized target yields two
+// empty strings and the caller skips the check.
+func responseMessageTypes(target any) (got, expected string) {
+	switch t := target.(type) {
+	case *tmproto.ContextMatchResponse:
+		return t.Type, tmproto.TypeContextMatchResponse
+	case *tmproto.ProviderIdentityMatchResponse:
+		return t.Type, tmproto.TypeIdentityMatchResponse
+	default:
+		return "", ""
+	}
+}
+
+// checkResponseType rejects a provider response whose `type` discriminator
+// declares something other than the message type the target shape expects. A
+// TMP error envelope is reported as *providerAppError carrying the provider's
+// code and message so the fan-out can log the real reason.
+//
+// An ABSENT `type` is tolerated: the field is schema-required on responses,
+// but the spec places no MUST on the router to police it, and a lenient
+// provider that omits it still returns a well-formed body. What must not
+// happen — and what this closes — is an error envelope being merged as a
+// successful empty result, and the error envelope always carries
+// `type: "error"`.
+func checkResponseType(target any, respBody []byte) error {
+	got, expected := responseMessageTypes(target)
+	if got == "" || got == expected {
+		return nil
+	}
+	if got == tmproto.TypeError {
+		var errResp tmproto.ErrorResponse
+		if err := json.Unmarshal(respBody, &errResp); err == nil {
+			return &providerAppError{Code: errResp.Code, Message: errResp.Message}
+		}
+		return &providerAppError{}
+	}
+	return fmt.Errorf("provider response has type %q, expected %q", got, expected)
 }
 
 // callProviderStrict issues the provider call and rejects the response
@@ -668,7 +801,7 @@ func (r *Router) callProviderStrict(ctx context.Context, endpoint string, body [
 	if err := json.Unmarshal(respBody, target); err != nil {
 		return fmt.Errorf("decode provider response: %w", err)
 	}
-	return nil
+	return checkResponseType(target, respBody)
 }
 
 // providerHopForbiddenFields lists the top-level JSON keys that MUST NOT
@@ -694,6 +827,9 @@ var providerHopForbiddenFields = []string{
 // duplicated package and SHOULD log a warning, so we dedup by package_id and
 // emit a warning naming both providers when the same package_id appears in
 // more than one response.
+//
+// Enrichment signals are concatenated per the same section — see signalsMerger
+// for the per-key behavior.
 func mergeContextResponses(requestID string, responses []contextResult, logger *slog.Logger) *tmproto.ContextMatchResponse {
 	merged := &tmproto.ContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
@@ -701,7 +837,7 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 		Offers:    []tmproto.Offer{},
 	}
 
-	mergedSignals := make(map[string]any)
+	signals := newSignalsMerger()
 	seenPkg := make(map[string]string) // package_id -> first provider that returned it
 
 	for _, res := range responses {
@@ -731,12 +867,10 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 			seenPkg[offer.PackageID] = res.providerID
 			merged.Offers = append(merged.Offers, offer)
 		}
-		maps.Copy(mergedSignals, res.response.Signals)
+		signals.add(res.response.Signals)
 	}
 
-	if len(mergedSignals) > 0 {
-		merged.Signals = mergedSignals
-	}
+	merged.Signals = signals.result()
 
 	return merged
 }
@@ -751,6 +885,11 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 // same `package_id` in multiple providers' eligible lists — we log a warning
 // naming all reporting providers and emit the union (the spec's "must be in
 // both" rule collapses to union when only yes-responses are observable).
+//
+// The merged `serve_window_sec` is clamped to the schema's [1, 300] range —
+// see clampServeWindowSec. This covers the empty fan-out (no provider
+// responded, so there is no minimum to take) and a provider that reports a
+// value outside the range.
 //
 // TMPX collection per the spec §"TMPX collection":
 //   - Each agent's TmpxChunks[] is folded into tmpx_providers[provider_id]
@@ -903,15 +1042,11 @@ func mergeIdentityResponses(requestID string, results []identityResult, logger *
 	}
 	sort.Strings(eligible)
 
-	if minServeWindowSec < 0 {
-		minServeWindowSec = 0
-	}
-
 	merged := &tmproto.IdentityMatchResponse{
 		Type:               tmproto.TypeIdentityMatchResponse,
 		RequestID:          requestID,
 		EligiblePackageIDs: eligible,
-		ServeWindowSec:     minServeWindowSec,
+		ServeWindowSec:     clampServeWindowSec(minServeWindowSec),
 		Tmpx:               legacyTmpx,
 	}
 	if len(tmpxProviders) > 0 {

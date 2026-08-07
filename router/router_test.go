@@ -128,7 +128,11 @@ func TestMergeContextResponses(t *testing.T) {
 	}, nil)
 
 	assert.Len(t, merged.Offers, 3)
-	assert.NotNil(t, merged.Signals)
+	require.NotNil(t, merged.Signals)
+	// Both providers' segments survive — see signals_test.go for the full
+	// per-key merge rules.
+	assert.Equal(t, []any{"cooking", "sustainability"}, merged.Signals["segments"])
+	assert.Equal(t, "pkg-1", merged.Signals["adcp_pkg"])
 }
 
 func TestMergeIdentityResponses(t *testing.T) {

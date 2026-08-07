@@ -209,6 +209,18 @@ func TestServeWindowSecondsClampsToSchemaMax(t *testing.T) {
 	assert.Equal(t, 300, serveWindowSeconds(10*time.Minute))
 }
 
+// TestServeWindowSecondsClampsToSchemaMin covers the other end of the schema
+// range. serve_window_sec is a required field bounded at minimum 1, so a
+// sub-second TTL must not truncate to 0 — the router takes the minimum across
+// its fan-out, so one agent emitting 0 drags the publisher-facing response
+// below the floor too. Config.Validate rejects sub-second RESPONSE_TTL, and
+// this is the second line of defense for a handler constructed directly.
+func TestServeWindowSecondsClampsToSchemaMin(t *testing.T) {
+	assert.Equal(t, 1, serveWindowSeconds(500*time.Millisecond))
+	assert.Equal(t, 1, serveWindowSeconds(0))
+	assert.Equal(t, 1, serveWindowSeconds(1*time.Second))
+}
+
 // TestBuildServiceRequest_NoCanonicalizer_PassesThroughUnchanged covers the
 // legacy code path: when the handler has neither a canonicalizer nor a
 // sealer, the request flows to service.Evaluate exactly as received — no

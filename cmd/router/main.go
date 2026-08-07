@@ -154,10 +154,12 @@ func main() {
 		reg.HistogramObserve("tmp_identity_match_duration_ms", float64(elapsed.Milliseconds()))
 		slog.Debug("identity match", "request_id", req.Header.Get("X-Request-ID"), "latency_ms", elapsed.Milliseconds())
 	})
+	// Providers fetch this to resolve the router's signing keys, so it has to
+	// stay reachable from the protocol listener.
 	mux.HandleFunc("GET /registry/snapshot", registry.HandleSnapshot)
-	mux.Handle("GET /metrics", reg.Handler())
 	// /healthz is the route the spec advertises; /health is kept for back-compat
-	// with existing probes that pre-date the spec wording.
+	// with existing probes that pre-date the spec wording. Both stay on the
+	// protocol listener — that is the address load balancers probe.
 	healthHandler := func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
@@ -167,7 +169,24 @@ func main() {
 	}
 	mux.HandleFunc("GET /healthz", healthHandler)
 	mux.HandleFunc("GET /health", healthHandler)
-	mux.HandleFunc("GET /providers", func(w http.ResponseWriter, _ *http.Request) {
+
+	// Operator endpoints. /metrics is spec-named but the spec does not pin it to
+	// a listener, and /providers is not in the spec at all — it is an adcp-go
+	// extra that returns the full provider registration set (endpoints,
+	// audience keys, package allowlists) plus per-provider health. Neither
+	// belongs on a publicly reachable address.
+	//
+	// When admin_addr is set they move to a second listener, mirroring how the
+	// identity and context agents split ADMIN_PORT while keeping /health on the
+	// protocol listener. When it is unset they stay on the main mux so existing
+	// deployments and scrapers keep working; operators must then restrict them
+	// at the network layer.
+	operatorMux := mux
+	if cfg.AdminEnabled() {
+		operatorMux = http.NewServeMux()
+	}
+	operatorMux.Handle("GET /metrics", reg.Handler())
+	operatorMux.Handle("GET /providers", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		type providerInfo struct {
 			router.ProviderConfig
 			Health router.ProviderStatsSnapshot `json:"health"`
@@ -180,7 +199,7 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
-	})
+	}))
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -188,6 +207,29 @@ func main() {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  120 * time.Second,
+	}
+
+	// Admin listener, when configured. Always cleartext HTTP and never given the
+	// client-CA pool: it is meant to be bound to a private address or a
+	// localhost-only sidecar port, not exposed with the publisher-facing TLS
+	// material.
+	var adminSrv *http.Server
+	if cfg.AdminEnabled() {
+		adminSrv = &http.Server{
+			Addr:         cfg.AdminAddr,
+			Handler:      operatorMux,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  120 * time.Second,
+		}
+		go func() {
+			slog.Info("admin listener starting", "addr", cfg.AdminAddr, "endpoints", "/metrics, /providers")
+			if err := adminSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("admin listen error", "error", err)
+			}
+		}()
+	} else {
+		slog.Warn("/metrics and /providers are on the public listener — set TMP_ROUTER_ADMIN_ADDR to move them to a private one, or restrict them at the network layer; /providers discloses provider endpoints and audience keys")
 	}
 
 	// Graceful shutdown
@@ -211,6 +253,13 @@ func main() {
 		}
 		if err := srv.Shutdown(ctx); err != nil {
 			slog.Error("shutdown error", "error", err)
+		}
+		// Admin last: keeping /metrics scrapeable while the protocol listener
+		// drains means the shutdown itself stays observable.
+		if adminSrv != nil {
+			if err := adminSrv.Shutdown(ctx); err != nil {
+				slog.Error("admin shutdown error", "error", err)
+			}
 		}
 		close(done)
 	}()
@@ -236,7 +285,9 @@ func main() {
 //
 // When HTTPS is served, TLS 1.2 is pinned as the floor explicitly so future
 // Go crypto/tls default changes or GODEBUG overrides cannot silently lower
-// it for a binary whose stated purpose is public HTTPS.
+// it for a binary whose stated purpose is public HTTPS. Leaving TLSNextProto
+// nil lets ListenAndServeTLS auto-configure HTTP/2, so the publisher→router
+// hop negotiates h2 via ALPN (spec §Transport).
 func listenAndServe(srv *http.Server, tlsCfg router.TLSConfig) error {
 	if tlsCfg.Enabled() {
 		if srv.TLSConfig == nil {
@@ -277,8 +328,8 @@ func loadConfig(configFile, addr string) *router.ServerConfig {
 
 	applyEnvOverrides(cfg, addr, os.Getenv)
 
-	if err := cfg.TLS.Validate(); err != nil {
-		slog.Error("invalid TLS configuration", "error", err)
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid router configuration", "error", err)
 		os.Exit(1)
 	}
 
@@ -297,6 +348,10 @@ func applyEnvOverrides(cfg *router.ServerConfig, addrFlag string, getenv func(st
 		cfg.Addr = addrFlag
 	} else if v := getenv("TMP_ROUTER_ADDR"); v != "" {
 		cfg.Addr = v
+	}
+	// Admin listener for the operator endpoints (/metrics, /providers).
+	if v := getenv("TMP_ROUTER_ADMIN_ADDR"); v != "" {
+		cfg.AdminAddr = v
 	}
 
 	// Signing config — env vars override JSON, no flags exposed today.
