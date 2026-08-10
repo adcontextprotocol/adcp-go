@@ -26,6 +26,8 @@ on:
     branches: [main]
     paths:
       - cmd/context-agent/**
+      # Resolved through a local `replace`, so edits here change the image.
+      - registry/**
       - targeting/**
       - tmproto/**
       - go.mod

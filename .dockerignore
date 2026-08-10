@@ -1,0 +1,59 @@
+# Docker build-context exclusions.
+#
+# Every image here builds with the repo root as its context — cmd/*/Dockerfile
+# through the image workflows, bench/*/Dockerfile through the perf compose
+# files (context: ../..). This list applies to all of them, so it names only
+# paths no image build reads. No package uses go:embed today, so excluding
+# non-Go files cannot change what gets compiled in — a future embed of a path
+# excluded here would fail its image build, so revisit this list alongside one.
+#
+# BuildKit transfers only the paths a COPY pattern reaches, so the entries that
+# earn their keep are the ones sitting inside a copied directory. The inert
+# trees below still matter when the context is uploaded wholesale — a plain
+# `docker build` with BuildKit disabled.
+
+# Host-architecture binaries left by a local `go build`. All are gitignored, but
+# .gitignore has no bearing on the build context. The three service binaries sit
+# inside copied directories, so without these entries they ride along into the
+# build stage and invalidate its COPY layer on every rebuild — ~70 MB of it. The
+# other three are reachable only when the context uploads wholesale.
+cmd/context-agent/context-agent
+cmd/identity-agent/identity-agent
+cmd/router/router
+internal/generate/generate
+reference/context-agent/context-agent
+reference/seller-agent/seller-agent
+**/*.test
+
+# Documentation and operator examples that sit beside copied source. Excluded
+# so editing them does not bust a build stage's cache. Narrower than *.env on
+# purpose: bench/*/perf.env and bench/*/scenarios/*.env are real inputs.
+**/*.md
+**/example*.env
+
+# Git metadata and CI definitions. Nothing injects a git-derived version at
+# build time — the Dockerfiles pass only -trimpath and -ldflags="-s -w".
+.git
+.gitignore
+.dockerignore
+.github
+
+# Go workspace files. No Dockerfile copies these; the per-module `replace`
+# directives are what resolve dependencies in-image.
+go.work
+go.work.example
+go.work.sum
+
+# Trees no image build reads. reference/ is deliberately absent: those are Go
+# modules a future Dockerfile could plausibly build, unlike the rest here.
+adcp
+docs
+e2e
+skills
+
+# Editor, tooling, and agent scratch directories.
+.agents
+.claude
+.context
+.idea
+.vscode

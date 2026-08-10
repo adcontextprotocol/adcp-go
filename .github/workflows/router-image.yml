@@ -1,12 +1,12 @@
-name: identity-agent image
+name: router image
 
-# Builds the cmd/identity-agent OCI image for linux/amd64 and linux/arm64,
-# pushes to ghcr.io/<owner>/<repo>/identity-agent, and signs each pushed
+# Builds the cmd/router OCI image for linux/amd64 and linux/arm64,
+# pushes to ghcr.io/<owner>/<repo>/router, and signs each pushed
 # digest with cosign keyless (OIDC against Sigstore).
 #
 # Triggers:
 #   - push to main           → tags: edge, main-<short_sha>
-#   - push of identity-agent-v* tag → tags: <semver>, <major>.<minor>, <major>, latest
+#   - push of router-v* tag  → tags: <semver>, <major>.<minor>, <major>, latest
 #   - pull_request           → build only, no push (verifies Dockerfile stays green)
 #   - workflow_dispatch      → manual rebuild
 #
@@ -16,27 +16,31 @@ name: identity-agent image
 #
 # First-push note: GHCR creates the package as private. After the first
 # successful push, a repo admin must flip visibility to public via
-# GitHub → Packages → identity-agent → Package settings → Change visibility.
+# GitHub → Packages → router → Package settings → Change visibility.
 
 on:
   push:
     branches: [main]
-    tags: ['identity-agent-v*']
+    tags: ['router-v*']
   pull_request:
     branches: [main]
     paths:
-      - cmd/identity-agent/**
-      # A root-module package the agent imports, so edits here change the image.
-      - verify/worldid/**
-      - targeting/**
-      - tmproto/**
+      # The build inputs: cmd/router's own module, the two modules it resolves
+      # through a local `replace` (the root module, whose only package here is
+      # router/, and registry/), and the root go.mod/go.sum that pin the
+      # versions of everything else. targeting/, tmproto/ and urlcanon/ are
+      # deliberately absent — no `replace` points at them, so the image builds
+      # those from the module proxy and editing them cannot change it.
+      - cmd/router/**
+      - router/**
+      - registry/**
       - go.mod
       - go.sum
-      - .github/workflows/identity-agent-image.yml
+      - .github/workflows/router-image.yml
   workflow_dispatch:
 
 concurrency:
-  group: identity-agent-image-${{ github.ref }}
+  group: router-image-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -45,7 +49,7 @@ permissions:
   id-token: write
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}/identity-agent
+  IMAGE: ghcr.io/${{ github.repository }}/router
 
 jobs:
   build:
@@ -78,13 +82,13 @@ jobs:
           tags: |
             type=raw,value=edge,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=sha,prefix=main-,format=short,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=match,pattern=identity-agent-v(.*),group=1
-            type=match,pattern=identity-agent-v(\d+\.\d+),group=1
-            type=match,pattern=identity-agent-v(\d+),group=1
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/identity-agent-v') }}
+            type=match,pattern=router-v(.*),group=1
+            type=match,pattern=router-v(\d+\.\d+),group=1
+            type=match,pattern=router-v(\d+),group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/router-v') }}
           labels: |
-            org.opencontainers.image.title=identity-agent
-            org.opencontainers.image.description=Production TMP identity-match service
+            org.opencontainers.image.title=router
+            org.opencontainers.image.description=Production TMP router
             org.opencontainers.image.vendor=Ad Context Protocol
 
       - name: Build & push
@@ -92,13 +96,13 @@ jobs:
         uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991 # v6
         with:
           context: .
-          file: cmd/identity-agent/Dockerfile
+          file: cmd/router/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=identity-agent
-          cache-to: type=gha,mode=max,scope=identity-agent
+          cache-from: type=gha,scope=router
+          cache-to: type=gha,mode=max,scope=router
           provenance: mode=max
           sbom: true
 
@@ -113,8 +117,8 @@ jobs:
         # Signs every pushed tag against the build's content digest, so all
         # tags that resolve to the same image share a single transparency-log
         # entry per digest. Verify with:
-        #   cosign verify ghcr.io/<owner>/<repo>/identity-agent:<tag> \
-        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/identity-agent-image\.yml@.*' \
+        #   cosign verify ghcr.io/<owner>/<repo>/router:<tag> \
+        #     --certificate-identity-regexp='https://github.com/<owner>/<repo>/.github/workflows/router-image\.yml@.*' \
         #     --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
         if: github.event_name != 'pull_request'
         env:
