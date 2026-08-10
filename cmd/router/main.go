@@ -1,3 +1,8 @@
+// Command router runs a production TMP router.
+// Providers, health, discovery and shutdown settings come from the JSON/YAML
+// config file. The listen addresses, TLS, signing, registry-feed and cache
+// settings can also come from the environment; see the adjacent example.env
+// file for that surface.
 package main
 
 import (
@@ -28,12 +33,15 @@ func main() {
 	addr := flag.String("addr", "", "Listen address (overrides config)")
 	flag.Parse()
 
-	// Load config: flags > env vars > JSON config > defaults.
-	cfg := loadConfig(*configFile, *addr)
-
-	// Set up structured logging
+	// Set up structured logging before the first thing that can fail, so
+	// config-load errors and per-provider skip warnings land on the same
+	// JSON stream as the rest of the router's output rather than on stderr
+	// through slog's default text handler.
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	// Load config: flags > env vars > JSON config > defaults.
+	cfg := loadConfig(*configFile, *addr)
 
 	// Initialize components
 	registry := router.NewRegistry("", "")
