@@ -191,6 +191,16 @@ jobs:
           working-directory: targeting
           args: ./...
 
+      # The containerized end-to-end stack's tooling. The stack itself runs in
+      # the separate e2e-stack workflow, which only fires on paths that affect
+      # it; linting here keeps the module honest on every change.
+      - name: Run golangci-lint (e2e stack)
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: v2.11
+          working-directory: e2e/stack
+          args: ./...
+
   storyboard:
     name: Reference Seller Storyboard
     runs-on: ubuntu-latest
