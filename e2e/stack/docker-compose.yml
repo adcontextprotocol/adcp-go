@@ -1,0 +1,320 @@
+# Containerized end-to-end stack: identity-agent + context-agent + router,
+# each from its published image, wired to a Valkey and to stubs standing in
+# for the AdCP registry and the identity-config source.
+#
+# Use ./run.sh. Every ordering constraint compose can express is declared with
+# depends_on below, but one cannot be: the identity-agent's snapshot keystore
+# does a single synchronous fetch at boot, so it needs the router to have already
+# merged its signing key into /registry/snapshot — a readiness condition on a
+# sibling's response *body*, which compose has no vocabulary for.
+#
+# So a bare `docker compose up -d` brings up everything except the
+# identity-agent, which exits 1 naming the snapshot URL it could not reach. That
+# is a legible failure rather than a silent one, and `docker compose up -d
+# identity-agent` a moment later succeeds — but run.sh is what sequences it
+# properly, by polling the snapshot before starting the agents.
+#
+# The full ordering, for reference:
+#
+#   valkey        must be seeded before context-agent starts, so the
+#                 suppression snapshot the agent loads at boot is populated
+#   bootstrap     must write the signing key before router starts and before
+#                 registrystub serves authorization rows
+#   registrystub  must serve the feed and the authorization rows before either
+#                 router (which merges the feed into /registry/snapshot) or
+#                 context-agent (which resolves signing keys from the rows)
+#   router        must publish its signing key on /registry/snapshot before
+#                 identity-agent starts: its snapshot keystore does one
+#                 synchronous fetch at boot and refuses traffic without a key
+#
+# Provider images are referenced by tag, never built here. ./run.sh builds
+# them from the local Dockerfiles by default and pulls the published tags when
+# asked to, so the same stack validates a working copy or a release.
+services:
+  valkey:
+    # Valkey 9 or newer: the frequency-cap store writes markers with HSETEX,
+    # which older servers do not implement.
+    image: valkey/valkey:9.0-alpine
+    command: ["valkey-server", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+    ports:
+      - "${E2E_VALKEY_PORT:-127.0.0.1:16379}:6379"
+
+  # --- one-shot tooling ------------------------------------------------------
+
+  # Generates the router's Ed25519 signing key, the public JWK the registry
+  # stub serves in its authorization rows, and the router config file (provider
+  # list, health, signing, registry feed) from the fixture package.
+  bootstrap:
+    image: ${E2E_TOOLS_IMAGE:-adcp-e2e-tools:local}
+    build:
+      context: ../..
+      dockerfile: e2e/stack/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/bootstrap"]
+    command: ["-out", "/shared"]
+    volumes:
+      - shared:/shared
+
+  # Populates the three logical Valkey databases through the same store
+  # packages the agents read through.
+  seed:
+    image: ${E2E_TOOLS_IMAGE:-adcp-e2e-tools:local}
+    build:
+      context: ../..
+      dockerfile: e2e/stack/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/seed"]
+    depends_on:
+      valkey:
+        condition: service_healthy
+
+  # Drives the router and asserts every outcome. Exit status is the run's
+  # verdict.
+  verify:
+    image: ${E2E_TOOLS_IMAGE:-adcp-e2e-tools:local}
+    build:
+      context: ../..
+      dockerfile: e2e/stack/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/verify"]
+
+  # --- stubs -----------------------------------------------------------------
+
+  # The AdCP registry data endpoints: the change feed both the router and the
+  # context-agent sync, plus the per-agent authorization rows an agent reads
+  # under TMP_REGISTRY_MODE=authorization.
+  registrystub:
+    image: ${E2E_TOOLS_IMAGE:-adcp-e2e-tools:local}
+    build:
+      context: ../..
+      dockerfile: e2e/stack/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/registrystub"]
+    # No restart policy: the verifier asserts this stub's call counters are
+    # positive, and a restart would zero them.
+    restart: "no"
+    depends_on:
+      # Serves the router's public JWK on its authorization rows, and does not
+      # register its mux until the key exists.
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - shared:/shared
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9101/healthz"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+    ports:
+      - "${E2E_REGISTRY_PORT:-127.0.0.1:19101}:9101"
+
+  # The identity-config source the identity-agent polls at CONFIG_SOURCE_URL.
+  configstub:
+    image: ${E2E_TOOLS_IMAGE:-adcp-e2e-tools:local}
+    build:
+      context: ../..
+      dockerfile: e2e/stack/Dockerfile
+    entrypoint: ["/sbin/tini", "--", "/usr/local/bin/configstub"]
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:9102/healthz"]
+      interval: 2s
+      timeout: 1s
+      retries: 30
+    ports:
+      - "${E2E_CONFIG_PORT:-127.0.0.1:19102}:9102"
+
+  # --- the three published images -------------------------------------------
+
+  router:
+    image: ${E2E_ROUTER_IMAGE:-adcp-router:e2e}
+    # No restart policy on any of the three services under test. A restart
+    # would reset the router's metrics counters — which the verifier reads as
+    # deltas to prove no provider fault occurred — and re-warm an agent, so a
+    # crash-loop would read as a clean run.
+    restart: "no"
+    depends_on:
+      # Generates the config file and the signing key this service reads.
+      bootstrap:
+        condition: service_completed_successfully
+      registrystub:
+        condition: service_healthy
+    environment:
+      # Everything structural — providers, health, cache, signing, registry
+      # feed — comes from this generated file so it cannot drift from the
+      # fixture the seeder and verifier share.
+      TMP_ROUTER_CONFIG: /shared/router-config.json
+      # The one env override in the stack, which exercises the documented
+      # env-over-file precedence. Short so a router that starts before the
+      # stub still picks the feed up within a few seconds.
+      TMP_ROUTER_REGISTRY_POLL_INTERVAL_SEC: "5"
+    volumes:
+      - shared:/shared
+    ports:
+      - "${E2E_ROUTER_PORT:-127.0.0.1:19080}:8080"
+      - "${E2E_ROUTER_ADMIN_PORT:-127.0.0.1:19090}:9090"
+
+  context-agent:
+    image: ${E2E_CONTEXT_AGENT_IMAGE:-adcp-context-agent:e2e}
+    restart: "no"
+    depends_on:
+      valkey:
+        condition: service_healthy
+      # The suppression snapshot is loaded at boot, so the seed has to have
+      # landed first or the kill-switch scenario sees an empty set.
+      seed:
+        condition: service_completed_successfully
+      registrystub:
+        condition: service_healthy
+    environment:
+      HTTP_PORT: "8081"
+      ADMIN_PORT: "9081"
+      LOG_LEVEL: "info"
+      # Generous relative to production (40ms). The stack asserts on
+      # correctness, and a cold container on a laptop has no business being
+      # held to a production budget. HTTP_WRITE_TIMEOUT must exceed
+      # REQUEST_TIMEOUT and HTTP_READ_TIMEOUT must be >= the header timeout;
+      # the agent's own validator enforces both.
+      REQUEST_TIMEOUT: "1s"
+      HTTP_READ_HEADER_TIMEOUT: "1s"
+      HTTP_READ_TIMEOUT: "2s"
+      HTTP_WRITE_TIMEOUT: "5s"
+      HTTP_IDLE_TIMEOUT: "30s"
+      REQUEST_BODY_LIMIT_BYTES: "262144"
+      RESPONSE_TTL: "60s"
+      STRICT_CONTENT_TYPE: "true"
+      SUPPORTED_ADCP_MAJOR_VERSIONS: "3"
+      # Stamped into the suppression keys the seeder writes, so the two must
+      # agree or the kill-switch scenario silently passes.
+      PROVIDER_ID: "e2e_context"
+      ACCEPTED_TAXONOMIES: "iab:7"
+      # PROPERTY_RIDS is deliberately unset: the property bitmap comes from
+      # the registry feed, which is the production-shaped path.
+      REGISTRY_ENABLED: "true"
+      REGISTRY_FEED_URL: "http://registrystub:9101"
+      REGISTRY_FEED_TOKEN: "e2e-registry-token"
+      REGISTRY_POLL_INTERVAL: "5s"
+      REGISTRY_STORE_BACKEND: "memory"
+      # Signature verification in authorization mode: the key is looked up
+      # per request against the registry's authorization rows for the
+      # request's seller_agent_url, which is the mode a deployment behind the
+      # public registry runs. The identity-agent below runs snapshot mode
+      # against the router's own /registry/snapshot, so one run covers both.
+      TMP_ALLOW_UNSIGNED: "false"
+      TMP_REGISTRY_MODE: "authorization"
+      TMP_REGISTRY_URL: "http://registrystub:9101/api/registry/authorizations"
+      TMP_REGISTRY_BEARER: "e2e-registry-token"
+      TMP_REGISTRY_ALLOW_INSECURE_SCHEME: "true"
+      # Must equal this provider's `endpoint` in the router config exactly —
+      # the router binds each signature to that base URL.
+      TMP_OWN_ENDPOINT_URL: "http://context-agent:8081"
+      VALKEY_MODE: "standalone"
+      VALKEY_SHARDS: '{"0":"valkey:6379"}'
+      VALKEY_DB: "0"
+      VALKEY_DIAL_TIMEOUT: "5s"
+      VALKEY_READ_TIMEOUT: "200ms"
+      VALKEY_WRITE_TIMEOUT: "200ms"
+      # Short enough that an operator poking at suppressions mid-run sees the
+      # change without restarting the agent.
+      SUPPRESSION_REFRESH_INTERVAL: "10s"
+      CACHE_ENABLED: "true"
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: "context_agent"
+    ports:
+      - "${E2E_CONTEXT_AGENT_PORT:-127.0.0.1:19081}:8081"
+      - "${E2E_CONTEXT_AGENT_ADMIN_PORT:-127.0.0.1:19091}:9081"
+
+  identity-agent:
+    image: ${E2E_IDENTITY_AGENT_IMAGE:-adcp-identity-agent:e2e}
+    restart: "no"
+    depends_on:
+      # service_started, not service_healthy: the router image is distroless and
+      # carries no shell, so it has no compose health check to wait on. This
+      # narrows the startup race on the snapshot but cannot close it — see the
+      # header. run.sh polls /registry/snapshot instead.
+      router:
+        condition: service_started
+      valkey:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+      configstub:
+        condition: service_healthy
+    environment:
+      HTTP_PORT: "8080"
+      ADMIN_PORT: "9080"
+      LOG_LEVEL: "info"
+      REQUEST_TIMEOUT: "1s"
+      HTTP_READ_HEADER_TIMEOUT: "1s"
+      HTTP_READ_TIMEOUT: "2s"
+      HTTP_WRITE_TIMEOUT: "5s"
+      HTTP_IDLE_TIMEOUT: "30s"
+      REQUEST_BODY_LIMIT_BYTES: "65536"
+      RESPONSE_TTL: "60s"
+      STRICT_CONTENT_TYPE: "true"
+      # One log line per request. At three requests a run that is a debugging
+      # aid, not a cost.
+      ACCESS_LOG_ENABLED: "true"
+      SUPPORTED_ADCP_MAJOR_VERSIONS: "3"
+      # Snapshot mode: the router publishes its public key on its own
+      # /registry/snapshot, keyed by the kid it signs with. The context-agent
+      # above runs authorization mode against the registry stub instead.
+      TMP_ALLOW_UNSIGNED: "false"
+      TMP_REGISTRY_MODE: "snapshot"
+      TMP_REGISTRY_URL: "http://router:8080/registry/snapshot"
+      TMP_REGISTRY_ALLOW_INSECURE_SCHEME: "true"
+      TMP_OWN_ENDPOINT_URL: "http://identity-agent:8080"
+      CONFIG_SOURCE_URL: "http://configstub:9102/v1/identity-configs"
+      CONFIG_SOURCE_TOKEN: "e2e-config-token"
+      CONFIG_SOURCE_TIMEOUT: "10s"
+      CONFIG_REFRESH_INTERVAL: "5m"
+      # retry, not best-effort: starting with an empty snapshot would make
+      # every identity assertion fail on a resolve miss rather than on the
+      # gate under test.
+      CONFIG_START_MODE: "retry"
+      CONFIG_START_RETRY_DEADLINE: "2m"
+      AUDIENCE_VALKEY_MODE: "standalone"
+      AUDIENCE_VALKEY_SHARDS: '{"0":"valkey:6379"}'
+      AUDIENCE_VALKEY_DB: "1"
+      AUDIENCE_VALKEY_DIAL_TIMEOUT: "5s"
+      AUDIENCE_VALKEY_READ_TIMEOUT: "200ms"
+      AUDIENCE_TIMEOUT: "200ms"
+      FCAP_VALKEY_MODE: "standalone"
+      FCAP_VALKEY_SHARDS: '{"0":"valkey:6379"}'
+      FCAP_VALKEY_DB: "2"
+      FCAP_VALKEY_DIAL_TIMEOUT: "5s"
+      FCAP_VALKEY_READ_TIMEOUT: "200ms"
+      FCAP_TIMEOUT: "200ms"
+      METRICS_ENABLED: "true"
+      METRICS_NAMESPACE: "identity_agent"
+    ports:
+      - "${E2E_IDENTITY_AGENT_PORT:-127.0.0.1:19082}:8080"
+      - "${E2E_IDENTITY_AGENT_ADMIN_PORT:-127.0.0.1:19092}:9080"
+
+volumes:
+  # Carries the router's signing key, its public JWK and its generated config
+  # between bootstrap, the registry stub and the router. Cleared by
+  # `docker compose down -v`, which ./run.sh does on teardown so every run
+  # gets a fresh key.
+  shared:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+        # RFC 6598 shared address space, not RFC 1918.
+        #
+        # The router refuses to dial a provider whose hostname resolves into
+        # loopback, link-local or a private range — the DNS-rebinding guard on
+        # its fan-out and health-check clients. Docker's default bridge pools
+        # are all RFC 1918, so on a default network the router cannot reach a
+        # sibling container and every fan-out fails closed.
+        #
+        # Addressing the network out of 100.64.0.0/10 keeps that guard fully
+        # active and lets the resolved address pass it, so the stack exercises
+        # the real dial path instead of an SSRF bypass. Override
+        # E2E_SUBNET if this range collides with something on the host.
+        - subnet: ${E2E_SUBNET:-100.64.0.0/24}

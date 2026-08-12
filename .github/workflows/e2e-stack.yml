@@ -1,0 +1,117 @@
+name: e2e stack
+
+# Brings up the containerized end-to-end stack (identity-agent + context-agent
+# + router + Valkey + registry and identity-config stubs) and drives it through
+# the router's protocol surface. See e2e/stack/README.md.
+#
+# Triggers:
+#   - pull requests and pushes touching any service the stack wires together,
+#     building all three images from the checked-out tree
+#   - a nightly run against the published :edge images, which catches drift
+#     between what the image workflows publish and what the stack expects
+#   - manual dispatch, either mode
+#
+# The two path lists below are duplicated on purpose: GitHub does not reliably
+# honor YAML anchors in workflow files, so an alias here would silently widen
+# one of the triggers to every push.
+#
+# targeting/, tmproto/, urlcanon/ and urlutil/ are deliberately absent. Those
+# are separate modules that no service go.mod replaces with the working copy, so
+# every image — including the ones this workflow builds locally — resolves them
+# from the module proxy at their published version. Triggering on them would
+# report a green run that never compiled the change.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/router/**'
+      - 'cmd/context-agent/**'
+      - 'cmd/identity-agent/**'
+      - 'router/**'
+      - 'registry/**'
+      - 'verify/**'
+      - 'e2e/stack/**'
+      - '.dockerignore'
+      - '.github/workflows/e2e-stack.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cmd/router/**'
+      - 'cmd/context-agent/**'
+      - 'cmd/identity-agent/**'
+      - 'router/**'
+      - 'registry/**'
+      - 'verify/**'
+      - 'e2e/stack/**'
+      - '.dockerignore'
+      - '.github/workflows/e2e-stack.yml'
+  schedule:
+    # 05:20 UTC daily, after the image workflows have had the night to publish.
+    - cron: '20 5 * * *'
+  workflow_dispatch:
+    inputs:
+      images:
+        description: 'Which images to run against'
+        type: choice
+        default: local
+        options: [local, published]
+      tag:
+        description: 'Published image tag (ignored when images=local)'
+        type: string
+        default: edge
+
+permissions:
+  contents: read
+  # Pulling the published images from GHCR.
+  packages: read
+
+concurrency:
+  # Keyed on the event as well as the ref: without it a push to main and the
+  # nightly published-mode run share one group, and the push cancels the drift
+  # check the schedule exists for.
+  group: e2e-stack-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack:
+    name: Run the stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MODE: ${{ (github.event_name == 'schedule' || inputs.images == 'published') && 'published' || 'local' }}
+      TAG: ${{ inputs.tag || 'edge' }}
+      # Exported to every step, so the subnet the probe validates is the same
+      # one compose creates. Leaving it unset would let the probe check one
+      # range while docker-compose.yml fell back to its own default.
+      E2E_SUBNET: 100.64.0.0/24
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Only needed in published mode; a local run builds from the checkout and
+      # never touches the registry.
+      - name: Log in to GHCR
+        if: env.MODE == 'published'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The stack's compose network is addressed out of RFC 6598 shared address
+      # space so the router's DNS-rebinding guard, which rejects RFC 1918
+      # targets, stays active while still allowing container-to-container
+      # dials. Probe it up front: a runner that already routes the range should
+      # fail here with an obvious message rather than inside `compose up`.
+      - name: Check the stack subnet is free
+        run: |
+          docker network create --subnet "$E2E_SUBNET" e2e-subnet-probe >/dev/null
+          docker network rm e2e-subnet-probe >/dev/null
+          echo "$E2E_SUBNET is available"
+
+      - name: Run the stack
+        run: |
+          if [ "$MODE" = "published" ]; then
+            bash e2e/stack/run.sh --published "$TAG"
+          else
+            bash e2e/stack/run.sh
+          fi

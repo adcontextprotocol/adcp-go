@@ -13,6 +13,7 @@ use (
 	./cmd/identity-agent
 	./cmd/router
 	./e2e
+	./e2e/stack
 	./internal/generate
 	./reference/context-agent
 	./reference/seller-agent

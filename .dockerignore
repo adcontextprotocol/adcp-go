@@ -51,6 +51,11 @@ docs
 e2e
 skills
 
+# e2e/stack is the exception: e2e/stack/Dockerfile builds the containerized
+# end-to-end stack's tooling from the repo root, so that subtree has to survive
+# the `e2e` exclusion above.
+!e2e/stack
+
 # Editor, tooling, and agent scratch directories.
 .agents
 .claude
