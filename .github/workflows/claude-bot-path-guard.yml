@@ -25,7 +25,7 @@ jobs:
       (github.event.pull_request.user.type == 'Bot' ||
        endsWith(github.event.pull_request.user.login, '[bot]') ||
        github.event.pull_request.user.login == 'claude[bot]') &&
-      github.event.pull_request.user.login != 'release-please[bot]'
+      !startsWith(github.event.pull_request.head.ref, 'release-please--')
     steps:
       - uses: actions/checkout@v5
         with:
