@@ -22,9 +22,10 @@ jobs:
     # Only fire on bot-authored PRs. Human contributors should hit
     # CODEOWNERS review, not this guard.
     if: >-
-      github.event.pull_request.user.type == 'Bot' ||
-      endsWith(github.event.pull_request.user.login, '[bot]') ||
-      github.event.pull_request.user.login == 'claude[bot]'
+      (github.event.pull_request.user.type == 'Bot' ||
+       endsWith(github.event.pull_request.user.login, '[bot]') ||
+       github.event.pull_request.user.login == 'claude[bot]') &&
+      github.event.pull_request.user.login != 'release-please[bot]'
     steps:
       - uses: actions/checkout@v5
         with:
