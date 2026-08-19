@@ -98,8 +98,6 @@ const (
 	transportMaxIdleConns        = 64
 	transportMaxIdleConnsPerHost = 32
 	transportIdleConnTimeout     = 90 * time.Second
-	transportTLSHandshakeTimeout = 15 * time.Millisecond
-	transportResponseHeaderLimit = 30 * time.Millisecond
 	transportExpectContinueLimit = 1 * time.Second
 
 	// Header names for the operator-adapter contract. Kept as
@@ -209,8 +207,13 @@ func NewClient(cfg Config) (*Client, error) {
 				MaxIdleConns:          transportMaxIdleConns,
 				MaxIdleConnsPerHost:   transportMaxIdleConnsPerHost,
 				IdleConnTimeout:       transportIdleConnTimeout,
-				TLSHandshakeTimeout:   transportTLSHandshakeTimeout,
-				ResponseHeaderTimeout: transportResponseHeaderLimit,
+				// TLS handshake + response-header waits are bounded by the outer
+				// Client.Timeout regardless; pinning them to the configured
+				// per-call Timeout keeps a deployer's UID2_OPERATOR_TIMEOUT knob
+				// meaningful — a raise past the default doesn't get silently
+				// clipped at a hardcoded sub-limit.
+				TLSHandshakeTimeout:   timeout,
+				ResponseHeaderTimeout: timeout,
 				ExpectContinueTimeout: transportExpectContinueLimit,
 				ForceAttemptHTTP2:     true,
 			},
