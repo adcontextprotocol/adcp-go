@@ -129,7 +129,20 @@ Exposure tracking uses encrypted TMPX tokens instead of a dedicated endpoint:
 
 When the URL and country are set, the agent generates a TMPX token alongside every identity-match response that has at least one eligible package. The agent reads the `kid` from the currently-active JWKS entry on each seal, so buyer-side key rotation propagates automatically within the TTL window. Identity tokens whose `uid_type` has no entry in the TMPX type-ID registry are skipped per the spec's forward-compatibility rule.
 
-**Decoder coverage:** MAID, HashedEmail, and ID5 have format-only decoders that need no external dependency. RampID and RampIDDerived are decoded via the LiveRamp sidecar when `LIVERAMP_SIDECAR_URL` is configured. UID types without a registered decoder are silently dropped from both the TMPX wire and the audience/fcap shadow request; the startup log enumerates which UID types are dropped.
+**Decoder coverage:** MAID, HashedEmail, and ID5 have format-only decoders that need no external dependency. RampID and RampIDDerived are decoded via the LiveRamp sidecar when `LIVERAMP_SIDECAR_URL` is configured. UID2 and EUID are decoded via an operator-adapter service when `UID2_OPERATOR_URL` / `EUID_OPERATOR_URL` (plus credentials) are configured — the adapter translates an encrypted advertising token into the raw 32-byte ID. UID types without a registered decoder are silently dropped from both the TMPX wire and the audience/fcap shadow request; the startup log enumerates which UID types are dropped.
+
+**UID2 / EUID operator configuration:**
+
+| Env var | Purpose |
+|---|---|
+| `UID2_OPERATOR_URL` | Full URL of the UID2 operator-adapter endpoint that resolves an encrypted advertising token to the raw 32-byte UID2 (see `targeting/internal/uid2` for the wire contract). No official Go SDK is published, so this expects a small adapter service the deployer runs alongside the identity agent, wrapping the official Java/Python/.NET SDK. Absent → UID2 identities are dropped from TMPX. |
+| `UID2_API_KEY` | API key sent as `Authorization: Bearer <key>` on every request. Required when `UID2_OPERATOR_URL` is set. |
+| `UID2_CLIENT_SECRET` | Client secret sent as `X-UID2-Client-Secret: <secret>`. Required when `UID2_OPERATOR_URL` is set. |
+| `UID2_OPERATOR_TIMEOUT` | Per-call timeout (default 30ms — sized to fit the 40ms per-request budget). |
+| `UID2_OPERATOR_DIAL_TIMEOUT` | TCP dial timeout (default 10ms). |
+| `EUID_OPERATOR_URL` / `EUID_API_KEY` / `EUID_CLIENT_SECRET` / `EUID_OPERATOR_TIMEOUT` / `EUID_OPERATOR_DIAL_TIMEOUT` | Same shape, pointing at an EU-jurisdiction EUID operator adapter and its distinct credentials. |
+
+Both scopes are case-sensitive per the UID2 spec (https://unifiedid.com/docs/getting-started/gs-normalization-encoding): tokens are transmitted verbatim; raw IDs are keyed off the returned bytes without any case normalization. Credentials are held in memory and never appear in logs or error messages.
 
 **Verified identity (World ID):** the `world_id_nullifier` type is verify-before-trust and has no inbound decoder — a sender-asserted nullifier on `identities` is dropped. Its TMPX entry comes only from the verified-identity stage, which seals the relying-party-scoped nullifier the verifier derived from World's authoritative response. The nullifier is encoded as a 32-byte big-endian field element. Under `TMPX_PRIORITY`, include `world_id_nullifier` to keep it on the wire when the resolved set is over budget.
 
