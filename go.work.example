@@ -23,5 +23,6 @@ use (
 	./targeting
 	./tmpclient
 	./tmproto
+	./uid2client
 	./urlcanon
 )
