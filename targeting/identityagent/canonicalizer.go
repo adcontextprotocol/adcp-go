@@ -60,16 +60,12 @@ type IdentityCanonicalizer struct {
 // explicitly want to opt out of canonicalization entirely (and preserve
 // the legacy "publisher wire string flows through to audience/fcap"
 // behavior) should pass a nil *IdentityCanonicalizer to the handler.
-func NewIdentityCanonicalizer(lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) *IdentityCanonicalizer {
-	// The decoder package's LiveRampClient interface is structurally
-	// identical to LiveRampSidecar, so any concrete type that satisfies
-	// one satisfies the other. We assign through an interface variable to
-	// keep the nil check correct (avoid the typed-nil trap).
-	var decoderAdapter tmpxdecoders.LiveRampClient
-	if lrClient != nil {
-		decoderAdapter = lrClient
-	}
-	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+func NewIdentityCanonicalizer(lrClient LiveRampSidecar, uid2Client, euidClient UID2Operator, logger *slog.Logger, recorder Recorder) *IdentityCanonicalizer {
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
+		LiveRampClient: adaptLiveRamp(lrClient),
+		UID2Client:     adaptUID2(uid2Client),
+		EUIDClient:     adaptUID2(euidClient),
+	})
 	if logger != nil {
 		logCanonicalizerLayout(logger, decoders)
 	}

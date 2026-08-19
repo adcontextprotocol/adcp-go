@@ -73,8 +73,27 @@ func TestNewDefaultRegistry_OmitsUIDTypesWithoutDecoder(t *testing.T) {
 		tmproto.UIDTypePublisherFirstParty,
 	} {
 		_, ok := reg[uid]
-		assert.False(t, ok, "%s has no decoder and must be absent from the registry", uid)
+		assert.False(t, ok, "%s has no decoder unless the matching operator client is supplied", uid)
 	}
+}
+
+// TestNewDefaultRegistry_WithUID2Client covers the opt-in that adds a
+// UID2 decoder when the caller supplies a client.
+func TestNewDefaultRegistry_WithUID2Client(t *testing.T) {
+	reg := NewDefaultRegistry(RegistryOptions{UID2Client: stubUID2Client{}})
+	_, ok := reg[tmproto.UIDTypeUID2]
+	assert.True(t, ok, "UID2 must be present in the registry when a UID2 client is supplied")
+	_, hasEUID := reg[tmproto.UIDTypeEUID]
+	assert.False(t, hasEUID, "supplying a UID2 client alone must not enable EUID decoding")
+}
+
+// TestNewDefaultRegistry_WithEUIDClient covers the EUID opt-in.
+func TestNewDefaultRegistry_WithEUIDClient(t *testing.T) {
+	reg := NewDefaultRegistry(RegistryOptions{EUIDClient: stubUID2Client{}})
+	_, ok := reg[tmproto.UIDTypeEUID]
+	assert.True(t, ok, "EUID must be present when an EUID client is supplied")
+	_, hasUID2 := reg[tmproto.UIDTypeUID2]
+	assert.False(t, hasUID2, "supplying an EUID client alone must not enable UID2 decoding")
 }
 
 func TestNewDefaultRegistry_DecodersReturnCorrectSize(t *testing.T) {

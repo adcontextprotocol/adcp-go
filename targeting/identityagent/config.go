@@ -93,6 +93,8 @@ type Config struct {
 	TMP            TMPConfig
 	TMPX           TMPXConfig
 	LiveRamp       LiveRampSidecarConfig
+	UID2           UID2OperatorConfig
+	EUID           UID2OperatorConfig
 	IdentityConfig IdentityConfigSourceConfig
 	AudienceValkey ValkeyBlock
 	FCapValkey     ValkeyBlock
@@ -189,6 +191,38 @@ type LiveRampSidecarConfig struct {
 
 // Enabled reports whether a LiveRamp sidecar URL was configured.
 func (c LiveRampSidecarConfig) Enabled() bool { return c.URL != "" }
+
+// UID2OperatorConfig configures a UID2 or EUID operator client for
+// server-side advertising-token decryption. Both scopes share the same
+// shape; the identity scope is implicit from which config block is
+// populated (Config.UID2 vs Config.EUID).
+//
+// When APIKey or ClientSecret is empty the client is disabled and
+// tokens of that scope are silently dropped from both the TMPX wire and
+// the canonicalized shadow request. OperatorURL defaults to the public
+// production operator for the scope (uid2client.DefaultUID2OperatorURL
+// or DefaultEUIDOperatorURL); override only for integration
+// environments.
+//
+// KeyRefreshInterval controls how often the client polls the operator
+// for a fresh keyset. Defaults to 5 minutes when zero. HTTPTimeout
+// bounds each key-refresh HTTP call; defaults to 5 seconds. Both apply
+// only to the background refresh — Decrypt is a local operation.
+type UID2OperatorConfig struct {
+	OperatorURL        string
+	APIKey             string
+	ClientSecret       string
+	HTTPTimeout        time.Duration
+	KeyRefreshInterval time.Duration
+}
+
+// Enabled reports whether the credentials for this operator scope are
+// configured. APIKey OR ClientSecret alone is a misconfiguration —
+// Validate rejects that; here we return true only when both are
+// present.
+func (c UID2OperatorConfig) Enabled() bool {
+	return c.APIKey != "" && c.ClientSecret != ""
+}
 
 // IdentityConfigSourceConfig drives the Scope3 identity-config refresh
 // service.
@@ -398,6 +432,22 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	uid2HTTPTimeout, err := lookupDuration("UID2_HTTP_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	uid2Refresh, err := lookupDuration("UID2_KEY_REFRESH_INTERVAL", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	euidHTTPTimeout, err := lookupDuration("EUID_HTTP_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	euidRefresh, err := lookupDuration("EUID_KEY_REFRESH_INTERVAL", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	cfgTimeout, err := lookupDuration("CONFIG_SOURCE_TIMEOUT", defaultConfigTimeout)
 	if err != nil {
 		errs = append(errs, err)
@@ -495,6 +545,20 @@ func LoadConfigFromEnv() (Config, error) {
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
 			Timeout:     lrTimeout,
 			DialTimeout: lrDialTimeout,
+		},
+		UID2: UID2OperatorConfig{
+			OperatorURL:        strings.TrimSpace(os.Getenv("UID2_OPERATOR_URL")),
+			APIKey:             strings.TrimSpace(os.Getenv("UID2_API_KEY")),
+			ClientSecret:       strings.TrimSpace(os.Getenv("UID2_CLIENT_SECRET")),
+			HTTPTimeout:        uid2HTTPTimeout,
+			KeyRefreshInterval: uid2Refresh,
+		},
+		EUID: UID2OperatorConfig{
+			OperatorURL:        strings.TrimSpace(os.Getenv("EUID_OPERATOR_URL")),
+			APIKey:             strings.TrimSpace(os.Getenv("EUID_API_KEY")),
+			ClientSecret:       strings.TrimSpace(os.Getenv("EUID_CLIENT_SECRET")),
+			HTTPTimeout:        euidHTTPTimeout,
+			KeyRefreshInterval: euidRefresh,
 		},
 		IdentityConfig: IdentityConfigSourceConfig{
 			URL:                os.Getenv("CONFIG_SOURCE_URL"),
@@ -678,6 +742,8 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("LIVERAMP_SIDECAR_DIAL_TIMEOUT must be non-negative"))
 		}
 	}
+	errs = append(errs, validateUID2OperatorConfig(c.UID2, "UID2")...)
+	errs = append(errs, validateUID2OperatorConfig(c.EUID, "EUID")...)
 	if c.Metrics.Enabled {
 		if c.Metrics.Namespace == "" {
 			errs = append(errs, errors.New("METRICS_NAMESPACE must be non-empty when METRICS_ENABLED=true"))
@@ -885,6 +951,37 @@ func lookupStringMapJSON(name string) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// validateUID2OperatorConfig checks a UID2 or EUID operator config block.
+// prefix is the env-var prefix used in error messages ("UID2" or "EUID").
+// A fully-empty block (all fields zero) is valid and disables the scope;
+// a partially-set block (e.g. APIKey set but ClientSecret missing) is an
+// operator error and surfaces at startup.
+func validateUID2OperatorConfig(c UID2OperatorConfig, prefix string) []error {
+	var errs []error
+	partial := c.APIKey != "" || c.ClientSecret != "" || c.OperatorURL != ""
+	if !partial {
+		return nil
+	}
+	if c.APIKey == "" {
+		errs = append(errs, fmt.Errorf("%s_API_KEY is required when %s_CLIENT_SECRET or %s_OPERATOR_URL is set", prefix, prefix, prefix))
+	}
+	if c.ClientSecret == "" {
+		errs = append(errs, fmt.Errorf("%s_CLIENT_SECRET is required when %s_API_KEY or %s_OPERATOR_URL is set", prefix, prefix, prefix))
+	}
+	if c.OperatorURL != "" {
+		if !strings.HasPrefix(c.OperatorURL, "http://") && !strings.HasPrefix(c.OperatorURL, "https://") {
+			errs = append(errs, fmt.Errorf("%s_OPERATOR_URL %q must use http:// or https://", prefix, c.OperatorURL))
+		}
+	}
+	if c.HTTPTimeout < 0 {
+		errs = append(errs, fmt.Errorf("%s_HTTP_TIMEOUT must be non-negative", prefix))
+	}
+	if c.KeyRefreshInterval < 0 {
+		errs = append(errs, fmt.Errorf("%s_KEY_REFRESH_INTERVAL must be non-negative", prefix))
+	}
+	return errs
 }
 
 // isValidPromName mirrors the Prometheus metric name grammar
