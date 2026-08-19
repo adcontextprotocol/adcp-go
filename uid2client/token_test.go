@@ -186,6 +186,60 @@ func TestDecrypt_TamperedCiphertext(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidToken, "GCM tag mismatch must produce ErrInvalidToken")
 }
 
+// TestDecryptV2_TamperedCiphertext exercises CBC malleability. V2 tokens
+// have no built-in authentication tag — a bit-flip in the ciphertext
+// yields garbage plaintext, and our structural validation (PKCS#7
+// padding, uid_length bound, base64-decodability of the uid string,
+// expiry check) is the only guard.
+//
+// The security invariant we care about is: for every single-byte flip
+// in the token, EITHER decrypt fails with a typed error OR the returned
+// bytes equal the operator's original identity. In other words: an
+// attacker who tampers with a V2 token cannot cause the caller to
+// receive attacker-chosen bytes as if they were a valid identity.
+//
+// (V2 CBC does allow an attacker to change auxiliary fields like
+// site_id — bit-flipping the identity IV flips the first-block
+// plaintext bytes, and site_id sits in bytes 0..3 of the identity
+// payload — but the raw identity bytes live in a later block that
+// depends on the identity ciphertext, not the IV, so they either
+// decrypt correctly or produce padding/length errors we catch.)
+func TestDecryptV2_TamperedCiphertext(t *testing.T) {
+	master := makeTestKey(t, 1200, -1, 0x44)
+	site := makeTestKey(t, 1201, 9000, 0x55)
+	store := makeTestStore(ScopeUID2, master, site)
+
+	token := generateV2Token(t, master, site, tokenGenParams{
+		Scope:       ScopeUID2,
+		IdentityRaw: exampleUID2,
+	})
+
+	// Sanity: unmodified token round-trips to the expected identity.
+	want, err := decryptToken(store, ScopeUID2, token, time.Now())
+	require.NoError(t, err)
+	require.NotEmpty(t, want)
+
+	raw, err := base64.StdEncoding.DecodeString(token)
+	require.NoError(t, err)
+	// Skip the version + master key ID (bytes 0..4). Tampering with the
+	// version yields ErrVersionUnsupported/ErrInvalidToken; tampering
+	// with the master key ID hits ErrKeyNotFound. Both are already
+	// covered by other tests, and neither is what this test is about.
+	for i := 5; i < len(raw); i++ {
+		tampered := append([]byte(nil), raw...)
+		tampered[i] ^= 0x40
+		encoded := base64.StdEncoding.EncodeToString(tampered)
+		got, gotErr := decryptToken(store, ScopeUID2, encoded, time.Now())
+		if gotErr != nil {
+			// Structural validation caught it — good.
+			continue
+		}
+		assert.Equal(t, want, got,
+			"tampered byte %d successfully decrypted to different identity bytes — CBC malleability leaked into the raw identity",
+			i)
+	}
+}
+
 // TestDecrypt_MalformedTokens covers the shortest-path malformed inputs
 // that a hostile / buggy upstream can send. Every one must surface as
 // ErrInvalidToken and never panic.

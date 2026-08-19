@@ -1,7 +1,6 @@
 package uid2client
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -308,18 +307,6 @@ func (c *Client) Refresh(ctx context.Context) error {
 // A permanently-broken operator therefore produces one log line and one
 // counter increment per interval, not a tight retry burst.
 func (c *Client) runRefresh(ctx context.Context) {
-	// Recover from panics so a bug in the JSON parser or a mid-refactor
-	// nil-deref cannot take down the caller's process. The counter is
-	// dimensioned as a refresh failure so operators still see it.
-	defer func() {
-		if r := recover(); r != nil {
-			c.logger.Error("uid2client: refresh loop panicked", "panic", r)
-			if c.recorder != nil {
-				c.recorder.KeyRefresh(fmt.Errorf("uid2client: refresh panicked: %v", r))
-			}
-		}
-	}()
-
 	ticker := time.NewTicker(c.refreshInterval)
 	defer ticker.Stop()
 
@@ -328,16 +315,38 @@ func (c *Client) runRefresh(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			// Give each refresh its own bounded context so a slow
-			// operator can't cascade into the next tick.
-			refreshCtx, cancel := context.WithTimeout(ctx, c.httpTimeoutForInitial())
-			if err := c.refreshOnce(refreshCtx); err != nil {
-				c.logger.Warn("uid2client: background key refresh failed",
-					"scope", c.scope.String(),
-					"error", err)
-			}
-			cancel()
+			// Recover per-tick so a panic in one refresh (JSON bug,
+			// mid-refactor nil-deref, etc.) doesn't kill the loop and
+			// leave the client serving stale keys until latestExpiry.
+			// A permanently-broken refresh therefore produces one log
+			// line + one counter increment per tick, which is loud
+			// enough for operators to see.
+			c.refreshWithRecover(ctx)
 		}
+	}
+}
+
+// refreshWithRecover runs one refresh with a per-tick panic recover so the
+// loop keeps ticking after any single-refresh failure. Bounds the HTTP
+// call to httpTimeoutForInitial so a slow operator can't stall the next
+// tick.
+func (c *Client) refreshWithRecover(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.logger.Error("uid2client: refresh panicked",
+				"scope", c.scope.String(),
+				"panic", r)
+			if c.recorder != nil {
+				c.recorder.KeyRefresh(fmt.Errorf("uid2client: refresh panicked: %v", r))
+			}
+		}
+	}()
+	refreshCtx, cancel := context.WithTimeout(ctx, c.httpTimeoutForInitial())
+	defer cancel()
+	if err := c.refreshOnce(refreshCtx); err != nil {
+		c.logger.Warn("uid2client: background key refresh failed",
+			"scope", c.scope.String(),
+			"error", err)
 	}
 }
 
@@ -377,13 +386,12 @@ func (c *Client) refreshOnce(ctx context.Context) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		// Truncate the body in the error for log-hygiene: an operator
-		// error page can be tens of KB, and we log this at Warn.
-		snippet := bytes.TrimSpace(responseBody)
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
-		}
-		wrapped := fmt.Errorf("uid2client: refresh returned HTTP %d: %s", resp.StatusCode, string(snippet))
+		// Do NOT include the response body in the error/log: a
+		// misbehaving operator could echo the Authorization header
+		// (bearer token) or client secret back to us, which would then
+		// land in error logs. Status alone is enough for triage; a
+		// deeper look means running the operator's own dashboards.
+		wrapped := fmt.Errorf("uid2client: refresh returned HTTP %d", resp.StatusCode)
 		c.notifyRefresh(wrapped)
 		return wrapped
 	}
