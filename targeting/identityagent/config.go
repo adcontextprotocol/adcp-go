@@ -93,6 +93,8 @@ type Config struct {
 	TMP            TMPConfig
 	TMPX           TMPXConfig
 	LiveRamp       LiveRampSidecarConfig
+	UID2           UID2OperatorConfig
+	EUID           UID2OperatorConfig
 	IdentityConfig IdentityConfigSourceConfig
 	AudienceValkey ValkeyBlock
 	FCapValkey     ValkeyBlock
@@ -189,6 +191,32 @@ type LiveRampSidecarConfig struct {
 
 // Enabled reports whether a LiveRamp sidecar URL was configured.
 func (c LiveRampSidecarConfig) Enabled() bool { return c.URL != "" }
+
+// UID2OperatorConfig optionally enables calls to a UID2 (or EUID)
+// operator adapter for decoding encrypted advertising tokens into the
+// raw 32-byte UID2 / EUID. See targeting/internal/uid2 for the wire
+// contract.
+//
+// When URL is empty the operator is disabled: any UID2 (or EUID)
+// identity arriving on /identity is silently dropped from the TMPX
+// wire (other UID types are unaffected). When URL is set, APIKey and
+// ClientSecret are required — the operator adapter authenticates
+// every request. Timeout and DialTimeout default to sensible values
+// for the identity-agent's 40ms budget when zero.
+//
+// The same struct type backs both UID2 and EUID because the two are
+// wire-shape-identical; the caller instantiates one for each scope
+// with distinct endpoints and credentials (see Config.UID2 / Config.EUID).
+type UID2OperatorConfig struct {
+	URL          string
+	APIKey       string
+	ClientSecret string
+	Timeout      time.Duration
+	DialTimeout  time.Duration
+}
+
+// Enabled reports whether a UID2 (or EUID) operator URL was configured.
+func (c UID2OperatorConfig) Enabled() bool { return c.URL != "" }
 
 // IdentityConfigSourceConfig drives the Scope3 identity-config refresh
 // service.
@@ -398,6 +426,22 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	uid2Timeout, err := lookupDuration("UID2_OPERATOR_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	uid2DialTimeout, err := lookupDuration("UID2_OPERATOR_DIAL_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	euidTimeout, err := lookupDuration("EUID_OPERATOR_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	euidDialTimeout, err := lookupDuration("EUID_OPERATOR_DIAL_TIMEOUT", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	cfgTimeout, err := lookupDuration("CONFIG_SOURCE_TIMEOUT", defaultConfigTimeout)
 	if err != nil {
 		errs = append(errs, err)
@@ -495,6 +539,20 @@ func LoadConfigFromEnv() (Config, error) {
 			URL:         os.Getenv("LIVERAMP_SIDECAR_URL"),
 			Timeout:     lrTimeout,
 			DialTimeout: lrDialTimeout,
+		},
+		UID2: UID2OperatorConfig{
+			URL:          strings.TrimSpace(os.Getenv("UID2_OPERATOR_URL")),
+			APIKey:       os.Getenv("UID2_API_KEY"),
+			ClientSecret: os.Getenv("UID2_CLIENT_SECRET"),
+			Timeout:      uid2Timeout,
+			DialTimeout:  uid2DialTimeout,
+		},
+		EUID: UID2OperatorConfig{
+			URL:          strings.TrimSpace(os.Getenv("EUID_OPERATOR_URL")),
+			APIKey:       os.Getenv("EUID_API_KEY"),
+			ClientSecret: os.Getenv("EUID_CLIENT_SECRET"),
+			Timeout:      euidTimeout,
+			DialTimeout:  euidDialTimeout,
 		},
 		IdentityConfig: IdentityConfigSourceConfig{
 			URL:                os.Getenv("CONFIG_SOURCE_URL"),
@@ -678,6 +736,8 @@ func (c Config) Validate() error {
 			errs = append(errs, errors.New("LIVERAMP_SIDECAR_DIAL_TIMEOUT must be non-negative"))
 		}
 	}
+	errs = append(errs, validateOperatorConfig(c.UID2, "UID2")...)
+	errs = append(errs, validateOperatorConfig(c.EUID, "EUID")...)
 	if c.Metrics.Enabled {
 		if c.Metrics.Namespace == "" {
 			errs = append(errs, errors.New("METRICS_NAMESPACE must be non-empty when METRICS_ENABLED=true"))
@@ -885,6 +945,42 @@ func lookupStringMapJSON(name string) (map[string]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// validateOperatorConfig checks a UID2 / EUID operator block. The
+// prefix (UID2 / EUID) is baked into the error text so the operator
+// sees which env-var set is misconfigured. Partial configs (URL
+// without credentials, or credentials without URL) fail here so
+// misconfiguration surfaces at startup rather than as a silent
+// runtime miss on every request.
+func validateOperatorConfig(c UID2OperatorConfig, prefix string) []error {
+	var errs []error
+	urlSet := c.URL != ""
+	apiKeySet := c.APIKey != ""
+	secretSet := c.ClientSecret != ""
+	if !urlSet && !apiKeySet && !secretSet {
+		return nil
+	}
+	if !urlSet {
+		errs = append(errs, fmt.Errorf("%s_OPERATOR_URL is required when %s_API_KEY or %s_CLIENT_SECRET is set", prefix, prefix, prefix))
+	} else {
+		if !strings.HasPrefix(c.URL, "http://") && !strings.HasPrefix(c.URL, "https://") {
+			errs = append(errs, fmt.Errorf("%s_OPERATOR_URL %q must use http:// or https://", prefix, c.URL))
+		}
+		if !apiKeySet {
+			errs = append(errs, fmt.Errorf("%s_API_KEY is required when %s_OPERATOR_URL is set", prefix, prefix))
+		}
+		if !secretSet {
+			errs = append(errs, fmt.Errorf("%s_CLIENT_SECRET is required when %s_OPERATOR_URL is set", prefix, prefix))
+		}
+	}
+	if c.Timeout < 0 {
+		errs = append(errs, fmt.Errorf("%s_OPERATOR_TIMEOUT must be non-negative", prefix))
+	}
+	if c.DialTimeout < 0 {
+		errs = append(errs, fmt.Errorf("%s_OPERATOR_DIAL_TIMEOUT must be non-negative", prefix))
+	}
+	return errs
 }
 
 // isValidPromName mirrors the Prometheus metric name grammar

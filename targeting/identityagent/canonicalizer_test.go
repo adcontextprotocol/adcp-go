@@ -1,6 +1,7 @@
 package identityagent
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 // for the format-only UID types (MAID, HashedEmail, ID5). RampID and
 // RampIDDerived are dropped at decode time without an external client.
 func TestNewIdentityCanonicalizer_NilLiveRamp_BuildsFormatOnlyDecoders(t *testing.T) {
-	canon := NewIdentityCanonicalizer(nil, nil, nil)
+	canon := NewIdentityCanonicalizer(nil, nil, nil, nil, nil)
 	require.NotNil(t, canon)
 	for _, uid := range []tmproto.UIDType{tmproto.UIDTypeMAID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypeID5} {
 		_, ok := canon.decoders[uid]
@@ -22,18 +23,49 @@ func TestNewIdentityCanonicalizer_NilLiveRamp_BuildsFormatOnlyDecoders(t *testin
 	}
 	_, hasRampID := canon.decoders[tmproto.UIDTypeRampID]
 	assert.False(t, hasRampID, "RampID requires a LiveRamp client and must be absent without one")
+	_, hasUID2 := canon.decoders[tmproto.UIDTypeUID2]
+	assert.False(t, hasUID2, "UID2 requires an operator client and must be absent without one")
+	_, hasEUID := canon.decoders[tmproto.UIDTypeEUID]
+	assert.False(t, hasEUID, "EUID requires an operator client and must be absent without one")
 }
 
 // TestNewIdentityCanonicalizer_WithLiveRamp_AddsRampIDDecoders confirms
 // that supplying the LiveRamp sidecar adds RampID and RampIDDerived to
 // the decoder map.
 func TestNewIdentityCanonicalizer_WithLiveRamp_AddsRampIDDecoders(t *testing.T) {
-	canon := NewIdentityCanonicalizer(newFixedLiveRampClient(), nil, nil)
+	canon := NewIdentityCanonicalizer(newFixedLiveRampClient(), nil, nil, nil, nil)
 	require.NotNil(t, canon)
 	for _, uid := range []tmproto.UIDType{tmproto.UIDTypeRampID, tmproto.UIDTypeRampIDDerived} {
 		_, ok := canon.decoders[uid]
 		assert.Truef(t, ok, "LiveRamp-backed decoder must be present for %s when sidecar is configured", uid)
 	}
+}
+
+// TestNewIdentityCanonicalizer_WithUID2AndEUID_AddsOperatorDecoders confirms
+// that supplying UID2 / EUID operator clients adds their decoders to the
+// canonicalizer's map — so audience/fcap keys reflect the operator-decoded
+// raw ID rather than the transient encrypted advertising token.
+func TestNewIdentityCanonicalizer_WithUID2AndEUID_AddsOperatorDecoders(t *testing.T) {
+	fake := &stubOperator{}
+	canon := NewIdentityCanonicalizer(nil, fake, fake, nil, nil)
+	require.NotNil(t, canon)
+	_, hasUID2 := canon.decoders[tmproto.UIDTypeUID2]
+	assert.True(t, hasUID2, "UID2 decoder must be present when operator client is configured")
+	_, hasEUID := canon.decoders[tmproto.UIDTypeEUID]
+	assert.True(t, hasEUID, "EUID decoder must be present when operator client is configured")
+}
+
+// stubOperator satisfies the UID2Operator/EUIDOperator interface. Used
+// by the constructor tests above to prove wire-up rather than exercise
+// decoding behavior (that's covered by targeting/tmpxdecoders/uid2_test.go).
+type stubOperator struct{}
+
+func (stubOperator) Decrypt(_ context.Context, _ string) ([]byte, error) {
+	out := make([]byte, 32)
+	for i := range out {
+		out[i] = 0xAA
+	}
+	return out, nil
 }
 
 // TestIdentityCanonicalizer_Decode_ProducesCanonicalBytes confirms the

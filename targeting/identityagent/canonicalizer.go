@@ -46,30 +46,44 @@ type IdentityCanonicalizer struct {
 }
 
 // NewIdentityCanonicalizer builds an IdentityCanonicalizer backed by the
-// default decoder registry. lrClient is the optional LiveRamp sidecar used
-// to decode RampID and RampID-derived identities. When nil, those UID
-// types have no decoder registered and identities of those types are
-// silently dropped from the canonicalized shadow request (the same
-// behavior the TMPX path applies). Pass nil — not a typed nil pointer to
-// a concrete client — to disable (Go's interface-nil rules treat a typed
-// nil as non-nil).
+// default decoder registry. lrClient / uid2Op / euidOp are the optional
+// external identity clients used to decode RampID, UID2, and EUID
+// identities respectively. When any is nil, its UID types have no
+// decoder registered and identities of those types are silently
+// dropped from the canonicalized shadow request (the same behavior
+// the TMPX path applies). Pass nil — not a typed nil pointer to a
+// concrete client — to disable (Go's interface-nil rules treat a
+// typed nil as non-nil).
 //
-// Returns a populated canonicalizer for any LiveRamp configuration: even
-// without the sidecar the default registry yields the format-only decoders
-// (MAID, HashedEmail, ID5) which cover the common case. Callers that
-// explicitly want to opt out of canonicalization entirely (and preserve
-// the legacy "publisher wire string flows through to audience/fcap"
-// behavior) should pass a nil *IdentityCanonicalizer to the handler.
-func NewIdentityCanonicalizer(lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) *IdentityCanonicalizer {
-	// The decoder package's LiveRampClient interface is structurally
-	// identical to LiveRampSidecar, so any concrete type that satisfies
-	// one satisfies the other. We assign through an interface variable to
-	// keep the nil check correct (avoid the typed-nil trap).
-	var decoderAdapter tmpxdecoders.LiveRampClient
+// Returns a populated canonicalizer for any client configuration: even
+// without external clients the default registry yields the format-only
+// decoders (MAID, HashedEmail, ID5) which cover the common case.
+// Callers that explicitly want to opt out of canonicalization entirely
+// (and preserve the legacy "publisher wire string flows through to
+// audience/fcap" behavior) should pass a nil *IdentityCanonicalizer
+// to the handler.
+func NewIdentityCanonicalizer(lrClient LiveRampSidecar, uid2Op UID2Operator, euidOp EUIDOperator, logger *slog.Logger, recorder Recorder) *IdentityCanonicalizer {
+	// The decoder package's client interfaces are structurally identical
+	// to the receiver-side ones declared here, so any concrete type that
+	// satisfies one satisfies the other. We assign through interface
+	// variables to keep the nil check correct (avoid the typed-nil trap).
+	var lrAdapter tmpxdecoders.LiveRampClient
 	if lrClient != nil {
-		decoderAdapter = lrClient
+		lrAdapter = lrClient
 	}
-	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+	var uid2Adapter tmpxdecoders.UID2Client
+	if uid2Op != nil {
+		uid2Adapter = uid2Op
+	}
+	var euidAdapter tmpxdecoders.UID2Client
+	if euidOp != nil {
+		euidAdapter = euidOp
+	}
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
+		LiveRampClient: lrAdapter,
+		UID2Client:     uid2Adapter,
+		EUIDClient:     euidAdapter,
+	})
 	if logger != nil {
 		logCanonicalizerLayout(logger, decoders)
 	}

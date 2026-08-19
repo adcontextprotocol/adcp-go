@@ -192,7 +192,7 @@ func newFakeResolver(t *testing.T, kid string) *fakeRecipientResolver {
 }
 
 func TestNewTMPXSealerDisabled(t *testing.T) {
-	sealer, err := NewTMPXSealer(t.Context(), TMPXConfig{}, nil, nil, nil)
+	sealer, err := NewTMPXSealer(t.Context(), TMPXConfig{}, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, sealer)
 }
@@ -203,7 +203,7 @@ func TestNewTMPXSealerPartialFails(t *testing.T) {
 		{Country: "US"},
 	}
 	for _, c := range cases {
-		_, err := NewTMPXSealer(t.Context(), c, nil, nil, nil)
+		_, err := NewTMPXSealer(t.Context(), c, nil, nil, nil, nil, nil)
 		assert.Error(t, err, "partial config %+v should fail", c)
 	}
 }

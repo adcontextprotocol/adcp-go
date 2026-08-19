@@ -20,6 +20,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig"
 	"github.com/adcontextprotocol/adcp-go/targeting/identityconfig/scope3"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/uid2"
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -430,7 +431,8 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 
 	// lrSidecar stays nil-typed as the interface so NewTMPXSealer's nil
 	// check works — assigning a typed-nil *liveramp.Client to an interface
-	// variable would make the interface compare != nil.
+	// variable would make the interface compare != nil. Same rule for the
+	// UID2/EUID operator clients below.
 	var lrSidecar LiveRampSidecar
 	if cfg.LiveRamp.Enabled() {
 		c, lrErr := liveramp.NewClient(liveramp.Config{
@@ -447,7 +449,44 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		logger.Info("LiveRamp sidecar disabled — RampID and RampID-derived identities will be ignored in TMPX tokens")
 	}
 
-	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, lrSidecar, logger, recorder)
+	var uid2Op UID2Operator
+	if cfg.UID2.Enabled() {
+		c, uid2Err := uid2.NewClient(uid2.Config{
+			URL:          cfg.UID2.URL,
+			APIKey:       cfg.UID2.APIKey,
+			ClientSecret: cfg.UID2.ClientSecret,
+			Timeout:      cfg.UID2.Timeout,
+			DialTimeout:  cfg.UID2.DialTimeout,
+		})
+		if uid2Err != nil {
+			return nil, fmt.Errorf("uid2 operator client: %w", uid2Err)
+		}
+		uid2Op = c
+		// URL only — credentials are held in memory and never logged.
+		logger.Info("UID2 operator enabled", "url", cfg.UID2.URL)
+	} else {
+		logger.Info("UID2 operator disabled — UID2 identities will be ignored in TMPX tokens")
+	}
+
+	var euidOp EUIDOperator
+	if cfg.EUID.Enabled() {
+		c, euidErr := uid2.NewClient(uid2.Config{
+			URL:          cfg.EUID.URL,
+			APIKey:       cfg.EUID.APIKey,
+			ClientSecret: cfg.EUID.ClientSecret,
+			Timeout:      cfg.EUID.Timeout,
+			DialTimeout:  cfg.EUID.DialTimeout,
+		})
+		if euidErr != nil {
+			return nil, fmt.Errorf("euid operator client: %w", euidErr)
+		}
+		euidOp = c
+		logger.Info("EUID operator enabled", "url", cfg.EUID.URL)
+	} else {
+		logger.Info("EUID operator disabled — EUID identities will be ignored in TMPX tokens")
+	}
+
+	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, lrSidecar, uid2Op, euidOp, logger, recorder)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}
@@ -456,9 +495,9 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	// even deployments that never emit a TMPX token need audience/fcap
 	// lookups keyed on the canonical decoded form so they see the same
 	// shape ExposureLog.user_token publishes downstream. The same
-	// LiveRamp sidecar (when configured) backs RampID decoding here as in
-	// the sealer.
-	canonicalizer := NewIdentityCanonicalizer(lrSidecar, logger, recorder)
+	// external clients (when configured) back RampID / UID2 / EUID
+	// decoding here as in the sealer.
+	canonicalizer := NewIdentityCanonicalizer(lrSidecar, uid2Op, euidOp, logger, recorder)
 
 	return &bundle{
 		service:                svc,

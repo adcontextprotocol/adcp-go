@@ -260,6 +260,71 @@ func TestConfigValidate(t *testing.T) {
 			name:   "multiple supported major versions ok",
 			mutate: func(c *Config) { c.SupportedADCPMajorVersions = []int{2, 3} },
 		},
+		// UID2 / EUID operator config: mirror the LiveRamp shape but with
+		// mandatory credentials — a URL without an API key or client
+		// secret must fail loudly at startup rather than silently miss
+		// every request. The parallel EUID cases live below.
+		{
+			name: "uid2 url without api key",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{URL: "https://uid2.example/decrypt", ClientSecret: "s"}
+			},
+			wantErr: "UID2_API_KEY",
+		},
+		{
+			name: "uid2 url without client secret",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{URL: "https://uid2.example/decrypt", APIKey: "k"}
+			},
+			wantErr: "UID2_CLIENT_SECRET",
+		},
+		{
+			name: "uid2 credentials without url",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{APIKey: "k", ClientSecret: "s"}
+			},
+			wantErr: "UID2_OPERATOR_URL is required",
+		},
+		{
+			name: "uid2 bad url scheme",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{URL: "ftp://uid2.example", APIKey: "k", ClientSecret: "s"}
+			},
+			wantErr: "must use http:// or https://",
+		},
+		{
+			name: "uid2 negative timeout",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{URL: "https://uid2.example", APIKey: "k", ClientSecret: "s", Timeout: -1}
+			},
+			wantErr: "UID2_OPERATOR_TIMEOUT must be non-negative",
+		},
+		{
+			name: "uid2 fully configured ok",
+			mutate: func(c *Config) {
+				c.UID2 = UID2OperatorConfig{URL: "https://uid2.example/decrypt", APIKey: "k", ClientSecret: "s"}
+			},
+		},
+		{
+			name: "euid url without api key",
+			mutate: func(c *Config) {
+				c.EUID = UID2OperatorConfig{URL: "https://euid.example/decrypt", ClientSecret: "s"}
+			},
+			wantErr: "EUID_API_KEY",
+		},
+		{
+			name: "euid credentials without url",
+			mutate: func(c *Config) {
+				c.EUID = UID2OperatorConfig{APIKey: "k", ClientSecret: "s"}
+			},
+			wantErr: "EUID_OPERATOR_URL is required",
+		},
+		{
+			name: "euid fully configured ok",
+			mutate: func(c *Config) {
+				c.EUID = UID2OperatorConfig{URL: "https://euid.example/decrypt", APIKey: "k", ClientSecret: "s"}
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -458,6 +523,53 @@ func TestLoadConfigFromEnv_TmpxSlotIDs(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "TMPX_SLOT_IDS")
 		assert.Contains(t, err.Error(), "exceeds")
+	})
+}
+
+// TestLoadConfigFromEnv_UID2AndEUIDOperators pins the env-var wiring for
+// the UID2 / EUID operator blocks so a rename on either side of the
+// LoadConfigFromEnv boundary fails a test, not a deployment.
+func TestLoadConfigFromEnv_UID2AndEUIDOperators(t *testing.T) {
+	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
+	t.Setenv("CONFIG_SOURCE_TOKEN", "tok")
+
+	t.Run("unset → disabled", func(t *testing.T) {
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.False(t, cfg.UID2.Enabled())
+		assert.False(t, cfg.EUID.Enabled())
+	})
+
+	t.Run("fully set → populated", func(t *testing.T) {
+		t.Setenv("UID2_OPERATOR_URL", "https://uid2.example/v2/token/decrypt")
+		t.Setenv("UID2_API_KEY", "uid2-key")
+		t.Setenv("UID2_CLIENT_SECRET", "uid2-secret")
+		t.Setenv("UID2_OPERATOR_TIMEOUT", "25ms")
+		t.Setenv("UID2_OPERATOR_DIAL_TIMEOUT", "8ms")
+		t.Setenv("EUID_OPERATOR_URL", "https://euid.example/v2/token/decrypt")
+		t.Setenv("EUID_API_KEY", "euid-key")
+		t.Setenv("EUID_CLIENT_SECRET", "euid-secret")
+		t.Setenv("EUID_OPERATOR_TIMEOUT", "35ms")
+		t.Setenv("EUID_OPERATOR_DIAL_TIMEOUT", "12ms")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, "https://uid2.example/v2/token/decrypt", cfg.UID2.URL)
+		assert.Equal(t, "uid2-key", cfg.UID2.APIKey)
+		assert.Equal(t, "uid2-secret", cfg.UID2.ClientSecret)
+		assert.Equal(t, 25*time.Millisecond, cfg.UID2.Timeout)
+		assert.Equal(t, 8*time.Millisecond, cfg.UID2.DialTimeout)
+		assert.Equal(t, "https://euid.example/v2/token/decrypt", cfg.EUID.URL)
+		assert.Equal(t, "euid-key", cfg.EUID.APIKey)
+		assert.Equal(t, "euid-secret", cfg.EUID.ClientSecret)
+		assert.Equal(t, 35*time.Millisecond, cfg.EUID.Timeout)
+		assert.Equal(t, 12*time.Millisecond, cfg.EUID.DialTimeout)
+	})
+
+	t.Run("invalid timeout surfaces at load time", func(t *testing.T) {
+		t.Setenv("UID2_OPERATOR_TIMEOUT", "not-a-duration")
+		_, err := LoadConfigFromEnv()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "UID2_OPERATOR_TIMEOUT")
 	})
 }
 

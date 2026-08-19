@@ -12,6 +12,7 @@ import (
 
 	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
+	"github.com/adcontextprotocol/adcp-go/targeting/internal/uid2"
 	"github.com/adcontextprotocol/adcp-go/targeting/tmpxdecoders"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
@@ -29,6 +30,32 @@ type LiveRampSidecar interface {
 // LiveRampSidecar. Lives next to the interface so a method-set drift fails
 // at the point of declaration rather than at the setup wire-up.
 var _ LiveRampSidecar = (*liveramp.Client)(nil)
+
+// UID2Operator is the interface NewTMPXSealer accepts for decoding UID2
+// encrypted advertising tokens into the raw 32-byte UID2. The production
+// implementation lives in targeting/internal/uid2. Declared here so
+// callers (including tests) can supply the client without importing the
+// internal package.
+//
+// EUID uses the same interface — the two identity scopes share wire
+// semantics; only the operator endpoint and credentials differ.
+type UID2Operator interface {
+	Decrypt(ctx context.Context, token string) ([]byte, error)
+}
+
+// EUIDOperator aliases UID2Operator. The two identity scopes have
+// identical wire semantics — same encrypted-token shape, same 32-byte
+// raw ID — so they share a method set. The alias exists as a
+// documentation anchor at call sites (NewTMPXSealer names its
+// parameters uid2Op / euidOp) rather than as a type-safety guard;
+// Go's type aliases are freely interchangeable at call boundaries.
+// The wire-up in setup.go is responsible for pairing each concrete
+// client with the correct scope's endpoint and credentials.
+type EUIDOperator = UID2Operator
+
+// Compile-time assertion: the production UID2 client satisfies
+// UID2Operator (and therefore EUIDOperator).
+var _ UID2Operator = (*uid2.Client)(nil)
 
 // TmpxTokenDecoder converts a user_token string supplied on an inbound
 // IdentityToken into the binary form TMPX packs into its encrypted
@@ -172,6 +199,12 @@ type tmpxRecipientResolver interface {
 // Pass nil — not a typed nil pointer to a concrete client — to disable
 // (Go's interface-nil rules treat a typed nil as non-nil).
 //
+// uid2Op / euidOp are the optional UID2 / EUID operator clients used to
+// decode UID2 and EUID encrypted advertising tokens into their raw
+// 32-byte IDs. Same nil-vs-configured rules as lrClient apply — a
+// typed nil pointer to *uid2.Client would compare != nil and be
+// misinterpreted as "configured".
+//
 // runCtx governs the long-lived refresh goroutine; cancel it during
 // shutdown to drain.
 //
@@ -179,7 +212,7 @@ type tmpxRecipientResolver interface {
 // library is logged at ERROR and recorded on
 // recorder.BackgroundPanic("tmpx-jwks-refresh") rather than taking down
 // the process. recorder may be nil for callers without observability.
-func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
+func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, uid2Op UID2Operator, euidOp EUIDOperator, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -214,15 +247,27 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	if err != nil {
 		return nil, err
 	}
-	// The decoder package's LiveRampClient interface is structurally
-	// identical to LiveRampSidecar, so any concrete type that satisfies one
-	// satisfies the other. We assign through an interface variable to keep
-	// the nil check correct (avoid the typed-nil trap).
-	var decoderAdapter tmpxdecoders.LiveRampClient
+	// The decoder package's client interfaces are structurally identical
+	// to the receiver-side ones declared here, so any concrete type that
+	// satisfies one satisfies the other. We assign through interface
+	// variables to keep the nil check correct (avoid the typed-nil trap).
+	var lrAdapter tmpxdecoders.LiveRampClient
 	if lrClient != nil {
-		decoderAdapter = lrClient
+		lrAdapter = lrClient
 	}
-	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+	var uid2Adapter tmpxdecoders.UID2Client
+	if uid2Op != nil {
+		uid2Adapter = uid2Op
+	}
+	var euidAdapter tmpxdecoders.UID2Client
+	if euidOp != nil {
+		euidAdapter = euidOp
+	}
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
+		LiveRampClient: lrAdapter,
+		UID2Client:     uid2Adapter,
+		EUIDClient:     euidAdapter,
+	})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
 	return &TMPXSealer{
 		country:    cfg.Country,
