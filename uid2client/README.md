@@ -95,6 +95,44 @@ specifically `Uid2Encryption.decryptV2` / `decryptV3` and the
 - The background refresh goroutine is bound to the `ctx` passed to
   `New`; cancel it to drain.
 
+## Mock-operator e2e tests
+
+A build-tagged, opt-in end-to-end test at
+[`mock_e2e_test.go`](./mock_e2e_test.go) validates wire correctness of
+`Client.Decrypt` (and, transitively, the request-envelope helpers) against
+a real UID2 operator running locally in mock mode. It boots the public
+`ghcr.io/iabtechlab/uid2-operator:latest` container, mints an advertising
+token with the operator's own `/v2/token/generate`, asks the operator
+what raw UID that token should map to via `/v2/identity/map`, and asserts
+`Client.Decrypt` returns the same 32 bytes.
+
+Run it manually:
+
+```
+MOCK_E2E=1 go test -tags mock_e2e -v -run TestMockE2E ./...
+```
+
+Prerequisites:
+
+- Docker daemon reachable (the test skips cleanly if `docker ps` fails).
+- ~1 GB free disk (the operator image is ~600 MB compressed) plus a
+  couple hundred MB of runtime memory.
+- Outbound access to `ghcr.io` on the first run — the image is cached
+  after that. On Apple Silicon the image is pulled `--platform
+  linux/amd64` and runs under emulation.
+
+The test self-cleans: `t.Cleanup` runs `docker rm -f` on the container
+even when the test fails. The container name and host port are
+randomized so parallel runs don't collide. The image itself and any
+pulled layers are left behind — `docker image rm
+ghcr.io/iabtechlab/uid2-operator:latest` will reclaim them.
+
+Both the `//go:build mock_e2e` tag AND the `MOCK_E2E` env var must be
+present to run the test — belt and suspenders so a stray `go test ./...`
+never boots Docker in CI. This test is deliberately not wired into the
+default CI matrix; run it locally before merging changes that touch the
+envelope, token-decode, key-refresh, or operator-URL code paths.
+
 ## Versioning
 
 Pre-1.0. The public surface (`New`, `Config`, `Client`, sentinel errors,
