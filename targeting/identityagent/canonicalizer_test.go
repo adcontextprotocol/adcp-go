@@ -14,7 +14,7 @@ import (
 // for the format-only UID types (MAID, HashedEmail, ID5). RampID and
 // RampIDDerived are dropped at decode time without an external client.
 func TestNewIdentityCanonicalizer_NilLiveRamp_BuildsFormatOnlyDecoders(t *testing.T) {
-	canon := NewIdentityCanonicalizer(nil, nil, nil, nil, nil)
+	canon := NewIdentityCanonicalizer(nil, nil, nil)
 	require.NotNil(t, canon)
 	for _, uid := range []tmproto.UIDType{tmproto.UIDTypeMAID, tmproto.UIDTypeHashedEmail, tmproto.UIDTypeID5} {
 		_, ok := canon.decoders[uid]
@@ -28,7 +28,7 @@ func TestNewIdentityCanonicalizer_NilLiveRamp_BuildsFormatOnlyDecoders(t *testin
 // that supplying the LiveRamp sidecar adds RampID and RampIDDerived to
 // the decoder map.
 func TestNewIdentityCanonicalizer_WithLiveRamp_AddsRampIDDecoders(t *testing.T) {
-	canon := NewIdentityCanonicalizer(newFixedLiveRampClient(), nil, nil, nil, nil)
+	canon := NewIdentityCanonicalizer(newFixedLiveRampClient(), nil, nil)
 	require.NotNil(t, canon)
 	for _, uid := range []tmproto.UIDType{tmproto.UIDTypeRampID, tmproto.UIDTypeRampIDDerived} {
 		_, ok := canon.decoders[uid]

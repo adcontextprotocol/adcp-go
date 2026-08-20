@@ -188,7 +188,22 @@ type tmpxRecipientResolver interface {
 // library is logged at ERROR and recorded on
 // recorder.BackgroundPanic("tmpx-jwks-refresh") rather than taking down
 // the process. recorder may be nil for callers without observability.
-func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, uid2Client, euidClient UID2Operator, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
+func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
+	return NewTMPXSealerWithOptions(runCtx, cfg, logger, recorder, WithLiveRampSidecar(lrClient))
+}
+
+// NewTMPXSealerWithOptions is the options-based variant of NewTMPXSealer:
+// it accepts the same configuration but takes each sidecar client (LiveRamp,
+// UID2 operator, EUID operator) via functional options so new sidecars can
+// be added without breaking source-compat for existing callers. NewTMPXSealer
+// is retained as a thin wrapper around this constructor.
+//
+// See NewTMPXSealer for the full lifecycle contract (background refresh,
+// initial fetch validation, silent-drop behavior when a UID type has no
+// registered decoder). Each option may be omitted; UID types whose sidecar
+// is not supplied are dropped at decode time exactly as if the operator had
+// left them unconfigured.
+func NewTMPXSealerWithOptions(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger, recorder Recorder, opts ...Option) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -199,6 +214,7 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	if logger == nil {
 		logger = slog.Default()
 	}
+	o := applyOptions(opts)
 	store, err := tmproto.NewJWKSStore(tmproto.JWKSStoreOptions{
 		URL:             cfg.EncryptJWKSURL,
 		RefreshInterval: cfg.EncryptJWKSTTL,
@@ -224,19 +240,19 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 		return nil, err
 	}
 	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
-		LiveRampClient: adaptLiveRamp(lrClient),
-		UID2Client:     adaptUID2(uid2Client),
-		EUIDClient:     adaptUID2(euidClient),
+		LiveRampClient: adaptLiveRamp(o.liveRampSidecar),
+		UID2Client:     adaptUID2(o.uid2Operator),
+		EUIDClient:     adaptUID2(o.euidOperator),
 	})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
 	return &TMPXSealer{
-		country:    cfg.Country,
-		encStore:   store,
-		slotIDs:    append([]string(nil), cfg.SlotIDs...),
-		priority:   order,
-		decoders:   decoders,
-		logger:     logger,
-		recorder:   recorder,
+		country:  cfg.Country,
+		encStore: store,
+		slotIDs:  append([]string(nil), cfg.SlotIDs...),
+		priority: order,
+		decoders: decoders,
+		logger:   logger,
+		recorder: recorder,
 	}, nil
 }
 

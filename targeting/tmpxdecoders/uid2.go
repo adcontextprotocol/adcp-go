@@ -61,10 +61,13 @@ func (d EUID) Decode(ctx context.Context, userToken string) ([]byte, error) {
 //   - uid2client.ErrTokenExpired        (past expiry)
 //   - uid2client.ErrKeyNotFound         (key ID not in cache)
 //   - uid2client.ErrVersionUnsupported  (token version we don't parse)
+//   - uid2client.ErrScopeMismatch       (scope bit in the untrusted token
+//     prefix; attacker-controllable — treat as a routine drop, not an
+//     operator page)
 //
 // Errors bubbled up (page the operator):
-//   - uid2client.ErrKeysStale           (background refresh is broken)
-//   - uid2client.ErrScopeMismatch       (wrong client configured)
+//   - uid2client.ErrKeysStale           (background refresh is broken —
+//     internal store state, not attacker-reachable)
 //   - uid2client.ErrNotInitialized      (New failed silently — shouldn't happen)
 //   - anything else                     (unknown; surface it)
 func uid2Lookup(ctx context.Context, client UID2Client, token, label string) ([]byte, error) {
@@ -77,7 +80,8 @@ func uid2Lookup(ctx context.Context, client UID2Client, token, label string) ([]
 		case errors.Is(err, uid2client.ErrInvalidToken),
 			errors.Is(err, uid2client.ErrTokenExpired),
 			errors.Is(err, uid2client.ErrKeyNotFound),
-			errors.Is(err, uid2client.ErrVersionUnsupported):
+			errors.Is(err, uid2client.ErrVersionUnsupported),
+			errors.Is(err, uid2client.ErrScopeMismatch):
 			return nil, ErrDropFromSeal
 		}
 		return nil, fmt.Errorf("%s: decrypt: %w", label, err)

@@ -457,7 +457,11 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		return nil, fmt.Errorf("euid client: %w", err)
 	}
 
-	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, lrSidecar, uid2Client, euidClient, logger, recorder)
+	tmpx, err := NewTMPXSealerWithOptions(bgCtx, cfg.TMPX, logger, recorder,
+		WithLiveRampSidecar(lrSidecar),
+		WithUID2Operator(uid2Client),
+		WithEUIDOperator(euidClient),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}
@@ -468,7 +472,11 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	// shape ExposureLog.user_token publishes downstream. The same
 	// LiveRamp sidecar (when configured) backs RampID decoding here as in
 	// the sealer.
-	canonicalizer := NewIdentityCanonicalizer(lrSidecar, uid2Client, euidClient, logger, recorder)
+	canonicalizer := NewIdentityCanonicalizerWithOptions(logger, recorder,
+		WithLiveRampSidecar(lrSidecar),
+		WithUID2Operator(uid2Client),
+		WithEUIDOperator(euidClient),
+	)
 
 	return &bundle{
 		service:                svc,

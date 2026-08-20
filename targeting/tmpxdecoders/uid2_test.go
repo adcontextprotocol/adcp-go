@@ -47,6 +47,11 @@ func TestUID2_DropSentinels(t *testing.T) {
 		{"expired", uid2client.ErrTokenExpired},
 		{"key_not_found", uid2client.ErrKeyNotFound},
 		{"version_unsupported", uid2client.ErrVersionUnsupported},
+		// Scope mismatch lives in the untrusted token prefix (checked
+		// before any key lookup or GCM tag verification), so an attacker
+		// can flip it trivially — treat it as a routine drop, not an
+		// operator page.
+		{"scope_mismatch", uid2client.ErrScopeMismatch},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,14 +74,17 @@ func TestUID2_KeysStaleSurfaces(t *testing.T) {
 	assert.ErrorIs(t, err, uid2client.ErrKeysStale)
 }
 
-// TestUID2_ScopeMismatchSurfaces confirms ErrScopeMismatch is not
-// swallowed either — it means the client was constructed with the wrong
-// scope, and every token will fail until the config is corrected.
-func TestUID2_ScopeMismatchSurfaces(t *testing.T) {
+// TestUID2_ScopeMismatchDrops confirms ErrScopeMismatch is treated as a
+// routine per-token drop rather than a configuration error. The scope
+// bit is set from the untrusted token prefix (`(prefix >> 4) & 1`) and
+// is checked in decryptToken before any key lookup or GCM tag check —
+// an attacker or a misrouted token can flip it trivially, so bubbling it
+// up as decoder_error would page operators on adversarial input.
+func TestUID2_ScopeMismatchDrops(t *testing.T) {
 	_, err := UID2{Client: stubUID2Client{err: uid2client.ErrScopeMismatch}}.Decode(t.Context(), "any-token")
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, ErrDropFromSeal)
-	assert.ErrorIs(t, err, uid2client.ErrScopeMismatch)
+	assert.ErrorIs(t, err, ErrDropFromSeal,
+		"ErrScopeMismatch is attacker-reachable via the untrusted token prefix — must drop, not bubble")
 }
 
 // TestUID2_EmptyBytesDrops covers a defensive edge — the client could
