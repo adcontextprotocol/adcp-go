@@ -17,14 +17,21 @@ var formatOnlyDecoders = map[tmproto.UIDType]Decoder{
 }
 
 // RegistryOptions controls which TMPX-encodable UID types end up in the
-// default registry. Today the only opt-in lever is the LiveRamp sidecar:
-// when LiveRampClient is non-nil, RampID and RampIDDerived gain decoders
-// backed by the sidecar; when it is nil, those UID types are omitted from
-// the registry and the agent's selectEntries silently drops them from the
-// TMPX wire (the operator-visible behavior is: "no LiveRamp config →
-// RampIDs are ignored").
+// default registry. Each opt-in lever is nil by default; when nil, the
+// corresponding UID types are omitted from the registry and the agent's
+// selectEntries silently drops them from the TMPX wire.
+//
+//   - LiveRampClient: enables RampID and RampIDDerived decoding.
+//   - UID2Client:     enables UID2 advertising-token decryption.
+//   - EUIDClient:     enables EUID advertising-token decryption.
+//
+// UID2 and EUID clients are separate because each is scope-bound (a UID2
+// client cannot decrypt an EUID token and vice versa). A deployment that
+// only accepts one scope leaves the other nil.
 type RegistryOptions struct {
 	LiveRampClient LiveRampClient
+	UID2Client     UID2Client
+	EUIDClient     UID2Client
 }
 
 // NewDefaultRegistry returns the canonical UID type → decoder map TMPX uses
@@ -45,11 +52,17 @@ type RegistryOptions struct {
 // it (e.g. swap in a custom decoder for tests) without affecting other
 // callers.
 func NewDefaultRegistry(opts RegistryOptions) map[tmproto.UIDType]Decoder {
-	out := make(map[tmproto.UIDType]Decoder, len(formatOnlyDecoders)+2)
+	out := make(map[tmproto.UIDType]Decoder, len(formatOnlyDecoders)+4)
 	maps.Copy(out, formatOnlyDecoders)
 	if opts.LiveRampClient != nil {
 		out[tmproto.UIDTypeRampID] = RampID{Client: opts.LiveRampClient}
 		out[tmproto.UIDTypeRampIDDerived] = RampIDDerived{Client: opts.LiveRampClient}
+	}
+	if opts.UID2Client != nil {
+		out[tmproto.UIDTypeUID2] = UID2{Client: opts.UID2Client}
+	}
+	if opts.EUIDClient != nil {
+		out[tmproto.UIDTypeEUID] = EUID{Client: opts.EUIDClient}
 	}
 	return out
 }

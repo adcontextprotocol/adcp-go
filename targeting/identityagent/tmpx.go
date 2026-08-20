@@ -25,6 +25,15 @@ type LiveRampSidecar interface {
 	MappedID(ctx context.Context, env string) (string, error)
 }
 
+// UID2Operator is the interface NewTMPXSealer accepts for decoding UID2
+// or EUID advertising tokens. The production implementation is
+// *uid2client.Client; the interface exists so tests can supply a fake.
+// UID2 and EUID clients are separate instances (each is scope-bound);
+// callers pass either or both.
+type UID2Operator interface {
+	Decrypt(ctx context.Context, token string) ([]byte, error)
+}
+
 // Compile-time assertion: the production LiveRamp client satisfies
 // LiveRampSidecar. Lives next to the interface so a method-set drift fails
 // at the point of declaration rather than at the setup wire-up.
@@ -180,6 +189,21 @@ type tmpxRecipientResolver interface {
 // recorder.BackgroundPanic("tmpx-jwks-refresh") rather than taking down
 // the process. recorder may be nil for callers without observability.
 func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) (*TMPXSealer, error) {
+	return NewTMPXSealerWithOptions(runCtx, cfg, logger, recorder, WithLiveRampSidecar(lrClient))
+}
+
+// NewTMPXSealerWithOptions is the options-based variant of NewTMPXSealer:
+// it accepts the same configuration but takes each sidecar client (LiveRamp,
+// UID2 operator, EUID operator) via functional options so new sidecars can
+// be added without breaking source-compat for existing callers. NewTMPXSealer
+// is retained as a thin wrapper around this constructor.
+//
+// See NewTMPXSealer for the full lifecycle contract (background refresh,
+// initial fetch validation, silent-drop behavior when a UID type has no
+// registered decoder). Each option may be omitted; UID types whose sidecar
+// is not supplied are dropped at decode time exactly as if the operator had
+// left them unconfigured.
+func NewTMPXSealerWithOptions(runCtx context.Context, cfg TMPXConfig, logger *slog.Logger, recorder Recorder, opts ...Option) (*TMPXSealer, error) {
 	configured := cfg.EncryptJWKSURL != "" || cfg.Country != "" || cfg.Priority != ""
 	if !configured {
 		return nil, nil
@@ -190,6 +214,7 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	if logger == nil {
 		logger = slog.Default()
 	}
+	o := applyOptions(opts)
 	store, err := tmproto.NewJWKSStore(tmproto.JWKSStoreOptions{
 		URL:             cfg.EncryptJWKSURL,
 		RefreshInterval: cfg.EncryptJWKSTTL,
@@ -214,24 +239,20 @@ func NewTMPXSealer(runCtx context.Context, cfg TMPXConfig, lrClient LiveRampSide
 	if err != nil {
 		return nil, err
 	}
-	// The decoder package's LiveRampClient interface is structurally
-	// identical to LiveRampSidecar, so any concrete type that satisfies one
-	// satisfies the other. We assign through an interface variable to keep
-	// the nil check correct (avoid the typed-nil trap).
-	var decoderAdapter tmpxdecoders.LiveRampClient
-	if lrClient != nil {
-		decoderAdapter = lrClient
-	}
-	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
+		LiveRampClient: adaptLiveRamp(o.liveRampSidecar),
+		UID2Client:     adaptUID2(o.uid2Operator),
+		EUIDClient:     adaptUID2(o.euidOperator),
+	})
 	logDecoderLayout(logger, cfg.Country, decoders, order)
 	return &TMPXSealer{
-		country:    cfg.Country,
-		encStore:   store,
-		slotIDs:    append([]string(nil), cfg.SlotIDs...),
-		priority:   order,
-		decoders:   decoders,
-		logger:     logger,
-		recorder:   recorder,
+		country:  cfg.Country,
+		encStore: store,
+		slotIDs:  append([]string(nil), cfg.SlotIDs...),
+		priority: order,
+		decoders: decoders,
+		logger:   logger,
+		recorder: recorder,
 	}, nil
 }
 
@@ -305,6 +326,27 @@ func (s *TMPXSealer) recordDrop(ctx context.Context, reason string, uid tmproto.
 		return
 	}
 	s.recorder.TmpxIdentityDrop(ctx, reason, string(uid))
+}
+
+// adaptLiveRamp returns a non-nil interface only when the concrete client
+// is non-nil, avoiding the typed-nil trap when the caller passes a
+// LiveRampSidecar-typed nil pointer. The tmpxdecoders.LiveRampClient
+// interface is structurally identical to LiveRampSidecar.
+func adaptLiveRamp(c LiveRampSidecar) tmpxdecoders.LiveRampClient {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+// adaptUID2 returns a non-nil interface only when the concrete client is
+// non-nil, avoiding the typed-nil trap. tmpxdecoders.UID2Client is
+// structurally identical to UID2Operator.
+func adaptUID2(c UID2Operator) tmpxdecoders.UID2Client {
+	if c == nil {
+		return nil
+	}
+	return c
 }
 
 // buildTmpxDecoders projects the tmpxdecoders.Decoder map onto the

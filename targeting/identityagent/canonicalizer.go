@@ -61,15 +61,26 @@ type IdentityCanonicalizer struct {
 // the legacy "publisher wire string flows through to audience/fcap"
 // behavior) should pass a nil *IdentityCanonicalizer to the handler.
 func NewIdentityCanonicalizer(lrClient LiveRampSidecar, logger *slog.Logger, recorder Recorder) *IdentityCanonicalizer {
-	// The decoder package's LiveRampClient interface is structurally
-	// identical to LiveRampSidecar, so any concrete type that satisfies
-	// one satisfies the other. We assign through an interface variable to
-	// keep the nil check correct (avoid the typed-nil trap).
-	var decoderAdapter tmpxdecoders.LiveRampClient
-	if lrClient != nil {
-		decoderAdapter = lrClient
-	}
-	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{LiveRampClient: decoderAdapter})
+	return NewIdentityCanonicalizerWithOptions(logger, recorder, WithLiveRampSidecar(lrClient))
+}
+
+// NewIdentityCanonicalizerWithOptions is the options-based variant of
+// NewIdentityCanonicalizer: it accepts each sidecar client (LiveRamp,
+// UID2 operator, EUID operator) via functional options so new sidecars can
+// be added without breaking source-compat for existing callers.
+// NewIdentityCanonicalizer is retained as a thin wrapper around this
+// constructor.
+//
+// See NewIdentityCanonicalizer for the behavioral contract. Each option
+// may be omitted; UID types whose sidecar is not supplied are dropped at
+// decode time exactly as if the operator had left them unconfigured.
+func NewIdentityCanonicalizerWithOptions(logger *slog.Logger, recorder Recorder, opts ...Option) *IdentityCanonicalizer {
+	o := applyOptions(opts)
+	decoders := buildTmpxDecoders(tmpxdecoders.RegistryOptions{
+		LiveRampClient: adaptLiveRamp(o.liveRampSidecar),
+		UID2Client:     adaptUID2(o.uid2Operator),
+		EUIDClient:     adaptUID2(o.euidOperator),
+	})
 	if logger != nil {
 		logCanonicalizerLayout(logger, decoders)
 	}

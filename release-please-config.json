@@ -52,6 +52,13 @@
       "bump-minor-pre-major": true,
       "include-component-in-tag": true
     },
+    "uid2client": {
+      "release-type": "go",
+      "component": "uid2client",
+      "tag-separator": "/",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": true
+    },
     "adcp/v3": {
       "release-type": "go",
       "package-name": "adcp/v3",

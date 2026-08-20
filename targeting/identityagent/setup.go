@@ -22,6 +22,7 @@ import (
 	"github.com/adcontextprotocol/adcp-go/targeting/internal/liveramp"
 	"github.com/adcontextprotocol/adcp-go/targeting/redisstore"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+	"github.com/adcontextprotocol/adcp-go/uid2client"
 )
 
 // identity-config retry curve. The deadline and mode are env-configurable
@@ -447,7 +448,20 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		logger.Info("LiveRamp sidecar disabled — RampID and RampID-derived identities will be ignored in TMPX tokens")
 	}
 
-	tmpx, err := NewTMPXSealer(bgCtx, cfg.TMPX, lrSidecar, logger, recorder)
+	uid2Client, err := buildUID2Client(bgCtx, cfg.UID2, uid2client.ScopeUID2, "UID2", logger)
+	if err != nil {
+		return nil, fmt.Errorf("uid2 client: %w", err)
+	}
+	euidClient, err := buildUID2Client(bgCtx, cfg.EUID, uid2client.ScopeEUID, "EUID", logger)
+	if err != nil {
+		return nil, fmt.Errorf("euid client: %w", err)
+	}
+
+	tmpx, err := NewTMPXSealerWithOptions(bgCtx, cfg.TMPX, logger, recorder,
+		WithLiveRampSidecar(lrSidecar),
+		WithUID2Operator(uid2Client),
+		WithEUIDOperator(euidClient),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("tmpx: %w", err)
 	}
@@ -458,7 +472,11 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	// shape ExposureLog.user_token publishes downstream. The same
 	// LiveRamp sidecar (when configured) backs RampID decoding here as in
 	// the sealer.
-	canonicalizer := NewIdentityCanonicalizer(lrSidecar, logger, recorder)
+	canonicalizer := NewIdentityCanonicalizerWithOptions(logger, recorder,
+		WithLiveRampSidecar(lrSidecar),
+		WithUID2Operator(uid2Client),
+		WithEUIDOperator(euidClient),
+	)
 
 	return &bundle{
 		service:                svc,
@@ -473,6 +491,40 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		canonicalizer:          canonicalizer,
 		cancelBackground:       cancelBg,
 	}, nil
+}
+
+// buildUID2Client constructs a uid2client.Client for the supplied
+// operator config, or returns nil when the config is disabled. logger
+// prefix identifies the scope for startup logs. A non-nil error means
+// the config was populated but the initial refresh failed — startup
+// must not proceed with a half-configured UID2/EUID surface.
+//
+// The returned value is a UID2Operator interface (not a concrete
+// *uid2client.Client) so callers pass it directly to NewTMPXSealer /
+// NewIdentityCanonicalizer without triggering the typed-nil trap: when
+// the config is disabled we return an untyped nil.
+func buildUID2Client(lifetimeCtx context.Context, cfg UID2OperatorConfig, scope uid2client.IdentityScope, label string, logger *slog.Logger) (UID2Operator, error) {
+	if !cfg.Enabled() {
+		logger.Info(label+" operator client disabled — tokens of this scope will be ignored",
+			"reason", "credentials not configured")
+		return nil, nil
+	}
+	client, err := uid2client.New(lifetimeCtx, uid2client.Config{
+		OperatorURL:        cfg.OperatorURL,
+		APIKey:             cfg.APIKey,
+		ClientSecret:       cfg.ClientSecret,
+		IdentityScope:      scope,
+		HTTPTimeout:        cfg.HTTPTimeout,
+		KeyRefreshInterval: cfg.KeyRefreshInterval,
+		Logger:             logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	logger.Info(label+" operator client enabled",
+		"operator_url", cfg.OperatorURL,
+		"key_refresh_interval", cfg.KeyRefreshInterval.String())
+	return client, nil
 }
 
 // startConfigFor maps the env-configurable IdentityConfigSourceConfig onto
