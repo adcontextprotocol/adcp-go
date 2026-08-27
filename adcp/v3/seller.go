@@ -176,6 +176,25 @@ func Register(server *mcp.Server, cfg Config) {
 			})
 	}
 
+	// --- Proposal negotiation ---
+
+	if cfg.RefineProposals != nil {
+		AddTool(server, "refine_proposals", "Revise or finalize proposals",
+			func(ctx context.Context, req *mcp.CallToolRequest, input RefineProposalsRequest) (*mcp.CallToolResult, any, error) {
+				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Context)
+				if result != nil {
+					return result, nil, nil
+				}
+				data, err := cfg.RefineProposals(ctx, acct, &input)
+				if err != nil {
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
+				}
+				result, out, err := RefineProposalsResponse(data)
+				return attachContext(result, input.Context), out, err
+			})
+	}
+
 	// --- Creative tools ---
 
 	if cfg.ListCreativeFormats != nil {
@@ -346,10 +365,11 @@ type Config struct {
 	// --- Media buy ---
 	SyncAccounts   func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
 	SyncGovernance func(ctx context.Context, req *SyncGovernanceRequest) ([]GovernanceResult, error)
-	GetProducts    func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
-	CreateMediaBuy func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResponse, error)
-	GetMediaBuys   func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
-	GetDelivery    func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
+	GetProducts      func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
+	CreateMediaBuy   func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResponse, error)
+	GetMediaBuys     func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
+	GetDelivery      func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
+	RefineProposals  func(ctx context.Context, acct any, req *RefineProposalsRequest) (*RefineProposalsData, error)
 
 	// --- Creative ---
 	ListCreativeFormats func(ctx context.Context, req *ListCreativeFormatsRequest) ([]CreativeFormat, error)
@@ -460,7 +480,7 @@ func stampCreateMediaBuyResult(result CreateMediaBuyResponse, sandbox bool, cont
 // supported_protocols value, so collection handlers do not affect this list.
 func detectProtocols(cfg Config) []string {
 	var protocols []string
-	if cfg.SyncAccounts != nil || cfg.GetProducts != nil || cfg.CreateMediaBuy != nil || cfg.GetMediaBuys != nil || cfg.GetDelivery != nil {
+	if cfg.SyncAccounts != nil || cfg.GetProducts != nil || cfg.CreateMediaBuy != nil || cfg.GetMediaBuys != nil || cfg.GetDelivery != nil || cfg.RefineProposals != nil {
 		protocols = append(protocols, "media_buy")
 	}
 	if cfg.SyncGovernance != nil {
