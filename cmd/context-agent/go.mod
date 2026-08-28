@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/cmd/context-agent
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/adcontextprotocol/adcp-go/registry v0.1.0
