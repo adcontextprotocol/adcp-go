@@ -42,9 +42,9 @@ const (
 // numbers inside Issuer or Proof are canonicalized via RFC 8785 JCS, which this
 // package implements for integers only (see jcs.go). World ID and comparable
 // schemes carry their proof material as strings, so this holds in practice; a
-// scheme that puts a non-integer or larger-than-int64 number in Proof would
-// fail signing closed (a clean error, never a wrong signature) until JCS gains
-// general number canonicalization.
+// scheme that puts a non-integer or a number outside the JS safe-integer range
+// (abs > 2^53) in Proof would fail signing closed (a clean error, never a wrong
+// signature) until JCS gains general number canonicalization.
 type Attestation struct {
 	Issuer            map[string]any     `json:"issuer"`
 	Scheme            string             `json:"scheme"`
