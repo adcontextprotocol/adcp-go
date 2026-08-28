@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/bench/context-perf
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/adcontextprotocol/adcp-go/targeting v0.1.0

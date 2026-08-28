@@ -131,7 +131,7 @@ func main() {
 	log.Printf("seeding %d packages under seller=%s (canonicalized from %q) topics=%v signals=%v",
 		totalPackages, sellerURL, rawSellerURL, topicsEnabled, signalsEnabled)
 	start := time.Now()
-	for i := 0; i < totalPackages; i++ {
+	for i := range totalPackages {
 		pkgID := corpus.PackageID(i)
 		mbID := corpus.MediaBuyID(i)
 		if err := mbSvc.Put(ctx, mediabuystore.MediaBuy{
@@ -194,7 +194,7 @@ func main() {
 		// >0) exercise the wider taxonomy without gating the outcome
 		// on whether their windows happen to overlap.
 		alwaysOn := corpus.TopicID(0)
-		for i := 0; i < totalPackages; i++ {
+		for i := range totalPackages {
 			pkgID := corpus.PackageID(i)
 			topics := make([]string, 0, topicsPerPackage)
 			topics = append(topics, alwaysOn)
@@ -205,7 +205,7 @@ func main() {
 				log.Fatalf("package topics %s: %v", pkgID, err)
 			}
 		}
-		for i := 0; i < totalArtifacts; i++ {
+		for i := range totalArtifacts {
 			ref := corpus.ArtifactURL(i)
 			topics := make([]string, 0, topicsPerArtifact)
 			topics = append(topics, alwaysOn)
@@ -245,7 +245,7 @@ func main() {
 		// seeded key. Unifying the count on TOTAL_ARTIFACTS makes it
 		// impossible for an operator to decouple the two pools and
 		// silently measure cold misses.
-		for i := 0; i < totalArtifacts; i++ {
+		for i := range totalArtifacts {
 			val := corpus.ArtifactURL(i)
 			key := signalstore.Key(corpus.SignalOwnerID,
 				[]signalstore.KeyType{signalKeyType},
