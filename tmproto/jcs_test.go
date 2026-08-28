@@ -153,6 +153,42 @@ func TestJCSRejectsInvalidJSONNumberWithoutEcho(t *testing.T) {
 	}
 }
 
+func TestJCSRejectsJSONNumberBeyondSafeIntegerRange(t *testing.T) {
+	// 2^53 + 1 fits in int64 but exceeds the JS safe-integer range.
+	// jcsEncodeJSONNumber must fail closed to prevent cross-implementation
+	// hash divergence with ECMAScript-based JCS verifiers.
+	beyondSafe := []string{
+		"9007199254740993",  // 2^53 + 1
+		"-9007199254740993", // -(2^53 + 1)
+	}
+	for _, n := range beyondSafe {
+		if _, err := jcsMarshal(json.Number(n)); err == nil {
+			t.Errorf("json.Number(%q) must be rejected (outside JS safe-integer range)", n)
+		}
+	}
+}
+
+func TestJCSAcceptsJSONNumberAtSafeIntegerBoundary(t *testing.T) {
+	// 2^53 is the boundary — it must still be accepted.
+	boundary := []struct {
+		in   string
+		want string
+	}{
+		{"9007199254740992", "9007199254740992"},   // 2^53
+		{"-9007199254740992", "-9007199254740992"}, // -2^53
+	}
+	for _, tc := range boundary {
+		got, err := jcsMarshal(json.Number(tc.in))
+		if err != nil {
+			t.Errorf("json.Number(%q) err = %v; want success at safe-integer boundary", tc.in, err)
+			continue
+		}
+		if string(got) != tc.want {
+			t.Errorf("json.Number(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestJCSAcceptsIntegerFloats(t *testing.T) {
 	got, err := jcsMarshal(42.0)
 	if err != nil {

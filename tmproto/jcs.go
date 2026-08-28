@@ -154,6 +154,14 @@ func jcsEncodeNumber(buf *bytes.Buffer, f float64) error {
 
 func jcsEncodeJSONNumber(buf *bytes.Buffer, n json.Number) error {
 	if i, err := n.Int64(); err == nil {
+		// Guard the JS safe-integer range (2^53), matching jcsEncodeNumber.
+		// Int64 succeeds for any value in (-2^63, 2^63-1], but values
+		// outside (-2^53, 2^53) are not exactly representable as ECMAScript
+		// numbers and would cause cross-implementation hash divergence.
+		const maxSafeInt = 1 << 53
+		if i < -maxSafeInt || i > maxSafeInt {
+			return fmt.Errorf("tmproto: jcs integer %d exceeds JS safe-integer range", i)
+		}
 		buf.WriteString(strconv.FormatInt(i, 10))
 		return nil
 	}
