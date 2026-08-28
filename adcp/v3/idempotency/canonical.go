@@ -68,6 +68,19 @@ func NewCanonicalJSONSHA256(excludePaths []string) HashFn {
 	}
 }
 
+// Canonicalize returns the RFC 8785 JCS canonical bytes for the JSON payload.
+// No hashing or encoding is applied — the caller decides the digest scheme.
+// Byte output is identical to gowebpki/jcs.Transform (verified by parity tests).
+func Canonicalize(payload []byte) ([]byte, error) {
+	var v any
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	if err := dec.Decode(&v); err != nil {
+		return nil, fmt.Errorf("idempotency: decode payload: %w", err)
+	}
+	return canonicalize(v)
+}
+
 type excludeNode struct {
 	children map[string]*excludeNode
 	leaf     bool
