@@ -30,7 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -355,7 +355,7 @@ func collectStats(samples <-chan sample) report {
 		lats = append(lats, s.latency)
 		sumLat += s.latency
 	}
-	sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
+	slices.Sort(lats)
 	pct := func(p float64) float64 {
 		if len(lats) == 0 {
 			return 0
