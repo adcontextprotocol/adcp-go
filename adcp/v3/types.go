@@ -38,6 +38,8 @@ type CapabilitiesData struct {
 	WebhookSigning          *WebhookSigningCapabilities    `json:"webhook_signing,omitempty"`
 	Identity                *IdentityCapabilities          `json:"identity,omitempty"`
 	Measurement             any                            `json:"measurement,omitempty"`
+	MeasurementGateway      any                            `json:"measurement_gateway,omitempty"`
+	OAuth                   any                            `json:"oauth,omitempty"`
 	ComplianceTesting       *ComplianceTestingCapabilities `json:"compliance_testing,omitempty"`
 	Specialisms             []string                       `json:"specialisms,omitempty"`
 	ExtensionsSupported     []string                       `json:"extensions_supported,omitempty"`
@@ -51,10 +53,13 @@ type CapabilitiesData struct {
 }
 
 type ADCPVersion struct {
-	MajorVersions     []int           `json:"major_versions"`
-	SupportedVersions []string        `json:"supported_versions,omitempty"`
-	BuildVersion      string          `json:"build_version,omitempty"`
-	Idempotency       IdempotencyCaps `json:"idempotency"`
+	MajorVersions         []int           `json:"major_versions"`
+	SupportedVersions     []string        `json:"supported_versions,omitempty"`
+	BuildVersion          string          `json:"build_version,omitempty"`
+	Idempotency           IdempotencyCaps `json:"idempotency"`
+	CapabilityChanges     any             `json:"capability_changes,omitempty"`
+	GovernanceEnforcement any             `json:"governance_enforcement,omitempty"`
+	Attestations          any             `json:"attestations,omitempty"`
 }
 
 // IdempotencyCaps declares the seller's replay window for idempotency_key.
@@ -69,31 +74,48 @@ type IdempotencyCaps struct {
 // AccountCapabilities describes how accounts are established and billed.
 // supported_billing is required when present.
 type AccountCapabilities struct {
-	RequireOperatorAuth   *bool    `json:"require_operator_auth,omitempty"`
-	AuthorizationEndpoint string   `json:"authorization_endpoint,omitempty"`
-	SupportedBilling      []string `json:"supported_billing"`
-	RequiredForProducts   *bool    `json:"required_for_products,omitempty"`
-	AccountFinancials     *bool    `json:"account_financials,omitempty"`
-	Sandbox               *bool    `json:"sandbox,omitempty"`
+	RequireOperatorAuth           *bool    `json:"require_operator_auth,omitempty"`
+	AuthorizationEndpoint         string   `json:"authorization_endpoint,omitempty"`
+	SupportedBilling              []string `json:"supported_billing"`
+	RequiredForProducts           *bool    `json:"required_for_products,omitempty"`
+	AccountFinancials             *bool    `json:"account_financials,omitempty"`
+	Sandbox                       *bool    `json:"sandbox,omitempty"`
+	SupportedAccountCurrencyModes []string `json:"supported_account_currency_modes,omitempty"`
+	Timezone                      any      `json:"timezone,omitempty"`
+	Notifications                 any      `json:"notifications,omitempty"`
+	ChangeFeed                    any      `json:"change_feed,omitempty"`
+	IdentityUpdates               any      `json:"identity_updates,omitempty"`
 }
 
 // MediaBuyCapabilities is the media_buy protocol capability block.
 type MediaBuyCapabilities struct {
+	AcceptancePolicyDiscovery    any                                   `json:"acceptance_policy_discovery,omitempty"`
 	SupportedPricingModels       []string                              `json:"supported_pricing_models,omitempty"`
 	BuyingModes                  []string                              `json:"buying_modes,omitempty"`
+	MeasurementTermsAcceptance   *bool                                 `json:"measurement_terms_acceptance,omitempty"`
+	AvailabilityHorizon          *bool                                 `json:"availability_horizon,omitempty"`
+	LifecycleTools               []string                              `json:"lifecycle_tools,omitempty"`
+	ProposalRefinement           *RefinementCapability                 `json:"proposal_refinement,omitempty"`
 	ReportingDeliveryMethods     []string                              `json:"reporting_delivery_methods,omitempty"`
+	PerformanceFeedback          any                                   `json:"performance_feedback,omitempty"`
 	OfflineDeliveryProtocols     []string                              `json:"offline_delivery_protocols,omitempty"`
 	SupportsProposals            *bool                                 `json:"supports_proposals,omitempty"`
+	OutcomeTarget                *bool                                 `json:"outcome_target,omitempty"`
 	GovernanceAware              *bool                                 `json:"governance_aware,omitempty"`
 	PropagationSurfaces          []string                              `json:"propagation_surfaces,omitempty"`
 	CreativeApprovalMode         string                                `json:"creative_approval_mode,omitempty"`
+	SupportedIndicatorTypes      []string                              `json:"supported_indicator_types,omitempty"`
+	RelationshipNotifications    any                                   `json:"relationship_notifications,omitempty"`
 	Features                     map[string]any                        `json:"features,omitempty"`
 	Execution                    *MediaBuyExecution                    `json:"execution,omitempty"`
+	AudienceEvidence             any                                   `json:"audience_evidence,omitempty"`
+	RightsAttestations           any                                   `json:"rights_attestations,omitempty"`
 	AudienceTargeting            *AudienceTargetingCaps                `json:"audience_targeting,omitempty"`
 	SupportedOptimizationMetrics []string                              `json:"supported_optimization_metrics,omitempty"`
 	VendorMetricOptimization     *MediaBuyVendorMetricOptimizationCaps `json:"vendor_metric_optimization,omitempty"`
 	ConversionTracking           *ConversionTrackingCaps               `json:"conversion_tracking,omitempty"`
 	FrequencyCapping             *FrequencyCappingCaps                 `json:"frequency_capping,omitempty"`
+	BudgetCapping                any                                   `json:"budget_capping,omitempty"`
 	ContentStandards             *ContentStandardsCaps                 `json:"content_standards,omitempty"`
 	Portfolio                    *PortfolioCaps                        `json:"portfolio,omitempty"`
 }
@@ -120,25 +142,35 @@ type TrustedMatchCaps struct {
 }
 
 type CreativeSpecsCaps struct {
-	VASTVersions  []string `json:"vast_versions,omitempty"`
-	MRAIDVersions []string `json:"mraid_versions,omitempty"`
-	VPAID         *bool    `json:"vpaid,omitempty"`
-	SIMID         *bool    `json:"simid,omitempty"`
+	VASTVersions                []string `json:"vast_versions,omitempty"`
+	MacroResolutionCapabilities []any    `json:"macro_resolution_capabilities,omitempty"`
+	MRAIDVersions               []string `json:"mraid_versions,omitempty"`
+	VPAID                       *bool    `json:"vpaid,omitempty"`
+	SIMID                       *bool    `json:"simid,omitempty"`
+	VASTValidation              string   `json:"vast_validation,omitempty"`
 }
 
 // TargetingCaps declares which targeting dimensions the seller honors. Presence
 // of a boolean/object indicates support; buyers can then send matching fields
 // in targeting_overlay.
 type TargetingCaps struct {
-	GeoCountries     *bool               `json:"geo_countries,omitempty"`
-	GeoRegions       *bool               `json:"geo_regions,omitempty"`
-	GeoMetros        *GeoMetrosCaps      `json:"geo_metros,omitempty"`
-	GeoPostalAreas   *GeoPostalAreasCaps `json:"geo_postal_areas,omitempty"`
-	GeoProximity     *GeoProximityCaps   `json:"geo_proximity,omitempty"`
-	AgeRestriction   *AgeRestrictionCaps `json:"age_restriction,omitempty"`
-	Language         *bool               `json:"language,omitempty"`
-	KeywordTargets   *KeywordMatchCaps   `json:"keyword_targets,omitempty"`
-	NegativeKeywords *KeywordMatchCaps   `json:"negative_keywords,omitempty"`
+	GeoCountries          *bool               `json:"geo_countries,omitempty"`
+	GeoRegions            *bool               `json:"geo_regions,omitempty"`
+	GeoRegionsExclude     any                 `json:"geo_regions_exclude,omitempty"`
+	GeoMetros             *GeoMetrosCaps      `json:"geo_metros,omitempty"`
+	GeoPostalAreas        *GeoPostalAreasCaps `json:"geo_postal_areas,omitempty"`
+	GeoPlaces             any                 `json:"geo_places,omitempty"`
+	GeoProximity          *GeoProximityCaps   `json:"geo_proximity,omitempty"`
+	AgeRestriction        *AgeRestrictionCaps `json:"age_restriction,omitempty"`
+	Demographics          any                 `json:"demographics,omitempty"`
+	Language              *bool               `json:"language,omitempty"`
+	KeywordTargets        *KeywordMatchCaps   `json:"keyword_targets,omitempty"`
+	NegativeKeywords      *KeywordMatchCaps   `json:"negative_keywords,omitempty"`
+	PlacementSelection    *bool               `json:"placement_selection,omitempty"`
+	PropertyList          *bool               `json:"property_list,omitempty"`
+	PropertyListExclude   *bool               `json:"property_list_exclude,omitempty"`
+	CollectionList        *bool               `json:"collection_list,omitempty"`
+	CollectionListExclude *bool               `json:"collection_list_exclude,omitempty"`
 }
 
 type GeoMetrosCaps struct {
@@ -201,6 +233,7 @@ type AudienceTargetingCaps struct {
 	SupportsPlatformCustomerID *bool                 `json:"supports_platform_customer_id,omitempty"`
 	SupportedUIDTypes          []string              `json:"supported_uid_types,omitempty"`
 	MinimumAudienceSize        int                   `json:"minimum_audience_size"`
+	SupportedActivationMethods []string              `json:"supported_activation_methods,omitempty"`
 	MatchingLatencyHours       *MatchingLatencyRange `json:"matching_latency_hours,omitempty"`
 }
 
@@ -267,6 +300,7 @@ type SignalsCapabilities struct {
 
 // GovernanceCapabilities is the governance protocol capability block.
 type GovernanceCapabilities struct {
+	RuntimeAttestations   any                 `json:"runtime_attestations,omitempty"`
 	PropertyFeatures      []GovernanceFeature `json:"property_features,omitempty"`
 	CreativeFeatures      []GovernanceFeature `json:"creative_features,omitempty"`
 	AggregationWindowDays int                 `json:"aggregation_window_days,omitempty"`
@@ -381,8 +415,10 @@ type BrandCapabilities struct {
 type CreativeCapabilities struct {
 	SupportsCompliance        *bool                     `json:"supports_compliance,omitempty"`
 	HasCreativeLibrary        *bool                     `json:"has_creative_library,omitempty"`
+	SupportsRevisions         *bool                     `json:"supports_revisions,omitempty"`
 	SupportsGeneration        *bool                     `json:"supports_generation,omitempty"`
 	SupportsTransformation    *bool                     `json:"supports_transformation,omitempty"`
+	RepresentationResolution  any                       `json:"representation_resolution,omitempty"`
 	SupportsTransformers      *bool                     `json:"supports_transformers,omitempty"`
 	SupportsRefinement        *bool                     `json:"supports_refinement,omitempty"`
 	SupportsEvaluator         *bool                     `json:"supports_evaluator,omitempty"`
@@ -390,6 +426,8 @@ type CreativeCapabilities struct {
 	RefinableRetentionSeconds *int                      `json:"refinable_retention_seconds,omitempty"`
 	Multiplicity              *CreativeMultiplicityCaps `json:"multiplicity,omitempty"`
 	SupportedFormats          []CreativeSupportedFormat `json:"supported_formats,omitempty"`
+	Preview                   any                       `json:"preview,omitempty"`
+	Localization              any                       `json:"localization,omitempty"`
 	BillsThroughAdcp          *bool                     `json:"bills_through_adcp,omitempty"`
 	CanonicalCatalogVersion   string                    `json:"canonical_catalog_version,omitempty"`
 }
@@ -431,10 +469,11 @@ type RequestSigningCapabilities struct {
 // RequestSigning. Profile is a closed enum ("adcp/webhook-signing/v1"); the
 // value MUST match the tag= on the on-wire Signature-Input header.
 type WebhookSigningCapabilities struct {
-	Supported          bool     `json:"supported"`
-	Profile            string   `json:"profile,omitempty"`
-	Algorithms         []string `json:"algorithms,omitempty"`
-	LegacyHMACFallback *bool    `json:"legacy_hmac_fallback,omitempty"`
+	Supported                   bool     `json:"supported"`
+	Profile                     string   `json:"profile,omitempty"`
+	Algorithms                  []string `json:"algorithms,omitempty"`
+	LegacyHMACFallback          *bool    `json:"legacy_hmac_fallback,omitempty"`
+	DeliveryRetryHorizonSeconds *int     `json:"delivery_retry_horizon_seconds,omitempty"`
 }
 
 // IdentityCapabilities declares operator identity posture — key-scoping and
@@ -583,20 +622,22 @@ type ProductsData struct {
 // fixed-price variants. Go represents that presence with non-nil; use Float64(0)
 // if an explicit zero fixed price is intentional.
 type PricingOption struct {
-	PricingOptionID     string   `json:"pricing_option_id"`
-	PricingModel        string   `json:"pricing_model"`
-	Currency            string   `json:"currency"`
-	FixedPrice          *float64 `json:"fixed_price,omitempty"`
-	FloorPrice          float64  `json:"floor_price,omitempty"`
-	MinSpendPerPackage  float64  `json:"min_spend_per_package,omitempty"`
-	MaxBid              *bool    `json:"max_bid,omitempty"`
-	PriceGuidance       any      `json:"price_guidance,omitempty"`
-	PriceBreakdown      any      `json:"price_breakdown,omitempty"`
-	EventSourceID       string   `json:"event_source_id,omitempty"`
-	EventType           string   `json:"event_type,omitempty"`
-	CustomEventName     string   `json:"custom_event_name,omitempty"`
-	EligibleAdjustments []string `json:"eligible_adjustments,omitempty"`
-	Parameters          any      `json:"parameters,omitempty"`
+	PricingOptionID            string   `json:"pricing_option_id"`
+	PricingModel               string   `json:"pricing_model"`
+	Currency                   string   `json:"currency"`
+	FixedPrice                 *float64 `json:"fixed_price,omitempty"`
+	FloorPrice                 float64  `json:"floor_price,omitempty"`
+	MinSpendPerPackage         float64  `json:"min_spend_per_package,omitempty"`
+	MaxBid                     *bool    `json:"max_bid,omitempty"`
+	PriceGuidance              any      `json:"price_guidance,omitempty"`
+	PriceBreakdown             any      `json:"price_breakdown,omitempty"`
+	EventSourceID              string   `json:"event_source_id,omitempty"`
+	EventType                  string   `json:"event_type,omitempty"`
+	CustomEventName            string   `json:"custom_event_name,omitempty"`
+	EligibleAdjustments        []string `json:"eligible_adjustments,omitempty"`
+	Parameters                 any      `json:"parameters,omitempty"`
+	CommissionRate             float64  `json:"commission_rate,omitempty"`
+	CommissionBasisDescription string   `json:"commission_basis_description,omitempty"`
 }
 
 // OptimizationGoal is a flattened representation of the optimization-goal
@@ -605,16 +646,16 @@ type PricingOption struct {
 // that collide with typed fields are ignored when marshaling; set the typed
 // field instead.
 type OptimizationGoal struct {
-	Kind                string                             `json:"kind,omitempty"`
-	Metric              string                             `json:"metric,omitempty"`
-	ReachUnit           string                             `json:"reach_unit,omitempty"`
-	TargetFrequency     *OptimizationGoalTargetFrequency   `json:"target_frequency,omitempty"`
-	ViewDurationSeconds float64                            `json:"view_duration_seconds,omitempty"`
-	Target              OptimizationGoalTarget             `json:"target,omitempty"`
-	Priority            int                                `json:"priority,omitempty"`
-	EventSources        []OptimizationGoalEventSource      `json:"event_sources,omitempty"`
-	AttributionWindow   *OptimizationGoalAttributionWindow `json:"attribution_window,omitempty"`
-	Extra               map[string]any                     `json:"-"`
+	Kind                string                           `json:"kind,omitempty"`
+	Metric              string                           `json:"metric,omitempty"`
+	ReachUnit           string                           `json:"reach_unit,omitempty"`
+	TargetFrequency     *OptimizationGoalTargetFrequency `json:"target_frequency,omitempty"`
+	ViewDurationSeconds float64                          `json:"view_duration_seconds,omitempty"`
+	Target              OptimizationGoalTarget           `json:"target,omitempty"`
+	Priority            int                              `json:"priority,omitempty"`
+	EventSources        []OptimizationGoalEventSource    `json:"event_sources,omitempty"`
+	AttributionWindow   *AttributionWindow               `json:"attribution_window,omitempty"`
+	Extra               map[string]any                   `json:"-"`
 }
 
 func (g OptimizationGoal) MarshalJSON() ([]byte, error) {
@@ -674,15 +715,15 @@ func isOptimizationGoalTypedJSONField(key string) bool {
 
 func (g *OptimizationGoal) UnmarshalJSON(data []byte) error {
 	var typed struct {
-		Kind                string                             `json:"kind,omitempty"`
-		Metric              string                             `json:"metric,omitempty"`
-		ReachUnit           string                             `json:"reach_unit,omitempty"`
-		TargetFrequency     *OptimizationGoalTargetFrequency   `json:"target_frequency,omitempty"`
-		ViewDurationSeconds float64                            `json:"view_duration_seconds,omitempty"`
-		Target              json.RawMessage                    `json:"target,omitempty"`
-		Priority            int                                `json:"priority,omitempty"`
-		EventSources        []OptimizationGoalEventSource      `json:"event_sources,omitempty"`
-		AttributionWindow   *OptimizationGoalAttributionWindow `json:"attribution_window,omitempty"`
+		Kind                string                           `json:"kind,omitempty"`
+		Metric              string                           `json:"metric,omitempty"`
+		ReachUnit           string                           `json:"reach_unit,omitempty"`
+		TargetFrequency     *OptimizationGoalTargetFrequency `json:"target_frequency,omitempty"`
+		ViewDurationSeconds float64                          `json:"view_duration_seconds,omitempty"`
+		Target              json.RawMessage                  `json:"target,omitempty"`
+		Priority            int                              `json:"priority,omitempty"`
+		EventSources        []OptimizationGoalEventSource    `json:"event_sources,omitempty"`
+		AttributionWindow   *AttributionWindow               `json:"attribution_window,omitempty"`
 	}
 	if err := json.Unmarshal(data, &typed); err != nil {
 		return err
@@ -1511,18 +1552,19 @@ type PerformanceStandard struct {
 // enforcement per variant is deferred to the schema validator; omitempty on
 // numeric fields means legitimate zero values (e.g. CPM: 0) do not round-trip.
 type VendorPricingOption struct {
-	PricingOptionID          string         `json:"pricing_option_id"`
-	Model                    string         `json:"model"`
-	CPM                      float64        `json:"cpm,omitempty"`
-	Percent                  float64        `json:"percent,omitempty"`
-	MaxCPM                   float64        `json:"max_cpm,omitempty"`
-	Amount                   float64        `json:"amount,omitempty"`
-	Period                   string         `json:"period,omitempty"`
-	Unit                     string         `json:"unit,omitempty"`
-	UnitPrice                float64        `json:"unit_price,omitempty"`
-	Description              string         `json:"description,omitempty"`
-	Metadata                 map[string]any `json:"metadata,omitempty"`
-	Currency                 string         `json:"currency,omitempty"`
-	AppliesToOutputFormatIDs []FormatRef    `json:"applies_to_output_format_ids,omitempty"`
-	Ext                      any            `json:"ext,omitempty"`
+	PricingOptionID              string         `json:"pricing_option_id"`
+	Model                        string         `json:"model"`
+	CPM                          float64        `json:"cpm,omitempty"`
+	Percent                      float64        `json:"percent,omitempty"`
+	MaxCPM                       float64        `json:"max_cpm,omitempty"`
+	Amount                       float64        `json:"amount,omitempty"`
+	Period                       string         `json:"period,omitempty"`
+	Unit                         string         `json:"unit,omitempty"`
+	UnitPrice                    float64        `json:"unit_price,omitempty"`
+	Description                  string         `json:"description,omitempty"`
+	Metadata                     map[string]any `json:"metadata,omitempty"`
+	Currency                     string         `json:"currency,omitempty"`
+	AppliesToOutputFormatIDs     []FormatRef    `json:"applies_to_output_format_ids,omitempty"`
+	AppliesToOutputCapabilityIDs []string       `json:"applies_to_output_capability_ids,omitempty"`
+	Ext                          any            `json:"ext,omitempty"`
 }

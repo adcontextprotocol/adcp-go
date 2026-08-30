@@ -29,11 +29,14 @@ func Ptr[T any](v T) *T {
 
 // CreativeAssignment assigns an existing creative to a package.
 type CreativeAssignment struct {
-	CreativeID    string         `json:"creative_id"`
-	Weight        *float64       `json:"weight,omitempty"`
-	PlacementRefs []PlacementRef `json:"placement_refs,omitempty"`
-	PlacementIDs  []string       `json:"placement_ids,omitempty"`
-	Extra         map[string]any `json:"-"`
+	CreativeID       string         `json:"creative_id"`
+	Weight           *float64       `json:"weight,omitempty"`
+	RotationMode     string         `json:"rotation_mode,omitempty"`
+	GroupID          string         `json:"group_id,omitempty"`
+	SequencePosition *int           `json:"sequence_position,omitempty"`
+	PlacementRefs    []PlacementRef `json:"placement_refs,omitempty"`
+	PlacementIDs     []string       `json:"placement_ids,omitempty"`
+	Extra            map[string]any `json:"-"`
 }
 
 // SyncCreativeAssignment assigns a synced creative to an existing package.
@@ -47,7 +50,7 @@ type SyncCreativeAssignment struct {
 // MarshalJSON preserves schema-allowed vendor fields while keeping typed fields
 // authoritative when keys collide.
 func (a CreativeAssignment) MarshalJSON() ([]byte, error) {
-	out := make(map[string]any, len(a.Extra)+4)
+	out := make(map[string]any, len(a.Extra)+7)
 	for k, v := range a.Extra {
 		if isCreativeAssignmentField(k) {
 			continue
@@ -57,6 +60,15 @@ func (a CreativeAssignment) MarshalJSON() ([]byte, error) {
 	out["creative_id"] = a.CreativeID
 	if a.Weight != nil {
 		out["weight"] = *a.Weight
+	}
+	if a.RotationMode != "" {
+		out["rotation_mode"] = a.RotationMode
+	}
+	if a.GroupID != "" {
+		out["group_id"] = a.GroupID
+	}
+	if a.SequencePosition != nil {
+		out["sequence_position"] = *a.SequencePosition
 	}
 	if len(a.PlacementRefs) > 0 {
 		out["placement_refs"] = a.PlacementRefs
@@ -91,6 +103,26 @@ func (a *CreativeAssignment) UnmarshalJSON(data []byte) error {
 		a.Weight = &weight
 		delete(raw, "weight")
 	}
+	if v, ok := raw["rotation_mode"]; ok {
+		if err := json.Unmarshal(v, &a.RotationMode); err != nil {
+			return err
+		}
+		delete(raw, "rotation_mode")
+	}
+	if v, ok := raw["group_id"]; ok {
+		if err := json.Unmarshal(v, &a.GroupID); err != nil {
+			return err
+		}
+		delete(raw, "group_id")
+	}
+	if v, ok := raw["sequence_position"]; ok {
+		var position int
+		if err := json.Unmarshal(v, &position); err != nil {
+			return err
+		}
+		a.SequencePosition = &position
+		delete(raw, "sequence_position")
+	}
 	if v, ok := raw["placement_refs"]; ok {
 		if err := json.Unmarshal(v, &a.PlacementRefs); err != nil {
 			return err
@@ -120,7 +152,7 @@ func (a *CreativeAssignment) UnmarshalJSON(data []byte) error {
 
 func isCreativeAssignmentField(key string) bool {
 	switch key {
-	case "creative_id", "weight", "placement_refs", "placement_ids":
+	case "creative_id", "weight", "rotation_mode", "group_id", "sequence_position", "placement_refs", "placement_ids":
 		return true
 	default:
 		return false

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"sort"
 	"strconv"
@@ -44,6 +45,26 @@ var DefaultExcludePaths = []string{
 // reason — verify upstream serializers don't emit bare 64-bit integers
 // (nanosecond timestamps, SSP auction IDs) in hashed payloads.
 var CanonicalJSONSHA256 = NewCanonicalJSONSHA256(DefaultExcludePaths)
+
+// Canonicalize returns the RFC 8785 JCS representation of a JSON payload.
+// It performs no field filtering or hashing, so callers can apply the
+// canonical bytes to protocol-specific digest formats.
+func Canonicalize(payload []byte) ([]byte, error) {
+	var value any
+	dec := json.NewDecoder(bytes.NewReader(payload))
+	dec.UseNumber()
+	if err := dec.Decode(&value); err != nil {
+		return nil, fmt.Errorf("idempotency: decode payload: %w", err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return nil, errors.New("idempotency: multiple JSON values")
+		}
+		return nil, fmt.Errorf("idempotency: decode trailing payload: %w", err)
+	}
+	return canonicalize(value)
+}
 
 // NewCanonicalJSONSHA256 returns a HashFn that strips the given dotted JSON
 // paths, canonicalizes the remainder with JCS (RFC 8785), and SHA-256 hashes

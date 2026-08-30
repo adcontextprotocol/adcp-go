@@ -45,7 +45,7 @@ func TestValidateOptimizationGoal_ValidEventGoal(t *testing.T) {
 			ValueField:    "value",
 		}},
 		Target: OptimizationGoalPerAdSpendTarget{Value: 4},
-		AttributionWindow: &OptimizationGoalAttributionWindow{
+		AttributionWindow: &AttributionWindow{
 			PostClick: &Duration{Interval: 7, Unit: "days"},
 		},
 	}
@@ -61,7 +61,7 @@ func TestValidateOptimizationGoal_RequiredFields(t *testing.T) {
 		EventSources: []OptimizationGoalEventSource{{
 			EventType: "custom",
 		}},
-		AttributionWindow: &OptimizationGoalAttributionWindow{},
+		AttributionWindow: &AttributionWindow{},
 	}
 
 	issues := goal.Validate()
@@ -81,7 +81,7 @@ func TestValidateOptimizationGoal_RequiredFields(t *testing.T) {
 }
 
 func TestValidateOptimizationGoal_BranchSpecificFields(t *testing.T) {
-	invalidAttributionWindow := &OptimizationGoalAttributionWindow{}
+	invalidAttributionWindow := &AttributionWindow{}
 	event := OptimizationGoal{
 		Kind: "event",
 		EventSources: []OptimizationGoalEventSource{{

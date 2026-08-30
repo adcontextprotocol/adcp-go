@@ -43,7 +43,7 @@ func Register(server *mcp.Server, cfg Config) {
 	// Capabilities (always registered)
 	AddTool(server, "get_adcp_capabilities", "Returns agent capabilities",
 		func(ctx context.Context, req *mcp.CallToolRequest, input GetAdcpCapabilitiesRequest) (*mcp.CallToolResult, any, error) {
-			data, ok := capabilitiesForVersion(caps, input.AdcpVersion, input.AdcpMajorVersion)
+			data, ok := capabilitiesForVersion(caps, "", 0)
 			if !ok {
 				result, out, err := Errorf("VERSION_UNSUPPORTED", ErrorOptions{
 					Message:    "unsupported AdCP version",
@@ -181,12 +181,38 @@ func Register(server *mcp.Server, cfg Config) {
 	if cfg.RefineProposals != nil {
 		AddTool(server, "refine_proposals", "Revise or finalize proposals",
 			func(ctx context.Context, req *mcp.CallToolRequest, input RefineProposalsRequest) (*mcp.CallToolResult, any, error) {
-				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Context)
-				if result != nil {
-					return result, nil, nil
+				// refine_proposals is scoped by proposal_id and has no account field;
+				// applications resolve ownership inside their proposal callback.
+				var acct any
+				var capability *RefinementCapability
+				if caps.MediaBuy != nil {
+					capability = caps.MediaBuy.ProposalRefinement
 				}
-				data, err := cfg.RefineProposals(ctx, acct, &input)
+				if err := ValidateRefineProposalsRequest(&input, capability); err != nil {
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
+				}
+				if cfg.RefineProposalsPreflight != nil {
+					if err := cfg.RefineProposalsPreflight(ctx, acct, &input); err != nil {
+						result, out, e := errorToResult(err)
+						return attachContext(result, input.Context), out, e
+					}
+				}
+				execute := func() (*RefineProposalsData, error) {
+					return cfg.RefineProposals(ctx, acct, &input)
+				}
+				var data *RefineProposalsData
+				var err error
+				if input.Refinements[0].Action == "finalize" && cfg.FinalizeProposalsAtomically != nil {
+					data, err = cfg.FinalizeProposalsAtomically(ctx, acct, &input, execute)
+				} else {
+					data, err = execute()
+				}
 				if err != nil {
+					result, out, e := errorToResult(err)
+					return attachContext(result, input.Context), out, e
+				}
+				if err := VerifyRefineProposalsResponse(&input, data, time.Now()); err != nil {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
@@ -363,13 +389,20 @@ type Config struct {
 	ResolveAccount func(ctx context.Context, ref AccountReference) (any, error)
 
 	// --- Media buy ---
-	SyncAccounts   func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
-	SyncGovernance func(ctx context.Context, req *SyncGovernanceRequest) ([]GovernanceResult, error)
-	GetProducts      func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
-	CreateMediaBuy   func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResponse, error)
-	GetMediaBuys     func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
-	GetDelivery      func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
-	RefineProposals  func(ctx context.Context, acct any, req *RefineProposalsRequest) (*RefineProposalsData, error)
+	SyncAccounts    func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
+	SyncGovernance  func(ctx context.Context, req *SyncGovernanceRequest) ([]GovernanceResult, error)
+	GetProducts     func(ctx context.Context, acct any, req *GetProductsRequest) (*ProductsData, error)
+	CreateMediaBuy  func(ctx context.Context, acct any, req *CreateMediaBuyRequest) (CreateMediaBuyResponse, error)
+	GetMediaBuys    func(ctx context.Context, acct any, req *GetMediaBuysRequest) (*GetMediaBuysResponse, error)
+	GetDelivery     func(ctx context.Context, acct any, req *GetMediaBuyDeliveryRequest) (*DeliveryData, error)
+	RefineProposals RefineProposalsHandler
+	// RefineProposalsPreflight runs after SDK validation and before any handler
+	// mutation. Use it for authorization, source-state, and inventory checks.
+	RefineProposalsPreflight func(ctx context.Context, acct any, req *RefineProposalsRequest) error
+	// FinalizeProposalsAtomically wraps finalize batches in the adopter's
+	// transaction primitive. The callback performs the configured handler; the
+	// wrapper must commit only when it returns a valid complete batch.
+	FinalizeProposalsAtomically func(ctx context.Context, acct any, req *RefineProposalsRequest, execute func() (*RefineProposalsData, error)) (*RefineProposalsData, error)
 
 	// --- Creative ---
 	ListCreativeFormats func(ctx context.Context, req *ListCreativeFormatsRequest) ([]CreativeFormat, error)
@@ -386,6 +419,10 @@ type Config struct {
 	DeleteCollectionList func(ctx context.Context, req *DeleteCollectionListRequest) error
 	ListCollectionLists  func(ctx context.Context, req *ListCollectionListsRequest) (*ListCollectionListsResult, error)
 }
+
+// RefineProposalsHandler applies commercial policy after SDK validation and
+// preflight. It must treat source proposals as immutable and return successors.
+type RefineProposalsHandler func(ctx context.Context, acct any, req *RefineProposalsRequest) (*RefineProposalsData, error)
 
 // CreateCollectionListResult is the return type for Config.CreateCollectionList.
 type CreateCollectionListResult struct {

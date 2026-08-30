@@ -106,7 +106,7 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 	out, err := json.Marshal(PackageInput{
 		ProductID:       "prod-1",
 		PricingOptionID: "price-1",
-		Budget:          0,
+		Budget:          Float64(0),
 		FormatIDs:       []FormatRef{{ID: "display-banner"}},
 		Paused:          Bool(false),
 		BidPrice:        Float64(0),
@@ -180,7 +180,7 @@ func TestPackageOptionalNumericZeroRoundTrip(t *testing.T) {
 func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
 	out, err := json.Marshal(PackageInput{
 		ProductID:       "prod-1",
-		Budget:          100,
+		Budget:          Float64(100),
 		PricingOptionID: "price-1",
 	})
 	require.NoError(t, err)
@@ -267,7 +267,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 	out, err = json.Marshal(PreviewCreativeRequest{
 		RequestType: "batch",
 		Requests: []PreviewCreativeBatchRequest{{
-			CreativeManifest: CreativeManifest{Assets: map[string]any{}},
+			CreativeManifest: &CreativeManifest{Assets: map[string]any{}},
 			Inputs: []PreviewCreativeInput{{
 				Name:   "mobile",
 				Macros: map[string]string{"city": "Honolulu"},

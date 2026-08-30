@@ -15,14 +15,14 @@ AdCP (Ad Context Protocol) agents expose a fixed tool surface (`get_products`, `
 
 - User wants to call a publisher / SSP / retail media network over AdCP
 - Tool names like `get_products`, `create_media_buy`, `sync_creatives`, `get_signals` appear in the available-tools list
-- Agent card advertises `protocolVersion: '0.3.0'` with `skills` listing AdCP tool names
+- A2A 1.0 Agent Card advertises `https://adcontextprotocol.org/extensions/adcp/v3` under `capabilities.extensions[]`, with `skills` listing AdCP task names
 - **Not this skill:** building an AdCP seller agent (see `@adcp/client/skills/build-seller-agent/` and analogous SDK skills)
 
 ## Discovery chain
 
 Walk these in order on first contact:
 
-1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool NAMES. AdCP MCP servers no longer publish per-tool parameter schemas in `tools/list` — everything shows `{type: 'object', properties: {}}`. Don't try to infer shape from here.
+1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool NAMES. For A2A 1.0, confirm the versioned AdCP profile under `capabilities.extensions[]` and activate it with `A2A-Extensions` on every call. Don't infer runtime AdCP capabilities from extension params.
 2. **`get_adcp_capabilities`**: returns supported protocols (`media_buy`, `signals`, `creative`, …), AdCP major versions, feature flags. Tells you WHICH tools this agent supports, not how to call them.
 3. **`get_schema(tool_name)`** *(when the agent exposes it — pending standardization in [#3057](https://github.com/adcontextprotocol/adcp/issues/3057), not yet universal)*: returns the JSON Schema for a tool's request/response. Preferred over reading bundled schemas when available.
 4. **Bundled schemas** (offline, authoritative): every SDK ships the AdCP JSON Schemas locally. Path differs by SDK — spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/client` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. **Don't hardcode a path** — let the SDK's loader find them, or ask the developer. Each schema is `<protocol>/<tool>-{request,response}.json` once you locate the bundle. The canonical source for every SDK is `https://adcontextprotocol.org/protocol/<version>.tgz`.
@@ -78,7 +78,7 @@ A mutating tool can return one of three shapes:
 { "errors": [{ "code": "PRODUCT_NOT_FOUND", "message": "..." }] }
 ```
 
-When you see `status: 'submitted'`, the work is NOT complete. Poll via `tasks/get` (A2A) or the MCP async task extension, using the `task_id`. Over A2A the AdCP `task_id` also rides on `artifact.metadata.adcp_task_id` — both work.
+When you see `status: 'submitted'`, the work is NOT complete. Under the AdCP v3 A2A profile, the enclosing A2A Task is completed and the AdCP `task_id` appears only in the artifact DataPart. Poll by sending fresh profile invocations of `get_task_status` with that `task_id`; do not poll the completed A2A Task and do not look for `artifact.metadata.adcp_task_id`. On MCP, use the AdCP polling task the agent advertises.
 
 ### `packages[*]` on media buys
 
@@ -200,14 +200,24 @@ Returns **either** `{ media_buy_id, packages: [...], confirmed_at }` (sync) **or
     {
       "creative_id": "cr_1",
       "name": "My Creative",
-      "format_id": { "agent_url": "https://creatives.adcontextprotocol.org", "id": "video_1920x1080" },
-      "assets": {}
+      "format_kind": "video_hosted",
+      "format_option_ref": { "scope": "product", "format_option_id": "video_1920x1080_30s" },
+      "assets": {
+        "video_main": {
+          "asset_type": "video",
+          "url": "https://cdn.acme.example/video-30s.mp4",
+          "mime_type": "video/mp4",
+          "width": 1920,
+          "height": 1080,
+          "duration_ms": 30000
+        }
+      }
     }
   ]
 }
 ```
 
-Per-creative required: `creative_id`, `name`, `format_id: { agent_url, id }`, `assets` (shape depends on `format_id`; start with `{}` then fill required asset keys per format spec). Returns `{ creatives: [{ creative_id, action, status }] }` — items may fail individually without failing the batch.
+Per-creative required: `creative_id`, `name`, canonical `format_kind`, and `assets`. Include `format_option_ref` when the selected product has multiple declarations with the same kind or when you need to route to one exact product option. Asset keys and constraints come from the selected canonical product declaration. Returns `{ creatives: [{ creative_id, action, status }] }` — items may fail individually without failing the batch.
 
 ### get_signals
 
@@ -236,7 +246,7 @@ Returns `{ signals: [{ signal_agent_segment_id, match_rate, pricing, ... }] }`. 
 ## Transport notes
 
 - **MCP**: `tools/call` with `{ name: 'tool_name', arguments: {...} }`. Returns `{ content, structuredContent, isError? }`. Read `structuredContent` for the typed response.
-- **A2A**: `message/send` with a `DataPart` of shape `{ skill: 'tool_name', input: {...} }` (the legacy key `parameters` is also accepted). Returns an A2A `Task`; the typed response is at `task.artifacts[0].parts[0].data`.
+- **A2A 1.0**: activate `https://adcontextprotocol.org/extensions/adcp/v3`, then Send Message with exactly one invocation DataPart of shape `{ skill: 'tool_name', input: {...} }`. `parameters` is not an alias. Optional TextParts are advisory. Read the authoritative DataPart from the completed Task artifact.
 
 Both transports share: idempotency, error shape, schema enforcement, and handler semantics. If a call works on one, the equivalent call works on the other.
 
@@ -246,8 +256,8 @@ Both transports share: idempotency, error shape, schema enforcement, and handler
 2. **`budget` as an object**: it's a number. Currency comes from the `pricing_option`.
 3. **`brand.brand_id` instead of `brand.domain`**: spec uses `domain`.
 4. **Forgetting `idempotency_key`**: required on every mutating tool; see the list above.
-5. **Treating A2A `Task.state: 'completed'` as AdCP completion**: A2A task state = transport call lifecycle. AdCP-level completion is in the artifact's payload (`structuredContent.status` or `data.status`). A `completed` A2A task can still carry a `submitted` AdCP response.
-6. **`format_id` as a string**: `format_id` is always an object `{ agent_url, id }` (and sometimes `{ width, height, duration_ms }` for dimensions). Sending `"format_id": "video_1920x1080"` fails with an `additionalProperties` / `type` error — pass the object.
+5. **Treating A2A `Task.state: 'completed'` as AdCP completion**: A2A task state = transport invocation lifecycle. AdCP-level completion is in the artifact DataPart. A completed A2A task can carry a submitted AdCP response; invoke `get_task_status` with its DataPart `task_id`.
+6. **Using deprecated `format_id` in a new workflow**: AdCP 3.2 creatives use `format_kind` plus optional `format_option_ref`. Read these from the selected product's `format_options[]`; use `format_id` only when deliberately interoperating with an older 3.x peer.
 
 ## Symptom → fix
 
@@ -261,9 +271,9 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants (`` `{account_id, brand, operator, …}` ``) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
-| `additionalProperties` at `/format_id` (string passed) | Sent `"format_id": "video_..."` | `format_id` is `{agent_url, id}` — always an object. |
+| `required` at `/format_kind` | Sent only a deprecated `format_id`, or omitted the canonical selector | Copy `format_kind` and, when needed, `format_option_ref` from the selected product's `format_options[]`. |
 | `keyword: 'enum'` at `/destinations/*/type` | Made-up destination type | Use `'platform'` (with `platform`) or `'agent'` (with `agent_url`). |
-| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | Poll via `tasks/get` (A2A) or the MCP async task extension using `task_id`. |
+| Response carries `status: 'submitted'` and `task_id` | Async — work is queued, NOT done | On the AdCP v3 A2A profile, invoke `get_task_status`; on MCP, use the advertised AdCP polling task. |
 | `recovery: 'transient'` (rate limit, 5xx, timeout) | Server-side, retry-safe | Retry with the **same** `idempotency_key`. |
 | `recovery: 'correctable'` | Buyer-side fix | Read `issues[]`, patch the pointers, resend. Most cases close in one attempt. |
 | `recovery: 'terminal'` (account suspended, payment required, …) | Requires human action | Don't retry. Surface to the user. |

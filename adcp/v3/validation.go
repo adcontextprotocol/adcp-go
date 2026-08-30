@@ -332,7 +332,7 @@ func (s OptimizationGoalEventSource) validate(path string, cfg validationConfig)
 	return issues
 }
 
-func (w *OptimizationGoalAttributionWindow) validate(path string, cfg validationConfig) []ValidationIssue {
+func (w *AttributionWindow) validate(path string, cfg validationConfig) []ValidationIssue {
 	if w == nil {
 		return nil
 	}

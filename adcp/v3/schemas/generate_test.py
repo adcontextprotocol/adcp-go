@@ -1013,12 +1013,6 @@ class InlineObjectGenerationTest(unittest.TestCase):
         self.assert_field_type(
             "core/product-filters.json",
             "ProductFilters",
-            "required_features",
-            "map[string]bool",
-        )
-        self.assert_field_type(
-            "core/product-filters.json",
-            "ProductFilters",
             "signal_targeting",
             "[]SignalTargeting",
         )
@@ -1142,7 +1136,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             "[]PlanAuditLog",
         )
 
-    def test_required_features_hint_matches_open_boolean_bag_schema(self):
+    def test_required_features_hint_matches_open_mixed_feature_bag_schema(self):
         filters_schema = generate.load_schema("core/product-filters.json")
         required_features = filters_schema["properties"]["required_features"]
         features_path = generate.ref_to_schema_path(required_features["$ref"])
@@ -1152,16 +1146,11 @@ class InlineObjectGenerationTest(unittest.TestCase):
         features_schema = generate.load_schema(features_path)
         self.assertEqual("object", features_schema.get("type"))
         self.assertEqual({"type": "boolean"}, features_schema.get("additionalProperties"))
-        for name, prop in features_schema.get("properties", {}).items():
-            self.assertEqual(
-                "boolean",
-                prop.get("type"),
-                f"media-buy feature {name} must stay boolean",
-            )
+        self.assertIn("allOf", features_schema["properties"]["bidding_policy"])
 
         filters_generated = generate.schema_to_struct("ProductFilters", filters_schema)
         self.assertIn(
-            "RequiredFeatures map[string]bool `json:\"required_features,omitempty\"`",
+            "RequiredFeatures map[string]any `json:\"required_features,omitempty\"`",
             filters_generated,
         )
 
@@ -1349,7 +1338,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             filters_generated,
         )
         self.assertIn(
-            "RequiredFeatures map[string]bool `json:\"required_features,omitempty\"`",
+            "RequiredFeatures map[string]any `json:\"required_features,omitempty\"`",
             filters_generated,
         )
         self.assertIn(
@@ -1508,23 +1497,15 @@ class InlineObjectGenerationTest(unittest.TestCase):
             outcome_delivery_schema,
         )
         self.assertIn(
-            "ReportingPeriod *ReportPlanOutcomeDeliveryReportingPeriod `json:\"reporting_period,omitempty\"`",
+            "ReportingPeriod *ReportPlanOutcomeDeliveryReportingPeriod `json:\"reporting_period\"`",
             outcome_delivery_generated,
         )
         self.assertIn(
             "Impressions *int `json:\"impressions,omitempty\"`",
             outcome_delivery_generated,
         )
-        self.assertIn("Spend *float64 `json:\"spend,omitempty\"`", outcome_delivery_generated)
-        self.assertIn("CPM *float64 `json:\"cpm,omitempty\"`", outcome_delivery_generated)
-        self.assertIn(
-            "ViewabilityRate *float64 `json:\"viewability_rate,omitempty\"`",
-            outcome_delivery_generated,
-        )
-        self.assertIn(
-            "CompletionRate *float64 `json:\"completion_rate,omitempty\"`",
-            outcome_delivery_generated,
-        )
+        self.assertIn("CumulativeSpend float64 `json:\"cumulative_spend\"`", outcome_delivery_generated)
+        self.assertIn("Currency string `json:\"currency\"`", outcome_delivery_generated)
 
         seller_response_schema = generate.load_schema_spec(
             "governance/report-plan-outcome-request.json#/properties/seller_response",
@@ -1833,7 +1814,7 @@ class InlineObjectGenerationTest(unittest.TestCase):
             preview_batch_request_schema,
         )
         self.assertIn(
-            "CreativeManifest CreativeManifest `json:\"creative_manifest\"`",
+            "CreativeManifest *CreativeManifest `json:\"creative_manifest,omitempty\"`",
             preview_batch_request_generated,
         )
         self.assertIn(
@@ -2079,7 +2060,7 @@ class AutoRefDiscoveryTest(unittest.TestCase):
         paths = set(generate.auto_ref_schema_paths())
 
         self.assertIn("core/creative-variable.json", paths)
-        self.assertIn("core/media-buy-features.json", paths)
+        self.assertIn("core/macro-resolution-capability.json", paths)
         self.assertNotIn("content-standards/artifact.json", paths)
         self.assertNotIn("core/overlay.json", paths)
 
