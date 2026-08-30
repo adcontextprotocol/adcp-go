@@ -87,6 +87,9 @@ EXEMPT = {
     'SyncCreativeAssignment', 'DeliveryTotals', 'DeliveryData',
     'ReportingPeriod', 'PreviewResult', 'Preview',
     'PreviewRender', 'BuildCreativeResult', 'ProductsData',
+    # Legacy capability response wrapper also carries transport-envelope fields;
+    # migrate it separately from schema bundle upgrades.
+    'CapabilitiesData',
     'CheckGovernanceCondition',
     # collection response wrappers — responses with embedded payload
     'CreateCollectionListResponse', 'GetCollectionListResponse',
@@ -255,7 +258,10 @@ def _resolve_ref(ref):
     ref could attempt."""
     if not isinstance(ref, str):
         return None
-    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
+    m = re.match(
+        r'^(?:https://adcontextprotocol\.org)?/schemas/[^/]+/(.+\.json)(#.*)?$',
+        ref,
+    )
     if not m:
         return None
     rel = m.group(1)

@@ -146,6 +146,8 @@ TOOL_SCHEMAS = [
     "media-buy/provide-performance-feedback-response.json",
     "media-buy/build-creative-request.json",
     "media-buy/build-creative-response.json",
+    "media-buy/refine-proposals-request.json",
+    "media-buy/refine-proposals-response.json",
     # Creative
     "creative/sync-creatives-request.json",
     "creative/sync-creatives-response.json",
@@ -211,6 +213,13 @@ CORE_SCHEMAS = [
     "core/forecast-point.json",
     "core/forecast-range.json",
     "core/proposal.json",
+    "core/canonical-proposal.json",
+    "core/canonical-product.json",
+    "core/placement-ref.json",
+    "core/product-format-declaration.json",
+    "core/media-buy-available-action.json",
+    "core/product-signal-targeting-option.json",
+    "core/postal-area.json",
     "core/product-allocation.json",
     "core/insertion-order.json",
     "core/outcome-measurement.json",
@@ -244,6 +253,7 @@ CORE_SCHEMAS = [
     "core/account-ref.json",
     "core/targeting.json",
     "core/context.json",
+    "core/version-envelope.json",
     "core/ext.json",
     "core/error.json",
     "core/pagination-response.json",
@@ -292,12 +302,47 @@ CORE_SCHEMAS = [
 SUPPORT_SCHEMAS = [
     "media-buy/package-request.json",
     "media-buy/package-update.json",
+    "media-buy/proposal-refinement.json",
+    "media-buy/proposal-budget-constraint.json",
+    "media-buy/product-discovery-criteria.json",
+    "core/signal-ref.json",
+    "core/delivery-metric-aggregate.json",
+    "core/account-with-authorization.json",
+    "core/missing-metric.json",
 ]
 
 # Named types generated from inline JSON Schema pointers. This is the first step
 # toward making the Go SDK generator own composed/nested shapes instead of
 # relying on hand-written approximations.
 INLINE_SCHEMA_TYPES = OrderedDict([
+    (
+        "RefinementConstraints",
+        "media-buy/proposal-refinement.json#/properties/constraints",
+    ),
+    (
+        "CPMConstraint",
+        "media-buy/proposal-refinement.json#/properties/constraints/properties/cpm",
+    ),
+    (
+        "ImpressionsConstraint",
+        "media-buy/proposal-refinement.json#/properties/constraints/properties/impressions",
+    ),
+    (
+        "FlightConstraint",
+        "media-buy/proposal-refinement.json#/properties/constraints/properties/flight",
+    ),
+    (
+        "AlternativesRequest",
+        "media-buy/proposal-refinement.json#/properties/alternatives",
+    ),
+    (
+        "RefinementResult",
+        "media-buy/refine-proposals-response.json#/properties/results/items",
+    ),
+    (
+        "RefinementCapability",
+        "protocol/get-adcp-capabilities-response.json#/properties/media_buy/properties/proposal_refinement",
+    ),
     (
         "ForecastPointDimension",
         "core/forecast-point-dimensions.json#/items",
@@ -519,10 +564,6 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "core/targeting.json#/properties/geo_metros/items",
     ),
     (
-        "GeoPostalAreaTarget",
-        "core/targeting.json#/properties/geo_postal_areas/items",
-    ),
-    (
         "GeoProximityTarget",
         "core/targeting.json#/properties/geo_proximity/items",
     ),
@@ -653,7 +694,7 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
     (
         "ReportPlanOutcomeError",
-        "governance/report-plan-outcome-request.json#/properties/error",
+        "governance/reported-outcome-error.json",
     ),
     (
         "ReportPlanOutcomePlanSummary",
@@ -883,10 +924,6 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "core/product-filters.json#/properties/required_geo_targeting/items",
     ),
     (
-        "ProductFilterPostalArea",
-        "core/product-filters.json#/properties/postal_areas/items",
-    ),
-    (
         "ProductFilterGeoProximity",
         "core/product-filters.json#/properties/geo_proximity/items",
     ),
@@ -949,27 +986,19 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
     (
         "PackageCatalogItemDelivery",
-        "media-buy/get-media-buy-delivery-response.json"
-        "#/properties/media_buy_deliveries/items/properties/by_package/items"
-        "/allOf/1/properties/by_catalog_item/items",
+        "core/catalog-item-delivery-metrics.json",
     ),
     (
         "PackageCreativeDelivery",
-        "media-buy/get-media-buy-delivery-response.json"
-        "#/properties/media_buy_deliveries/items/properties/by_package/items"
-        "/allOf/1/properties/by_creative/items",
+        "core/creative-delivery-metrics.json",
     ),
     (
         "PackageKeywordDelivery",
-        "media-buy/get-media-buy-delivery-response.json"
-        "#/properties/media_buy_deliveries/items/properties/by_package/items"
-        "/allOf/1/properties/by_keyword/items",
+        "core/keyword-delivery-metrics.json",
     ),
     (
         "PackageGeoDelivery",
-        "media-buy/get-media-buy-delivery-response.json"
-        "#/properties/media_buy_deliveries/items/properties/by_package/items"
-        "/allOf/1/properties/by_geo/items",
+        "core/geo-delivery-metrics.json",
     ),
     (
         "PackageDeviceTypeDelivery",
@@ -991,9 +1020,7 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     ),
     (
         "PackagePlacementDelivery",
-        "media-buy/get-media-buy-delivery-response.json"
-        "#/properties/media_buy_deliveries/items/properties/by_package/items"
-        "/allOf/1/properties/by_placement/items",
+        "core/placement-delivery-metrics.json",
     ),
     (
         "PackageDailyBreakdown",
@@ -1008,10 +1035,6 @@ INLINE_SCHEMA_TYPES = OrderedDict([
     (
         "OptimizationGoalEventSource",
         "core/optimization-goal.json#/oneOf/1/properties/event_sources/items",
-    ),
-    (
-        "OptimizationGoalAttributionWindow",
-        "core/optimization-goal.json#/oneOf/1/properties/attribution_window",
     ),
     (
         "ListCreativesSort",
@@ -1105,6 +1128,13 @@ FIELD_DESCRIPTION_FALLBACK_SPECS = {
 # `additionalProperties: false`; open registrations are explicit so a new inline
 # helper cannot silently default to data-dropping open-object semantics.
 CLOSED_INLINE_SCHEMA_TYPES = frozenset({
+    'RefinementConstraints',
+    'CPMConstraint',
+    'ImpressionsConstraint',
+    'FlightConstraint',
+    'AlternativesRequest',
+    'RefinementResult',
+    'ReportPlanOutcomeDelivery',
     'MetricQualifier',
     'RequestedCommittedMetric',
     'ReportingVendorMetric',
@@ -1149,7 +1179,6 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'GovernanceDeliveryReportingPeriod',
     'GovernanceAudienceDistribution',
     'ReportPlanOutcomeDeliveryReportingPeriod',
-    'ReportPlanOutcomeError',
     'ReportPlanOutcomePlanSummary',
     'PolicyExemplars',
     'PolicyExemplar',
@@ -1189,6 +1218,8 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
 })
 
 OPEN_INLINE_SCHEMA_TYPES = frozenset({
+    'RefinementCapability',
+    'ReportPlanOutcomeError',
     'ForecastPointDimension',
     'ReachWindow',
     'ForecastViewability',
@@ -1222,7 +1253,6 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'DeliveryReportingDimensions',
     'DeliveryReportingGeoDimension',
     'DeliveryReportingDimension',
-    'ReportPlanOutcomeDelivery',
     'ReportPlanOutcomeSellerResponse',
     'ReportPlanOutcomeSellerPackage',
     'CreativeAgentRef',
@@ -1230,7 +1260,6 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'BuildCreativeMaxSpend',
     'BuildCreativeVariantAxis',
     'BuildCreativeSignalCondition',
-    'GeoPostalAreaTarget',
     'RightsAgentRef',
     'ProductCard',
     'ProductCardDetailed',
@@ -1254,7 +1283,6 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'ProductFilterBudgetRange',
     'ProductFilterTrustedMatchProvider',
     'ProductFilterGeoProximity',
-    'ProductFilterPostalArea',
     'PriceAdjustment',
     'CreativeFormatDisclosureCapability',
     'CreativeAssetInput',
@@ -1276,7 +1304,6 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'PackageDailyBreakdown',
     'OptimizationGoalTargetFrequency',
     'OptimizationGoalEventSource',
-    'OptimizationGoalAttributionWindow',
     'ListCreativesSort',
     'ArtifactWebhookPagination',
     'ArtifactWebhookArtifact',
@@ -1445,6 +1472,8 @@ REF_ALIASES = {
     'Format': 'CreativeFormat',
     'SignalDefinition': 'Signal',
     'SignalPricingOption': 'SignalPricing',
+    'ProposalBudgetConstraint': 'BudgetConstraint',
+    'RefineProposalsResponse': 'RefineProposalsData',
     'DeliveryMetrics': 'DeliveryTotals',
     'StartTiming': 'string',  # start_time is a string or "asap"
     'AccountInput': 'AccountInput',
@@ -1476,6 +1505,23 @@ INLINE_TYPE_HINTS = {
     ('ForcedDirectiveSuccess', 'forced'): 'ForcedDirective',
     ('SyncPlansRequest', 'plans'): 'Plan',
     ('GetProductsResponse', 'proposals'): 'Proposal',
+    ('RefineProposalsRequest', 'adcp_major_version'): '*int',
+    ('RefineProposalsRequest', 'refinements'): 'ProposalRefinement',
+    ('ProposalRefinement', 'constraints'): '*RefinementConstraints',
+    ('ProposalRefinement', 'criteria'): '*ProductDiscoveryCriteria',
+    ('ProposalRefinement', 'product_changes'): 'map[string]string',
+    ('ProposalRefinement', 'alternatives'): '*AlternativesRequest',
+    ('RefinementConstraints', 'total_budget'): '*BudgetConstraint',
+    ('BudgetConstraint', 'min'): '*float64',
+    ('BudgetConstraint', 'max'): '*float64',
+    ('RefinementConstraints', 'cpm'): '*CPMConstraint',
+    ('RefinementConstraints', 'impressions'): '*ImpressionsConstraint',
+    ('RefinementConstraints', 'flight'): '*FlightConstraint',
+    ('RefineProposalsData', 'results'): 'RefinementResult',
+    ('RefineProposalsData', 'products'): 'CanonicalProduct',
+    ('RefinementResult', 'proposal'): '*CanonicalProposal',
+    ('RefinementResult', 'proposals'): 'CanonicalProposal',
+    ('RefinementResult', 'unsatisfied_product_changes'): 'map[string]string',
     ('PackageUpdate', 'keyword_targets_add'): 'KeywordTargetUpdate',
     ('PackageUpdate', 'keyword_targets_remove'): 'KeywordTargetRef',
     ('PackageUpdate', 'negative_keywords_add'): 'KeywordTargetRef',
@@ -1494,8 +1540,8 @@ INLINE_TYPE_HINTS = {
     ('Account', 'reporting_bucket'): '*ReportingBucket',
     ('Targeting', 'geo_metros'): 'GeoMetroTarget',
     ('Targeting', 'geo_metros_exclude'): 'GeoMetroTarget',
-    ('Targeting', 'geo_postal_areas'): 'GeoPostalAreaTarget',
-    ('Targeting', 'geo_postal_areas_exclude'): 'GeoPostalAreaTarget',
+    ('Targeting', 'geo_postal_areas'): 'PostalArea',
+    ('Targeting', 'geo_postal_areas_exclude'): 'PostalArea',
     ('Targeting', 'geo_proximity'): 'GeoProximityTarget',
     ('GeoProximityTarget', 'lat'): '*float64',
     ('GeoProximityTarget', 'lng'): '*float64',
@@ -1701,9 +1747,9 @@ INLINE_TYPE_HINTS = {
     ('ProductFilters', 'budget_range'): '*ProductFilterBudgetRange',
     ('ProductFilters', 'metros'): 'ProductFilterMetro',
     ('ProductFilters', 'trusted_match'): '*ProductFilterTrustedMatch',
-    ('ProductFilters', 'required_features'): 'map[string]bool',
+    ('ProductFilters', 'required_features'): 'map[string]any',
     ('ProductFilters', 'required_geo_targeting'): 'ProductFilterGeoTargetingRequirement',
-    ('ProductFilters', 'postal_areas'): 'ProductFilterPostalArea',
+    ('ProductFilters', 'postal_areas'): 'PostalArea',
     ('ProductFilters', 'geo_proximity'): 'ProductFilterGeoProximity',
     ('ProductFilters', 'keywords'): 'ProductFilterKeyword',
     ('ProductFilterBudgetRange', 'min'): '*float64',
@@ -1808,7 +1854,10 @@ INLINE_TYPE_HINTS = {
     ('ForecastPoint', 'budget'): '*float64',
     ('OptimizationGoalEventSource', 'value_factor'): '*float64',
     ('PackageInput', 'bid_price'): '*float64',
+    ('PackageInput', 'budget'): '*float64',
     ('PackageInput', 'impressions'): '*float64',
+    ('DemographicAgeRange', 'min'): '*int',
+    ('DemographicAgeRange', 'max'): '*int',
     ('PackageUpdate', 'budget'): '*float64',
     ('PackageUpdate', 'bid_price'): '*float64',
     ('PackageUpdate', 'impressions'): '*float64',
@@ -1887,6 +1936,155 @@ INTENTIONAL_ANY_FIELDS = {
     ('BuildCreativeRequest', 'evaluator'): 'core/evaluator-spec.json is an experimental oneOf union (exemplar/identifier/agent forms, mutually exclusive) with additionalProperties:true; flattening would lose the union constraint, so it stays an open escape hatch',
     ('BuildCreativeVariantAxis', 'values'): 'variant_axis.values items are schema-open ({}) — caller-fixed axis values are typed per dimension (string voices, etc.), so the element type is intentionally any',
     ('GeoBreakdownSupport', 'postal_area'): 'core/postal-area-support.json is an open propertyNames-constrained map keyed by arbitrary ISO country codes (and deprecated legacy aliases) with mixed value types (arrays of postal-system enums vs deprecated boolean aliases); it has no clean closed struct',
+    ('ProductFilters', 'required_features'): '3.2 feature filters mix boolean flags with structured capability requirements',
+}
+
+# The 3.2 prerelease expands many existing schemas with shapes that this
+# generator cannot yet represent (nested objects, unions, and composed refs).
+# Keep the exact beta.9 compatibility surface explicit so adding another
+# dynamic fallback still fails coverage. Proposal-negotiation fields are not in
+# this set: those are fully typed above. Remove entries as generator support is
+# added, and clear the set before adopting stable 3.2.
+SCHEMA_32_BETA_ANY_FIELDS = {
+    ('Account', 'destination_billing_entity'),
+    ('Account', 'identity_change'),
+    ('AccountWithAuthorization', 'destination_billing_entity'),
+    ('AccountWithAuthorization', 'identity_change'),
+    ('BuildCreativeRequest', 'creative_representation_set'),
+    ('CanonicalProduct', 'acceptance_policy_profile_ids'),
+    ('CanonicalProduct', 'allowed_actions'),
+    ('CanonicalProduct', 'audience_evidence'),
+    ('CanonicalProduct', 'audience_evidence_selections'),
+    ('CanonicalProduct', 'catalog_match'),
+    ('CanonicalProduct', 'demographic_targeting'),
+    ('CanonicalProduct', 'forecast'),
+    ('CanonicalProduct', 'format_options'),
+    ('CanonicalProduct', 'list_applications'),
+    ('CanonicalProduct', 'measurement_terms'),
+    ('CanonicalProduct', 'placements'),
+    ('CanonicalProduct', 'pricing_options'),
+    ('CanonicalProduct', 'reporting_capabilities'),
+    ('CanonicalProposal', 'commercial_terms'),
+    ('CanonicalProposal', 'forecast'),
+    ('CanonicalProposal', 'total_budget_guidance'),
+    ('CheckGovernanceRequest', 'execution_commitment'),
+    ('CheckGovernanceRequest', 'proposed_commitment'),
+    ('CheckGovernanceRequest', 'runtime_attestations'),
+    ('CheckGovernanceResponse', 'delivery_statement'),
+    ('CheckGovernanceResponse', 'runtime_attestation_evaluations'),
+    ('CreateMediaBuyRequest', 'bidding'),
+    ('CreateMediaBuySuccess', 'bidding'),
+    ('CreateMediaBuySuccess', 'warnings'),
+    ('CreativeAsset', 'component_assets'),
+    ('CreativeManifest', 'component_assets'),
+    ('DeliveryReportingDimensions', 'catalog_item'),
+    ('DeliveryReportingDimensions', 'creative'),
+    ('DeliveryReportingDimensions', 'demographic'),
+    ('DeliveryReportingDimensions', 'format'),
+    ('DeliveryReportingDimensions', 'keyword'),
+    ('DeliveryReportingDimensions', 'spot'),
+    ('DeliveryTotals', 'ooh_metrics'),
+    ('DeliveryTotals', 'time_based_views'),
+    ('DeliveryTotals', 'vendor_metric_values'),
+    ('DeliveryViewability', 'viewed_seconds_histogram'),
+    ('DeliveryViewability', 'viewed_seconds_percentiles'),
+    ('DeliveryWindowPackage', 'ooh_metrics'),
+    ('DeliveryWindowPackage', 'time_based_views'),
+    ('DeliveryWindowPackage', 'vendor_metric_values'),
+    ('GetAdcpCapabilitiesResponse', 'measurement_gateway'),
+    ('GetAdcpCapabilitiesResponse', 'oauth'),
+    ('GetProductsRequest', 'acceptance_context'),
+    ('GetProductsRequest', 'fields'),
+    ('GetProductsRequest', 'required_overlay_support'),
+    ('MediaBuyDeliveryTotals', 'ooh_metrics'),
+    ('MediaBuyDeliveryTotals', 'time_based_views'),
+    ('MediaBuyDeliveryTotals', 'vendor_metric_values'),
+    ('Package', 'audience_evidence_selections'),
+    ('Package', 'bidding'),
+    ('Package', 'formats_pending'),
+    ('Package', 'formats_to_provide'),
+    ('Package', 'targeting_resolution'),
+    ('PackageAudienceDelivery', 'ooh_metrics'),
+    ('PackageAudienceDelivery', 'time_based_views'),
+    ('PackageAudienceDelivery', 'vendor_metric_values'),
+    ('PackageCatalogItemDelivery', 'ooh_metrics'),
+    ('PackageCatalogItemDelivery', 'time_based_views'),
+    ('PackageCatalogItemDelivery', 'vendor_metric_values'),
+    ('PackageCreativeDelivery', 'ooh_metrics'),
+    ('PackageCreativeDelivery', 'time_based_views'),
+    ('PackageCreativeDelivery', 'vendor_metric_values'),
+    ('PackageDelivery', 'by_collection'),
+    ('PackageDelivery', 'by_collection_property'),
+    ('PackageDelivery', 'by_demographic'),
+    ('PackageDelivery', 'by_format'),
+    ('PackageDelivery', 'by_installment'),
+    ('PackageDelivery', 'by_installment_property'),
+    ('PackageDelivery', 'by_placement_property'),
+    ('PackageDelivery', 'by_property'),
+    ('PackageDelivery', 'by_spot'),
+    ('PackageDelivery', 'ooh_metrics'),
+    ('PackageDelivery', 'time_based_views'),
+    ('PackageDelivery', 'vendor_metric_values'),
+    ('PackageDevicePlatformDelivery', 'ooh_metrics'),
+    ('PackageDevicePlatformDelivery', 'time_based_views'),
+    ('PackageDevicePlatformDelivery', 'vendor_metric_values'),
+    ('PackageDeviceTypeDelivery', 'ooh_metrics'),
+    ('PackageDeviceTypeDelivery', 'time_based_views'),
+    ('PackageDeviceTypeDelivery', 'vendor_metric_values'),
+    ('PackageGeoDelivery', 'ooh_metrics'),
+    ('PackageGeoDelivery', 'time_based_views'),
+    ('PackageGeoDelivery', 'vendor_metric_values'),
+    ('PackageInput', 'bidding'),
+    ('PackageKeywordDelivery', 'ooh_metrics'),
+    ('PackageKeywordDelivery', 'time_based_views'),
+    ('PackageKeywordDelivery', 'vendor_metric_values'),
+    ('PackagePlacementDelivery', 'ooh_metrics'),
+    ('PackagePlacementDelivery', 'placement_identity'),
+    ('PackagePlacementDelivery', 'time_based_views'),
+    ('PackagePlacementDelivery', 'vendor_metric_values'),
+    ('PackageUpdate', 'bidding'),
+    ('PlanAuditEntry', 'amount'),
+    ('PlanAuditEntry', 'delivery'),
+    ('PlanAuditEntry', 'delivery_statement'),
+    ('PlanAuditEntry', 'error'),
+    ('PlanAuditEntry', 'evidence'),
+    ('PlanAuditEntry', 'runtime_attestations'),
+    ('PlanAuditFinding', 'details'),
+    ('PlanAuditGovernedAction', 'delivery_reporting_period'),
+    ('PlannedDelivery', 'bidding'),
+    ('PolicyCategoryDefinition', 'facets'),
+    ('PolicyEntry', 'acceptance_profile'),
+    ('PolicyEntry', 'issuer'),
+    ('Product', 'acceptance_policy_profile_ids'),
+    ('Product', 'allowed_actions'),
+    ('Product', 'audience_activation'),
+    ('Product', 'audience_evidence'),
+    ('Product', 'audience_evidence_selections'),
+    ('Product', 'demographic_targeting'),
+    ('Product', 'list_applications'),
+    ('Product', 'overlay_support'),
+    ('Product', 'targeting_resolution'),
+    ('ProductCardDetailed', 'reference_assets'),
+    ('ProductDiscoveryCriteria', 'acceptance_context'),
+    ('ProductDiscoveryCriteria', 'catalog'),
+    ('ProductDiscoveryCriteria', 'offer_filters'),
+    ('ProductDiscoveryCriteria', 'outcome_target'),
+    ('ProductDiscoveryCriteria', 'required_overlay_support'),
+    ('ProductFilters', 'audience_activation_methods'),
+    ('ProductFormatDeclaration', 'tracker_execution_contract'),
+    ('ProvidePerformanceFeedbackRequest', 'evidence'),
+    ('ProvidePerformanceFeedbackRequest', 'metric'),
+    ('ReportPlanOutcomeError', 'details'),
+    ('ReportingCapabilities', 'supports_demographic_breakdown'),
+    ('RightsConstraint', 'attestation_refs'),
+    ('RightsConstraint', 'disclosure'),
+    ('SyncCreativesRequest', 'assignment_operations'),
+    ('Targeting', 'demographics'),
+    ('Targeting', 'geo_places'),
+    ('Targeting', 'geo_places_exclude'),
+    ('Targeting', 'placement_selection'),
+    ('UpdateMediaBuyRequest', 'bidding'),
+    ('UpdateMediaBuyRequest', 'total_budget'),
 }
 
 # Enum schemas
@@ -1983,7 +2181,10 @@ def resolve_ref_schema(ref):
     /schemas/{version}/{path}.json and optional JSON Pointer fragments."""
     if not isinstance(ref, str):
         return None
-    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
+    m = re.match(
+        r'^(?:https://adcontextprotocol\.org)?/schemas/[^/]+/(.+\.json)(#.*)?$',
+        ref,
+    )
     if not m:
         return None
     spec = m.group(1) + (m.group(2) or '')
@@ -2004,7 +2205,10 @@ def ref_to_schema_path(ref):
     """Return the repo-relative schema path for a bundled local $ref."""
     if not isinstance(ref, str):
         return None
-    m = re.match(r'^/schemas/[^/]+/(.+\.json)(#.*)?$', ref)
+    m = re.match(
+        r'^(?:https://adcontextprotocol\.org)?/schemas/[^/]+/(.+\.json)(#.*)?$',
+        ref,
+    )
     if not m:
         return None
     rel = m.group(1)
@@ -2989,7 +3193,8 @@ def generated_schema_entries():
             if not schema_exists(path):
                 continue
             schema = load_schema(path)
-            name = pascal_case(Path(path).stem)
+            name = REF_ALIASES.get(pascal_case(Path(path).stem),
+                                   pascal_case(Path(path).stem))
             if name in generated:
                 continue
             generated.add(name)
@@ -3033,6 +3238,8 @@ def any_allowance(type_name, json_name, go_type, reason):
         return f'intentional {json_name} escape hatch'
     if (type_name, json_name) in INTENTIONAL_ANY_FIELDS:
         return INTENTIONAL_ANY_FIELDS[(type_name, json_name)]
+    if (type_name, json_name) in SCHEMA_32_BETA_ANY_FIELDS:
+        return 'known 3.2 beta generator compatibility gap'
     if 'AdcpError' in go_type:
         return 'AdCP error payload is intentionally open'
     return None
@@ -3247,7 +3454,7 @@ def generate():
 
         # Derive name from path: media-buy/get-products-request.json -> GetProductsRequest
         stem = Path(path).stem  # get-products-request
-        name = pascal_case(stem)
+        name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
         if name in generated:
             continue
         generated.add(name)

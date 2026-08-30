@@ -547,7 +547,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			value: PackageInput{
 				ProductID:       "prod-1",
 				PricingOptionID: "po-1",
-				Budget:          1000,
+				Budget:          Ptr(1000.0),
 				OptimizationGoals: []OptimizationGoal{{
 					Kind:      "metric",
 					Metric:    "reach",
@@ -570,7 +570,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			value: PackageInput{
 				ProductID:       "prod-1",
 				PricingOptionID: "po-1",
-				Budget:          1000,
+				Budget:          Ptr(1000.0),
 				OptimizationGoals: []OptimizationGoal{{
 					Kind: "event",
 					EventSources: []OptimizationGoalEventSource{{
@@ -1047,15 +1047,16 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 		Outcome:           "delivery",
 		GovernanceContext: "ctx-1",
 		Delivery: Ptr(ReportPlanOutcomeDelivery{
+			ObservationID: "obs-1",
+			Source:        "buyer_measurement",
+			ObservedAt:    "2026-06-01T01:01:00Z",
 			ReportingPeriod: Ptr(ReportPlanOutcomeDeliveryReportingPeriod{
 				Start: "2026-06-01T00:00:00Z",
 				End:   "2026-06-01T01:00:00Z",
 			}),
+			CumulativeSpend: 0,
+			Currency:        "USD",
 			Impressions:     Ptr(0),
-			Spend:           Ptr(0.0),
-			CPM:             Ptr(0.0),
-			ViewabilityRate: Ptr(0.0),
-			CompletionRate:  Ptr(0.0),
 		}),
 	}
 
@@ -1066,10 +1067,7 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	body := string(raw)
 	for _, want := range []string{
 		`"impressions":0`,
-		`"spend":0`,
-		`"cpm":0`,
-		`"viewability_rate":0`,
-		`"completion_rate":0`,
+		`"cumulative_spend":0`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("marshaled report plan outcome missing %s:\n%s", want, body)
@@ -1086,17 +1084,8 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	if decoded.Delivery.Impressions == nil || *decoded.Delivery.Impressions != 0 {
 		t.Fatalf("impressions = %v, want pointer to 0", decoded.Delivery.Impressions)
 	}
-	if decoded.Delivery.Spend == nil || *decoded.Delivery.Spend != 0 {
-		t.Fatalf("spend = %v, want pointer to 0", decoded.Delivery.Spend)
-	}
-	if decoded.Delivery.CPM == nil || *decoded.Delivery.CPM != 0 {
-		t.Fatalf("cpm = %v, want pointer to 0", decoded.Delivery.CPM)
-	}
-	if decoded.Delivery.ViewabilityRate == nil || *decoded.Delivery.ViewabilityRate != 0 {
-		t.Fatalf("viewability_rate = %v, want pointer to 0", decoded.Delivery.ViewabilityRate)
-	}
-	if decoded.Delivery.CompletionRate == nil || *decoded.Delivery.CompletionRate != 0 {
-		t.Fatalf("completion_rate = %v, want pointer to 0", decoded.Delivery.CompletionRate)
+	if decoded.Delivery.CumulativeSpend != 0 {
+		t.Fatalf("cumulative_spend = %v, want 0", decoded.Delivery.CumulativeSpend)
 	}
 }
 

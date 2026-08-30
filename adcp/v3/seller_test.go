@@ -307,31 +307,16 @@ func TestRegisteredHandlersAttachContext(t *testing.T) {
 	}
 }
 
-func TestRegisteredCapabilitiesNegotiatesVersionPins(t *testing.T) {
-	tests := []struct {
-		name string
-		args map[string]any
-		want string
-	}{
-		{name: "explicit 3.0", args: map[string]any{"adcp_version": "3.0", "adcp_major_version": 3}, want: "3.0"},
-		{name: "explicit 3.1", args: map[string]any{"adcp_version": "3.1", "adcp_major_version": 3}, want: "3.1"},
-		{name: "legacy major", args: map[string]any{"adcp_major_version": 3}, want: "3.1"},
-		{name: "default", args: map[string]any{}, want: "3.1"},
-	}
+func TestRegisteredCapabilitiesUsesDefaultVersion(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{})
+	wire := structuredContentMap(t, result)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", tt.args)
-			wire := structuredContentMap(t, result)
-
-			assert.False(t, result.IsError)
-			assert.Equal(t, tt.want, wire["adcp_version"])
-			assert.EqualValues(t, 3, wire["adcp_major_version"])
-			adcpBlock, ok := wire["adcp"].(map[string]any)
-			require.True(t, ok)
-			assert.Equal(t, []any{"3.0", "3.1"}, adcpBlock["supported_versions"])
-		})
-	}
+	assert.False(t, result.IsError)
+	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.EqualValues(t, 3, wire["adcp_major_version"])
+	adcpBlock, ok := wire["adcp"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, []any{"3.0", "3.1"}, adcpBlock["supported_versions"])
 }
 
 func TestRegisteredCapabilitiesFiltersProtocols(t *testing.T) {
@@ -365,17 +350,16 @@ func TestRegisteredCapabilitiesRejectsUnsupportedProtocolFilter(t *testing.T) {
 	assert.Equal(t, "protocols", errPayload["field"])
 }
 
-func TestRegisteredCapabilitiesRejectsUnsupportedVersion(t *testing.T) {
-	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{"adcp_version": "4.0"})
+func TestRegisteredCapabilitiesPreservesVersionPinRejection(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "9.9",
+	})
 	wire := structuredContentMap(t, result)
 
 	assert.True(t, result.IsError)
 	errPayload, ok := wire["adcp_error"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
-	details, ok := errPayload["details"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, []any{"3.0", "3.1"}, details["supported_versions"])
 }
 
 func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
@@ -480,6 +464,116 @@ func baseTestConfig(cfg Config) Config {
 		cfg.Capabilities = &CapabilitiesData{SupportedProtocols: []string{"media_buy"}}
 	}
 	return cfg
+}
+
+func TestRegisteredRefineProposalsPreflightsBeforeMutation(t *testing.T) {
+	handlerCalled := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposalsPreflight: func(context.Context, any, *RefineProposalsRequest) error {
+			return NewError("INVALID_STATE", ErrorOptions{Message: "source proposal is unavailable"})
+		},
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			handlerCalled = true
+			return nil, nil
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-preflight",
+		"refinements":     []any{map[string]any{"proposal_id": "p-1", "action": "revise", "ask": "reduce the rate"}},
+	})
+
+	assert.True(t, result.IsError)
+	assert.False(t, handlerCalled)
+}
+
+func TestRegisteredRefineProposalsDoesNotTreatContextAsAccount(t *testing.T) {
+	resolverCalled := false
+	handlerCalled := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		ResolveAccount: func(context.Context, AccountReference) (any, error) {
+			resolverCalled = true
+			return nil, errors.New("context must not be resolved as an account")
+		},
+		RefineProposals: func(_ context.Context, acct any, _ *RefineProposalsRequest) (*RefineProposalsData, error) {
+			handlerCalled = true
+			assert.Nil(t, acct)
+			return &RefineProposalsData{Status: "submitted", TaskID: "task-1"}, nil
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-context",
+		"context":         map[string]any{"trace": "opaque"},
+		"refinements":     []any{map[string]any{"proposal_id": "p-1", "action": "revise", "ask": "reduce the rate"}},
+	})
+
+	assert.False(t, result.IsError)
+	assert.True(t, handlerCalled)
+	assert.False(t, resolverCalled)
+}
+
+func TestRegisteredRefineProposalsUsesAtomicFinalizeWrapper(t *testing.T) {
+	atomicCalled := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			proposal := validNegotiationProposal(t, "committed-1", "draft-1", 500, 5)
+			proposal.ProposalStatus = "committed"
+			proposal.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+			return &RefineProposalsData{Status: "completed", Results: []RefinementResult{{
+				SourceProposalID: "draft-1", Outcome: OutcomeFinalized, Proposal: &proposal,
+			}}}, nil
+		},
+		FinalizeProposalsAtomically: func(_ context.Context, _ any, _ *RefineProposalsRequest, execute func() (*RefineProposalsData, error)) (*RefineProposalsData, error) {
+			atomicCalled = true
+			return execute()
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-finalize",
+		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
+	})
+
+	assert.False(t, result.IsError)
+	assert.True(t, atomicCalled)
+}
+
+func TestRegisteredRefineProposalsValidatesBeforeAtomicCommit(t *testing.T) {
+	committed := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			proposal := validNegotiationProposal(t, "draft-1", "draft-1", 500, 5)
+			proposal.ProposalStatus = "committed"
+			proposal.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+			return &RefineProposalsData{Status: "completed", Results: []RefinementResult{{
+				SourceProposalID: "draft-1", Outcome: OutcomeFinalized, Proposal: &proposal,
+			}}}, nil
+		},
+		FinalizeProposalsAtomically: func(_ context.Context, _ any, _ *RefineProposalsRequest, execute func() (*RefineProposalsData, error)) (*RefineProposalsData, error) {
+			data, err := execute()
+			if err == nil {
+				committed = true
+			}
+			return data, err
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-invalid-finalize",
+		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
+	})
+
+	assert.True(t, result.IsError)
+	assert.False(t, committed, "invalid response must fail before transaction commit")
+}
+
+func TestRegisteredRefineProposalsRequiresAtomicFinalizeWrapper(t *testing.T) {
+	handlerCalled := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			handlerCalled = true
+			return nil, nil
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-no-atomic-wrapper",
+		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
+	})
+
+	assert.True(t, result.IsError)
+	assert.False(t, handlerCalled)
 }
 
 func callRegisteredTool(t *testing.T, cfg Config, name string, args map[string]any) *mcp.CallToolResult {

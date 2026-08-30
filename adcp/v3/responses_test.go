@@ -10,7 +10,7 @@ import (
 func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 	result, out, err := MediaBuyResponse(&CreateMediaBuySuccess{
 		MediaBuyID:      "mb-1",
-		Status:          "active",
+		MediaBuyStatus:  "active",
 		Packages:        []Package{{PackageID: "pkg-1"}},
 		ValidActions:    []string{"pause", "cancel"},
 		PlannedDelivery: &PlannedDelivery{TotalBudget: 1000},
@@ -20,7 +20,7 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "active", wire["status"])
+	assert.Equal(t, "active", wire["media_buy_status"])
 	assert.Equal(t, []any{"pause", "cancel"}, wire["valid_actions"])
 	assert.Equal(t, map[string]any{"total_budget": float64(1000)}, wire["planned_delivery"])
 	assert.Equal(t, map[string]any{"status": "wrong"}, wire["ext"])
