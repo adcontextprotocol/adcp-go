@@ -1,6 +1,6 @@
 module github.com/adcontextprotocol/adcp-go/e2e/stack
 
-go 1.25.0
+go 1.27.0
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.1.0

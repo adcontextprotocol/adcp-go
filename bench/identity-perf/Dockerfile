@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 # The seeder imports targeting/identityhash from the parent module (single
 # source of truth for the user-token hash). bench/identity-perf/go.mod

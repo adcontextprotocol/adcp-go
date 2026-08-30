@@ -86,14 +86,14 @@ func main() {
 
 func buildSnapshot(sellerURL string, totalPackages, audiencePackages, audiencesPerPackage, totalAudiences int) responseBody {
 	configs := make([]wireConfig, 0, totalPackages)
-	for i := 0; i < totalPackages; i++ {
+	for i := range totalPackages {
 		pkg := wireConfig{
 			SellerAgentURL: sellerURL,
 			PackageID:      fmt.Sprintf("pkg-%05d", i),
 		}
 		if i < audiencePackages {
 			any := make([]string, 0, audiencesPerPackage)
-			for j := 0; j < audiencesPerPackage; j++ {
+			for j := range audiencesPerPackage {
 				id := (i*audiencesPerPackage + j) % totalAudiences
 				any = append(any, fmt.Sprintf("aud-%05d", id))
 			}
