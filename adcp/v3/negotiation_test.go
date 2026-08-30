@@ -217,6 +217,58 @@ func TestVerifyRefineProposalsResponseRejectsExpiredFinalizeHold(t *testing.T) {
 	}
 }
 
+func TestVerifyRefineProposalsResponseAllowsRolledBackFinalizeFailures(t *testing.T) {
+	req := &RefineProposalsRequest{IdempotencyKey: "idem-finalize-fail", Refinements: []ProposalRefinement{
+		{ProposalID: "draft-1", Action: "finalize"},
+		{ProposalID: "draft-2", Action: "finalize"},
+	}}
+	data := &RefineProposalsData{Status: "completed", Results: []RefinementResult{
+		{SourceProposalID: "draft-1", Outcome: OutcomeUnable, ReasonCode: "hold_unavailable", Reason: "inventory sold"},
+		{SourceProposalID: "draft-2", Outcome: OutcomeUnable, ReasonCode: "batch_aborted", Reason: "sibling failed"},
+	}}
+	if err := VerifyRefineProposalsResponse(req, data, time.Now()); err != nil {
+		t.Fatalf("fully rolled-back finalize failure should be valid: %v", err)
+	}
+}
+
+func TestVerifyRefineProposalsResponseRejectsNonAtomicFinalizeMix(t *testing.T) {
+	req := &RefineProposalsRequest{IdempotencyKey: "idem-finalize-mix", Refinements: []ProposalRefinement{
+		{ProposalID: "draft-1", Action: "finalize"},
+		{ProposalID: "draft-2", Action: "finalize"},
+	}}
+	proposal := validNegotiationProposal(t, "committed-1", "draft-1", 500, 5)
+	proposal.ProposalStatus = "committed"
+	proposal.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	data := &RefineProposalsData{Status: "completed", Results: []RefinementResult{
+		{SourceProposalID: "draft-1", Outcome: OutcomeFinalized, Proposal: &proposal},
+		{SourceProposalID: "draft-2", Outcome: OutcomeUnable, ReasonCode: "hold_unavailable", Reason: "inventory sold"},
+	}}
+	if err := VerifyRefineProposalsResponse(req, data, time.Now()); err == nil {
+		t.Fatal("mixed committed and failed finalize results should be rejected")
+	}
+}
+
+func TestVerifyRefineProposalsResponseRejectsReusedAndDuplicateIDs(t *testing.T) {
+	req := &RefineProposalsRequest{IdempotencyKey: "idem-ids", Refinements: []ProposalRefinement{{
+		ProposalID: "source-1", Action: "revise", Alternatives: &AlternativesRequest{Count: 2},
+	}}}
+	reused := validNegotiationProposal(t, "source-1", "source-1", 500, 5)
+	other := validNegotiationProposal(t, "other", "source-1", 600, 5)
+	data := &RefineProposalsData{Status: "completed", Results: []RefinementResult{{
+		SourceProposalID: "source-1", Outcome: OutcomeRevised, Proposals: []CanonicalProposal{reused, other},
+	}}}
+	if err := VerifyRefineProposalsResponse(req, data, time.Now()); err == nil {
+		t.Fatal("source proposal_id reuse should be rejected")
+	}
+
+	first := validNegotiationProposal(t, "duplicate", "source-1", 500, 5)
+	second := validNegotiationProposal(t, "duplicate", "source-1", 600, 5)
+	data.Results[0].Proposals = []CanonicalProposal{first, second}
+	if err := VerifyRefineProposalsResponse(req, data, time.Now()); err == nil {
+		t.Fatal("duplicate successor proposal_id should be rejected")
+	}
+}
+
 func TestVerifyRefineProposalsResponseRejectsInvalidOutcomeShapes(t *testing.T) {
 	req := &RefineProposalsRequest{IdempotencyKey: "idem-1", Refinements: []ProposalRefinement{{ProposalID: "source-1", Action: "revise", Ask: "lower rate"}}}
 	proposal := validNegotiationProposal(t, "successor-1", "source-1", 500, 5)

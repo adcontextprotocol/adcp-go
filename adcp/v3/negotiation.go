@@ -205,6 +205,16 @@ func VerifyRefineProposalsResponse(req *RefineProposalsRequest, data *RefineProp
 		return fmt.Errorf("result count %d does not match refinement count %d", len(data.Results), len(req.Refinements))
 	}
 	finalizeBatch := len(req.Refinements) > 0 && req.Refinements[0].Action == "finalize"
+	finalizedCount := 0
+	for i := range data.Results {
+		if data.Results[i].Outcome == OutcomeFinalized {
+			finalizedCount++
+		}
+	}
+	if finalizeBatch && finalizedCount > 0 && finalizedCount != len(data.Results) {
+		return fmt.Errorf("finalize batch mixes committed and failed results; holds are not atomic")
+	}
+	seenProposalIDs := map[string]bool{}
 	for i := range data.Results {
 		result := &data.Results[i]
 		refinement := &req.Refinements[i]
@@ -233,10 +243,19 @@ func VerifyRefineProposalsResponse(req *RefineProposalsRequest, data *RefineProp
 			return fmt.Errorf("result %d must use constraint_unsatisfiable precedence", i)
 		}
 		if finalizeBatch {
+			if result.Outcome == OutcomeUnable {
+				if result.Proposal != nil || len(result.Proposals) != 0 || result.ReasonCode == "" || result.Reason == "" {
+					return fmt.Errorf("finalize failure result %d is structurally invalid", i)
+				}
+				continue
+			}
 			if result.Outcome != OutcomeFinalized || result.Proposal == nil || len(result.Proposals) != 0 || result.ReasonCode != "" || result.Reason != "" || len(result.UnsatisfiedConstraints) != 0 || len(result.UnsatisfiedProductChanges) != 0 {
-				return fmt.Errorf("finalize batch result %d is not finalized", i)
+				return fmt.Errorf("finalize batch result %d has an invalid outcome", i)
 			}
 			if err := verifySuccessor(*result.Proposal, refinement.ProposalID, "committed"); err != nil {
+				return fmt.Errorf("result %d: %w", i, err)
+			}
+			if err := recordSuccessorID(result.Proposal.ProposalID, refinement.ProposalID, seenProposalIDs); err != nil {
 				return fmt.Errorf("result %d: %w", i, err)
 			}
 			expiresAt, err := time.Parse(time.RFC3339, result.Proposal.ExpiresAt)
@@ -276,6 +295,9 @@ func VerifyRefineProposalsResponse(req *RefineProposalsRequest, data *RefineProp
 		if result.Outcome == OutcomePartial && (result.ReasonCode == "" || result.Reason == "") {
 			return fmt.Errorf("partial result %d is missing reason", i)
 		}
+		if result.Outcome == OutcomePartial && len(result.Proposals) > expected {
+			return fmt.Errorf("partial result %d returned more proposals than requested", i)
+		}
 		seenDigests := map[string]bool{}
 		unsatisfied := map[string]bool{}
 		for _, key := range result.UnsatisfiedConstraints {
@@ -284,6 +306,9 @@ func VerifyRefineProposalsResponse(req *RefineProposalsRequest, data *RefineProp
 		for j := range result.Proposals {
 			proposal := &result.Proposals[j]
 			if err := verifySuccessor(*proposal, refinement.ProposalID, "draft"); err != nil {
+				return fmt.Errorf("result %d proposal %d: %w", i, j, err)
+			}
+			if err := recordSuccessorID(proposal.ProposalID, refinement.ProposalID, seenProposalIDs); err != nil {
 				return fmt.Errorf("result %d proposal %d: %w", i, j, err)
 			}
 			if seenDigests[proposal.TermsDigest] {
@@ -295,6 +320,20 @@ func VerifyRefineProposalsResponse(req *RefineProposalsRequest, data *RefineProp
 			}
 		}
 	}
+	return nil
+}
+
+func recordSuccessorID(proposalID, sourceID string, seen map[string]bool) error {
+	if strings.TrimSpace(proposalID) == "" {
+		return fmt.Errorf("successor is missing proposal_id")
+	}
+	if proposalID == sourceID {
+		return fmt.Errorf("successor must use a fresh proposal_id")
+	}
+	if seen[proposalID] {
+		return fmt.Errorf("duplicate successor proposal_id %q", proposalID)
+	}
+	seen[proposalID] = true
 	return nil
 }
 

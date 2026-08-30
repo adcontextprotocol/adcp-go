@@ -350,6 +350,18 @@ func TestRegisteredCapabilitiesRejectsUnsupportedProtocolFilter(t *testing.T) {
 	assert.Equal(t, "protocols", errPayload["field"])
 }
 
+func TestRegisteredCapabilitiesPreservesVersionPinRejection(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "9.9",
+	})
+	wire := structuredContentMap(t, result)
+
+	assert.True(t, result.IsError)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
+}
+
 func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 	ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
 	args := map[string]any{"context": ctxValue}
@@ -519,6 +531,49 @@ func TestRegisteredRefineProposalsUsesAtomicFinalizeWrapper(t *testing.T) {
 
 	assert.False(t, result.IsError)
 	assert.True(t, atomicCalled)
+}
+
+func TestRegisteredRefineProposalsValidatesBeforeAtomicCommit(t *testing.T) {
+	committed := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			proposal := validNegotiationProposal(t, "draft-1", "draft-1", 500, 5)
+			proposal.ProposalStatus = "committed"
+			proposal.ExpiresAt = time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+			return &RefineProposalsData{Status: "completed", Results: []RefinementResult{{
+				SourceProposalID: "draft-1", Outcome: OutcomeFinalized, Proposal: &proposal,
+			}}}, nil
+		},
+		FinalizeProposalsAtomically: func(_ context.Context, _ any, _ *RefineProposalsRequest, execute func() (*RefineProposalsData, error)) (*RefineProposalsData, error) {
+			data, err := execute()
+			if err == nil {
+				committed = true
+			}
+			return data, err
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-invalid-finalize",
+		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
+	})
+
+	assert.True(t, result.IsError)
+	assert.False(t, committed, "invalid response must fail before transaction commit")
+}
+
+func TestRegisteredRefineProposalsRequiresAtomicFinalizeWrapper(t *testing.T) {
+	handlerCalled := false
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		RefineProposals: func(context.Context, any, *RefineProposalsRequest) (*RefineProposalsData, error) {
+			handlerCalled = true
+			return nil, nil
+		},
+	}), "refine_proposals", map[string]any{
+		"idempotency_key": "idem-no-atomic-wrapper",
+		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
+	})
+
+	assert.True(t, result.IsError)
+	assert.False(t, handlerCalled)
 }
 
 func callRegisteredTool(t *testing.T, cfg Config, name string, args map[string]any) *mcp.CallToolResult {

@@ -43,7 +43,7 @@ func Register(server *mcp.Server, cfg Config) {
 	// Capabilities (always registered)
 	AddTool(server, "get_adcp_capabilities", "Returns agent capabilities",
 		func(ctx context.Context, req *mcp.CallToolRequest, input GetAdcpCapabilitiesRequest) (*mcp.CallToolResult, any, error) {
-			data, ok := capabilitiesForVersion(caps, "", 0)
+			data, ok := capabilitiesForVersion(caps, input.AdcpVersion, input.AdcpMajorVersion)
 			if !ok {
 				result, out, err := Errorf("VERSION_UNSUPPORTED", ErrorOptions{
 					Message:    "unsupported AdCP version",
@@ -199,20 +199,30 @@ func Register(server *mcp.Server, cfg Config) {
 					}
 				}
 				execute := func() (*RefineProposalsData, error) {
-					return cfg.RefineProposals(ctx, acct, &input)
+					data, err := cfg.RefineProposals(ctx, acct, &input)
+					if err != nil {
+						return nil, err
+					}
+					// Atomic wrappers commit only after this callback returns. Keep
+					// validation here so an invalid finalize result cannot be committed
+					// and then rejected by the transport layer.
+					if err := VerifyRefineProposalsResponse(&input, data, time.Now()); err != nil {
+						return nil, err
+					}
+					return data, nil
 				}
 				var data *RefineProposalsData
 				var err error
-				if input.Refinements[0].Action == "finalize" && cfg.FinalizeProposalsAtomically != nil {
-					data, err = cfg.FinalizeProposalsAtomically(ctx, acct, &input, execute)
+				if input.Refinements[0].Action == "finalize" {
+					if cfg.FinalizeProposalsAtomically == nil {
+						err = NewError("UNSUPPORTED_FEATURE", ErrorOptions{Message: "finalize requires an atomic transaction wrapper"})
+					} else {
+						data, err = cfg.FinalizeProposalsAtomically(ctx, acct, &input, execute)
+					}
 				} else {
 					data, err = execute()
 				}
 				if err != nil {
-					result, out, e := errorToResult(err)
-					return attachContext(result, input.Context), out, e
-				}
-				if err := VerifyRefineProposalsResponse(&input, data, time.Now()); err != nil {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
