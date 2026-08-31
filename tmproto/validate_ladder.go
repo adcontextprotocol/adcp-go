@@ -89,7 +89,10 @@ func (c *ContextSignals) Validate() error {
 	return nil
 }
 
-// Validate checks field-level constraints on an ArtifactRef.
+// Validate checks field-level constraints on an ArtifactRef. When
+// Type == ArtifactRefTypeURL, Value is additionally checked against the
+// spec's type=url contract (no query, no fragment) and against
+// ValidateFetchableURL's SSRF-safety rules — see validateArtifactRefURL.
 func (r *ArtifactRef) Validate() error {
 	if r == nil {
 		return nil
@@ -99,6 +102,11 @@ func (r *ArtifactRef) Validate() error {
 	}
 	if r.Value == "" {
 		return fmt.Errorf("artifact_ref.value: required")
+	}
+	if r.Type == ArtifactRefTypeURL {
+		if err := validateArtifactRefURL(r.Value); err != nil {
+			return fmt.Errorf("artifact_ref.value: %w", err)
+		}
 	}
 	return nil
 }
@@ -149,7 +157,9 @@ func (a *TextAsset) Validate() error {
 	return nil
 }
 
-// Validate checks ImageAsset field-level constraints.
+// Validate checks ImageAsset field-level constraints, including that URL
+// passes ValidateFetchableURL — see the MUST-validate-before-fetch contract
+// on the Artifact doc comment.
 func (a *ImageAsset) Validate() error {
 	if a == nil {
 		return nil
@@ -157,10 +167,15 @@ func (a *ImageAsset) Validate() error {
 	if a.URL == "" {
 		return fmt.Errorf("image_asset.url: required")
 	}
+	if err := ValidateFetchableURL(a.URL); err != nil {
+		return fmt.Errorf("image_asset.url: %w", err)
+	}
 	return a.Access.Validate()
 }
 
-// Validate checks VideoAsset field-level constraints.
+// Validate checks VideoAsset field-level constraints, including that URL and
+// (when present) ThumbnailURL pass ValidateFetchableURL — see the
+// MUST-validate-before-fetch contract on the Artifact doc comment.
 func (a *VideoAsset) Validate() error {
 	if a == nil {
 		return nil
@@ -168,19 +183,32 @@ func (a *VideoAsset) Validate() error {
 	if a.URL == "" {
 		return fmt.Errorf("video_asset.url: required")
 	}
+	if err := ValidateFetchableURL(a.URL); err != nil {
+		return fmt.Errorf("video_asset.url: %w", err)
+	}
+	if a.ThumbnailURL != "" {
+		if err := ValidateFetchableURL(a.ThumbnailURL); err != nil {
+			return fmt.Errorf("video_asset.thumbnail_url: %w", err)
+		}
+	}
 	if len(a.Transcript) > MaxTranscriptLength {
 		return fmt.Errorf("video_asset.transcript: %d chars exceeds max %d", len(a.Transcript), MaxTranscriptLength)
 	}
 	return a.Access.Validate()
 }
 
-// Validate checks AudioAsset field-level constraints.
+// Validate checks AudioAsset field-level constraints, including that URL
+// passes ValidateFetchableURL — see the MUST-validate-before-fetch contract
+// on the Artifact doc comment.
 func (a *AudioAsset) Validate() error {
 	if a == nil {
 		return nil
 	}
 	if a.URL == "" {
 		return fmt.Errorf("audio_asset.url: required")
+	}
+	if err := ValidateFetchableURL(a.URL); err != nil {
+		return fmt.Errorf("audio_asset.url: %w", err)
 	}
 	if len(a.Transcript) > MaxTranscriptLength {
 		return fmt.Errorf("audio_asset.transcript: %d chars exceeds max %d", len(a.Transcript), MaxTranscriptLength)
@@ -189,7 +217,9 @@ func (a *AudioAsset) Validate() error {
 }
 
 // Validate checks Artifact-level constraints and recurses into each asset.
-// Unknown assets (from forward-compat passthrough) are skipped.
+// Unknown assets (from forward-compat passthrough) are skipped. When URL is
+// present it is checked against ValidateFetchableURL — see the
+// MUST-validate-before-fetch contract on the Artifact doc comment.
 func (a *Artifact) Validate() error {
 	if a == nil {
 		return nil
@@ -199,6 +229,11 @@ func (a *Artifact) Validate() error {
 	}
 	if a.ArtifactID == "" {
 		return fmt.Errorf("artifact.artifact_id: required")
+	}
+	if a.URL != "" {
+		if err := ValidateFetchableURL(a.URL); err != nil {
+			return fmt.Errorf("artifact.url: %w", err)
+		}
 	}
 	if len(a.Assets) > MaxAssets {
 		return fmt.Errorf("artifact.assets: %d items exceeds max %d", len(a.Assets), MaxAssets)
