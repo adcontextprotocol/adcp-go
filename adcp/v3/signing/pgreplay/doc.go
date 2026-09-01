@@ -1,9 +1,24 @@
-// Package pgreplay implements a Postgres-backed adcp/signing.ReplayStore for
-// multi-instance RFC 9421 verifier deployments.
+// Package pgreplay implements a Postgres-backed adcp/v3/signing.ReplayStore
+// for multi-instance RFC 9421 verifier deployments.
+//
+// # Which module this targets
+//
+// This package lives under adcp/v3/signing, the actively developed module
+// for AdCP 3.x (see the repo root README's "Modules & versioning" section
+// and MIGRATING.md): the legacy adcp/signing module is frozen at v2.1.1 and
+// receives security backports only, and a new distributed-store feature is
+// not a security backport. Both #105 and #54's issue text name the pre-v3
+// path (adcp/signing/replay.go) — written before the v3 split, the same way
+// #53 did (see adcp/v3/signing/signingtest's own doc comment for that
+// precedent). PostgresReplayStore doesn't import either signing package
+// (see "Module boundary" below), so it is structurally a drop-in
+// implementation of adcp/signing.ReplayStore too, byte-for-byte identical to
+// adcp/v3/signing.ReplayStore's method set as of this writing — nothing
+// here prevents wiring it into the frozen module if you're not yet on v3.
 //
 // # Why this exists
 //
-// adcp/signing.MemoryReplayStore dedups (keyid, nonce) pairs in a
+// adcp/v3/signing.MemoryReplayStore dedups (keyid, nonce) pairs in a
 // per-process map. That is sufficient for a single verifier process, but RFC
 // 9421 §11.1 makes replay rejection a MUST, and a per-process cache cannot
 // deliver it once a verifier runs as more than one process behind a load
@@ -24,14 +39,14 @@
 // # Module boundary
 //
 // This package is its own Go module (this directory has its own go.mod)
-// rather than living inside adcp/signing or the shared adcp module.
+// rather than living inside adcp/v3/signing or the shared adcp/v3 module.
 // Production code here imports only database/sql from the standard library
 // — no Postgres driver is linked in; callers supply an already-open *sql.DB
 // wired to whichever driver they prefer (pgx stdlib adapter, lib/pq, ...).
 // That means a separate module isn't required to keep production code
 // dependency-free — database/sql alone would do that even living inside
-// adcp/signing, the way adcp/idempotency's PgBackend does today (it lives in
-// the shared adcp module with zero external deps in its non-test files).
+// adcp/v3/signing, the way adcp/idempotency's PgBackend does today (it lives
+// in the shared adcp module with zero external deps in its non-test files).
 // This package uses a separate module anyway because
 // https://github.com/adcontextprotocol/adcp-go/issues/54 asked for one
 // explicitly, as a structural, compiler-enforced guarantee that pgreplay can

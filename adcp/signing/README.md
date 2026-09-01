@@ -147,11 +147,7 @@ For custom deployments, implement the two-method `JWKSResolver` interface.
 
 ## Replay cache
 
-`NewMemoryReplayStore(perKeyIDCap)` — LRU with TTL eviction and the profile's per-keyid entry cap (default 1,000,000). Fine for a single verifier process; a per-process cache cannot enforce RFC 9421 §11.1's replay-rejection MUST once a verifier runs as more than one process behind a load balancer, since a captured signature replayed against a sibling instance's cache is accepted.
-
-For multi-instance deployments, use [`adcp/signing/pgreplay`](pgreplay/) — a Postgres-backed `ReplayStore` (own `go.mod`, zero third-party deps beyond `database/sql` in production code) that every verifier instance shares via one `adcp_replay_cache` table, closing that gap. See its package doc for the eager-connection-probe behavior and the test-vs-production wiring pattern.
-
-Implementing the three-method `ReplayStore` interface directly also plugs in Redis or another shared store; the spec requires the step-13 insert to be atomic with a cap check in distributed setups to prevent cap drift.
+`NewMemoryReplayStore(perKeyIDCap)` — LRU with TTL eviction and the profile's per-keyid entry cap (default 1,000,000). Implement the three-method `ReplayStore` interface to plug in Redis or another shared store for distributed deployments; the spec requires the step-13 insert to be atomic with a cap check in distributed setups to prevent cap drift.
 
 ## Key generation
 

@@ -5,8 +5,8 @@ go 1.26.2
 use (
 	.
 	./adcp
-	./adcp/signing/pgreplay
 	./adcp/v3
+	./adcp/v3/signing/pgreplay
 	./bench
 	./bench/context-perf
 	./bench/identity-perf

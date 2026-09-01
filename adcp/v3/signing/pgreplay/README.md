@@ -1,12 +1,14 @@
-# adcp/signing/pgreplay
+# adcp/v3/signing/pgreplay
 
-Postgres-backed `adcp/signing.ReplayStore` for multi-instance RFC 9421 verifier deployments.
+Postgres-backed `adcp/v3/signing.ReplayStore` for multi-instance RFC 9421 verifier deployments.
 
 Closes [adcontextprotocol/adcp-go#105](https://github.com/adcontextprotocol/adcp-go/issues/105) and [#54](https://github.com/adcontextprotocol/adcp-go/issues/54). Cross-validated against the JS SDK's `PostgresReplayStore` ([adcp-client#1018](https://github.com/adcontextprotocol/adcp-client/pull/1018), in production at agenticadvertising.org) and Python's `adcp-client-python` (`src/adcp/signing/pg/replay_store.py`) — same `(keyid, scope, nonce)` schema, same atomic `INSERT ... ON CONFLICT DO NOTHING` idiom.
 
+**Module note:** both issues' text names the pre-v3 path (`adcp/signing/replay.go`). The root README's "Modules & versioning" section and `MIGRATING.md` say that module is frozen at v2.1.1, security-backports-only — `adcp/v3/signing` is the actively developed one, so this package lives there. `PostgresReplayStore` doesn't import either `signing` package (see below), so it's a structurally valid `ReplayStore` for the frozen `adcp/signing` too, byte-for-byte identical to `adcp/v3/signing.ReplayStore`'s method set as of this writing, if you haven't migrated to v3 yet.
+
 ## Why a separate module
 
-`adcp/signing.MemoryReplayStore` dedups `(keyid, nonce)` per process. That's sufficient for one verifier process; it can't deliver RFC 9421 §11.1's replay-rejection MUST once a verifier runs as ≥2 processes behind a load balancer — a captured signature replayed against a sibling instance whose in-memory cache hasn't seen the nonce is accepted. `PostgresReplayStore` gives every instance one shared table instead of N independent caches.
+`adcp/v3/signing.MemoryReplayStore` dedups `(keyid, nonce)` per process. That's sufficient for one verifier process; it can't deliver RFC 9421 §11.1's replay-rejection MUST once a verifier runs as ≥2 processes behind a load balancer — a captured signature replayed against a sibling instance whose in-memory cache hasn't seen the nonce is accepted. `PostgresReplayStore` gives every instance one shared table instead of N independent caches.
 
 This directory is its own Go module. Production code here imports only `database/sql` — no driver is linked in, so it doesn't strictly *need* isolation to stay dependency-free (`adcp/idempotency`'s own Postgres adapter lives inside the shared `adcp` module today, for exactly that reason: `database/sql` alone doesn't threaten the zero-dep guarantee). The module boundary exists because #54 asked for one explicitly, as a structural, compiler-enforced guarantee that this package can never accidentally grow a real dependency that leaks into core `signing`'s import graph.
 
@@ -14,7 +16,7 @@ This directory is its own Go module. Production code here imports only `database
 
 ```bash
 cd your-project
-go get github.com/adcontextprotocol/adcp-go/adcp/signing/pgreplay
+go get github.com/adcontextprotocol/adcp-go/adcp/v3/signing/pgreplay
 ```
 
 Bring your own driver (`github.com/jackc/pgx/v5/stdlib`, `github.com/lib/pq`, ...).
@@ -26,8 +28,8 @@ import (
     "database/sql"
 
     _ "github.com/jackc/pgx/v5/stdlib"
-    "github.com/adcontextprotocol/adcp-go/adcp/signing"
-    "github.com/adcontextprotocol/adcp-go/adcp/signing/pgreplay"
+    "github.com/adcontextprotocol/adcp-go/adcp/v3/signing"
+    "github.com/adcontextprotocol/adcp-go/adcp/v3/signing/pgreplay"
 )
 
 db, err := sql.Open("pgx", os.Getenv("REPLAY_DATABASE_URL"))

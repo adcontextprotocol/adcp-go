@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-// defaultKeyIDCap mirrors adcp/signing.NewMemoryReplayStore's default of
+// defaultKeyIDCap mirrors adcp/v3/signing.NewMemoryReplayStore's default of
 // 1,000,000 entries per keyid (the spec recommendation). Kept as a local
 // constant, not imported, per the module-boundary decision in doc.go — this
-// package intentionally has no dependency on adcp/signing.
+// package intentionally has no dependency on adcp/v3/signing.
 const defaultKeyIDCap = 1_000_000
 
 // defaultQueryTimeout bounds every round trip PostgresReplayStore makes
@@ -121,7 +121,7 @@ func WithLogger(l *slog.Logger) PostgresOption {
 }
 
 // PostgresReplayStore is a Postgres-backed replay cache implementing the
-// same HitCap/Seen/Insert method set as adcp/signing.ReplayStore (see
+// same HitCap/Seen/Insert method set as adcp/v3/signing.ReplayStore (see
 // package doc for why this package does not import adcp/signing directly).
 // All verifier instances sharing one underlying database observe the same
 // cache.
@@ -181,7 +181,7 @@ func NewPostgresReplayStore(db *sql.DB, opts ...PostgresOption) *PostgresReplayS
 	return s
 }
 
-// HitCap implements the HitCap/Seen/Insert method set adcp/signing.ReplayStore
+// HitCap implements the HitCap/Seen/Insert method set adcp/v3/signing.ReplayStore
 // expects: it returns true if the per-(keyid, scope) entry cap has been
 // reached.
 //
@@ -206,7 +206,7 @@ func (s *PostgresReplayStore) HitCap(keyid string) bool {
 	return count >= s.hitCapLimit
 }
 
-// Seen implements the HitCap/Seen/Insert method set adcp/signing.ReplayStore
+// Seen implements the HitCap/Seen/Insert method set adcp/v3/signing.ReplayStore
 // expects: it returns true if the (keyid, nonce) pair is present (within
 // this store's scope) and not yet expired.
 //
@@ -231,7 +231,7 @@ func (s *PostgresReplayStore) Seen(keyid, nonce string) bool {
 	return seen
 }
 
-// Insert implements the HitCap/Seen/Insert method set adcp/signing.ReplayStore
+// Insert implements the HitCap/Seen/Insert method set adcp/v3/signing.ReplayStore
 // expects: it atomically inserts (keyid, scope, nonce) with the given TTL
 // and returns true only if this call performed the insert.
 //
@@ -278,7 +278,7 @@ func (s *PostgresReplayStore) Seen(keyid, nonce string) bool {
 // via errors.Is(err, ErrConnDown) — and by recording the same distinction
 // via LastInsertError so an operator can build alerting/health checks around
 // PostgresReplayStore without depending on the shared ReplayStore interface
-// changing. Widening adcp/signing.ReplayStore.Insert itself to
+// changing. Widening adcp/v3/signing.ReplayStore.Insert itself to
 // (bool, error) was deliberately left out of this PR: it is a public
 // exported interface with implementers outside this repo (anyone who wrote
 // a custom ReplayStore, e.g. an existing Redis-backed one), and the

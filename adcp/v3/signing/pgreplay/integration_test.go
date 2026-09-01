@@ -156,7 +156,7 @@ func TestIntegration_ConcurrentInsertDistinctNonces_AllSucceed(t *testing.T) {
 // the same Seen-then-Insert sequence a real signing.VerifyRequest call would.
 // Seen() can race ahead of a concurrent Insert() and observe "not seen" for
 // more than one caller — that's expected and matches
-// adcp/signing.ReplayStore's own doc comment (single Seen check is not
+// adcp/v3/signing.ReplayStore's own doc comment (single Seen check is not
 // required to be atomic with Insert). What must hold is Insert() itself:
 // however many callers reach it for the same nonce, only one may return
 // true.

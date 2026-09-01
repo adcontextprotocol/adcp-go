@@ -119,17 +119,17 @@ jobs:
         working-directory: adcp
         run: go test -race -count=1 ./...
 
-      # Unit tests only (sqlmock-backed) — no Docker in this job. The
-      # Postgres-testcontainer suite is gated behind `-tags=integration`
-      # (see adcp/signing/pgreplay/README.md) and runs locally / wherever
-      # Docker is available, matching registry/redisstore's and
-      # registry/glidestore's integration test convention.
-      - name: Test adcp/signing/pgreplay module
-        working-directory: adcp/signing/pgreplay
-        run: go test -race -count=1 ./...
-
       - name: Test adcp/v3 module
         working-directory: adcp/v3
+        run: go test -race -count=1 ./...
+
+      # Unit tests only (sqlmock-backed) — no Docker in this job. The
+      # Postgres-testcontainer suite is gated behind `-tags=integration`
+      # (see adcp/v3/signing/pgreplay/README.md) and runs locally / wherever
+      # Docker is available, matching registry/redisstore's and
+      # registry/glidestore's integration test convention.
+      - name: Test adcp/v3/signing/pgreplay module
+        working-directory: adcp/v3/signing/pgreplay
         run: go test -race -count=1 ./...
 
       - name: Test targeting module

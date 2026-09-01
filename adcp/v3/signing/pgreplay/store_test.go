@@ -304,8 +304,8 @@ func TestSweepExpiredReplays_DBError(t *testing.T) {
 
 // ---- interface shape (compile-time-ish check without importing adcp/signing) ----
 
-// replayStoreShape mirrors adcp/signing.ReplayStore's method set. This
-// package deliberately does not import adcp/signing (see doc.go), so this
+// replayStoreShape mirrors adcp/v3/signing.ReplayStore's method set. This
+// package deliberately does not import adcp/v3/signing (see doc.go), so this
 // local interface is how we assert PostgresReplayStore stays
 // structurally assignable to it without adding that dependency.
 type replayStoreShape interface {

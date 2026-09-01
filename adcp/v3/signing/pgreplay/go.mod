@@ -1,4 +1,4 @@
-module github.com/adcontextprotocol/adcp-go/adcp/signing/pgreplay
+module github.com/adcontextprotocol/adcp-go/adcp/v3/signing/pgreplay
 
 go 1.26.2
 
