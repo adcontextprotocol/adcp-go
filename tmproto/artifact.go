@@ -30,10 +30,10 @@ type Asset interface {
 
 // TextAsset is a text block (paragraph, heading, caption, etc.).
 // Content is publisher-supplied and MUST be treated as untrusted input when
-// passed to LLM-based evaluation.
+// passed to LLM-based evaluation — see UntrustedText.
 type TextAsset struct {
 	Role          string          `json:"role,omitempty"`
-	Content       string          `json:"content"`
+	Content       UntrustedText   `json:"content"`
 	ContentFormat string          `json:"content_format,omitempty"` // text/plain (default), text/markdown, text/html, application/json
 	Language      string          `json:"language,omitempty"`       // BCP 47 language tag
 	HeadingLevel  int             `json:"heading_level,omitempty"`  // only for role=heading
@@ -81,7 +81,8 @@ func (a *ImageAsset) MarshalJSON() ([]byte, error) {
 }
 
 // VideoAsset is a video asset with its URL and optional transcript/metadata.
-// Transcript is publisher-supplied and MUST be treated as untrusted input.
+// Transcript is publisher-supplied and MUST be treated as untrusted input —
+// see UntrustedText.
 //
 // URL and ThumbnailURL are publisher-supplied and MUST be validated with
 // ValidateFetchableURL before a buyer agent fetches either — see the
@@ -90,7 +91,7 @@ type VideoAsset struct {
 	URL              string          `json:"url"`
 	Access           *AssetAccess    `json:"access,omitempty"`
 	DurationMs       int             `json:"duration_ms,omitempty"`
-	Transcript       string          `json:"transcript,omitempty"`
+	Transcript       UntrustedText   `json:"transcript,omitempty"`
 	TranscriptFormat string          `json:"transcript_format,omitempty"` // text/plain (default), text/markdown, application/json
 	TranscriptSource string          `json:"transcript_source,omitempty"` // original_script, subtitles, closed_captions, dub, generated
 	ThumbnailURL     string          `json:"thumbnail_url,omitempty"`
@@ -110,7 +111,8 @@ func (a *VideoAsset) MarshalJSON() ([]byte, error) {
 }
 
 // AudioAsset is an audio asset with its URL and optional transcript/metadata.
-// Transcript is publisher-supplied and MUST be treated as untrusted input.
+// Transcript is publisher-supplied and MUST be treated as untrusted input —
+// see UntrustedText.
 //
 // URL is publisher-supplied and MUST be validated with ValidateFetchableURL
 // before a buyer agent fetches it — see the MUST-validate-before-fetch
@@ -119,7 +121,7 @@ type AudioAsset struct {
 	URL              string          `json:"url"`
 	Access           *AssetAccess    `json:"access,omitempty"`
 	DurationMs       int             `json:"duration_ms,omitempty"`
-	Transcript       string          `json:"transcript,omitempty"`
+	Transcript       UntrustedText   `json:"transcript,omitempty"`
 	TranscriptFormat string          `json:"transcript_format,omitempty"` // text/plain (default), text/markdown, application/json
 	TranscriptSource string          `json:"transcript_source,omitempty"` // original_script, closed_captions, generated
 	Provenance       json.RawMessage `json:"provenance,omitempty"`

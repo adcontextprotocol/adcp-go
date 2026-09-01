@@ -205,7 +205,7 @@ func TestContextSignals_Validate(t *testing.T) {
 		{"valid", ContextSignals{Sentiment: "neutral", Language: "en"}, "", ""},
 		{"bad sentiment", ContextSignals{Sentiment: "postive"}, "sentiment", "postive"},
 		{"bad language pattern", ContextSignals{Language: "EN"}, "language", "EN"},
-		{"summary too long", ContextSignals{Summary: strings.Repeat("x", MaxSummaryLength+1)}, "summary", ""},
+		{"summary too long", ContextSignals{Summary: UntrustedText(strings.Repeat("x", MaxSummaryLength+1))}, "summary", ""},
 		{"too many topics", ContextSignals{Topics: make([]string, MaxTopics+1)}, "topics", ""},
 		{"embedding without model", ContextSignals{Embedding: "x", EmbeddingDims: 256}, "set together", ""},
 		{"embedding dims too small", ContextSignals{Embedding: "x", EmbeddingModel: "m", EmbeddingDims: 1}, "outside", ""},
@@ -304,5 +304,5 @@ func TestArtifact_Validate_RecursesIntoAssets(t *testing.T) {
 func TestTextAsset_Validate(t *testing.T) {
 	assert.NoError(t, (&TextAsset{Content: "hi"}).Validate())
 	assert.Error(t, (&TextAsset{}).Validate())
-	assert.Error(t, (&TextAsset{Content: strings.Repeat("x", MaxTextContentLength+1)}).Validate())
+	assert.Error(t, (&TextAsset{Content: UntrustedText(strings.Repeat("x", MaxTextContentLength+1))}).Validate())
 }
