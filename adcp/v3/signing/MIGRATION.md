@@ -27,6 +27,8 @@ The command writes `signing.pem` (PKCS#8 private key) and prints a JWK with `use
 
 Hold the PEM in your secret store. If you need to serialize a JWK that carries a private half (for instance, when persisting a loaded key), call `JWK.Public()` before marshaling for publication — it zeros `d` / `_private_d_for_test_only`.
 
+Production deployments that don't want the private key materialized in process memory at all can skip the PEM-on-disk step entirely: generate the key directly in a KMS/HSM (`aws kms create-key --key-usage SIGN_VERIFY --key-spec ECC_NIST_P256`, or equivalent), publish its public half as the JWK, and pass a `SigningProvider` — e.g. `adcp/v3/signing/awskms` — as `SignerOptions.Provider` instead of `KeyID`/`PrivateKey`. See the package [README](./README.md#keeping-the-private-key-out-of-process-memory-kms--hsm--vault).
+
 ### Advertise signing on `get_adcp_capabilities`
 
 Set `request_signing` on your capabilities response with an empty `supported_for` / `warn_for` / `required_for` to start. Counterparties probing your capabilities can now see the block exists.
