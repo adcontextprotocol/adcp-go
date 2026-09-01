@@ -123,7 +123,9 @@ func TestAssetAccess_AllMethods_RoundTrip(t *testing.T) {
 		access AssetAccess
 	}{
 		{"bearer_token", AssetAccess{Method: AssetAccessMethodBearerToken, Token: "ya29.xxx"}},
-		{"service_account_gcp", AssetAccess{Method: AssetAccessMethodServiceAccount, Provider: "gcp", Credentials: map[string]any{"client_email": "sa@project.iam.gserviceaccount.com"}}},
+		{"service_account_gcp", NewGCPServiceAccountAccess(GCPServiceAccountCredentials{ClientEmail: "sa@project.iam.gserviceaccount.com"})},
+		{"service_account_aws", NewAWSServiceAccountAccess(AWSServiceAccountCredentials{AccessKeyID: "AKIAIOSFODNN7EXAMPLE"})}, // #nosec G101 — fake AWS example key
+		{"service_account_raw_other_provider", NewServiceAccountAccess("azure", map[string]any{"client_id": "abc-123"})},
 		{"signed_url", AssetAccess{Method: AssetAccessMethodSignedURL}},
 	}
 	for _, tc := range cases {
@@ -136,8 +138,105 @@ func TestAssetAccess_AllMethods_RoundTrip(t *testing.T) {
 			assert.Equal(t, tc.access.Method, got.Method)
 			assert.Equal(t, tc.access.Token, got.Token)
 			assert.Equal(t, tc.access.Provider, got.Provider)
+			assert.Equal(t, tc.access.Credentials, got.Credentials)
 		})
 	}
+}
+
+// TestAssetAccess_GCPServiceAccount_RoundTrip constructs via the typed
+// constructor, marshals to JSON, unmarshals back, and confirms the decoded
+// Credentials is the exact same typed GCPServiceAccountCredentials value —
+// not a map[string]any — with realistic (fabricated) credential shape.
+func TestAssetAccess_GCPServiceAccount_RoundTrip(t *testing.T) {
+	creds := GCPServiceAccountCredentials{ // #nosec G101 — fake PEM block exercising round-trip, not a real key
+		ClientEmail: "asset-reader@my-project-123.iam.gserviceaccount.com",
+		PrivateKey:  "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+		ProjectID:   "my-project-123",
+		TokenURI:    "https://oauth2.googleapis.com/token",
+	}
+	access := NewGCPServiceAccountAccess(creds)
+	assert.Equal(t, AssetAccessMethodServiceAccount, access.Method)
+	assert.Equal(t, "gcp", access.Provider)
+
+	data, err := json.Marshal(access)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"method": "service_account",
+		"provider": "gcp",
+		"credentials": {
+			"client_email": "asset-reader@my-project-123.iam.gserviceaccount.com",
+			"private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+			"project_id": "my-project-123",
+			"token_uri": "https://oauth2.googleapis.com/token"
+		}
+	}`, string(data))
+
+	var got AssetAccess
+	require.NoError(t, json.Unmarshal(data, &got))
+	assert.Equal(t, AssetAccessMethodServiceAccount, got.Method)
+	assert.Equal(t, "gcp", got.Provider)
+
+	gotCreds, ok := got.Credentials.(GCPServiceAccountCredentials)
+	require.True(t, ok, "decoded Credentials should be typed GCPServiceAccountCredentials, got %T", got.Credentials)
+	assert.Equal(t, creds, gotCreds)
+	assert.Equal(t, "gcp", gotCreds.ProviderTag())
+}
+
+// TestAssetAccess_AWSServiceAccount_RoundTrip mirrors the GCP round-trip
+// test for AWS, including the session-token field (STS-issued temporary
+// credentials are a common real-world shape).
+func TestAssetAccess_AWSServiceAccount_RoundTrip(t *testing.T) {
+	creds := AWSServiceAccountCredentials{
+		AccessKeyID:     "ASIAIOSFODNN7EXAMPLE",
+		SecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // #nosec G101 — fake AWS example key
+		SessionToken:    "FQoGZXIvYXdzEBEXAMPLESESSIONTOKEN==",      // #nosec G101 — fake STS token
+		Region:          "us-west-2",
+	}
+	access := NewAWSServiceAccountAccess(creds)
+	assert.Equal(t, AssetAccessMethodServiceAccount, access.Method)
+	assert.Equal(t, "aws", access.Provider)
+
+	data, err := json.Marshal(access)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"method": "service_account",
+		"provider": "aws",
+		"credentials": {
+			"access_key_id": "ASIAIOSFODNN7EXAMPLE",
+			"secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+			"session_token": "FQoGZXIvYXdzEBEXAMPLESESSIONTOKEN==",
+			"region": "us-west-2"
+		}
+	}`, string(data))
+
+	var got AssetAccess
+	require.NoError(t, json.Unmarshal(data, &got))
+
+	gotCreds, ok := got.Credentials.(AWSServiceAccountCredentials)
+	require.True(t, ok, "decoded Credentials should be typed AWSServiceAccountCredentials, got %T", got.Credentials)
+	assert.Equal(t, creds, gotCreds)
+	assert.Equal(t, "aws", gotCreds.ProviderTag())
+}
+
+// TestAssetAccess_ServiceAccount_UnknownProvider_RawFallback confirms a
+// provider this SDK has no typed struct for still round-trips losslessly via
+// RawServiceAccountCredentials, instead of failing to decode — the same
+// forward-compat trade UnknownAsset makes for an unrecognized asset "type".
+func TestAssetAccess_ServiceAccount_UnknownProvider_RawFallback(t *testing.T) {
+	raw := `{"method":"service_account","provider":"azure","credentials":{"client_id":"abc","tenant_id":"def"}}`
+	var got AssetAccess
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	assert.Equal(t, "azure", got.Provider)
+
+	rawCreds, ok := got.Credentials.(RawServiceAccountCredentials)
+	require.True(t, ok, "decoded Credentials should be RawServiceAccountCredentials, got %T", got.Credentials)
+	assert.Equal(t, "azure", rawCreds.Provider)
+	assert.Equal(t, "abc", rawCreds.Fields["client_id"])
+
+	// Re-marshal preserves the fields.
+	data, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.JSONEq(t, raw, string(data))
 }
 
 func TestContextMatchRequest_FullDisclosureLadder(t *testing.T) {
