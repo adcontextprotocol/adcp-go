@@ -65,18 +65,22 @@ Success signal: signed requests arrive, `signing.VerifiedSignerFromContext(ctx)`
 
 Move the operation to `warn_for`. Verification still runs and failures are logged; traffic is unaffected. Watch your failure rate and walk down the long tail of "some counterparty is misbehaving" before flipping to reject.
 
-This is the spec's shadow-mode stop. The SDK exposes it via `MiddlewareOptions.ObserveOnly` (tracked in [#53](https://github.com/adcontextprotocol/adcp-go/issues/53)); until that lands, approximate it with an `OnReject` that logs-and-passes-through:
+This is the spec's shadow-mode stop. The SDK exposes it via `MiddlewareOptions.ObserveOnly`: verification runs on every signed request, but a failure — including an unsigned request to an operation you've also (mistakenly, since `warn_for` and `required_for` are disjoint) left in `RequiredFor` — is logged at INFO instead of rejected, and the request reaches your handler with no `VerifiedSigner` in its context:
 
 ```go
-// WARNING: step-B shim only. Delete before enabling RequiredFor in step C —
-// this turns every required-signed op into an unsigned op.
-OnReject: func(w http.ResponseWriter, r *http.Request, e *signing.Error) {
-    logger.Warn("signature would reject", "code", e.Code, "detail", e.Detail)
-    // fall through to the next handler — request is NOT rejected.
-},
+mw := signing.Middleware(signing.MiddlewareOptions{
+    Resolver:          jwksResolver,
+    Replay:            signing.NewMemoryReplayStore(0),
+    Revocation:        signing.NewStaticRevocationList(nil),
+    OperationResolver: signing.DefaultOperationResolver,
+    ObserveOnly:       true, // step-B: verify, log, never reject
+    Logger:            logger,
+})
 ```
 
-Success signal: grep your logs for the `request signature rejected` message (field `code` = `request_signature_*`) and watch the rate fall to zero — or to a known-and-tolerated set of counterparties — over a window long enough to cover your slowest integrator's deploy cadence.
+One case still hard-rejects even under `ObserveOnly`: a partial or malformed `Signature`/`Signature-Input` header pair. Per spec, that pair "cannot be safely interpreted as either signed or unsigned traffic," so it 401s regardless of rollout stage — only a *well-formed* signature that fails verification (bad crypto, unknown key, expired window, replay, ...) is observed-and-passed-through.
+
+Success signal: grep your logs for `"signature verification failed (ObserveOnly...)"` (field `code` = `request_signature_*`, `observe_only=true`) and watch the rate fall to zero — or to a known-and-tolerated set of counterparties — over a window long enough to cover your slowest integrator's deploy cadence.
 
 ### Step C — `required_for`
 
@@ -142,7 +146,7 @@ Ordering is different — the old kid must stop being trusted *before* anything 
 - **Clock skew > 60s.** Verifiers reject with `request_signature_window_invalid` when `created` is > 60s in the future or `expires` is > 60s in the past. NTP-sync both sides; investigate container hosts that drift after suspend/resume.
 - **Custom `HTTPClient` losing SSRF protection.** If you supply `HTTPJWKSResolver.HTTPClient`, start from `signing.NewSafeHTTPClient()` — otherwise you lose the DNS-rebinding / private-IP / loopback guards, and an attacker who controls a `jwks_uri` can pivot against your internal network.
 - **Per-keyid replay cap.** The default in-memory replay store caps at 1,000,000 entries per keyid. Sustained > 3k QPS per signing key will trip `request_signature_rate_abuse`. Deploy a distributed replay store (Redis or equivalent, tracked in [#54](https://github.com/adcontextprotocol/adcp-go/issues/54)) before you get there.
-- **`OnReject` that logs-and-passes-through past step B.** The step-B shim above is a footgun if it survives into production — it silently turns every required-signed op into an unsigned op. Before flipping `RequiredFor`, grep your middleware wiring for `OnReject` and confirm the shim is gone. Months later, if you inherit the repo, re-grep.
+- **`ObserveOnly: true` that survives past step B.** It's a footgun if it survives into production unnoticed — it silently turns every required-signed op back into an unsigned op. Before flipping `RequiredFor` to enforce, grep your middleware wiring for `ObserveOnly` and confirm it's gone (or scoped to a different middleware instance covering only the operations still in `warn_for`). Months later, if you inherit the repo, re-grep.
 
 ## 5. Verification checklist before enforcing
 
@@ -152,6 +156,6 @@ Ordering is different — the old kid must stop being trusted *before* anything 
 - [ ] Revocation source is configured (not `nil` — the middleware logs a warning when `RequiredFor` is non-empty and `Revocation` is nil).
 - [ ] Replay store is either in-memory (single instance) or a shared backing store (distributed).
 - [ ] Logs from step B show zero unexpected failures over at least one full deploy cycle of your slowest counterparty.
-- [ ] No `OnReject` pass-through shim remains in the middleware wiring (grep for `OnReject`).
+- [ ] No `ObserveOnly: true` remains on the middleware instance you're about to enforce on (grep for `ObserveOnly`).
 - [ ] `CheckRedirect` is set on every signing client.
 - [ ] Clock sync monitoring is in place on signer and verifier hosts.
