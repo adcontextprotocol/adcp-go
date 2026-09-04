@@ -1256,6 +1256,168 @@ func actionNotAllowedResult(action adcp.MediaBuyValidAction, reason, recovery st
 	return result, outAny, err, true
 }
 
+// newServer wires the reference seller's MCP tools onto a fresh server backed
+// by b. Extracted from main so tests can stand up the exact same tool
+// registration (including comply_test_controller) over an in-memory MCP
+// transport, instead of only exercising backend methods directly.
+func newServer(b *backend) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "reference-seller", Version: "1.0.0"}, nil)
+
+	adcp.Register(server, adcp.Config{
+		Sandbox:              true,
+		IdempotencyReplayTTL: 24 * time.Hour,
+		Capabilities: &adcp.CapabilitiesData{
+			Account: &adcp.AccountCapabilities{SupportedBilling: []string{"operator", "agent"}, Sandbox: boolPtr(true)},
+			MediaBuy: &adcp.MediaBuyCapabilities{
+				SupportedPricingModels: []string{"cpm", "cpcv"},
+				Portfolio:              &adcp.PortfolioCaps{PublisherDomains: []string{"example.com"}, PrimaryChannels: []string{"display", "olv"}},
+			},
+			Creative: &adcp.CreativeCapabilities{HasCreativeLibrary: boolPtr(true), SupportsCompliance: boolPtr(true)},
+			ComplianceTesting: &adcp.ComplianceTestingCapabilities{Scenarios: []string{
+				"force_account_status", "force_media_buy_status", "force_creative_status",
+				"simulate_delivery", "simulate_budget_spend",
+			}},
+		},
+		ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
+			b.mu.RLock()
+			defer b.mu.RUnlock()
+			domain := ""
+			if ref.Brand != nil {
+				domain = ref.Brand.Domain
+			}
+			id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+			if acct, ok := b.accounts[id]; ok {
+				return acct, nil
+			}
+			return &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}, nil
+		},
+		SyncAccounts: func(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			results := make([]adcp.AccountResult, 0, len(input.Accounts))
+			for _, acct := range input.Accounts {
+				domain := "unknown"
+				if acct.Brand != nil {
+					domain = acct.Brand.Domain
+				}
+				id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+				result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
+				if existing, ok := b.accounts[id]; ok {
+					result.Action = "updated"
+					result.Status = existing.Status
+				}
+				b.accounts[id] = &result
+				results = append(results, result)
+			}
+			return results, nil
+		},
+		SyncGovernance: func(_ context.Context, input *adcp.SyncGovernanceRequest) ([]adcp.GovernanceResult, error) {
+			results := make([]adcp.GovernanceResult, 0, len(input.Accounts))
+			for _, acct := range input.Accounts {
+				govAcct := acct.Account
+				if govAcct == nil {
+					govAcct = &adcp.GovernanceAccount{Brand: acct.Brand, Operator: acct.Operator}
+				}
+				results = append(results, adcp.GovernanceResult{Account: govAcct, Status: "synced", GovernanceAgents: acct.GovernanceAgents})
+			}
+			return results, nil
+		},
+		GetProducts: func(_ context.Context, _ any, input *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
+			b.mu.RLock()
+			defer b.mu.RUnlock()
+			products := make([]adcp.Product, 0, len(b.products))
+			for _, product := range b.products {
+				products = append(products, *product)
+			}
+			sortProducts(products, input.Brief)
+			data := &adcp.ProductsData{Products: products, CacheScope: "public"}
+			if input.BuyingMode == "refine" && len(input.Refine) > 0 {
+				applied := make([]adcp.GetProductsRefinementAppliedItem, 0, len(input.Refine))
+				for _, ref := range input.Refine {
+					item := adcp.GetProductsRefinementAppliedItem{
+						Scope:      ref.Scope,
+						Status:     "applied",
+						ProductID:  ref.ProductID,
+						ProposalID: ref.ProposalID,
+					}
+					applied = append(applied, item)
+				}
+				return &adcp.ProductsData{Products: products, RefinementApplied: applied, CacheScope: "public"}, nil
+			}
+			return data, nil
+		},
+		CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResponse, error) {
+			return b.createMediaBuyResponse(input)
+		},
+		GetMediaBuys: func(_ context.Context, _ any, input *adcp.GetMediaBuysRequest) (*adcp.GetMediaBuysResponse, error) {
+			b.mu.RLock()
+			defer b.mu.RUnlock()
+			buys := make([]adcp.MediaBuyData, 0)
+			if len(input.MediaBuyIDs) > 0 {
+				for _, id := range input.MediaBuyIDs {
+					if buy, ok := b.mediaBuys[id]; ok {
+						item := *buy
+						b.decorateMediaBuySnapshot(&item)
+						buys = append(buys, item)
+					}
+				}
+			} else {
+				for _, buy := range b.mediaBuys {
+					item := *buy
+					b.decorateMediaBuySnapshot(&item)
+					buys = append(buys, item)
+				}
+			}
+			return &adcp.GetMediaBuysResponse{MediaBuys: buys}, nil
+		},
+		ListCreativeFormats: func(_ context.Context, input *adcp.ListCreativeFormatsRequest) ([]adcp.CreativeFormat, error) {
+			if len(input.FormatIDs) > 0 {
+				filtered := make([]adcp.CreativeFormat, 0, len(input.FormatIDs))
+				for _, want := range input.FormatIDs {
+					for _, format := range formats {
+						if format.FormatID.AgentURL == want.AgentURL && format.FormatID.ID == want.ID {
+							filtered = append(filtered, format)
+						}
+					}
+				}
+				return filtered, nil
+			}
+			return formats, nil
+		},
+		SyncCreatives: func(_ context.Context, input *adcp.SyncCreativesRequest) ([]adcp.CreativeResult, error) {
+			return b.syncCreatives(input)
+		},
+		GetDelivery: func(_ context.Context, _ any, input *adcp.GetMediaBuyDeliveryRequest) (*adcp.DeliveryData, error) {
+			return b.getDelivery(input)
+		},
+	})
+
+	adcp.AddTool(server, "update_media_buy", "Update a media buy",
+		func(ctx context.Context, req *mcp.CallToolRequest, input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
+			return b.updateMediaBuy(input)
+		})
+
+	adcp.AddTool(server, "list_creatives", "List synced creatives",
+		func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativesRequest) (*mcp.CallToolResult, any, error) {
+			return b.listCreatives(input)
+		})
+
+	// Test controller — sandbox only. Do not register in production.
+	if os.Getenv("ADCP_SANDBOX") != "false" {
+		adcp.RegisterTestController(server, &adcp.TestControllerStore{
+			CustomScenarios:     customScenarios,
+			ForceAccountStatus:  b.forceAccountStatus,
+			ForceMediaBuyStatus: b.forceMediaBuyStatus,
+			ForceCreativeStatus: b.forceCreativeStatus,
+			SimulateDelivery:    b.simulateDelivery,
+			SimulateBudgetSpend: b.simulateBudgetSpend,
+			CustomScenario:      b.handleCustomScenario,
+		})
+	}
+
+	return server
+}
+
 func main() {
 	b := &backend{
 		accounts:  make(map[string]*adcp.AccountResult),
@@ -1266,160 +1428,6 @@ func main() {
 	}
 
 	log.Fatal(adcp.Serve(func() *mcp.Server {
-		server := mcp.NewServer(&mcp.Implementation{Name: "reference-seller", Version: "1.0.0"}, nil)
-
-		adcp.Register(server, adcp.Config{
-			Sandbox:              true,
-			IdempotencyReplayTTL: 24 * time.Hour,
-			Capabilities: &adcp.CapabilitiesData{
-				Account: &adcp.AccountCapabilities{SupportedBilling: []string{"operator", "agent"}, Sandbox: boolPtr(true)},
-				MediaBuy: &adcp.MediaBuyCapabilities{
-					SupportedPricingModels: []string{"cpm", "cpcv"},
-					Portfolio:              &adcp.PortfolioCaps{PublisherDomains: []string{"example.com"}, PrimaryChannels: []string{"display", "olv"}},
-				},
-				Creative: &adcp.CreativeCapabilities{HasCreativeLibrary: boolPtr(true), SupportsCompliance: boolPtr(true)},
-				ComplianceTesting: &adcp.ComplianceTestingCapabilities{Scenarios: []string{
-					"force_account_status", "force_media_buy_status", "force_creative_status",
-					"simulate_delivery", "simulate_budget_spend",
-				}},
-			},
-			ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
-				b.mu.RLock()
-				defer b.mu.RUnlock()
-				domain := ""
-				if ref.Brand != nil {
-					domain = ref.Brand.Domain
-				}
-				id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
-				if acct, ok := b.accounts[id]; ok {
-					return acct, nil
-				}
-				return &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}, nil
-			},
-			SyncAccounts: func(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
-				b.mu.Lock()
-				defer b.mu.Unlock()
-				results := make([]adcp.AccountResult, 0, len(input.Accounts))
-				for _, acct := range input.Accounts {
-					domain := "unknown"
-					if acct.Brand != nil {
-						domain = acct.Brand.Domain
-					}
-					id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
-					result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
-					if existing, ok := b.accounts[id]; ok {
-						result.Action = "updated"
-						result.Status = existing.Status
-					}
-					b.accounts[id] = &result
-					results = append(results, result)
-				}
-				return results, nil
-			},
-			SyncGovernance: func(_ context.Context, input *adcp.SyncGovernanceRequest) ([]adcp.GovernanceResult, error) {
-				results := make([]adcp.GovernanceResult, 0, len(input.Accounts))
-				for _, acct := range input.Accounts {
-					govAcct := acct.Account
-					if govAcct == nil {
-						govAcct = &adcp.GovernanceAccount{Brand: acct.Brand, Operator: acct.Operator}
-					}
-					results = append(results, adcp.GovernanceResult{Account: govAcct, Status: "synced", GovernanceAgents: acct.GovernanceAgents})
-				}
-				return results, nil
-			},
-			GetProducts: func(_ context.Context, _ any, input *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
-				b.mu.RLock()
-				defer b.mu.RUnlock()
-				products := make([]adcp.Product, 0, len(b.products))
-				for _, product := range b.products {
-					products = append(products, *product)
-				}
-				sortProducts(products, input.Brief)
-				data := &adcp.ProductsData{Products: products, CacheScope: "public"}
-				if input.BuyingMode == "refine" && len(input.Refine) > 0 {
-					applied := make([]adcp.GetProductsRefinementAppliedItem, 0, len(input.Refine))
-					for _, ref := range input.Refine {
-						item := adcp.GetProductsRefinementAppliedItem{
-							Scope:      ref.Scope,
-							Status:     "applied",
-							ProductID:  ref.ProductID,
-							ProposalID: ref.ProposalID,
-						}
-						applied = append(applied, item)
-					}
-					return &adcp.ProductsData{Products: products, RefinementApplied: applied, CacheScope: "public"}, nil
-				}
-				return data, nil
-			},
-			CreateMediaBuy: func(_ context.Context, _ any, input *adcp.CreateMediaBuyRequest) (adcp.CreateMediaBuyResponse, error) {
-				return b.createMediaBuyResponse(input)
-			},
-			GetMediaBuys: func(_ context.Context, _ any, input *adcp.GetMediaBuysRequest) (*adcp.GetMediaBuysResponse, error) {
-				b.mu.RLock()
-				defer b.mu.RUnlock()
-				buys := make([]adcp.MediaBuyData, 0)
-				if len(input.MediaBuyIDs) > 0 {
-					for _, id := range input.MediaBuyIDs {
-						if buy, ok := b.mediaBuys[id]; ok {
-							item := *buy
-							b.decorateMediaBuySnapshot(&item)
-							buys = append(buys, item)
-						}
-					}
-				} else {
-					for _, buy := range b.mediaBuys {
-						item := *buy
-						b.decorateMediaBuySnapshot(&item)
-						buys = append(buys, item)
-					}
-				}
-				return &adcp.GetMediaBuysResponse{MediaBuys: buys}, nil
-			},
-			ListCreativeFormats: func(_ context.Context, input *adcp.ListCreativeFormatsRequest) ([]adcp.CreativeFormat, error) {
-				if len(input.FormatIDs) > 0 {
-					filtered := make([]adcp.CreativeFormat, 0, len(input.FormatIDs))
-					for _, want := range input.FormatIDs {
-						for _, format := range formats {
-							if format.FormatID.AgentURL == want.AgentURL && format.FormatID.ID == want.ID {
-								filtered = append(filtered, format)
-							}
-						}
-					}
-					return filtered, nil
-				}
-				return formats, nil
-			},
-			SyncCreatives: func(_ context.Context, input *adcp.SyncCreativesRequest) ([]adcp.CreativeResult, error) {
-				return b.syncCreatives(input)
-			},
-			GetDelivery: func(_ context.Context, _ any, input *adcp.GetMediaBuyDeliveryRequest) (*adcp.DeliveryData, error) {
-				return b.getDelivery(input)
-			},
-		})
-
-		adcp.AddTool(server, "update_media_buy", "Update a media buy",
-			func(ctx context.Context, req *mcp.CallToolRequest, input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
-				return b.updateMediaBuy(input)
-			})
-
-		adcp.AddTool(server, "list_creatives", "List synced creatives",
-			func(ctx context.Context, req *mcp.CallToolRequest, input adcp.ListCreativesRequest) (*mcp.CallToolResult, any, error) {
-				return b.listCreatives(input)
-			})
-
-		// Test controller — sandbox only. Do not register in production.
-		if os.Getenv("ADCP_SANDBOX") != "false" {
-			adcp.RegisterTestController(server, &adcp.TestControllerStore{
-				CustomScenarios:     customScenarios,
-				ForceAccountStatus:  b.forceAccountStatus,
-				ForceMediaBuyStatus: b.forceMediaBuyStatus,
-				ForceCreativeStatus: b.forceCreativeStatus,
-				SimulateDelivery:    b.simulateDelivery,
-				SimulateBudgetSpend: b.simulateBudgetSpend,
-				CustomScenario:      b.handleCustomScenario,
-			})
-		}
-
-		return server
+		return newServer(b)
 	}))
 }

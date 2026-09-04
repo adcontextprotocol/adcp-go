@@ -93,7 +93,8 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := tmproto.ValidateContextRequest(&req); err != nil {
-		writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), tmproto.ErrorCodeInvalidRequest, err.Error(), http.StatusBadRequest)
+		h.logValidationFailure(r, req.RequestID, err)
+		writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), tmproto.ErrorCodeInvalidRequest, "invalid request", http.StatusBadRequest)
 		return
 	}
 
@@ -152,6 +153,26 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		h.logger.Warn("response encode failed", "request_id", req.RequestID, "error", err)
 	}
+}
+
+// logValidationFailure logs a rejected request's validation error
+// server-side with request context, mirroring identityagent's
+// logValidationFailure. The HTTP response only ever gets the generic
+// "invalid request" message (see ServeHTTP) — validator error text
+// (which can include request-shaped detail like field names and
+// lengths) must not cross the response boundary per AGENTS.md's
+// generic-error-message invariant. request_id is only logged when it
+// passes SafeRequestIDForEcho; an id that fails that check is elided
+// and request_id_valid=false is logged instead, so a control-byte or
+// oversized request_id doesn't get written verbatim into logs either.
+func (h *handler) logValidationFailure(r *http.Request, requestID string, err error) {
+	attrs := []any{"method", r.Method, "path", r.URL.Path, "error", err}
+	if safeID := tmproto.SafeRequestIDForEcho(requestID); safeID != "" {
+		attrs = append(attrs, "request_id", safeID)
+	} else if requestID != "" {
+		attrs = append(attrs, "request_id_valid", false)
+	}
+	h.logger.Warn("invalid context-match request", attrs...)
 }
 
 // writeError writes a TMP error response. Headers must be set before
