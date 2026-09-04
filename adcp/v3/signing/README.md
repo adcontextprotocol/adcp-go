@@ -17,6 +17,21 @@ The package is validated against the spec's [conformance vectors](https://adcont
 
 Vectors live under `testdata/request-signing/`; tests are in `conformance_test.go`.
 
+## Testing handlers that expect signed requests
+
+The [`signingtest`](./signingtest) subpackage collapses the keypair + JWK +
+`StaticJWKSResolver` + `NewMemoryReplayStore` boilerplate a handler test
+otherwise has to hand-roll:
+
+```go
+signer, opts := signingtest.NewTestAgent(t)
+opts.OperationResolver = signing.DefaultOperationResolver
+opts.RequiredFor = []string{"create_media_buy"}
+handler := signing.Middleware(opts)(yourHandler)
+
+resp := signingtest.SignAndSend(t, signer, handler, req)
+```
+
 ## Signing (buyer side)
 
 ```go

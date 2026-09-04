@@ -113,6 +113,32 @@ type MiddlewareOptions struct {
 	// Set this when your reverse proxy terminates TLS and the verifier sees
 	// plain HTTP.
 	SchemeOverride string
+
+	// ObserveOnly puts this middleware instance in shadow mode. Verification
+	// still runs, but a request that fails it — including an unsigned
+	// request to an operation in RequiredFor — is NOT rejected: next is
+	// invoked with no VerifiedSigner in the context, exactly as if the
+	// request had arrived unsigned. The failure is logged at INFO level
+	// (instead of the usual WARN + 401) via Logger, so operators can watch
+	// the failure rate before promoting the operation to full enforcement.
+	//
+	// This maps to the spec's `warn_for` rollout stop — the shadow-mode
+	// bridge between `supported_for` (verified when present, never required)
+	// and `required_for` (verified and mandatory). Wire a dedicated
+	// Middleware instance with ObserveOnly=true for the operations you've
+	// moved to `warn_for`; RequiredFor should normally be empty on that
+	// instance, since `warn_for` and `required_for` are disjoint per spec —
+	// see https://adcontextprotocol.org/docs/building/implementation/security#transport-capability-advertisement.
+	//
+	// One case still hard-rejects even under ObserveOnly: a partial or
+	// malformed Signature/Signature-Input header pair (one header present
+	// without the other, or either header present but unparseable) —
+	// surfaced as *Error{Code: CodeHeaderMalformed}. The spec requires this
+	// because a broken pair "cannot be safely interpreted as either signed
+	// or unsigned traffic"; a well-formed signature that merely fails
+	// verification (bad crypto, unknown key, expired window, replay, ...) is
+	// the case ObserveOnly is for and passes through.
+	ObserveOnly bool
 }
 
 // Middleware returns an http.Handler middleware that verifies incoming AdCP
@@ -187,13 +213,30 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 				if parsed, perr := parseSignatureInput(r.Header.Get(signatureInputHeader)); perr == nil {
 					keyid = parsed.keyID
 				}
-				logger.Warn("signature rejected",
+				// ObserveOnly never overrides a malformed header pair — that
+				// case cannot be safely treated as unsigned traffic (see the
+				// ObserveOnly doc comment).
+				observing := opts.ObserveOnly && e.Code != CodeHeaderMalformed
+				level := slog.LevelWarn
+				msg := "signature rejected"
+				if observing {
+					level = slog.LevelInfo
+					msg = "signature verification failed (ObserveOnly: request allowed through unverified)"
+				}
+				logger.Log(r.Context(), level, msg,
 					"code", e.WireCode(profile),
 					"detail", e.Detail,
 					"op", opName,
 					"keyid", keyid,
 					"profile", profile.Tag,
+					"observe_only", observing,
 				)
+				if observing {
+					// No VerifiedSigner is attached — downstream sees this
+					// exactly as an unsigned request.
+					next.ServeHTTP(w, r)
+					return
+				}
 				if opts.OnReject != nil {
 					opts.OnReject(w, r, e)
 					return
