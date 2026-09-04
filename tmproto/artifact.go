@@ -242,15 +242,20 @@ type ServiceAccountCredentials interface {
 // GCPServiceAccountCredentials is the typed credential shape for
 // AssetAccess{Method: service_account, Provider: "gcp"}.
 //
+// The struct covers the fields Google's JWTConfigFromJSON parser requires
+// (including "type" and "private_key_id") so that a full service-account
+// JSON object round-trips without loss.
+//
 // Sensitive: PrivateKey is a bearer-equivalent secret. String() and
-// GoString() redact it; ClientEmail/ProjectID/TokenURI are not secret and
-// stay visible for debuggability, same line AssetAccess's own redaction
-// draws between the discriminator and the payload.
+// GoString() redact it; all other fields are non-secret identifiers and
+// stay visible for debuggability.
 type GCPServiceAccountCredentials struct {
-	ClientEmail string `json:"client_email"`
-	PrivateKey  string `json:"private_key"`
-	ProjectID   string `json:"project_id,omitempty"`
-	TokenURI    string `json:"token_uri,omitempty"`
+	Type         string `json:"type,omitempty"`
+	ClientEmail  string `json:"client_email"`
+	PrivateKeyID string `json:"private_key_id,omitempty"`
+	PrivateKey   string `json:"private_key"`
+	ProjectID    string `json:"project_id,omitempty"`
+	TokenURI     string `json:"token_uri,omitempty"`
 }
 
 // ProviderTag implements ServiceAccountCredentials.
@@ -264,8 +269,8 @@ func (c GCPServiceAccountCredentials) String() string { return c.redacted() }
 func (c GCPServiceAccountCredentials) GoString() string { return c.redacted() }
 
 func (c GCPServiceAccountCredentials) redacted() string {
-	return fmt.Sprintf("GCPServiceAccountCredentials{ClientEmail:%s,ProjectID:%s,TokenURI:%s,<redacted>}",
-		c.ClientEmail, c.ProjectID, c.TokenURI)
+	return fmt.Sprintf("GCPServiceAccountCredentials{Type:%s,ClientEmail:%s,PrivateKeyID:%s,ProjectID:%s,TokenURI:%s,<redacted>}",
+		c.Type, c.ClientEmail, c.PrivateKeyID, c.ProjectID, c.TokenURI)
 }
 
 // AWSServiceAccountCredentials is the typed credential shape for
