@@ -3,7 +3,7 @@
   "registry": "0.1.0",
   "registry/redisstore": "0.0.0",
   "registry/glidestore": "0.0.0",
-  "tmproto": "0.1.2",
+  "tmproto": "0.2.0",
   "tmpclient": "0.1.0",
   "targeting": "0.2.1",
   "uid2client": "0.2.0",
