@@ -376,6 +376,9 @@ func reconstructRequestURL(r *http.Request, scheme string) string {
 // readAndReplaceBody buffers up to limit+1 bytes of r.Body so the digest can
 // be recomputed, then restores a reader so downstream handlers can read again.
 // Returns an error when the body exceeds limit; a memory-DoS guard.
+//
+// On any error path the body is restored so that ObserveOnly pass-throughs
+// never forward an incomplete stream to the downstream handler.
 func readAndReplaceBody(r *http.Request, limit int64) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
@@ -383,12 +386,19 @@ func readAndReplaceBody(r *http.Request, limit int64) ([]byte, error) {
 	lr := io.LimitReader(r.Body, limit+1)
 	b, err := io.ReadAll(lr)
 	if err != nil {
+		// Stitch the partially-read prefix back onto the original body so
+		// any ObserveOnly pass-through gives the handler a coherent stream.
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(b), r.Body))
 		return nil, err
 	}
-	_ = r.Body.Close()
 	if int64(len(b)) > limit {
+		// Body exceeds cap. Restore the full stream before returning: b holds
+		// the first limit+1 bytes; r.Body still has the remainder. Without
+		// this, ObserveOnly would forward an incomplete body to the handler.
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(b), r.Body))
 		return nil, newError(CodeDigestMismatch, "request body exceeds MaxBodyBytes")
 	}
+	_ = r.Body.Close()
 	r.Body = io.NopCloser(bytes.NewReader(b))
 	return b, nil
 }
