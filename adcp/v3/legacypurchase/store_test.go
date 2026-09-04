@@ -406,3 +406,141 @@ func TestRegisterContinuation_DuplicateTokenRejected(t *testing.T) {
 	var dt *DuplicateTokenError
 	assert.True(t, errors.As(err, &dt))
 }
+
+// ---- fix: principal check on replay (issue 1) ----
+
+// TestContinueLegacyPurchase_RetryDifferentPrincipalRejected confirms that
+// a committed replay is not returned to a different authenticated buyer,
+// even when they present the same idempotency_key and request payload.
+func TestContinueLegacyPurchase_RetryDifferentPrincipalRejected(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixture(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+
+	exec, _ := countingExecutor(t, []byte(`{"media_buy_id":"mb-1"}`))
+	_, err := s.ContinueLegacyPurchase(ctxWithPrincipal(), input, exec)
+	require.NoError(t, err)
+
+	// Retry under a different principal — must be rejected, not return the
+	// prior buyer's result.
+	otherCtx := idempotency.WithPrincipal(context.Background(), "other-buyer")
+	_, err = s.ContinueLegacyPurchase(otherCtx, input, exec)
+	var pm *PrincipalMismatchError
+	require.True(t, errors.As(err, &pm), "expected PrincipalMismatchError, got %v", err)
+}
+
+// ---- fix: pricing option validation (issue 2) ----
+
+// validFixtureWithPricing returns a fixture whose observed payload and
+// request both carry an explicit pricing_option_id so the pricing check is
+// exercised on the happy path.
+func validFixtureWithPricing(t *testing.T, now time.Time) (*Continuation, *CompatibilityPurchaseCoordinatorInput) {
+	t.Helper()
+	c, input := validFixture(t, now)
+	c.ObservedPayload = mustJSON(t, []map[string]any{
+		{
+			"product_id": "prod-a",
+			"pricing_options": []map[string]any{
+				{"pricing_option_id": "fixed-cpm"},
+			},
+		},
+		{
+			"product_id": "prod-b",
+			"pricing_options": []map[string]any{
+				{"pricing_option_id": "fixed-cpm"},
+			},
+		},
+	})
+	input.LegacyCreateRequest = mustJSON(t, map[string]any{
+		"packages": []map[string]any{
+			{"product_id": "prod-a", "pricing_option_id": "fixed-cpm", "budget": 1000},
+		},
+	})
+	return c, input
+}
+
+func TestContinueLegacyPurchase_UnknownPricingOptionRejected(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixtureWithPricing(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+
+	input.LegacyCreateRequest = mustJSON(t, map[string]any{
+		"packages": []map[string]any{
+			{"product_id": "prod-a", "pricing_option_id": "not-in-offer", "budget": 1000},
+		},
+	})
+	// also align selected_product_ids with the new request
+	input.SelectedProductIDs = []string{"prod-a"}
+	exec, calls := countingExecutor(t, nil)
+	_, err := s.ContinueLegacyPurchase(ctxWithPrincipal(), input, exec)
+	var pe *PricingOptionError
+	require.True(t, errors.As(err, &pe), "expected PricingOptionError, got %v", err)
+	assert.Equal(t, 0, *calls, "executor must not run when pricing option is invalid")
+}
+
+func TestContinueLegacyPurchase_ValidPricingOptionAccepted(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixtureWithPricing(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+	exec, calls := countingExecutor(t, []byte(`{"media_buy_id":"mb-1"}`))
+	res, err := s.ContinueLegacyPurchase(ctxWithPrincipal(), input, exec)
+	require.NoError(t, err)
+	assert.False(t, res.Replayed)
+	assert.Equal(t, 1, *calls)
+}
+
+// ---- fix: AdCP 2.5 risk declaration at registration (issue 3) ----
+
+func TestRegisterContinuation_25WithoutMutationLossRejected(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, _ := validFixture(t, now)
+	c.SourceADCPVersion = "2.5"
+	// Only the two baseline losses — missing mutation_idempotency_not_guaranteed.
+	c.Losses = []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic}
+	err := s.RegisterContinuation(context.Background(), c)
+	var ie *InvalidInputError
+	require.True(t, errors.As(err, &ie), "expected InvalidInputError, got %v", err)
+}
+
+func TestRegisterContinuation_25WithAllRequiredLossesAccepted(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, _ := validFixture(t, now)
+	c.SourceADCPVersion = "2.5"
+	c.Losses = []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic, LossMutationIdempotencyNotGuaranteed}
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+}
+
+// ---- fix: MemoryBackend deep copy (issue 4) ----
+
+// TestMemoryBackend_MutatingReturnedResponseDoesNotAffectReplay confirms
+// that a caller mutating the Response bytes from a successful
+// ContinueLegacyPurchase call cannot corrupt the deterministic replay
+// result returned by a subsequent exact retry.
+func TestMemoryBackend_MutatingReturnedResponseDoesNotAffectReplay(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixture(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+
+	exec, _ := countingExecutor(t, []byte(`{"media_buy_id":"mb-1"}`))
+	ctx := ctxWithPrincipal()
+	first, err := s.ContinueLegacyPurchase(ctx, input, exec)
+	require.NoError(t, err)
+
+	// Corrupt the returned response in place.
+	for i := range first.Response {
+		first.Response[i] = 0xFF
+	}
+
+	// The next retry must still return the original, uncorrupted result.
+	second, err := s.ContinueLegacyPurchase(ctx, input, exec)
+	require.NoError(t, err)
+	assert.True(t, second.Replayed)
+	assert.JSONEq(t, `{"media_buy_id":"mb-1"}`, string(second.Response),
+		"replay response must not be affected by caller mutating the first response")
+}

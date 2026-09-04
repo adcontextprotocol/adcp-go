@@ -128,6 +128,24 @@ func (e *LossAcceptanceError) Error() string {
 // Code returns the protocol error code.
 func (*LossAcceptanceError) Code() string { return CodeValidationError }
 
+// PricingOptionError is returned when a package in legacy_create_request
+// names a pricing_option_id that is not present in the continuation's
+// observed product/pricing payload — the spec's payload-substitution guard
+// that prevents callers from selecting a pricing option they never saw.
+type PricingOptionError struct {
+	Token           string
+	ProductID       string
+	PricingOptionID string
+}
+
+func (e *PricingOptionError) Error() string {
+	return fmt.Sprintf("legacypurchase: continuation %s pricing option %q is not in the observed offer for product %q",
+		logToken(e.Token), e.PricingOptionID, e.ProductID)
+}
+
+// Code returns the protocol error code.
+func (*PricingOptionError) Code() string { return CodeValidationError }
+
 // ExplicitPackageModeError is returned when legacy_create_request does not
 // use explicit-package mode (a non-empty packages[] array where every
 // package names a product_id).

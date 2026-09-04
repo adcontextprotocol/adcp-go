@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	adcp "github.com/adcontextprotocol/adcp-go/adcp/v3"
@@ -92,6 +93,9 @@ func (s *Store) RegisterContinuation(ctx context.Context, c *Continuation) error
 	}
 	if !containsAll(c.Losses, LossFeedVersionNotAtomic, LossPricingVersionNotAtomic) {
 		return &InvalidInputError{Field: "losses", Reason: "must include feed_version_not_atomic and pricing_version_not_atomic"}
+	}
+	if strings.HasPrefix(c.SourceADCPVersion, "2.5") && !containsAll(c.Losses, LossMutationIdempotencyNotGuaranteed) {
+		return &InvalidInputError{Field: "losses", Reason: "must include mutation_idempotency_not_guaranteed for an AdCP 2.5 source"}
 	}
 	if len(c.ObservedPayload) == 0 {
 		return &InvalidInputError{Field: "observed_payload", Reason: "must be non-empty — a continuation cannot be minted without a complete observed product/pricing payload"}
@@ -210,6 +214,73 @@ func (s *Store) validateBinding(rec *ContinuationRecord, input *CompatibilityPur
 		// skipped per the spec's explicit carve-out.
 		return &AccountMismatchError{Token: rec.Token, Reason: "legacy_create_request.account does not equal the token-bound account"}
 	}
+	if err := validatePricingOptions(rec.Token, rec.ObservedPayload, input.LegacyCreateRequest); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validatePricingOptions checks that every package in legacyCreateRequest
+// that names a pricing_option_id references an option actually present in
+// observedPayload for that product — the spec's payload-substitution guard
+// that prevents a caller from selecting a pricing option they never saw.
+//
+// observedPayload is a JSON array of product objects (compact_projection.products).
+// The check is skipped entirely when no package carries a pricing_option_id,
+// so requests that omit the optional field are unaffected.
+func validatePricingOptions(token string, observedPayload []byte, legacyCreateRequest json.RawMessage) error {
+	var req struct {
+		Packages []struct {
+			ProductID       string `json:"product_id"`
+			PricingOptionID string `json:"pricing_option_id"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(legacyCreateRequest, &req); err != nil {
+		return &InvalidInputError{Field: "legacy_create_request", Reason: "not valid JSON: " + err.Error()}
+	}
+
+	// Collect only the packages that actually specify a pricing option.
+	type pkgCheck struct{ productID, pricingOptionID string }
+	var toCheck []pkgCheck
+	for _, pkg := range req.Packages {
+		if pkg.PricingOptionID != "" {
+			toCheck = append(toCheck, pkgCheck{pkg.ProductID, pkg.PricingOptionID})
+		}
+	}
+	if len(toCheck) == 0 {
+		return nil
+	}
+
+	// Parse observedPayload (bare array of product objects from compact_projection.products).
+	var products []struct {
+		ProductID      string `json:"product_id"`
+		PricingOptions []struct {
+			PricingOptionID string `json:"pricing_option_id"`
+		} `json:"pricing_options"`
+	}
+	if err := json.Unmarshal(observedPayload, &products); err != nil {
+		return &InvalidInputError{Field: "observed_payload", Reason: "not valid JSON array: " + err.Error()}
+	}
+
+	// Build index: product_id → set of observed pricing_option_ids.
+	pricingByProduct := make(map[string]map[string]bool, len(products))
+	for _, p := range products {
+		opts := make(map[string]bool, len(p.PricingOptions))
+		for _, o := range p.PricingOptions {
+			opts[o.PricingOptionID] = true
+		}
+		pricingByProduct[p.ProductID] = opts
+	}
+
+	for _, c := range toCheck {
+		if !pricingByProduct[c.productID][c.pricingOptionID] {
+			return &PricingOptionError{
+				Token:           token,
+				ProductID:       c.productID,
+				PricingOptionID: c.pricingOptionID,
+			}
+		}
+	}
 	return nil
 }
 
@@ -217,6 +288,12 @@ func (s *Store) validateBinding(rec *ContinuationRecord, input *CompatibilityPur
 // that is StatePending, StateCommitted, or StateFailed — i.e. every case
 // other than a fresh, winning claim.
 func (s *Store) resolveNonOffered(ctx context.Context, rec *ContinuationRecord, input *CompatibilityPurchaseCoordinatorInput, principal, reqHash string, now time.Time) (*Result, error) {
+	// Check the requesting principal before revealing any claim metadata —
+	// a different buyer must not learn whether their idempotency_key matches
+	// the claimant's, and must not receive the committed result.
+	if rec.Principal != principal {
+		return nil, &PrincipalMismatchError{Token: rec.Token}
+	}
 	if rec.ClaimantKey != input.IdempotencyKey {
 		return nil, &AlreadyClaimedError{Token: rec.Token, State: rec.State}
 	}

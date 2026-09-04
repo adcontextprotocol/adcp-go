@@ -101,6 +101,18 @@ func (b *MemoryBackend) sweep() {
 	}
 }
 
+// deepCopyRecord returns a deep copy of rec, cloning all byte-slice and
+// string-slice fields so that mutations by the caller cannot affect the
+// stored record, and vice-versa.
+func deepCopyRecord(rec *ContinuationRecord) *ContinuationRecord {
+	cp := *rec
+	cp.ObservedPayload = append([]byte(nil), rec.ObservedPayload...)
+	cp.Result = append([]byte(nil), rec.Result...)
+	cp.ProductIDs = append([]string(nil), rec.ProductIDs...)
+	cp.Losses = append([]string(nil), rec.Losses...)
+	return &cp
+}
+
 // PutContinuation implements Backend.
 func (b *MemoryBackend) PutContinuation(_ context.Context, rec *ContinuationRecord) error {
 	b.mu.Lock()
@@ -108,8 +120,7 @@ func (b *MemoryBackend) PutContinuation(_ context.Context, rec *ContinuationReco
 	if _, exists := b.records[rec.Token]; exists {
 		return &DuplicateTokenError{Token: rec.Token}
 	}
-	cp := *rec
-	b.records[rec.Token] = &cp
+	b.records[rec.Token] = deepCopyRecord(rec)
 	return nil
 }
 
@@ -121,8 +132,7 @@ func (b *MemoryBackend) GetContinuation(_ context.Context, token string) (*Conti
 	if !ok {
 		return nil, nil
 	}
-	cp := *rec
-	return &cp, nil
+	return deepCopyRecord(rec), nil
 }
 
 // ClaimPending implements Backend.
