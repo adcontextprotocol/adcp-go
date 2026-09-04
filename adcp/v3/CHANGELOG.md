@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.0.0...adcp/v3.1.0) (2026-08-30)
+
+
+### Features
+
+* **negotiation:** add AdCP 3.2 proposal APIs ([#467](https://github.com/adcontextprotocol/adcp-go/issues/467)) ([a2fcf7d](https://github.com/adcontextprotocol/adcp-go/commit/a2fcf7d552dd5cda0d9d0f4b5e8b7cfc7a85c477))
+
 ## [2.1.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp-v2.0.1...adcp-v2.1.0) (2026-06-18)
 
 
