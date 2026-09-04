@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.0...targeting/v0.2.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **targeting:** sanitize context-agent validation error responses ([56ba6f3](https://github.com/adcontextprotocol/adcp-go/commit/56ba6f31897faa22bf9c70df4859224ae2262bc4))
+* **targeting:** sanitize context-agent validation error responses ([#484](https://github.com/adcontextprotocol/adcp-go/issues/484)) ([8d7d4b4](https://github.com/adcontextprotocol/adcp-go/commit/8d7d4b42311b3cef5f7173354de6f86e63763993))
+
 ## [0.2.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.1.1...targeting/v0.2.0) (2026-08-20)
 
 
