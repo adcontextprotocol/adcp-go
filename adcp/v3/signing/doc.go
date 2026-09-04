@@ -47,4 +47,18 @@
 //	    }
 //	    // v.KeyID, v.AgentURL, v.VerifiedAt, v.Algorithm available for audit
 //	}
+//
+// # Shadow-mode rollout
+//
+// MiddlewareOptions.ObserveOnly maps to the spec's warn_for rollout stop
+// between supported_for and required_for: verification still runs, but a
+// failing request passes to next.ServeHTTP anyway (no VerifiedSigner
+// attached), and the failure is logged at INFO instead of rejected. See
+// MIGRATION.md's "Step B — warn_for" for the full staged-enforcement recipe.
+//
+// # Testing handlers that expect signed requests
+//
+// See the signingtest subpackage for NewTestAgent and SignAndSend, which
+// collapse the keypair + JWK + resolver + replay-store setup a handler test
+// otherwise has to hand-roll.
 package signing
