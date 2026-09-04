@@ -922,6 +922,38 @@ func TestForceMediaBuyStatus_NotFound(t *testing.T) {
 	}
 }
 
+// --- ForceAccountStatus ---
+
+func TestForceAccountStatus(t *testing.T) {
+	b := newTestBackend()
+	b.accounts["acct-1"] = &adcp.AccountResult{AccountID: "acct-1", Status: "active"}
+
+	tr, err := b.forceAccountStatus("acct-1", "suspended")
+	if err != nil {
+		t.Fatalf("forceAccountStatus: %v", err)
+	}
+	if !tr.Success {
+		t.Error("expected Success=true")
+	}
+	if tr.PreviousState != "active" {
+		t.Errorf("want previous state active, got %s", tr.PreviousState)
+	}
+	if tr.CurrentState != "suspended" {
+		t.Errorf("want current state suspended, got %s", tr.CurrentState)
+	}
+	if b.accounts["acct-1"].Status != "suspended" {
+		t.Errorf("forceAccountStatus did not persist new status, got %s", b.accounts["acct-1"].Status)
+	}
+}
+
+func TestForceAccountStatus_NotFound(t *testing.T) {
+	b := newTestBackend()
+	_, err := b.forceAccountStatus("nonexistent-account", "suspended")
+	if err == nil {
+		t.Error("expected error for unknown account ID")
+	}
+}
+
 func TestValidActions_UnknownStatusFailsClosed(t *testing.T) {
 	if got := validActions("future_status"); len(got) != 0 {
 		t.Fatalf("unknown media buy status should expose no valid actions, got %#v", got)
