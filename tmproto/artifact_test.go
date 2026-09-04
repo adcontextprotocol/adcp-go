@@ -182,6 +182,70 @@ func TestAssetAccess_GCPServiceAccount_RoundTrip(t *testing.T) {
 	assert.Equal(t, "gcp", gotCreds.ProviderTag())
 }
 
+// TestAssetAccess_GCPServiceAccount_FullCredentialRoundTrip verifies that a
+// full GCP service-account JSON object (including "type" and "private_key_id"
+// required by google.JWTConfigFromJSON) survives a marshal→unmarshal→marshal
+// cycle without field loss, both via the typed constructor and via the
+// map-based NewServiceAccountAccess constructor.
+func TestAssetAccess_GCPServiceAccount_FullCredentialRoundTrip(t *testing.T) {
+	fullCreds := GCPServiceAccountCredentials{ // #nosec G101 — fabricated values, not real credentials
+		Type:         "service_account",
+		ClientEmail:  "asset-reader@my-project-123.iam.gserviceaccount.com",
+		PrivateKeyID: "key-abc123",
+		PrivateKey:   "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+		ProjectID:    "my-project-123",
+		TokenURI:     "https://oauth2.googleapis.com/token",
+	}
+	wantJSON := `{
+		"method": "service_account",
+		"provider": "gcp",
+		"credentials": {
+			"type": "service_account",
+			"client_email": "asset-reader@my-project-123.iam.gserviceaccount.com",
+			"private_key_id": "key-abc123",
+			"private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+			"project_id": "my-project-123",
+			"token_uri": "https://oauth2.googleapis.com/token"
+		}
+	}`
+
+	t.Run("typed_constructor", func(t *testing.T) {
+		access := NewGCPServiceAccountAccess(fullCreds)
+		data, err := json.Marshal(access)
+		require.NoError(t, err)
+		assert.JSONEq(t, wantJSON, string(data))
+
+		var got AssetAccess
+		require.NoError(t, json.Unmarshal(data, &got))
+		gotCreds, ok := got.Credentials.(GCPServiceAccountCredentials)
+		require.True(t, ok, "expected GCPServiceAccountCredentials, got %T", got.Credentials)
+		assert.Equal(t, fullCreds, gotCreds)
+	})
+
+	t.Run("map_constructor", func(t *testing.T) {
+		// NewServiceAccountAccess("gcp", map) wraps in RawServiceAccountCredentials,
+		// but after a marshal→unmarshal cycle the decoder dispatches on provider="gcp"
+		// and produces a GCPServiceAccountCredentials — type and private_key_id must survive.
+		access := NewServiceAccountAccess("gcp", map[string]any{
+			"type":          "service_account",
+			"client_email":  "asset-reader@my-project-123.iam.gserviceaccount.com",
+			"private_key_id": "key-abc123",
+			"private_key":   "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+			"project_id":    "my-project-123",
+			"token_uri":     "https://oauth2.googleapis.com/token",
+		})
+		data, err := json.Marshal(access)
+		require.NoError(t, err)
+		assert.JSONEq(t, wantJSON, string(data))
+
+		var got AssetAccess
+		require.NoError(t, json.Unmarshal(data, &got))
+		gotCreds, ok := got.Credentials.(GCPServiceAccountCredentials)
+		require.True(t, ok, "expected GCPServiceAccountCredentials after map round-trip, got %T", got.Credentials)
+		assert.Equal(t, fullCreds, gotCreds)
+	})
+}
+
 // TestAssetAccess_AWSServiceAccount_RoundTrip mirrors the GCP round-trip
 // test for AWS, including the session-token field (STS-issued temporary
 // credentials are a common real-world shape).
