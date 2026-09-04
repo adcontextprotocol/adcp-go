@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.1.2...tmproto/v0.2.0) (2026-09-04)
+
+
+### Features
+
+* **tmproto:** add SSRF-safe URL validation for TMP content URL fields ([27eeba4](https://github.com/adcontextprotocol/adcp-go/commit/27eeba432a03f2265d9870b4cab56a92e3c9fc4b))
+
 ## [0.1.2](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.1.1...tmproto/v0.1.2) (2026-08-28)
 
 
