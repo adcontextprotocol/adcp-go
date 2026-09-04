@@ -54,6 +54,10 @@ func (a *TextAsset) MarshalJSON() ([]byte, error) {
 }
 
 // ImageAsset is an image asset with its URL and optional display metadata.
+//
+// URL is publisher-supplied and MUST be validated with ValidateFetchableURL
+// before a buyer agent fetches it — see the MUST-validate-before-fetch
+// contract on the Artifact doc comment.
 type ImageAsset struct {
 	URL        string          `json:"url"`
 	Access     *AssetAccess    `json:"access,omitempty"`
@@ -78,6 +82,10 @@ func (a *ImageAsset) MarshalJSON() ([]byte, error) {
 
 // VideoAsset is a video asset with its URL and optional transcript/metadata.
 // Transcript is publisher-supplied and MUST be treated as untrusted input.
+//
+// URL and ThumbnailURL are publisher-supplied and MUST be validated with
+// ValidateFetchableURL before a buyer agent fetches either — see the
+// MUST-validate-before-fetch contract on the Artifact doc comment.
 type VideoAsset struct {
 	URL              string          `json:"url"`
 	Access           *AssetAccess    `json:"access,omitempty"`
@@ -103,6 +111,10 @@ func (a *VideoAsset) MarshalJSON() ([]byte, error) {
 
 // AudioAsset is an audio asset with its URL and optional transcript/metadata.
 // Transcript is publisher-supplied and MUST be treated as untrusted input.
+//
+// URL is publisher-supplied and MUST be validated with ValidateFetchableURL
+// before a buyer agent fetches it — see the MUST-validate-before-fetch
+// contract on the Artifact doc comment.
 type AudioAsset struct {
 	URL              string          `json:"url"`
 	Access           *AssetAccess    `json:"access,omitempty"`
@@ -331,6 +343,32 @@ func (a AssetAccess) redacted() string {
 // Publishers MUST NOT include asset access credentials the buyer could use
 // outside this request flow — for secured assets, use signed URLs with short
 // expiry. Routers MUST call StripAccess before forwarding to multiple buyers.
+//
+// # URL fields MUST be validated before fetch (SSRF contract)
+//
+// URL (below) and every asset URL reachable through Assets — ImageAsset.URL,
+// VideoAsset.URL, VideoAsset.ThumbnailURL, AudioAsset.URL — are
+// publisher-supplied strings with no built-in transport-layer protection.
+// A buyer agent (or any code embedding this SDK) that fetches one of these
+// URLs during content evaluation is making a server-side request to an
+// address chosen entirely by the request sender: without validation, a
+// publisher (or an attacker impersonating one) can direct that fetch at
+// cloud-metadata endpoints (`http://169.254.169.254/...`), loopback or
+// RFC 1918 addresses, `file://`, or any other internal host — a classic SSRF
+// primitive.
+//
+// Calling (Artifact).Validate() — and transitively each asset's Validate()
+// — runs ValidateFetchableURL against every one of these fields and rejects
+// disallowed schemes, embedded credentials, and known-private/reserved
+// hosts. Callers MUST call Validate() (directly, or via
+// ValidateContextRequest on the containing request) before trusting any URL
+// field here, and MUST still layer a dial-time SSRF guard (DNS-rebind safe;
+// see adcp/signing.NewSafeHTTPClient for this SDK's reference
+// implementation) at the point where the fetch actually happens —
+// ValidateFetchableURL is a synchronous, DNS-free pre-flight check, not a
+// substitute for validating the address that gets dialed. See
+// ValidateFetchableURL's doc comment for the full rule set and its
+// provenance (ported from the AdCP webhook SSRF rules).
 type Artifact struct {
 	PropertyRID    string `json:"property_rid"`
 	ArtifactID     string `json:"artifact_id"`
