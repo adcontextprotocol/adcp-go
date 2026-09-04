@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.2.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.1.0...adcp/v3.2.0) (2026-09-04)
+
+
+### Features
+
+* **signing:** ship signing/signingtest subpackage + ObserveOnly mode ([5a7f90d](https://github.com/adcontextprotocol/adcp-go/commit/5a7f90d037eed3a0ecea439e7cf7fbad2d46947c))
+
 ## [3.1.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.0.0...adcp/v3.1.0) (2026-08-30)
 
 
