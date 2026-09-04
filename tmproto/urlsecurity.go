@@ -124,7 +124,17 @@ func checkHostnameNotInternal(host string) error {
 
 	// IP literal (v4, v6, or v6 with brackets already stripped by
 	// url.URL.Hostname): classify by range.
-	if ip := net.ParseIP(lower); ip != nil {
+	//
+	// Strip any IPv6 zone identifier before passing to net.ParseIP.
+	// url.URL.Hostname() percent-decodes the zone separator, so "[::1%25lo0]"
+	// yields "::1%lo0". net.ParseIP cannot parse zone suffixes and returns nil,
+	// letting a zoned loopback or link-local address fall through to the
+	// hostname path and pass unchecked.
+	ipStr := lower
+	if pct := strings.IndexByte(ipStr, '%'); pct >= 0 {
+		ipStr = ipStr[:pct]
+	}
+	if ip := net.ParseIP(ipStr); ip != nil {
 		if isDisallowedIP(ip) {
 			return errors.New("host resolves to a disallowed private/reserved address")
 		}

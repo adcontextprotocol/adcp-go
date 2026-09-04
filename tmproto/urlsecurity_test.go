@@ -102,6 +102,9 @@ func TestValidateFetchableURL_RejectsPrivateAndReservedIPv6(t *testing.T) {
 		"deprecated site-local": "https://[fec0::1]/",
 		"6to4 embeds private":   "https://[2002:0a00:0001::]/", // embeds 10.0.0.1
 		"nat64 embeds private":  "https://[64:ff9b::a00:1]/",   // embeds 10.0.0.1
+		"loopback zone-id":      "http://[::1%25lo0]/",
+		"link-local zone-id":    "http://[fe80::1%25eth0]/",
+		"ula zone-id":           "http://[fd00::1%25eth0]/",
 	}
 	for name, raw := range cases {
 		t.Run(name, func(t *testing.T) {
