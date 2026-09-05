@@ -57,6 +57,7 @@ func TestSignerReproducesPositive001Signature(t *testing.T) {
 		Clock:          deterministicClock(1776520800),
 		ValidityWindow: 300 * time.Second,
 		NonceReader:    &fixedReader{buf: nonceBytes},
+		Profile:        ProfileRequestSigningLegacy,
 	})
 	require.NoError(t, err)
 
@@ -93,6 +94,7 @@ func TestSignerReproducesPositive002Signature(t *testing.T) {
 		Clock:          deterministicClock(1776520800),
 		ValidityWindow: 300 * time.Second,
 		NonceReader:    &fixedReader{buf: nonceBytes},
+		Profile:        ProfileRequestSigningLegacy,
 	})
 	require.NoError(t, err)
 
@@ -104,7 +106,7 @@ func TestSignerReproducesPositive002Signature(t *testing.T) {
 	err = signer.SignRequest(req, SignOptions{CoverContentDigest: true})
 	require.NoError(t, err)
 
-	assert.Equal(t, "sha-256=:SNIVma8dgUBx/U1CBaYFQnsJep9S0/tXaNXlQQOdoxQ=:", req.Header.Get("Content-Digest"))
-	expectedSig := "sig1=:RiD5mPhxpBWhmaqUL5-vceyPX5jpjzYZhSnteuYCIYhIqdIl0Yxdh5qstCPXwkKL4AZOsPBL7-8ctbPkHunSAw:"
+	assert.Equal(t, "sha-256=:SNIVma8dgUBx_U1CBaYFQnsJep9S0_tXaNXlQQOdoxQ:", req.Header.Get("Content-Digest"))
+	expectedSig := "sig1=:WRIUub2NNRIvc2mRkCC_S5GTDwGC0p4nU00e1YO_QdlQVHIT-UypG0LSmDkkptakNuRsI1wLXrqVUsdPInGcCQ:"
 	assert.Equal(t, expectedSig, req.Header.Get("Signature"))
 }

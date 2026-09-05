@@ -60,6 +60,7 @@ type ADCPVersion struct {
 	CapabilityChanges     any             `json:"capability_changes,omitempty"`
 	GovernanceEnforcement any             `json:"governance_enforcement,omitempty"`
 	Attestations          any             `json:"attestations,omitempty"`
+	Principal             any             `json:"principal,omitempty"`
 }
 
 // IdempotencyCaps declares the seller's replay window for idempotency_key.
@@ -118,6 +119,7 @@ type MediaBuyCapabilities struct {
 	BudgetCapping                any                                   `json:"budget_capping,omitempty"`
 	ContentStandards             *ContentStandardsCaps                 `json:"content_standards,omitempty"`
 	Portfolio                    *PortfolioCaps                        `json:"portfolio,omitempty"`
+	ReportingDelivery            any                                   `json:"reporting_delivery,omitempty"`
 }
 
 type MediaBuyVendorMetricOptimizationCaps struct {

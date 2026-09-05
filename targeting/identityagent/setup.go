@@ -295,7 +295,7 @@ type bundle struct {
 // returns and never touched. The registered closers are then owned by
 // the caller via the shutdown registry (see Run in server.go).
 func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slog.Logger, opts runOptions) (b *bundle, retErr error) {
-	bgCtx, cancelBg := context.WithCancel(context.Background())
+	bgCtx, cancelBg := context.WithCancel(context.Background()) //nolint:gosec // ownership transfers to bundle.cancelBackground and the shutdown registry on success.
 
 	type rollbackStep struct {
 		name string

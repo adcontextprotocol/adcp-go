@@ -3,6 +3,7 @@ package signing
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strings"
 
 	"github.com/adcontextprotocol/adcp-go/urlcanon"
@@ -16,6 +17,28 @@ import (
 // supplies the URL string it will send; for incoming, the verifier reconstructs
 // it from scheme + Host + RequestURI.
 func canonicalTargetURI(rawURL string) (string, error) {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	// Do this before the shared canonicalizer so an invalid DNS spelling is
+	// never normalized into the identity of a different endpoint.
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("host is required")
+	}
+	if strings.Contains(host, "..") {
+		return "", fmt.Errorf("host contains an empty DNS label")
+	}
+	if strings.HasSuffix(host, ".") {
+		host = strings.TrimSuffix(host, ".")
+		if port := u.Port(); port != "" {
+			u.Host = net.JoinHostPort(host, port)
+		} else {
+			u.Host = host
+		}
+		rawURL = u.String()
+	}
 	return urlcanon.Canonicalize(rawURL)
 }
 

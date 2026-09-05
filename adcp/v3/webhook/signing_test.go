@@ -118,18 +118,16 @@ func TestCrossProfileSignatureRejected(t *testing.T) {
 	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "webhook_signature_")
 }
 
-func TestKeyScopedForWrongProfileRejected(t *testing.T) {
-	// A key published with adcp_use="request-signing" cannot verify a webhook
-	// signature even when the signer presents the webhook-signing tag.
+func TestRequestSigningKeyReuseAccepted(t *testing.T) {
+	// AdCP 3.2 permits a request-signing key for a webhook signature. The
+	// webhook tag and mandatory content digest provide the domain separation.
 	keyid := "test-gov-key"
 	res, err := signing.GenerateKeyForProfile(signing.AlgEd25519, keyid, signing.ProfileRequestSigning)
 	require.NoError(t, err)
 	priv, _, err := signing.LoadPrivateKey(res.PrivateKeyPEM)
 	require.NoError(t, err)
 
-	// Force the signer to emit webhook-signing tag even though the published
-	// key is scoped for request-signing — this simulates a misconfigured
-	// publisher reusing a request-signing key for webhooks.
+	// Emit a webhook-signing tag with a published request-signing key.
 	signer, err := signing.NewSigner(signing.SignerOptions{
 		KeyID:      keyid,
 		PrivateKey: priv,
@@ -149,8 +147,7 @@ func TestKeyScopedForWrongProfileRejected(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	assert.Contains(t, rec.Header().Get("WWW-Authenticate"), "webhook_signature_key_purpose_invalid")
+	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
 func TestUnsignedWebhookRejected(t *testing.T) {

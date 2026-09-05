@@ -6,7 +6,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"math/big"
@@ -133,7 +132,7 @@ func (s *Signer) SignRequest(r *http.Request, opts SignOptions) error {
 	}
 
 	if opts.CoverContentDigest {
-		r.Header.Set(contentDigestHeader, computeSHA256DigestHeader(body))
+		r.Header.Set(contentDigestHeader, computeSHA256DigestHeaderForEncoding(body, s.opts.Profile.contentDigestEncoding()))
 	}
 
 	// Construct covered components list.
@@ -195,7 +194,7 @@ func (s *Signer) SignRequest(r *http.Request, opts SignOptions) error {
 	}
 
 	r.Header.Set(signatureInputHeader, "sig1="+sigParamsValue)
-	r.Header.Set(signatureHeader, "sig1=:"+base64.RawURLEncoding.EncodeToString(sigBytes)+":")
+	r.Header.Set(signatureHeader, "sig1=:"+encodeBinary(sigBytes, s.opts.Profile.BinaryEncoding)+":")
 	return nil
 }
 

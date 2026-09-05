@@ -319,6 +319,38 @@ func TestCapabilityProviderHonorsCoversContentDigestRequired(t *testing.T) {
 	assert.Contains(t, sigInput, "content-digest", "covers='required' ⇒ digest must be covered")
 }
 
+func TestCapabilityProviderSignsAdvertisedProtocolMethod(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	captured := make(chan *http.Request, 1)
+	inner := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		captured <- r
+		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
+	})
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:      "kid",
+		PrivateKey: priv,
+		Inner:      inner,
+		CapabilityProvider: func(*http.Request) *adcp.RequestSigningCapabilities {
+			return &adcp.RequestSigningCapabilities{
+				Supported:                  true,
+				ProtocolMethodsRequiredFor: []string{"tasks/cancel"},
+			}
+		},
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("POST", "https://example.com/mcp", strings.NewReader(`{"jsonrpc":"2.0","method":"tasks/cancel"}`))
+	require.NoError(t, err)
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	closeResponseBody(t, resp)
+
+	assert.NotEmpty(t, (<-captured).Header.Get("Signature"))
+}
+
 func TestCapabilityProviderHonorsCoversContentDigestForbidden(t *testing.T) {
 	_, priv, err := ed25519.GenerateKey(nil)
 	require.NoError(t, err)

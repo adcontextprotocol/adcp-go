@@ -1941,15 +1941,17 @@ INTENTIONAL_ANY_FIELDS = {
 
 # The 3.2 prerelease expands many existing schemas with shapes that this
 # generator cannot yet represent (nested objects, unions, and composed refs).
-# Keep the exact beta.9 compatibility surface explicit so adding another
-# dynamic fallback still fails coverage. Proposal-negotiation fields are not in
-# this set: those are fully typed above. Remove entries as generator support is
+# Keep the exact rc.1 compatibility surface explicit so adding another dynamic
+# fallback still fails coverage. Proposal-negotiation fields are not in this
+# set: those are fully typed above. Remove entries as generator support is
 # added, and clear the set before adopting stable 3.2.
-SCHEMA_32_BETA_ANY_FIELDS = {
+SCHEMA_32_RC_ANY_FIELDS = {
     ('Account', 'destination_billing_entity'),
     ('Account', 'identity_change'),
+    ('Account', 'reporting_delivery_configs'),
     ('AccountWithAuthorization', 'destination_billing_entity'),
     ('AccountWithAuthorization', 'identity_change'),
+    ('AccountWithAuthorization', 'reporting_delivery_configs'),
     ('BuildCreativeRequest', 'creative_representation_set'),
     ('CanonicalProduct', 'acceptance_policy_profile_ids'),
     ('CanonicalProduct', 'allowed_actions'),
@@ -1961,6 +1963,7 @@ SCHEMA_32_BETA_ANY_FIELDS = {
     ('CanonicalProduct', 'format_options'),
     ('CanonicalProduct', 'list_applications'),
     ('CanonicalProduct', 'measurement_terms'),
+    ('CanonicalProduct', 'overlay_support'),
     ('CanonicalProduct', 'placements'),
     ('CanonicalProduct', 'pricing_options'),
     ('CanonicalProduct', 'reporting_capabilities'),
@@ -1988,11 +1991,15 @@ SCHEMA_32_BETA_ANY_FIELDS = {
     ('DeliveryTotals', 'vendor_metric_values'),
     ('DeliveryViewability', 'viewed_seconds_histogram'),
     ('DeliveryViewability', 'viewed_seconds_percentiles'),
+    ('DaypartTarget', 'timezone'),
     ('DeliveryWindowPackage', 'ooh_metrics'),
     ('DeliveryWindowPackage', 'time_based_views'),
     ('DeliveryWindowPackage', 'vendor_metric_values'),
     ('GetAdcpCapabilitiesResponse', 'measurement_gateway'),
     ('GetAdcpCapabilitiesResponse', 'oauth'),
+    ('GetMediaBuyDeliveryResponse', 'reporting_revision'),
+    ('GetMediaBuyDeliveryResponse', 'reporting_revision_binding'),
+    ('GetMediaBuyDeliveryResponse', 'reporting_rows'),
     ('GetProductsRequest', 'acceptance_context'),
     ('GetProductsRequest', 'fields'),
     ('GetProductsRequest', 'required_overlay_support'),
@@ -2022,6 +2029,7 @@ SCHEMA_32_BETA_ANY_FIELDS = {
     ('PackageDelivery', 'by_placement_property'),
     ('PackageDelivery', 'by_property'),
     ('PackageDelivery', 'by_spot'),
+    ('PackageDelivery', 'metric_values'),
     ('PackageDelivery', 'ooh_metrics'),
     ('PackageDelivery', 'time_based_views'),
     ('PackageDelivery', 'vendor_metric_values'),
@@ -2043,6 +2051,8 @@ SCHEMA_32_BETA_ANY_FIELDS = {
     ('PackagePlacementDelivery', 'time_based_views'),
     ('PackagePlacementDelivery', 'vendor_metric_values'),
     ('PackageUpdate', 'bidding'),
+    ('Placement', 'dooh_placement_attributes'),
+    ('Placement', 'identifiers'),
     ('PlanAuditEntry', 'amount'),
     ('PlanAuditEntry', 'delivery'),
     ('PlanAuditEntry', 'delivery_statement'),
@@ -3238,8 +3248,8 @@ def any_allowance(type_name, json_name, go_type, reason):
         return f'intentional {json_name} escape hatch'
     if (type_name, json_name) in INTENTIONAL_ANY_FIELDS:
         return INTENTIONAL_ANY_FIELDS[(type_name, json_name)]
-    if (type_name, json_name) in SCHEMA_32_BETA_ANY_FIELDS:
-        return 'known 3.2 beta generator compatibility gap'
+    if (type_name, json_name) in SCHEMA_32_RC_ANY_FIELDS:
+        return 'known 3.2 RC generator compatibility gap'
     if 'AdcpError' in go_type:
         return 'AdCP error payload is intentionally open'
     return None

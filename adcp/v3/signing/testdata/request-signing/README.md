@@ -2,13 +2,13 @@
 
 Test vectors for the AdCP RFC 9421 request-signing profile. These fixtures drive cross-implementation conformance testing so a signer written in one SDK and a verifier written in another agree on the wire format.
 
-Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer) in `docs/building/implementation/security.mdx`.
+Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/by-layer/L1/security#signed-requests-transport-layer) in `docs/building/by-layer/L1/security.mdx`.
 
-**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/test-vectors/request-signing/` (tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable). SDKs SHOULD fetch from the CDN path rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/test-vectors/request-signing/positive/001-basic-post.json`.
+**Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific immutable release (e.g. `3.0.0`) or `latest` (the moving development snapshot, which can be ahead of GA). Tree preserved — `keys.json`, `canonicalization.json`, `body-integrity-policy.json`, `protocol-method-names.json`, `negative/*.json`, `profile-3.2/{positive,negative}/*.json`, and `positive/*.json` are all resolvable. SDKs SHOULD pin a released version path and record it rather than requiring a checkout of the spec repo; use `latest` only for development testing. Example: `https://adcontextprotocol.org/compliance/3.0.26/test-vectors/request-signing/protocol-method-names.json`.
 
 ## Scope
 
-These vectors exercise the [verifier checklist](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-requests) and the RFC 9421 profile constraints: covered components, signature parameters, tag namespace, alg allowlist, `adcp_use` key-purpose discriminator, replay dedup, revocation, and content-digest semantics. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
+These vectors exercise the [verifier checklist](https://adcontextprotocol.org/docs/building/by-layer/L1/security#verifier-checklist-requests) and the RFC 9421 profile constraints: covered components, signature parameters, tag namespace, alg allowlist, `adcp_use` key-purpose discriminator, replay dedup, revocation, and content-digest semantics. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
 
 ## File layout
 
@@ -16,7 +16,10 @@ These vectors exercise the [verifier checklist](https://adcontextprotocol.org/do
 test-vectors/request-signing/
 ├── README.md                             this file
 ├── keys.json                             test keypairs (Ed25519 + ES256) in JWK format with adcp_use values
-├── negative/                             vectors that MUST fail verification
+├── canonicalization.json                 pure URL-canonicalization cases (no crypto) — every rule from the @target-uri algorithm + malformed-authority rejections
+├── body-integrity-policy.json            3.2 substitution, list-mode, fallback-auth, downgrade, and no-body policy matrix
+├── protocol-method-names.json            3.2 A2A 0.3/1.0 declaration grammar and exact decoded-string matching cases
+├── negative/                             legacy 3.1 vectors that MUST fail verification
 │   ├── 001-no-signature-header.json      → request_signature_required (pre-check 0; op in required_for)
 │   ├── 002-wrong-tag.json                → request_signature_tag_invalid (step 3)
 │   ├── 003-expired-signature.json        → request_signature_window_invalid (step 5; expired)
@@ -36,7 +39,19 @@ test-vectors/request-signing/
 │   ├── 017-key-revoked.json              → request_signature_key_revoked (step 9; requires test_harness_state preload)
 │   ├── 018-digest-covered-when-forbidden.json → request_signature_components_unexpected (step 6; policy 'forbidden')
 │   ├── 019-signature-without-signature-input.json → request_signature_header_malformed (pre-check; downgrade loophole)
-│   └── 020-rate-abuse.json               → request_signature_rate_abuse (step 9a cap; abuse signal)
+│   ├── 020-rate-abuse.json               → request_signature_rate_abuse (step 9a cap; abuse signal)
+│   ├── 021-duplicate-signature-input-label.json → request_signature_header_malformed (step 1; RFC 8941 dict duplicate-key)
+│   ├── 022-multi-valued-content-type.json → request_signature_header_malformed (step 1; covered non-list field must be single-valued)
+│   ├── 023-multi-valued-content-digest.json → request_signature_header_malformed (step 1; RFC 9530 dict duplicate algorithm)
+│   ├── 024-unquoted-string-param.json     → request_signature_header_malformed (step 1; RFC 8941 §3.3 string values must be quoted)
+│   ├── 025-jwk-alg-crv-mismatch.json      → request_signature_key_purpose_invalid (step 8; alg=EdDSA with crv=P-256 is impossible per RFC 8037)
+│   ├── 026-non-ascii-host.json            → request_signature_header_malformed (step 1; raw IDN U-label on wire; MUST be A-label)
+│   ├── 027-webhook-registration-authentication-unsigned.json → request_signature_required (webhook-reg with push_notification_config.authentication over bearer on a seller supporting signing; operation NOT in required_for)
+│   └── 028-unsigned-protocol-method-required.json → request_signature_required (unsigned `tasks/cancel` JSON-RPC POST; method is in `protocol_methods_required_for`)
+├── profile-3.2/                          3.2-only wire-format vectors
+│   ├── positive/001-post-with-content-digest.json  RFC 8941 Base64 + required body binding
+│   ├── negative/001-base64url-sf-binary.json       → request_signature_header_malformed (legacy alphabet)
+│   └── negative/002-multiple-trailing-dots.json    → request_target_uri_malformed (empty DNS label)
 └── positive/                             vectors that MUST verify successfully
     ├── 001-basic-post.json                   Ed25519, no content-digest
     ├── 002-post-with-content-digest.json     Ed25519, content-digest covered
@@ -45,8 +60,48 @@ test-vectors/request-signing/
     ├── 005-default-port-stripped.json        URL has :443; canonical strips it
     ├── 006-dot-segment-path.json             Path has /./; canonical collapses it
     ├── 007-query-byte-preserved.json         Query b=2&a=1&c=3 — preserved, not alphabetized
-    └── 008-percent-encoded-path.json         Path has lowercase %xx; canonical uppercases
+    ├── 008-percent-encoded-path.json         Path has lowercase %xx; canonical uppercases
+    ├── 009-percent-encoded-unreserved-decoded.json  Path has %7E/%2D/%5F/%2E; canonical decodes unreserved per RFC 3986 §6.2.2.2
+    ├── 010-percent-encoded-slash-preserved.json     Path has %2F (reserved); stays percent-encoded, not treated as segment separator
+    ├── 011-ipv6-authority.json                       IPv6 literal host; brackets preserved in @target-uri and @authority
+    └── 012-ipv6-authority-default-port-stripped.json IPv6 literal with :443; port stripped, brackets preserved
 ```
+
+## Canonicalization vectors (`canonicalization.json`)
+
+`canonicalization.json` is a flat set of URL-canonicalization cases that exercise every rule in the `@target-uri` canonicalization algorithm, plus the malformed-authority rejection cases. Independent of cryptographic signing — an SDK can run this file without keys, crypto, or a full verifier harness, which makes it the fastest way to surface cross-implementation divergence.
+
+Shape:
+
+```json
+{
+  "spec_reference": "#adcp-rfc-9421-profile",
+  "cases": [
+    {
+      "name": "ipv6-host-hex-lowercased",
+      "rule": "step 2: IPv6 brackets preserved; hex digits inside lowercased",
+      "input_url": "https://[2001:DB8::1]/p",
+      "expected_target_uri": "https://[2001:db8::1]/p",
+      "expected_authority": "[2001:db8::1]"
+    },
+    {
+      "name": "malformed-port-without-host",
+      "rule": "step 3: authority with port but no host is malformed",
+      "input_url": "https://:443/p",
+      "reject": true,
+      "reject_reason": "authority missing host",
+      "expected_error_code": "request_signature_header_malformed"
+    }
+  ]
+}
+```
+
+For each case:
+
+- **Positive case** (no `reject` field): the implementation MUST canonicalize `input_url` and produce byte-for-byte matches on `expected_target_uri` and `expected_authority`. Each case also carries a `rule` string pointing to the specific numbered step in the canonicalization algorithm it exercises — useful when a test fails and you want to know which rule the implementation got wrong.
+- **Reject case** (`reject: true`): the implementation MUST refuse to canonicalize `input_url`. Signers refuse to sign; verifiers reject with `expected_error_code`.
+
+SDKs SHOULD run `canonicalization.json` on every commit alongside a lint pass. Canonicalization divergence is the #1 silent 9421 interop bug, and catching it as a fast unit test (cheap, no network, no crypto) closes that gap.
 
 ## Vector format
 
@@ -56,6 +111,7 @@ Every vector is a single JSON file with this shape:
 {
   "name": "human-readable description",
   "spec_reference": "#anchor in security.mdx (checklist step or pre-check)",
+  "signing_profile_version": "3.2",
   "reference_now": 1776520800,
   "request": {
     "method": "POST",
@@ -63,14 +119,14 @@ Every vector is a single JSON file with this shape:
     "headers": {
       "Content-Type": "application/json",
       "Signature-Input": "sig1=(...)",
-      "Signature": "sig1=:base64url_signature:",
-      "Content-Digest": "sha-256=:base64url_digest:"
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==:",
+      "Content-Digest": "sha-256=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:"
     },
     "body": "{\"...\":\"...\"}"
   },
   "verifier_capability": {
     "supported": true,
-    "covers_content_digest": "either",
+    "covers_content_digest": "required",
     "required_for": ["create_media_buy"]
   },
   "jwks_ref": ["test-ed25519-2026"],
@@ -93,8 +149,10 @@ Every vector is a single JSON file with this shape:
 
 - **`name`** — one-line description.
 - **`spec_reference`** — anchor in `security.mdx` the vector tests, including the checklist step number.
+- **`signing_profile_version`** — version whose signing semantics the vector exercises. Every fixture in the root `positive/` and `negative/` directories is pinned to `3.1`; 3.2 verifiers MUST NOT silently reinterpret them as 3.2 cases.
 - **`reference_now`** — Unix seconds. Treat as the wall-clock value the verifier should use when evaluating the signature window. Inject into your test harness rather than using `Date.now()`.
 - **`request`** — the raw HTTP request the verifier receives. `headers` is case-insensitive; `body` is the exact byte string on the wire (empty string for GETs).
+- **Binary header values** — the 3.1 fixtures preserve AdCP's legacy unpadded Base64URL override. Profile 3.2 uses RFC 8941 `sf-binary`: standard Base64 with required padding, not Base64URL. The zero-byte values above illustrate the 3.2 wire grammar only; real vectors contain cryptographically valid bytes.
 - **`verifier_capability`** — the `request_signing` block the verifier advertises. Drives expected behavior on content-digest coverage (`"required"` | `"forbidden"` | `"either"`) and whether unsigned requests to the operation are rejected pre-check.
 - **`jwks_ref`** — array of `kid` strings from `keys.json`. The test harness builds the verifier's view of the signing agent's JWKS by selecting those entries. Present on most vectors.
 - **`jwks_override`** — full JWKS object (`{ keys: [...] }`) that replaces the default `jwks_ref` lookup for this vector. Used when a vector needs a JWK that is NOT in the canonical `keys.json` (e.g., a malformed `key_ops` to test step 8 rejection). Mutually exclusive with `jwks_ref`.
@@ -104,7 +162,7 @@ Every vector is a single JSON file with this shape:
   - `revocation_list` — full signed-revocation-list object to preload as the current freshness snapshot. Used by `017-key-revoked.json` to assert the revocation check at step 9.
 - **`expected_signature_base`** — present on positive vectors and on `015-signature-invalid.json`. The canonical signature base string per RFC 9421 §2.5. Shape specifics that implementers get wrong: **lines are joined with a single `\n`** (LF, not CRLF); **there is no trailing newline** after the final `@signature-params` line; **components appear in the exact order listed in `Signature-Input`**, followed by `@signature-params` as the last line. The JSON string uses `\n` escapes which parse to real newline bytes at load time. Implementers can diff their computed base against this field BEFORE worrying about signatures — canonicalization disagreements are the #1 source of 9421 interop bugs, and checking the base is how you catch them.
 - **`expected_outcome.success`** — `true` for positive vectors, `false` for negative.
-- **`expected_outcome.error_code`** — stable code from the [transport error taxonomy](https://adcontextprotocol.org/docs/building/implementation/security#transport-error-taxonomy). Conformance requires **byte-for-byte match** on this code. Negative vectors only.
+- **`expected_outcome.error_code`** — stable code from the [transport error taxonomy](https://adcontextprotocol.org/docs/building/by-layer/L1/security#transport-error-taxonomy). Conformance requires **byte-for-byte match** on this code. Negative vectors only.
 - **`expected_outcome.failed_step`** — which step of the verifier checklist the rejection occurs at. Integer for numbered steps (`1`–`13`), or a string for lettered sub-steps (e.g. `"9a"` for the per-keyid cap check). Informational only — an implementation that rejects with the correct error code is conformant even if its internal step numbering differs. An implementation that rejects with a DIFFERENT error code is non-conformant (see [Conformance expectations](#conformance-expectations)). Negative vectors only.
 - **`$comment`** — free-form clarifying notes. Some vectors use `$comment` to describe test-harness setup or conformance edge cases.
 

@@ -83,6 +83,11 @@ type MiddlewareOptions struct {
 	// AdCP 4.0 normatively requires spend-committing operations to appear here.
 	RequiredFor []string
 
+	// ProtocolMethodsRequiredFor lists JSON-RPC protocol method names whose
+	// unsigned requests must be rejected. It is distinct from RequiredFor,
+	// which contains AdCP tool-operation names.
+	ProtocolMethodsRequiredFor []string
+
 	// ContentDigestPolicy controls whether signers MUST, MUST NOT, or MAY
 	// cover content-digest. Defaults to DigestEither.
 	ContentDigestPolicy DigestPolicy
@@ -174,7 +179,7 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 	if replay == nil {
 		replay = NewMemoryReplayStore(0)
 	}
-	if len(opts.RequiredFor) > 0 && opts.Revocation == nil {
+	if (len(opts.RequiredFor) > 0 || len(opts.ProtocolMethodsRequiredFor) > 0) && opts.Revocation == nil {
 		logger.Warn("signing.Middleware: RequiredFor is non-empty but Revocation is nil — verifier will not enforce key revocation")
 	}
 	return func(next http.Handler) http.Handler {
@@ -192,15 +197,16 @@ func Middleware(opts MiddlewareOptions) func(http.Handler) http.Handler {
 				}
 			}
 			signer, err := VerifyRequestSignature(r, VerifyOptions{
-				OperationName:       opName,
-				RequiredFor:         opts.RequiredFor,
-				Profile:             profile,
-				ContentDigestPolicy: opts.ContentDigestPolicy,
-				Scheme:              scheme,
-				Resolver:            opts.Resolver,
-				Revocation:          opts.Revocation,
-				Replay:              replay,
-				MaxBodyBytes:        opts.MaxBodyBytes,
+				OperationName:              opName,
+				RequiredFor:                opts.RequiredFor,
+				ProtocolMethodsRequiredFor: opts.ProtocolMethodsRequiredFor,
+				Profile:                    profile,
+				ContentDigestPolicy:        opts.ContentDigestPolicy,
+				Scheme:                     scheme,
+				Resolver:                   opts.Resolver,
+				Revocation:                 opts.Revocation,
+				Replay:                     replay,
+				MaxBodyBytes:               opts.MaxBodyBytes,
 			})
 			if err != nil {
 				e := AsError(err)

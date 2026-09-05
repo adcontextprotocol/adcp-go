@@ -25,6 +25,12 @@ type VerifyOptions struct {
 	// with request_signature_required.
 	RequiredFor []string
 
+	// ProtocolMethodsRequiredFor lists JSON-RPC protocol method names whose
+	// unsigned requests must be rejected. These names are exact, case-sensitive
+	// A2A/MCP method names (for example "tasks/cancel"), separate from the
+	// AdCP tool-operation namespace used by RequiredFor.
+	ProtocolMethodsRequiredFor []string
+
 	// Profile selects which signing profile this verifier accepts. Zero value
 	// is ProfileRequestSigning. Webhook receivers MUST set
 	// ProfileWebhookSigning — a request-signing signature presented to a
@@ -92,6 +98,10 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	for _, op := range opts.RequiredFor {
 		requiredFor[op] = struct{}{}
 	}
+	protocolMethodsRequiredFor := map[string]struct{}{}
+	for _, method := range opts.ProtocolMethodsRequiredFor {
+		protocolMethodsRequiredFor[method] = struct{}{}
+	}
 
 	sigInputHeader := r.Header.Get(signatureInputHeader)
 	sigHeader := r.Header.Get(signatureHeader)
@@ -135,6 +145,9 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		body, err := readAndReplaceBody(r, limit)
 		if err != nil {
 			return nil, err
+		}
+		if _, req := protocolMethodsRequiredFor[protocolMethodFromJSONRPC(body)]; req {
+			return nil, newError(CodeRequired, "protocol method requires signature")
 		}
 		if bodyCarriesPushNotificationAuth(body) {
 			return nil, newError(CodeRequired, "push_notification_config.authentication requires signed request")
@@ -236,7 +249,7 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	}
 
 	// Step 8: key purpose + alg cross-check.
-	if jwk.Use != "sig" || !slices.Contains(jwk.KeyOps, "verify") || jwk.AdcpUse != profile.AdcpUse {
+	if jwk.Use != "sig" || !slices.Contains(jwk.KeyOps, "verify") || !profileAllowsKeyUse(profile, jwk.AdcpUse) {
 		return nil, newError(CodeKeyPurposeInvalid, "key not scoped for "+profile.AdcpUse)
 	}
 	jwkAlgV, err := jwk.SigParamAlg()
@@ -282,7 +295,11 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	// Build the canonical signature base from the request.
 	canonicalURI, err := canonicalTargetURI(reconstructRequestURL(r, scheme))
 	if err != nil {
-		return nil, wrapError(CodeHeaderMalformed, "canonicalize url", err)
+		code := CodeHeaderMalformed
+		if profile.BinaryEncoding == BinaryEncodingRFC8941 {
+			code = CodeTargetURIMalformed
+		}
+		return nil, wrapError(code, "canonicalize url", err)
 	}
 	authority := canonicalAuthority(authorityOf(r), scheme)
 
@@ -304,9 +321,9 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	if err != nil {
 		return nil, err
 	}
-	sigBytes, err := b64UrlDecode(sigValue)
+	sigBytes, err := decodeBinary(sigValue, profile.BinaryEncoding)
 	if err != nil {
-		return nil, newError(CodeHeaderMalformed, "Signature value not base64url")
+		return nil, newError(CodeHeaderMalformed, "Signature value has invalid binary encoding")
 	}
 
 	if !verifySignature(alg, pub, []byte(base), sigBytes) {
@@ -324,7 +341,7 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 			return nil, wrapError(CodeDigestMismatch, "read body for digest", err)
 		}
 		headerVal := r.Header.Get(contentDigestHeader)
-		raw, ok, derr := extractSHA256FromDigestHeader(headerVal)
+		raw, ok, derr := extractSHA256FromDigestHeaderForEncoding(headerVal, profile.contentDigestEncoding())
 		if derr != nil {
 			return nil, derr
 		}
@@ -358,6 +375,16 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		Algorithm:  alg,
 		Label:      parsed.label,
 	}, nil
+}
+
+func profileAllowsKeyUse(profile Profile, keyUse string) bool {
+	if profile.Tag == ProfileWebhookSigning.Tag {
+		// AdCP 3.2 permits a request-signing key to sign webhooks. The signed
+		// webhook tag and mandatory content digest provide domain separation;
+		// webhook-signing remains accepted for 3.x backward compatibility.
+		return keyUse == "request-signing" || keyUse == "webhook-signing"
+	}
+	return keyUse == profile.AdcpUse
 }
 
 // reconstructRequestURL returns the absolute URL of r, using scheme as the
@@ -409,6 +436,20 @@ func bodyCarriesPushNotificationAuth(body []byte) bool {
 		return false
 	}
 	return hasPushNotificationAuth(v)
+}
+
+// protocolMethodFromJSONRPC returns the exact JSON-RPC method name carried by
+// body. It treats malformed and non-JSON-RPC bodies as no protocol method; the
+// caller's ordinary schema validation remains responsible for rejecting them.
+func protocolMethodFromJSONRPC(body []byte) string {
+	var envelope struct {
+		JSONRPC string `json:"jsonrpc"`
+		Method  string `json:"method"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil || envelope.JSONRPC != "2.0" {
+		return ""
+	}
+	return envelope.Method
 }
 
 func hasPushNotificationAuth(v any) bool {

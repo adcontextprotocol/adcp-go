@@ -14,7 +14,9 @@
 #
 # The script assumes it is running from an adcp-go checkout, boots the Go
 # reference seller, writes the storyboard JSON result, and exits non-zero unless
-# overall_status is "passing" and the test controller is detected.
+# all selected steps pass and the test controller is detected. Newer published
+# SDK runners report `partial` (rather than `passing`) when only unavailable or
+# inapplicable fixtures are skipped; that zero-failure state is accepted below.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -105,7 +107,17 @@ if not path.exists() or path.stat().st_size == 0:
 with path.open() as f:
     doc = json.load(f)
 
-if doc.get("overall_status") != "passing":
+status = doc.get("overall_status")
+summary = doc.get("summary") or {}
+allowed_partial_skip_reasons = {"fixture_unavailable", "not_applicable"}
+skipped_by_reason = summary.get("skipped_by_reason") or {}
+partial_is_clean = (
+    status == "partial"
+    and summary.get("steps_failed", 0) == 0
+    and summary.get("advisory_validations_failed", 0) == 0
+    and set(skipped_by_reason).issubset(allowed_partial_skip_reasons)
+)
+if status != "passing" and not partial_is_clean:
     print(json.dumps(doc, indent=2))
     sys.exit(1)
 
@@ -113,8 +125,7 @@ if not doc.get("controller_detected"):
     print("controller_detected was false; check reference seller test controller wiring")
     sys.exit(1)
 
-summary = doc.get("summary") or {}
-print("Storyboard passing.")
+print("Storyboard passing." if status == "passing" else "Storyboard clean partial (only unavailable/inapplicable fixtures skipped).")
 if summary:
     print("summary:", json.dumps(summary, sort_keys=True))
 PY

@@ -17,7 +17,7 @@ func TestParseSpecKeysJSON(t *testing.T) {
 	require.NoError(t, err)
 	jwks, err := ParseJWKS(data)
 	require.NoError(t, err)
-	require.Len(t, jwks.Keys, 3)
+	require.Len(t, jwks.Keys, 4)
 
 	ed := jwks.Find("test-ed25519-2026")
 	require.NotNil(t, ed)
