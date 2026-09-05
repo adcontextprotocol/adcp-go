@@ -8,6 +8,17 @@ require (
 	github.com/stretchr/testify v1.11.1
 )
 
+// TODO: remove this replace and bump the require above once an adcp/v3 tag
+// including signing.SigningProvider is cut. SigningProvider is introduced in
+// the same PR as this module, so no released adcp/v3 tag has it yet — the
+// pinned v3.0.0 predates it, which otherwise leaves this module unbuildable
+// (and untested by CI, which builds each module standalone rather than via
+// go.work) from the moment it's merged until the next adcp/v3 release.
+// Matches the same relative-path replace convention cmd/*, bench/*, e2e, and
+// reference/context-agent already use for their own local adcp-go
+// dependencies.
+replace github.com/adcontextprotocol/adcp-go/adcp/v3 => ../..
+
 require (
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.45.1 // indirect
