@@ -93,6 +93,9 @@ func (s *Store) RegisterContinuation(ctx context.Context, c *Continuation) error
 	if !containsAll(c.Losses, LossFeedVersionNotAtomic, LossPricingVersionNotAtomic) {
 		return &InvalidInputError{Field: "losses", Reason: "must include feed_version_not_atomic and pricing_version_not_atomic"}
 	}
+	if c.SourceADCPVersion == "2.5" && !containsAll(c.Losses, LossMutationIdempotencyNotGuaranteed) {
+		return &InvalidInputError{Field: "losses", Reason: "an AdCP 2.5 source continuation must also include mutation_idempotency_not_guaranteed — 2.5 has no mutation replay contract"}
+	}
 	if len(c.ObservedPayload) == 0 {
 		return &InvalidInputError{Field: "observed_payload", Reason: "must be non-empty — a continuation cannot be minted without a complete observed product/pricing payload"}
 	}
@@ -201,6 +204,9 @@ func (s *Store) validateBinding(rec *ContinuationRecord, input *CompatibilityPur
 			Reason: fmt.Sprintf("selected_product_ids %v is not a subset of the token-bound product IDs %v", sortedCopy(input.SelectedProductIDs), sortedCopy(rec.ProductIDs)),
 		}
 	}
+	if err := validatePricingSelection(rec.Token, rec.ObservedPayload, input.LegacyCreateRequest); err != nil {
+		return err
+	}
 	if reqAccount, ok, err := requestAccount(input.LegacyCreateRequest); err != nil {
 		return err
 	} else if ok && !accountsEqual(reqAccount, rec.Account) {
@@ -217,6 +223,12 @@ func (s *Store) validateBinding(rec *ContinuationRecord, input *CompatibilityPur
 // that is StatePending, StateCommitted, or StateFailed — i.e. every case
 // other than a fresh, winning claim.
 func (s *Store) resolveNonOffered(ctx context.Context, rec *ContinuationRecord, input *CompatibilityPurchaseCoordinatorInput, principal, reqHash string, now time.Time) (*Result, error) {
+	if rec.Principal != principal {
+		// Reject before ClaimantKey/RequestHash so a token bound to another
+		// principal never leaks its pending/terminal state or replays a
+		// committed result to a caller it isn't bound to.
+		return nil, &PrincipalMismatchError{Token: rec.Token}
+	}
 	if rec.ClaimantKey != input.IdempotencyKey {
 		return nil, &AlreadyClaimedError{Token: rec.Token, State: rec.State}
 	}
@@ -438,6 +450,59 @@ func explicitPackageProductIDs(legacyCreateRequest json.RawMessage) ([]string, e
 		}
 	}
 	return ids, nil
+}
+
+// validatePricingSelection checks every legacy_create_request package that
+// names a pricing_option_id against the continuation's observed
+// product/pricing payload — the spec's binding on the "complete observed
+// product/pricing payload", separate from and in addition to the JSON
+// structural checks validateInputStructure/explicitPackageProductIDs run.
+// ObservedPayload is durably fixed at registration time, so this rejects a
+// redemption that selects a pricing option the seller never actually
+// offered for that product, even though the request's JSON shape is
+// otherwise well-formed. Packages that omit pricing_option_id are not
+// checked here — nothing was selected to compare.
+func validatePricingSelection(token string, observedPayload, legacyCreateRequest json.RawMessage) error {
+	var req struct {
+		Packages []struct {
+			ProductID       string `json:"product_id"`
+			PricingOptionID string `json:"pricing_option_id"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(legacyCreateRequest, &req); err != nil {
+		return &InvalidInputError{Field: "legacy_create_request", Reason: "not valid JSON: " + err.Error()}
+	}
+
+	var observed []struct {
+		ProductID      string `json:"product_id"`
+		PricingOptions []struct {
+			PricingOptionID string `json:"pricing_option_id"`
+		} `json:"pricing_options"`
+	}
+	if err := json.Unmarshal(observedPayload, &observed); err != nil {
+		return fmt.Errorf("legacypurchase: continuation %s observed payload: %w", logToken(token), err)
+	}
+	optionsByProduct := make(map[string]map[string]bool, len(observed))
+	for _, p := range observed {
+		options := make(map[string]bool, len(p.PricingOptions))
+		for _, po := range p.PricingOptions {
+			options[po.PricingOptionID] = true
+		}
+		optionsByProduct[p.ProductID] = options
+	}
+
+	for _, pkg := range req.Packages {
+		if pkg.PricingOptionID == "" {
+			continue
+		}
+		if !optionsByProduct[pkg.ProductID][pkg.PricingOptionID] {
+			return &PricingSelectionError{
+				Token:  token,
+				Reason: fmt.Sprintf("pricing_option_id %q for product %q is not present in the continuation's observed product/pricing payload", pkg.PricingOptionID, pkg.ProductID),
+			}
+		}
+	}
+	return nil
 }
 
 // requestAccount extracts a top-level "account" field from

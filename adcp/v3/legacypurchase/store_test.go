@@ -37,7 +37,14 @@ func validFixture(t *testing.T, now time.Time) (*Continuation, *CompatibilityPur
 		ExpiresAt:         now.Add(time.Hour),
 		ProductIDs:        []string{"prod-a", "prod-b"},
 		Losses:            []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic},
-		ObservedPayload:   mustJSON(t, map[string]any{"products": []string{"prod-a", "prod-b"}}),
+		// Mirrors the real compact_projection.products shape (see
+		// vectors_test.go): a bare array of product objects, each with the
+		// pricing_options a redemption's pricing_option_id is validated
+		// against.
+		ObservedPayload: mustJSON(t, []map[string]any{
+			{"product_id": "prod-a", "pricing_options": []map[string]any{{"pricing_option_id": "fixed-cpm"}}},
+			{"product_id": "prod-b", "pricing_options": []map[string]any{{"pricing_option_id": "fixed-cpm"}}},
+		}),
 	}
 	input := &CompatibilityPurchaseCoordinatorInput{
 		IdempotencyKey:     idempotency.Generate(),
@@ -46,7 +53,7 @@ func validFixture(t *testing.T, now time.Time) (*Continuation, *CompatibilityPur
 		SelectedProductIDs: []string{"prod-a"},
 		AcceptedLosses:     []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic},
 		LegacyCreateRequest: mustJSON(t, map[string]any{
-			"packages": []map[string]any{{"product_id": "prod-a", "budget": 1000}},
+			"packages": []map[string]any{{"product_id": "prod-a", "budget": 1000, "pricing_option_id": "fixed-cpm"}},
 		}),
 	}
 	return c, input
@@ -203,6 +210,53 @@ func TestContinueLegacyPurchase_WrongPrincipal(t *testing.T) {
 	_, err := s.ContinueLegacyPurchase(ctx, input, exec)
 	var pm *PrincipalMismatchError
 	assert.True(t, errors.As(err, &pm))
+}
+
+// TestContinueLegacyPurchase_ReplayRejectedForDifferentPrincipal proves
+// resolveNonOffered checks the redeeming principal against the token-bound
+// one, the same as the fresh-claim path (validateBinding) already does.
+// Without that check, a continuation claimed and completed under one
+// principal would replay its committed result — or leak its
+// pending/terminal state — to a second, unrelated principal who happens to
+// reuse the same idempotency_key.
+func TestContinueLegacyPurchase_ReplayRejectedForDifferentPrincipal(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixture(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+
+	exec, calls := countingExecutor(t, []byte(`{"media_buy_id":"mb-1"}`))
+	first, err := s.ContinueLegacyPurchase(ctxWithPrincipal(), input, exec)
+	require.NoError(t, err)
+	require.False(t, first.Replayed)
+
+	// Same continuation, same idempotency_key and payload, but a different
+	// authenticated principal — must be rejected, not replayed.
+	otherCtx := idempotency.WithPrincipal(context.Background(), "someone-else")
+	_, err = s.ContinueLegacyPurchase(otherCtx, input, exec)
+	var pm *PrincipalMismatchError
+	require.True(t, errors.As(err, &pm))
+	assert.Equal(t, 1, *calls, "exec must not run again, and the committed result must not leak to another principal")
+}
+
+// TestContinueLegacyPurchase_PricingSubstitutionRejected proves a redemption
+// cannot select a pricing_option_id the seller never offered for that
+// product in the continuation's observed product/pricing payload — the
+// spec's binding on the "complete observed product/pricing payload",
+// separate from the JSON-structure and product-ID checks.
+func TestContinueLegacyPurchase_PricingSubstitutionRejected(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, input := validFixture(t, now)
+	require.NoError(t, s.RegisterContinuation(context.Background(), c))
+	input.LegacyCreateRequest = mustJSON(t, map[string]any{
+		"packages": []map[string]any{{"product_id": "prod-a", "budget": 1000, "pricing_option_id": "premium-cpm-not-offered"}},
+	})
+	exec, calls := countingExecutor(t, nil)
+	_, err := s.ContinueLegacyPurchase(ctxWithPrincipal(), input, exec)
+	var pse *PricingSelectionError
+	require.True(t, errors.As(err, &pse))
+	assert.Equal(t, 0, *calls, "exec must never run for a substituted pricing option")
 }
 
 func TestContinueLegacyPurchase_WrongAccount(t *testing.T) {
@@ -395,6 +449,25 @@ func TestRegisterContinuation_RejectsMissingRequiredLosses(t *testing.T) {
 	err := s.RegisterContinuation(context.Background(), c)
 	var ie *InvalidInputError
 	assert.True(t, errors.As(err, &ie))
+}
+
+// TestRegisterContinuation_Rejects25WithoutMutationIdempotencyLoss proves an
+// AdCP 2.5-sourced continuation must declare
+// mutation_idempotency_not_guaranteed — 2.5 has no mutation replay contract,
+// per specs/legacy-compact-lifecycle-compatibility.md — rather than being
+// registerable with only the two losses every source declares.
+func TestRegisterContinuation_Rejects25WithoutMutationIdempotencyLoss(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(func() time.Time { return now })
+	c, _ := validFixture(t, now)
+	c.SourceADCPVersion = "2.5"
+	c.Losses = []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic}
+	err := s.RegisterContinuation(context.Background(), c)
+	var ie *InvalidInputError
+	require.True(t, errors.As(err, &ie))
+
+	c.Losses = []string{LossFeedVersionNotAtomic, LossPricingVersionNotAtomic, LossMutationIdempotencyNotGuaranteed}
+	assert.NoError(t, s.RegisterContinuation(context.Background(), c))
 }
 
 func TestRegisterContinuation_DuplicateTokenRejected(t *testing.T) {

@@ -111,6 +111,22 @@ func (e *ProductSelectionError) Error() string {
 // Code returns the protocol error code.
 func (*ProductSelectionError) Code() string { return CodeValidationError }
 
+// PricingSelectionError is returned when a legacy_create_request package
+// names a pricing_option_id not present among the continuation's observed
+// pricing options for that product — a substituted price the seller never
+// actually offered against this continuation.
+type PricingSelectionError struct {
+	Token  string
+	Reason string
+}
+
+func (e *PricingSelectionError) Error() string {
+	return "legacypurchase: continuation " + logToken(e.Token) + " pricing selection invalid: " + e.Reason
+}
+
+// Code returns the protocol error code.
+func (*PricingSelectionError) Code() string { return CodeValidationError }
+
 // LossAcceptanceError is returned when accepted_losses is not exactly equal
 // to the continuation's declared loss set — missing, extra, or stale
 // consent.

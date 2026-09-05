@@ -101,6 +101,23 @@ func (b *MemoryBackend) sweep() {
 	}
 }
 
+// cloneRecord returns a deep copy of rec: besides copying the struct itself,
+// it copies the backing arrays of every mutable slice/byte-slice field
+// (ProductIDs, Losses, ObservedPayload, Result) so the clone shares no
+// memory with rec. Every accessor below returns a clone rather than a
+// pointer sharing rec's slices — otherwise a caller mutating a byte in a
+// returned record's Result (say) would silently corrupt what this backend
+// has stored, or a caller later mutating a slice it handed to
+// PutContinuation would silently corrupt state already durably recorded.
+func cloneRecord(rec *ContinuationRecord) *ContinuationRecord {
+	cp := *rec
+	cp.ProductIDs = append([]string(nil), rec.ProductIDs...)
+	cp.Losses = append([]string(nil), rec.Losses...)
+	cp.ObservedPayload = append([]byte(nil), rec.ObservedPayload...)
+	cp.Result = append([]byte(nil), rec.Result...)
+	return &cp
+}
+
 // PutContinuation implements Backend.
 func (b *MemoryBackend) PutContinuation(_ context.Context, rec *ContinuationRecord) error {
 	b.mu.Lock()
@@ -108,8 +125,7 @@ func (b *MemoryBackend) PutContinuation(_ context.Context, rec *ContinuationReco
 	if _, exists := b.records[rec.Token]; exists {
 		return &DuplicateTokenError{Token: rec.Token}
 	}
-	cp := *rec
-	b.records[rec.Token] = &cp
+	b.records[rec.Token] = cloneRecord(rec)
 	return nil
 }
 
@@ -121,8 +137,7 @@ func (b *MemoryBackend) GetContinuation(_ context.Context, token string) (*Conti
 	if !ok {
 		return nil, nil
 	}
-	cp := *rec
-	return &cp, nil
+	return cloneRecord(rec), nil
 }
 
 // ClaimPending implements Backend.
@@ -134,15 +149,13 @@ func (b *MemoryBackend) ClaimPending(_ context.Context, token, claimantKey, requ
 		return nil, false, nil
 	}
 	if rec.State != StateOffered {
-		cp := *rec
-		return &cp, false, nil
+		return cloneRecord(rec), false, nil
 	}
 	rec.State = StatePending
 	rec.ClaimantKey = claimantKey
 	rec.RequestHash = requestHash
 	rec.ClaimedAt = claimedAt
-	cp := *rec
-	return &cp, true, nil
+	return cloneRecord(rec), true, nil
 }
 
 // CompletePending implements Backend.
@@ -152,16 +165,14 @@ func (b *MemoryBackend) CompletePending(_ context.Context, token, claimantKey st
 	rec, ok := b.records[token]
 	if !ok || rec.State != StatePending || rec.ClaimantKey != claimantKey {
 		if ok {
-			cp := *rec
-			return &cp, false, nil
+			return cloneRecord(rec), false, nil
 		}
 		return nil, false, nil
 	}
 	rec.State = StateCommitted
 	rec.Result = append([]byte(nil), result...)
 	rec.CompletedAt = completedAt
-	cp := *rec
-	return &cp, true, nil
+	return cloneRecord(rec), true, nil
 }
 
 // FailPending implements Backend.
@@ -171,8 +182,7 @@ func (b *MemoryBackend) FailPending(_ context.Context, token, claimantKey, errCo
 	rec, ok := b.records[token]
 	if !ok || rec.State != StatePending || rec.ClaimantKey != claimantKey {
 		if ok {
-			cp := *rec
-			return &cp, false, nil
+			return cloneRecord(rec), false, nil
 		}
 		return nil, false, nil
 	}
@@ -180,6 +190,5 @@ func (b *MemoryBackend) FailPending(_ context.Context, token, claimantKey, errCo
 	rec.ErrorCode = errCode
 	rec.ErrorMessage = errMessage
 	rec.CompletedAt = failedAt
-	cp := *rec
-	return &cp, true, nil
+	return cloneRecord(rec), true, nil
 }
