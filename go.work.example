@@ -16,6 +16,7 @@ use (
 	./e2e/stack
 	./internal/generate
 	./reference/context-agent
+	./reference/hello-seller
 	./reference/seller-agent
 	./registry
 	./registry/glidestore

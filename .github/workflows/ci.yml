@@ -135,6 +135,10 @@ jobs:
         working-directory: reference/seller-agent
         run: go test -race -count=1 ./...
 
+      - name: Test hello-seller example
+        working-directory: reference/hello-seller
+        run: go test -race -count=1 ./...
+
       - name: Test e2e
         working-directory: e2e
         run: go test -race -count=1 ./...
@@ -175,6 +179,13 @@ jobs:
         with:
           version: v2.11
           working-directory: reference/seller-agent
+          args: ./...
+
+      - name: Run golangci-lint (hello-seller example)
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
+        with:
+          version: v2.11
+          working-directory: reference/hello-seller
           args: ./...
 
       - name: Run golangci-lint (adcp/v3)
