@@ -246,6 +246,43 @@ func TestAssetAccess_GCPServiceAccount_FullCredentialRoundTrip(t *testing.T) {
 	})
 }
 
+// TestAssetAccess_GCPServiceAccount_UnmodeledFieldsRoundTrip verifies that a
+// real GCP service-account key JSON — which also carries client_id, auth_uri,
+// auth_provider_x509_cert_url, client_x509_cert_url, and universe_domain,
+// none of which GCPServiceAccountCredentials models by name — round-trips
+// those fields losslessly via Extra instead of dropping them.
+func TestAssetAccess_GCPServiceAccount_UnmodeledFieldsRoundTrip(t *testing.T) {
+	raw := `{
+		"method": "service_account",
+		"provider": "gcp",
+		"credentials": {
+			"type": "service_account",
+			"project_id": "my-project-123",
+			"private_key_id": "key-abc123",
+			"private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEA\n-----END PRIVATE KEY-----\n",
+			"client_email": "asset-reader@my-project-123.iam.gserviceaccount.com",
+			"client_id": "123456789012345678901",
+			"auth_uri": "https://accounts.google.com/o/oauth2/auth",
+			"token_uri": "https://oauth2.googleapis.com/token",
+			"auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+			"client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/asset-reader%40my-project-123.iam.gserviceaccount.com",
+			"universe_domain": "googleapis.com"
+		}
+	}`
+
+	var got AssetAccess
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+
+	gotCreds, ok := got.Credentials.(GCPServiceAccountCredentials)
+	require.True(t, ok, "expected GCPServiceAccountCredentials, got %T", got.Credentials)
+	assert.Equal(t, "123456789012345678901", gotCreds.Extra["client_id"])
+	assert.Equal(t, "googleapis.com", gotCreds.Extra["universe_domain"])
+
+	data, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.JSONEq(t, raw, string(data))
+}
+
 // TestAssetAccess_AWSServiceAccount_RoundTrip mirrors the GCP round-trip
 // test for AWS, including the session-token field (STS-issued temporary
 // credentials are a common real-world shape).

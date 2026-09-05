@@ -256,6 +256,22 @@ type GCPServiceAccountCredentials struct {
 	PrivateKey   string `json:"private_key"`
 	ProjectID    string `json:"project_id,omitempty"`
 	TokenURI     string `json:"token_uri,omitempty"`
+
+	// Extra preserves any wire fields this struct doesn't model by name —
+	// e.g. client_id, auth_uri, auth_provider_x509_cert_url,
+	// client_x509_cert_url, universe_domain — so a full GCP service-account
+	// JSON object round-trips losslessly even as Google's key shape grows,
+	// instead of the fixed-struct data loss a plain json.Unmarshal would
+	// otherwise cause.
+	Extra map[string]any `json:"-"`
+}
+
+// gcpServiceAccountCredentialsKnownFields lists the wire keys
+// GCPServiceAccountCredentials models by name; everything else on the wire
+// object is captured in Extra instead of being silently dropped.
+var gcpServiceAccountCredentialsKnownFields = map[string]bool{
+	"type": true, "client_email": true, "private_key_id": true,
+	"private_key": true, "project_id": true, "token_uri": true,
 }
 
 // ProviderTag implements ServiceAccountCredentials.
@@ -273,6 +289,62 @@ func (c GCPServiceAccountCredentials) redacted() string {
 		c.Type, c.ClientEmail, c.PrivateKeyID, c.ProjectID, c.TokenURI)
 }
 
+// MarshalJSON emits the modeled fields plus any Extra fields captured on
+// decode, so a credential object this SDK didn't fully model still
+// round-trips byte-for-byte instead of losing the fields it doesn't know.
+func (c GCPServiceAccountCredentials) MarshalJSON() ([]byte, error) {
+	type alias GCPServiceAccountCredentials
+	known, err := json.Marshal(alias(c))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Extra) == 0 {
+		return known, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(known, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range c.Extra {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON decodes the modeled fields and captures anything else on the
+// wire object into Extra, instead of silently dropping it.
+func (c *GCPServiceAccountCredentials) UnmarshalJSON(data []byte) error {
+	type alias GCPServiceAccountCredentials
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*c = GCPServiceAccountCredentials(a)
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	var extra map[string]any
+	for k, v := range m {
+		if gcpServiceAccountCredentialsKnownFields[k] {
+			continue
+		}
+		var val any
+		if err := json.Unmarshal(v, &val); err != nil {
+			return err
+		}
+		if extra == nil {
+			extra = make(map[string]any, len(m))
+		}
+		extra[k] = val
+	}
+	c.Extra = extra
+	return nil
+}
+
 // AWSServiceAccountCredentials is the typed credential shape for
 // AssetAccess{Method: service_account, Provider: "aws"}.
 //
@@ -285,6 +357,20 @@ type AWSServiceAccountCredentials struct {
 	SecretAccessKey string `json:"secret_access_key"`
 	SessionToken    string `json:"session_token,omitempty"`
 	Region          string `json:"region,omitempty"`
+
+	// Extra preserves any wire fields this struct doesn't model by name —
+	// e.g. an STS expiration timestamp or a role ARN — so a full credential
+	// object round-trips losslessly instead of the fixed-struct data loss a
+	// plain json.Unmarshal would otherwise cause.
+	Extra map[string]any `json:"-"`
+}
+
+// awsServiceAccountCredentialsKnownFields lists the wire keys
+// AWSServiceAccountCredentials models by name; everything else on the wire
+// object is captured in Extra instead of being silently dropped.
+var awsServiceAccountCredentialsKnownFields = map[string]bool{
+	"access_key_id": true, "secret_access_key": true,
+	"session_token": true, "region": true,
 }
 
 // ProviderTag implements ServiceAccountCredentials.
@@ -300,6 +386,62 @@ func (c AWSServiceAccountCredentials) GoString() string { return c.redacted() }
 func (c AWSServiceAccountCredentials) redacted() string {
 	return fmt.Sprintf("AWSServiceAccountCredentials{AccessKeyID:%s,Region:%s,<redacted>}",
 		c.AccessKeyID, c.Region)
+}
+
+// MarshalJSON emits the modeled fields plus any Extra fields captured on
+// decode, so a credential object this SDK didn't fully model still
+// round-trips byte-for-byte instead of losing the fields it doesn't know.
+func (c AWSServiceAccountCredentials) MarshalJSON() ([]byte, error) {
+	type alias AWSServiceAccountCredentials
+	known, err := json.Marshal(alias(c))
+	if err != nil {
+		return nil, err
+	}
+	if len(c.Extra) == 0 {
+		return known, nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(known, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range c.Extra {
+		if _, exists := m[k]; !exists {
+			m[k] = v
+		}
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON decodes the modeled fields and captures anything else on the
+// wire object into Extra, instead of silently dropping it.
+func (c *AWSServiceAccountCredentials) UnmarshalJSON(data []byte) error {
+	type alias AWSServiceAccountCredentials
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	*c = AWSServiceAccountCredentials(a)
+
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	var extra map[string]any
+	for k, v := range m {
+		if awsServiceAccountCredentialsKnownFields[k] {
+			continue
+		}
+		var val any
+		if err := json.Unmarshal(v, &val); err != nil {
+			return err
+		}
+		if extra == nil {
+			extra = make(map[string]any, len(m))
+		}
+		extra[k] = val
+	}
+	c.Extra = extra
+	return nil
 }
 
 // RawServiceAccountCredentials is the escape hatch for service_account
