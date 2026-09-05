@@ -262,16 +262,16 @@ func TestMiddlewareObserveOnlyAllowsBadSignature(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, signer.SignRequest(req, SignOptions{}))
 		// Corrupt the signature bytes while keeping the header well-formed
-		// (still `sig1=:<base64url>:`) — a well-formed pair that fails
+		// (still `sig1=:<base64>:`) — a well-formed pair that fails
 		// crypto verification, not a malformed pair.
 		sigHdr := req.Header.Get("Signature")
 		start := strings.Index(sigHdr, ":") + 1
 		end := strings.LastIndex(sigHdr, ":")
 		require.Greater(t, end, start)
-		raw, err := base64.RawURLEncoding.DecodeString(sigHdr[start:end])
+		raw, err := base64.StdEncoding.DecodeString(sigHdr[start:end])
 		require.NoError(t, err)
 		raw[0] ^= 0xFF
-		req.Header.Set("Signature", "sig1=:"+base64.RawURLEncoding.EncodeToString(raw)+":")
+		req.Header.Set("Signature", "sig1=:"+base64.StdEncoding.EncodeToString(raw)+":")
 		return req
 	}
 

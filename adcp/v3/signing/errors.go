@@ -14,6 +14,7 @@ import (
 //	CodeRequired             — pre-check 0 (op in required_for, no signature)
 //	CodeHeaderMalformed      — pre-check 0 (signature/signature-input pair)
 //	                           or step 1 (Signature-Input parse failure)
+//	CodeTargetURIMalformed   — step 10 (@target-uri cannot be canonicalized)
 //	CodeParamsIncomplete     — step 2 (missing required sig-param)
 //	CodeTagInvalid           — step 3 (tag != adcp/request-signing/v1)
 //	CodeAlgNotAllowed        — step 4 (alg not in allowlist)
@@ -39,6 +40,10 @@ const (
 	// CodeHeaderMalformed — Signature/Signature-Input header pair broken or
 	// malformed; Signature-Input parse failed; request URL can't be canonicalized.
 	CodeHeaderMalformed ErrorCode = "request_signature_header_malformed"
+
+	// CodeTargetURIMalformed — the received request URL cannot be represented
+	// by the AdCP @target-uri canonicalization rules.
+	CodeTargetURIMalformed ErrorCode = "request_target_uri_malformed"
 
 	// CodeParamsIncomplete — one of created/expires/nonce/keyid/alg/tag is
 	// absent, or the nonce is shorter than 128 bits.

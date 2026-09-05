@@ -9,18 +9,27 @@ import (
 // computeSHA256DigestHeader returns the RFC 9530 Content-Digest header value
 // for body computed with SHA-256: `sha-256=:<base64 std>:`.
 func computeSHA256DigestHeader(body []byte) string {
+	return computeSHA256DigestHeaderForEncoding(body, BinaryEncodingRFC8941)
+}
+
+func computeSHA256DigestHeaderForEncoding(body []byte, encoding BinaryEncoding) string {
 	h := sha256.Sum256(body)
-	return "sha-256=:" + base64.StdEncoding.EncodeToString(h[:]) + ":"
+	return "sha-256=:" + encodeBinary(h[:], encoding) + ":"
 }
 
 // extractSHA256FromDigestHeader parses a Content-Digest header value and
 // returns the sha-256 digest as raw bytes.
 //
 // Accepts the structured-field dict form:
-//   sha-256=:<base64>:, algorithm2=:<base64>:
+//
+//	sha-256=:<base64>:, algorithm2=:<base64>:
 //
 // Returns nil bytes if the sha-256 algorithm is not present.
 func extractSHA256FromDigestHeader(header string) ([]byte, bool, error) {
+	return extractSHA256FromDigestHeaderForEncoding(header, BinaryEncodingRFC8941)
+}
+
+func extractSHA256FromDigestHeaderForEncoding(header string, encoding BinaryEncoding) ([]byte, bool, error) {
 	rest := strings.TrimSpace(header)
 	for len(rest) > 0 {
 		// strip leading OWS / commas
@@ -46,7 +55,7 @@ func extractSHA256FromDigestHeader(header string) ([]byte, bool, error) {
 		}
 		val := rest[1 : 1+end]
 		if alg == "sha-256" {
-			raw, err := base64.StdEncoding.DecodeString(val)
+			raw, err := decodeBinary(val, encoding)
 			if err != nil {
 				return nil, false, newError(CodeHeaderMalformed, "Content-Digest base64 invalid")
 			}
@@ -57,6 +66,20 @@ func extractSHA256FromDigestHeader(header string) ([]byte, bool, error) {
 		rest = skipDigestParams(rest)
 	}
 	return nil, false, nil
+}
+
+func encodeBinary(value []byte, encoding BinaryEncoding) string {
+	if encoding == BinaryEncodingBase64URL {
+		return base64.RawURLEncoding.EncodeToString(value)
+	}
+	return base64.StdEncoding.EncodeToString(value)
+}
+
+func decodeBinary(value string, encoding BinaryEncoding) ([]byte, error) {
+	if encoding == BinaryEncodingBase64URL {
+		return b64UrlDecode(value)
+	}
+	return base64.StdEncoding.DecodeString(value)
 }
 
 // rejectDigestDuplicates walks the Content-Digest dict and returns an error

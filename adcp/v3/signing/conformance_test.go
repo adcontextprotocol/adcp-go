@@ -20,17 +20,18 @@ import (
 // Vector is the JSON shape of each AdCP conformance vector, used for both
 // the request-signing and webhook-signing suites.
 type Vector struct {
-	Name          string          `json:"name"`
-	SpecReference string          `json:"spec_reference"`
-	ReferenceNow  int64           `json:"reference_now"`
-	Request       VectorRequest   `json:"request"`
-	Capability    VectorCap       `json:"verifier_capability"`
-	JWKSRef       []string        `json:"jwks_ref"`
-	JWKSOverride  *JWKS           `json:"jwks_override"`
-	HarnessState  *VectorState    `json:"test_harness_state"`
-	ExpectedBase  string          `json:"expected_signature_base"`
-	Expected      VectorOutcome   `json:"expected_outcome"`
-	Comment       json.RawMessage `json:"$comment"`
+	Name                  string          `json:"name"`
+	SpecReference         string          `json:"spec_reference"`
+	SigningProfileVersion string          `json:"signing_profile_version"`
+	ReferenceNow          int64           `json:"reference_now"`
+	Request               VectorRequest   `json:"request"`
+	Capability            VectorCap       `json:"verifier_capability"`
+	JWKSRef               []string        `json:"jwks_ref"`
+	JWKSOverride          *JWKS           `json:"jwks_override"`
+	HarnessState          *VectorState    `json:"test_harness_state"`
+	ExpectedBase          string          `json:"expected_signature_base"`
+	Expected              VectorOutcome   `json:"expected_outcome"`
+	Comment               json.RawMessage `json:"$comment"`
 }
 
 // UnmarshalJSON accepts both shapes that the two upstream vector suites use
@@ -73,9 +74,10 @@ type VectorRequest struct {
 }
 
 type VectorCap struct {
-	Supported           bool     `json:"supported"`
-	CoversContentDigest string   `json:"covers_content_digest"`
-	RequiredFor         []string `json:"required_for"`
+	Supported                  bool     `json:"supported"`
+	CoversContentDigest        string   `json:"covers_content_digest"`
+	RequiredFor                []string `json:"required_for"`
+	ProtocolMethodsRequiredFor []string `json:"protocol_methods_required_for"`
 }
 
 type VectorState struct {
@@ -212,59 +214,82 @@ func runVector(t *testing.T, v Vector) (*VerifiedSigner, error) {
 	}
 
 	return VerifyRequestSignature(req, VerifyOptions{
-		OperationName:       operationFromURL(v.Request.URL),
-		RequiredFor:         v.Capability.RequiredFor,
-		ContentDigestPolicy: DigestPolicy(v.Capability.CoversContentDigest),
-		Scheme:              "https",
-		Resolver:            resolver,
-		Revocation:          revocation,
-		Replay:              replay,
-		Clock:               clock,
+		OperationName:              operationFromURL(v.Request.URL),
+		RequiredFor:                v.Capability.RequiredFor,
+		ProtocolMethodsRequiredFor: v.Capability.ProtocolMethodsRequiredFor,
+		Profile:                    requestSigningProfile(t, v),
+		ContentDigestPolicy:        DigestPolicy(v.Capability.CoversContentDigest),
+		Scheme:                     "https",
+		Resolver:                   resolver,
+		Revocation:                 revocation,
+		Replay:                     replay,
+		Clock:                      clock,
 	})
+}
+
+func requestSigningProfile(t *testing.T, v Vector) Profile {
+	t.Helper()
+	switch v.SigningProfileVersion {
+	case "", "3.1":
+		return ProfileRequestSigningLegacy
+	case "3.2":
+		return ProfileRequestSigning
+	default:
+		t.Fatalf("unsupported request-signing profile version %q", v.SigningProfileVersion)
+		return Profile{}
+	}
+}
+
+func requestSigningVectorDirs(kind string) []string {
+	return []string{
+		filepath.Join("testdata", "request-signing", kind),
+		filepath.Join("testdata", "request-signing", "profile-3.2", kind),
+	}
 }
 
 // TestExpectedSignatureBaseBytes checks our canonicalization against every
 // positive vector's expected_signature_base. A byte mismatch here flags a
 // canonicalization bug BEFORE the crypto verify step.
 func TestExpectedSignatureBaseBytes(t *testing.T) {
-	dir := "testdata/request-signing/positive"
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		name := e.Name()
-		t.Run(name, func(t *testing.T) {
-			v := loadVectorFile(t, filepath.Join(dir, name))
-			if v.ExpectedBase == "" || name == "004-multiple-signature-labels.json" {
-				// 004 has no expected_signature_base (it's a relay-model test).
-				return
+	for _, dir := range requestSigningVectorDirs("positive") {
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
 			}
-			parsed, err := parseSignatureInput(v.Request.Headers["Signature-Input"])
-			require.NoError(t, err)
+			name := filepath.Join(filepath.Base(dir), e.Name())
+			t.Run(name, func(t *testing.T) {
+				v := loadVectorFile(t, filepath.Join(dir, e.Name()))
+				if v.ExpectedBase == "" || name == "004-multiple-signature-labels.json" {
+					// 004 has no expected_signature_base (it's a relay-model test).
+					return
+				}
+				parsed, err := parseSignatureInput(v.Request.Headers["Signature-Input"])
+				require.NoError(t, err)
 
-			canonicalURI, err := canonicalTargetURI(v.Request.URL)
-			require.NoError(t, err)
-			req := buildRequestForVector(t, v)
-			scheme := "https"
-			if strings.HasPrefix(v.Request.URL, "http://") {
-				scheme = "http"
-			}
-			authority := canonicalAuthority(authorityOf(req), scheme)
-			values := map[string]string{
-				componentMethod:      strings.ToUpper(v.Request.Method),
-				componentTargetURI:   canonicalURI,
-				componentAuthority:   authority,
-				componentContentType: v.Request.Headers["Content-Type"],
-			}
-			if slicesContains(parsed.components, componentContentDigst) {
-				values[componentContentDigst] = v.Request.Headers["Content-Digest"]
-			}
-			base, err := buildSignatureBase(parsed.components, values, parsed.paramsText)
-			require.NoError(t, err)
-			assert.Equal(t, v.ExpectedBase, base, "canonical base mismatch for %s", name)
-		})
+				canonicalURI, err := canonicalTargetURI(v.Request.URL)
+				require.NoError(t, err)
+				req := buildRequestForVector(t, v)
+				scheme := "https"
+				if strings.HasPrefix(v.Request.URL, "http://") {
+					scheme = "http"
+				}
+				authority := canonicalAuthority(authorityOf(req), scheme)
+				values := map[string]string{
+					componentMethod:      strings.ToUpper(v.Request.Method),
+					componentTargetURI:   canonicalURI,
+					componentAuthority:   authority,
+					componentContentType: v.Request.Headers["Content-Type"],
+				}
+				if slicesContains(parsed.components, componentContentDigst) {
+					values[componentContentDigst] = v.Request.Headers["Content-Digest"]
+				}
+				base, err := buildSignatureBase(parsed.components, values, parsed.paramsText)
+				require.NoError(t, err)
+				assert.Equal(t, v.ExpectedBase, base, "canonical base mismatch for %s", name)
+			})
+		}
 	}
 }
 
@@ -274,46 +299,48 @@ func slicesContains(ss []string, s string) bool {
 
 // TestPositiveVectors runs each positive vector through the full verifier.
 func TestPositiveVectors(t *testing.T) {
-	dir := "testdata/request-signing/positive"
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		name := e.Name()
-		t.Run(name, func(t *testing.T) {
-			v := loadVectorFile(t, filepath.Join(dir, name))
-			signer, err := runVector(t, v)
-			if !assert.NoError(t, err, "positive vector %s must verify", name) {
-				if e := AsError(err); e != nil {
-					t.Logf("rejected with code=%s detail=%s", e.Code, e.Detail)
-				}
-				return
+	for _, dir := range requestSigningVectorDirs("positive") {
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
 			}
-			assert.NotNil(t, signer)
-		})
+			name := filepath.Join(filepath.Base(dir), e.Name())
+			t.Run(name, func(t *testing.T) {
+				v := loadVectorFile(t, filepath.Join(dir, e.Name()))
+				signer, err := runVector(t, v)
+				if !assert.NoError(t, err, "positive vector %s must verify", name) {
+					if e := AsError(err); e != nil {
+						t.Logf("rejected with code=%s detail=%s", e.Code, e.Detail)
+					}
+					return
+				}
+				assert.NotNil(t, signer)
+			})
+		}
 	}
 }
 
 // TestNegativeVectors runs each negative vector through the full verifier
 // and asserts byte-for-byte match on expected_outcome.error_code.
 func TestNegativeVectors(t *testing.T) {
-	dir := "testdata/request-signing/negative"
-	entries, err := os.ReadDir(dir)
-	require.NoError(t, err)
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
+	for _, dir := range requestSigningVectorDirs("negative") {
+		entries, err := os.ReadDir(dir)
+		require.NoError(t, err)
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			name := filepath.Join(filepath.Base(dir), e.Name())
+			t.Run(name, func(t *testing.T) {
+				v := loadVectorFile(t, filepath.Join(dir, e.Name()))
+				_, err := runVector(t, v)
+				require.Error(t, err, "negative vector %s must reject", name)
+				e := AsError(err)
+				require.NotNil(t, e, "vector %s: want *Error, got %v", name, err)
+				assert.Equal(t, v.Expected.ErrorCode, string(e.Code), "vector %s wrong error code", name)
+			})
 		}
-		name := e.Name()
-		t.Run(name, func(t *testing.T) {
-			v := loadVectorFile(t, filepath.Join(dir, name))
-			_, err := runVector(t, v)
-			require.Error(t, err, "negative vector %s must reject", name)
-			e := AsError(err)
-			require.NotNil(t, e, "vector %s: want *Error, got %v", name, err)
-			assert.Equal(t, v.Expected.ErrorCode, string(e.Code), "vector %s wrong error code", name)
-		})
 	}
 }

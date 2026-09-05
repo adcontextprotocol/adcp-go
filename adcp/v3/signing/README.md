@@ -10,12 +10,16 @@ Spec: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/bui
 
 The package is validated against the spec's [conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/):
 
-- 8 / 8 positive vectors verify.
-- 20 / 20 negative vectors reject with the exact `expected_outcome.error_code`.
+- 13 / 13 positive vectors verify.
+- 30 / 30 negative vectors reject with the exact `expected_outcome.error_code`.
 - Ed25519 signatures produced by this signer match the committed positive-vector bytes byte-for-byte.
 - `expected_signature_base` byte-diff passes on every positive vector (cross-implementation commitment check).
 
 Vectors live under `testdata/request-signing/`; tests are in `conformance_test.go`.
+The pinned suite includes the AdCP 3.1 base64url profile and the AdCP 3.2 RC
+RFC 8941 profile. `ProfileRequestSigning` is the AdCP 3.2 default;
+`ProfileRequestSigningLegacy` is available only for peers explicitly pinned to
+the 3.1 wire profile.
 
 ## Testing handlers that expect signed requests
 

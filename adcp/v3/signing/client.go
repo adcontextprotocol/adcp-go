@@ -38,9 +38,9 @@ type SignedHTTPClientOptions struct {
 
 	// CapabilityProvider, when non-nil, is consulted per-request. Returning
 	// a RequestSigningCapabilities lets the preset:
-	//   - decide whether to sign (read required_for / warn_for /
-	//     supported_for; signs if the operation is in any of those lists,
-	//     skips otherwise);
+	//   - decide whether to sign (read required_for / warn_for / supported_for
+	//     and their protocol_methods_* counterparts; signs if the operation or
+	//     JSON-RPC method is in any of those lists, skips otherwise);
 	//   - resolve covers_content_digest per-call ("required" → cover,
 	//     "forbidden" → don't, "either"/absent → fall back to
 	//     CoverContentDigest).
@@ -90,7 +90,8 @@ func PathSuffixOperationResolver(r *http.Request) string {
 //
 //   - Capability-aware (CapabilityProvider != nil): per-request, the preset
 //     consults the seller's RequestSigningCapabilities and signs only when
-//     the operation appears in required_for / warn_for / supported_for.
+//     the operation appears in required_for / warn_for / supported_for, or
+//     the JSON-RPC method appears in a protocol_methods_* counterpart.
 //     covers_content_digest is honored from the capability ("required" →
 //     cover, "forbidden" → don't, "either"/absent → fall back to
 //     CoverContentDigest). This matches the Python `capability_provider`
@@ -180,8 +181,10 @@ func (t *capabilityAwareSigningTransport) RoundTrip(r *http.Request) (*http.Resp
 	// Buffer the body once — both the always-sign and skip paths need to
 	// preserve the inner request's body bytes for replay/idempotency.
 	cloned := r.Clone(r.Context())
+	var body []byte
 	if r.Body != nil {
-		body, err := io.ReadAll(r.Body)
+		var err error
+		body, err = io.ReadAll(r.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -192,7 +195,7 @@ func (t *capabilityAwareSigningTransport) RoundTrip(r *http.Request) (*http.Resp
 
 	capability := t.capabilityProvider(cloned)
 	op := t.operationResolver(cloned)
-	if !shouldSignByCapability(capability, op) {
+	if !shouldSignByCapability(capability, op) && !shouldSignProtocolMethodByCapability(capability, protocolMethodFromJSONRPC(body)) {
 		return t.inner.RoundTrip(cloned)
 	}
 
@@ -210,6 +213,15 @@ func (t *capabilityAwareSigningTransport) RoundTrip(r *http.Request) (*http.Resp
 		return nil, err
 	}
 	return t.inner.RoundTrip(cloned)
+}
+
+func shouldSignProtocolMethodByCapability(capability *adcp.RequestSigningCapabilities, method string) bool {
+	if capability == nil || !capability.Supported || method == "" {
+		return false
+	}
+	return slices.Contains(capability.ProtocolMethodsRequiredFor, method) ||
+		slices.Contains(capability.ProtocolMethodsWarnFor, method) ||
+		slices.Contains(capability.ProtocolMethodsSupportedFor, method)
 }
 
 // shouldSignByCapability classifies an outbound operation against the

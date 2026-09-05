@@ -43,6 +43,19 @@ const (
 	DigestEither DigestPolicy = "either"
 )
 
+// BinaryEncoding selects the structured-field byte-sequence encoding used by
+// a Signature or Content-Digest value.
+type BinaryEncoding string
+
+const (
+	// BinaryEncodingBase64URL is the AdCP 3.1 legacy, unpadded base64url
+	// encoding. It remains available for a peer pinned to the 3.1 wire profile.
+	BinaryEncodingBase64URL BinaryEncoding = "base64url"
+	// BinaryEncodingRFC8941 is RFC 8941 sf-binary: standard padded Base64.
+	// AdCP 3.2 uses this encoding for request signing.
+	BinaryEncodingRFC8941 BinaryEncoding = "rfc8941"
+)
+
 // Profile selects which AdCP 9421 signing profile a Signer emits or a verifier
 // accepts. Two profiles share the same substrate (algorithms, components,
 // replay protection) and differ only in the signed `tag` param and the
@@ -74,16 +87,46 @@ type Profile struct {
 	// mandates "webhook_signature_" so receivers can route the two error
 	// taxonomies to different observability pipelines.
 	ErrorPrefix string
+
+	// BinaryEncoding specifies how Signature byte sequences are encoded. The
+	// zero value preserves the 3.1 base64url wire profile for custom profiles;
+	// the built-in request profile uses RFC 8941 for AdCP 3.2.
+	BinaryEncoding BinaryEncoding
+
+	// ContentDigestEncoding specifies how Content-Digest byte sequences are
+	// encoded. When zero, BinaryEncoding is used. Webhook signing retains the
+	// established RFC 8941 Content-Digest representation while its Signature
+	// remains base64url.
+	ContentDigestEncoding BinaryEncoding
+}
+
+func (p Profile) contentDigestEncoding() BinaryEncoding {
+	if p.ContentDigestEncoding != "" {
+		return p.ContentDigestEncoding
+	}
+	return p.BinaryEncoding
 }
 
 var (
-	// ProfileRequestSigning is the adcp/request-signing/v1 profile — the
-	// default for signing and verification. Defined in
-	// adcontextprotocol/adcp#2323.
+	// ProfileRequestSigning is the AdCP 3.2 adcp/request-signing/v1 profile —
+	// the default for signing and verification. It uses RFC 8941 sf-binary.
 	ProfileRequestSigning = Profile{
-		Tag:         "adcp/request-signing/v1",
-		AdcpUse:     "request-signing",
-		ErrorPrefix: "request_signature_",
+		Tag:                   "adcp/request-signing/v1",
+		AdcpUse:               "request-signing",
+		ErrorPrefix:           "request_signature_",
+		BinaryEncoding:        BinaryEncodingRFC8941,
+		ContentDigestEncoding: BinaryEncodingRFC8941,
+	}
+
+	// ProfileRequestSigningLegacy is the AdCP 3.1 request-signing profile.
+	// Use it only when the peer has explicitly pinned the 3.1 wire version;
+	// AdCP 3.2 peers use ProfileRequestSigning.
+	ProfileRequestSigningLegacy = Profile{
+		Tag:                   "adcp/request-signing/v1",
+		AdcpUse:               "request-signing",
+		ErrorPrefix:           "request_signature_",
+		BinaryEncoding:        BinaryEncodingBase64URL,
+		ContentDigestEncoding: BinaryEncodingBase64URL,
 	}
 
 	// ProfileWebhookSigning is the adcp/webhook-signing/v1 profile — baseline
@@ -95,9 +138,11 @@ var (
 	// on the verifier and CoverContentDigest=true on the signer. The webhook
 	// package wires these defaults automatically.
 	ProfileWebhookSigning = Profile{
-		Tag:         "adcp/webhook-signing/v1",
-		AdcpUse:     "webhook-signing",
-		ErrorPrefix: "webhook_signature_",
+		Tag:                   "adcp/webhook-signing/v1",
+		AdcpUse:               "webhook-signing",
+		ErrorPrefix:           "webhook_signature_",
+		BinaryEncoding:        BinaryEncodingBase64URL,
+		ContentDigestEncoding: BinaryEncodingRFC8941,
 	}
 )
 

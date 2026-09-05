@@ -31,6 +31,8 @@ func TestCanonicalTargetURI(t *testing.T) {
 		{"IPv6 literal", "https://[2001:db8::1]/x", "https://[2001:db8::1]/x"},
 		{"IPv6 with non-default port", "https://[2001:db8::1]:8443/x", "https://[2001:db8::1]:8443/x"},
 		{"IPv6 with default 443 stripped", "https://[2001:db8::1]:443/x", "https://[2001:db8::1]/x"},
+		{"strip DNS root dot", "https://seller.example.com./x", "https://seller.example.com/x"},
+		{"strip DNS root dot with port", "https://seller.example.com.:8443/x", "https://seller.example.com:8443/x"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -54,6 +56,17 @@ func TestCanonicalTargetURIRejectsNonASCII(t *testing.T) {
 	// Raw U-label — signer MUST convert to A-label first.
 	_, err := canonicalTargetURI("https://例え.example/x")
 	require.Error(t, err)
+}
+
+func TestCanonicalTargetURIRejectsMalformedHost(t *testing.T) {
+	for _, rawURL := range []string{
+		"https://seller.example.com../x",
+		"https://seller..example.com/x",
+		"https:///x",
+	} {
+		_, err := canonicalTargetURI(rawURL)
+		require.Error(t, err, rawURL)
+	}
 }
 
 func TestBuildSignatureBaseMatchesPositive001(t *testing.T) {

@@ -266,6 +266,21 @@ PY
   fi
 fi
 
+# Keep the v3 signing conformance suite on the same immutable protocol bundle
+# as its generated types. These vectors include the profile documentation and
+# key material needed to test request and webhook signing; replacing each tree
+# atomically prevents a new vector from being tested against an old key set.
+COMPLIANCE_SRC="$WORK/adcp-$VERSION/compliance/test-vectors"
+SIGNING_TESTDATA_DIR="$SCRIPT_DIR/../signing/testdata"
+if [ ! -d "$COMPLIANCE_SRC/request-signing" ] || [ ! -d "$COMPLIANCE_SRC/webhook-signing" ]; then
+  echo "bundle layout unexpected: missing signing compliance vectors" >&2
+  exit 1
+fi
+mkdir -p "$SIGNING_TESTDATA_DIR/request-signing" "$SIGNING_TESTDATA_DIR/webhook-signing"
+rsync -a --delete "$COMPLIANCE_SRC/request-signing/" "$SIGNING_TESTDATA_DIR/request-signing/"
+rsync -a --delete "$COMPLIANCE_SRC/webhook-signing/" "$SIGNING_TESTDATA_DIR/webhook-signing/"
+echo "Synced signing compliance vectors."
+
 # Update VERSION file if a specific version was passed
 if [ -n "${1:-}" ]; then
   echo "$1" > "$VERSION_FILE"

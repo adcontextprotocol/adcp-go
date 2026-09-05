@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  ADCP_SDK_VERSION: "8.1.0-beta.18"
+  ADCP_SDK_VERSION: "13.0.0-rc.26"
 
 jobs:
   test:
@@ -40,7 +40,7 @@ jobs:
             base_ref="FETCH_HEAD"
           fi
 
-          if git diff --quiet "$base_ref" -- adcp/schemas/VERSION adcp/schemas/.bundle-sha256; then
+          if git diff --quiet "$base_ref" -- adcp/schemas/VERSION adcp/schemas/.bundle-sha256 adcp/v3/schemas/VERSION adcp/v3/schemas/.bundle-sha256; then
             echo "trust-pinned-bundle=1" >> "$GITHUB_OUTPUT"
           else
             echo "Schema bundle pin changed; live Sigstore verification will run."

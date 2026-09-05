@@ -231,6 +231,7 @@ func TestPublisherMaxElapsedCapsRetries(t *testing.T) {
 func TestPublisherContextCancellationAborts(t *testing.T) {
 	srv, _, _ := flappyServer(t, 999)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	signer, _ := webhookKeypair(t, "pub-cancel")
 	pub := NewPublisher(PublisherOptions{
