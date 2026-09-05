@@ -43,7 +43,7 @@ const (
 // boundary markers, regardless of nonce value. Fenced() uses this to defang
 // publisher-supplied content that tries to pre-empt the real boundary —
 // see the Fenced doc comment for why this matters.
-var fenceLookalike = regexp.MustCompile(`<<<ADCP:UNTRUSTED-CONTENT-(BEGIN|END):[0-9a-f]+>>>`)
+var fenceLookalike = regexp.MustCompile(`<<<ADCP:UNTRUSTED-CONTENT-(BEGIN|END):[0-9a-fA-F]+>>>`)
 
 // Fenced returns t wrapped in a pair of boundary markers carrying a random
 // nonce, suitable for splicing into an LLM prompt as a clearly delimited
