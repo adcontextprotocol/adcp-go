@@ -32,3 +32,11 @@ func TestExtractSHA256FromDigestHeader(t *testing.T) {
 	require.True(t, ok2)
 	assert.Equal(t, sum[:], got2)
 }
+
+func TestBinaryEncodingZeroValueUsesLegacyBase64URL(t *testing.T) {
+	value := []byte{0xfb, 0xff}
+	assert.Equal(t, "-_8", encodeBinary(value, ""))
+	decoded, err := decodeBinary("-_8", "")
+	require.NoError(t, err)
+	assert.Equal(t, value, decoded)
+}

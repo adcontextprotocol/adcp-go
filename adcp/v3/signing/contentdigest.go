@@ -69,17 +69,17 @@ func extractSHA256FromDigestHeaderForEncoding(header string, encoding BinaryEnco
 }
 
 func encodeBinary(value []byte, encoding BinaryEncoding) string {
-	if encoding == BinaryEncodingBase64URL {
-		return base64.RawURLEncoding.EncodeToString(value)
+	if encoding == BinaryEncodingRFC8941 {
+		return base64.StdEncoding.EncodeToString(value)
 	}
-	return base64.StdEncoding.EncodeToString(value)
+	return base64.RawURLEncoding.EncodeToString(value)
 }
 
 func decodeBinary(value string, encoding BinaryEncoding) ([]byte, error) {
-	if encoding == BinaryEncodingBase64URL {
-		return b64UrlDecode(value)
+	if encoding == BinaryEncodingRFC8941 {
+		return base64.StdEncoding.DecodeString(value)
 	}
-	return base64.StdEncoding.DecodeString(value)
+	return b64UrlDecode(value)
 }
 
 // rejectDigestDuplicates walks the Content-Digest dict and returns an error
