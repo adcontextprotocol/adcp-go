@@ -22,10 +22,11 @@ func SupportedADCPVersions() []string {
 	return []string{ADCPProtocolVersion30, ADCPProtocolVersion31, ADCPProtocolVersion32RC1}
 }
 
-// DefaultADCPVersion returns the highest 3.x release-precision version this
-// SDK emits when a request does not pin adcp_version.
+// DefaultADCPVersion returns the highest stable 3.x release-precision version
+// this SDK emits when a request does not pin adcp_version. Prereleases must be
+// selected explicitly by a negotiated peer.
 func DefaultADCPVersion() string {
-	return ADCPProtocolVersion32RC1
+	return ADCPProtocolVersion31
 }
 
 // VersionEnvelopeFor returns a request/response version envelope for a
@@ -134,8 +135,16 @@ func parseSupportedADCPReleases(versions []string) []adcpRelease {
 func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRelease) (string, bool) {
 	var best adcpRelease
 	found := false
+	// An omitted version (including legacy major-only negotiation) must not
+	// silently upgrade a peer to a prerelease wire contract. Prefer the highest
+	// stable compatible version, and use a prerelease only when it is the sole
+	// compatible choice. Explicit requests keep the normal semver ordering.
+	stableOnly := max == nil
 	for _, release := range supported {
 		if major != 0 && release.major != major {
+			continue
+		}
+		if stableOnly && release.prerelease != "" {
 			continue
 		}
 		if max != nil && compareADCPRelease(release, *max) > 0 {
@@ -144,6 +153,17 @@ func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRe
 		if !found || compareADCPRelease(release, best) > 0 {
 			best = release
 			found = true
+		}
+	}
+	if !found && stableOnly {
+		for _, release := range supported {
+			if major != 0 && release.major != major {
+				continue
+			}
+			if !found || compareADCPRelease(release, best) > 0 {
+				best = release
+				found = true
+			}
 		}
 	}
 	if !found {

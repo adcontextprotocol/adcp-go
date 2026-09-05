@@ -233,7 +233,7 @@ func requestSigningProfile(t *testing.T, v Vector) Profile {
 	case "", "3.1":
 		return ProfileRequestSigningLegacy
 	case "3.2":
-		return ProfileRequestSigning
+		return ProfileRequestSigningRC
 	default:
 		t.Fatalf("unsupported request-signing profile version %q", v.SigningProfileVersion)
 		return Profile{}

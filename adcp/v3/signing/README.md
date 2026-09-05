@@ -17,9 +17,9 @@ The package is validated against the spec's [conformance vectors](https://adcont
 
 Vectors live under `testdata/request-signing/`; tests are in `conformance_test.go`.
 The pinned suite includes the AdCP 3.1 base64url profile and the AdCP 3.2 RC
-RFC 8941 profile. `ProfileRequestSigning` is the AdCP 3.2 default;
-`ProfileRequestSigningLegacy` is available only for peers explicitly pinned to
-the 3.1 wire profile.
+RFC 8941 profile. `ProfileRequestSigning` retains the 3.1-compatible default;
+select `ProfileRequestSigningRC` only for a peer that explicitly negotiated
+the 3.2 RC wire profile.
 
 ## Testing handlers that expect signed requests
 

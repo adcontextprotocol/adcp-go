@@ -89,8 +89,7 @@ type Profile struct {
 	ErrorPrefix string
 
 	// BinaryEncoding specifies how Signature byte sequences are encoded. The
-	// zero value preserves the 3.1 base64url wire profile for custom profiles;
-	// the built-in request profile uses RFC 8941 for AdCP 3.2.
+	// zero value preserves the 3.1 base64url wire profile for custom profiles.
 	BinaryEncoding BinaryEncoding
 
 	// ContentDigestEncoding specifies how Content-Digest byte sequences are
@@ -108,25 +107,36 @@ func (p Profile) contentDigestEncoding() BinaryEncoding {
 }
 
 var (
-	// ProfileRequestSigning is the AdCP 3.2 adcp/request-signing/v1 profile —
-	// the default for signing and verification. It uses RFC 8941 sf-binary.
+	// ProfileRequestSigning is the AdCP 3.1 request-signing profile and the
+	// compatibility default for signing and verification. Use
+	// ProfileRequestSigningRC only after negotiating AdCP 3.2-rc.1.
 	ProfileRequestSigning = Profile{
 		Tag:                   "adcp/request-signing/v1",
 		AdcpUse:               "request-signing",
 		ErrorPrefix:           "request_signature_",
-		BinaryEncoding:        BinaryEncodingRFC8941,
-		ContentDigestEncoding: BinaryEncodingRFC8941,
+		BinaryEncoding:        BinaryEncodingBase64URL,
+		ContentDigestEncoding: BinaryEncodingBase64URL,
 	}
 
-	// ProfileRequestSigningLegacy is the AdCP 3.1 request-signing profile.
-	// Use it only when the peer has explicitly pinned the 3.1 wire version;
-	// AdCP 3.2 peers use ProfileRequestSigning.
+	// ProfileRequestSigningLegacy names the compatibility default for callers
+	// that prefer to select the 3.1 profile explicitly.
 	ProfileRequestSigningLegacy = Profile{
 		Tag:                   "adcp/request-signing/v1",
 		AdcpUse:               "request-signing",
 		ErrorPrefix:           "request_signature_",
 		BinaryEncoding:        BinaryEncodingBase64URL,
 		ContentDigestEncoding: BinaryEncodingBase64URL,
+	}
+
+	// ProfileRequestSigningRC is the AdCP 3.2-rc.1 request-signing profile.
+	// It uses RFC 8941 sf-binary and must be selected only for a peer that has
+	// explicitly negotiated that release-precision protocol version.
+	ProfileRequestSigningRC = Profile{
+		Tag:                   "adcp/request-signing/v1",
+		AdcpUse:               "request-signing",
+		ErrorPrefix:           "request_signature_",
+		BinaryEncoding:        BinaryEncodingRFC8941,
+		ContentDigestEncoding: BinaryEncodingRFC8941,
 	}
 
 	// ProfileWebhookSigning is the adcp/webhook-signing/v1 profile — baseline

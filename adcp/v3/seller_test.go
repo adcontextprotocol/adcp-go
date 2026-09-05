@@ -68,7 +68,7 @@ func TestBuildCapabilitiesDefaults(t *testing.T) {
 	assert.Equal(t, 86400, caps.ADCP.Idempotency.ReplayTTLSeconds)
 	assert.Equal(t, []int{3}, caps.ADCP.MajorVersions)
 	assert.Equal(t, []string{"3.0", "3.1", "3.2-rc.1"}, caps.ADCP.SupportedVersions)
-	assert.Equal(t, "3.2-rc.1", caps.AdcpVersion)
+	assert.Equal(t, "3.1", caps.AdcpVersion)
 	assert.Equal(t, 3, caps.AdcpMajorVersion)
 	assert.Contains(t, caps.SupportedProtocols, "media_buy")
 }
@@ -178,7 +178,7 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	require.True(t, ok, "adcp.idempotency must be present as an object (required in 3.0)")
 	assert.EqualValues(t, 86400, idem["replay_ttl_seconds"])
 	assert.Equal(t, []any{"3.0", "3.1", "3.2-rc.1"}, adcp["supported_versions"])
-	assert.Equal(t, "3.2-rc.1", wire["adcp_version"])
+	assert.Equal(t, "3.1", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
 
 	mb, ok := wire["media_buy"].(map[string]any)
@@ -312,7 +312,7 @@ func TestRegisteredCapabilitiesUsesDefaultVersion(t *testing.T) {
 	wire := structuredContentMap(t, result)
 
 	assert.False(t, result.IsError)
-	assert.Equal(t, "3.2-rc.1", wire["adcp_version"])
+	assert.Equal(t, "3.1", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
 	adcpBlock, ok := wire["adcp"].(map[string]any)
 	require.True(t, ok)
