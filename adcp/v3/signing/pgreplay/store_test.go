@@ -128,6 +128,25 @@ func TestInsert_DBError_FailsClosedAndRecordsError(t *testing.T) {
 	assert.True(t, errors.Is(err, ErrConnDown), "LastInsertError must be distinguishable via errors.Is(err, ErrConnDown) per adcp-go#54")
 }
 
+// TestInsert_ExpiryComputedByPostgresNotAppClock locks in the fix for the
+// clock-skew bug: InsertContext must pass ttl as a seconds value for
+// Postgres's own now() + interval arithmetic to compute expires_at, not a
+// timestamp precomputed from the app's clock. HitCap/Seen/insertSQL's own
+// cap check all compare expires_at against Postgres's now(); an expiry
+// minted on any other clock would skew the actual replay window by however
+// far the app and database clocks have drifted.
+func TestInsert_ExpiryComputedByPostgresNotAppClock(t *testing.T) {
+	s, mock, done := newMock(t)
+	defer done()
+
+	mock.ExpectQuery(insertRegexp.String()).
+		WithArgs("key1", "default", "nonce1", (90 * time.Second).Seconds(), defaultKeyIDCap).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+
+	ok := s.Insert("key1", "nonce1", 90*time.Second)
+	assert.True(t, ok)
+}
+
 func TestInsertContext_DistinguishesRejectionFromDBError(t *testing.T) {
 	s, mock, done := newMock(t)
 	defer done()

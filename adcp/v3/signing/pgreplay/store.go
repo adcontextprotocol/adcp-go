@@ -316,10 +316,16 @@ func (s *PostgresReplayStore) InsertContext(ctx context.Context, keyid, nonce st
 	if ttl <= 0 {
 		return false, fmt.Errorf("pgreplay: InsertContext: ttl must be positive, got %s", ttl)
 	}
-	expiresAt := time.Now().UTC().Add(ttl)
 
+	// expires_at is computed by Postgres itself (now() + $4 seconds), not
+	// from the app's clock: HitCap/Seen/insertSQL's own cap check all
+	// compare expires_at against Postgres's now(), so an expiry minted on a
+	// different clock skews the actual replay window by however far the
+	// app and database clocks have drifted apart — shortening it under
+	// skew where the app clock lags, which is exactly the failure mode
+	// RFC 9421 §11.1's replay window exists to prevent.
 	var inserted int
-	err = s.db.QueryRowContext(ctx, insertSQL, keyid, s.scope, nonce, expiresAt, s.hitCapLimit).Scan(&inserted)
+	err = s.db.QueryRowContext(ctx, insertSQL, keyid, s.scope, nonce, ttl.Seconds(), s.hitCapLimit).Scan(&inserted)
 	if errors.Is(err, sql.ErrNoRows) {
 		// WHERE clause guard (cap) or ON CONFLICT DO NOTHING (nonce already
 		// present) suppressed the insert. A legitimate rejection, not a
@@ -405,13 +411,18 @@ SELECT EXISTS (
 // genuinely atomic. QueryRowContext + Scan(&inserted) distinguishes
 // "inserted" (one row, inserted=1) from "suppressed by either guard"
 // (sql.ErrNoRows).
+// insertSQL takes ttl (seconds, $4) rather than a precomputed expires_at
+// timestamp so expiry is minted from Postgres's own now() — the same clock
+// hitCapSQL/seenSQL and this statement's own cap check compare expires_at
+// against — instead of from app-clock time.Now(), which would skew the
+// actual replay window by the app/DB clock drift (see InsertContext).
 const insertSQL = `
 WITH capped AS (
     SELECT count(*) AS n FROM adcp_replay_cache
     WHERE keyid = $1 AND scope = $2 AND expires_at > now()
 )
 INSERT INTO adcp_replay_cache (keyid, scope, nonce, expires_at)
-SELECT $1, $2, $3, $4
+SELECT $1, $2, $3, now() + ($4 * interval '1 second')
 WHERE (SELECT n FROM capped) < $5
 ON CONFLICT (keyid, scope, nonce) DO NOTHING
 RETURNING 1
