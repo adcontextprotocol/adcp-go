@@ -6,6 +6,7 @@ use (
 	.
 	./adcp
 	./adcp/v3
+	./adcp/v3/signing/pgreplay
 	./bench
 	./bench/context-perf
 	./bench/identity-perf
