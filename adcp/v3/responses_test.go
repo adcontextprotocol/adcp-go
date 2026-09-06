@@ -112,6 +112,45 @@ func TestMediaBuyResponsePreservesEmptyValidActions(t *testing.T) {
 	assert.Equal(t, []any{}, buy["valid_actions"])
 }
 
+// TestMediaBuysDataResponseExtDoesNotOverwriteTypedFields proves that an Ext
+// key colliding with a canonical MediaBuyData field name (e.g. "currency",
+// "valid_actions") cannot clobber the typed field on the wire: Ext always
+// marshals as its own nested "ext" object rather than being merged into the
+// parent object, the same guarantee TestMediaBuyResponseUsesCreateSuccessFields
+// above already proves for CreateMediaBuySuccess. See adcp-go#162.
+func TestMediaBuysDataResponseExtDoesNotOverwriteTypedFields(t *testing.T) {
+	result, _, err := MediaBuysDataResponse(&GetMediaBuysResponse{
+		MediaBuys: []MediaBuyData{{
+			MediaBuyID:   "mb-1",
+			Status:       "active",
+			Currency:     "USD",
+			TotalBudget:  100,
+			Packages:     []PackageStatus{{Package: Package{PackageID: "pkg-1"}}},
+			ValidActions: []string{"cancel"},
+			Ext: map[string]any{
+				"currency":      "EUR",
+				"valid_actions": []string{"should-not-win"},
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	wire, ok := result.StructuredContent.(map[string]any)
+	require.True(t, ok)
+	buys, ok := wire["media_buys"].([]any)
+	require.True(t, ok)
+	require.Len(t, buys, 1)
+	buy, ok := buys[0].(map[string]any)
+	require.True(t, ok)
+
+	assert.Equal(t, "USD", buy["currency"], "typed Currency must win over a colliding Ext key")
+	assert.Equal(t, []any{"cancel"}, buy["valid_actions"], "typed ValidActions must win over a colliding Ext key")
+	assert.Equal(t, map[string]any{
+		"currency":      "EUR",
+		"valid_actions": []any{"should-not-win"},
+	}, buy["ext"], "Ext is preserved verbatim in its own nested object, not merged into the parent")
+}
+
 func TestMediaBuysResponseNilListEmitsEmptyArray(t *testing.T) {
 	result, _, err := MediaBuysResponse(nil, true)
 	require.NoError(t, err)
