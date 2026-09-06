@@ -2,10 +2,7 @@ package signing
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"io"
 	"math/big"
@@ -19,12 +16,28 @@ import (
 type SignerOptions struct {
 	// KeyID MUST match a `kid` in the agent's published JWKS. The signer
 	// emits this as the `keyid` sig-param; the verifier uses it to select
-	// the public key for verification.
+	// the public key for verification. Ignored when Provider is set — the
+	// provider's KeyID() is used instead.
 	KeyID string
 
 	// PrivateKey is the private key half: ed25519.PrivateKey or
 	// *ecdsa.PrivateKey on P-256. Use LoadPrivateKey to parse PEM files.
+	// Ignored when Provider is set.
 	PrivateKey any
+
+	// Provider, when set, supplies the signing operation instead of KeyID +
+	// PrivateKey — this is how a Signer signs against a KMS/HSM/Vault-backed
+	// key without ever holding the private key material in process memory.
+	// KeyID and PrivateKey are ignored when Provider is non-nil; the
+	// provider's KeyID() and Algorithm() are used instead.
+	//
+	// When Provider is nil (the default), NewSigner builds an
+	// InMemorySigningProvider from KeyID + PrivateKey internally — this is
+	// unchanged from the package's original behavior and remains the
+	// default used by tests and by every existing caller of NewSigner.
+	//
+	// See adcp/v3/signing/awskms for a worked AWS KMS SigningProvider.
+	Provider SigningProvider
 
 	// Profile selects the signing profile — tag and required JWK adcp_use.
 	// Zero value is ProfileRequestSigning. Outbound webhooks MUST use
@@ -44,19 +57,23 @@ type SignerOptions struct {
 
 // Signer attaches RFC 9421 signatures to http.Requests per the AdCP profile.
 type Signer struct {
-	opts SignerOptions
-	alg  Algorithm
+	opts     SignerOptions
+	provider SigningProvider
+	alg      Algorithm
 }
 
-// NewSigner constructs a signer. Returns an error if the private key type
-// isn't supported or required options are missing.
+// NewSigner constructs a signer. Callers supply key material one of two
+// ways:
+//
+//   - SignerOptions.KeyID + PrivateKey (unchanged from prior versions of
+//     this package): the key stays in process memory, wrapped internally in
+//     an InMemorySigningProvider.
+//   - SignerOptions.Provider: any SigningProvider, e.g. a KMS-backed one.
+//
+// Returns an error if neither path yields a usable provider, if the
+// resulting algorithm isn't in the AdCP allowlist, or if required options
+// are missing.
 func NewSigner(opts SignerOptions) (*Signer, error) {
-	if opts.KeyID == "" {
-		return nil, fmt.Errorf("signing: KeyID is required")
-	}
-	if opts.PrivateKey == nil {
-		return nil, fmt.Errorf("signing: PrivateKey is required")
-	}
 	if opts.Clock == nil {
 		opts.Clock = time.Now
 	}
@@ -72,20 +89,29 @@ func NewSigner(opts SignerOptions) (*Signer, error) {
 	if opts.Profile.Tag == "" {
 		opts.Profile = ProfileRequestSigning
 	}
-	var alg Algorithm
-	switch opts.PrivateKey.(type) {
-	case ed25519.PrivateKey:
-		alg = AlgEd25519
-	case *ecdsa.PrivateKey:
-		ec := opts.PrivateKey.(*ecdsa.PrivateKey)
-		if ec.Curve.Params().Name != "P-256" {
-			return nil, fmt.Errorf("signing: unsupported ECDSA curve %q (only P-256)", ec.Curve.Params().Name)
+
+	provider := opts.Provider
+	if provider == nil {
+		if opts.KeyID == "" {
+			return nil, fmt.Errorf("signing: KeyID is required")
 		}
-		alg = AlgES256
-	default:
-		return nil, fmt.Errorf("signing: unsupported private key type %T", opts.PrivateKey)
+		if opts.PrivateKey == nil {
+			return nil, fmt.Errorf("signing: PrivateKey is required")
+		}
+		p, err := NewInMemorySigningProvider(opts.KeyID, opts.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+		provider = p
 	}
-	return &Signer{opts: opts, alg: alg}, nil
+	if provider.KeyID() == "" {
+		return nil, fmt.Errorf("signing: SigningProvider.KeyID() must be non-empty")
+	}
+	if !provider.Algorithm().Allowed() {
+		return nil, fmt.Errorf("signing: unsupported algorithm %q", provider.Algorithm())
+	}
+
+	return &Signer{opts: opts, provider: provider, alg: provider.Algorithm()}, nil
 }
 
 // Algorithm returns the RFC 9421 alg value produced by this signer.
@@ -112,6 +138,11 @@ type SignOptions struct {
 // Content-Digest headers to r. The body, if present, is fully buffered into
 // memory so the digest can be computed and the body can be re-served to
 // subsequent RoundTrippers.
+//
+// The signing operation itself runs against r.Context() — when the
+// configured SigningProvider calls out to a KMS/HSM/Vault, that context's
+// deadline and cancellation apply to the outbound signing call the same way
+// they'd apply to any other network operation triggered by this request.
 func (s *Signer) SignRequest(r *http.Request, opts SignOptions) error {
 	if r == nil {
 		return fmt.Errorf("signing: nil request")
@@ -180,15 +211,17 @@ func (s *Signer) SignRequest(r *http.Request, opts SignOptions) error {
 		}
 	}
 
-	sigParamsValue := formatSigParams(covered, created, expires, nonce, s.opts.KeyID, s.alg, s.opts.Profile.Tag)
+	sigParamsValue := formatSigParams(covered, created, expires, nonce, s.provider.KeyID(), s.alg, s.opts.Profile.Tag)
 
 	base, err := buildSignatureBase(covered, values, sigParamsValue)
 	if err != nil {
 		return fmt.Errorf("signing: build base: %w", err)
 	}
 
-	// Sign.
-	sigBytes, err := s.sign([]byte(base))
+	// Sign. Runs against the request's context so a KMS/HSM-backed
+	// SigningProvider's outbound call inherits the caller's deadline and
+	// cancellation.
+	sigBytes, err := s.provider.Sign(r.Context(), []byte(base))
 	if err != nil {
 		return fmt.Errorf("signing: sign: %w", err)
 	}
@@ -205,23 +238,6 @@ func authorityOf(r *http.Request) string {
 		return r.Host
 	}
 	return r.URL.Host
-}
-
-func (s *Signer) sign(base []byte) ([]byte, error) {
-	switch key := s.opts.PrivateKey.(type) {
-	case ed25519.PrivateKey:
-		return ed25519.Sign(key, base), nil
-	case *ecdsa.PrivateKey:
-		h := sha256.Sum256(base)
-		rInt, sInt, err := ecdsa.Sign(rand.Reader, key, h[:])
-		if err != nil {
-			return nil, err
-		}
-		// IEEE P1363 (r||s) fixed-width encoding — NOT DER.
-		return encodeP1363(rInt, sInt, 32), nil
-	default:
-		return nil, fmt.Errorf("unsupported key type")
-	}
 }
 
 // encodeP1363 left-pads r and s to fieldSize bytes and concatenates.
