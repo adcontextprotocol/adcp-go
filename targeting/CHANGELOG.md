@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.1...targeting/v0.2.2) (2026-09-06)
+
+
+### Bug Fixes
+
+* **adcp:** adopt protocol 3.2.0-rc.1 ([#493](https://github.com/adcontextprotocol/adcp-go/issues/493)) ([e9543ab](https://github.com/adcontextprotocol/adcp-go/commit/e9543abf0d75c671874cda0f5e0d8fe4081b7639))
+
 ## [0.2.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.0...targeting/v0.2.1) (2026-09-04)
 
 
