@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/e2e
 go 1.27.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0
 	github.com/stretchr/testify v1.11.1
 )
 
