@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.1...targeting/v0.3.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **targeting:** adopt tmproto v0.3.0 (AdCP 3.2 Trusted-Match)
+
+### Features
+
+* **downstream:** adopt tmproto v0.3.0 across tmpclient, targeting, reference/context-agent, cmd/context-agent ([8eebc47](https://github.com/adcontextprotocol/adcp-go/commit/8eebc47388c967100c43457da53f87c9d79827fc))
+* **targeting:** adopt tmproto v0.3.0 (AdCP 3.2 Trusted-Match) ([5622651](https://github.com/adcontextprotocol/adcp-go/commit/562265160418e18ab070e1aa7c91f452eaf48057))
+
+
+### Bug Fixes
+
+* **adcp:** adopt protocol 3.2.0-rc.1 ([#493](https://github.com/adcontextprotocol/adcp-go/issues/493)) ([e9543ab](https://github.com/adcontextprotocol/adcp-go/commit/e9543abf0d75c671874cda0f5e0d8fe4081b7639))
+
 ## [0.2.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.0...targeting/v0.2.1) (2026-09-04)
 
 
