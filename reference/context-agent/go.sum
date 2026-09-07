@@ -1,3 +1,5 @@
+github.com/adcontextprotocol/adcp-go/targeting v0.3.0 h1:cbzJm33UNibrp6rAz4k9bOo78ZLiONy9PuRdJHU+3F8=
+github.com/adcontextprotocol/adcp-go/targeting v0.3.0/go.mod h1:uUoSAHPCh166rKEgJonpn/lrl9z4MBvjlxsFVhGdTYc=
 github.com/adcontextprotocol/adcp-go/tmproto v0.3.0 h1:mSfRKTy8Ek0Q/K1PbWcAy+xU5aXwEvWJG1jBMnmzqSg=
 github.com/adcontextprotocol/adcp-go/tmproto v0.3.0/go.mod h1:IB7hhgE9PT9bVGcJEtTo7Z5bBpYXXEoVkt8x375KaC8=
 github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 h1:zmLYfwIQBr3dPq+fDXtIgUr7LNHu56LZhaZp3uVCzFo=
