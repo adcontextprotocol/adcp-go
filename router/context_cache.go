@@ -12,7 +12,10 @@ import (
 
 // DefaultContextCacheTTL is the router's default cache lifetime for a
 // per-provider Context Match response, per spec §Caching. Providers can
-// override it via ContextMatchResponse.CacheTTL.
+// override it via ProviderContextMatchResponse.CacheTTL. AdCP 3.2 moved
+// cache_ttl from the shared router-hop response to the provider-hop
+// response only — the field is emitted by providers and consumed by
+// the router; it never appears on the merged router→publisher body.
 const DefaultContextCacheTTL = 5 * time.Minute
 
 // MaxContextCacheTTL is the schema-enforced ceiling on provider-supplied
@@ -65,9 +68,9 @@ func (noopContextCacheMetrics) IncMiss(string) {}
 //   - explicit 0     → provider is disabling caching; entry not stored
 //   - explicit > 0   → override, clamped to MaxContextCacheTTL
 //
-// The tri-state depends on tmproto.ContextMatchResponse.CacheTTL being
-// a pointer type so absent-field is distinguishable from present-zero
-// (docs/sdk-typing-policy.md).
+// The tri-state depends on tmproto.ProviderContextMatchResponse.CacheTTL
+// being a pointer type so absent-field is distinguishable from
+// present-zero (docs/sdk-typing-policy.md).
 //
 // The router is stateless and horizontally scaled, so this cache is
 // per-instance — restarts clear it and instances behind a load balancer
@@ -90,7 +93,7 @@ type ContextCache struct {
 }
 
 type contextCacheEntry struct {
-	response   *tmproto.ContextMatchResponse
+	response   *tmproto.ProviderContextMatchResponse
 	expiresAt  time.Time
 	insertedAt time.Time
 }
@@ -149,7 +152,7 @@ func NewContextCache(defaultTTL time.Duration, opts ...ContextCacheOption) *Cont
 // seller (see the ContextCache doc for the rationale). Callers should
 // pass sellerAgentURL already normalized via urlcanon.Canonicalize —
 // the cache does not canonicalize on the hot path.
-func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL, country string) (*tmproto.ContextMatchResponse, bool) {
+func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL, country string) (*tmproto.ProviderContextMatchResponse, bool) {
 	if c == nil {
 		return nil, false
 	}
@@ -185,7 +188,7 @@ func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL,
 //     MaxContextCacheTTL. Clamping happens in seconds first to avoid
 //     a Duration multiplication overflowing int64 for pathologically
 //     large values that escaped upstream schema validation.
-func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL, country string, resp *tmproto.ContextMatchResponse) {
+func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL, country string, resp *tmproto.ProviderContextMatchResponse) {
 	if c == nil || resp == nil {
 		return
 	}
@@ -304,7 +307,7 @@ func contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, count
 //   - SellerAgent, Brand   (json.RawMessage — byte slice)
 //   - CreativeManifest     (*json.RawMessage)
 //   - Price                (*OfferPrice)
-//   - Macros               (map[string]string)
+//   - CreativeData         (map[string]string)
 //
 // The schema doc on tmproto.Offer.SellerAgent explicitly says the
 // router MAY stamp that field from a cached package→seller map —
@@ -317,7 +320,7 @@ func contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, count
 // them today; a general deep-copy of arbitrary any values would need
 // a JSON round-trip (types aren't statically knowable). The
 // ContextCache docstring calls this out.
-func cloneContextResponse(src *tmproto.ContextMatchResponse) *tmproto.ContextMatchResponse {
+func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.ProviderContextMatchResponse {
 	if src == nil {
 		return nil
 	}
@@ -361,9 +364,9 @@ func cloneOffer(src tmproto.Offer) tmproto.Offer {
 		cm := append(json.RawMessage(nil), *src.CreativeManifest...)
 		dst.CreativeManifest = &cm
 	}
-	if len(src.Macros) > 0 {
-		dst.Macros = make(map[string]string, len(src.Macros))
-		maps.Copy(dst.Macros, src.Macros)
+	if len(src.CreativeData) > 0 {
+		dst.CreativeData = make(map[string]string, len(src.CreativeData))
+		maps.Copy(dst.CreativeData, src.CreativeData)
 	}
 	return dst
 }

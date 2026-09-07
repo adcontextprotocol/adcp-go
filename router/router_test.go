@@ -108,14 +108,14 @@ func TestProviderFiltering_PropertyType(t *testing.T) {
 }
 
 func TestMergeContextResponses(t *testing.T) {
-	r1 := &tmproto.ContextMatchResponse{
+	r1 := &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-1"}},
 		Signals: map[string]any{
 			"segments": []string{"cooking"},
 			"adcp_pkg": "pkg-1",
 		},
 	}
-	r2 := &tmproto.ContextMatchResponse{
+	r2 := &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-2"}, {PackageID: "pkg-3"}},
 		Signals: map[string]any{
 			"segments": []string{"sustainability"},
@@ -365,10 +365,10 @@ func TestMergeIdentityResponses_MixedEmission(t *testing.T) {
 // router-architecture spec calls out: same package_id from two providers MUST
 // keep the first response and SHOULD log a warning naming both providers.
 func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
-	r1 := &tmproto.ContextMatchResponse{
+	r1 := &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "first"}},
 	}
-	r2 := &tmproto.ContextMatchResponse{
+	r2 := &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-dup", Summary: "second"}, {PackageID: "pkg-2", Summary: "unique"}},
 	}
 
@@ -395,7 +395,7 @@ func TestMergeContextResponses_DuplicatePackageID(t *testing.T) {
 // its own offers list. The warning names the provider once rather than
 // emitting the misleading "alpha duplicated alpha" cross-provider message.
 func TestMergeContextResponses_SingleProviderRepeat(t *testing.T) {
-	r1 := &tmproto.ContextMatchResponse{
+	r1 := &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{
 			{PackageID: "pkg-1", Summary: "first"},
 			{PackageID: "pkg-1", Summary: "second"},
@@ -504,7 +504,7 @@ func TestFanOut_ObservesDurationOnAllTerminalOutcomes(t *testing.T) {
 	// A slow responder that exceeds the per-provider deadline.
 	timeoutSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		time.Sleep(50 * time.Millisecond)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-dur"})
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{RequestID: "ctx-dur"})
 	}))
 	defer timeoutSrv.Close()
 
@@ -555,7 +555,7 @@ func TestFanOut_ObservesDurationOnAllTerminalOutcomes(t *testing.T) {
 // before callProvider runs.
 func TestFanOut_ParentCancelRecordsNothing(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-cancel"})
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{RequestID: "ctx-cancel"})
 	}))
 	defer provider.Close()
 
@@ -622,7 +622,7 @@ func TestMergeIdentityResponses_SingleProviderRepeat(t *testing.T) {
 func TestRouterContextMatch_EndToEnd(t *testing.T) {
 	// Mock provider that activates pkg-1
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			RequestID: "ctx-e2e",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-1"}},
 			Signals: map[string]any{
@@ -763,7 +763,7 @@ func TestRouterContextMatch_StripsArtifactAccess(t *testing.T) {
 	var receivedBody []byte
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedBody, _ = io.ReadAll(r.Body)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{RequestID: "ctx-strip"})
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{RequestID: "ctx-strip"})
 	}))
 	defer provider.Close()
 
@@ -1043,7 +1043,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 	// Slow provider that takes too long
 	slowProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			RequestID: "ctx-slow",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-slow"}},
 		})
@@ -1052,7 +1052,7 @@ func TestRouterTimeout_ProviderExcluded(t *testing.T) {
 
 	// Fast provider
 	fastProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			RequestID: "ctx-fast",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-fast"}},
 		})
@@ -1112,7 +1112,7 @@ func TestRouterContextMatch_LatencyBudgetCapsFanOut(t *testing.T) {
 			// budget expires and the parent ctx propagates.
 			return
 		}
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			RequestID: "ctx-slow",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-slow"}},
 		})
@@ -1121,7 +1121,7 @@ func TestRouterContextMatch_LatencyBudgetCapsFanOut(t *testing.T) {
 
 	// Fast provider — responds immediately.
 	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			RequestID: "ctx-fast",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-fast"}},
 		})
@@ -1178,7 +1178,7 @@ func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
 	var hits atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-cached"}},
@@ -1241,7 +1241,7 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 	var hits atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-provider-ttl"}},
@@ -1303,7 +1303,7 @@ func TestRouterContextMatch_CacheIsolatesAcrossSellers(t *testing.T) {
 		if strings.Contains(incoming.SellerAgentURL, "seller-b") {
 			pkg = "pkg-for-b"
 		}
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: pkg}},
@@ -1370,7 +1370,7 @@ func TestRouterContextMatch_CacheIsolatesAcrossCountries(t *testing.T) {
 		var incoming tmproto.ContextMatchRequest
 		_ = json.Unmarshal(body, &incoming)
 		country, _ := incoming.Geo["country"].(string)
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-" + country}},
@@ -1422,7 +1422,7 @@ func TestRouterContextMatch_ProviderDisablesCaching(t *testing.T) {
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		zero := 0
-		_ = json.NewEncoder(w).Encode(tmproto.ContextMatchResponse{
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
 			Type:      tmproto.TypeContextMatchResponse,
 			RequestID: "server-side",
 			Offers:    []tmproto.Offer{{PackageID: "pkg-uncached"}},
