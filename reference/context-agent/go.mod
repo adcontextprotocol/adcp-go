@@ -24,9 +24,3 @@ require (
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
-
-// Temporary local pin: targeting v0.3.0 is not tagged yet (release-please
-// cuts the tag after the tmproto v0.3.0 downstream batch merges). Remove
-// this replace and let the go.mod v0.3.0 pin resolve normally once the
-// tag lands.
-replace github.com/adcontextprotocol/adcp-go/targeting => ../../targeting
