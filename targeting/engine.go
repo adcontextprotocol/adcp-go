@@ -474,11 +474,11 @@ func buildOffersFromContextConfig(pkgID string, cfg *PackageContextConfig) []tmp
 		offers := make([]tmproto.Offer, len(cfg.Offers))
 		for i, o := range cfg.Offers {
 			offers[i] = tmproto.Offer{
-				PackageID: pkgID,
-				Brand:     o.Brand,
-				Price:     offerPricePtr(o.Price),
-				Summary:   o.Summary,
-				Macros:    o.Macros,
+				PackageID:    pkgID,
+				Brand:        o.Brand,
+				Price:        offerPricePtr(o.Price),
+				Summary:      o.Summary,
+				CreativeData: o.CreativeData,
 			}
 		}
 		return offers
@@ -489,7 +489,7 @@ func buildOffersFromContextConfig(pkgID string, cfg *PackageContextConfig) []tmp
 		Price:            offerPricePtr(cfg.Price),
 		Summary:          cfg.Summary,
 		CreativeManifest: rawMessagePtr(cfg.CreativeManifest),
-		Macros:           cfg.Macros,
+		CreativeData:     cfg.CreativeData,
 	}}
 }
 

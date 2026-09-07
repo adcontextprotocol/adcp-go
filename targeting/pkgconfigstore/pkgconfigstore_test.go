@@ -54,9 +54,9 @@ func TestCache_HitClonesConfigToIsolateCallers(t *testing.T) {
 		PropertyRIDs: []string{"rid-1"},
 		EmitSegments: []string{"food"},
 		Offers: []targeting.OfferConfigJSON{
-			{DealID: "deal-A", Macros: map[string]string{"k": "v"}},
+			{DealID: "deal-A", CreativeData: map[string]string{"k": "v"}},
 		},
-		Macros: map[string]string{"global": "g1"},
+		CreativeData: map[string]string{"global": "g1"},
 	}))
 	r := pkgconfigstore.WithCache(pkgconfigstore.NewReader(store), pkgconfigstore.CacheConfig{Size: 8, TTL: time.Minute})
 
@@ -68,8 +68,8 @@ func TestCache_HitClonesConfigToIsolateCallers(t *testing.T) {
 	first.PropertyRIDs[0] = "MUTATED"
 	first.EmitSegments[0] = "MUTATED"
 	first.Offers[0].DealID = "MUTATED"
-	first.Offers[0].Macros["k"] = "MUTATED"
-	first.Macros["global"] = "MUTATED"
+	first.Offers[0].CreativeData["k"] = "MUTATED"
+	first.CreativeData["global"] = "MUTATED"
 
 	second, ok, err := r.Get(ctx, "pkg-shared")
 	require.NoError(t, err)
@@ -78,8 +78,8 @@ func TestCache_HitClonesConfigToIsolateCallers(t *testing.T) {
 	assert.Equal(t, "rid-1", second.PropertyRIDs[0], "cache hit must not surface caller mutation")
 	assert.Equal(t, "food", second.EmitSegments[0])
 	assert.Equal(t, "deal-A", second.Offers[0].DealID)
-	assert.Equal(t, "v", second.Offers[0].Macros["k"])
-	assert.Equal(t, "g1", second.Macros["global"])
+	assert.Equal(t, "v", second.Offers[0].CreativeData["k"])
+	assert.Equal(t, "g1", second.CreativeData["global"])
 }
 
 func TestCache_NegativeCachesMisses(t *testing.T) {

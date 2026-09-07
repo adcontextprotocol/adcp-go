@@ -3,8 +3,8 @@ module github.com/adcontextprotocol/adcp-go/reference/context-agent
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -24,3 +24,9 @@ require (
 )
 
 replace github.com/adcontextprotocol/adcp-go => ../../
+
+// Temporary local pin: targeting v0.3.0 is not tagged yet (release-please
+// cuts the tag after the tmproto v0.3.0 downstream batch merges). Remove
+// this replace and let the go.mod v0.3.0 pin resolve normally once the
+// tag lands.
+replace github.com/adcontextprotocol/adcp-go/targeting => ../../targeting

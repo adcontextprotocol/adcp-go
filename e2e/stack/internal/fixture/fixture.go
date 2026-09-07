@@ -112,7 +112,7 @@ const (
 // SellerAgentURL scopes every package in the stack. The context-agent
 // resolves active media buys by seller, and the identity-agent keys its
 // config snapshot on (seller_agent_url, package_id).
-const SellerAgentURL = "https://seller.e2e.local/agent"
+const SellerAgentURL = "https://seller.e2e.test/agent"
 
 // --- Properties --------------------------------------------------------------
 
@@ -134,21 +134,21 @@ var Properties = []Property{
 		PropertyID:   "e2e-news",
 		PropertyRID:  "019700ff-0e2e-7000-8000-000000000001",
 		PropertyType: tmproto.PropertyTypeWebsite,
-		Domain:       "news.e2e.local",
+		Domain:       "news.e2e.test",
 		Placements:   NewsPlacements,
 	},
 	{
 		PropertyID:   "e2e-video",
 		PropertyRID:  "019700ff-0e2e-7000-8000-000000000002",
 		PropertyType: tmproto.PropertyTypeCTVApp,
-		Domain:       "video.e2e.local",
+		Domain:       "video.e2e.test",
 		Placements:   []string{PlacementPreroll},
 	},
 	{
 		PropertyID:   "e2e-shuttered",
 		PropertyRID:  "019700ff-0e2e-7000-8000-000000000003",
 		PropertyType: tmproto.PropertyTypeWebsite,
-		Domain:       "shuttered.e2e.local",
+		Domain:       "shuttered.e2e.test",
 		Placements:   []string{PlacementMatchedArtifact},
 	},
 }
@@ -298,9 +298,9 @@ const (
 const (
 	// ArtifactMatched carries TopicNews and a seeded context signal, so it
 	// activates both the topic-gated and signal-gated packages.
-	ArtifactMatched = "https://news.e2e.local/article-market-open"
+	ArtifactMatched = "https://news.e2e.test/article-market-open"
 	// ArtifactUnmatched carries neither, so it activates neither.
-	ArtifactUnmatched = "https://news.e2e.local/article-quarterly-results"
+	ArtifactUnmatched = "https://news.e2e.test/article-quarterly-results"
 )
 
 // SignalValue returns the value the signal keyspace is keyed on for an

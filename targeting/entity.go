@@ -45,7 +45,13 @@ type PackageContextConfig struct {
 	Summary          string             `json:"summary,omitempty"`
 	ManifestType     string             `json:"manifest_type,omitempty"`
 	CreativeManifest json.RawMessage    `json:"creative_manifest,omitempty"`
-	Macros           map[string]string  `json:"macros,omitempty"`
+	// CreativeData carries package-local free-form rendering enhancements
+	// (sponsor labels, promo codes). Not ad-server macro substitution and
+	// not attribution tracking — per AdCP 3.2, tracker URLs belong in
+	// CreativeManifest assets and per-user exposure tracking uses TMPX.
+	// Operator configs previously used the "macros" JSON key for this
+	// field; the wire tag is now "creative_data".
+	CreativeData     map[string]string  `json:"creative_data,omitempty"`
 
 	// propertyRIDBitmap is a materialized O(1) view of PropertyRIDs so
 	// membership checks on the hot path avoid rebuilding a map on every
@@ -115,5 +121,47 @@ type OfferConfigJSON struct {
 	Price        tmproto.OfferPrice `json:"price"`
 	Summary      string             `json:"summary,omitempty"`
 	ManifestType string             `json:"manifest_type,omitempty"`
-	Macros       map[string]string  `json:"macros,omitempty"`
+	// See PackageContextConfig.CreativeData for semantics; same field
+	// under the AdCP 3.2 rename from macros.
+	CreativeData map[string]string  `json:"creative_data,omitempty"`
+}
+
+// UnmarshalJSON accepts both the AdCP 3.2 canonical "creative_data"
+// key and the pre-3.2 legacy "macros" key so persisted operator
+// configs written under the old key keep loading after the rename.
+// If both keys are present, "creative_data" wins. Rewriting a loaded
+// config back to storage canonicalizes it to "creative_data".
+func (o *OfferConfigJSON) UnmarshalJSON(data []byte) error {
+	type raw OfferConfigJSON
+	aux := &struct {
+		LegacyMacros map[string]string `json:"macros,omitempty"`
+		*raw
+	}{raw: (*raw)(o)}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if o.CreativeData == nil && aux.LegacyMacros != nil {
+		o.CreativeData = aux.LegacyMacros
+	}
+	return nil
+}
+
+// UnmarshalJSON accepts both the AdCP 3.2 canonical "creative_data"
+// key and the pre-3.2 legacy "macros" key so persisted operator
+// configs written under the old key keep loading after the rename.
+// If both keys are present, "creative_data" wins. Rewriting a loaded
+// config back to storage canonicalizes it to "creative_data".
+func (c *PackageContextConfig) UnmarshalJSON(data []byte) error {
+	type raw PackageContextConfig
+	aux := &struct {
+		LegacyMacros map[string]string `json:"macros,omitempty"`
+		*raw
+	}{raw: (*raw)(c)}
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+	if c.CreativeData == nil && aux.LegacyMacros != nil {
+		c.CreativeData = aux.LegacyMacros
+	}
+	return nil
 }
