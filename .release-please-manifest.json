@@ -4,7 +4,7 @@
   "registry/redisstore": "0.0.0",
   "registry/glidestore": "0.0.0",
   "tmproto": "0.3.0",
-  "tmpclient": "0.1.0",
+  "tmpclient": "0.2.0",
   "targeting": "0.3.0",
   "uid2client": "0.2.0",
   "adcp/v3": "3.2.1"
