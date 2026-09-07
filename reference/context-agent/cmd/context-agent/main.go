@@ -150,7 +150,7 @@ func main() {
 			return
 		}
 
-		resp := &tmproto.ContextMatchResponse{
+		resp := &tmproto.ProviderContextMatchResponse{
 			RequestID: result.RequestID,
 			Offers:    result.Offers,
 			Signals:   result.Signals,
