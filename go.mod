@@ -3,8 +3,8 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.57.0

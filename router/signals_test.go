@@ -16,14 +16,27 @@ import (
 // which the concatenation rules preserve.
 func mergedSignalsFor(t *testing.T, logger *slog.Logger, providerSignals ...map[string]any) map[string]any {
 	t.Helper()
+	return mergeContextResponses("ctx-signals", buildContextResults(providerSignals), logger).Signals
+}
+
+// mergedSignalsByProviderFor runs the same merge but returns the
+// router-authored signals_by_provider bucket. AdCP 3.2 moved
+// provider-local targeting_kvs off the flattened signals map into this
+// per-provider structure, keyed by the publisher-assigned provider_id.
+func mergedSignalsByProviderFor(t *testing.T, logger *slog.Logger, providerSignals ...map[string]any) map[string]map[string]any {
+	t.Helper()
+	return mergeContextResponses("ctx-signals", buildContextResults(providerSignals), logger).SignalsByProvider
+}
+
+func buildContextResults(providerSignals []map[string]any) []contextResult {
 	results := make([]contextResult, 0, len(providerSignals))
 	for i, sig := range providerSignals {
 		results = append(results, contextResult{
 			providerID: []string{"p1", "p2", "p3"}[i],
-			response:   &tmproto.ContextMatchResponse{Signals: sig},
+			response:   &tmproto.ProviderContextMatchResponse{Signals: sig},
 		})
 	}
-	return mergeContextResponses("ctx-signals", results, logger).Signals
+	return results
 }
 
 // decodeSignals round-trips the merged object through JSON, which is what a
@@ -68,15 +81,14 @@ func TestMergeSignals_SegmentsNotDeduplicated(t *testing.T) {
 	assert.Equal(t, []any{"cooking", "shared", "shared", "sustainability"}, wire["segments"])
 }
 
-// TestMergeSignals_TargetingKVsConcatenatedVerbatim pins the other half of step
-// 4. Two providers returning the same key both survive — targeting_kvs is an
-// array, so nothing has to be renamed to avoid losing one. Keys are passed
-// through exactly as sent: the spec's "namespaced to prevent collisions" pins no
-// scheme, and a router-invented prefix would be unportable across
-// implementations and would put the router in the publisher's ad-server
-// namespace, which the spec's TMPX design explicitly forbids.
-func TestMergeSignals_TargetingKVsConcatenatedVerbatim(t *testing.T) {
-	merged := mergedSignalsFor(t, nil,
+// TestMergeSignals_TargetingKVsAttributedByProvider pins the AdCP 3.2
+// change: provider-local targeting_kvs are attributed to the emitting
+// provider_id and returned under signals_by_provider on the router→publisher
+// response. Each provider's list is preserved unchanged (including
+// same-key entries across providers) so publisher deployment configuration
+// can resolve every (provider_id, key) tuple through targeting_kv_mapping.
+func TestMergeSignals_TargetingKVsAttributedByProvider(t *testing.T) {
+	byProvider := mergedSignalsByProviderFor(t, nil,
 		map[string]any{"targeting_kvs": []any{
 			map[string]any{"key": "sport", "value": "nfl"},
 		}},
@@ -86,21 +98,42 @@ func TestMergeSignals_TargetingKVsConcatenatedVerbatim(t *testing.T) {
 		}},
 	)
 
-	wire := decodeSignals(t, merged)
-	assert.Equal(t, []any{
-		map[string]any{"key": "sport", "value": "nfl"},
-		map[string]any{"key": "sport", "value": "nba"},
-		map[string]any{"key": "genre", "value": "news"},
-	}, wire["targeting_kvs"], "every provider's key-values survive, unrenamed")
+	assert.Equal(t, map[string]map[string]any{
+		"p1": {"targeting_kvs": []any{
+			map[string]any{"key": "sport", "value": "nfl"},
+		}},
+		"p2": {"targeting_kvs": []any{
+			map[string]any{"key": "sport", "value": "nba"},
+			map[string]any{"key": "genre", "value": "news"},
+		}},
+	}, byProvider, "each provider's key-values survive in its own attributed bucket")
 }
 
-// TestMergeSignals_MalformedEntryForwardedNotDropped pins that a schema-invalid
-// entry is the provider's defect to answer for, not something the router
-// silently discards. Dropping it — or worse, dropping that provider's whole
-// list because one entry was bad — would mean the router deciding to withhold
-// targeting the publisher was sent, which the spec nowhere asks for.
-func TestMergeSignals_MalformedEntryForwardedNotDropped(t *testing.T) {
+// TestMergeSignals_TargetingKVsNeverFlattenedOnRouterHop enforces the
+// AdCP 3.2 router-hop schema rule: signals.targeting_kvs is a
+// provider-hop-only field and MUST NOT appear on the merged
+// router→publisher response. The value moved to signals_by_provider;
+// leaking it back into the flattened signals object would erase
+// provider attribution and let the publisher accidentally treat
+// provider-local keys as its own ad-server namespace.
+func TestMergeSignals_TargetingKVsNeverFlattenedOnRouterHop(t *testing.T) {
 	merged := mergedSignalsFor(t, nil,
+		map[string]any{"targeting_kvs": []any{
+			map[string]any{"key": "sport", "value": "nfl"},
+		}},
+	)
+	if merged != nil {
+		assert.NotContains(t, merged, "targeting_kvs",
+			"router-hop signals MUST NOT carry flattened targeting_kvs")
+	}
+}
+
+// TestMergeSignals_TargetingKVsMalformedEntryPreserved pins that a
+// schema-invalid entry is the provider's defect to answer for, not
+// something the router silently discards. The entry is preserved in
+// the emitting provider's attributed bucket exactly as sent.
+func TestMergeSignals_TargetingKVsMalformedEntryPreserved(t *testing.T) {
+	byProvider := mergedSignalsByProviderFor(t, nil,
 		map[string]any{"targeting_kvs": []any{
 			map[string]any{"key": "sport", "value": "nfl"},
 			map[string]any{"key": "broken"}, // missing `value`
@@ -110,12 +143,13 @@ func TestMergeSignals_MalformedEntryForwardedNotDropped(t *testing.T) {
 		}},
 	)
 
-	wire := decodeSignals(t, merged)
 	assert.Equal(t, []any{
 		map[string]any{"key": "sport", "value": "nfl"},
 		map[string]any{"key": "broken"},
+	}, byProvider["p1"]["targeting_kvs"], "one bad entry must not cost the provider its valid ones")
+	assert.Equal(t, []any{
 		map[string]any{"key": "genre", "value": "news"},
-	}, wire["targeting_kvs"], "one bad entry must not cost the provider its valid ones")
+	}, byProvider["p2"]["targeting_kvs"])
 }
 
 // TestMergeSignals_NonArrayCannotDisplaceOthers covers the one shape the merge
