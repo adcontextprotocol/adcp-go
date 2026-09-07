@@ -12,19 +12,19 @@ import (
 
 func testDirs(t *testing.T) (schemaDir, enumDir, mergeDir, overlayPath string) {
 	t.Helper()
-	schemaDir = filepath.Join("..", "..", "adcp", "schemas", "tmp")
+	schemaDir = filepath.Join("..", "..", "adcp", "v3", "schemas", "trusted-match")
 	if _, err := os.Stat(schemaDir); err != nil {
 		t.Skipf("schema dir not found: %v", err)
 	}
 	schemaDir, _ = filepath.Abs(schemaDir)
 
-	enumDir = filepath.Join("..", "..", "adcp", "schemas", "enums")
+	enumDir = filepath.Join("..", "..", "adcp", "v3", "schemas", "enums")
 	if _, err := os.Stat(enumDir); err != nil {
 		t.Skipf("enum dir not found: %v", err)
 	}
 	enumDir, _ = filepath.Abs(enumDir)
 
-	mergeDir = filepath.Join("..", "..", "adcp", "schemas", "core")
+	mergeDir = filepath.Join("..", "..", "adcp", "v3", "schemas", "core")
 	if _, err := os.Stat(mergeDir); err != nil {
 		t.Skipf("merge dir not found: %v", err)
 	}
@@ -48,15 +48,20 @@ func TestLoadSchemas(t *testing.T) {
 
 	// Check all expected struct names exist (post-overlay rename).
 	want := map[string]bool{
-		"ContextMatchRequest":   true,
-		"ContextMatchResponse":  true,
-		"IdentityMatchRequest":  true,
-		"IdentityMatchResponse": true,
-		"ErrorResponse":         true,
-		"ProviderRegistration":  true,
-		"Offer":                 true,
-		"OfferPrice":            true,
-		"AvailablePackage":      true,
+		"ContextMatchRequest":           true,
+		"ContextMatchResponse":          true,
+		"ProviderContextMatchResponse":  true,
+		"IdentityMatchRequest":          true,
+		"IdentityMatchResponse":         true,
+		"ProviderIdentityMatchResponse": true,
+		"ErrorResponse":                 true,
+		"ProviderRegistration":          true,
+		"Offer":                         true,
+		"OfferPrice":                    true,
+		"AvailablePackage":              true,
+		"TmpxChunk":                     true,
+		"PublisherTargetingKvMapping":   true,
+		"PublisherTmpxMacroMapping":     true,
 	}
 	got := make(map[string]bool)
 	for _, s := range ir.Structs {
@@ -198,13 +203,13 @@ func TestTitleToPascalCase(t *testing.T) {
 }
 
 func TestLoadWithoutOverlay(t *testing.T) {
-	schemaDir := filepath.Join("..", "..", "adcp", "schemas", "tmp")
+	schemaDir := filepath.Join("..", "..", "adcp", "v3", "schemas", "trusted-match")
 	if _, err := os.Stat(schemaDir); err != nil {
 		t.Skipf("schema dir not found: %v", err)
 	}
 	schemaDir, _ = filepath.Abs(schemaDir)
 
-	enumDir := filepath.Join("..", "..", "adcp", "schemas", "enums")
+	enumDir := filepath.Join("..", "..", "adcp", "v3", "schemas", "enums")
 	if _, err := os.Stat(enumDir); err != nil {
 		t.Skipf("enum dir not found: %v", err)
 	}

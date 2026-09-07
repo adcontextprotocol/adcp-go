@@ -773,14 +773,17 @@ func resolveType(s *jsonschema.Schema, ctx *loadContext) string {
 }
 
 // schemaVersionSegmentRe matches /schemas/<version>/ where version is either
-// "latest" or a semver like "3.0.0" / "3.0.0-rc.1". Used to normalize $ref
-// paths so a version-agnostic overlay entry works across pinned and snapshot
-// bundles.
-var schemaVersionSegmentRe = regexp.MustCompile(`^/schemas/(?:latest|\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?)/`)
+// "latest" or a semver like "3.0.0" / "3.0.0-rc.1", optionally preceded by an
+// absolute-URL host prefix (e.g. https://adcontextprotocol.org). Used to
+// normalize $ref paths so a version-agnostic overlay entry works across
+// pinned and snapshot bundles regardless of whether refs are relative or
+// absolute URLs.
+var schemaVersionSegmentRe = regexp.MustCompile(`^(?:https?://[^/]+)?/schemas/(?:latest|\d+\.\d+\.\d+(?:-[A-Za-z0-9.]+)?)/`)
 
 // canonicalizeRef normalizes a schema $ref path to the /schemas/latest/ form
 // so overlay lookups work regardless of which version the bundled schemas
-// advertise in their $id.
+// advertise in their $id and regardless of whether the ref is a relative
+// path or an absolute URL.
 func canonicalizeRef(ref string) string {
 	return schemaVersionSegmentRe.ReplaceAllString(ref, "/schemas/latest/")
 }
