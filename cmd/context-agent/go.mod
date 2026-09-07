@@ -5,12 +5,12 @@ go 1.27.0
 require (
 	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/adcontextprotocol/adcp-go/registry/redisstore v0.0.0
-	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
 	github.com/redis/go-redis/v9 v9.22.0
 )
 
 require (
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0 // indirect
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0 // indirect
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -43,3 +43,9 @@ require (
 replace github.com/adcontextprotocol/adcp-go/registry => ../../registry
 
 replace github.com/adcontextprotocol/adcp-go/registry/redisstore => ../../registry/redisstore
+
+// Temporary local pin: targeting v0.3.0 is not tagged yet (release-please
+// cuts the tag after the tmproto v0.3.0 downstream batch merges). Remove
+// this replace and let the go.mod v0.3.0 pin resolve normally once the
+// tag lands.
+replace github.com/adcontextprotocol/adcp-go/targeting => ../../targeting
