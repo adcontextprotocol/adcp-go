@@ -125,14 +125,15 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := tmproto.ContextMatchResponse{
+	resp := tmproto.ProviderContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
 		RequestID: result.RequestID,
 		Offers:    result.Offers,
 		Signals:   result.Signals,
 	}
-	// ContextMatchResponse.cache_ttl has a schema-enforced maximum of
-	// 86400 seconds (see adcp/schemas/trusted-match/context-match-response.json)
+	// ProviderContextMatchResponse.cache_ttl has a schema-enforced
+	// maximum of 86400 seconds (see
+	// adcp/v3/schemas/trusted-match/provider-context-match-response.json)
 	// and the router applies a 5-minute default when the field is
 	// omitted. Don't borrow IdentityMatchResponse's 300s
 	// serve_window_sec cap — that's a buyer-asserted serve throttle,

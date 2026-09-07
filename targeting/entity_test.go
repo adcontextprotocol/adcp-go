@@ -1,9 +1,53 @@
 package targeting
 
 import (
+	"encoding/json"
 	"strconv"
 	"testing"
 )
+
+// TestPackageContextConfig_LegacyMacrosKeyDecodes proves that operator
+// configs persisted under the pre-3.2 "macros" wire key still load
+// into the renamed CreativeData field. Regression guard for the AdCP
+// 3.2 tag rename — dropping this alias silently strips CreativeData
+// from every legacy config in storage until the operator re-Puts it.
+func TestPackageContextConfig_LegacyMacrosKeyDecodes(t *testing.T) {
+	// Legacy shape: only "macros" present. New field name populated.
+	var cfg PackageContextConfig
+	if err := json.Unmarshal([]byte(`{"package_id":"pkg-1","macros":{"promo":"XYZ"}}`), &cfg); err != nil {
+		t.Fatalf("unmarshal legacy config: %v", err)
+	}
+	if got := cfg.CreativeData["promo"]; got != "XYZ" {
+		t.Fatalf("legacy macros key must load into CreativeData: got %q, want %q", got, "XYZ")
+	}
+
+	// Canonical shape: only "creative_data" present. Same result.
+	var cfg2 PackageContextConfig
+	if err := json.Unmarshal([]byte(`{"package_id":"pkg-1","creative_data":{"promo":"XYZ"}}`), &cfg2); err != nil {
+		t.Fatalf("unmarshal canonical config: %v", err)
+	}
+	if got := cfg2.CreativeData["promo"]; got != "XYZ" {
+		t.Fatalf("canonical creative_data key must load into CreativeData: got %q, want %q", got, "XYZ")
+	}
+
+	// Both keys present: canonical wins. Documented tiebreaker.
+	var cfg3 PackageContextConfig
+	if err := json.Unmarshal([]byte(`{"package_id":"pkg-1","macros":{"promo":"OLD"},"creative_data":{"promo":"NEW"}}`), &cfg3); err != nil {
+		t.Fatalf("unmarshal mixed config: %v", err)
+	}
+	if got := cfg3.CreativeData["promo"]; got != "NEW" {
+		t.Fatalf("creative_data must win over macros: got %q, want %q", got, "NEW")
+	}
+
+	// Nested OfferConfigJSON gets the same treatment.
+	var cfg4 PackageContextConfig
+	if err := json.Unmarshal([]byte(`{"package_id":"pkg-1","offers":[{"deal_id":"d1","macros":{"k":"v"}}]}`), &cfg4); err != nil {
+		t.Fatalf("unmarshal legacy offer: %v", err)
+	}
+	if len(cfg4.Offers) != 1 || cfg4.Offers[0].CreativeData["k"] != "v" {
+		t.Fatalf("legacy offer macros key must load into Offer.CreativeData: got %+v", cfg4.Offers)
+	}
+}
 
 func TestPackageContextConfig_ContainsPropertyRID_EmptyIsUnrestricted(t *testing.T) {
 	// An empty PropertyRIDs list is "no gate" — every rid passes,
