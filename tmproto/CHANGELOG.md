@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.2.0...tmproto/v0.3.0) (2026-09-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tmproto:** source schemas from adcp/v3 (3.2.0-rc.1)
+
+### Features
+
+* **tmproto:** source schemas from adcp/v3 (3.2.0-rc.1) ([5a48a97](https://github.com/adcontextprotocol/adcp-go/commit/5a48a97e612e2b963422e419d8140f45b68b5579))
+
 ## [0.2.0](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.1.2...tmproto/v0.2.0) (2026-09-04)
 
 
