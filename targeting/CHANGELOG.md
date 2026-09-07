@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.0...targeting/v0.3.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **targeting:** pin uid2client to v0.2.0 (v0.1.0 tag never existed) ([605d299](https://github.com/adcontextprotocol/adcp-go/commit/605d2991a7c506ddbd55115aa6ff22953e49eaf6))
+* **targeting:** pin uid2client to v0.2.0 (v0.1.0 tag never existed) ([ad415a7](https://github.com/adcontextprotocol/adcp-go/commit/ad415a7d93909a12436c77b52bf642c891c95f8d))
+
 ## [0.3.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.2.1...targeting/v0.3.0) (2026-09-07)
 
 
