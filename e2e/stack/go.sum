@@ -6,8 +6,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/adcontextprotocol/adcp-go/targeting v0.3.0 h1:cbzJm33UNibrp6rAz4k9bOo78ZLiONy9PuRdJHU+3F8=
 github.com/adcontextprotocol/adcp-go/targeting v0.3.0/go.mod h1:uUoSAHPCh166rKEgJonpn/lrl9z4MBvjlxsFVhGdTYc=
-github.com/adcontextprotocol/adcp-go/tmproto v0.3.0 h1:mSfRKTy8Ek0Q/K1PbWcAy+xU5aXwEvWJG1jBMnmzqSg=
-github.com/adcontextprotocol/adcp-go/tmproto v0.3.0/go.mod h1:IB7hhgE9PT9bVGcJEtTo7Z5bBpYXXEoVkt8x375KaC8=
+github.com/adcontextprotocol/adcp-go/tmproto v0.3.2 h1:OBtWZ/tpaCiM/lp8AR1PMi6VXxiJtxDwVPU9mZ3diTc=
+github.com/adcontextprotocol/adcp-go/tmproto v0.3.2/go.mod h1:IB7hhgE9PT9bVGcJEtTo7Z5bBpYXXEoVkt8x375KaC8=
 github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 h1:zmLYfwIQBr3dPq+fDXtIgUr7LNHu56LZhaZp3uVCzFo=
 github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0/go.mod h1:cWWYEAyTy6EAB/4nses21g3UNqzcxYEFRG8Hm7l1xiM=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
