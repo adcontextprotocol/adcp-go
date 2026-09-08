@@ -113,15 +113,36 @@ const MaxIDLength = 256
 // ESC (0x1B) is the introducer of ANSI escape sequences such as
 // "\x1B[2J" (clear screen), so catching ESC blocks the relevant
 // terminal-injection vector even though the strict C1 CSI byte
-// (0x9B) is not in the C0 range. Used on every wire-supplied
-// identifier the agent persists, echoes in logs, or routes through
-// SafeRequestIDForEcho.
+// (0x9B) is not in the C0 range. Applied to identifiers that this
+// agent persists as its own store key (property_rid).
 func validateSafeID(field, value string) error {
 	if len(value) > MaxIDLength {
 		return fmt.Errorf("%s exceeds maximum length of %d", field, MaxIDLength)
 	}
 	if strings.ContainsAny(value, ":/\\") {
 		return fmt.Errorf("%s contains invalid characters", field)
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7F {
+			return fmt.Errorf("%s contains invalid characters", field)
+		}
+	}
+	return nil
+}
+
+// validateEchoID enforces the wire-safety subset of validateSafeID: length
+// and C0/DEL control-byte rejection. The `:`/`/`/`\` charset check is
+// omitted because the TMP schemas place no charset constraint on read-path
+// identifiers (request_id, placement_id, package_id, property_id), and
+// callers routinely use them: `urn:uuid:…` request_ids, `homepage/atf`
+// placement slugs, tenant-prefixed package_ids like `acme:q1`. This
+// validator is safe when the value flows into structured logs, echoes on
+// error responses, or reaches store keys whose derivation escapes or
+// hashes the input before use — none of those paths interpret `:` or `/`
+// as separators.
+func validateEchoID(field, value string) error {
+	if len(value) > MaxIDLength {
+		return fmt.Errorf("%s exceeds maximum length of %d", field, MaxIDLength)
 	}
 	for _, r := range value {
 		if r < 0x20 || r == 0x7F {
@@ -162,7 +183,7 @@ func SafeRequestIDForEcho(requestID string) string {
 	if requestID == "" {
 		return ""
 	}
-	if err := validateSafeID("request_id", requestID); err != nil {
+	if err := validateEchoID("request_id", requestID); err != nil {
 		return ""
 	}
 	return requestID
@@ -186,7 +207,7 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if err := validateProtocolVersion(req.ProtocolVersion); err != nil {
 		return err
 	}
-	if err := validateSafeID("request_id", req.RequestID); err != nil {
+	if err := validateEchoID("request_id", req.RequestID); err != nil {
 		return err
 	}
 	if req.RequestID == "" {
@@ -198,7 +219,7 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if err := validateSafeID("property_rid", req.PropertyRID); err != nil {
 		return err
 	}
-	if err := validateSafeID("property_id", req.PropertyID); err != nil {
+	if err := validateEchoID("property_id", req.PropertyID); err != nil {
 		return err
 	}
 	if req.PropertyType == "" {
@@ -207,7 +228,7 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 	if req.PlacementID == "" {
 		return errors.New("placement_id is required")
 	}
-	if err := validateSafeID("placement_id", req.PlacementID); err != nil {
+	if err := validateEchoID("placement_id", req.PlacementID); err != nil {
 		return err
 	}
 	if req.SellerAgentURL == "" {
@@ -223,7 +244,7 @@ func ValidateContextRequest(req *ContextMatchRequest) error {
 		return fmt.Errorf("artifact_refs exceeds maximum of %d", MaxArtifactRefsPerRequest)
 	}
 	for _, id := range req.PackageIDs {
-		if err := validateSafeID("package_id", id); err != nil {
+		if err := validateEchoID("package_id", id); err != nil {
 			return err
 		}
 	}
@@ -262,7 +283,7 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 	if req.RequestID == "" {
 		return errors.New("request_id is required")
 	}
-	if err := validateSafeID("request_id", req.RequestID); err != nil {
+	if err := validateEchoID("request_id", req.RequestID); err != nil {
 		return err
 	}
 	if req.SellerAgentURL == "" {
@@ -318,7 +339,7 @@ func ValidateIdentityRequest(req *IdentityMatchRequest) error {
 		return fmt.Errorf("package_ids exceeds maximum of %d", MaxPackagesPerRequest)
 	}
 	for _, id := range req.PackageIDs {
-		if err := validateSafeID("package_id", id); err != nil {
+		if err := validateEchoID("package_id", id); err != nil {
 			return err
 		}
 	}

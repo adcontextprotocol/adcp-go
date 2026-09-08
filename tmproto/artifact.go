@@ -378,6 +378,13 @@ type Artifact struct {
 	LastUpdateTime string `json:"last_update_time,omitempty"` // ISO 8601
 	Assets         Assets `json:"assets"`
 
+	// FormatKind is the shape family the assets encode (e.g. "webpage",
+	// "article", "audio_stream", "video_stream"). Publisher-supplied hint
+	// declared on the artifact schema; content-standards consumers may use it
+	// to route evaluation. This SDK doesn't act on it, but it must survive
+	// round-trip so strict-mode decoders don't reject schema-valid payloads.
+	FormatKind string `json:"format_kind,omitempty"`
+
 	// FormatID optionally references a format definition from the format registry.
 	// Shape: /schemas/latest/core/format-id.json. Left as json.RawMessage until
 	// the core types package is introduced.
