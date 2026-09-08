@@ -62,15 +62,15 @@ type BrandDomainOptions struct {
 // special-use name. It accepts a bare domain only, never a URL, port, or path.
 func ValidateBrandDomain(domain string, opts BrandDomainOptions) (string, error) {
 	if domain == "" || strings.ContainsAny(domain, " \t\r\n/:@?#") {
-		return "", fmt.Errorf("%q: %w", domain, ErrBrandDomainSyntax)
+		return "", ErrBrandDomainSyntax
 	}
 	canonical, err := idna.Lookup.ToASCII(strings.TrimSuffix(domain, "."))
 	if err != nil {
-		return "", fmt.Errorf("%q: %w", domain, errors.Join(err, ErrBrandDomainSyntax))
+		return "", ErrBrandDomainSyntax
 	}
 	canonical = strings.ToLower(canonical)
 	if !dottedWireDomain.MatchString(canonical) || net.ParseIP(canonical) != nil {
-		return "", fmt.Errorf("%q: %w", domain, ErrBrandDomainSyntax)
+		return "", ErrBrandDomainSyntax
 	}
 
 	development := IsDevelopmentBrandDomain(canonical)
@@ -78,7 +78,7 @@ func ValidateBrandDomain(domain string, opts BrandDomainOptions) (string, error)
 		return canonical, nil
 	}
 	if development || isSpecialUseDomain(canonical) {
-		return "", fmt.Errorf("%q: %w", domain, ErrBrandDomainSpecialUse)
+		return "", ErrBrandDomainSpecialUse
 	}
 
 	suffix, icann := publicsuffix.PublicSuffix(canonical)
@@ -88,10 +88,10 @@ func ValidateBrandDomain(domain string, opts BrandDomainOptions) (string, error)
 	// registrable boundary (for example github.io), while an unknown TLD falls
 	// back to the final label itself.
 	if suffix == "" || (!icann && suffix == lastLabel) {
-		return "", fmt.Errorf("%q: %w", domain, ErrBrandDomainRegistrable)
+		return "", ErrBrandDomainRegistrable
 	}
 	if _, err := publicsuffix.EffectiveTLDPlusOne(canonical); err != nil {
-		return "", fmt.Errorf("%q: %w", domain, errors.Join(err, ErrBrandDomainRegistrable))
+		return "", ErrBrandDomainRegistrable
 	}
 	return canonical, nil
 }

@@ -121,3 +121,10 @@ func TestValidateBrandDomain_LocalIsNeverDevelopment(t *testing.T) {
 	})
 	require.ErrorIs(t, err, urlutil.ErrBrandDomainSpecialUse)
 }
+
+func TestValidateBrandDomain_ErrorDoesNotEchoInput(t *testing.T) {
+	input := "attacker-controlled.example/path?secret=value"
+	_, err := urlutil.ValidateBrandDomain(input, urlutil.BrandDomainOptions{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), input)
+}
