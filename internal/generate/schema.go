@@ -665,8 +665,19 @@ func schemaToStruct(name string, s *jsonschema.Schema, ctx *loadContext) (GoStru
 			continue
 		}
 
-		// Skip $schema property — it's a JSON Schema meta-field, not data.
+		// $schema is a JSON Schema meta-field carried by clients that pre-validate
+		// their payload. It has no runtime semantics, but omitting it from the Go
+		// struct makes strict-mode decoders (DisallowUnknownFields) reject
+		// schema-valid requests. Emit a discard-only Schema field so the
+		// decoder accepts it; the field name maps a JSON-invalid identifier.
 		if jsonName == "$schema" {
+			gs.Fields = append(gs.Fields, GoField{
+				Name:      "Schema",
+				Type:      "string",
+				JSONName:  "$schema",
+				OmitEmpty: true,
+				Comment:   sanitizeComment(prop.Description),
+			})
 			continue
 		}
 

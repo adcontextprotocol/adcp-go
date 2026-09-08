@@ -115,6 +115,7 @@ type AvailablePackage struct {
 
 // Sent by publisher to router or provider to evaluate packages against contextual signals. The provider uses its synced package set for the placement. MUST NOT contain user identity. The request_id MUST NOT correlate with any identity match request_id. Extension fields (ext, context) are intentionally omitted — extension data in the context path could inadvertently carry or correlate user identity signals.
 type ContextMatchRequest struct {
+	Schema           string          `json:"$schema,omitempty"`            // Optional schema URI for validation. Ignored at runtime.
 	AdcpVersion      string          `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.
 	AdcpMajorVersion int             `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.
 	Type             string          `json:"type"`                         // Message type discriminator for deserialization.
@@ -153,6 +154,7 @@ type ErrorResponse struct {
 
 // Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary. The optional `attestation` (per identity) and `sealed_credentials` (top-level) fields carry verifiable proof ABOUT the identity — on the identity side of that boundary, not page context — so they are a deliberate, reviewed widening of this otherwise-closed schema, not a leak.
 type IdentityMatchRequest struct {
+	Schema            string             `json:"$schema,omitempty"`            // Optional schema URI for validation. Ignored at runtime.
 	AdcpVersion       string             `json:"adcp_version,omitempty"`       // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1", "3.1-beta"). On a request: the buyer's release pin. Inlined here (rather than via core/version-envelope.json allOf) so this schema can keep `additionalProperties: false` — the privacy boundary on this endpoint is contract-bearing.
 	AdcpMajorVersion  int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version. Removed in 4.0. Inlined alongside adcp_version to preserve strict-mode on this endpoint.
 	Type              string             `json:"type"`                         // Message type discriminator for deserialization.

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
 
@@ -309,8 +310,8 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		if retErr == nil {
 			return
 		}
-		for i := len(rollback) - 1; i >= 0; i-- {
-			step := rollback[i]
+		for _, step := range slices.Backward(rollback) {
+
 			func() {
 				defer func() {
 					if rec := recover(); rec != nil {
