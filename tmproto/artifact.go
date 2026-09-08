@@ -1,6 +1,7 @@
 package tmproto
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -466,12 +467,19 @@ func (a *Artifact) StripAccess() {
 // raw JSON, and additionally clears `url` when that access declared a
 // signed-URL scheme (which is where the credential is embedded). Preserves
 // every other field so unknown asset types remain forward-compatible.
+//
+// Numbers are decoded through json.Decoder.UseNumber so integers above
+// 2^53 (IDs, epoch-ms timestamps) round-trip verbatim; the default
+// interface{} path would coerce them to float64 and re-emit with
+// precision loss, breaking the forward-compat pass-through guarantee.
 func stripAccessFromRawAsset(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return raw, nil
 	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := dec.Decode(&m); err != nil {
 		return nil, err
 	}
 	signed := rawAssetAccessIsSignedURL(m["access"])

@@ -266,6 +266,39 @@ func TestArtifact_StripAccess_UnknownAsset_SignedURL_ClearsURL(t *testing.T) {
 	assert.Contains(t, string(data), "3D showroom")
 }
 
+// TestArtifact_StripAccess_UnknownAsset_PreservesLargeIntegerPrecision
+// pins the forward-compat pass-through contract for numeric fields on
+// unknown asset types. Decoding raw bytes into map[string]any coerces
+// every JSON number to float64, which silently rounds integers above
+// 2^53 — an ID like 12345678901234567890 becomes 1.2345678901234568e+19
+// after a round trip. The scrub path uses json.Decoder.UseNumber so
+// numbers stay json.Number and re-marshal verbatim.
+func TestArtifact_StripAccess_UnknownAsset_PreservesLargeIntegerPrecision(t *testing.T) {
+	raw := []byte(`{
+		"type": "future_type",
+		"external_id": 12345678901234567890,
+		"created_at_ms": 1731234567890123456,
+		"caption": "future-shape",
+		"access": {"method": "bearer_token", "token": "SECRET"}
+	}`)
+	art := &Artifact{
+		PropertyRID: "p", ArtifactID: "a",
+		Assets: Assets{&UnknownAsset{Type: "future_type", Raw: raw}},
+	}
+	art.StripAccess()
+
+	data, err := json.Marshal(art)
+	require.NoError(t, err)
+	// Access scrubbed; credential is gone.
+	assert.NotContains(t, string(data), `"access"`)
+	assert.NotContains(t, string(data), "SECRET")
+	// Large integers survive verbatim (no float64 rounding).
+	assert.Contains(t, string(data), "12345678901234567890")
+	assert.Contains(t, string(data), "1731234567890123456")
+	assert.NotContains(t, string(data), "1.2345678901234568e+19")
+	assert.NotContains(t, string(data), "1.7312345678901235e+18")
+}
+
 func TestArtifact_StripAccess_NilSafe(t *testing.T) {
 	var a *Artifact
 	a.StripAccess() // no panic
