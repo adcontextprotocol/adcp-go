@@ -48,7 +48,7 @@ func TestRouter_DefaultClient_DoesNotFollowRedirect(t *testing.T) {
 
 	resp, err := router.client.Get(redirector.URL)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode, "router client MUST surface the 3xx, not follow it")
 	assert.Zero(t, canaryHits.Load(), "redirect target MUST NOT receive the replayed request")
