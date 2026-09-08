@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.1...targeting/v0.3.2) (2026-09-08)
+
+
+### Bug Fixes
+
+* **tmproto:** accept optional $schema/format_kind, relax read-path ID charset, fix verifier error envelope ([103ee2b](https://github.com/adcontextprotocol/adcp-go/commit/103ee2b120f96f2a6b8e6db9e24e3421abcd16e3))
+* **tmproto:** accept optional $schema/format_kind, relax wire-ID charset, fix verifier error envelope ([966b12b](https://github.com/adcontextprotocol/adcp-go/commit/966b12bfe510dd372a5505862863ecc789446410))
+
 ## [0.3.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.0...targeting/v0.3.1) (2026-09-07)
 
 
