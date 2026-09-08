@@ -1,6 +1,7 @@
 package tmproto
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -406,24 +407,105 @@ type Artifact struct {
 	Identifiers map[string]any `json:"identifiers,omitempty"`
 }
 
-// StripAccess zeros the Access field on every asset in the artifact. Routers
-// MUST call this (or equivalent) before fanning out a ContextMatchRequest to
-// multiple buyer agents, per the AdCP spec — otherwise credentials leak to
-// every buyer.
+// StripAccess removes credential material from every asset in the artifact.
+// Routers MUST call this (or equivalent) before fanning out a
+// ContextMatchRequest to multiple buyer agents, per the AdCP spec — every
+// asset access object MUST be removed and every credential-bearing asset
+// URL MUST be removed or replaced.
 //
-// Safe to call on an Artifact whose assets have no Access set; it's a no-op.
+// For known asset types the Access object is dropped unconditionally. When
+// that Access declared a signed-URL scheme, the URL field itself is also
+// cleared because signed URLs carry the credential in the query string;
+// leaving the URL after nil-ing Access would still hand every buyer a
+// usable credentialed fetch handle.
+//
+// UnknownAsset entries (forward-compat pass-through of asset types this
+// SDK does not model) are handled by rewriting their raw JSON: the
+// top-level "access" key is removed, and when that access object declared
+// method "signed_url" the top-level "url" is removed too. Other unknown
+// fields survive untouched so newer receivers can still consume them.
+//
+// Safe to call on an Artifact whose assets have no Access set; it's a
+// no-op.
 func (a *Artifact) StripAccess() {
 	if a == nil {
 		return
 	}
-	for _, asset := range a.Assets {
+	for i, asset := range a.Assets {
 		switch v := asset.(type) {
 		case *ImageAsset:
+			if v.Access != nil && v.Access.Method == AssetAccessMethodSignedURL {
+				v.URL = ""
+			}
 			v.Access = nil
 		case *VideoAsset:
+			if v.Access != nil && v.Access.Method == AssetAccessMethodSignedURL {
+				v.URL = ""
+			}
 			v.Access = nil
 		case *AudioAsset:
+			if v.Access != nil && v.Access.Method == AssetAccessMethodSignedURL {
+				v.URL = ""
+			}
 			v.Access = nil
+		case *UnknownAsset:
+			scrubbed, err := stripAccessFromRawAsset(v.Raw)
+			if err != nil {
+				// Malformed raw bytes shouldn't reach here — the discriminated
+				// unmarshal already parsed them — but fail closed just in case
+				// by replacing with a minimal shape that keeps the type tag and
+				// drops the rest.
+				a.Assets[i] = &UnknownAsset{Type: v.Type, Raw: minimalUnknownAssetRaw(v.Type)}
+				continue
+			}
+			v.Raw = scrubbed
 		}
 	}
+}
+
+// stripAccessFromRawAsset removes the `access` object from a wire asset's
+// raw JSON, and additionally clears `url` when that access declared a
+// signed-URL scheme (which is where the credential is embedded). Preserves
+// every other field so unknown asset types remain forward-compatible.
+//
+// Numbers are decoded through json.Decoder.UseNumber so integers above
+// 2^53 (IDs, epoch-ms timestamps) round-trip verbatim; the default
+// interface{} path would coerce them to float64 and re-emit with
+// precision loss, breaking the forward-compat pass-through guarantee.
+func stripAccessFromRawAsset(raw json.RawMessage) (json.RawMessage, error) {
+	if len(raw) == 0 {
+		return raw, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return nil, err
+	}
+	signed := rawAssetAccessIsSignedURL(m["access"])
+	delete(m, "access")
+	if signed {
+		delete(m, "url")
+	}
+	return json.Marshal(m)
+}
+
+// rawAssetAccessIsSignedURL reports whether an untyped `access` payload
+// declares method "signed_url". Returns false for any missing, wrong-shape,
+// or wrong-value input — the caller uses it only to widen scrubbing.
+func rawAssetAccessIsSignedURL(v any) bool {
+	m, ok := v.(map[string]any)
+	if !ok {
+		return false
+	}
+	method, ok := m["method"].(string)
+	if !ok {
+		return false
+	}
+	return method == string(AssetAccessMethodSignedURL)
+}
+
+func minimalUnknownAssetRaw(t AssetType) json.RawMessage {
+	b, _ := json.Marshal(map[string]any{"type": string(t)})
+	return b
 }

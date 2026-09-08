@@ -170,7 +170,7 @@ func TestArtifact_StripAccess_ZerosAllVariants(t *testing.T) {
 			&TextAsset{Content: "t"}, // no access field
 			&ImageAsset{URL: "https://x/i", Access: &AssetAccess{Method: AssetAccessMethodBearerToken, Token: "tok-i"}},
 			&VideoAsset{URL: "https://x/v", Access: &AssetAccess{Method: AssetAccessMethodServiceAccount, Provider: "gcp"}},
-			&AudioAsset{URL: "https://x/a", Access: &AssetAccess{Method: AssetAccessMethodSignedURL}},
+			&AudioAsset{URL: "https://x/a?sig=REDACT", Access: &AssetAccess{Method: AssetAccessMethodSignedURL}},
 		},
 	}
 	art.StripAccess()
@@ -178,13 +178,125 @@ func TestArtifact_StripAccess_ZerosAllVariants(t *testing.T) {
 	assert.Nil(t, art.Assets[1].(*ImageAsset).Access)
 	assert.Nil(t, art.Assets[2].(*VideoAsset).Access)
 	assert.Nil(t, art.Assets[3].(*AudioAsset).Access)
+	// The signed-URL audio asset's URL carried the credential in its
+	// query string, so StripAccess must also blank the URL field.
+	assert.Empty(t, art.Assets[3].(*AudioAsset).URL)
+	// Non-signed variants keep their (non-credential-bearing) URLs.
+	assert.Equal(t, "https://x/i", art.Assets[1].(*ImageAsset).URL)
+	assert.Equal(t, "https://x/v", art.Assets[2].(*VideoAsset).URL)
 
-	// Post-strip wire format carries no access-related fields.
+	// Post-strip wire format carries no access-related fields and no
+	// signed-URL credential residue.
 	data, err := json.Marshal(art)
 	require.NoError(t, err)
-	for _, forbid := range []string{`"access"`, `"token"`, `"bearer_token"`, "tok-i"} {
+	for _, forbid := range []string{`"access"`, `"token"`, `"bearer_token"`, "tok-i", "sig=REDACT"} {
 		assert.NotContains(t, string(data), forbid)
 	}
+}
+
+func TestArtifact_StripAccess_SignedURL_ClearsURLOnAllKnownAssets(t *testing.T) {
+	art := &Artifact{
+		PropertyRID: "p", ArtifactID: "a",
+		Assets: Assets{
+			&ImageAsset{URL: "https://cdn.example/i.png?X-Amz-Signature=SECRET_IMG", Access: &AssetAccess{Method: AssetAccessMethodSignedURL}},
+			&VideoAsset{URL: "https://cdn.example/v.mp4?X-Amz-Signature=SECRET_VID", Access: &AssetAccess{Method: AssetAccessMethodSignedURL}},
+			&AudioAsset{URL: "https://cdn.example/a.m4a?X-Amz-Signature=SECRET_AUD", Access: &AssetAccess{Method: AssetAccessMethodSignedURL}},
+		},
+	}
+	art.StripAccess()
+	assert.Empty(t, art.Assets[0].(*ImageAsset).URL)
+	assert.Empty(t, art.Assets[1].(*VideoAsset).URL)
+	assert.Empty(t, art.Assets[2].(*AudioAsset).URL)
+
+	data, err := json.Marshal(art)
+	require.NoError(t, err)
+	for _, secret := range []string{"SECRET_IMG", "SECRET_VID", "SECRET_AUD", "X-Amz-Signature"} {
+		assert.NotContains(t, string(data), secret)
+	}
+}
+
+func TestArtifact_StripAccess_UnknownAsset_StripsAccessKey(t *testing.T) {
+	// Forward-compat: a future asset type this SDK does not model MUST
+	// still have its `access` object scrubbed on the fan-out hop, or the
+	// router leaks bearer tokens / service-account credentials that
+	// happen to ride on unknown asset types.
+	raw := []byte(`{
+		"type": "3d_scene",
+		"url": "https://cdn.example/scene.gltf",
+		"caption": "3D showroom",
+		"access": {"method": "bearer_token", "token": "SECRET_UNKNOWN"}
+	}`)
+	art := &Artifact{
+		PropertyRID: "p", ArtifactID: "a",
+		Assets: Assets{&UnknownAsset{Type: "3d_scene", Raw: raw}},
+	}
+	art.StripAccess()
+
+	data, err := json.Marshal(art)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"access"`)
+	assert.NotContains(t, string(data), "SECRET_UNKNOWN")
+	// Non-credential fields survive.
+	assert.Contains(t, string(data), "https://cdn.example/scene.gltf")
+	assert.Contains(t, string(data), "3D showroom")
+}
+
+func TestArtifact_StripAccess_UnknownAsset_SignedURL_ClearsURL(t *testing.T) {
+	// When an unknown asset's access declares signed_url, the URL itself
+	// carries the credential — MUST be removed alongside the access
+	// object.
+	raw := []byte(`{
+		"type": "3d_scene",
+		"url": "https://cdn.example/scene.gltf?X-Amz-Signature=SECRET_UNKNOWN_SIGNED",
+		"caption": "3D showroom",
+		"access": {"method": "signed_url"}
+	}`)
+	art := &Artifact{
+		PropertyRID: "p", ArtifactID: "a",
+		Assets: Assets{&UnknownAsset{Type: "3d_scene", Raw: raw}},
+	}
+	art.StripAccess()
+
+	data, err := json.Marshal(art)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"access"`)
+	assert.NotContains(t, string(data), "SECRET_UNKNOWN_SIGNED")
+	assert.NotContains(t, string(data), "X-Amz-Signature")
+	// Non-URL fields survive.
+	assert.Contains(t, string(data), "3D showroom")
+}
+
+// TestArtifact_StripAccess_UnknownAsset_PreservesLargeIntegerPrecision
+// pins the forward-compat pass-through contract for numeric fields on
+// unknown asset types. Decoding raw bytes into map[string]any coerces
+// every JSON number to float64, which silently rounds integers above
+// 2^53 — an ID like 12345678901234567890 becomes 1.2345678901234568e+19
+// after a round trip. The scrub path uses json.Decoder.UseNumber so
+// numbers stay json.Number and re-marshal verbatim.
+func TestArtifact_StripAccess_UnknownAsset_PreservesLargeIntegerPrecision(t *testing.T) {
+	raw := []byte(`{
+		"type": "future_type",
+		"external_id": 12345678901234567890,
+		"created_at_ms": 1731234567890123456,
+		"caption": "future-shape",
+		"access": {"method": "bearer_token", "token": "SECRET"}
+	}`)
+	art := &Artifact{
+		PropertyRID: "p", ArtifactID: "a",
+		Assets: Assets{&UnknownAsset{Type: "future_type", Raw: raw}},
+	}
+	art.StripAccess()
+
+	data, err := json.Marshal(art)
+	require.NoError(t, err)
+	// Access scrubbed; credential is gone.
+	assert.NotContains(t, string(data), `"access"`)
+	assert.NotContains(t, string(data), "SECRET")
+	// Large integers survive verbatim (no float64 rounding).
+	assert.Contains(t, string(data), "12345678901234567890")
+	assert.Contains(t, string(data), "1731234567890123456")
+	assert.NotContains(t, string(data), "1.2345678901234568e+19")
+	assert.NotContains(t, string(data), "1.7312345678901235e+18")
 }
 
 func TestArtifact_StripAccess_NilSafe(t *testing.T) {
