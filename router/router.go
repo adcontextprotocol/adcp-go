@@ -238,7 +238,17 @@ func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderH
 		if !r.skipEndpointValidation {
 			transport.DialContext = safeDialContext
 		}
-		r.client = &http.Client{Transport: transport}
+		r.client = &http.Client{
+			Transport: transport,
+			// TMP provider-endpoint rules ("no redirects", spec §Provider
+			// Endpoints): a 3xx response could re-target the signed body
+			// to whatever host DNS/rebind lands on, replaying identity
+			// tokens, sealed credentials, and artifact bytes there.
+			// safeDialContext blocks only private destinations; a public
+			// attacker-controlled host would still resolve. Refuse to
+			// follow and let the caller observe the 3xx.
+			CheckRedirect: noFollowRedirect,
+		}
 	}
 	if !r.skipEndpointValidation {
 		for _, p := range r.providers.All() {
