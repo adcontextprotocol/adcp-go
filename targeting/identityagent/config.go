@@ -111,6 +111,14 @@ type Config struct {
 	AudienceTimeout time.Duration
 	FCapTimeout     time.Duration
 
+	// StrictOnUndecodableIdentity, when true, tells the identity service
+	// to fail closed on the fcap stage as soon as ANY inbound identity
+	// failed to canonicalize. Default false: only the all-undecodable
+	// case fails closed. Opt in with
+	// TMP_FCAP_STRICT_ON_UNDECODABLE_IDENTITY=true for regulated
+	// deployments that require the strict reading of TMP invariant #2.
+	StrictOnUndecodableIdentity bool
+
 	Metrics MetricsConfig
 	Pprof   PprofConfig
 }
@@ -476,6 +484,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	strictOnUndecodable, err := lookupBool("TMP_FCAP_STRICT_ON_UNDECODABLE_IDENTITY", false)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	metricsEnabled, err := lookupBool("METRICS_ENABLED", false)
 	if err != nil {
 		errs = append(errs, err)
@@ -573,8 +585,9 @@ func LoadConfigFromEnv() (Config, error) {
 		FCapValkey:             fcapBlock,
 		FallbackAudienceValkey: fallbackAudienceBlock,
 		FallbackFCapValkey:     fallbackFcapBlock,
-		AudienceTimeout:        audienceTimeout,
-		FCapTimeout:            fcapTimeout,
+		AudienceTimeout:             audienceTimeout,
+		FCapTimeout:                 fcapTimeout,
+		StrictOnUndecodableIdentity: strictOnUndecodable,
 		Metrics: MetricsConfig{
 			Enabled:   metricsEnabled,
 			Namespace: lookupString("METRICS_NAMESPACE", defaultNamespace),
