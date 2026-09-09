@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.1.0
-	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.3.4
 	github.com/adcontextprotocol/adcp-go/tmproto v0.3.2
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/redis/go-redis/v9 v9.22.0
