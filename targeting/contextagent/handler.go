@@ -118,15 +118,18 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Version negotiation: `adcp_version` (release-precision) is authoritative
 	// per version-envelope.json §adcp_version; `adcp_major_version` is a
 	// deprecated fallback the seller honors only when `adcp_version` is
-	// omitted. Ignoring `adcp_version` would let a client pin an unsupported
-	// release and get served with the older major-version fallback silently.
-	if req.AdcpVersion != "" {
-		if len(h.supportedAdcpVersions) > 0 {
-			if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
-				writeError(w, req.RequestID, tmproto.ErrorCodeInvalidRequest,
-					"unsupported adcp_version", http.StatusBadRequest)
-				return
-			}
+	// omitted OR when release-precision validation is not configured on
+	// this deployment. Folding the emptiness check into the outer branch
+	// condition (rather than into an inner guard) is deliberate: an inner
+	// guard would let an `adcp_version`-carrying request slip past both
+	// checks entirely when `SupportedAdcpVersions` is empty — the default
+	// opt-in state — reintroducing the exact bypass this check exists to
+	// close.
+	if req.AdcpVersion != "" && len(h.supportedAdcpVersions) > 0 {
+		if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
+			writeError(w, req.RequestID, tmproto.ErrorCodeInvalidRequest,
+				"unsupported adcp_version", http.StatusBadRequest)
+			return
 		}
 	} else if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedVers[req.AdcpMajorVersion]; !ok {

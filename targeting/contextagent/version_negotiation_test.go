@@ -84,6 +84,42 @@ func TestContextHandler_AdcpVersion_TakesPrecedence(t *testing.T) {
 		"adcp_version pinned to 3.1 must reject even when adcp_major_version=3 is in-set")
 }
 
+// TestContextHandler_EmptySupportedAdcpVersions_StillEnforcesMajor
+// pins the fix for the empty-list bypass: when SupportedAdcpVersions
+// is unset (the default) AND the request carries a release-precision
+// adcp_version, the release-precision check must fall through to the
+// major-version gate rather than accepting anything. An inner guard
+// would let an unsupported adcp_major_version slip past both checks
+// entirely on every un-upgraded deployment.
+func TestContextHandler_EmptySupportedAdcpVersions_StillEnforcesMajor(t *testing.T) {
+	h := NewHandler(HandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		// SupportedAdcpVersions intentionally empty — the default state.
+	})
+	body := `{
+		"type": "context_match_request",
+		"adcp_version": "4.0",
+		"adcp_major_version": 99,
+		"request_id": "r1",
+		"property_rid": "rid-1",
+		"property_id": "pub-1",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent"
+	}`
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/context", strings.NewReader(body)))
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var resp tmproto.ErrorResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Contains(t, resp.Message, "unsupported adcp_major_version",
+		"empty SupportedAdcpVersions + request adcp_version must still check adcp_major_version")
+}
+
 // TestContextHandler_AdcpMajor_UnsupportedStillRejected pins the
 // back-compat contract: a request that omits `adcp_version` still gets
 // its `adcp_major_version` checked. Regressions on this gate would let

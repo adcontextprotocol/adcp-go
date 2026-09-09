@@ -161,18 +161,24 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Version negotiation: `adcp_version` (release-precision) is authoritative
 	// per version-envelope.json §adcp_version; `adcp_major_version` is a
 	// deprecated fallback the seller honors only when `adcp_version` is
-	// omitted. adcp/schemas/tmp/identity-match-request.json's description
-	// names VERSION_UNSUPPORTED here, but the error.json schema's `code`
-	// enum does not include it — invalid_request is the closest valid code
+	// omitted OR when release-precision validation is not configured on
+	// this deployment. Folding the emptiness check into the outer branch
+	// condition (rather than into an inner guard) is deliberate: an inner
+	// guard would let an `adcp_version`-carrying request slip past both
+	// checks entirely when `SupportedAdcpVersions` is empty — the default
+	// opt-in state — reintroducing the exact bypass this check exists to
+	// close.
+	//
+	// adcp/schemas/tmp/identity-match-request.json's description names
+	// VERSION_UNSUPPORTED here, but the error.json schema's `code` enum
+	// does not include it — invalid_request is the closest valid code
 	// until the spec is internally consistent.
-	if req.AdcpVersion != "" {
-		if len(h.supportedAdcpVersions) > 0 {
-			if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
-				h.logValidationFailure(r, req.RequestID, errors.New("adcp_version is not supported"))
-				h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
-				h.recordCompletion(ctx, start, "bad_request")
-				return
-			}
+	if req.AdcpVersion != "" && len(h.supportedAdcpVersions) > 0 {
+		if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
+			h.logValidationFailure(r, req.RequestID, errors.New("adcp_version is not supported"))
+			h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
+			h.recordCompletion(ctx, start, "bad_request")
+			return
 		}
 	} else if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedADCPMajorVersions[req.AdcpMajorVersion]; !ok {

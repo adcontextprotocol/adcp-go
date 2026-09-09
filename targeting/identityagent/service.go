@@ -222,7 +222,7 @@ func (s *Service) EvaluateWithDecode(ctx context.Context, req *tmproto.IdentityM
 	// must be computed outside the cancelable goroutines so a short-circuit
 	// cancel cannot drop it. No-op (verified == nil, vidRejected empty) when
 	// no verifier is wired, leaving existing behavior unchanged.
-	verified := s.runVerifiedIdentityStage(ctx, req)
+	verified, vidOutcome := s.runVerifiedIdentityStage(ctx, req)
 	vidRejected := s.computeVerifiedIdentityGate(ctx, req, resolved, effectivePkgIDs, verified)
 
 	pkgsWithSegments := s.packagesWithSegmentRules(resolved, effectivePkgIDs)
@@ -272,24 +272,32 @@ func (s *Service) EvaluateWithDecode(ctx context.Context, req *tmproto.IdentityM
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 		Verified:    verified,
-		Status:      terminalStatus(fcapResult.outcome, audResult.outcome),
+		Status:      terminalStatus(fcapResult.outcome, audResult.outcome, vidOutcome),
 	}
 }
 
-// terminalStatus maps the two parallel stage outcomes onto the
-// pipeline's terminal status. Only genuine store failures propagate —
-// timeout on either stage becomes StatusTimeout, non-timeout error
-// becomes StatusProviderUnavailable. Fail-closed decisions that are
-// semantically "no eligible packages" (all capped, all rejected,
-// undecodable identities) stay StatusOK: the empty response IS the
-// answer, and surfacing them as errors would fire the router's
-// circuit breaker on a healthy provider. Cancellation is the sibling
-// stage's short-circuit and is not an error either.
-func terminalStatus(fcapOutcome, audOutcome string) string {
-	if fcapOutcome == OutcomeTimeout || audOutcome == OutcomeTimeout {
+// terminalStatus maps the three pipeline stages' outcomes onto the
+// terminal status the handler surfaces on the wire. Only genuine
+// upstream-store failures propagate: timeout on any stage becomes
+// StatusTimeout, non-timeout error (fcap/audience store, or a
+// verifier-service outage from the verified-identity stage) becomes
+// StatusProviderUnavailable. The verified-identity outcome is included
+// because a verifier/attestation-service outage is the same class of
+// upstream-store failure as an fcap/audience read error — silently
+// under-populating the verified set would let capped-under-nullifier
+// users through on healthy-looking empty responses.
+//
+// Fail-closed decisions that are semantically "no eligible packages"
+// (all capped, all rejected by segment rules, undecodable identities)
+// stay StatusOK: the empty response IS the answer, and surfacing them
+// as errors would fire the router's circuit breaker on a healthy
+// provider. Cancellation is the sibling stage's short-circuit and is
+// not an error either.
+func terminalStatus(fcapOutcome, audOutcome, vidOutcome string) string {
+	if fcapOutcome == OutcomeTimeout || audOutcome == OutcomeTimeout || vidOutcome == OutcomeTimeout {
 		return targeting.StatusTimeout
 	}
-	if fcapOutcome == OutcomeError || audOutcome == OutcomeError {
+	if fcapOutcome == OutcomeError || audOutcome == OutcomeError || vidOutcome == OutcomeError {
 		return targeting.StatusProviderUnavailable
 	}
 	return targeting.StatusOK

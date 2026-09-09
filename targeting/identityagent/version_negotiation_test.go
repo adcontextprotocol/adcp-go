@@ -72,31 +72,64 @@ func TestIdentityHandler_AdcpVersion_TakesPrecedence(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestTerminalStatus_MapsStoreOutcomes pins the fcap/audience outcome
-// → terminal-Status mapping. Only genuine store failures (timeout,
-// error) propagate as ErrorResponse; fail-closed decisions rooted in
-// semantics stay StatusOK so the router circuit breaker doesn't
-// misfire on healthy providers.
+// TestIdentityHandler_EmptySupportedAdcpVersions_StillEnforcesMajor
+// pins the fix for the empty-list bypass on /identity: when
+// SupportedAdcpVersions is unset (the default) AND the request carries
+// a release-precision adcp_version, the release-precision check must
+// fall through to the major-version gate rather than accepting
+// anything. An inner guard would let an unsupported adcp_major_version
+// slip past both checks entirely on every un-upgraded deployment.
+func TestIdentityHandler_EmptySupportedAdcpVersions_StillEnforcesMajor(t *testing.T) {
+	h := NewIdentityHandler(IdentityHandlerConfig{
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		// SupportedAdcpVersions intentionally empty — the default state.
+		Logger: slog.New(slog.NewTextHandler(&nopWriter{}, nil)),
+	})
+	body := `{
+		"type": "identity_match_request",
+		"adcp_version": "4.0",
+		"adcp_major_version": 99,
+		"request_id": "r1",
+		"seller_agent_url": "https://seller.example.com/agent",
+		"identities": [{"user_token": "tok", "uid_type": "uid2"}]
+	}`
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/identity", strings.NewReader(body)))
+	require.Equal(t, http.StatusBadRequest, w.Code,
+		"empty SupportedAdcpVersions + request adcp_version must still check adcp_major_version")
+}
+
+// TestTerminalStatus_MapsStoreOutcomes pins the three stages' outcomes
+// → terminal-Status mapping. Only genuine upstream-store failures
+// (timeout, error) propagate as ErrorResponse; fail-closed decisions
+// rooted in semantics stay StatusOK so the router circuit breaker
+// doesn't misfire on healthy providers.
 func TestTerminalStatus_MapsStoreOutcomes(t *testing.T) {
 	cases := []struct {
-		name   string
-		fcap   string
-		aud    string
-		want   string
+		name string
+		fcap string
+		aud  string
+		vid  string
+		want string
 	}{
-		{"both pass", OutcomePass, OutcomePass, targeting.StatusOK},
-		{"both fail (semantic)", OutcomeFail, OutcomeFail, targeting.StatusOK},
-		{"fcap timeout", OutcomeTimeout, OutcomePass, targeting.StatusTimeout},
-		{"audience timeout", OutcomePass, OutcomeTimeout, targeting.StatusTimeout},
-		{"fcap store error", OutcomeError, OutcomePass, targeting.StatusProviderUnavailable},
-		{"audience store error", OutcomePass, OutcomeError, targeting.StatusProviderUnavailable},
-		{"canceled sibling", OutcomePass, OutcomeCanceled, targeting.StatusOK},
-		{"undecodable fail-closed", OutcomeFailClosedUndecodable, OutcomePass, targeting.StatusOK},
-		{"timeout wins over error", OutcomeTimeout, OutcomeError, targeting.StatusTimeout},
+		{"all pass", OutcomePass, OutcomePass, OutcomePass, targeting.StatusOK},
+		{"both fail (semantic)", OutcomeFail, OutcomeFail, OutcomePass, targeting.StatusOK},
+		{"fcap timeout", OutcomeTimeout, OutcomePass, OutcomePass, targeting.StatusTimeout},
+		{"audience timeout", OutcomePass, OutcomeTimeout, OutcomePass, targeting.StatusTimeout},
+		{"verifier timeout", OutcomePass, OutcomePass, OutcomeTimeout, targeting.StatusTimeout},
+		{"fcap store error", OutcomeError, OutcomePass, OutcomePass, targeting.StatusProviderUnavailable},
+		{"audience store error", OutcomePass, OutcomeError, OutcomePass, targeting.StatusProviderUnavailable},
+		{"verifier service outage", OutcomePass, OutcomePass, OutcomeError, targeting.StatusProviderUnavailable},
+		{"canceled sibling", OutcomePass, OutcomeCanceled, OutcomePass, targeting.StatusOK},
+		{"undecodable fail-closed", OutcomeFailClosedUndecodable, OutcomePass, OutcomePass, targeting.StatusOK},
+		{"timeout wins over error", OutcomeTimeout, OutcomeError, OutcomePass, targeting.StatusTimeout},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, terminalStatus(tc.fcap, tc.aud))
+			assert.Equal(t, tc.want, terminalStatus(tc.fcap, tc.aud, tc.vid))
 		})
 	}
 }

@@ -43,9 +43,9 @@ func (o *stageObserver) VerifierFailed(ctx context.Context) {
 // the claims are true. The verify-before-trust loop itself lives in
 // targeting.OpenAndVerify; this stage wires the request, the metric observer,
 // and the stage-level duration/outcome metrics around it.
-func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.IdentityMatchRequest) []targeting.VerifiedIdentity {
+func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.IdentityMatchRequest) ([]targeting.VerifiedIdentity, string) {
 	if s.verifier == nil {
-		return nil
+		return nil, OutcomePass
 	}
 	// Two verify-before-trust carriers share this stage: sealed_credentials
 	// (network-as-RP, RP from the recipient keys) and in-band attestations on
@@ -55,7 +55,7 @@ func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.Ide
 	sealedAvailable := len(s.recipientKeys) > 0 && len(req.SealedCredentials) > 0
 	inbandAvailable := s.relyingPartyID != "" && len(req.Identities) > 0
 	if !sealedAvailable && !inbandAvailable {
-		return nil
+		return nil, OutcomePass
 	}
 	start := time.Now()
 	// The verifier is called on the parent ctx (the handler's request budget
@@ -85,7 +85,7 @@ func (s *Service) runVerifiedIdentityStage(ctx context.Context, req *tmproto.Ide
 		outcome = OutcomeError
 	}
 	s.recorder.StageOutcome(ctx, StageVerifiedIdentity, outcome)
-	return verified
+	return verified, outcome
 }
 
 // computeVerifiedIdentityGate returns the packages ineligible because of the
