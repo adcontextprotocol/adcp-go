@@ -25,10 +25,16 @@ func MatchesIdentityProvider(req *tmproto.IdentityMatchRequest, p *ProviderConfi
 	if !p.IdentityMatch {
 		return false
 	}
-	// Country filter: skip when request has no country (backward compat —
-	// requests that don't know user country fan out to all providers).
-	if len(p.Countries) > 0 && req.Country != "" {
-		if !slices.Contains(p.Countries, req.Country) {
+	// Country filter: a provider that declares `countries` is asserting a
+	// data-residency scope on the wire (provider-registration.json §countries).
+	// Fanning out to it on a request without `country` would ship the identity
+	// signal into a jurisdiction the provider does not cover — the opposite
+	// of the spec's residency guarantee. When the provider omits `countries`
+	// it opts out of residency filtering and every request matches; the
+	// backward-compat "fan out to all providers on empty country" path was
+	// a fail-open on residency, not an intentional design.
+	if len(p.Countries) > 0 {
+		if req.Country == "" || !slices.Contains(p.Countries, req.Country) {
 			return false
 		}
 	}
