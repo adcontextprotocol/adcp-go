@@ -409,17 +409,18 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	})
 
 	svc, err := NewService(ServiceConfig{
-		Engine:          engine,
-		FCap:            fcapSvc,
-		Audience:        audienceSvc,
-		ConfigService:   configSvc,
-		FCapTimeout:     cfg.FCapTimeout,
-		AudienceTimeout: cfg.AudienceTimeout,
-		Recorder:        recorder,
-		Verifier:        opts.verifier,
-		RecipientKeys:   opts.recipientKeys,
-		AgeResolver:     opts.ageResolver,
-		RelyingPartyID:  opts.relyingPartyID,
+		Engine:                      engine,
+		FCap:                        fcapSvc,
+		Audience:                    audienceSvc,
+		ConfigService:               configSvc,
+		FCapTimeout:                 cfg.FCapTimeout,
+		AudienceTimeout:             cfg.AudienceTimeout,
+		Recorder:                    recorder,
+		StrictOnUndecodableIdentity: cfg.StrictOnUndecodableIdentity,
+		Verifier:                    opts.verifier,
+		RecipientKeys:               opts.recipientKeys,
+		AgeResolver:                 opts.ageResolver,
+		RelyingPartyID:              opts.relyingPartyID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build service: %w", err)

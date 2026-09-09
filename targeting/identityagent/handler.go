@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -155,7 +156,19 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	serviceReq, decoded := h.buildServiceRequest(ctx, &req)
-	result := h.service.Evaluate(ctx, serviceReq)
+	var result *targeting.IdentityResult
+	if decoded == nil {
+		// No canonicalizer wired: nothing to summarize, and the fail-closed
+		// policy would over-block on the first request. Preserve the
+		// backward-compat path.
+		result = h.service.Evaluate(ctx, serviceReq)
+	} else {
+		summary := DecodeSummary{
+			WireCount:    len(req.Identities),
+			SuccessCount: decodedSuccessCount(decoded),
+		}
+		result = h.service.EvaluateWithDecode(ctx, serviceReq, summary)
+	}
 
 	// Fail closed on budget overrun: return the standard wire shape with an
 	// empty eligible-packages array, matching what callers see for any other
@@ -343,6 +356,20 @@ func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.
 // Attestation-less and successfully-decoded identities are already represented
 // by the canonical set, so only undecoded attestation carriers are appended
 // (no double-counting).
+// decodedSuccessCount tallies decoded identities whose canonicalization
+// succeeded (Bytes non-empty). Feeds Service.EvaluateWithDecode's
+// DecodeSummary so the fcap stage can fail closed when the request's
+// identities cannot be verified against cap-state (TMP invariant #2).
+func decodedSuccessCount(decoded []DecodedIdentity) int {
+	n := 0
+	for _, d := range decoded {
+		if len(d.Bytes) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
 func serviceIdentities(inbound []tmproto.IdentityToken, decoded []DecodedIdentity) []tmproto.IdentityToken {
 	out := audienceEligibleIdentities(decoded)
 	for i := range inbound {

@@ -47,6 +47,15 @@ type Service struct {
 	audienceTimeout time.Duration
 	recorder        Recorder
 
+	// strictOnUndecodable, when true, fails closed on the fcap stage as
+	// soon as ANY inbound identity failed to canonicalize (missing decoder,
+	// wrong shape). Default false: only the all-undecodable case fails
+	// closed, matching the pragmatic reading of TMP invariant #2 where
+	// "check with what you can decode" is acceptable as long as at least
+	// one identity decoded. Regulated deployments that need the strict
+	// reading opt in via TMP_FCAP_STRICT_ON_UNDECODABLE_IDENTITY=true.
+	strictOnUndecodable bool
+
 	// Verified-identity dependencies are all optional. When verifier or
 	// recipientKeys is unset the verified-identity stage is a no-op and
 	// eligibility behaves exactly as before (fail-closed: no attestation is
@@ -61,6 +70,26 @@ type Service struct {
 	relyingPartyID string
 }
 
+// DecodeSummary reports how many identities from the incoming wire
+// request survived canonicalization. Passed to EvaluateWithDecode so
+// the fcap stage can fail closed when identities the request claimed
+// to carry cannot be checked against cap-state.
+//
+// Zero-value is the "no summary" sentinel: the fail-closed policy is
+// skipped, preserving Evaluate's back-compat behavior for callers that
+// have no decoder wired up.
+type DecodeSummary struct {
+	// WireCount is the number of identities the inbound request carried
+	// before canonicalization. ValidateIdentityRequest already rejects
+	// zero, so any request that reaches the service has WireCount > 0
+	// — a zero here means the caller intentionally opted out of the
+	// summary (see Service.Evaluate for the wrapper that does this).
+	WireCount int
+	// SuccessCount is the number of identities the canonicalizer decoded
+	// into non-empty bytes. Never exceeds WireCount.
+	SuccessCount int
+}
+
 // ServiceConfig packages the dependencies for NewService.
 type ServiceConfig struct {
 	Engine          *targeting.IdentityEngine
@@ -70,6 +99,13 @@ type ServiceConfig struct {
 	FCapTimeout     time.Duration
 	AudienceTimeout time.Duration
 	Recorder        Recorder
+
+	// StrictOnUndecodableIdentity opts in to the strict reading of TMP
+	// invariant #2 (fcap eligibility): fail closed on the fcap stage as
+	// soon as any inbound identity failed to canonicalize. Default false;
+	// the permissive default only fails closed when ZERO identities
+	// decoded (see Service.strictOnUndecodable for the full rationale).
+	StrictOnUndecodableIdentity bool
 
 	// Verifier validates attestations; nil disables the verified-identity
 	// stage (fail-closed — attestations are treated as absent).
@@ -110,17 +146,18 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 		rec = noopRecorder{}
 	}
 	return &Service{
-		engine:          cfg.Engine,
-		fcap:            cfg.FCap,
-		audienceSvc:     cfg.Audience,
-		configSvc:       cfg.ConfigService,
-		fcapTimeout:     cfg.FCapTimeout,
-		audienceTimeout: cfg.AudienceTimeout,
-		recorder:        rec,
-		verifier:        cfg.Verifier,
-		recipientKeys:   cfg.RecipientKeys,
-		ageResolver:     cfg.AgeResolver,
-		relyingPartyID:  cfg.RelyingPartyID,
+		engine:              cfg.Engine,
+		fcap:                cfg.FCap,
+		audienceSvc:         cfg.Audience,
+		configSvc:           cfg.ConfigService,
+		fcapTimeout:         cfg.FCapTimeout,
+		audienceTimeout:     cfg.AudienceTimeout,
+		recorder:            rec,
+		strictOnUndecodable: cfg.StrictOnUndecodableIdentity,
+		verifier:            cfg.Verifier,
+		recipientKeys:       cfg.RecipientKeys,
+		ageResolver:         cfg.AgeResolver,
+		relyingPartyID:      cfg.RelyingPartyID,
 	}, nil
 }
 
@@ -133,7 +170,26 @@ func NewService(cfg ServiceConfig) (*Service, error) {
 //
 // Parent-context expiry (the handler's 40ms budget) terminates both
 // goroutines and forces a fail-closed result.
+//
+// Callers wiring up their own canonicalizer should prefer
+// EvaluateWithDecode so the fcap stage can enforce TMP invariant #2 when
+// the request's identities cannot be canonicalized. Evaluate is preserved
+// for callers with no decoder (the summary defaults to zero, which
+// skips the fail-closed policy — behavior identical to pre-I1 releases).
 func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchRequest) *targeting.IdentityResult {
+	return s.EvaluateWithDecode(ctx, req, DecodeSummary{})
+}
+
+// EvaluateWithDecode is the canonicalizer-aware entry point: identical
+// to Evaluate but the fcap stage additionally consults the caller's
+// DecodeSummary. When SuccessCount is zero and WireCount is positive,
+// the fcap stage fails closed on every package regardless of store
+// state — TMP invariant #2 ("no cap-state entry exists for any request
+// identity") cannot be verified when none of the request identities
+// canonicalized, so serving would allow a capped user to be re-served.
+// When s.strictOnUndecodable is set, ANY undecoded identity triggers
+// the same fail-closed. See DecodeSummary for the summary contract.
+func (s *Service) EvaluateWithDecode(ctx context.Context, req *tmproto.IdentityMatchRequest, summary DecodeSummary) *targeting.IdentityResult {
 	// seller_agent_url selects the seller's active package set. The AdCP
 	// spec compares URL identifiers under URL-identifier canonicalization,
 	// not byte-equality, so a request carrying
@@ -182,7 +238,7 @@ func (s *Service) Evaluate(ctx context.Context, req *tmproto.IdentityMatchReques
 	)
 
 	wg.Go(func() {
-		fcapResult = s.runFcapStage(parCtx, req, canonicalSeller, effectivePkgIDs, verified)
+		fcapResult = s.runFcapStage(parCtx, req, canonicalSeller, effectivePkgIDs, verified, summary)
 		if fcapResult.allCapped(effectivePkgIDs) {
 			cancel()
 		}
@@ -273,8 +329,33 @@ func (r fcapResult) allCapped(pkgIDs []string) bool {
 // without also upgrading the downstream frequency-writer to canonicalize
 // on write will fragment cap buckets by URL spelling until existing
 // markers age out.
-func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, canonicalSeller string, pkgIDs []string, verified []targeting.VerifiedIdentity) fcapResult {
+func (s *Service) runFcapStage(ctx context.Context, req *tmproto.IdentityMatchRequest, canonicalSeller string, pkgIDs []string, verified []targeting.VerifiedIdentity, summary DecodeSummary) fcapResult {
 	start := time.Now()
+
+	// TMP invariant #2 requires "no cap-state entry exists for ANY
+	// identity in request.identities". If the caller supplied a decode
+	// summary and none of the wire identities canonicalized, we have no
+	// keys to check the invariant against — silently serving would let
+	// a capped user through. Fail closed regardless of store state.
+	// A summary with WireCount == 0 is the "no summary supplied" sentinel
+	// (Evaluate wrapper); back-compat callers keep the pre-I1 behavior.
+	//
+	// The strict mode covers deployments (regulated jurisdictions) that
+	// want fail-closed on ANY undecoded identity, not just the empty
+	// case. Verified identities bypass this: when the verifier produced
+	// a nullifier-keyed identity, we're checking caps under keys that
+	// don't depend on the wire tokens at all.
+	if len(verified) == 0 && summary.WireCount > 0 {
+		if summary.SuccessCount == 0 || (s.strictOnUndecodable && summary.SuccessCount < summary.WireCount) {
+			s.recorder.StageOutcome(ctx, StageFCap, OutcomeFailClosedUndecodable)
+			return fcapResult{
+				cappedByPkg: failClosedFcap(pkgIDs),
+				outcome:     OutcomeFailClosedUndecodable,
+				duration:    time.Since(start),
+			}
+		}
+	}
+
 	fcapCtx, cancelFcap := context.WithTimeout(ctx, s.fcapTimeout)
 	defer cancelFcap()
 
