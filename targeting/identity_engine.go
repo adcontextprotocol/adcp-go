@@ -49,7 +49,30 @@ type IdentityResult struct {
 	// attestation passed verification — the audience-only engine never sets
 	// it. Never populated from sender-asserted inbound identities.
 	Verified []VerifiedIdentity
+
+	// Status is the terminal outcome of the pipeline for the purpose of
+	// converting internal failures into a TMP ErrorResponse instead of an
+	// empty IdentityMatchResponse. Empty means "ok — return the normal
+	// response shape". Non-empty values map 1:1 to the tmproto.ErrorCode
+	// enum on error.json: "timeout" when a stage timed out or the parent
+	// deadline expired mid-pipeline, "provider_unavailable" when a
+	// backing store returned an error (fcap/audience). Callers that
+	// forward eligibility to a router or publisher MUST translate a
+	// non-empty Status into an ErrorResponse — otherwise a store failure
+	// looks indistinguishable from "no eligible packages" and the router's
+	// circuit-breaker signal is silent.
+	Status string
 }
+
+// Terminal-status values for IdentityResult.Status. Mirror the tmproto
+// error-code enum (error.json) so the identity-agent handler can copy
+// the value straight into ErrorResponse.Code without a mapping table.
+const (
+	StatusOK                  = ""
+	StatusTimeout             = "timeout"
+	StatusProviderUnavailable = "provider_unavailable"
+	StatusInternalError       = "internal_error"
+)
 
 // EvaluateIdentityResolved evaluates package eligibility for an identity
 // match request using pre-resolved identity configs supplied by the
