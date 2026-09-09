@@ -148,13 +148,30 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.engine.Evaluate(ctx, &req)
 	if err != nil {
+		// TMP-errors-ride-200 per spec §Errors: application-layer failures
+		// (timeout, internal_error) travel on HTTP 200 with an error envelope
+		// so the router discriminates on the `type` field instead of on the
+		// HTTP status. Emitting 504/500 previously left the router seeing
+		// "provider returned 504" (generic error), losing the specific
+		// timeout vs. internal_error attribution the error-code enum
+		// provides. Codes match error.json: `timeout` when the parent
+		// budget expired mid-evaluate, `internal_error` for any other
+		// engine failure.
+		//
+		// setSemanticStatus is load-bearing: without it the metrics
+		// middleware would infer StatusOK from the 200 status code and
+		// the agent's own timeout- and error-rate alerts would read
+		// clean while it is actually timing out. Set BEFORE writeError
+		// so the override lands before the response writes.
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "request deadline exceeded", http.StatusGatewayTimeout)
+			setSemanticStatus(w, StatusTimeout)
+			writeError(w, req.RequestID, tmproto.ErrorCodeTimeout, "request deadline exceeded", http.StatusOK)
 			return
 		}
 		h.logger.Error("context engine returned error",
 			"request_id", req.RequestID, "error", err)
-		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusInternalServerError)
+		setSemanticStatus(w, StatusServerError)
+		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusOK)
 		return
 	}
 
