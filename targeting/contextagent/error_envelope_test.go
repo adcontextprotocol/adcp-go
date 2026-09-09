@@ -62,6 +62,54 @@ func TestContextHandler_DeadlineExceeded_EmitsTMPTimeoutOn200(t *testing.T) {
 	assert.Equal(t, "ctx-deadline", resp.RequestID)
 }
 
+// TestContextHandler_DeadlineExceeded_RecordsSemanticStatus pins the
+// observability contract that pairs with the 200-on-timeout wire
+// shape. The request metrics middleware defaults its status label to
+// statusFromHTTPCode(rw.status) — so a naive flatten to HTTP 200
+// would label every timeout and internal error as StatusOK and the
+// agent's own timeout- / error-rate alerts would read clean during
+// an actual outage. The handler MUST override the middleware-inferred
+// label via setSemanticStatus so RequestCompleted records the real
+// outcome. This test drives the deadline path through the metrics
+// middleware and asserts the recorded status.
+func TestContextHandler_DeadlineExceeded_RecordsSemanticStatus(t *testing.T) {
+	engine := targeting.NewContextEngine(targeting.ContextEngineConfig{})
+	rec := &fakeRecorder{}
+	inner := NewHandler(HandlerConfig{
+		Engine:                     engine,
+		RequestTimeout:             time.Second,
+		RequestBodyLimit:           64 * 1024,
+		ResponseTTL:                time.Minute,
+		SupportedADCPMajorVersions: []int{3},
+		Recorder:                   rec,
+		Logger:                     slog.New(slog.NewTextHandler(&nopWriter{}, nil)),
+	})
+	// requestMetricsMiddleware is what the server chain wraps handlers
+	// with in production; drive it here so the deferred RequestCompleted
+	// fires with the semantic-status override.
+	wrapped := requestMetricsMiddleware(inner, rec)
+
+	body := `{
+		"type": "context_match_request",
+		"request_id": "ctx-observability",
+		"property_rid": "rid-1",
+		"property_id": "pub-1",
+		"property_type": "website",
+		"placement_id": "sidebar",
+		"seller_agent_url": "https://seller.example.com/agent"
+	}`
+	parentCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequestWithContext(parentCtx, http.MethodPost, "/context", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, rec.requestsCompleted, 1)
+	assert.Equal(t, StatusTimeout, rec.requestsCompleted[0].Status,
+		"deadline path MUST record StatusTimeout, not the code-derived StatusOK")
+}
+
 // nopWriter silences the handler's logger during test runs.
 type nopWriter struct{}
 

@@ -154,16 +154,23 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// HTTP status. Emitting 504/500 previously left the router seeing
 		// "provider returned 504" (generic error), losing the specific
 		// timeout vs. internal_error attribution the error-code enum
-		// provides — the same bookkeeping asymmetry that motivated the
-		// identity-agent's I4 fix. Codes match error.json: `timeout` when
-		// the parent budget expired mid-evaluate, `internal_error` for
-		// any other engine failure.
+		// provides. Codes match error.json: `timeout` when the parent
+		// budget expired mid-evaluate, `internal_error` for any other
+		// engine failure.
+		//
+		// setSemanticStatus is load-bearing: without it the metrics
+		// middleware would infer StatusOK from the 200 status code and
+		// the agent's own timeout- and error-rate alerts would read
+		// clean while it is actually timing out. Set BEFORE writeError
+		// so the override lands before the response writes.
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			setSemanticStatus(w, StatusTimeout)
 			writeError(w, req.RequestID, tmproto.ErrorCodeTimeout, "request deadline exceeded", http.StatusOK)
 			return
 		}
 		h.logger.Error("context engine returned error",
 			"request_id", req.RequestID, "error", err)
+		setSemanticStatus(w, StatusServerError)
 		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusOK)
 		return
 	}
