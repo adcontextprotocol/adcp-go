@@ -22,9 +22,12 @@ type MAID struct{}
 func (MAID) Decode(_ context.Context, userToken string) ([]byte, error) {
 	switch len(userToken) {
 	case 36:
-		// Dashed UUID: position-check the separators before stripping.
+		// Dashed UUID: position-check the separators before stripping. The
+		// error message MUST NOT embed userToken — the canonicalizer's
+		// WARN-log surface would then leak the raw MAID (a persistent
+		// device advertising identifier) to structured logs.
 		if userToken[8] != '-' || userToken[13] != '-' || userToken[18] != '-' || userToken[23] != '-' {
-			return nil, fmt.Errorf("maid: dashed UUID has misplaced separators in %q", userToken)
+			return nil, fmt.Errorf("maid: dashed UUID has misplaced separators")
 		}
 		return decodeMAIDHex(strings.ReplaceAll(userToken, "-", ""))
 	case 32:
