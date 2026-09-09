@@ -119,6 +119,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 		RequestBodyLimit:           int64(cfg.RequestBodyLimitBytes),
 		ResponseTTL:                cfg.ResponseTTL,
 		SupportedADCPMajorVersions: cfg.SupportedADCPMajorVersions,
+		SupportedAdcpVersions:      cfg.SupportedAdcpVersions,
 		Recorder:                   recorder,
 		Logger:                     logger,
 	})

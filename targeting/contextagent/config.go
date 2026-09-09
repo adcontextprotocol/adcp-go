@@ -46,6 +46,12 @@ type Config struct {
 	AdminPort int
 
 	SupportedADCPMajorVersions []int
+	// SupportedAdcpVersions is the release-precision negotiation surface
+	// (version-envelope.json §adcp_version). Sourced from
+	// SUPPORTED_ADCP_VERSIONS as a comma-separated list. Empty disables
+	// release-precision validation and the handler falls back to the
+	// deprecated major-version check.
+	SupportedAdcpVersions []string
 
 	LogLevel string
 
@@ -282,6 +288,7 @@ func LoadConfigFromEnv() (Config, error) {
 
 	supportedVers, err := lookupIntList("SUPPORTED_ADCP_MAJOR_VERSIONS", defaultSupportedADCPMajorVersions)
 	errs = appendErr(errs, err)
+	supportedAdcpVers := lookupStringList("SUPPORTED_ADCP_VERSIONS")
 
 	taxonomies, err := lookupTaxonomies("ACCEPTED_TAXONOMIES")
 	errs = appendErr(errs, err)
@@ -315,6 +322,7 @@ func LoadConfigFromEnv() (Config, error) {
 		StrictContentType:          strictCT,
 		AdminPort:                  adminPort,
 		SupportedADCPMajorVersions: supportedVers,
+		SupportedAdcpVersions:      supportedAdcpVers,
 		LogLevel:                   strings.TrimSpace(os.Getenv("LOG_LEVEL")),
 		ProviderID:                 strings.TrimSpace(os.Getenv("PROVIDER_ID")),
 		AcceptedTaxonomies:         taxonomies,

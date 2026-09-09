@@ -25,8 +25,19 @@ type HandlerConfig struct {
 	RequestBodyLimit           int64
 	ResponseTTL                time.Duration
 	SupportedADCPMajorVersions []int
-	Recorder                   Recorder
-	Logger                     *slog.Logger
+
+	// SupportedAdcpVersions enumerates the release-precision AdCP versions
+	// this agent will accept on inbound `adcp_version` (e.g. "3.0", "3.1",
+	// "3.1-beta"). Per version-envelope.json §adcp_version the seller
+	// validates the buyer's release pin against this list. When
+	// `adcp_version` is set on a request it takes precedence over
+	// `adcp_major_version` (deprecated fallback). An empty list disables
+	// release-precision validation and the handler falls back to the
+	// major-version check only.
+	SupportedAdcpVersions []string
+
+	Recorder Recorder
+	Logger   *slog.Logger
 }
 
 // NewHandler returns the http.Handler for POST /context.
@@ -43,25 +54,31 @@ func NewHandler(cfg HandlerConfig) http.Handler {
 	for _, v := range cfg.SupportedADCPMajorVersions {
 		supported[v] = struct{}{}
 	}
+	supportedRel := make(map[string]struct{}, len(cfg.SupportedAdcpVersions))
+	for _, v := range cfg.SupportedAdcpVersions {
+		supportedRel[v] = struct{}{}
+	}
 	return &handler{
-		engine:           cfg.Engine,
-		requestTimeout:   cfg.RequestTimeout,
-		requestBodyLimit: cfg.RequestBodyLimit,
-		responseTTL:      cfg.ResponseTTL,
-		supportedVers:    supported,
-		recorder:         recorder,
-		logger:           logger,
+		engine:                cfg.Engine,
+		requestTimeout:        cfg.RequestTimeout,
+		requestBodyLimit:      cfg.RequestBodyLimit,
+		responseTTL:           cfg.ResponseTTL,
+		supportedVers:         supported,
+		supportedAdcpVersions: supportedRel,
+		recorder:              recorder,
+		logger:                logger,
 	}
 }
 
 type handler struct {
-	engine           *targeting.ContextEngine
-	requestTimeout   time.Duration
-	requestBodyLimit int64
-	responseTTL      time.Duration
-	supportedVers    map[int]struct{}
-	recorder         Recorder
-	logger           *slog.Logger
+	engine                *targeting.ContextEngine
+	requestTimeout        time.Duration
+	requestBodyLimit      int64
+	responseTTL           time.Duration
+	supportedVers         map[int]struct{}
+	supportedAdcpVersions map[string]struct{}
+	recorder              Recorder
+	logger                *slog.Logger
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +115,20 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.AdcpMajorVersion != 0 {
+	// Version negotiation: `adcp_version` (release-precision) is authoritative
+	// per version-envelope.json §adcp_version; `adcp_major_version` is a
+	// deprecated fallback the seller honors only when `adcp_version` is
+	// omitted. Ignoring `adcp_version` would let a client pin an unsupported
+	// release and get served with the older major-version fallback silently.
+	if req.AdcpVersion != "" {
+		if len(h.supportedAdcpVersions) > 0 {
+			if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
+				writeError(w, req.RequestID, tmproto.ErrorCodeInvalidRequest,
+					"unsupported adcp_version", http.StatusBadRequest)
+				return
+			}
+		}
+	} else if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedVers[req.AdcpMajorVersion]; !ok {
 			writeError(w, req.RequestID, tmproto.ErrorCodeInvalidRequest,
 				"unsupported adcp_major_version", http.StatusBadRequest)
