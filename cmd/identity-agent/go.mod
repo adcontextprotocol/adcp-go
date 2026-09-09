@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
-	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.4.0
 	github.com/adcontextprotocol/adcp-go/tmproto v0.3.2
 )
 
