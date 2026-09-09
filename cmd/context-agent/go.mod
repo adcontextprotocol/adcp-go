@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/adcontextprotocol/adcp-go/registry/redisstore v0.0.0
-	github.com/adcontextprotocol/adcp-go/targeting v0.3.4
+	github.com/adcontextprotocol/adcp-go/targeting v0.4.0
 	github.com/redis/go-redis/v9 v9.22.0
 )
 

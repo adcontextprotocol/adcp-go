@@ -4,8 +4,8 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEK
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/adcontextprotocol/adcp-go/targeting v0.3.4 h1:ybXKoZOaAp3P9Y52iIZfQnIbmAypvGVQNtU6TWbekTM=
-github.com/adcontextprotocol/adcp-go/targeting v0.3.4/go.mod h1:kMtO3lVhHyA2VfrQuKYE1MQy6XX0aGyLcskHch2QvSc=
+github.com/adcontextprotocol/adcp-go/targeting v0.4.0 h1:C4flcWkhFfiBhGHJyYOHxYTaMqTTocQ/P1M1Hbro2Eo=
+github.com/adcontextprotocol/adcp-go/targeting v0.4.0/go.mod h1:kMtO3lVhHyA2VfrQuKYE1MQy6XX0aGyLcskHch2QvSc=
 github.com/adcontextprotocol/adcp-go/tmproto v0.3.2 h1:OBtWZ/tpaCiM/lp8AR1PMi6VXxiJtxDwVPU9mZ3diTc=
 github.com/adcontextprotocol/adcp-go/tmproto v0.3.2/go.mod h1:IB7hhgE9PT9bVGcJEtTo7Z5bBpYXXEoVkt8x375KaC8=
 github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 h1:zmLYfwIQBr3dPq+fDXtIgUr7LNHu56LZhaZp3uVCzFo=
