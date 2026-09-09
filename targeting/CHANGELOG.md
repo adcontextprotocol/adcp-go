@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.3...targeting/v0.3.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **identityagent:** fail closed on fcap when identities can't be canonicalized ([6172683](https://github.com/adcontextprotocol/adcp-go/commit/6172683b84a3ddeaa2825fbce2cad9164054a992))
+* **identityagent:** fail closed on fcap when identities can't be canonicalized ([6d42349](https://github.com/adcontextprotocol/adcp-go/commit/6d423495c82ee287b9ec557467ae63d75bdd7ef3))
+
 ## [0.3.3](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.2...targeting/v0.3.3) (2026-09-09)
 
 
