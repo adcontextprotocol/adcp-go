@@ -148,13 +148,23 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.engine.Evaluate(ctx, &req)
 	if err != nil {
+		// TMP-errors-ride-200 per spec §Errors: application-layer failures
+		// (timeout, internal_error) travel on HTTP 200 with an error envelope
+		// so the router discriminates on the `type` field instead of on the
+		// HTTP status. Emitting 504/500 previously left the router seeing
+		// "provider returned 504" (generic error), losing the specific
+		// timeout vs. internal_error attribution the error-code enum
+		// provides — the same bookkeeping asymmetry that motivated the
+		// identity-agent's I4 fix. Codes match error.json: `timeout` when
+		// the parent budget expired mid-evaluate, `internal_error` for
+		// any other engine failure.
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "request deadline exceeded", http.StatusGatewayTimeout)
+			writeError(w, req.RequestID, tmproto.ErrorCodeTimeout, "request deadline exceeded", http.StatusOK)
 			return
 		}
 		h.logger.Error("context engine returned error",
 			"request_id", req.RequestID, "error", err)
-		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusInternalServerError)
+		writeError(w, req.RequestID, tmproto.ErrorCodeInternalError, "internal error", http.StatusOK)
 		return
 	}
 
