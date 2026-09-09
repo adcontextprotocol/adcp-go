@@ -5,10 +5,32 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
+)
+
+// providerIDPattern enforces the charset from provider-registration.json's
+// `provider_id` schema so registered IDs are safe to use as label values in
+// metrics, dashboard filters, and log fields without operator quoting.
+var providerIDPattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// tmpxSlotIDPattern enforces the charset from tmpx-chunk.json's `slot_id`
+// schema so slot IDs are safe to use as label values in metrics and as
+// keys in the router→publisher tmpx_providers map (which the router
+// forwards under `provider_id` with the raw slot_id nested inside).
+var tmpxSlotIDPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+
+// Provider-registration schema bounds. Mirror provider-registration.json's
+// numeric ranges and length caps so a registration that would fail
+// downstream schema validation is rejected at startup instead.
+const (
+	providerIDMaxLen = 64
+	providerTimeoutMinMs = 5
+	providerTimeoutMaxMs = 5000
+	tmpxSlotsMaxItems = 2
 )
 
 // ProviderStatus is the schema-generated provider lifecycle type.
@@ -106,18 +128,22 @@ func (p *ProviderConfig) EffectiveStatus() ProviderStatus {
 }
 
 // ValidateProviderConfig checks that a provider registration is valid.
-// latencyBudget of 0 disables the timeout check.
+// Mirrors provider-registration.json so a registration that would fail
+// downstream schema validation is rejected at startup rather than at
+// serve time (e.g. an out-of-charset provider_id would silently become a
+// key in `signals_by_provider` / `tmpx_providers` that then fails the
+// response schema's propertyNames constraint on the router→publisher
+// hop). latencyBudget of 0 disables the timeout ceiling check but the
+// schema's timeout_ms range still applies.
 func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) error {
 	if p.ID == "" {
 		return fmt.Errorf("provider ID must not be empty")
 	}
-	if len(p.ID) > 128 {
-		return fmt.Errorf("provider %q: ID exceeds maximum length of 128", p.ID[:64]+"...")
+	if len(p.ID) > providerIDMaxLen {
+		return fmt.Errorf("provider %q: ID exceeds maximum length of %d", truncateForError(p.ID), providerIDMaxLen)
 	}
-	for _, c := range p.ID {
-		if c < 0x20 || c == 0x7f || c == 0x00 {
-			return fmt.Errorf("provider ID contains invalid characters")
-		}
+	if !providerIDPattern.MatchString(p.ID) {
+		return fmt.Errorf("provider %q: ID must match %s (provider-registration.json §provider_id)", truncateForError(p.ID), providerIDPattern)
 	}
 	if !p.ContextMatch && !p.IdentityMatch {
 		return fmt.Errorf("provider %q: at least one of context_match or identity_match must be true", p.ID)
@@ -130,8 +156,56 @@ func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) erro
 			return fmt.Errorf("provider %q: uid_types must be non-empty when identity_match is true", p.ID)
 		}
 	}
+	if p.Priority < 0 {
+		return fmt.Errorf("provider %q: priority must be >= 0 (schema §priority)", p.ID)
+	}
+	if p.Timeout != 0 {
+		ms := p.Timeout / time.Millisecond
+		if ms < providerTimeoutMinMs || ms > providerTimeoutMaxMs {
+			return fmt.Errorf("provider %q: timeout_ms=%d outside schema range [%d, %d]", p.ID, ms, providerTimeoutMinMs, providerTimeoutMaxMs)
+		}
+	}
 	if latencyBudget > 0 && p.Timeout > 0 && p.Timeout > latencyBudget {
 		return fmt.Errorf("provider %q: timeout %v exceeds latency budget %v", p.ID, p.Timeout, latencyBudget)
+	}
+	if err := validateTmpxSlots(p.ID, p.TmpxSlots); err != nil {
+		return err
+	}
+	return nil
+}
+
+// truncateForError returns a form of s safe to embed in an error message
+// when s is unbounded by earlier validation — matches the caller's
+// intent when it wants to name the offending value without emitting a
+// multi-KB error log line.
+func truncateForError(s string) string {
+	const cap = 64
+	if len(s) <= cap {
+		return s
+	}
+	return s[:cap] + "..."
+}
+
+// validateTmpxSlots enforces the provider-registration.json §tmpx_slots
+// bounds: each slot_id matches the tmpx-chunk.json charset, the list is
+// capped at 2, and IDs within the list are unique. Empty is legal —
+// providers that mint no TMPX omit the field entirely.
+func validateTmpxSlots(providerID string, slots []string) error {
+	if len(slots) == 0 {
+		return nil
+	}
+	if len(slots) > tmpxSlotsMaxItems {
+		return fmt.Errorf("provider %q: tmpx_slots has %d entries, schema caps at %d", providerID, len(slots), tmpxSlotsMaxItems)
+	}
+	seen := make(map[string]struct{}, len(slots))
+	for _, s := range slots {
+		if !tmpxSlotIDPattern.MatchString(s) {
+			return fmt.Errorf("provider %q: tmpx_slots entry %q must match %s (tmpx-chunk.json §slot_id)", providerID, s, tmpxSlotIDPattern)
+		}
+		if _, dup := seen[s]; dup {
+			return fmt.Errorf("provider %q: tmpx_slots entry %q duplicated (schema §uniqueItems)", providerID, s)
+		}
+		seen[s] = struct{}{}
 	}
 	return nil
 }
