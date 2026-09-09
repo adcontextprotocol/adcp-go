@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.4...targeting/v0.4.0) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **identityagent:** The /identity handler's deadline-exceeded and internal-store-failure paths now emit a TMP `ErrorResponse` (type: "error", code: timeout / provider_unavailable) at HTTP 200 instead of a `ProviderIdentityMatchResponse` with an empty `eligible_package_ids` at HTTP 200. Consumers that read `eligible_package_ids` off the 200 without first discriminating on `type` see a different body shape. The router already discriminates on `type` and is unaffected. Publishers wired directly at the identity-agent MUST update to check `type == "error"` before reading eligibility.
+
+### Bug Fixes
+
+* **contextagent:** validate release-precision adcp_version ([0424c90](https://github.com/adcontextprotocol/adcp-go/commit/0424c90a43a28f720935d1e8caeebbe8f8ea0fab))
+* **identityagent:** close empty-list version bypass; thread verifier outage into terminal status ([c815ef7](https://github.com/adcontextprotocol/adcp-go/commit/c815ef7f28f50d86cb2f3970a39b9b87ac99ef64))
+* **identityagent:** validate adcp_version and surface store failures as TMP errors ([69f130b](https://github.com/adcontextprotocol/adcp-go/commit/69f130b963bba607722eab2962e0df9c7066c1ed))
+* **targeting:** validate release-precision adcp_version + surface identity-agent store failures as TMP errors ([4ddf894](https://github.com/adcontextprotocol/adcp-go/commit/4ddf894205390fa8cf0ae2c0f9a2c5993101b7af))
+
 ## [0.3.4](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.3...targeting/v0.3.4) (2026-09-09)
 
 
