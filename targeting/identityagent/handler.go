@@ -29,6 +29,7 @@ type identityHandler struct {
 	requestBodyLimit           int64
 	responseTTL                time.Duration
 	supportedADCPMajorVersions map[int]struct{}
+	supportedAdcpVersions      map[string]struct{}
 	recorder                   Recorder
 	logger                     *slog.Logger
 }
@@ -68,8 +69,19 @@ type IdentityHandlerConfig struct {
 	// HTTP 400 and ErrorCodeInvalidRequest. When the field is omitted, the
 	// seller assumes its highest supported version (per the TMP schema).
 	SupportedADCPMajorVersions []int
-	Recorder                   Recorder
-	Logger                     *slog.Logger
+
+	// SupportedAdcpVersions enumerates the release-precision AdCP versions
+	// this agent will accept on inbound `adcp_version` (e.g. "3.0", "3.1",
+	// "3.1-beta"). Per version-envelope.json §adcp_version the seller
+	// validates the buyer's release pin against this list. When
+	// `adcp_version` is set on a request it takes precedence over
+	// `adcp_major_version` (deprecated fallback). An empty list disables
+	// release-precision validation and the handler falls back to the
+	// major-version check only.
+	SupportedAdcpVersions []string
+
+	Recorder Recorder
+	Logger   *slog.Logger
 }
 
 // NewIdentityHandler returns the http.Handler for POST /identity.
@@ -86,6 +98,10 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	for _, v := range cfg.SupportedADCPMajorVersions {
 		supported[v] = struct{}{}
 	}
+	supportedRel := make(map[string]struct{}, len(cfg.SupportedAdcpVersions))
+	for _, v := range cfg.SupportedAdcpVersions {
+		supportedRel[v] = struct{}{}
+	}
 	return &identityHandler{
 		service:                    cfg.Service,
 		tmpx:                       cfg.TMPXSealer,
@@ -94,6 +110,7 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 		requestBodyLimit:           cfg.RequestBodyLimit,
 		responseTTL:                cfg.ResponseTTL,
 		supportedADCPMajorVersions: supported,
+		supportedAdcpVersions:      supportedRel,
 		recorder:                   cfg.Recorder,
 		logger:                     cfg.Logger,
 	}
@@ -141,13 +158,24 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recordCompletion(ctx, start, "bad_request")
 		return
 	}
-	if req.AdcpMajorVersion != 0 {
+	// Version negotiation: `adcp_version` (release-precision) is authoritative
+	// per version-envelope.json §adcp_version; `adcp_major_version` is a
+	// deprecated fallback the seller honors only when `adcp_version` is
+	// omitted. adcp/schemas/tmp/identity-match-request.json's description
+	// names VERSION_UNSUPPORTED here, but the error.json schema's `code`
+	// enum does not include it — invalid_request is the closest valid code
+	// until the spec is internally consistent.
+	if req.AdcpVersion != "" {
+		if len(h.supportedAdcpVersions) > 0 {
+			if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
+				h.logValidationFailure(r, req.RequestID, errors.New("adcp_version is not supported"))
+				h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
+				h.recordCompletion(ctx, start, "bad_request")
+				return
+			}
+		}
+	} else if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedADCPMajorVersions[req.AdcpMajorVersion]; !ok {
-			// adcp/schemas/tmp/identity-match-request.json's description
-			// names VERSION_UNSUPPORTED here, but the error.json schema's
-			// `code` enum does not include it. Use invalid_request — the
-			// closest valid code — until the spec is internally
-			// consistent.
 			h.logValidationFailure(r, req.RequestID, errors.New("adcp_major_version is not supported"))
 			h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
 			h.recordCompletion(ctx, start, "bad_request")
@@ -170,20 +198,26 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		result = h.service.EvaluateWithDecode(ctx, serviceReq, summary)
 	}
 
-	// Fail closed on budget overrun: return the standard wire shape with an
-	// empty eligible-packages array, matching what callers see for any other
-	// fail-closed outcome. RequestID is preserved so the buyer can correlate.
+	// Terminal-error surface: a request that exhausted the handler's
+	// budget OR whose service pipeline reported a non-empty Status (store
+	// timeout, provider_unavailable) is returned as a TMP ErrorResponse
+	// rather than an empty IdentityMatchResponse. The router discriminates
+	// on `type: "error"` and its circuit breaker keys off the error code —
+	// without this it cannot tell "provider timed out" from "no eligible
+	// packages" and healthy providers stay in-rotation regardless of
+	// upstream store health. Fail-closed decisions rooted in cap/audience
+	// semantics (all-capped, undecodable-identities) keep Status == ""
+	// and go through the normal empty-eligibility path below.
+	terminalStatus := ""
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		status := "timeout"
-		if !h.writeResponse(w, &tmproto.ProviderIdentityMatchResponse{
-			Type:               tmproto.TypeIdentityMatchResponse,
-			RequestID:          req.RequestID,
-			EligiblePackageIDs: []string{},
-			ServeWindowSec:     serveWindowSeconds(h.responseTTL),
-		}) {
-			status = "write_error"
-		}
-		h.recordCompletion(ctx, start, status)
+		terminalStatus = targeting.StatusTimeout
+	} else if result != nil && result.Status != targeting.StatusOK {
+		terminalStatus = result.Status
+	}
+	if terminalStatus != "" {
+		errCode := errorCodeForStatus(terminalStatus)
+		h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusOK, errCode, string(errCode))
+		h.recordCompletion(ctx, start, terminalStatus)
 		return
 	}
 
@@ -356,6 +390,20 @@ func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.
 // Attestation-less and successfully-decoded identities are already represented
 // by the canonical set, so only undecoded attestation carriers are appended
 // (no double-counting).
+// errorCodeForStatus maps a targeting.Status* value onto the
+// tmproto.ErrorCode enum on error.json. Unknown statuses fall back to
+// internal_error so the handler never emits an unenumerated code.
+func errorCodeForStatus(status string) tmproto.ErrorCode {
+	switch status {
+	case targeting.StatusTimeout:
+		return tmproto.ErrorCodeTimeout
+	case targeting.StatusProviderUnavailable:
+		return tmproto.ErrorCodeProviderUnavailable
+	default:
+		return tmproto.ErrorCodeInternalError
+	}
+}
+
 // decodedSuccessCount tallies decoded identities whose canonicalization
 // succeeded (Bytes non-empty). Feeds Service.EvaluateWithDecode's
 // DecodeSummary so the fcap stage can fail closed when the request's

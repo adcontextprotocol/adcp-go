@@ -87,6 +87,12 @@ type Config struct {
 	// value" — but Validate rejects empty, so deployments must declare
 	// support explicitly.
 	SupportedADCPMajorVersions []int
+	// SupportedAdcpVersions is the release-precision negotiation surface
+	// (version-envelope.json §adcp_version). Sourced from
+	// SUPPORTED_ADCP_VERSIONS as a comma-separated list. Empty disables
+	// release-precision validation and the handler falls back to the
+	// deprecated major-version check.
+	SupportedAdcpVersions []string
 
 	LogLevel string
 
@@ -496,6 +502,7 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	supportedAdcpVers := lookupStringList("SUPPORTED_ADCP_VERSIONS")
 	supportedVersions, err := lookupIntList("SUPPORTED_ADCP_MAJOR_VERSIONS", defaultSupportedADCPMajorVersions)
 	if err != nil {
 		errs = append(errs, err)
@@ -532,6 +539,7 @@ func LoadConfigFromEnv() (Config, error) {
 		AccessLogEnabled:           accessLog,
 		AdminPort:                  adminPort,
 		SupportedADCPMajorVersions: supportedVersions,
+		SupportedAdcpVersions:      supportedAdcpVers,
 		LogLevel:                   lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
 			// TrimSpace on every field: a bearer with a trailing newline
@@ -943,6 +951,26 @@ func lookupIntList(name string, def []int) ([]int, error) {
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// lookupStringList parses a comma-separated env var into a trimmed
+// non-empty string slice. Returns nil when the variable is unset. An
+// empty entry is treated as configuration error rather than silently
+// dropped so version-negotiation lists (SUPPORTED_ADCP_VERSIONS) don't
+// mask typos.
+func lookupStringList(name string) []string {
+	v := os.Getenv(name)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // lookupStringMapJSON parses an env var as a JSON object of string→string.

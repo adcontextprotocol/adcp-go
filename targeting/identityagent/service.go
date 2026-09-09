@@ -272,7 +272,27 @@ func (s *Service) EvaluateWithDecode(ctx context.Context, req *tmproto.IdentityM
 		RequestID:   req.RequestID,
 		Eligibility: eligibility,
 		Verified:    verified,
+		Status:      terminalStatus(fcapResult.outcome, audResult.outcome),
 	}
+}
+
+// terminalStatus maps the two parallel stage outcomes onto the
+// pipeline's terminal status. Only genuine store failures propagate —
+// timeout on either stage becomes StatusTimeout, non-timeout error
+// becomes StatusProviderUnavailable. Fail-closed decisions that are
+// semantically "no eligible packages" (all capped, all rejected,
+// undecodable identities) stay StatusOK: the empty response IS the
+// answer, and surfacing them as errors would fire the router's
+// circuit breaker on a healthy provider. Cancellation is the sibling
+// stage's short-circuit and is not an error either.
+func terminalStatus(fcapOutcome, audOutcome string) string {
+	if fcapOutcome == OutcomeTimeout || audOutcome == OutcomeTimeout {
+		return targeting.StatusTimeout
+	}
+	if fcapOutcome == OutcomeError || audOutcome == OutcomeError {
+		return targeting.StatusProviderUnavailable
+	}
+	return targeting.StatusOK
 }
 
 // packagesWithSegmentRules returns the set of pkgIDs whose IdentityConfig
