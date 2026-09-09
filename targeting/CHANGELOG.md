@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.4.0...targeting/v0.5.0) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **contextagent:** The /context handler's deadline-exceeded and internal-engine-error paths now emit HTTP 200 with a TMP ErrorResponse (type: "error", code: timeout / internal_error) instead of HTTP 504 / 500 with an ErrorResponse. Consumers that decide-by- status-code (retry on 5xx, parse-body on 2xx) will now always land on the parse-body branch. The router's provider-call path already discriminates on the response's `type` field (checkResponseType at router.go) and is unaffected. Publishers wired directly at the context-agent MUST update to check `type == "error"` before reading offers.
+
+### Bug Fixes
+
+* **contextagent:** emit TMP error envelope on HTTP 200 for deadline and engine failures ([1b3f166](https://github.com/adcontextprotocol/adcp-go/commit/1b3f16678979defba00f2d8063748d9a72d890d1))
+* **contextagent:** record semantic status for TMP-error-envelope paths ([ff6d8ba](https://github.com/adcontextprotocol/adcp-go/commit/ff6d8bae9fe3ab6b8f29f5d0b4006d3e190a97a5))
+
 ## [0.4.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.4...targeting/v0.4.0) (2026-09-09)
 
 
