@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.2...targeting/v0.3.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **tmpxdecoders:** drop raw MAID from decode-error string ([d08e879](https://github.com/adcontextprotocol/adcp-go/commit/d08e8793c40b7c1192ed6f244d24b2c6f6d00084))
+* **tmpxdecoders:** drop raw MAID from decode-error string ([66240ba](https://github.com/adcontextprotocol/adcp-go/commit/66240babe3ff3fa6b2574e2bb2a718b922791a7f))
+
 ## [0.3.2](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.3.1...targeting/v0.3.2) (2026-09-08)
 
 
