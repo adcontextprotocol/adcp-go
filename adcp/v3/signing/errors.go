@@ -165,3 +165,84 @@ func AsError(err error) *Error {
 	}
 	return nil
 }
+
+// SigningErrorCode is a stable identifier for a failure on the *signing*
+// (outbound, provider) path — the write-side counterpart to ErrorCode,
+// which covers the verifier.
+type SigningErrorCode string
+
+const (
+	// SignCodeProviderFailed means a SigningProvider's call to its backing
+	// service (KMS, HSM, Vault, ...) failed or returned a response Sign
+	// could not use. The underlying cause is available via errors.Unwrap /
+	// errors.As, never via Detail — see SigningError's doc comment.
+	SignCodeProviderFailed SigningErrorCode = "signing_provider_failed"
+
+	// SignCodeAlgorithmUnexpected means a provider produced or reported an
+	// algorithm other than the one NewSigner validated at construction
+	// time (SigningProvider.Algorithm()).
+	SignCodeAlgorithmUnexpected SigningErrorCode = "signing_algorithm_unexpected"
+
+	// SignCodePublicKeyMismatch means AssertProviderPublicKeyMatchesSPKI
+	// found the provider's current public key does not match the SPKI
+	// bytes pinned at deploy time — the managed key store silently
+	// rotated the key backing this provider's KeyID.
+	SignCodePublicKeyMismatch SigningErrorCode = "signing_public_key_mismatch"
+)
+
+// SigningError is the typed error surface for the signing (outbound) path.
+// A SigningProvider backed by an external service should return one of
+// these from Sign or PublicKey instead of forwarding the backend SDK's raw
+// error.
+//
+// Code is stable and safe to log or compare with errors.Is/errors.As.
+//
+// Detail MUST be a caller-controlled, static string — NEVER the raw error
+// message from a KMS/HSM/Vault SDK call. Those messages routinely embed
+// resource identifiers (KMS key ARNs; GCP KMS resource names of the form
+// projects/<id>/locations/<region>/keyRings/<ring>/cryptoKeyVersions/<n>;
+// Vault paths) that AGENTS.md's error-message rule — "never echo
+// err.Error() in HTTP responses," "never interpolate user-supplied values
+// into error messages" — is designed to keep off of any surface a caller
+// might build on top of Sign's return value.
+//
+// The underlying cause belongs in Wrapped instead: reachable via
+// errors.Unwrap / errors.As for server-side structured logging
+// (slog.Error("signing failed", "error", err)), never for direct display.
+// SigningError.Error() deliberately does not include Wrapped's message for
+// this reason — only Code, and Detail if the caller explicitly set one.
+type SigningError struct {
+	Code    SigningErrorCode
+	Detail  string
+	Wrapped error
+}
+
+func (e *SigningError) Error() string {
+	if e.Detail != "" {
+		return string(e.Code) + ": " + e.Detail
+	}
+	return string(e.Code)
+}
+
+func (e *SigningError) Unwrap() error { return e.Wrapped }
+
+// newSigningError constructs a typed signing error without wrapping.
+func newSigningError(code SigningErrorCode, detail string) *SigningError {
+	return &SigningError{Code: code, Detail: detail}
+}
+
+// wrapSigningError attaches an underlying cause for logging. Detail is
+// deliberately not accepted here — see SigningError's doc comment on why
+// the underlying cause must never become Detail.
+func wrapSigningError(code SigningErrorCode, cause error) *SigningError {
+	return &SigningError{Code: code, Wrapped: cause}
+}
+
+// AsSigningError returns err as *SigningError if it is (or wraps) one, else nil.
+func AsSigningError(err error) *SigningError {
+	var e *SigningError
+	if errors.As(err, &e) {
+		return e
+	}
+	return nil
+}

@@ -26,6 +26,27 @@
 //	})
 //	if err := signer.SignRequest(req, signing.SignOptions{CoverContentDigest: true}); err != nil { ... }
 //
+// # Keeping the private key out of process memory
+//
+// SignerOptions.PrivateKey above is the default: the key lives in process
+// memory, wrapped internally in an InMemorySigningProvider. To sign against
+// a KMS/HSM/Vault-backed key instead, implement SigningProvider and pass it
+// as SignerOptions.Provider:
+//
+//	provider, _ := signing.NewInMemorySigningProvider(keyID, priv) // or your own SigningProvider
+//	signer, _ := signing.NewSigner(signing.SignerOptions{Provider: provider})
+//
+// SigningProvider also has a PublicKey method, which unlocks
+// NewPublicJWKFromProvider (build the jwks_uri publication JWK straight from
+// a provider) and AssertProviderPublicKeyMatchesSPKI (a startup tripwire
+// against a managed key store silently rotating the key backing a kid). An
+// external provider's Sign/PublicKey should return a *SigningError on
+// failure — Code is safe to log, the backend SDK's raw error belongs in
+// Wrapped (via errors.Unwrap/errors.As), never in Detail; see SigningError.
+//
+// See adcp/v3/signing/awskms for a worked AWS KMS SigningProvider, shipped
+// as its own module so importing this package never pulls in a cloud SDK.
+//
 // # Verifier middleware
 //
 //	mw := signing.Middleware(signing.MiddlewareOptions{
