@@ -67,7 +67,7 @@ func TestArtifact_AssetUnion_RoundTrip(t *testing.T) {
 	text, ok := got.Assets[0].(*TextAsset)
 	require.True(t, ok, "asset[0] should be *TextAsset")
 	assert.Equal(t, "title", text.Role)
-	assert.Equal(t, "How to Make Pasta", text.Content)
+	assert.Equal(t, "How to Make Pasta", string(text.Content))
 
 	heading, ok := got.Assets[1].(*TextAsset)
 	require.True(t, ok)
@@ -184,7 +184,7 @@ func TestContextMatchRequest_FullDisclosureLadder(t *testing.T) {
 	require.Len(t, got.Artifact.Assets, 1)
 	text, ok := got.Artifact.Assets[0].(*TextAsset)
 	require.True(t, ok)
-	assert.Equal(t, "Pasta 101", text.Content)
+	assert.Equal(t, "Pasta 101", string(text.Content))
 
 	require.Len(t, got.ArtifactRefs, 1)
 	assert.Equal(t, ArtifactRefTypeURL, got.ArtifactRefs[0].Type)
