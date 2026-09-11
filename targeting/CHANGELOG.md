@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.5.0...targeting/v0.5.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **targeting:** schema-validate TMPX_SLOT_IDS; /health drain 503; consent-required gate; WARN on ADMIN_PORT=0 ([a6c741b](https://github.com/adcontextprotocol/adcp-go/commit/a6c741b2b7387412bf72e2992c31b3402acf8986))
+* **targeting:** schema-validate TMPX_SLOT_IDS; /health drain 503; consent-required gate; WARN on ADMIN_PORT=0 ([e508f84](https://github.com/adcontextprotocol/adcp-go/commit/e508f84f8dd53f952aebe73e0da368adc99717e8))
+
 ## [0.5.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.4.0...targeting/v0.5.0) (2026-09-09)
 
 
