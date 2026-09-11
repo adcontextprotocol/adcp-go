@@ -74,6 +74,7 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 		ResponseTTL:                cfg.ResponseTTL,
 		SupportedADCPMajorVersions: cfg.SupportedADCPMajorVersions,
 		SupportedAdcpVersions:      cfg.SupportedAdcpVersions,
+		RequireConsent:             cfg.RequireConsent,
 		Recorder:                   metricsProvider.Recorder,
 		Logger:                     logger,
 	})
@@ -124,6 +125,18 @@ func Run(ctx context.Context, cfg Config, logger *slog.Logger, version string, o
 			Recorder:          metricsProvider.Recorder,
 			Logger:            logger,
 		})
+	} else {
+		// Operator surfaces (/live carries the build version, /metrics
+		// carries per-request labels, /debug/pprof under PPROF_ENABLED
+		// carries a heap dump) end up on the request listener when
+		// ADMIN_PORT=0. That's the shipped default so existing
+		// containerized deployments keep working, but a public-facing
+		// deployment MUST set ADMIN_PORT to move them onto a private
+		// listener. Log at WARN so an operator running with defaults on
+		// a public port sees the drift instead of finding it via a
+		// scanner later.
+		logger.Warn("ADMIN_PORT=0: /live, /metrics and /debug/pprof mounted on the request listener — set ADMIN_PORT>0 to move operator surfaces onto a private listener",
+			"http_port", cfg.HTTPPort)
 	}
 
 	tracker := &connTracker{}

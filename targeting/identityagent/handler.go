@@ -30,6 +30,7 @@ type identityHandler struct {
 	responseTTL                time.Duration
 	supportedADCPMajorVersions map[int]struct{}
 	supportedAdcpVersions      map[string]struct{}
+	requireConsent             bool
 	recorder                   Recorder
 	logger                     *slog.Logger
 }
@@ -80,6 +81,19 @@ type IdentityHandlerConfig struct {
 	// major-version check only.
 	SupportedAdcpVersions []string
 
+	// RequireConsent, when true, rejects any inbound identity-match
+	// request that omits the `consent` object with 400 invalid_request.
+	// Off by default. Set for buyer deployments operating in
+	// jurisdictions where the spec requires consent to accompany user
+	// tokens (identity-match-request.json §consent: "Buyers in regulated
+	// jurisdictions MUST NOT process the user token without consent
+	// information"). This is separate from the schema-level cross-field
+	// rule (gdpr:true ⇒ tcf_consent|gpp) that runs regardless in
+	// tmproto.ValidateIdentityRequest; RequireConsent adds the
+	// presence check the schema cannot express because the jurisdiction
+	// is deployment context, not request content.
+	RequireConsent bool
+
 	Recorder Recorder
 	Logger   *slog.Logger
 }
@@ -111,6 +125,7 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 		responseTTL:                cfg.ResponseTTL,
 		supportedADCPMajorVersions: supported,
 		supportedAdcpVersions:      supportedRel,
+		requireConsent:             cfg.RequireConsent,
 		recorder:                   cfg.Recorder,
 		logger:                     cfg.Logger,
 	}
@@ -187,6 +202,22 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.recordCompletion(ctx, start, "bad_request")
 			return
 		}
+	}
+
+	// Consent-required gate: identity-match-request.json §consent says
+	// "Buyers in regulated jurisdictions MUST NOT process the user token
+	// without consent information", but the schema cannot express the
+	// jurisdiction check (it depends on where the buyer operates, not on
+	// the request content). Operators in a jurisdiction that requires
+	// consent set CONSENT_REQUIRED=true so the handler rejects a request
+	// that omits `consent` before any store lookup runs. The cross-field
+	// rule (gdpr:true ⇒ tcf_consent|gpp) still runs unconditionally in
+	// tmproto.ValidateIdentityRequest above.
+	if h.requireConsent && len(req.Consent) == 0 {
+		h.logValidationFailure(r, req.RequestID, errors.New("consent object is required in this jurisdiction"))
+		h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
+		h.recordCompletion(ctx, start, "bad_request")
+		return
 	}
 
 	serviceReq, decoded := h.buildServiceRequest(ctx, &req)
