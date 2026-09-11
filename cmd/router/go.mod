@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/adcontextprotocol/adcp-go v0.0.0
 	github.com/adcontextprotocol/adcp-go/registry v0.0.0-20260716182726-fdf3ef034a47
-	github.com/adcontextprotocol/adcp-go/targeting v0.5.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.5.1
 	github.com/adcontextprotocol/adcp-go/tmproto v0.3.2
 	github.com/stretchr/testify v1.11.1
 )
