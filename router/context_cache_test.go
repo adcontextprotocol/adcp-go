@@ -341,6 +341,34 @@ func TestContextCache_NamedPointerSignalPreservesTypeAndIsolation(t *testing.T) 
 	assert.Equal(t, 1, *again.Signals["value"].(signalNamedIntPointer))
 }
 
+func TestContextCache_UnsafeResponseRemovesOnlyCurrentExactKey(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	hash := cacheHash("same-key")
+	current := cacheScope(t, c, "prov", "generation-1")
+	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "safe"})
+	require.Equal(t, 1, c.Size())
+
+	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{
+		RequestID: "unsafe",
+		Signals:   map[string]any{"value": big.NewInt(1)},
+	})
+	assert.Zero(t, c.Size(), "unsafe replacement must remove a warm response for the exact current key")
+	_, hit := c.GetScoped(current, hash)
+	assert.False(t, hit)
+
+	old := current
+	current = cacheScope(t, c, "prov", "generation-2")
+	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new-generation"})
+	c.PutScoped(old, hash, &tmproto.ProviderContextMatchResponse{
+		RequestID: "stale-unsafe",
+		Signals:   map[string]any{"value": big.NewInt(2)},
+	})
+	got, hit := c.GetScoped(current, hash)
+	require.True(t, hit, "unsafe stale scope must not evict the current generation")
+	assert.Equal(t, "new-generation", got.RequestID)
+	assert.Equal(t, 1, c.Size())
+}
+
 func TestContextCache_TypedSignalsAreIsolatedOnPutAndGet(t *testing.T) {
 	c := NewContextCache(time.Minute)
 	scope := cacheScope(t, c, "prov", "generation-1")

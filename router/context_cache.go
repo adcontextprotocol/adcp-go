@@ -500,7 +500,16 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 	if !safe {
 		// Signals can be constructed directly by embedding applications rather
 		// than encoding/json. Never retain a graph whose mutable references cannot
-		// be fully isolated from its caller-owned source.
+		// be fully isolated from its caller-owned source. Remove a prior response
+		// for this exact key so the next request fans out again, but only while the
+		// captured scope is still current: a stale caller must never evict a newer
+		// generation.
+		key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
+		c.mu.Lock()
+		if c.scopeCurrentLocked(scope) {
+			delete(c.entries, key)
+		}
+		c.mu.Unlock()
 		return
 	}
 	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
