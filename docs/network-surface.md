@@ -328,10 +328,12 @@ Provider responses decoded from JSON use maps, slices, and scalar values that
 the cache can fully deep-clone. Embedding applications may also supply typed
 maps, slices, pointers, interfaces, arrays, and structs with cloneable exported
 state. Cache admission fails closed when a `signals` graph cannot be proven
-alias-free—for example, reference-bearing unexported struct state, mutable
-pointer map keys, or channels/functions/unsafe pointers. Such a response is
-still returned normally for its live request but is not inserted into the
-cache; a later request fans out again.
+alias-free—for example, any unexported struct state (including lock state),
+mutable pointer map keys, or channels/functions/unsafe pointers. Such a
+response is still returned normally for its live request but is not inserted
+into the cache; any exact warm entry is removed only when its captured scope is
+still current, and a later request fans out again. An explicit `cache_ttl: 0`
+has the same exact-key invalidation behavior.
 
 ## Environment Variables
 

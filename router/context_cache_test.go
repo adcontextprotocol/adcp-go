@@ -77,6 +77,19 @@ type signalUnexportedEmbedding struct {
 	signalHiddenMutable
 }
 
+type signalLockedMarshaler struct {
+	mutex sync.Mutex
+	Value int
+}
+
+func (s *signalLockedMarshaler) MarshalJSON() ([]byte, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return json.Marshal(struct {
+		Value int `json:"value"`
+	}{Value: s.Value})
+}
+
 func TestContextCache_NilSafe(t *testing.T) {
 	var c *ContextCache
 	_, ok := c.Capture("prov", "generation-1", nil)
@@ -319,6 +332,28 @@ func TestContextCache_UnsafeTypedSignalsBypassInsertion(t *testing.T) {
 	}
 }
 
+func TestContextCache_LockedUnexportedStateBypassesInsertion(t *testing.T) {
+	value := &signalLockedMarshaler{Value: 1}
+	value.mutex.Lock()
+	defer value.mutex.Unlock()
+	if value.mutex.TryLock() {
+		value.mutex.Unlock()
+		t.Fatal("test mutex unexpectedly unlocked")
+	}
+
+	c := NewContextCache(time.Minute)
+	scope := cacheScope(t, c, "prov", "generation-1")
+	response := &tmproto.ProviderContextMatchResponse{Signals: map[string]any{"value": value}}
+	_, safe := cloneContextResponse(response)
+	assert.False(t, safe)
+	c.PutScoped(scope, cacheHash("locked"), response)
+	assert.Zero(t, c.Size())
+	if value.mutex.TryLock() {
+		value.mutex.Unlock()
+		t.Fatal("cache admission unexpectedly changed caller-owned mutex state")
+	}
+}
+
 func TestContextCache_NamedPointerSignalPreservesTypeAndIsolation(t *testing.T) {
 	c := NewContextCache(time.Minute)
 	scope := cacheScope(t, c, "prov", "generation-1")
@@ -342,31 +377,60 @@ func TestContextCache_NamedPointerSignalPreservesTypeAndIsolation(t *testing.T) 
 }
 
 func TestContextCache_UnsafeResponseRemovesOnlyCurrentExactKey(t *testing.T) {
-	c := NewContextCache(time.Minute)
-	hash := cacheHash("same-key")
-	current := cacheScope(t, c, "prov", "generation-1")
-	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "safe"})
-	require.Equal(t, 1, c.Size())
+	tests := []struct {
+		name   string
+		ttl    int
+		unsafe bool
+	}{
+		{name: "safe explicit zero", ttl: 0},
+		{name: "unsafe negative TTL", ttl: -1, unsafe: true},
+		{name: "unsafe zero TTL", ttl: 0, unsafe: true},
+		{name: "unsafe positive TTL", ttl: 1, unsafe: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewContextCache(time.Minute)
+			hash := cacheHash("same-key")
+			unrelatedHash := cacheHash("unrelated-key")
+			current := cacheScope(t, c, "prov", "generation-1")
+			otherProvider := cacheScope(t, c, "other", "generation-1")
+			c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "safe"})
+			c.PutScoped(current, unrelatedHash, &tmproto.ProviderContextMatchResponse{RequestID: "unrelated-hash"})
+			c.PutScoped(otherProvider, hash, &tmproto.ProviderContextMatchResponse{RequestID: "unrelated-provider"})
 
-	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{
-		RequestID: "unsafe",
-		Signals:   map[string]any{"value": big.NewInt(1)},
-	})
-	assert.Zero(t, c.Size(), "unsafe replacement must remove a warm response for the exact current key")
-	_, hit := c.GetScoped(current, hash)
-	assert.False(t, hit)
+			replacement := &tmproto.ProviderContextMatchResponse{RequestID: "replacement", CacheTTL: ttlPtr(tt.ttl)}
+			if tt.unsafe {
+				replacement.Signals = map[string]any{"value": big.NewInt(1)}
+			}
+			c.PutScoped(current, hash, replacement)
+			_, hit := c.GetScoped(current, hash)
+			assert.False(t, hit, "no-cache or unsafe replacement must remove the exact warm key")
+			unrelated, hit := c.GetScoped(current, unrelatedHash)
+			require.True(t, hit)
+			assert.Equal(t, "unrelated-hash", unrelated.RequestID)
+			other, hit := c.GetScoped(otherProvider, hash)
+			require.True(t, hit)
+			assert.Equal(t, "unrelated-provider", other.RequestID)
+			assert.Equal(t, 2, c.Size())
+		})
+	}
 
-	old := current
-	current = cacheScope(t, c, "prov", "generation-2")
-	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new-generation"})
-	c.PutScoped(old, hash, &tmproto.ProviderContextMatchResponse{
-		RequestID: "stale-unsafe",
-		Signals:   map[string]any{"value": big.NewInt(2)},
+	t.Run("stale scope cannot evict current generation", func(t *testing.T) {
+		c := NewContextCache(time.Minute)
+		hash := cacheHash("same-key")
+		old := cacheScope(t, c, "prov", "generation-1")
+		current := cacheScope(t, c, "prov", "generation-2")
+		c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new-generation"})
+		c.PutScoped(old, hash, &tmproto.ProviderContextMatchResponse{
+			RequestID: "stale-unsafe",
+			CacheTTL:  ttlPtr(0),
+			Signals:   map[string]any{"value": big.NewInt(2)},
+		})
+		got, hit := c.GetScoped(current, hash)
+		require.True(t, hit, "no-cache/unsafe stale scope must not evict the current generation")
+		assert.Equal(t, "new-generation", got.RequestID)
+		assert.Equal(t, 1, c.Size())
 	})
-	got, hit := c.GetScoped(current, hash)
-	require.True(t, hit, "unsafe stale scope must not evict the current generation")
-	assert.Equal(t, "new-generation", got.RequestID)
-	assert.Equal(t, 1, c.Size())
 }
 
 func TestContextCache_TypedSignalsAreIsolatedOnPutAndGet(t *testing.T) {

@@ -482,7 +482,9 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 		secs := *resp.CacheTTL
 		switch {
 		case secs == 0:
-			// Explicit disable — do not cache.
+			// Explicit disable — do not cache, and make any warm response for
+			// this exact current key unreachable so the next request fans out.
+			c.deleteScopedKeyIfCurrent(scope, contextHash)
 			return
 		case secs < 0:
 			// Nonsensical; fall back to the default rather than store
@@ -504,12 +506,7 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 		// for this exact key so the next request fans out again, but only while the
 		// captured scope is still current: a stale caller must never evict a newer
 		// generation.
-		key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
-		c.mu.Lock()
-		if c.scopeCurrentLocked(scope) {
-			delete(c.entries, key)
-		}
-		c.mu.Unlock()
+		c.deleteScopedKeyIfCurrent(scope, contextHash)
 		return
 	}
 	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
@@ -535,6 +532,15 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 		response:   response,
 		expiresAt:  now.Add(ttl),
 		insertedAt: now,
+	}
+	c.mu.Unlock()
+}
+
+func (c *ContextCache) deleteScopedKeyIfCurrent(scope ContextCacheScope, contextHash [sha256.Size]byte) {
+	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
+	c.mu.Lock()
+	if c.scopeCurrentLocked(scope) {
+		delete(c.entries, key)
 	}
 	c.mu.Unlock()
 }
@@ -767,14 +773,15 @@ func cloneSignalReflect(src reflect.Value, seen map[signalCloneVisit]reflect.Val
 	case reflect.Struct:
 		for i := range src.NumField() {
 			field := src.Type().Field(i)
-			if field.PkgPath != "" && signalTypeContainsMutableReference(field.Type) {
+			if field.PkgPath != "" {
 				return reflect.Value{}, false
 			}
 		}
 		// Copy the complete value first so opaque/unexported implementation
 		// scalar details retain their semantics, then recursively isolate every
-		// exported field that JSON can observe. Reference-bearing unexported state
-		// was rejected above because reflection cannot isolate it safely.
+		// exported field that JSON can observe. Any unexported state was rejected
+		// above: reflection cannot prove that scalar-looking implementation fields
+		// are safe to copy (for example, sync.Mutex state).
 		dst := reflect.New(src.Type()).Elem()
 		dst.Set(src)
 		for i := range src.NumField() {
@@ -820,23 +827,6 @@ func safeSignalMapKeyType(typ reflect.Type) bool {
 	default:
 		return false
 	}
-}
-
-func signalTypeContainsMutableReference(typ reflect.Type) bool {
-	switch typ.Kind() {
-	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Interface,
-		reflect.Chan, reflect.Func, reflect.UnsafePointer:
-		return true
-	case reflect.Array:
-		return signalTypeContainsMutableReference(typ.Elem())
-	case reflect.Struct:
-		for i := range typ.NumField() {
-			if signalTypeContainsMutableReference(typ.Field(i).Type) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // cloneOffer duplicates every pointer/slice/map on Offer so mutation
