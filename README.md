@@ -32,6 +32,7 @@ below, each with its own tag prefix and SemVer cadence.
 | `github.com/adcontextprotocol/adcp-go/registry` | `v0.1.0` | `registry/vX.Y.Z` |
 | `github.com/adcontextprotocol/adcp-go/registry/redisstore` | (not yet cut) | `registry/redisstore/vX.Y.Z` |
 | `github.com/adcontextprotocol/adcp-go/registry/glidestore` | (not yet cut) | `registry/glidestore/vX.Y.Z` |
+| `github.com/adcontextprotocol/adcp-go/adcp/v3/signing/awskms` | (not yet cut) | `adcp/v3/signing/awskms/vX.Y.Z` |
 
 The `adcp/vN` major version tracks the AdCP protocol spec's major version 1:1.
 `adcp/v3` speaks AdCP 3.x; a hypothetical future `adcp/v4` will ship when the

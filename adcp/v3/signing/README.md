@@ -73,6 +73,65 @@ The signer:
 - attaches `Signature`, `Signature-Input`, and optionally `Content-Digest`,
 - uses Ed25519 (deterministic) or ES256 with IEEE P1363 (`r||s`) encoding — **not** DER.
 
+### Keeping the private key out of process memory (KMS / HSM / Vault)
+
+`SignerOptions.PrivateKey` above is the default, in-memory path — fine for
+tests and for operators who accept the key living in process RAM. The AdCP
+spec recommends storing signing keys in an HSM or KMS instead. To do that,
+implement `SigningProvider` and pass it as `SignerOptions.Provider` instead
+of `KeyID`/`PrivateKey`:
+
+```go
+type SigningProvider interface {
+    Sign(ctx context.Context, payload []byte) ([]byte, error)
+    KeyID() string
+    Algorithm() Algorithm
+    PublicKey(ctx context.Context) (crypto.PublicKey, error)
+}
+```
+
+`Sign` receives the RFC 9421 signature base bytes and `ctx` from the signed
+`http.Request` (`SignRequest` passes `r.Context()`) — a KMS/HSM round trip
+typically costs 10-50ms, and `ctx` is how a caller bounds that call's
+deadline and cancellation. `InMemorySigningProvider` is what `NewSigner`
+builds internally when `Provider` is nil; it remains the default.
+
+```go
+provider, _ := signing.NewInMemorySigningProvider("my-agent-ed25519-2026", priv) // or your own SigningProvider
+signer, _ := signing.NewSigner(signing.SignerOptions{Provider: provider})
+```
+
+`PublicKey` is what makes two operational safeguards possible for *any*
+`SigningProvider`, not just the in-memory one:
+
+- **`NewPublicJWKFromProvider(ctx, provider, kid, adcpUse)`** builds the JWK
+  to publish at `jwks_uri` directly from the provider, instead of
+  hand-assembling `kty`/`crv`/`alg` (a common source of drift). `adcpUse` is
+  required — pass `signing.ProfileRequestSigning.AdcpUse` or
+  `signing.ProfileWebhookSigning.AdcpUse` — because the spec requires
+  distinct key material per signing purpose
+  ([adcontextprotocol/adcp#2423](https://github.com/adcontextprotocol/adcp/issues/2423)).
+- **`AssertProviderPublicKeyMatchesSPKI(ctx, provider, expectedSPKI)`** is a
+  startup tripwire: pin the expected SPKI bytes alongside deployed code and
+  call this once after your listener binds. A managed key store can rotate
+  the key backing a `kid` with zero signal to this SDK (an alias repointed,
+  a Vault key rotated); left undetected, the Signer keeps producing
+  signatures every verifier rejects. This fails loudly instead.
+
+Errors an external provider's `Sign`/`PublicKey` return should be a
+`*signing.SigningError` (`Code` is stable and safe to log; the raw backend
+SDK error goes in `Wrapped`, reachable via `errors.Unwrap`/`errors.As` —
+**never** in `Detail`, which must be a static, caller-controlled string).
+KMS/HSM/Vault SDK errors routinely embed resource identifiers (key ARNs,
+GCP resource paths, Vault mount paths) that must not flow into anything a
+caller might echo into an HTTP response, per AGENTS.md's error-message rule.
+
+A worked AWS KMS implementation ships as a separate module,
+[`adcp/v3/signing/awskms`](./awskms) — separate specifically so that
+importing `adcp/v3/signing` never pulls in `aws-sdk-go-v2` for callers who
+don't use AWS KMS (see that module's `go.mod` and package doc for why, and
+[AGENTS.md](../../../AGENTS.md)'s "Zero unnecessary dependencies" rule).
+
 ## Verifying (seller side)
 
 ```go
@@ -182,3 +241,5 @@ Writes a PKCS#8 PEM private key and prints a public JWK with `use=sig`, `key_ops
 ## Dependencies
 
 Zero third-party dependencies beyond the Go standard library. Canonicalization, JWK parsing for Ed25519 / ES256, and RFC 9421 / RFC 9530 encoding are implemented directly so the profile's exact byte semantics are under test, not delegated to a library whose defaults may drift.
+
+`SigningProvider` (see above) keeps this true even for KMS/HSM-backed signing: it's an interface defined here with zero new imports, and any third-party SDK an implementation needs (`aws-sdk-go-v2`, for instance) lives in that implementation's own module — see [`adcp/v3/signing/awskms`](./awskms) — never in this package's dependency tree.
