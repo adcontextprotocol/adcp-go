@@ -2,6 +2,9 @@ package router
 
 import (
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gowebpki/jcs"
@@ -68,4 +71,65 @@ func TestContextHash_RejectsAmbiguousOrNonIJSONInput(t *testing.T) {
 func TestContextHash_AcceptsValidSurrogatePair(t *testing.T) {
 	_, err := ContextHash([]byte(`{"request_id":"one","emoji":"\ud83d\ude00"}`))
 	assert.NoError(t, err)
+}
+
+func TestContextHash_PreservesNoncharactersDeterministically(t *testing.T) {
+	escaped, err := ContextHash([]byte(`{"request_id":"one","\ufdd0":"\ufffe"}`))
+	require.NoError(t, err)
+	literal, err := ContextHash([]byte(`{"request_id":"two","` + string(rune(0xfdd0)) + `":"` + string(rune(0xfffe)) + `"}`))
+	require.NoError(t, err)
+	assert.Equal(t, escaped, literal, "escaped and direct noncharacter forms must canonicalize identically")
+}
+
+func TestContextHash_WideObjectReturnsCacheBypass(t *testing.T) {
+	raw := wideContextHashDocument(5500)
+	require.Less(t, len(raw), MaxRequestBodyBytes)
+	require.NoError(t, validateContextIngressIJSON(raw), "cache work bounds must not redefine request validity")
+	_, err := ContextHash(raw)
+	assert.True(t, errors.Is(err, ErrContextHashComplexity))
+}
+
+func wideContextHashDocument(members int) []byte {
+	return wideContextHashDocumentWithPrefix(members, "k")
+}
+
+func wideContextHashDocumentWithPrefix(members int, prefix string) []byte {
+	var body strings.Builder
+	body.WriteString(`{"request_id":"request","geo":{`)
+	for i := range members {
+		if i > 0 {
+			body.WriteByte(',')
+		}
+		fmt.Fprintf(&body, `"%s%04d":0`, prefix, i)
+	}
+	body.WriteString(`}}`)
+	return []byte(body.String())
+}
+
+func BenchmarkContextHash_MaximumBoundedObject(b *testing.B) {
+	// Long common prefixes exercise the maintained dependency's worst sorting
+	// comparisons while keeping the body just below the HTTP admission limit.
+	prefix := strings.Repeat("a", MaxRequestBodyBytes/MaxContextHashObjectMembers-32)
+	raw := wideContextHashDocumentWithPrefix(MaxContextHashObjectMembers, prefix)
+	if len(raw) >= MaxRequestBodyBytes {
+		b.Fatalf("benchmark body is %d bytes", len(raw))
+	}
+	b.SetBytes(int64(len(raw)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := ContextHash(raw); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkContextHash_OversizedObjectBypass(b *testing.B) {
+	raw := wideContextHashDocument(5500)
+	b.SetBytes(int64(len(raw)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := ContextHash(raw); !errors.Is(err, ErrContextHashComplexity) {
+			b.Fatalf("got %v, want complexity bypass", err)
+		}
+	}
 }

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -248,6 +250,84 @@ func TestRouterContextCache_ProviderFilteringPrecedesContextHash(t *testing.T) {
 	assert.Equal(t, int32(1), calls.Load(), "provider-equivalent forwarded requests must share a cache entry")
 }
 
+func TestRouterContextCache_WideValidRequestForwardsWithoutCaching(t *testing.T) {
+	var calls atomic.Int32
+	forwardedWidths := make(chan int, 2)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls.Add(1)
+		var forwarded tmproto.ContextMatchRequest
+		if err := json.NewDecoder(req.Body).Decode(&forwarded); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		forwardedWidths <- len(forwarded.Geo)
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{Type: tmproto.TypeContextMatchResponse})
+	}))
+	defer provider.Close()
+
+	metrics := newCountingCacheMetrics()
+	r := testRouter([]ProviderConfig{{
+		ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: time.Second, CacheNamespace: "generation-1",
+	}})
+	r.contextCache = NewContextCache(time.Hour, WithContextCacheMetrics(metrics))
+	request := baseCacheRequest("wide-one")
+	geo := map[string]any{"country": "US"}
+	for i := 0; i <= MaxContextHashObjectMembers; i++ {
+		geo[fmt.Sprintf("extra_%03d", i)] = "value"
+	}
+	request["geo"] = geo
+	serveContextRequest(t, r, request)
+	request["request_id"] = "wide-two"
+	serveContextRequest(t, r, request)
+
+	assert.Equal(t, int32(2), calls.Load(), "a valid over-bound request must be forwarded on every call")
+	assert.Greater(t, <-forwardedWidths, MaxContextHashObjectMembers)
+	assert.Greater(t, <-forwardedWidths, MaxContextHashObjectMembers)
+	assert.Equal(t, 0, r.contextCache.Size())
+	metrics.mu.Lock()
+	defer metrics.mu.Unlock()
+	assert.Zero(t, metrics.hits["prov"])
+	assert.Zero(t, metrics.misses["prov"], "complexity bypass must not perform cache lookup")
+}
+
+func TestHandleContextMatch_RejectsLossyIJSONBeforeForwarding(t *testing.T) {
+	var calls atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{Type: tmproto.TypeContextMatchResponse})
+	}))
+	defer provider.Close()
+	r := testRouter([]ProviderConfig{{
+		ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: time.Second, CacheNamespace: "generation-1",
+	}})
+	r.contextCache = NewContextCache(time.Hour)
+	valid, err := json.Marshal(baseCacheRequest("original-request"))
+	require.NoError(t, err)
+	duplicate := strings.Replace(string(valid), `"request_id":"original-request"`, `"request_id":"original-request","request_id":"replacement-request"`, 1)
+	loneSurrogate := strings.Replace(string(valid), `"property_id":"publisher-site"`, `"property_id":"\ud800"`, 1)
+	invalidUTF8 := bytes.Replace(valid, []byte("publisher-site"), []byte{0xff}, 1)
+
+	tests := []struct {
+		name string
+		body []byte
+	}{
+		{"duplicate member", []byte(duplicate)},
+		{"lone surrogate", []byte(loneSurrogate)},
+		{"invalid UTF-8", invalidUTF8},
+		{"trailing data", append(append([]byte(nil), valid...), []byte(` {}`)...)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/tmp/context", bytes.NewReader(tt.body))
+			r.HandleContextMatch(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+	assert.Zero(t, calls.Load())
+	assert.Zero(t, r.contextCache.Size())
+}
+
 func TestRouterContextCache_RotationRejectsOldInflightInsertion(t *testing.T) {
 	var calls atomic.Int32
 	started := make(chan struct{})
@@ -292,6 +372,59 @@ func TestRouterContextCache_RotationRejectsOldInflightInsertion(t *testing.T) {
 	warm := serveContextRequest(t, r, baseCacheRequest("warm-request"))
 	assert.Equal(t, int32(2), calls.Load(), "the old completion must not overwrite or invalidate the new generation")
 	require.Equal(t, "new", warm.Offers[0].PackageID)
+}
+
+func TestRouterContextCache_StaleEndpointCompletionCannotPurgeReplacement(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var oldCalls, newCalls atomic.Int32
+	oldProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		oldCalls.Add(1)
+		close(started)
+		<-release
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
+			Type: tmproto.TypeContextMatchResponse, Offers: []tmproto.Offer{{PackageID: "old"}},
+		})
+	}))
+	defer oldProvider.Close()
+	newProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		newCalls.Add(1)
+		_ = json.NewEncoder(w).Encode(tmproto.ProviderContextMatchResponse{
+			Type: tmproto.TypeContextMatchResponse, Offers: []tmproto.Offer{{PackageID: "new"}},
+		})
+	}))
+	defer newProvider.Close()
+
+	oldConfig := ProviderConfig{
+		ID: "prov", Endpoint: oldProvider.URL, ContextMatch: true, Timeout: 5 * time.Second, CacheNamespace: "generation-1",
+	}
+	r := testRouter([]ProviderConfig{oldConfig})
+	r.contextCache = NewContextCache(time.Hour)
+
+	oldDone := make(chan struct{})
+	go func() {
+		defer close(oldDone)
+		response := serveContextRequest(t, r, baseCacheRequest("old-request"))
+		require.Equal(t, "old", response.Offers[0].PackageID)
+	}()
+	<-started
+
+	newConfig := oldConfig
+	newConfig.Endpoint = newProvider.URL
+	r.providers.Swap([]ProviderConfig{newConfig})
+	response := serveContextRequest(t, r, baseCacheRequest("new-request"))
+	require.Equal(t, "new", response.Offers[0].PackageID)
+	response = serveContextRequest(t, r, baseCacheRequest("new-warm-before-old-completes"))
+	require.Equal(t, "new", response.Offers[0].PackageID)
+	require.Equal(t, int32(1), newCalls.Load(), "replacement response must be warm before stale completion")
+
+	close(release)
+	<-oldDone
+	response = serveContextRequest(t, r, baseCacheRequest("new-warm-after-old-completes"))
+	require.Equal(t, "new", response.Offers[0].PackageID)
+	assert.Equal(t, int32(1), oldCalls.Load())
+	assert.Equal(t, int32(1), newCalls.Load(), "stale completion must not purge or block the replacement cache")
+	assert.Equal(t, 1, r.contextCache.Size())
 }
 
 func TestRouterContextCache_EndpointReplacementAndSensitiveDataStayOutOfLogs(t *testing.T) {

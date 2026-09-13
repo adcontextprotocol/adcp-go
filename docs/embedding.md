@@ -48,6 +48,15 @@ context_hash}`. `context_hash` is SHA-256 over RFC 8785 JCS of the exact
 validated provider-forwarded request after removing only `$schema` and
 `request_id`; array order and every other field remain significant.
 
+The router rejects malformed raw Context Match representations before typed
+decoding (invalid UTF-8, unpaired surrogates, duplicate member names, or
+trailing data), then hashes the validated, enriched, credential-stripped, and
+provider-filtered body actually forwarded. Unicode noncharacters are preserved
+deterministically. To bound the maintained JCS implementation's sorting work,
+objects above 64 members, documents above 2,048 total members, or nesting above
+64 levels bypass response caching only; a valid request is still forwarded and
+does not become a client or provider error.
+
 Caching fails closed. A provider without a safe namespace always fans out. For
 static deployments, set `ProviderConfig.CacheNamespace` to an opaque generation
 token and rotate it whenever any result-affecting state outside the request
@@ -100,6 +109,14 @@ response cannot populate a newer namespace. Return
 cache ineligibility; this never mutates provider-wide cache state. Return
 `ContextCacheNamespaceUnknown` only when the current global generation cannot
 be established; this purges and blocks reuse of the prior generation.
+
+The cache retains a bounded history of 1,024 namespace generations per
+provider so an old token can never be accepted again. Exhausting that history
+permanently bypasses caching for the provider until process restart rather than
+discarding replay protection. The reference router exports
+`tmp_context_cache_generation_exhausted_total{provider=...}`; embedders can
+implement the optional `ContextCacheGenerationMetrics` extension. The metric
+contains only the stable provider ID, never namespace material.
 
 ## Injecting your logger
 

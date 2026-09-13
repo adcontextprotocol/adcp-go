@@ -284,6 +284,14 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
 		return
 	}
+	if err := validateContextIngressIJSON(body); err != nil {
+		// Validate before typed decoding: encoding/json replaces invalid UTF-8
+		// and unpaired surrogates and applies last-wins duplicate-key semantics.
+		// Those lossy transformations must not reach forwarding or cache hashing.
+		r.logger.Debug("invalid I-JSON in context match request")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
+		return
+	}
 
 	var cmReq tmproto.ContextMatchRequest
 	if err := json.Unmarshal(body, &cmReq); err != nil {
@@ -457,19 +465,16 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 	}
 	current, providerRevision, ok := r.providers.GetWithRevision(outbound.ID)
 	if !ok {
-		r.contextCache.Invalidate(outbound.ID)
 		return ContextCacheScope{}, false
 	}
 	outboundEvaluation, err := json.Marshal(outbound)
 	if err != nil {
-		r.contextCache.Invalidate(outbound.ID)
 		return ContextCacheScope{}, false
 	}
 	currentEvaluation, err := json.Marshal(current)
 	if err != nil || !bytes.Equal(outboundEvaluation, currentEvaluation) {
-		// Endpoint replacement and all other ProviderConfig changes invalidate
-		// an old request snapshot before it can use or populate the cache.
-		r.contextCache.Invalidate(outbound.ID)
+		// This request holds a stale ProviderConfig snapshot. It may neither use
+		// nor mutate cache state owned by the replacement generation.
 		return ContextCacheScope{}, false
 	}
 	currentEvaluation, err = json.Marshal(struct {
@@ -477,7 +482,6 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 		Revision uint64         `json:"provider_set_revision"`
 	}{Provider: current, Revision: providerRevision})
 	if err != nil {
-		r.contextCache.Invalidate(outbound.ID)
 		return ContextCacheScope{}, false
 	}
 
@@ -499,13 +503,14 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 		return ContextCacheScope{}, false
 	case ContextCacheNamespaceReady:
 		if validContextCacheNamespace(resolution.Namespace) {
-			return r.contextCache.Capture(current.ID, resolution.Namespace, currentEvaluation)
+			return r.contextCache.captureAtRevision(current.ID, resolution.Namespace, currentEvaluation, providerRevision)
 		}
 	}
 	// Unknown status, malformed Ready namespace, and unrecognized status all
-	// mean provider-wide validity cannot be established. Invalidate globally;
-	// request-local denial must use Bypass above and never reaches this path.
-	r.contextCache.Invalidate(current.ID)
+	// mean provider-wide validity cannot be established. Invalidate only the
+	// matching provider evaluation revision; request-local denial must use
+	// Bypass above and never reaches this path.
+	r.contextCache.invalidateEvaluation(current.ID, currentEvaluation, providerRevision)
 	return ContextCacheScope{}, false
 }
 
@@ -558,10 +563,12 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			if scope, ok := r.captureContextCacheScope(ctx, p); ok {
 				hash, err := ContextHash(callBody)
 				if err != nil {
-					// Do not log the error: canonicalization failures can contain
-					// request fragments. A generated provider-forwarded body should
-					// never fail, and safe behavior is simply to bypass caching.
-					r.logger.Error("failed to compute context cache hash", "provider", p.ID)
+					if !errors.Is(err, ErrContextHashComplexity) {
+						// Do not log the error: canonicalization failures can contain
+						// request fragments. A generated provider-forwarded body should
+						// never fail, and safe behavior is simply to bypass caching.
+						r.logger.Error("failed to compute context cache hash", "provider", p.ID)
+					}
 				} else {
 					cacheScope, contextHash, cacheable = scope, hash, true
 					if cached, hit := r.contextCache.GetScoped(cacheScope, contextHash); hit {

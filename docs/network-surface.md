@@ -291,6 +291,15 @@ RFC 8785 JCS of the exact validated provider-forwarded request after removing
 only top-level `$schema` and `request_id`; all other fields and array order are
 preserved. Hits are merged with the current request's `request_id`.
 
+Raw Context Match ingress is checked before typed decoding for invalid UTF-8,
+unpaired surrogates, duplicate member names (including escaped equivalents),
+and trailing data, preventing Go's lossy replacement/last-wins behavior from
+changing the represented request before forwarding. Unicode noncharacters are
+preserved deterministically. Cache canonicalization has separate work bounds
+(64 members per object, 2,048 total object members, 64 nesting levels) around
+the maintained JCS implementation. A valid transformed request exceeding a
+bound is forwarded normally but bypasses cache lookup and insertion.
+
 `cache_namespace` is trusted deployment state configured per provider (or
 supplied by `WithContextCacheNamespaceResolver` when embedding). It must rotate
 for every result-affecting condition outside the request: outbound auth/tenant,
@@ -309,6 +318,11 @@ use the resolver, which is evaluated on warm hits and before insertion. Its
 `ContextCacheNamespaceBypass` result is request-local and does not mutate a
 valid provider cache; `ContextCacheNamespaceUnknown` is reserved for genuine
 provider-wide generation uncertainty and invalidates the prior generation.
+The cache retains 1,024 seen generations per provider to reject old-token
+reuse. If that bound is exhausted, caching for the provider fails closed until
+process restart and the reference binary increments
+`tmp_context_cache_generation_exhausted_total` using only the stable provider
+ID; namespace material is never a metric or log value.
 
 ## Environment Variables
 

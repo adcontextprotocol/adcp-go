@@ -17,13 +17,16 @@ import (
 )
 
 type countingCacheMetrics struct {
-	mu     sync.Mutex
-	hits   map[string]int
-	misses map[string]int
+	mu                    sync.Mutex
+	hits                  map[string]int
+	misses                map[string]int
+	generationExhaustions map[string]int
 }
 
 func newCountingCacheMetrics() *countingCacheMetrics {
-	return &countingCacheMetrics{hits: map[string]int{}, misses: map[string]int{}}
+	return &countingCacheMetrics{
+		hits: map[string]int{}, misses: map[string]int{}, generationExhaustions: map[string]int{},
+	}
 }
 func (m *countingCacheMetrics) IncHit(id string) {
 	m.mu.Lock()
@@ -34,6 +37,11 @@ func (m *countingCacheMetrics) IncMiss(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.misses[id]++
+}
+func (m *countingCacheMetrics) IncGenerationExhausted(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.generationExhaustions[id]++
 }
 
 func cacheScope(t *testing.T, c *ContextCache, provider, namespace string) ContextCacheScope {
@@ -80,6 +88,8 @@ func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 	hash := cacheHash("request")
 	price := tmproto.OfferPrice{Amount: 5, Currency: "USD", Model: "cpm"}
 	manifest := json.RawMessage(`{"kind":"markdown"}`)
+	cyclic := map[string]any{"value": "original"}
+	cyclic["self"] = cyclic
 	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
 		RequestID: "original",
 		CacheTTL:  ttlPtr(60),
@@ -91,7 +101,12 @@ func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 			CreativeManifest: &manifest,
 			CreativeData:     map[string]string{"CID": "original"},
 		}},
-		Signals: map[string]any{"key": "original"},
+		Signals: map[string]any{
+			"key":          "original",
+			"nested_map":   map[string]any{"value": "original"},
+			"nested_array": []any{"original", map[string]any{"value": "original"}},
+			"cyclic":       cyclic,
+		},
 	})
 
 	got, ok := c.GetScoped(scope, hash)
@@ -105,6 +120,10 @@ func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 	(*got.Offers[0].CreativeManifest)[0] = 'X'
 	got.Offers[0].CreativeData["CID"] = "mutated"
 	got.Signals["key"] = "mutated"
+	got.Signals["nested_map"].(map[string]any)["value"] = "mutated"
+	got.Signals["nested_array"].([]any)[0] = "mutated"
+	got.Signals["nested_array"].([]any)[1].(map[string]any)["value"] = "mutated"
+	got.Signals["cyclic"].(map[string]any)["self"].(map[string]any)["value"] = "mutated"
 
 	again, ok := c.GetScoped(scope, hash)
 	require.True(t, ok)
@@ -117,6 +136,10 @@ func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 	assert.Equal(t, byte('{'), (*again.Offers[0].CreativeManifest)[0])
 	assert.Equal(t, "original", again.Offers[0].CreativeData["CID"])
 	assert.Equal(t, "original", again.Signals["key"])
+	assert.Equal(t, "original", again.Signals["nested_map"].(map[string]any)["value"])
+	assert.Equal(t, "original", again.Signals["nested_array"].([]any)[0])
+	assert.Equal(t, "original", again.Signals["nested_array"].([]any)[1].(map[string]any)["value"])
+	assert.Equal(t, "original", again.Signals["cyclic"].(map[string]any)["self"].(map[string]any)["value"])
 }
 
 func TestContextCache_TTLSemantics(t *testing.T) {
@@ -190,21 +213,26 @@ func TestContextCache_NamespaceRotationPurgesAndRejectsReuse(t *testing.T) {
 
 	_, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://provider.example"}`))
 	assert.False(t, ok, "generation-token reuse must fail closed")
-	assert.Equal(t, 0, c.Size(), "reuse must not resurrect the first generation's entries")
+	assert.Equal(t, 1, c.Size(), "a stale reused token must not purge the active generation")
+	got, hit := c.GetScoped(second, hash)
+	require.True(t, hit, "the active generation must survive a stale reused token")
+	assert.Equal(t, "new", got.RequestID)
 }
 
 func TestContextCache_UnknownValidityInvalidatesGeneration(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	scope := cacheScope(t, c, "prov", "generation-1")
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	scope, ok := c.Capture("prov", "generation-1", evaluation)
+	require.True(t, ok)
 	hash := cacheHash("request")
 	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{})
-	c.Invalidate("prov")
+	c.invalidateEvaluation("prov", evaluation, 0)
 	assert.Equal(t, 0, c.Size())
 	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-inflight"})
 	assert.Equal(t, 0, c.Size(), "global uncertainty must reject stale in-flight insertion")
-	_, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://provider.example"}`))
+	_, ok = c.Capture("prov", "generation-1", evaluation)
 	assert.False(t, ok, "validity recovery requires a novel generation token")
-	_, ok = c.Capture("prov", "generation-2", []byte(`{"endpoint":"https://provider.example"}`))
+	_, ok = c.Capture("prov", "generation-2", evaluation)
 	assert.True(t, ok)
 }
 
@@ -218,6 +246,27 @@ func TestContextCache_ProviderEvaluationContextRotation(t *testing.T) {
 	require.True(t, ok)
 	assert.NotEqual(t, oldScope, newScope)
 	assert.Equal(t, 0, c.Size())
+}
+
+func TestContextCache_StaleEvaluationCannotInvalidateCurrentRevision(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	hash := cacheHash("request")
+	oldEvaluation := []byte(`{"endpoint":"https://old.example","revision":1}`)
+	newEvaluation := []byte(`{"endpoint":"https://new.example","revision":2}`)
+	oldScope, ok := c.captureAtRevision("prov", "generation-1", oldEvaluation, 1)
+	require.True(t, ok)
+	newScope, ok := c.captureAtRevision("prov", "generation-1", newEvaluation, 2)
+	require.True(t, ok)
+	c.PutScoped(newScope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new"})
+
+	c.invalidateEvaluation("prov", oldEvaluation, 1)
+	got, hit := c.GetScoped(newScope, hash)
+	require.True(t, hit, "a stale evaluation must not purge the replacement revision")
+	assert.Equal(t, "new", got.RequestID)
+	c.PutScoped(oldScope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-old"})
+	got, hit = c.GetScoped(newScope, hash)
+	require.True(t, hit, "a stale scope must not overwrite the replacement revision")
+	assert.Equal(t, "new", got.RequestID)
 }
 
 func TestContextCache_DoesNotRetainNamespaceOrRequestPreimage(t *testing.T) {
@@ -235,6 +284,30 @@ func TestContextCache_DoesNotRetainNamespaceOrRequestPreimage(t *testing.T) {
 func TestContextCache_NamespaceDigestUsesUnambiguousFraming(t *testing.T) {
 	c := NewContextCache(time.Minute)
 	assert.NotEqual(t, c.namespaceDigest("ab", []byte("c")), c.namespaceDigest("a", []byte("bc")))
+}
+
+func TestContextCache_GenerationHistoryExhaustionIsObservableAndSafe(t *testing.T) {
+	metrics := newCountingCacheMetrics()
+	c := NewContextCache(time.Minute, WithContextCacheMetrics(metrics))
+	const providerID = "bounded_provider"
+	const namespaceMarker = "sensitive-generation-marker"
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	for i := range maxContextCacheGenerationsPerProvider {
+		namespace := fmt.Sprintf("%s-%04d", namespaceMarker, i)
+		_, ok := c.Capture(providerID, namespace, evaluation)
+		require.True(t, ok)
+	}
+
+	_, ok := c.Capture(providerID, namespaceMarker+"-exhausted", evaluation)
+	assert.False(t, ok, "history exhaustion must fail closed")
+	_, ok = c.Capture(providerID, namespaceMarker+"-later", evaluation)
+	assert.False(t, ok, "an exhausted provider remains bypass-only until restart")
+	assert.Zero(t, c.Size())
+	metrics.mu.Lock()
+	assert.Equal(t, map[string]int{providerID: 1}, metrics.generationExhaustions)
+	metrics.mu.Unlock()
+	internal := fmt.Sprintf("%#v %#v", c, metrics)
+	assert.NotContains(t, internal, namespaceMarker)
 }
 
 func TestContextCache_MaxEntriesEvictsOldest(t *testing.T) {

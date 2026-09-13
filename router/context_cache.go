@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"maps"
+	"reflect"
 	"sync"
 	"time"
 
@@ -56,6 +57,13 @@ type ContextCacheMetrics interface {
 	IncMiss(providerID string)
 }
 
+// ContextCacheGenerationMetrics is an optional extension reported when the
+// bounded replay-history set is exhausted. Implementations must label only by
+// stable provider ID; namespace metadata must never enter metrics.
+type ContextCacheGenerationMetrics interface {
+	IncGenerationExhausted(providerID string)
+}
+
 // noopContextCacheMetrics is used when the caller does not supply one.
 type noopContextCacheMetrics struct{}
 
@@ -74,10 +82,9 @@ func (noopContextCacheMetrics) IncMiss(string) {}
 // already SHA-256 digests. A process restart therefore changes internal
 // namespace keys and starts with an empty cache.
 //
-// Responses are deeply cloned on read so callers can freely mutate
-// Offer pointer/slice/map members without corrupting the cached
-// entry. (Nested any values inside Signals stay shared — see the
-// note on cloneContextResponse.)
+// Responses are deeply cloned on both write and read so callers can freely
+// mutate every pointer, slice, map, and JSON-shaped Signals value without
+// corrupting the cached entry.
 //
 // Spec cache_ttl semantics (see PutScoped for the enforcement code):
 //
@@ -126,11 +133,13 @@ type contextCacheKey struct {
 }
 
 type contextCacheProviderState struct {
-	namespace  [sha256.Size]byte
-	generation uint64
-	blocked    bool
-	exhausted  bool
-	seen       map[[sha256.Size]byte]struct{}
+	namespace        [sha256.Size]byte
+	evaluation       [sha256.Size]byte
+	providerRevision uint64
+	generation       uint64
+	blocked          bool
+	exhausted        bool
+	seen             map[[sha256.Size]byte]struct{}
 }
 
 // ContextCacheScope is an opaque snapshot of one provider's trusted cache
@@ -199,53 +208,98 @@ func NewContextCache(defaultTTL time.Duration, opts ...ContextCacheOption) *Cont
 // tenant identifiers, request fields, viewer data, or Identity Match data.
 //
 // Empty namespaces and random-source failure bypass caching. A namespace value
-// may never be reused after rotation: reuse blocks caching for that value and
-// deletes the provider's entries, preventing stale generations from being
-// resurrected. The raw inputs are HMACed immediately and never retained.
+// may never be reused after rotation: reuse is rejected without disturbing the
+// active generation, preventing both stale resurrection and stale-caller cache
+// flushes. The raw inputs are HMACed immediately and never retained.
 func (c *ContextCache) Capture(providerID, namespace string, providerEvaluationContext []byte) (ContextCacheScope, bool) {
+	return c.captureAtRevision(providerID, namespace, providerEvaluationContext, 0)
+}
+
+// captureAtRevision is the router-facing form of Capture. providerRevision is
+// monotonic trusted ProviderSet state, so a request holding an older provider
+// snapshot cannot rotate the cache back or purge a newer endpoint/config
+// generation after the replacement has populated it.
+func (c *ContextCache) captureAtRevision(providerID, namespace string, providerEvaluationContext []byte, providerRevision uint64) (ContextCacheScope, bool) {
 	if c == nil || !c.secretOK || !validContextCacheNamespace(namespace) {
 		return ContextCacheScope{}, false
 	}
 	digest := c.namespaceDigest(namespace, providerEvaluationContext)
+	evaluation := c.evaluationDigest(providerEvaluationContext)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	state := c.providers[providerID]
 	if state == nil {
 		c.generation++
 		state = &contextCacheProviderState{
-			namespace:  digest,
-			generation: c.generation,
-			seen:       map[[sha256.Size]byte]struct{}{digest: {}},
+			namespace:        digest,
+			evaluation:       evaluation,
+			providerRevision: providerRevision,
+			generation:       c.generation,
+			seen:             map[[sha256.Size]byte]struct{}{digest: {}},
 		}
 		c.providers[providerID] = state
+	} else if providerRevision < state.providerRevision {
+		c.mu.Unlock()
+		return ContextCacheScope{}, false
 	} else if state.namespace != digest {
-		c.deleteProviderEntriesLocked(providerID)
-		c.generation++
 		if len(state.seen) >= maxContextCacheGenerationsPerProvider {
 			// Never discard reuse history: doing so could resurrect an old
 			// generation. Fail closed for this provider until process restart
 			// rather than let trusted-but-broken rotation grow memory forever.
+			firstExhaustion := !state.exhausted
+			c.generation++
 			state.generation = c.generation
 			state.blocked = true
 			state.exhausted = true
+			c.mu.Unlock()
+			if firstExhaustion {
+				if metrics, ok := c.metrics.(ContextCacheGenerationMetrics); ok {
+					metrics.IncGenerationExhausted(providerID)
+				}
+			}
 			return ContextCacheScope{}, false
 		}
 		_, reused := state.seen[digest]
+		if reused {
+			// A delayed request may still hold an older trusted resolver
+			// snapshot. Reject that scope without changing the active generation:
+			// stale callers must never purge or block a newer warm entry. If the
+			// deployment genuinely reused a token, every request using it still
+			// bypasses, so no stale generation can be resurrected.
+			c.mu.Unlock()
+			return ContextCacheScope{}, false
+		}
+		c.deleteProviderEntriesLocked(providerID)
+		c.generation++
 		state.namespace = digest
+		state.evaluation = evaluation
+		state.providerRevision = providerRevision
 		state.generation = c.generation
-		state.blocked = reused
+		state.blocked = false
 		state.seen[digest] = struct{}{}
 	}
 	if state.blocked || state.exhausted {
+		c.mu.Unlock()
 		return ContextCacheScope{}, false
 	}
-	return ContextCacheScope{providerID: providerID, namespace: digest, generation: state.generation}, true
+	scope := ContextCacheScope{providerID: providerID, namespace: digest, generation: state.generation}
+	c.mu.Unlock()
+	return scope, true
 }
 
 func (c *ContextCache) namespaceDigest(namespace string, providerEvaluationContext []byte) [sha256.Size]byte {
 	mac := hmac.New(sha256.New, c.secret[:])
+	writeFramed(mac, []byte("context-cache-namespace-v1"))
 	writeFramed(mac, []byte(namespace))
+	writeFramed(mac, providerEvaluationContext)
+	var digest [sha256.Size]byte
+	copy(digest[:], mac.Sum(nil))
+	return digest
+}
+
+func (c *ContextCache) evaluationDigest(providerEvaluationContext []byte) [sha256.Size]byte {
+	mac := hmac.New(sha256.New, c.secret[:])
+	writeFramed(mac, []byte("context-cache-provider-evaluation-v1"))
 	writeFramed(mac, providerEvaluationContext)
 	var digest [sha256.Size]byte
 	copy(digest[:], mac.Sum(nil))
@@ -269,22 +323,27 @@ func (c *ContextCache) deleteProviderEntriesLocked(providerID string) {
 	}
 }
 
-// Invalidate makes the current provider generation unusable and purges its
-// entries. A subsequent Capture with the same namespace/evaluation digest is
-// rejected as reuse; caching resumes only after a novel trusted generation is
-// established. This is used whenever current validity cannot be determined.
-func (c *ContextCache) Invalidate(providerID string) {
-	if c == nil {
+// invalidateEvaluation invalidates only the provider evaluation generation
+// identified by the caller's trusted snapshot. It is intentionally
+// conditional: an old request completing after endpoint/config replacement
+// must not purge or block a newer provider revision. Genuine Unknown status
+// for the current revision still blocks that generation and rejects its stale
+// in-flight insertions.
+func (c *ContextCache) invalidateEvaluation(providerID string, providerEvaluationContext []byte, providerRevision uint64) {
+	if c == nil || !c.secretOK {
 		return
 	}
+	evaluation := c.evaluationDigest(providerEvaluationContext)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if state := c.providers[providerID]; state != nil {
-		c.generation++
-		state.generation = c.generation
-		state.blocked = true
-		c.deleteProviderEntriesLocked(providerID)
+	state := c.providers[providerID]
+	if state == nil || state.providerRevision != providerRevision || state.evaluation != evaluation {
+		return
 	}
+	c.generation++
+	state.generation = c.generation
+	state.blocked = true
+	c.deleteProviderEntriesLocked(providerID)
 }
 
 func (c *ContextCache) scopeCurrentLocked(scope ContextCacheScope) bool {
@@ -458,13 +517,6 @@ func (c *ContextCache) Size() int {
 // router MAY stamp that field from a cached package→seller map —
 // once that stamp lands, a shallow clone would silently corrupt cache
 // entries. Deep-clone here eliminates that failure mode.
-//
-// Isolation NOT provided for Signals nested values: the top-level
-// map[string]any is a fresh allocation, but nested map/slice values
-// stay shared with the cached entry. Nothing in the merger mutates
-// them today; a general deep-copy of arbitrary any values would need
-// a JSON round-trip (types aren't statically knowable). The
-// ContextCache docstring calls this out.
 func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.ProviderContextMatchResponse {
 	if src == nil {
 		return nil
@@ -485,10 +537,76 @@ func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.Pr
 		}
 	}
 	if len(src.Signals) > 0 {
-		dst.Signals = make(map[string]any, len(src.Signals))
-		maps.Copy(dst.Signals, src.Signals)
+		dst.Signals = cloneSignalMap(src.Signals, make(map[signalCloneVisit]any))
 	}
 	return &dst
+}
+
+type signalCloneVisit struct {
+	kind     reflect.Kind
+	ptr      uintptr
+	length   int
+	capacity int
+}
+
+// cloneSignalMap recursively clones the shapes produced by encoding/json.
+// The seen table both preserves repeated references and safely terminates an
+// unexpected cyclic map/slice supplied by an embedding application. Opaque
+// scalar or otherwise unexpected values are copied by value without reflection
+// or type assertions that could panic.
+func cloneSignalMap(src map[string]any, seen map[signalCloneVisit]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+	visit := signalCloneVisit{kind: reflect.Map, ptr: reflect.ValueOf(src).Pointer()}
+	if prior, ok := seen[visit]; ok {
+		return prior.(map[string]any)
+	}
+	dst := make(map[string]any, len(src))
+	seen[visit] = dst
+	for key, value := range src {
+		dst[key] = cloneSignalValue(value, seen)
+	}
+	return dst
+}
+
+func cloneSignalSlice(src []any, seen map[signalCloneVisit]any) []any {
+	if src == nil {
+		return nil
+	}
+	visit := signalCloneVisit{
+		kind: reflect.Slice, ptr: reflect.ValueOf(src).Pointer(), length: len(src), capacity: cap(src),
+	}
+	if prior, ok := seen[visit]; ok {
+		return prior.([]any)
+	}
+	dst := make([]any, len(src))
+	seen[visit] = dst
+	for i, value := range src {
+		dst[i] = cloneSignalValue(value, seen)
+	}
+	return dst
+}
+
+func cloneSignalValue(src any, seen map[signalCloneVisit]any) any {
+	switch value := src.(type) {
+	case map[string]any:
+		return cloneSignalMap(value, seen)
+	case []any:
+		return cloneSignalSlice(value, seen)
+	case json.RawMessage:
+		return append(json.RawMessage(nil), value...)
+	case []byte:
+		return append([]byte(nil), value...)
+	case map[string]string:
+		dst := make(map[string]string, len(value))
+		maps.Copy(dst, value)
+		return dst
+	case []string:
+		return append([]string(nil), value...)
+	default:
+		return value
+	}
 }
 
 // cloneOffer duplicates every pointer/slice/map on Offer so mutation
