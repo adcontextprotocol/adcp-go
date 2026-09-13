@@ -131,7 +131,7 @@ func TestRouterContextCache_ContextHashSeparatesEveryForwardedDimension(t *testi
 			request["request_id"] = "separation-request"
 			tt.mutate(request)
 			serveContextRequest(t, r, request)
-			assert.Equal(t, int32(i+2), calls.Load(), "%s must produce a distinct context_hash", tt.name)
+			assert.EqualValues(t, i+2, calls.Load(), "%s must produce a distinct context_hash", tt.name)
 		})
 	}
 }
