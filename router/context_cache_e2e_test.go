@@ -171,22 +171,56 @@ func TestRouterContextCache_SafeDefaultAndCurrentAuthorization(t *testing.T) {
 		assert.Equal(t, 0, r.contextCache.Size())
 	})
 
-	t.Run("authorization uncertainty bypasses warm entry", func(t *testing.T) {
+	t.Run("request authorization denial cannot flush provider cache", func(t *testing.T) {
 		calls.Store(0)
 		var authorized atomic.Bool
 		authorized.Store(true)
 		r := testRouter([]ProviderConfig{{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: time.Second}})
 		r.contextCache = NewContextCache(time.Hour)
-		r.contextNamespaceResolver = func(context.Context, ProviderConfig) (string, bool) {
-			return "authz1-packages1-model1-rules1", authorized.Load()
+		r.contextNamespaceResolver = func(context.Context, ProviderConfig) ContextCacheNamespaceResolution {
+			if !authorized.Load() {
+				return ContextCacheNamespaceResolution{Status: ContextCacheNamespaceBypass}
+			}
+			return ContextCacheNamespaceResolution{Namespace: "authz1-packages1-model1-rules1", Status: ContextCacheNamespaceReady}
 		}
 		serveContextRequest(t, r, baseCacheRequest("one"))
+		require.Equal(t, 1, r.contextCache.Size())
 		authorized.Store(false)
 		serveContextRequest(t, r, baseCacheRequest("two"))
 		assert.Equal(t, int32(2), calls.Load(), "a warm hit must still pass current authorization state")
+		assert.Equal(t, 1, r.contextCache.Size(), "request-local denial must not purge the provider generation")
 		authorized.Store(true)
 		serveContextRequest(t, r, baseCacheRequest("three"))
-		assert.Equal(t, int32(3), calls.Load(), "recovering an uncertain generation requires namespace rotation")
+		assert.Equal(t, int32(2), calls.Load(), "an authorized caller must retain its existing warm entry")
+	})
+
+	t.Run("unknown global generation invalidates and requires rotation", func(t *testing.T) {
+		calls.Store(0)
+		var state atomic.Int32
+		r := testRouter([]ProviderConfig{{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: time.Second}})
+		r.contextCache = NewContextCache(time.Hour)
+		r.contextNamespaceResolver = func(context.Context, ProviderConfig) ContextCacheNamespaceResolution {
+			switch state.Load() {
+			case 0, 2:
+				return ContextCacheNamespaceResolution{Namespace: "generation-1", Status: ContextCacheNamespaceReady}
+			case 1:
+				return ContextCacheNamespaceResolution{Status: ContextCacheNamespaceUnknown}
+			default:
+				return ContextCacheNamespaceResolution{Namespace: "generation-2", Status: ContextCacheNamespaceReady}
+			}
+		}
+		serveContextRequest(t, r, baseCacheRequest("one"))
+		require.Equal(t, 1, r.contextCache.Size())
+		state.Store(1)
+		serveContextRequest(t, r, baseCacheRequest("unknown"))
+		assert.Equal(t, 0, r.contextCache.Size(), "unknown provider generation must purge existing entries")
+		state.Store(2)
+		serveContextRequest(t, r, baseCacheRequest("reused"))
+		assert.Equal(t, int32(3), calls.Load(), "the invalidated generation must not be reused")
+		state.Store(3)
+		serveContextRequest(t, r, baseCacheRequest("rotated"))
+		serveContextRequest(t, r, baseCacheRequest("rotated-warm"))
+		assert.Equal(t, int32(4), calls.Load(), "a novel generation may cache again")
 	})
 }
 
@@ -234,10 +268,10 @@ func TestRouterContextCache_RotationRejectsOldInflightInsertion(t *testing.T) {
 	namespace := "generation-1"
 	r := testRouter([]ProviderConfig{{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 5 * time.Second}})
 	r.contextCache = NewContextCache(time.Hour)
-	r.contextNamespaceResolver = func(context.Context, ProviderConfig) (string, bool) {
+	r.contextNamespaceResolver = func(context.Context, ProviderConfig) ContextCacheNamespaceResolution {
 		mu.RLock()
 		defer mu.RUnlock()
-		return namespace, true
+		return ContextCacheNamespaceResolution{Namespace: namespace, Status: ContextCacheNamespaceReady}
 	}
 
 	firstDone := make(chan struct{})

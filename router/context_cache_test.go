@@ -200,6 +200,8 @@ func TestContextCache_UnknownValidityInvalidatesGeneration(t *testing.T) {
 	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{})
 	c.Invalidate("prov")
 	assert.Equal(t, 0, c.Size())
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-inflight"})
+	assert.Equal(t, 0, c.Size(), "global uncertainty must reject stale in-flight insertion")
 	_, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://provider.example"}`))
 	assert.False(t, ok, "validity recovery requires a novel generation token")
 	_, ok = c.Capture("prov", "generation-2", []byte(`{"endpoint":"https://provider.example"}`))

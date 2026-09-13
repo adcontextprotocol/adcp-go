@@ -66,9 +66,26 @@ generation dynamically:
 r, err := router.NewRouter(providers, registry, health,
     router.WithContextCache(router.NewContextCache(5*time.Minute)),
     router.WithContextCacheNamespaceResolver(
-        func(ctx context.Context, p router.ProviderConfig) (string, bool) {
+        func(ctx context.Context, p router.ProviderConfig) router.ContextCacheNamespaceResolution {
+            if !currentRequestAuthorized(ctx, p.ID) {
+                // Request-local denial bypasses without flushing entries that
+                // remain valid for other authorized callers.
+                return router.ContextCacheNamespaceResolution{
+                    Status: router.ContextCacheNamespaceBypass,
+                }
+            }
             generation, valid := trustedDeploymentState.CacheGeneration(ctx, p.ID)
-            return generation, valid // false bypasses lookup and insertion
+            if !valid {
+                // Provider-wide uncertainty invalidates the old generation and
+                // requires a novel token before caching resumes.
+                return router.ContextCacheNamespaceResolution{
+                    Status: router.ContextCacheNamespaceUnknown,
+                }
+            }
+            return router.ContextCacheNamespaceResolution{
+                Namespace: generation,
+                Status:    router.ContextCacheNamespaceReady,
+            }
         },
     ),
 )
@@ -78,7 +95,11 @@ The resolver receives no Context Match or Identity Match object. It may consult
 authenticated state placed in `ctx` by trusted middleware. It runs on warm hits
 and again before insertion; the router retains the originally captured
 generation across lookup, outbound call, and insertion so an old in-flight
-response cannot populate a newer namespace.
+response cannot populate a newer namespace. Return
+`ContextCacheNamespaceBypass` for request-specific authorization denial or
+cache ineligibility; this never mutates provider-wide cache state. Return
+`ContextCacheNamespaceUnknown` only when the current global generation cannot
+be established; this purges and blocks reuse of the prior generation.
 
 ## Injecting your logger
 

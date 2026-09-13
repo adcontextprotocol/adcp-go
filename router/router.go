@@ -117,14 +117,37 @@ type Router struct {
 	contextNamespaceResolver ContextCacheNamespaceResolver
 }
 
+// ContextCacheNamespaceStatus distinguishes request-local cache bypass from
+// provider-wide uncertainty about the current generation.
+type ContextCacheNamespaceStatus uint8
+
+const (
+	// ContextCacheNamespaceUnknown means the resolver cannot establish the
+	// current provider-wide generation. Existing entries are invalidated and
+	// the same generation cannot be reused.
+	ContextCacheNamespaceUnknown ContextCacheNamespaceStatus = iota
+	// ContextCacheNamespaceBypass means this request must not use or populate
+	// the cache (for example, current caller/property authorization denied).
+	// Existing provider entries remain valid for other authorized requests.
+	ContextCacheNamespaceBypass
+	// ContextCacheNamespaceReady means Namespace is a valid current trusted
+	// provider-wide generation and this request may use the cache.
+	ContextCacheNamespaceReady
+)
+
+// ContextCacheNamespaceResolution is the resolver's explicit cache decision.
+type ContextCacheNamespaceResolution struct {
+	Namespace string
+	Status    ContextCacheNamespaceStatus
+}
+
 // ContextCacheNamespaceResolver snapshots trusted result-affecting state that
 // is external to a provider-forwarded Context Match request. The resolver may
 // consult authenticated values placed in ctx by trusted middleware, but MUST
 // NOT derive the namespace from raw caller input, viewer data, Identity Match
-// data, credentials, credential hashes, or direct principal/tenant IDs. The
-// token must be opaque and never reused after rotation. Returning ok=false
-// safely bypasses both cache lookup and insertion.
-type ContextCacheNamespaceResolver func(ctx context.Context, provider ProviderConfig) (namespace string, ok bool)
+// data, credentials, credential hashes, or direct principal/tenant IDs. Ready
+// tokens must be opaque and never reused after rotation.
+type ContextCacheNamespaceResolver func(ctx context.Context, provider ProviderConfig) ContextCacheNamespaceResolution
 
 // RouterOption configures a Router.
 type RouterOption func(*Router)
@@ -175,9 +198,10 @@ func WithContextCache(c *ContextCache) RouterOption {
 
 // WithContextCacheNamespaceResolver supplies dynamic trusted cache namespace
 // generations for embedding deployments. Without this option, each provider's
-// CacheNamespace is used; an empty value bypasses caching. A custom resolver
-// fully replaces that default so it can fail closed when current auth,
-// entitlement, package/config, model, or rules validity cannot be established.
+// CacheNamespace is used; an empty value is globally unknown and invalidates
+// any prior generation. A custom resolver fully replaces that default. It must
+// return Bypass for request-local authorization/cache ineligibility and Unknown
+// only when provider-wide generation validity cannot be established.
 func WithContextCacheNamespaceResolver(resolve ContextCacheNamespaceResolver) RouterOption {
 	return func(r *Router) { r.contextNamespaceResolver = resolve }
 }
@@ -457,17 +481,32 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 		return ContextCacheScope{}, false
 	}
 
-	var namespace string
+	var resolution ContextCacheNamespaceResolution
 	if r.contextNamespaceResolver != nil {
-		namespace, ok = r.contextNamespaceResolver(ctx, current)
+		resolution = r.contextNamespaceResolver(ctx, current)
 	} else {
-		namespace, ok = current.CacheNamespace, current.CacheNamespace != ""
+		if current.CacheNamespace == "" {
+			resolution.Status = ContextCacheNamespaceUnknown
+		} else {
+			resolution = ContextCacheNamespaceResolution{
+				Namespace: current.CacheNamespace,
+				Status:    ContextCacheNamespaceReady,
+			}
+		}
 	}
-	if !ok || !validContextCacheNamespace(namespace) {
-		r.contextCache.Invalidate(current.ID)
+	switch resolution.Status {
+	case ContextCacheNamespaceBypass:
 		return ContextCacheScope{}, false
+	case ContextCacheNamespaceReady:
+		if validContextCacheNamespace(resolution.Namespace) {
+			return r.contextCache.Capture(current.ID, resolution.Namespace, currentEvaluation)
+		}
 	}
-	return r.contextCache.Capture(current.ID, namespace, currentEvaluation)
+	// Unknown status, malformed Ready namespace, and unrecognized status all
+	// mean provider-wide validity cannot be established. Invalidate globally;
+	// request-local denial must use Bypass above and never reaches this path.
+	r.contextCache.Invalidate(current.ID)
+	return ContextCacheScope{}, false
 }
 
 // contextCacheScopeCurrent re-reads trusted namespace and provider state but

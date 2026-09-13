@@ -305,7 +305,10 @@ request preimages are not retained or logged.
 
 Static namespaces require current caller/property authorization to run outside
 the cache before `HandleContextMatch`. Dynamic auth-dependent deployments must
-use the resolver, which is evaluated on warm hits and before insertion.
+use the resolver, which is evaluated on warm hits and before insertion. Its
+`ContextCacheNamespaceBypass` result is request-local and does not mutate a
+valid provider cache; `ContextCacheNamespaceUnknown` is reserved for genuine
+provider-wide generation uncertainty and invalidates the prior generation.
 
 ## Environment Variables
 
