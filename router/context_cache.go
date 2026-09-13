@@ -1,9 +1,12 @@
 package router
 
 import (
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"maps"
-	"strings"
 	"sync"
 	"time"
 
@@ -24,6 +27,26 @@ const DefaultContextCacheTTL = 5 * time.Minute
 // sends a value that escaped upstream validation.
 const MaxContextCacheTTL = 24 * time.Hour
 
+// MaxContextCacheNamespaceBytes bounds trusted opaque generation tokens. The
+// token is never retained or logged, but bounding it prevents a broken dynamic
+// resolver or config from turning HMAC input into an unbounded allocation/CPU
+// surface.
+const MaxContextCacheNamespaceBytes = 256
+
+const maxContextCacheGenerationsPerProvider = 1024
+
+func validContextCacheNamespace(namespace string) bool {
+	if namespace == "" || len(namespace) > MaxContextCacheNamespaceBytes {
+		return false
+	}
+	for i := range len(namespace) {
+		if namespace[i] < 0x21 || namespace[i] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
 // ContextCacheMetrics is the observability hook for the per-provider
 // Context Match cache. Deployments wire this through prommetrics (or
 // noop) via WithContextCache. Bounded labels only — providerID is the
@@ -39,30 +62,24 @@ type noopContextCacheMetrics struct{}
 func (noopContextCacheMetrics) IncHit(string)  {}
 func (noopContextCacheMetrics) IncMiss(string) {}
 
-// ContextCache is an in-memory, per-provider cache of Context Match
-// responses. Keyed on {property_rid, placement_id, provider_id,
-// seller_agent_url, country}.
+// ContextCache is an in-memory, per-provider cache of Context Match responses.
+// Its unambiguous struct key is {provider_id, cache_namespace, context_hash}.
+// context_hash covers the complete provider-forwarded request except $schema
+// and request_id; cache_namespace covers trusted result-affecting state outside
+// that request.
 //
-// The spec's recommended cache key at §Caching lists only the first
-// three components. The additional seller and country dimensions are
-// added because this repository's own targeting engine
-// (targeting/engine.go: ActivePackages(ctx, canonicalSeller,
-// propertyID, country, placementID, ...)) scopes the active package
-// set per seller and per country — different sellers or geos on the
-// same placement return different offers. Keying only on placement
-// would let one seller's cached offers be served to another seller
-// on the same placement during the TTL window, disclosing competitor
-// brands, pricing, and creative manifests across tenants.
-// seller_agent_url is compared using the AdCP URL canonicalization
-// rules (urlcanon.Canonicalize), the same normalization the engine
-// applies before its lookup.
+// Namespace material and request preimages are never retained. The cache uses
+// a process-random HMAC key to turn the opaque namespace plus provider
+// evaluation config into a non-reversible local digest. Context hashes are
+// already SHA-256 digests. A process restart therefore changes internal
+// namespace keys and starts with an empty cache.
 //
 // Responses are deeply cloned on read so callers can freely mutate
 // Offer pointer/slice/map members without corrupting the cached
 // entry. (Nested any values inside Signals stay shared — see the
 // note on cloneContextResponse.)
 //
-// Spec cache_ttl semantics (see Put for the enforcement code):
+// Spec cache_ttl semantics (see PutScoped for the enforcement code):
 //
 //   - absent (nil)   → router uses its configured default TTL
 //   - explicit 0     → provider is disabling caching; entry not stored
@@ -79,10 +96,14 @@ func (noopContextCacheMetrics) IncMiss(string) {}
 // (no Redis dependency).
 type ContextCache struct {
 	mu         sync.Mutex
-	entries    map[string]contextCacheEntry
+	entries    map[contextCacheKey]contextCacheEntry
 	defaultTTL time.Duration
+	secret     [sha256.Size]byte
+	secretOK   bool
+	generation uint64
+	providers  map[string]*contextCacheProviderState
 	// maxEntries caps the number of live entries; 0 disables the cap.
-	// When the cap is hit on Put, expired entries are swept; if still
+	// When the cap is hit on PutScoped, expired entries are swept; if still
 	// full, the entry with the oldest insertedAt is evicted.
 	maxEntries int
 	metrics    ContextCacheMetrics
@@ -98,6 +119,30 @@ type contextCacheEntry struct {
 	insertedAt time.Time
 }
 
+type contextCacheKey struct {
+	providerID string
+	namespace  [sha256.Size]byte
+	context    [sha256.Size]byte
+}
+
+type contextCacheProviderState struct {
+	namespace  [sha256.Size]byte
+	generation uint64
+	blocked    bool
+	exhausted  bool
+	seen       map[[sha256.Size]byte]struct{}
+}
+
+// ContextCacheScope is an opaque snapshot of one provider's trusted cache
+// namespace generation. Capture it once before lookup and retain that exact
+// value through the outbound call and insertion. Its fields are intentionally
+// private so callers cannot manufacture a valid generation.
+type ContextCacheScope struct {
+	providerID string
+	namespace  [sha256.Size]byte
+	generation uint64
+}
+
 // ContextCacheOption configures the cache.
 type ContextCacheOption func(*ContextCache)
 
@@ -110,8 +155,8 @@ func WithContextCacheMetrics(m ContextCacheMetrics) ContextCacheOption {
 // WithContextCacheMaxEntries caps the number of live entries. Zero or
 // negative values disable the cap. On Put once the cap is hit the
 // cache sweeps expired entries first, then evicts the oldest insert
-// if the cache is still full — bounding memory against a caller that
-// varies placement/seller/country to grow the working set forever.
+// if the cache is still full — bounding memory against callers that
+// vary context-hashed request fields to grow the working set forever.
 func WithContextCacheMaxEntries(n int) ContextCacheOption {
 	return func(c *ContextCache) {
 		if n < 0 {
@@ -131,51 +176,154 @@ func NewContextCache(defaultTTL time.Duration, opts ...ContextCacheOption) *Cont
 		defaultTTL = DefaultContextCacheTTL
 	}
 	c := &ContextCache{
-		entries:    make(map[string]contextCacheEntry),
+		entries:    make(map[contextCacheKey]contextCacheEntry),
 		defaultTTL: defaultTTL,
 		metrics:    noopContextCacheMetrics{},
 		now:        time.Now,
+		providers:  make(map[string]*contextCacheProviderState),
 	}
+	n, err := rand.Read(c.secret[:])
+	c.secretOK = err == nil && n == len(c.secret)
 	for _, o := range opts {
 		o(c)
 	}
 	return c
 }
 
-// Get looks up a cached response. Returns (nil, false) on miss or
+// Capture establishes a cache scope from an opaque deployment-controlled
+// namespace and the trusted provider evaluation configuration. namespace must
+// represent every result-affecting condition outside the request body,
+// including outbound auth/tenant, authorization and entitlement revision,
+// active-package/config generation, deployed model, and targeting rules.
+// Callers MUST NOT use credentials, credential hashes, direct principal or
+// tenant identifiers, request fields, viewer data, or Identity Match data.
+//
+// Empty namespaces and random-source failure bypass caching. A namespace value
+// may never be reused after rotation: reuse blocks caching for that value and
+// deletes the provider's entries, preventing stale generations from being
+// resurrected. The raw inputs are HMACed immediately and never retained.
+func (c *ContextCache) Capture(providerID, namespace string, providerEvaluationContext []byte) (ContextCacheScope, bool) {
+	if c == nil || !c.secretOK || !validContextCacheNamespace(namespace) {
+		return ContextCacheScope{}, false
+	}
+	digest := c.namespaceDigest(namespace, providerEvaluationContext)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	state := c.providers[providerID]
+	if state == nil {
+		c.generation++
+		state = &contextCacheProviderState{
+			namespace:  digest,
+			generation: c.generation,
+			seen:       map[[sha256.Size]byte]struct{}{digest: {}},
+		}
+		c.providers[providerID] = state
+	} else if state.namespace != digest {
+		c.deleteProviderEntriesLocked(providerID)
+		c.generation++
+		if len(state.seen) >= maxContextCacheGenerationsPerProvider {
+			// Never discard reuse history: doing so could resurrect an old
+			// generation. Fail closed for this provider until process restart
+			// rather than let trusted-but-broken rotation grow memory forever.
+			state.generation = c.generation
+			state.blocked = true
+			state.exhausted = true
+			return ContextCacheScope{}, false
+		}
+		_, reused := state.seen[digest]
+		state.namespace = digest
+		state.generation = c.generation
+		state.blocked = reused
+		state.seen[digest] = struct{}{}
+	}
+	if state.blocked || state.exhausted {
+		return ContextCacheScope{}, false
+	}
+	return ContextCacheScope{providerID: providerID, namespace: digest, generation: state.generation}, true
+}
+
+func (c *ContextCache) namespaceDigest(namespace string, providerEvaluationContext []byte) [sha256.Size]byte {
+	mac := hmac.New(sha256.New, c.secret[:])
+	writeFramed(mac, []byte(namespace))
+	writeFramed(mac, providerEvaluationContext)
+	var digest [sha256.Size]byte
+	copy(digest[:], mac.Sum(nil))
+	return digest
+}
+
+type byteWriter interface{ Write([]byte) (int, error) }
+
+func writeFramed(w byteWriter, value []byte) {
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(value)))
+	_, _ = w.Write(size[:])
+	_, _ = w.Write(value)
+}
+
+func (c *ContextCache) deleteProviderEntriesLocked(providerID string) {
+	for key := range c.entries {
+		if key.providerID == providerID {
+			delete(c.entries, key)
+		}
+	}
+}
+
+// Invalidate makes the current provider generation unusable and purges its
+// entries. A subsequent Capture with the same namespace/evaluation digest is
+// rejected as reuse; caching resumes only after a novel trusted generation is
+// established. This is used whenever current validity cannot be determined.
+func (c *ContextCache) Invalidate(providerID string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if state := c.providers[providerID]; state != nil {
+		c.generation++
+		state.generation = c.generation
+		state.blocked = true
+		c.deleteProviderEntriesLocked(providerID)
+	}
+}
+
+func (c *ContextCache) scopeCurrentLocked(scope ContextCacheScope) bool {
+	state := c.providers[scope.providerID]
+	return state != nil && !state.blocked && state.namespace == scope.namespace && state.generation == scope.generation
+}
+
+// GetScoped looks up a cached response. Returns (nil, false) on miss or
 // expiration; the caller falls back to a live fan-out call. The
 // returned response is a defensive copy — callers may overwrite
 // RequestID or Signals without corrupting the cached entry.
-//
-// sellerAgentURL and country participate in the key so a request from
-// one seller never returns a response the router cached for another
-// seller (see the ContextCache doc for the rationale). Callers should
-// pass sellerAgentURL already normalized via urlcanon.Canonicalize —
-// the cache does not canonicalize on the hot path.
-func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL, country string) (*tmproto.ProviderContextMatchResponse, bool) {
+func (c *ContextCache) GetScoped(scope ContextCacheScope, contextHash [sha256.Size]byte) (*tmproto.ProviderContextMatchResponse, bool) {
 	if c == nil {
 		return nil, false
 	}
-	key := contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country)
+	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
 	c.mu.Lock()
+	if !c.scopeCurrentLocked(scope) {
+		c.mu.Unlock()
+		return nil, false
+	}
 	entry, ok := c.entries[key]
 	if !ok {
 		c.mu.Unlock()
-		c.metrics.IncMiss(providerID)
+		c.metrics.IncMiss(scope.providerID)
 		return nil, false
 	}
 	if c.now().After(entry.expiresAt) {
 		delete(c.entries, key)
 		c.mu.Unlock()
-		c.metrics.IncMiss(providerID)
+		c.metrics.IncMiss(scope.providerID)
 		return nil, false
 	}
 	c.mu.Unlock()
-	c.metrics.IncHit(providerID)
+	c.metrics.IncHit(scope.providerID)
 	return cloneContextResponse(entry.response), true
 }
 
-// Put stores a response under the spec's canonical cache key. The TTL
+// PutScoped stores a response under the spec's canonical cache key. The TTL
 // is derived from the response's cache_ttl per spec §Caching:
 //
 //   - cache_ttl absent (nil pointer) → use the cache's configured
@@ -188,7 +336,7 @@ func (c *ContextCache) Get(propertyRID, placementID, providerID, sellerAgentURL,
 //     MaxContextCacheTTL. Clamping happens in seconds first to avoid
 //     a Duration multiplication overflowing int64 for pathologically
 //     large values that escaped upstream schema validation.
-func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL, country string, resp *tmproto.ProviderContextMatchResponse) {
+func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Size]byte, resp *tmproto.ProviderContextMatchResponse) {
 	if c == nil || resp == nil {
 		return
 	}
@@ -211,9 +359,13 @@ func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL,
 			ttl = time.Duration(secs) * time.Second
 		}
 	}
-	key := contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country)
+	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
 	now := c.now()
 	c.mu.Lock()
+	if !c.scopeCurrentLocked(scope) {
+		c.mu.Unlock()
+		return
+	}
 	// Bound the map. Only enforce when writing a NEW key — an
 	// overwrite doesn't grow the set. Sweep expired first (cheap;
 	// removes stale entries the caller has already forgotten about),
@@ -234,6 +386,22 @@ func (c *ContextCache) Put(propertyRID, placementID, providerID, sellerAgentURL,
 	c.mu.Unlock()
 }
 
+// Get preserves source compatibility with the pre-context_hash cache API. Its
+// placement-derived arguments cannot establish a conformant namespace or
+// context hash, so it deliberately fails closed with a miss.
+//
+// Deprecated: capture a trusted ContextCacheScope and call GetScoped.
+func (c *ContextCache) Get(_, _, _ string, _, _ string) (*tmproto.ProviderContextMatchResponse, bool) {
+	return nil, false
+}
+
+// Put preserves source compatibility with the pre-context_hash cache API. It
+// deliberately does not store because the old arguments omit result-affecting
+// request fields and trusted external state.
+//
+// Deprecated: capture a trusted ContextCacheScope and call PutScoped.
+func (c *ContextCache) Put(_, _, _ string, _, _ string, _ *tmproto.ProviderContextMatchResponse) {}
+
 // sweepExpiredLocked removes any entry whose TTL has elapsed. Caller
 // holds c.mu.
 func (c *ContextCache) sweepExpiredLocked(now time.Time) {
@@ -248,7 +416,7 @@ func (c *ContextCache) sweepExpiredLocked(now time.Time) {
 // but only runs on the cap-hit path, and N is bounded by the
 // operator-configured cap. Caller holds c.mu.
 func (c *ContextCache) evictOldestLocked() {
-	var oldestKey string
+	var oldestKey contextCacheKey
 	var oldestAt time.Time
 	first := true
 	for k, e := range c.entries {
@@ -273,29 +441,6 @@ func (c *ContextCache) Size() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.entries)
-}
-
-// contextCacheKey assembles the canonical cache key. NUL is used as
-// the separator so a component containing "|" or "/" cannot collide
-// with it. tmproto request validation rejects control bytes in
-// property_rid, placement_id, and seller_agent_url (validateSafeID /
-// validateSellerAgentURL); provider_id is bounded by the spec
-// (`^[A-Za-z0-9_]+$`, max 64) and only ever populated from
-// ProviderSet.ID; country is either empty or an ISO-3166 alpha-2
-// pair. No component can carry NUL by construction.
-func contextCacheKey(propertyRID, placementID, providerID, sellerAgentURL, country string) string {
-	var b strings.Builder
-	b.Grow(len(propertyRID) + len(placementID) + len(providerID) + len(sellerAgentURL) + len(country) + 4)
-	b.WriteString(propertyRID)
-	b.WriteByte(0)
-	b.WriteString(placementID)
-	b.WriteByte(0)
-	b.WriteString(providerID)
-	b.WriteByte(0)
-	b.WriteString(sellerAgentURL)
-	b.WriteByte(0)
-	b.WriteString(country)
-	return b.String()
 }
 
 // cloneContextResponse copies the response deeply enough that the

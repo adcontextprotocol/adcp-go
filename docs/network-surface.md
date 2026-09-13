@@ -283,6 +283,30 @@ receives, so they are called out here rather than only in code:
   same segment the publisher receives it twice and decides what that means.
 
 
+## Context Match response-cache boundary
+
+The router caches provider responses under the unambiguous tuple
+`{provider_id, cache_namespace, context_hash}`. `context_hash` is SHA-256 over
+RFC 8785 JCS of the exact validated provider-forwarded request after removing
+only top-level `$schema` and `request_id`; all other fields and array order are
+preserved. Hits are merged with the current request's `request_id`.
+
+`cache_namespace` is trusted deployment state configured per provider (or
+supplied by `WithContextCacheNamespaceResolver` when embedding). It must rotate
+for every result-affecting condition outside the request: outbound auth/tenant,
+authorization or entitlement revision, active packages/provider config,
+endpoint replacement, deployed model, and targeting/rules generation. It must
+be an opaque generation token—not a credential, credential-derived hash,
+principal/tenant identifier, request value, viewer value, or Identity Match
+value—and must never be reused. Missing, invalid, or indeterminate namespaces
+bypass caching for that provider. The in-memory key retains only a
+process-keyed namespace digest and the context hash; namespace metadata and
+request preimages are not retained or logged.
+
+Static namespaces require current caller/property authorization to run outside
+the cache before `HandleContextMatch`. Dynamic auth-dependent deployments must
+use the resolver, which is evaluated on warm hits and before insertion.
+
 ## Environment Variables
 
 | Variable | Service | Purpose | Default |
