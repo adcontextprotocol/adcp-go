@@ -484,6 +484,10 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 	if err != nil {
 		return ContextCacheScope{}, false
 	}
+	cacheEpoch, ok := r.contextCache.providerEpoch(current.ID)
+	if !ok {
+		return ContextCacheScope{}, false
+	}
 
 	var resolution ContextCacheNamespaceResolution
 	if r.contextNamespaceResolver != nil {
@@ -498,19 +502,34 @@ func (r *Router) captureContextCacheScope(ctx context.Context, outbound Provider
 			}
 		}
 	}
+	// The resolver may block. A provider-set replacement during that interval
+	// makes every result stale even when no newer request has reached the cache.
+	// Cache mutations below are separately compare-and-swapped against the
+	// provider cache epoch captured before invoking the resolver.
+	_, latestRevision, stillRegistered := r.providers.GetWithRevision(current.ID)
+	if !stillRegistered || latestRevision != providerRevision {
+		return ContextCacheScope{}, false
+	}
+	resolvedEpoch, ok := r.contextCache.providerEpoch(current.ID)
+	if !ok || resolvedEpoch != cacheEpoch {
+		// Another resolver completed while this one was in flight. Every stale
+		// outcome is request-local bypass: Ready may not rotate backward, Unknown
+		// may not invalidate forward, and Bypass remains non-mutating.
+		return ContextCacheScope{}, false
+	}
 	switch resolution.Status {
 	case ContextCacheNamespaceBypass:
 		return ContextCacheScope{}, false
 	case ContextCacheNamespaceReady:
 		if validContextCacheNamespace(resolution.Namespace) {
-			return r.contextCache.captureAtRevision(current.ID, resolution.Namespace, currentEvaluation, providerRevision)
+			return r.contextCache.captureAtRevisionIfEpoch(current.ID, resolution.Namespace, currentEvaluation, providerRevision, cacheEpoch)
 		}
 	}
 	// Unknown status, malformed Ready namespace, and unrecognized status all
 	// mean provider-wide validity cannot be established. Invalidate only the
 	// matching provider evaluation revision; request-local denial must use
 	// Bypass above and never reaches this path.
-	r.contextCache.invalidateEvaluation(current.ID, currentEvaluation, providerRevision)
+	r.contextCache.invalidateEvaluationIfEpoch(current.ID, currentEvaluation, providerRevision, cacheEpoch)
 	return ContextCacheScope{}, false
 }
 

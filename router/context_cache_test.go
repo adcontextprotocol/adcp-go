@@ -142,6 +142,88 @@ func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 	assert.Equal(t, "original", again.Signals["cyclic"].(map[string]any)["self"].(map[string]any)["value"])
 }
 
+func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
+	emptyBytes := make([]byte, 0, 1)
+	emptyStrings := make([]string, 0, 1)
+	emptyValues := make([]any, 0, 1)
+	src := &tmproto.ProviderContextMatchResponse{
+		Type:   tmproto.TypeContextMatchResponse,
+		Offers: make([]tmproto.Offer, 0, 1),
+		Signals: map[string]any{
+			"bytes":          emptyBytes,
+			"strings":        emptyStrings,
+			"values":         emptyValues,
+			"map":            map[string]any{},
+			"string_map":     map[string]string{},
+			"nil_bytes":      []byte(nil),
+			"nil_strings":    []string(nil),
+			"nil_values":     []any(nil),
+			"nil_map":        map[string]any(nil),
+			"nil_string_map": map[string]string(nil),
+		},
+	}
+	wantJSON, err := json.Marshal(src)
+	require.NoError(t, err)
+
+	cloned := cloneContextResponse(src)
+	gotJSON, err := json.Marshal(cloned)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(wantJSON), string(gotJSON))
+	require.NotNil(t, cloned.Offers)
+	require.NotNil(t, cloned.Signals)
+	require.NotNil(t, cloned.Signals["bytes"].([]byte))
+	require.NotNil(t, cloned.Signals["strings"].([]string))
+	require.NotNil(t, cloned.Signals["values"].([]any))
+	require.NotNil(t, cloned.Signals["map"].(map[string]any))
+	require.NotNil(t, cloned.Signals["string_map"].(map[string]string))
+	assert.Nil(t, cloned.Signals["nil_bytes"])
+	assert.Nil(t, cloned.Signals["nil_strings"])
+	assert.Nil(t, cloned.Signals["nil_values"])
+	assert.Nil(t, cloned.Signals["nil_map"])
+	assert.Nil(t, cloned.Signals["nil_string_map"])
+
+	cloned.Offers = append(cloned.Offers, tmproto.Offer{PackageID: "clone-only"})
+	cloned.Signals["new"] = true
+	cloned.Signals["bytes"] = append(cloned.Signals["bytes"].([]byte), 1)
+	cloned.Signals["strings"] = append(cloned.Signals["strings"].([]string), "clone-only")
+	cloned.Signals["values"] = append(cloned.Signals["values"].([]any), "clone-only")
+	cloned.Signals["map"].(map[string]any)["new"] = true
+	cloned.Signals["string_map"].(map[string]string)["new"] = "clone-only"
+	assert.Empty(t, src.Offers)
+	assert.NotContains(t, src.Signals, "new")
+	assert.Equal(t, byte(0), emptyBytes[:cap(emptyBytes)][0])
+	assert.Equal(t, "", emptyStrings[:cap(emptyStrings)][0])
+	assert.Nil(t, emptyValues[:cap(emptyValues)][0])
+	assert.Empty(t, src.Signals["map"])
+	assert.Empty(t, src.Signals["string_map"])
+
+	emptyCreativeData := map[string]string{}
+	var nilManifest json.RawMessage
+	srcOffer := tmproto.Offer{
+		SellerAgent:      json.RawMessage{},
+		Brand:            json.RawMessage{},
+		CreativeManifest: &nilManifest,
+		CreativeData:     emptyCreativeData,
+	}
+	offer := cloneOffer(srcOffer)
+	require.NotNil(t, offer.SellerAgent)
+	require.NotNil(t, offer.Brand)
+	require.NotNil(t, offer.CreativeManifest)
+	assert.Nil(t, *offer.CreativeManifest)
+	require.NotNil(t, offer.CreativeData)
+	srcOfferJSON, err := json.Marshal(srcOffer)
+	require.NoError(t, err)
+	clonedOfferJSON, err := json.Marshal(offer)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(srcOfferJSON), string(clonedOfferJSON))
+	offer.CreativeData["new"] = "clone-only"
+	assert.Empty(t, emptyCreativeData)
+
+	nilClone := cloneContextResponse(&tmproto.ProviderContextMatchResponse{})
+	assert.Nil(t, nilClone.Offers)
+	assert.Nil(t, nilClone.Signals)
+}
+
 func TestContextCache_TTLSemantics(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -308,6 +390,31 @@ func TestContextCache_GenerationHistoryExhaustionIsObservableAndSafe(t *testing.
 	metrics.mu.Unlock()
 	internal := fmt.Sprintf("%#v %#v", c, metrics)
 	assert.NotContains(t, internal, namespaceMarker)
+}
+
+func TestContextCache_ReplayAtGenerationLimitDoesNotExhaustCurrent(t *testing.T) {
+	metrics := newCountingCacheMetrics()
+	c := NewContextCache(time.Minute, WithContextCacheMetrics(metrics))
+	const providerID = "bounded_provider"
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	var current ContextCacheScope
+	for i := range maxContextCacheGenerationsPerProvider {
+		namespace := fmt.Sprintf("generation-%04d", i)
+		var ok bool
+		current, ok = c.Capture(providerID, namespace, evaluation)
+		require.True(t, ok)
+	}
+	hash := cacheHash("warm-current")
+	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "current"})
+
+	_, ok := c.Capture(providerID, "generation-0000", evaluation)
+	assert.False(t, ok, "a replayed generation must bypass")
+	got, hit := c.GetScoped(current, hash)
+	require.True(t, hit, "replay at the history limit must not block the current generation")
+	assert.Equal(t, "current", got.RequestID)
+	metrics.mu.Lock()
+	assert.Empty(t, metrics.generationExhaustions)
+	metrics.mu.Unlock()
 }
 
 func TestContextCache_MaxEntriesEvictsOldest(t *testing.T) {

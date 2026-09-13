@@ -374,6 +374,84 @@ func TestRouterContextCache_RotationRejectsOldInflightInsertion(t *testing.T) {
 	require.Equal(t, "new", warm.Offers[0].PackageID)
 }
 
+type cacheResolverTestModeKey struct{}
+
+func TestRouterContextCache_DelayedResolverOutcomesCannotMutateNewerGeneration(t *testing.T) {
+	provider := ProviderConfig{ID: "prov", Endpoint: "https://provider.example", ContextMatch: true, CacheNamespace: "unused"}
+	ctxWithMode := func(mode string) context.Context {
+		return context.WithValue(context.Background(), cacheResolverTestModeKey{}, mode)
+	}
+
+	t.Run("first Ready completion cannot rotate backward", func(t *testing.T) {
+		r := testRouter([]ProviderConfig{provider})
+		r.contextCache = NewContextCache(time.Hour)
+		started := make(chan struct{})
+		release := make(chan struct{})
+		r.contextNamespaceResolver = func(ctx context.Context, _ ProviderConfig) ContextCacheNamespaceResolution {
+			if ctx.Value(cacheResolverTestModeKey{}) == "old" {
+				close(started)
+				<-release
+				return ContextCacheNamespaceResolution{Namespace: "generation-old", Status: ContextCacheNamespaceReady}
+			}
+			return ContextCacheNamespaceResolution{Namespace: "generation-new", Status: ContextCacheNamespaceReady}
+		}
+
+		oldResult := make(chan bool, 1)
+		go func() {
+			_, ok := r.captureContextCacheScope(ctxWithMode("old"), provider)
+			oldResult <- ok
+		}()
+		<-started
+		current, ok := r.captureContextCacheScope(ctxWithMode("new"), provider)
+		require.True(t, ok)
+		hash := cacheHash("request")
+		r.contextCache.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new"})
+		close(release)
+		assert.False(t, <-oldResult, "the delayed first-ever Ready result must bypass")
+		got, hit := r.contextCache.GetScoped(current, hash)
+		require.True(t, hit)
+		assert.Equal(t, "new", got.RequestID)
+	})
+
+	t.Run("Unknown completion cannot invalidate newer Ready", func(t *testing.T) {
+		r := testRouter([]ProviderConfig{provider})
+		r.contextCache = NewContextCache(time.Hour)
+		started := make(chan struct{})
+		release := make(chan struct{})
+		r.contextNamespaceResolver = func(ctx context.Context, _ ProviderConfig) ContextCacheNamespaceResolution {
+			switch ctx.Value(cacheResolverTestModeKey{}) {
+			case "initial":
+				return ContextCacheNamespaceResolution{Namespace: "generation-initial", Status: ContextCacheNamespaceReady}
+			case "unknown":
+				close(started)
+				<-release
+				return ContextCacheNamespaceResolution{Status: ContextCacheNamespaceUnknown}
+			default:
+				return ContextCacheNamespaceResolution{Namespace: "generation-new", Status: ContextCacheNamespaceReady}
+			}
+		}
+		_, ok := r.captureContextCacheScope(ctxWithMode("initial"), provider)
+		require.True(t, ok)
+
+		unknownDone := make(chan struct{})
+		go func() {
+			defer close(unknownDone)
+			_, ok := r.captureContextCacheScope(ctxWithMode("unknown"), provider)
+			assert.False(t, ok)
+		}()
+		<-started
+		current, ok := r.captureContextCacheScope(ctxWithMode("new"), provider)
+		require.True(t, ok)
+		hash := cacheHash("request")
+		r.contextCache.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new"})
+		close(release)
+		<-unknownDone
+		got, hit := r.contextCache.GetScoped(current, hash)
+		require.True(t, hit, "a delayed Unknown must not purge or block the newer generation")
+		assert.Equal(t, "new", got.RequestID)
+	})
+}
+
 func TestRouterContextCache_StaleEndpointCompletionCannotPurgeReplacement(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

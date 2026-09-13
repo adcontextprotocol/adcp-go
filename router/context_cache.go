@@ -142,6 +142,15 @@ type contextCacheProviderState struct {
 	seen             map[[sha256.Size]byte]struct{}
 }
 
+// contextCacheProviderEpoch is an opaque compare-and-swap token captured
+// before a namespace resolver runs. Resolver calls may block on trusted auth
+// or deployment state; every outcome must prove that the provider cache state
+// is unchanged before it may rotate or invalidate that state.
+type contextCacheProviderEpoch struct {
+	initialized bool
+	generation  uint64
+}
+
 // ContextCacheScope is an opaque snapshot of one provider's trusted cache
 // namespace generation. Capture it once before lookup and retain that exact
 // value through the outbound call and insertion. Its fields are intentionally
@@ -220,6 +229,38 @@ func (c *ContextCache) Capture(providerID, namespace string, providerEvaluationC
 // snapshot cannot rotate the cache back or purge a newer endpoint/config
 // generation after the replacement has populated it.
 func (c *ContextCache) captureAtRevision(providerID, namespace string, providerEvaluationContext []byte, providerRevision uint64) (ContextCacheScope, bool) {
+	epoch, ok := c.providerEpoch(providerID)
+	if !ok {
+		return ContextCacheScope{}, false
+	}
+	return c.captureAtRevisionIfEpoch(providerID, namespace, providerEvaluationContext, providerRevision, epoch)
+}
+
+func (c *ContextCache) providerEpoch(providerID string) (contextCacheProviderEpoch, bool) {
+	if c == nil || !c.secretOK {
+		return contextCacheProviderEpoch{}, false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.providerEpochLocked(providerID), true
+}
+
+func (c *ContextCache) providerEpochLocked(providerID string) contextCacheProviderEpoch {
+	state := c.providers[providerID]
+	if state == nil {
+		return contextCacheProviderEpoch{}
+	}
+	return contextCacheProviderEpoch{initialized: true, generation: state.generation}
+}
+
+func (c *ContextCache) providerEpochCurrentLocked(providerID string, expected contextCacheProviderEpoch) bool {
+	return c.providerEpochLocked(providerID) == expected
+}
+
+// captureAtRevisionIfEpoch changes or captures a namespace only if no other
+// resolver completion changed this provider's cache generation after expected
+// was sampled. A mismatch is a conservative request-local bypass.
+func (c *ContextCache) captureAtRevisionIfEpoch(providerID, namespace string, providerEvaluationContext []byte, providerRevision uint64, expected contextCacheProviderEpoch) (ContextCacheScope, bool) {
 	if c == nil || !c.secretOK || !validContextCacheNamespace(namespace) {
 		return ContextCacheScope{}, false
 	}
@@ -227,6 +268,10 @@ func (c *ContextCache) captureAtRevision(providerID, namespace string, providerE
 	evaluation := c.evaluationDigest(providerEvaluationContext)
 
 	c.mu.Lock()
+	if !c.providerEpochCurrentLocked(providerID, expected) {
+		c.mu.Unlock()
+		return ContextCacheScope{}, false
+	}
 	state := c.providers[providerID]
 	if state == nil {
 		c.generation++
@@ -242,6 +287,16 @@ func (c *ContextCache) captureAtRevision(providerID, namespace string, providerE
 		c.mu.Unlock()
 		return ContextCacheScope{}, false
 	} else if state.namespace != digest {
+		_, reused := state.seen[digest]
+		if reused {
+			// A delayed request may still hold an older trusted resolver
+			// snapshot. Reject that scope without changing the active generation:
+			// stale callers must never purge or block a newer warm entry. If the
+			// deployment genuinely reused a token, every request using it still
+			// bypasses, so no stale generation can be resurrected.
+			c.mu.Unlock()
+			return ContextCacheScope{}, false
+		}
 		if len(state.seen) >= maxContextCacheGenerationsPerProvider {
 			// Never discard reuse history: doing so could resurrect an old
 			// generation. Fail closed for this provider until process restart
@@ -257,16 +312,6 @@ func (c *ContextCache) captureAtRevision(providerID, namespace string, providerE
 					metrics.IncGenerationExhausted(providerID)
 				}
 			}
-			return ContextCacheScope{}, false
-		}
-		_, reused := state.seen[digest]
-		if reused {
-			// A delayed request may still hold an older trusted resolver
-			// snapshot. Reject that scope without changing the active generation:
-			// stale callers must never purge or block a newer warm entry. If the
-			// deployment genuinely reused a token, every request using it still
-			// bypasses, so no stale generation can be resurrected.
-			c.mu.Unlock()
 			return ContextCacheScope{}, false
 		}
 		c.deleteProviderEntriesLocked(providerID)
@@ -330,12 +375,23 @@ func (c *ContextCache) deleteProviderEntriesLocked(providerID string) {
 // for the current revision still blocks that generation and rejects its stale
 // in-flight insertions.
 func (c *ContextCache) invalidateEvaluation(providerID string, providerEvaluationContext []byte, providerRevision uint64) {
+	epoch, ok := c.providerEpoch(providerID)
+	if !ok {
+		return
+	}
+	c.invalidateEvaluationIfEpoch(providerID, providerEvaluationContext, providerRevision, epoch)
+}
+
+func (c *ContextCache) invalidateEvaluationIfEpoch(providerID string, providerEvaluationContext []byte, providerRevision uint64, expected contextCacheProviderEpoch) {
 	if c == nil || !c.secretOK {
 		return
 	}
 	evaluation := c.evaluationDigest(providerEvaluationContext)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !c.providerEpochCurrentLocked(providerID, expected) {
+		return
+	}
 	state := c.providers[providerID]
 	if state == nil || state.providerRevision != providerRevision || state.evaluation != evaluation {
 		return
@@ -530,13 +586,13 @@ func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.Pr
 		v := *src.CacheTTL
 		dst.CacheTTL = &v
 	}
-	if len(src.Offers) > 0 {
+	if src.Offers != nil {
 		dst.Offers = make([]tmproto.Offer, len(src.Offers))
 		for i := range src.Offers {
 			dst.Offers[i] = cloneOffer(src.Offers[i])
 		}
 	}
-	if len(src.Signals) > 0 {
+	if src.Signals != nil {
 		dst.Signals = cloneSignalMap(src.Signals, make(map[signalCloneVisit]any))
 	}
 	return &dst
@@ -595,15 +651,33 @@ func cloneSignalValue(src any, seen map[signalCloneVisit]any) any {
 	case []any:
 		return cloneSignalSlice(value, seen)
 	case json.RawMessage:
-		return append(json.RawMessage(nil), value...)
+		if value == nil {
+			return json.RawMessage(nil)
+		}
+		dst := make(json.RawMessage, len(value))
+		copy(dst, value)
+		return dst
 	case []byte:
-		return append([]byte(nil), value...)
+		if value == nil {
+			return []byte(nil)
+		}
+		dst := make([]byte, len(value))
+		copy(dst, value)
+		return dst
 	case map[string]string:
+		if value == nil {
+			return map[string]string(nil)
+		}
 		dst := make(map[string]string, len(value))
 		maps.Copy(dst, value)
 		return dst
 	case []string:
-		return append([]string(nil), value...)
+		if value == nil {
+			return []string(nil)
+		}
+		dst := make([]string, len(value))
+		copy(dst, value)
+		return dst
 	default:
 		return value
 	}
@@ -614,20 +688,26 @@ func cloneSignalValue(src any, seen map[signalCloneVisit]any) any {
 func cloneOffer(src tmproto.Offer) tmproto.Offer {
 	dst := src // scalar fields (PackageID, Summary) copy by value
 	if src.SellerAgent != nil {
-		dst.SellerAgent = append(json.RawMessage(nil), src.SellerAgent...)
+		dst.SellerAgent = make(json.RawMessage, len(src.SellerAgent))
+		copy(dst.SellerAgent, src.SellerAgent)
 	}
 	if src.Brand != nil {
-		dst.Brand = append(json.RawMessage(nil), src.Brand...)
+		dst.Brand = make(json.RawMessage, len(src.Brand))
+		copy(dst.Brand, src.Brand)
 	}
 	if src.Price != nil {
 		p := *src.Price
 		dst.Price = &p
 	}
 	if src.CreativeManifest != nil {
-		cm := append(json.RawMessage(nil), *src.CreativeManifest...)
+		var cm json.RawMessage
+		if *src.CreativeManifest != nil {
+			cm = make(json.RawMessage, len(*src.CreativeManifest))
+			copy(cm, *src.CreativeManifest)
+		}
 		dst.CreativeManifest = &cm
 	}
-	if len(src.CreativeData) > 0 {
+	if src.CreativeData != nil {
 		dst.CreativeData = make(map[string]string, len(src.CreativeData))
 		maps.Copy(dst.CreativeData, src.CreativeData)
 	}
