@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -58,6 +59,22 @@ func ttlPtr(n int) *int { return &n }
 type signalCloneCustom struct {
 	Counts map[string]int `json:"counts"`
 	Values []int          `json:"values"`
+}
+
+type signalNamedIntPointer *int
+
+type signalTextMapKey struct {
+	Value string
+}
+
+func (k *signalTextMapKey) MarshalText() ([]byte, error) { return []byte(k.Value), nil }
+
+type signalHiddenMutable struct {
+	Values []int `json:"values"`
+}
+
+type signalUnexportedEmbedding struct {
+	signalHiddenMutable
 }
 
 func TestContextCache_NilSafe(t *testing.T) {
@@ -154,6 +171,8 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	typedMap := map[string]int{"original": 1}
 	typedSlice := []int{1, 2}
 	custom := &signalCloneCustom{Counts: map[string]int{"original": 1}, Values: []int{1, 2}}
+	namedValue := 1
+	namedPointer := signalNamedIntPointer(&namedValue)
 	src := &tmproto.ProviderContextMatchResponse{
 		Type:   tmproto.TypeContextMatchResponse,
 		Offers: make([]tmproto.Offer, 0, 1),
@@ -171,12 +190,14 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 			"typed_map":      typedMap,
 			"typed_slice":    typedSlice,
 			"custom":         custom,
+			"named_pointer":  namedPointer,
 		},
 	}
 	wantJSON, err := json.Marshal(src)
 	require.NoError(t, err)
 
-	cloned := cloneContextResponse(src)
+	cloned, safe := cloneContextResponse(src)
+	require.True(t, safe)
 	gotJSON, err := json.Marshal(cloned)
 	require.NoError(t, err)
 	assert.JSONEq(t, string(wantJSON), string(gotJSON))
@@ -190,6 +211,7 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	require.NotNil(t, cloned.Signals["typed_map"].(map[string]int))
 	require.NotNil(t, cloned.Signals["typed_slice"].([]int))
 	require.NotNil(t, cloned.Signals["custom"].(*signalCloneCustom))
+	require.IsType(t, signalNamedIntPointer(nil), cloned.Signals["named_pointer"])
 	assert.Nil(t, cloned.Signals["nil_bytes"])
 	assert.Nil(t, cloned.Signals["nil_strings"])
 	assert.Nil(t, cloned.Signals["nil_values"])
@@ -207,6 +229,7 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	cloned.Signals["typed_slice"].([]int)[0] = 2
 	cloned.Signals["custom"].(*signalCloneCustom).Counts["original"] = 2
 	cloned.Signals["custom"].(*signalCloneCustom).Values[0] = 2
+	*cloned.Signals["named_pointer"].(signalNamedIntPointer) = 2
 	assert.Empty(t, src.Offers)
 	assert.NotContains(t, src.Signals, "new")
 	assert.Equal(t, byte(0), emptyBytes[:cap(emptyBytes)][0])
@@ -218,6 +241,7 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	assert.Equal(t, 1, typedSlice[0])
 	assert.Equal(t, 1, custom.Counts["original"])
 	assert.Equal(t, 1, custom.Values[0])
+	assert.Equal(t, 1, namedValue)
 
 	emptyCreativeData := map[string]string{}
 	var nilManifest json.RawMessage
@@ -241,9 +265,80 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	offer.CreativeData["new"] = "clone-only"
 	assert.Empty(t, emptyCreativeData)
 
-	nilClone := cloneContextResponse(&tmproto.ProviderContextMatchResponse{})
+	nilClone, safe := cloneContextResponse(&tmproto.ProviderContextMatchResponse{})
+	require.True(t, safe)
 	assert.Nil(t, nilClone.Offers)
 	assert.Nil(t, nilClone.Signals)
+}
+
+func TestContextCache_UnsafeTypedSignalsBypassInsertion(t *testing.T) {
+	bigValue := big.NewInt(1)
+	hiddenValue := &signalUnexportedEmbedding{signalHiddenMutable: signalHiddenMutable{Values: []int{1}}}
+	textKey := &signalTextMapKey{Value: "key"}
+	tests := []struct {
+		name   string
+		value  any
+		mutate func()
+	}{
+		{
+			name:  "big.Int has unexported mutable state",
+			value: bigValue,
+			mutate: func() {
+				bigValue.SetInt64(2)
+			},
+		},
+		{
+			name:  "unexported embedding contains exported slice",
+			value: hiddenValue,
+			mutate: func() {
+				hiddenValue.Values[0] = 2
+			},
+		},
+		{
+			name:  "TextMarshaler pointer map key remains mutable",
+			value: map[*signalTextMapKey]int{textKey: 1},
+			mutate: func() {
+				textKey.Value = "mutated"
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewContextCache(time.Minute)
+			scope := cacheScope(t, c, "prov", "generation-1")
+			hash := cacheHash(tt.name)
+			response := &tmproto.ProviderContextMatchResponse{Signals: map[string]any{"value": tt.value}}
+			_, safe := cloneContextResponse(response)
+			assert.False(t, safe)
+			c.PutScoped(scope, hash, response)
+			assert.Zero(t, c.Size(), "unsafe Signals must bypass cache insertion")
+			tt.mutate()
+			_, hit := c.GetScoped(scope, hash)
+			assert.False(t, hit)
+		})
+	}
+}
+
+func TestContextCache_NamedPointerSignalPreservesTypeAndIsolation(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("named-pointer")
+	value := 1
+	pointer := signalNamedIntPointer(&value)
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
+		Signals: map[string]any{"value": pointer},
+	})
+	value = 2
+
+	got, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	cloned, ok := got.Signals["value"].(signalNamedIntPointer)
+	require.True(t, ok, "clone must preserve the defined pointer type")
+	assert.Equal(t, 1, *cloned)
+	*cloned = 3
+	again, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, *again.Signals["value"].(signalNamedIntPointer))
 }
 
 func TestContextCache_TypedSignalsAreIsolatedOnPutAndGet(t *testing.T) {

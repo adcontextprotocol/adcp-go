@@ -82,9 +82,11 @@ func (noopContextCacheMetrics) IncMiss(string) {}
 // already SHA-256 digests. A process restart therefore changes internal
 // namespace keys and starts with an empty cache.
 //
-// Responses are deeply cloned on both write and read so callers can freely
-// mutate every pointer, slice, map, and JSON-shaped Signals value without
-// corrupting the cached entry.
+// Responses admitted to the cache are deeply cloned on both write and read so
+// callers can freely mutate every supported pointer, slice, map, and Signals
+// value without corrupting the cached entry. PutScoped bypasses insertion when
+// an embedding-supplied Signals graph contains state that cannot be proven
+// alias-free; ordinary encoding/json-decoded response shapes are all admitted.
 //
 // Spec cache_ttl semantics (see PutScoped for the enforcement code):
 //
@@ -448,8 +450,14 @@ func (c *ContextCache) GetScoped(scope ContextCacheScope, contextHash [sha256.Si
 		return nil, false
 	}
 	c.mu.Unlock()
+	response, safe := cloneContextResponse(entry.response)
+	if !safe {
+		// PutScoped admits only safely cloneable entries. Retain fail-closed
+		// behavior if an embedding application somehow mutates internals.
+		return nil, false
+	}
 	c.metrics.IncHit(scope.providerID)
-	return cloneContextResponse(entry.response), true
+	return response, true
 }
 
 // PutScoped stores a response under the spec's canonical cache key. The TTL
@@ -488,6 +496,13 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 			ttl = time.Duration(secs) * time.Second
 		}
 	}
+	response, safe := cloneContextResponse(resp)
+	if !safe {
+		// Signals can be constructed directly by embedding applications rather
+		// than encoding/json. Never retain a graph whose mutable references cannot
+		// be fully isolated from its caller-owned source.
+		return
+	}
 	key := contextCacheKey{providerID: scope.providerID, namespace: scope.namespace, context: contextHash}
 	now := c.now()
 	c.mu.Lock()
@@ -508,7 +523,7 @@ func (c *ContextCache) PutScoped(scope ContextCacheScope, contextHash [sha256.Si
 		}
 	}
 	c.entries[key] = contextCacheEntry{
-		response:   cloneContextResponse(resp),
+		response:   response,
 		expiresAt:  now.Add(ttl),
 		insertedAt: now,
 	}
@@ -586,10 +601,12 @@ func (c *ContextCache) Size() int {
 // The schema doc on tmproto.Offer.SellerAgent explicitly says the
 // router MAY stamp that field from a cached package→seller map —
 // once that stamp lands, a shallow clone would silently corrupt cache
-// entries. Deep-clone here eliminates that failure mode.
-func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.ProviderContextMatchResponse {
+// entries. Deep-clone here eliminates that failure mode. The bool reports
+// whether every Signals reference was provably isolated; PutScoped bypasses
+// admission when it is false.
+func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) (*tmproto.ProviderContextMatchResponse, bool) {
 	if src == nil {
-		return nil
+		return nil, true
 	}
 	dst := *src
 	// CacheTTL is *int; the shallow struct copy above shares the
@@ -607,9 +624,13 @@ func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.Pr
 		}
 	}
 	if src.Signals != nil {
-		dst.Signals = cloneSignalMap(src.Signals, make(map[signalCloneVisit]reflect.Value))
+		var safe bool
+		dst.Signals, safe = cloneSignalMap(src.Signals, make(map[signalCloneVisit]reflect.Value))
+		if !safe {
+			return nil, false
+		}
 	}
-	return &dst
+	return &dst, true
 }
 
 type signalCloneVisit struct {
@@ -625,114 +646,188 @@ type signalCloneVisit struct {
 // map[string]any / []any from encoding/json, but ContextCache is exported and
 // embedding applications may Put responses containing typed maps, slices, or
 // pointers. The visit table preserves repeated references and terminates
-// cycles without aliasing the source. Unsupported opaque kinds are copied by
-// value; cloning never calls user code or panics on an unexpected value.
-func cloneSignalMap(src map[string]any, seen map[signalCloneVisit]reflect.Value) map[string]any {
+// cycles without aliasing the source. Unsupported opaque reference kinds fail
+// closed; cloning never calls user code or panics on an unexpected value.
+func cloneSignalMap(src map[string]any, seen map[signalCloneVisit]reflect.Value) (map[string]any, bool) {
 	if src == nil {
-		return nil
+		return nil, true
 	}
-	return cloneSignalReflect(reflect.ValueOf(src), seen).Interface().(map[string]any)
+	cloned, safe := cloneSignalReflect(reflect.ValueOf(src), seen)
+	if !safe {
+		return nil, false
+	}
+	return cloned.Interface().(map[string]any), true
 }
 
-func cloneSignalReflect(src reflect.Value, seen map[signalCloneVisit]reflect.Value) reflect.Value {
+func cloneSignalReflect(src reflect.Value, seen map[signalCloneVisit]reflect.Value) (reflect.Value, bool) {
 	if !src.IsValid() {
-		return src
+		return src, true
 	}
 	switch src.Kind() {
 	case reflect.Interface:
 		if src.IsNil() {
-			return reflect.Zero(src.Type())
+			return reflect.Zero(src.Type()), true
 		}
-		value := cloneSignalReflect(src.Elem(), seen)
+		value, safe := cloneSignalReflect(src.Elem(), seen)
+		if !safe {
+			return reflect.Value{}, false
+		}
 		dst := reflect.New(src.Type()).Elem()
 		if value.IsValid() && value.Type().AssignableTo(src.Type()) {
 			dst.Set(value)
 		} else if value.IsValid() && value.Type().Implements(src.Type()) {
 			dst.Set(value)
+		} else {
+			return reflect.Value{}, false
 		}
-		return dst
+		return dst, true
 	case reflect.Pointer:
 		if src.IsNil() {
-			return reflect.Zero(src.Type())
+			return reflect.Zero(src.Type()), true
 		}
 		visit := signalCloneVisit{kind: src.Kind(), typ: src.Type(), ptr: src.Pointer()}
 		if prior, ok := seen[visit]; ok {
-			return prior
+			return prior, true
 		}
-		dst := reflect.New(src.Type().Elem())
+		raw := reflect.New(src.Type().Elem())
+		dst := raw
+		if raw.Type() != src.Type() {
+			if !raw.Type().ConvertibleTo(src.Type()) {
+				return reflect.Value{}, false
+			}
+			dst = raw.Convert(src.Type())
+		}
 		seen[visit] = dst
-		setClonedSignalValue(dst.Elem(), src.Elem(), seen)
-		return dst
+		if !setClonedSignalValue(raw.Elem(), src.Elem(), seen) {
+			return reflect.Value{}, false
+		}
+		return dst, true
 	case reflect.Map:
 		if src.IsNil() {
-			return reflect.Zero(src.Type())
+			return reflect.Zero(src.Type()), true
+		}
+		if !safeSignalMapKeyType(src.Type().Key()) {
+			return reflect.Value{}, false
 		}
 		visit := signalCloneVisit{kind: src.Kind(), typ: src.Type(), ptr: src.Pointer()}
 		if prior, ok := seen[visit]; ok {
-			return prior
+			return prior, true
 		}
 		dst := reflect.MakeMapWithSize(src.Type(), src.Len())
 		seen[visit] = dst
 		iter := src.MapRange()
 		for iter.Next() {
-			value := cloneSignalReflect(iter.Value(), seen)
-			if value.IsValid() && value.Type().AssignableTo(src.Type().Elem()) {
-				dst.SetMapIndex(iter.Key(), value)
+			value, safe := cloneSignalReflect(iter.Value(), seen)
+			if !safe || !value.IsValid() || !value.Type().AssignableTo(src.Type().Elem()) {
+				return reflect.Value{}, false
 			}
+			dst.SetMapIndex(iter.Key(), value)
 		}
-		return dst
+		return dst, true
 	case reflect.Slice:
 		if src.IsNil() {
-			return reflect.Zero(src.Type())
+			return reflect.Zero(src.Type()), true
 		}
 		// Empty slices cannot contain a cycle. Give each one an independent,
 		// non-nil zero-capacity backing value so append cannot touch the source.
 		if src.Len() == 0 {
-			return reflect.MakeSlice(src.Type(), 0, 0)
+			return reflect.MakeSlice(src.Type(), 0, 0), true
 		}
 		visit := signalCloneVisit{
 			kind: src.Kind(), typ: src.Type(), ptr: src.Pointer(), length: src.Len(), capacity: src.Cap(),
 		}
 		if prior, ok := seen[visit]; ok {
-			return prior
+			return prior, true
 		}
 		dst := reflect.MakeSlice(src.Type(), src.Len(), src.Len())
 		seen[visit] = dst
 		for i := range src.Len() {
-			setClonedSignalValue(dst.Index(i), src.Index(i), seen)
+			if !setClonedSignalValue(dst.Index(i), src.Index(i), seen) {
+				return reflect.Value{}, false
+			}
 		}
-		return dst
+		return dst, true
 	case reflect.Array:
 		dst := reflect.New(src.Type()).Elem()
 		for i := range src.Len() {
-			setClonedSignalValue(dst.Index(i), src.Index(i), seen)
+			if !setClonedSignalValue(dst.Index(i), src.Index(i), seen) {
+				return reflect.Value{}, false
+			}
 		}
-		return dst
+		return dst, true
 	case reflect.Struct:
+		for i := range src.NumField() {
+			field := src.Type().Field(i)
+			if field.PkgPath != "" && signalTypeContainsMutableReference(field.Type) {
+				return reflect.Value{}, false
+			}
+		}
 		// Copy the complete value first so opaque/unexported implementation
-		// details retain their scalar semantics, then recursively isolate every
-		// exported field that JSON can observe.
+		// scalar details retain their semantics, then recursively isolate every
+		// exported field that JSON can observe. Reference-bearing unexported state
+		// was rejected above because reflection cannot isolate it safely.
 		dst := reflect.New(src.Type()).Elem()
 		dst.Set(src)
 		for i := range src.NumField() {
 			if src.Type().Field(i).PkgPath == "" {
-				setClonedSignalValue(dst.Field(i), src.Field(i), seen)
+				if !setClonedSignalValue(dst.Field(i), src.Field(i), seen) {
+					return reflect.Value{}, false
+				}
 			}
 		}
-		return dst
+		return dst, true
+	case reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		return reflect.Value{}, false
 	default:
-		return src
+		return src, true
 	}
 }
 
-func setClonedSignalValue(dst, src reflect.Value, seen map[signalCloneVisit]reflect.Value) {
+func setClonedSignalValue(dst, src reflect.Value, seen map[signalCloneVisit]reflect.Value) bool {
 	if !dst.CanSet() {
-		return
+		return false
 	}
-	cloned := cloneSignalReflect(src, seen)
-	if cloned.IsValid() && cloned.Type().AssignableTo(dst.Type()) {
-		dst.Set(cloned)
+	cloned, safe := cloneSignalReflect(src, seen)
+	if !safe || !cloned.IsValid() || !cloned.Type().AssignableTo(dst.Type()) {
+		return false
 	}
+	dst.Set(cloned)
+	return true
+}
+
+// safeSignalMapKeyType accepts only keys whose identity contains no mutable
+// reference. In particular, pointer keys that implement encoding.TextMarshaler
+// are valid JSON map keys but remain caller-owned mutable objects, so caching a
+// map containing them would violate response isolation.
+func safeSignalMapKeyType(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Bool:
+		return true
+	case reflect.Array:
+		return safeSignalMapKeyType(typ.Elem())
+	default:
+		return false
+	}
+}
+
+func signalTypeContainsMutableReference(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Interface,
+		reflect.Chan, reflect.Func, reflect.UnsafePointer:
+		return true
+	case reflect.Array:
+		return signalTypeContainsMutableReference(typ.Elem())
+	case reflect.Struct:
+		for i := range typ.NumField() {
+			if signalTypeContainsMutableReference(typ.Field(i).Type) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cloneOffer duplicates every pointer/slice/map on Offer so mutation

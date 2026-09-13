@@ -324,6 +324,15 @@ process restart and the reference binary increments
 `tmp_context_cache_generation_exhausted_total` using only the stable provider
 ID; namespace material is never a metric or log value.
 
+Provider responses decoded from JSON use maps, slices, and scalar values that
+the cache can fully deep-clone. Embedding applications may also supply typed
+maps, slices, pointers, interfaces, arrays, and structs with cloneable exported
+state. Cache admission fails closed when a `signals` graph cannot be proven
+alias-free—for example, reference-bearing unexported struct state, mutable
+pointer map keys, or channels/functions/unsafe pointers. Such a response is
+still returned normally for its live request but is not inserted into the
+cache; a later request fans out again.
+
 ## Environment Variables
 
 | Variable | Service | Purpose | Default |
