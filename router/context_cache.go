@@ -393,7 +393,21 @@ func (c *ContextCache) invalidateEvaluationIfEpoch(providerID string, providerEv
 		return
 	}
 	state := c.providers[providerID]
-	if state == nil || state.providerRevision != providerRevision || state.evaluation != evaluation {
+	if state == nil {
+		// A cold Unknown must still fence Ready resolvers that began while no
+		// provider state existed. Materialize a blocked epoch with an initialized
+		// replay set; the next novel Ready may rotate out of it safely.
+		c.generation++
+		c.providers[providerID] = &contextCacheProviderState{
+			evaluation:       evaluation,
+			providerRevision: providerRevision,
+			generation:       c.generation,
+			blocked:          true,
+			seen:             make(map[[sha256.Size]byte]struct{}),
+		}
+		return
+	}
+	if state.providerRevision != providerRevision || state.evaluation != evaluation {
 		return
 	}
 	c.generation++
@@ -593,93 +607,131 @@ func cloneContextResponse(src *tmproto.ProviderContextMatchResponse) *tmproto.Pr
 		}
 	}
 	if src.Signals != nil {
-		dst.Signals = cloneSignalMap(src.Signals, make(map[signalCloneVisit]any))
+		dst.Signals = cloneSignalMap(src.Signals, make(map[signalCloneVisit]reflect.Value))
 	}
 	return &dst
 }
 
 type signalCloneVisit struct {
 	kind     reflect.Kind
+	typ      reflect.Type
 	ptr      uintptr
 	length   int
 	capacity int
 }
 
-// cloneSignalMap recursively clones the shapes produced by encoding/json.
-// The seen table both preserves repeated references and safely terminates an
-// unexpected cyclic map/slice supplied by an embedding application. Opaque
-// scalar or otherwise unexpected values are copied by value without reflection
-// or type assertions that could panic.
-func cloneSignalMap(src map[string]any, seen map[signalCloneVisit]any) map[string]any {
+// cloneSignalMap recursively clones JSON-shaped reference values while
+// preserving their concrete Go types. Provider responses normally arrive as
+// map[string]any / []any from encoding/json, but ContextCache is exported and
+// embedding applications may Put responses containing typed maps, slices, or
+// pointers. The visit table preserves repeated references and terminates
+// cycles without aliasing the source. Unsupported opaque kinds are copied by
+// value; cloning never calls user code or panics on an unexpected value.
+func cloneSignalMap(src map[string]any, seen map[signalCloneVisit]reflect.Value) map[string]any {
 	if src == nil {
 		return nil
 	}
-	visit := signalCloneVisit{kind: reflect.Map, ptr: reflect.ValueOf(src).Pointer()}
-	if prior, ok := seen[visit]; ok {
-		return prior.(map[string]any)
-	}
-	dst := make(map[string]any, len(src))
-	seen[visit] = dst
-	for key, value := range src {
-		dst[key] = cloneSignalValue(value, seen)
-	}
-	return dst
+	return cloneSignalReflect(reflect.ValueOf(src), seen).Interface().(map[string]any)
 }
 
-func cloneSignalSlice(src []any, seen map[signalCloneVisit]any) []any {
-	if src == nil {
-		return nil
+func cloneSignalReflect(src reflect.Value, seen map[signalCloneVisit]reflect.Value) reflect.Value {
+	if !src.IsValid() {
+		return src
 	}
-	visit := signalCloneVisit{
-		kind: reflect.Slice, ptr: reflect.ValueOf(src).Pointer(), length: len(src), capacity: cap(src),
-	}
-	if prior, ok := seen[visit]; ok {
-		return prior.([]any)
-	}
-	dst := make([]any, len(src))
-	seen[visit] = dst
-	for i, value := range src {
-		dst[i] = cloneSignalValue(value, seen)
-	}
-	return dst
-}
-
-func cloneSignalValue(src any, seen map[signalCloneVisit]any) any {
-	switch value := src.(type) {
-	case map[string]any:
-		return cloneSignalMap(value, seen)
-	case []any:
-		return cloneSignalSlice(value, seen)
-	case json.RawMessage:
-		if value == nil {
-			return json.RawMessage(nil)
+	switch src.Kind() {
+	case reflect.Interface:
+		if src.IsNil() {
+			return reflect.Zero(src.Type())
 		}
-		dst := make(json.RawMessage, len(value))
-		copy(dst, value)
+		value := cloneSignalReflect(src.Elem(), seen)
+		dst := reflect.New(src.Type()).Elem()
+		if value.IsValid() && value.Type().AssignableTo(src.Type()) {
+			dst.Set(value)
+		} else if value.IsValid() && value.Type().Implements(src.Type()) {
+			dst.Set(value)
+		}
 		return dst
-	case []byte:
-		if value == nil {
-			return []byte(nil)
+	case reflect.Pointer:
+		if src.IsNil() {
+			return reflect.Zero(src.Type())
 		}
-		dst := make([]byte, len(value))
-		copy(dst, value)
+		visit := signalCloneVisit{kind: src.Kind(), typ: src.Type(), ptr: src.Pointer()}
+		if prior, ok := seen[visit]; ok {
+			return prior
+		}
+		dst := reflect.New(src.Type().Elem())
+		seen[visit] = dst
+		setClonedSignalValue(dst.Elem(), src.Elem(), seen)
 		return dst
-	case map[string]string:
-		if value == nil {
-			return map[string]string(nil)
+	case reflect.Map:
+		if src.IsNil() {
+			return reflect.Zero(src.Type())
 		}
-		dst := make(map[string]string, len(value))
-		maps.Copy(dst, value)
+		visit := signalCloneVisit{kind: src.Kind(), typ: src.Type(), ptr: src.Pointer()}
+		if prior, ok := seen[visit]; ok {
+			return prior
+		}
+		dst := reflect.MakeMapWithSize(src.Type(), src.Len())
+		seen[visit] = dst
+		iter := src.MapRange()
+		for iter.Next() {
+			value := cloneSignalReflect(iter.Value(), seen)
+			if value.IsValid() && value.Type().AssignableTo(src.Type().Elem()) {
+				dst.SetMapIndex(iter.Key(), value)
+			}
+		}
 		return dst
-	case []string:
-		if value == nil {
-			return []string(nil)
+	case reflect.Slice:
+		if src.IsNil() {
+			return reflect.Zero(src.Type())
 		}
-		dst := make([]string, len(value))
-		copy(dst, value)
+		// Empty slices cannot contain a cycle. Give each one an independent,
+		// non-nil zero-capacity backing value so append cannot touch the source.
+		if src.Len() == 0 {
+			return reflect.MakeSlice(src.Type(), 0, 0)
+		}
+		visit := signalCloneVisit{
+			kind: src.Kind(), typ: src.Type(), ptr: src.Pointer(), length: src.Len(), capacity: src.Cap(),
+		}
+		if prior, ok := seen[visit]; ok {
+			return prior
+		}
+		dst := reflect.MakeSlice(src.Type(), src.Len(), src.Len())
+		seen[visit] = dst
+		for i := range src.Len() {
+			setClonedSignalValue(dst.Index(i), src.Index(i), seen)
+		}
+		return dst
+	case reflect.Array:
+		dst := reflect.New(src.Type()).Elem()
+		for i := range src.Len() {
+			setClonedSignalValue(dst.Index(i), src.Index(i), seen)
+		}
+		return dst
+	case reflect.Struct:
+		// Copy the complete value first so opaque/unexported implementation
+		// details retain their scalar semantics, then recursively isolate every
+		// exported field that JSON can observe.
+		dst := reflect.New(src.Type()).Elem()
+		dst.Set(src)
+		for i := range src.NumField() {
+			if src.Type().Field(i).PkgPath == "" {
+				setClonedSignalValue(dst.Field(i), src.Field(i), seen)
+			}
+		}
 		return dst
 	default:
-		return value
+		return src
+	}
+}
+
+func setClonedSignalValue(dst, src reflect.Value, seen map[signalCloneVisit]reflect.Value) {
+	if !dst.CanSet() {
+		return
+	}
+	cloned := cloneSignalReflect(src, seen)
+	if cloned.IsValid() && cloned.Type().AssignableTo(dst.Type()) {
+		dst.Set(cloned)
 	}
 }
 

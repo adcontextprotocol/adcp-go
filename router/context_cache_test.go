@@ -55,6 +55,11 @@ func cacheHash(value string) [sha256.Size]byte { return sha256.Sum256([]byte(val
 
 func ttlPtr(n int) *int { return &n }
 
+type signalCloneCustom struct {
+	Counts map[string]int `json:"counts"`
+	Values []int          `json:"values"`
+}
+
 func TestContextCache_NilSafe(t *testing.T) {
 	var c *ContextCache
 	_, ok := c.Capture("prov", "generation-1", nil)
@@ -146,6 +151,9 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	emptyBytes := make([]byte, 0, 1)
 	emptyStrings := make([]string, 0, 1)
 	emptyValues := make([]any, 0, 1)
+	typedMap := map[string]int{"original": 1}
+	typedSlice := []int{1, 2}
+	custom := &signalCloneCustom{Counts: map[string]int{"original": 1}, Values: []int{1, 2}}
 	src := &tmproto.ProviderContextMatchResponse{
 		Type:   tmproto.TypeContextMatchResponse,
 		Offers: make([]tmproto.Offer, 0, 1),
@@ -160,6 +168,9 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 			"nil_values":     []any(nil),
 			"nil_map":        map[string]any(nil),
 			"nil_string_map": map[string]string(nil),
+			"typed_map":      typedMap,
+			"typed_slice":    typedSlice,
+			"custom":         custom,
 		},
 	}
 	wantJSON, err := json.Marshal(src)
@@ -176,6 +187,9 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	require.NotNil(t, cloned.Signals["values"].([]any))
 	require.NotNil(t, cloned.Signals["map"].(map[string]any))
 	require.NotNil(t, cloned.Signals["string_map"].(map[string]string))
+	require.NotNil(t, cloned.Signals["typed_map"].(map[string]int))
+	require.NotNil(t, cloned.Signals["typed_slice"].([]int))
+	require.NotNil(t, cloned.Signals["custom"].(*signalCloneCustom))
 	assert.Nil(t, cloned.Signals["nil_bytes"])
 	assert.Nil(t, cloned.Signals["nil_strings"])
 	assert.Nil(t, cloned.Signals["nil_values"])
@@ -189,6 +203,10 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	cloned.Signals["values"] = append(cloned.Signals["values"].([]any), "clone-only")
 	cloned.Signals["map"].(map[string]any)["new"] = true
 	cloned.Signals["string_map"].(map[string]string)["new"] = "clone-only"
+	cloned.Signals["typed_map"].(map[string]int)["original"] = 2
+	cloned.Signals["typed_slice"].([]int)[0] = 2
+	cloned.Signals["custom"].(*signalCloneCustom).Counts["original"] = 2
+	cloned.Signals["custom"].(*signalCloneCustom).Values[0] = 2
 	assert.Empty(t, src.Offers)
 	assert.NotContains(t, src.Signals, "new")
 	assert.Equal(t, byte(0), emptyBytes[:cap(emptyBytes)][0])
@@ -196,6 +214,10 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	assert.Nil(t, emptyValues[:cap(emptyValues)][0])
 	assert.Empty(t, src.Signals["map"])
 	assert.Empty(t, src.Signals["string_map"])
+	assert.Equal(t, 1, typedMap["original"])
+	assert.Equal(t, 1, typedSlice[0])
+	assert.Equal(t, 1, custom.Counts["original"])
+	assert.Equal(t, 1, custom.Values[0])
 
 	emptyCreativeData := map[string]string{}
 	var nilManifest json.RawMessage
@@ -222,6 +244,52 @@ func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
 	nilClone := cloneContextResponse(&tmproto.ProviderContextMatchResponse{})
 	assert.Nil(t, nilClone.Offers)
 	assert.Nil(t, nilClone.Signals)
+}
+
+func TestContextCache_TypedSignalsAreIsolatedOnPutAndGet(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("typed-signals")
+	typedMap := map[string]int{"value": 1}
+	typedSlice := []int{1}
+	typedInt := 1
+	custom := &signalCloneCustom{Counts: map[string]int{"value": 1}, Values: []int{1}}
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
+		Signals: map[string]any{
+			"map":    typedMap,
+			"slice":  typedSlice,
+			"int":    &typedInt,
+			"custom": custom,
+		},
+	})
+
+	// Mutating the caller-owned response after Put must not reach the entry.
+	typedMap["value"] = 2
+	typedSlice[0] = 2
+	typedInt = 2
+	custom.Counts["value"] = 2
+	custom.Values[0] = 2
+	got, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, got.Signals["map"].(map[string]int)["value"])
+	assert.Equal(t, 1, got.Signals["slice"].([]int)[0])
+	assert.Equal(t, 1, *got.Signals["int"].(*int))
+	assert.Equal(t, 1, got.Signals["custom"].(*signalCloneCustom).Counts["value"])
+	assert.Equal(t, 1, got.Signals["custom"].(*signalCloneCustom).Values[0])
+
+	// Mutating one returned hit must likewise not reach a later hit.
+	got.Signals["map"].(map[string]int)["value"] = 3
+	got.Signals["slice"].([]int)[0] = 3
+	*got.Signals["int"].(*int) = 3
+	got.Signals["custom"].(*signalCloneCustom).Counts["value"] = 3
+	got.Signals["custom"].(*signalCloneCustom).Values[0] = 3
+	again, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, again.Signals["map"].(map[string]int)["value"])
+	assert.Equal(t, 1, again.Signals["slice"].([]int)[0])
+	assert.Equal(t, 1, *again.Signals["int"].(*int))
+	assert.Equal(t, 1, again.Signals["custom"].(*signalCloneCustom).Counts["value"])
+	assert.Equal(t, 1, again.Signals["custom"].(*signalCloneCustom).Values[0])
 }
 
 func TestContextCache_TTLSemantics(t *testing.T) {
