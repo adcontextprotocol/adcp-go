@@ -69,7 +69,16 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 
 ## PR review (Ladon)
 
-Every non-draft, non-dependabot PR is reviewed by Ladon, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO Secretariat GitHub App, so its review counts toward the "1 review required" branch-protection check. The workflow lives at `.github/workflows/ai-review.yml` and consumes the shared review engine remotely (`adcontextprotocol/actions/ladon/review@ladon/review/v1`) — voice, expert triage, and review format are maintained upstream in `adcontextprotocol/actions`, so there is nothing to fork or sync here. This repo supplies only its review policy — repo context, MUST-FIX gates, high-risk paths, escalation reviewers, and trivial paths — in `LADON.md` at the repo root. The workflow uses `pull_request_target` with a trusted base-SHA-only checkout (the PR head is never fetched or executed) and skips auto-review on any PR that modifies `LADON.md` or the workflow itself.
+Ladon posts automated COMMENT findings or REQUEST_CHANGES; it must never satisfy
+the required human approval. `.github/workflows/ai-review.yml` pins the reviewed
+shared orchestrator immutably and sets `auto-approve: 'false'`. The trusted
+base-SHA checkout and the human-only modification gate for this workflow and
+`LADON.md` remain in place. Repository policy lives in `LADON.md`.
+
+The global merge/release hold and five-repository adoption order are documented
+in `.github/LADON-ADOPTION.md`. Branch protection is not fixed by the shared
+action or by these workflow changes. Only an authorized human can validate the
+required trusted exact-head human gate and lift the hold.
 
 ## Testing
 
