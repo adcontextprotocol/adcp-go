@@ -64,10 +64,18 @@ func MajorFromADCPVersion(version string) (int, bool) {
 
 // NegotiateADCPVersion selects the version a server should serve for a request.
 //
-// If requestedVersion is present, it must be the buyer's release pin. If only
-// requestedMajor is present, the highest supported release in that major is
-// selected for 3.x backward compatibility. If neither is present, the highest
-// supported release is selected.
+// If requestedVersion is present, it is the buyer's explicit release pin and is
+// honored exactly: an exact match (stable or prerelease) always wins; a
+// prerelease pin that has no exact match is unsupported rather than
+// range-resolved onto a stable release; a stable pin may downshift to the
+// highest supported stable release at or below the pin but is never resolved
+// onto a prerelease contract, even when no stable alternative exists in scope.
+// See https://github.com/adcontextprotocol/adcp/blob/main/docs/reference/versioning.mdx#pre-release-pins.
+//
+// If only requestedMajor is present, or neither is present, this is the SDK's
+// own default-selection behavior (not an explicit per-operation requirement):
+// the highest supported stable release in scope is selected, falling back to
+// the highest release of any kind only when no stable release exists at all.
 func NegotiateADCPVersion(requestedVersion string, requestedMajor int, supported []string) (string, bool) {
 	return negotiateADCPVersion(adcpVersionRequest{
 		version:       requestedVersion,
@@ -93,22 +101,30 @@ func negotiateADCPVersion(request adcpVersionRequest, supported []string) (strin
 		if !ok {
 			return "", false
 		}
-		if requested.prerelease != "" {
-			if stable, ok := findSupportedADCPRelease(supportedReleases, requested.major, requested.minor, ""); ok {
-				return stable.version, true
-			}
+		// An exact match always wins, whether the pin is stable or a
+		// prerelease — checked before any downshift logic runs.
+		if exact, ok := findSupportedADCPRelease(supportedReleases, requested.major, requested.minor, requested.prerelease); ok {
+			return exact.version, true
 		}
-		return highestSupportedADCPRelease(supportedReleases, requested.major, &requested)
+		// Pre-release pins are matched exactly against supported_versions;
+		// they are not range-resolved onto a stable release.
+		if requested.prerelease != "" {
+			return "", false
+		}
+		// A stable pin may downshift to the highest supported stable release
+		// at or below the pin, but must never resolve onto a prerelease —
+		// even when no stable alternative exists in the requested scope.
+		return highestSupportedADCPRelease(supportedReleases, requested.major, &requested, false)
 	}
 
 	if request.majorProvided {
 		if request.major < 1 {
 			return "", false
 		}
-		return highestSupportedADCPRelease(supportedReleases, request.major, nil)
+		return highestSupportedADCPRelease(supportedReleases, request.major, nil, true)
 	}
 
-	return highestSupportedADCPRelease(supportedReleases, 0, nil)
+	return highestSupportedADCPRelease(supportedReleases, 0, nil, true)
 }
 
 type adcpRelease struct {
@@ -132,19 +148,26 @@ func parseSupportedADCPReleases(versions []string) []adcpRelease {
 	return releases
 }
 
-func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRelease) (string, bool) {
+// highestSupportedADCPRelease returns the highest stable release matching
+// major (0 for any major), optionally bounded above by max. Prereleases are
+// always excluded from this primary selection: this function only ever picks
+// a downshift or default target, never resolves an explicit or implicit
+// version onto a prerelease contract.
+//
+// allowPrereleaseFallback preserves the SDK's own default-selection behavior
+// (omitted or major-only requests): when no stable release exists in scope,
+// the highest release of any kind, including a prerelease, is used instead.
+// Explicit stable-pin downshifts must pass allowPrereleaseFallback=false —
+// the protocol prohibits ever resolving an explicit release pin onto a
+// prerelease, even when no stable alternative exists in the requested scope.
+func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRelease, allowPrereleaseFallback bool) (string, bool) {
 	var best adcpRelease
 	found := false
-	// An omitted version (including legacy major-only negotiation) must not
-	// silently upgrade a peer to a prerelease wire contract. Prefer the highest
-	// stable compatible version, and use a prerelease only when it is the sole
-	// compatible choice. Explicit requests keep the normal semver ordering.
-	stableOnly := max == nil
 	for _, release := range supported {
 		if major != 0 && release.major != major {
 			continue
 		}
-		if stableOnly && release.prerelease != "" {
+		if release.prerelease != "" {
 			continue
 		}
 		if max != nil && compareADCPRelease(release, *max) > 0 {
@@ -155,7 +178,7 @@ func highestSupportedADCPRelease(supported []adcpRelease, major int, max *adcpRe
 			found = true
 		}
 	}
-	if !found && stableOnly {
+	if !found && allowPrereleaseFallback {
 		for _, release := range supported {
 			if major != 0 && release.major != major {
 				continue
