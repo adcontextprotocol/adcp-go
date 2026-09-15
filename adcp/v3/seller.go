@@ -108,6 +108,10 @@ func Register(server *mcp.Server, cfg Config) {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
+				if data == nil {
+					result, out, e := ProductsResponse(nil)
+					return attachContext(result, input.Context), out, e
+				}
 				data.Sandbox = sandbox
 				data.Context = input.Context
 				result, out, err := ProductsResponse(data)
