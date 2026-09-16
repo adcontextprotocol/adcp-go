@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.2](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.1...adcp/v3.2.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **adcp:** adopt protocol 3.2.0-rc.3 bundle ([ebf1a10](https://github.com/adcontextprotocol/adcp-go/commit/ebf1a101c33f47e2d386d3035ebf9e59040ff5a1))
+* **adcp:** adopt protocol 3.2.0-rc.3 bundle ([69a0b8f](https://github.com/adcontextprotocol/adcp-go/commit/69a0b8fccc29f568be5e3e4795d8ccbc5fb7fa91))
+* **server:** include required status in the catalog response envelope ([400237b](https://github.com/adcontextprotocol/adcp-go/commit/400237b05dbe4e046c5ea4fe9a1422a4059d9ad1))
+* **server:** include required status in the catalog response envelope ([36ffe0d](https://github.com/adcontextprotocol/adcp-go/commit/36ffe0d4a88b0a2571aa97d754945951284b689e)), closes [#533](https://github.com/adcontextprotocol/adcp-go/issues/533)
+* **version:** honor exact prerelease pins in 3.x negotiation ([50d659e](https://github.com/adcontextprotocol/adcp-go/commit/50d659ea708907b944dfc3e9227c66f82124dd5f))
+* **version:** honor exact prerelease pins in 3.x negotiation ([8a1f40a](https://github.com/adcontextprotocol/adcp-go/commit/8a1f40a7ac400b49695e02c8f0673a6fdf163556)), closes [#527](https://github.com/adcontextprotocol/adcp-go/issues/527)
+
 ## [3.2.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.0...adcp/v3.2.1) (2026-09-05)
 
 
