@@ -116,6 +116,7 @@ type MediaBuyCapabilities struct {
 	VendorMetricOptimization     *MediaBuyVendorMetricOptimizationCaps `json:"vendor_metric_optimization,omitempty"`
 	ConversionTracking           *ConversionTrackingCaps               `json:"conversion_tracking,omitempty"`
 	FrequencyCapping             *FrequencyCappingCaps                 `json:"frequency_capping,omitempty"`
+	AggregateFrequencyCapping    any                                   `json:"aggregate_frequency_capping,omitempty"`
 	BudgetCapping                any                                   `json:"budget_capping,omitempty"`
 	ContentStandards             *ContentStandardsCaps                 `json:"content_standards,omitempty"`
 	Portfolio                    *PortfolioCaps                        `json:"portfolio,omitempty"`
