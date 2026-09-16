@@ -52,13 +52,16 @@ func TestNegotiateADCPVersion(t *testing.T) {
 		{name: "explicit 3.0", requestVersion: "3.0", want: "3.0", ok: true},
 		{name: "explicit 3.1", requestVersion: "3.1", want: "3.1", ok: true},
 		{name: "explicit 3.2 RC", requestVersion: "3.2-rc.1", want: "3.2-rc.1", ok: true},
-		{name: "stable 3.2 requester can use RC seller", requestVersion: "3.2", want: "3.2-rc.1", ok: true},
+		{name: "stable pin downshifts to highest stable release, never a same-minor prerelease", requestVersion: "3.2", want: "3.1", ok: true},
 		{name: "legacy major remains stable", requestMajor: 3, want: "3.1", ok: true},
 		{name: "default remains stable", want: "3.1", ok: true},
 		{name: "downshift", requestVersion: "3.1", supported: []string{"3.0"}, want: "3.0", ok: true},
-		{name: "pre release uses matching stable", requestVersion: "3.1-rc.3", supported: []string{"3.0", "3.1"}, want: "3.1", ok: true},
-		{name: "ga buyer can use only matching pre release seller", requestVersion: "3.1.0", supported: []string{"3.1-rc.3"}, want: "3.1-rc.3", ok: true},
+		{name: "prerelease pin without exact match is unsupported, not downshifted to stable", requestVersion: "3.1-rc.3", supported: []string{"3.0", "3.1"}, ok: false},
+		{name: "stable pin against a seller offering only a prerelease is unsupported", requestVersion: "3.1.0", supported: []string{"3.1-rc.3"}, ok: false},
 		{name: "cross major unsupported", requestVersion: "4.0", ok: false},
+		{name: "mismatched RC pin is unsupported, not fuzzy-matched to a different prerelease", requestVersion: "3.2-rc.2", supported: []string{"3.2-rc.1"}, ok: false},
+		{name: "stable pin exact-matches over a coexisting prerelease of the same release", requestVersion: "3.1", supported: []string{"3.1-beta", "3.1"}, want: "3.1", ok: true},
+		{name: "prerelease pin exact-matches its own tag over a coexisting stable release", requestVersion: "3.1-beta", supported: []string{"3.1-beta", "3.1"}, want: "3.1-beta", ok: true},
 	}
 
 	for _, tt := range tests {

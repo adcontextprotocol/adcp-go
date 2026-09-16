@@ -434,6 +434,37 @@ func TestRegisteredCapabilitiesPreservesVersionPinRejection(t *testing.T) {
 	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
 }
 
+// TestRegisteredCapabilitiesStablePinNeverServesAPrerelease exercises the
+// dispatch path (not just the pure NegotiateADCPVersion helper) for a stable
+// pin that has no exact match: it must downshift to the highest supported
+// stable release, never resolve onto the seller's own advertised prerelease.
+func TestRegisteredCapabilitiesStablePinNeverServesAPrerelease(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "3.2",
+	})
+	wire := structuredContentMap(t, result)
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.EqualValues(t, 3, wire["adcp_major_version"])
+}
+
+// TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin exercises the
+// dispatch path for an explicit prerelease pin that has no exact match in the
+// seller's supported_versions: it must be rejected as VERSION_UNSUPPORTED,
+// never silently range-resolved onto a stable release.
+func TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "3.1-rc.3",
+	})
+	wire := structuredContentMap(t, result)
+
+	assert.True(t, result.IsError)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
+}
+
 func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 	ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
 	args := map[string]any{"context": ctxValue}
