@@ -13094,7 +13094,7 @@ type SyncReportingReceiptsRequest struct {
 	AdcpMajorVersion   any                          `json:"adcp_major_version,omitempty"`
 	Account            CanonicalAccountRef          `json:"account"`
 	IdempotencyKey     string                       `json:"idempotency_key"` // Client-generated batch key. Exact retries reuse the key and body.
-	Receipts           []any                        `json:"receipts,omitempty"`
+	Receipts           []ReportingReceipt           `json:"receipts,omitempty"`
 	AdjustmentReceipts []ReportingAdjustmentReceipt `json:"adjustment_receipts,omitempty"` // Consumer acceptance or rejection of exact post-official adjustments.
 	Context            any                          `json:"context,omitempty"`
 	Ext                any                          `json:"ext,omitempty"`
