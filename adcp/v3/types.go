@@ -116,7 +116,7 @@ type MediaBuyCapabilities struct {
 	VendorMetricOptimization     *MediaBuyVendorMetricOptimizationCaps `json:"vendor_metric_optimization,omitempty"`
 	ConversionTracking           *ConversionTrackingCaps               `json:"conversion_tracking,omitempty"`
 	FrequencyCapping             *FrequencyCappingCaps                 `json:"frequency_capping,omitempty"`
-	AggregateFrequencyCapping    any                                   `json:"aggregate_frequency_capping,omitempty"`
+	AggregateFrequencyCapping    *MediaBuyFrequencyCapCapability        `json:"aggregate_frequency_capping,omitempty"`
 	BudgetCapping                any                                   `json:"budget_capping,omitempty"`
 	ContentStandards             *ContentStandardsCaps                 `json:"content_standards,omitempty"`
 	Portfolio                    *PortfolioCaps                        `json:"portfolio,omitempty"`
@@ -1571,4 +1571,128 @@ type VendorPricingOption struct {
 	AppliesToOutputFormatIDs     []FormatRef    `json:"applies_to_output_format_ids,omitempty"`
 	AppliesToOutputCapabilityIDs []string       `json:"applies_to_output_capability_ids,omitempty"`
 	Ext                          any            `json:"ext,omitempty"`
+}
+
+// --- Reliable Reporting consumer status ---
+
+// ReportingConsumerStatusPeriod is the expected half-open reporting period.
+type ReportingConsumerStatusPeriod struct {
+	Start          string `json:"start"`
+	End            string `json:"end"`
+	SourceTimezone string `json:"source_timezone"`
+}
+
+// ReportingConsumerStatus is one immutable consumer statement about whether
+// required reporting for an expected configuration period was consumed.
+type ReportingConsumerStatus struct {
+	ReportingStatusID             string                        `json:"reporting_status_id"`
+	SupersedesReportingStatusID   string                        `json:"supersedes_reporting_status_id,omitempty"`
+	DeliveryConfigID              string                        `json:"delivery_config_id"`
+	DeliveryConfigVersion         int                           `json:"delivery_config_version"`
+	ReportDefinitionID            string                        `json:"report_definition_id"`
+	Period                        ReportingConsumerStatusPeriod  `json:"period"`
+	ReportingObligationID         string                        `json:"reporting_obligation_id,omitempty"`
+	ReportingRevisionID           string                        `json:"reporting_revision_id,omitempty"`
+	ObservedRevisionContentSHA256 string                        `json:"observed_revision_content_sha256,omitempty"`
+	ConsumerStatus                string                        `json:"consumer_status"`
+	StatusAsOf                    string                        `json:"status_as_of"`
+	MismatchCode                  string                        `json:"mismatch_code,omitempty"`
+	FailureCode                   string                        `json:"failure_code,omitempty"`
+	ConsumerCommitRef             string                        `json:"consumer_commit_ref,omitempty"`
+	SellerLedgerSnapshotID        string                        `json:"seller_ledger_snapshot_id,omitempty"`
+	SellerLedgerAsOf              string                        `json:"seller_ledger_as_of,omitempty"`
+	RecordedAt                    string                        `json:"recorded_at,omitempty"`
+}
+
+// ReportingStatusResult is one entry in the sync_reporting_status response.
+type ReportingStatusResult struct {
+	Result            string                  `json:"result"`
+	ConsumerStatus    *ReportingConsumerStatus `json:"consumer_status,omitempty"`
+	ReportingStatusID string                  `json:"reporting_status_id,omitempty"`
+	Errors            []AdcpError             `json:"errors,omitempty"`
+}
+
+// ReportingStatusRecordedResult builds a "recorded" result.
+func ReportingStatusRecordedResult(status ReportingConsumerStatus) ReportingStatusResult {
+	return ReportingStatusResult{Result: "recorded", ConsumerStatus: &status}
+}
+
+// ReportingStatusUnchangedResult builds an "unchanged" result (idempotent replay).
+func ReportingStatusUnchangedResult(status ReportingConsumerStatus) ReportingStatusResult {
+	return ReportingStatusResult{Result: "unchanged", ConsumerStatus: &status}
+}
+
+// ReportingStatusFailedResult builds a "failed" result.
+func ReportingStatusFailedResult(statusID string, errors ...AdcpError) ReportingStatusResult {
+	return ReportingStatusResult{Result: "failed", ReportingStatusID: statusID, Errors: errors}
+}
+
+// --- Reliable Reporting receipts (buyer reconciler) ---
+
+// ReportingReceipt is a consumer acceptance/rejection of a reporting
+// revision materialization.
+type ReportingReceipt struct {
+	ReportingReceiptID              string   `json:"reporting_receipt_id"`
+	ReportingObligationID           string   `json:"reporting_obligation_id"`
+	ReportingRevisionID             string   `json:"reporting_revision_id"`
+	ReportingMaterializationID      string   `json:"reporting_materialization_id,omitempty"`
+	SupersedesReportingReceiptID    string   `json:"supersedes_reporting_receipt_id,omitempty"`
+	Status                          string   `json:"status"`
+	VerificationProfile             string   `json:"verification_profile,omitempty"`
+	ObservedRowCount                *int     `json:"observed_row_count,omitempty"`
+	ObservedCanonicalContentDigest  string   `json:"observed_canonical_content_digest,omitempty"`
+	ObservedManifestSHA256          string   `json:"observed_manifest_sha256,omitempty"`
+	ObservedNativeVersionRef        string   `json:"observed_native_version_ref,omitempty"`
+	ConsumerCommitRef               string   `json:"consumer_commit_ref,omitempty"`
+	RejectionCodes                  []string `json:"rejection_codes,omitempty"`
+	ObservedAt                      string   `json:"observed_at"`
+	ReceivedAt                      string   `json:"received_at,omitempty"`
+}
+
+// ReportingAdjustmentReceipt is a consumer acceptance/rejection of a
+// post-official adjustment.
+type ReportingAdjustmentReceipt struct {
+	ReportingReceiptID           string   `json:"reporting_receipt_id"`
+	ReportingAdjustmentID        string   `json:"reporting_adjustment_id"`
+	AdjustsReportingRevisionID   string   `json:"adjusts_reporting_revision_id"`
+	SupersedesReportingReceiptID string   `json:"supersedes_reporting_receipt_id,omitempty"`
+	Status                       string   `json:"status"`
+	ObservedAdjustmentSHA256     string   `json:"observed_adjustment_sha256"`
+	RejectionCodes               []string `json:"rejection_codes,omitempty"`
+	ObservedAt                   string   `json:"observed_at"`
+	ReceivedAt                   string   `json:"received_at,omitempty"`
+}
+
+// ReportingReceiptResult is one entry in sync_reporting_receipts response.
+type ReportingReceiptResult struct {
+	Result             string                      `json:"result"`
+	Receipt            *ReportingReceipt           `json:"receipt,omitempty"`
+	AdjustmentReceipt  *ReportingAdjustmentReceipt `json:"adjustment_receipt,omitempty"`
+	ReportingReceiptID string                      `json:"reporting_receipt_id,omitempty"`
+	Errors             []AdcpError                 `json:"errors,omitempty"`
+}
+
+// ReportingReceiptRecordedResult builds a "recorded" receipt result.
+func ReportingReceiptRecordedResult(receipt ReportingReceipt) ReportingReceiptResult {
+	return ReportingReceiptResult{Result: "recorded", Receipt: &receipt}
+}
+
+// ReportingReceiptUnchangedResult builds an "unchanged" receipt result.
+func ReportingReceiptUnchangedResult(receipt ReportingReceipt) ReportingReceiptResult {
+	return ReportingReceiptResult{Result: "unchanged", Receipt: &receipt}
+}
+
+// ReportingAdjustmentReceiptRecordedResult builds a "recorded" adjustment receipt result.
+func ReportingAdjustmentReceiptRecordedResult(receipt ReportingAdjustmentReceipt) ReportingReceiptResult {
+	return ReportingReceiptResult{Result: "recorded", AdjustmentReceipt: &receipt}
+}
+
+// ReportingAdjustmentReceiptUnchangedResult builds an "unchanged" adjustment receipt result.
+func ReportingAdjustmentReceiptUnchangedResult(receipt ReportingAdjustmentReceipt) ReportingReceiptResult {
+	return ReportingReceiptResult{Result: "unchanged", AdjustmentReceipt: &receipt}
+}
+
+// ReportingReceiptFailedResult builds a "failed" receipt result.
+func ReportingReceiptFailedResult(receiptID string, errors ...AdcpError) ReportingReceiptResult {
+	return ReportingReceiptResult{Result: "failed", ReportingReceiptID: receiptID, Errors: errors}
 }

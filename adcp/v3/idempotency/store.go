@@ -301,3 +301,29 @@ func SessionScope(sessionIDField string) ScopeFn {
 		return "principal:" + principal + ":session:" + sid, nil
 	}
 }
+
+// ContextIDScope scopes keys to (principal, context_id). Use for A2A
+// transports where context_id is the conversation identifier and keys
+// must be unique within a conversation.
+func ContextIDScope(ctx context.Context, payload []byte) (string, error) {
+	principal := PrincipalFromContext(ctx)
+	if principal == "" {
+		return "", errors.New("idempotency: principal missing from context")
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &m); err != nil {
+		return "", fmt.Errorf("idempotency: decode request for context_id scope: %w", err)
+	}
+	raw, ok := m["context_id"]
+	if !ok {
+		return "principal:" + principal, nil
+	}
+	var cid string
+	if err := json.Unmarshal(raw, &cid); err != nil {
+		return "", fmt.Errorf("idempotency: context_id is not a string")
+	}
+	if cid == "" {
+		return "principal:" + principal, nil
+	}
+	return "principal:" + principal + ":ctx:" + cid, nil
+}
