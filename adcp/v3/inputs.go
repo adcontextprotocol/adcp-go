@@ -12,6 +12,50 @@ import "encoding/json"
 // EmptyInput is the input type for tools that accept no parameters (e.g. get_adcp_capabilities).
 type EmptyInput struct{}
 
+// Nullable encodes a JSON field with three states: absent, explicit null,
+// or a value. Use as *Nullable[T] with `omitempty` in struct fields:
+//   - nil pointer: field omitted from JSON (absent/inherit)
+//   - &Nullable[T]{Null: true}: encodes as JSON null (clear)
+//   - NullableValue(v): encodes as v's JSON representation (replace)
+type Nullable[T any] struct {
+	Value T
+	Null  bool
+}
+
+// NullableValue returns a pointer to a Nullable carrying v.
+func NullableValue[T any](v T) *Nullable[T] {
+	return &Nullable[T]{Value: v}
+}
+
+// NullableNull returns a pointer to a Nullable encoding explicit null.
+func NullableNull[T any]() *Nullable[T] {
+	return &Nullable[T]{Null: true}
+}
+
+func (n Nullable[T]) MarshalJSON() ([]byte, error) {
+	if n.Null {
+		return []byte("null"), nil
+	}
+	return json.Marshal(n.Value)
+}
+
+func (n *Nullable[T]) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		n.Null = true
+		return nil
+	}
+	return json.Unmarshal(data, &n.Value)
+}
+
+// ClearField returns a value that marshals as JSON null when stored in an
+// `any` field with omitempty. Use it on TargetingInput dimensions to clear
+// an inherited targeting dimension:
+//
+//	input.GeoCountries = adcp.ClearField()  // sends "geo_countries": null
+func ClearField() any {
+	return (*struct{})(nil)
+}
+
 // Bool returns a pointer to v for optional boolean request fields.
 func Bool(v bool) *bool {
 	return &v

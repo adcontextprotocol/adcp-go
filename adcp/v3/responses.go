@@ -300,6 +300,20 @@ func ListCollectionListsResponse(lists []CollectionList, pagination *PaginationR
 	return buildResult(fmt.Sprintf("Found %d collection lists", len(lists)), out), out, nil
 }
 
+// --- Reporting ---
+
+// SyncReportingStatusResponseData builds a sync_reporting_status response.
+func SyncReportingStatusResponseData(results []ReportingStatusResult) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"status": "completed", "results": results}
+	return buildResult(fmt.Sprintf("Recorded %d reporting status results", len(results)), out), out, nil
+}
+
+// SyncReportingReceiptsResponseData builds a sync_reporting_receipts response.
+func SyncReportingReceiptsResponseData(results []ReportingReceiptResult) (*mcp.CallToolResult, any, error) {
+	out := map[string]any{"status": "completed", "results": results}
+	return buildResult(fmt.Sprintf("Recorded %d reporting receipt results", len(results)), out), out, nil
+}
+
 // --- Generic ---
 
 // Result builds a generic tool response with StructuredContent.

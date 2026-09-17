@@ -55,6 +55,10 @@ KNOWN_TYPES = {
     # oneOf schemas — hand-writing flattens the union into a single struct with
     # all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
+    'CanonicalMediaBuyAction',
+    'ReportingConsumerStatus', 'ReportingConsumerStatusPeriod',
+    'ReportingStatusResult',
+    'ReportingReceipt', 'ReportingAdjustmentReceipt', 'ReportingReceiptResult',
     'OptimizationGoal',
     'OptimizationGoalCostPerTarget', 'OptimizationGoalThresholdRateTarget',
     'OptimizationGoalPerAdSpendTarget', 'OptimizationGoalMaximizeValueTarget',
@@ -148,6 +152,11 @@ TOOL_SCHEMAS = [
     "media-buy/build-creative-response.json",
     "media-buy/refine-proposals-request.json",
     "media-buy/refine-proposals-response.json",
+    # Reporting
+    "media-buy/sync-reporting-status-request.json",
+    "media-buy/sync-reporting-status-response.json",
+    "media-buy/sync-reporting-receipts-request.json",
+    "media-buy/sync-reporting-receipts-response.json",
     # Creative
     "creative/sync-creatives-request.json",
     "creative/sync-creatives-response.json",
