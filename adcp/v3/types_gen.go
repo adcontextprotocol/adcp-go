@@ -9648,6 +9648,17 @@ type BudgetRange struct {
 	Currency string  `json:"currency"`
 }
 
+// CanonicalAccountRef — Compact advertiser-account identity for canonical 3.2 tools. Uses either the seller/storefront
+type CanonicalAccountRef struct {
+	AccountID    string        `json:"account_id,omitempty"`
+	Brand        *BrandKey     `json:"brand,omitempty"`
+	Operator     string        `json:"operator,omitempty"`
+	OperatorUnit *OperatorUnit `json:"operator_unit,omitempty"` // Optional operator-owned business unit, agency seat, or platform account. Only
+	Currency     string        `json:"currency,omitempty"`      // Immutable ISO 4217 transaction currency when the advertiser object is
+	Timezone     string        `json:"timezone,omitempty"`      // Immutable account timezone. Include it in the natural key only for
+	Sandbox      *bool         `json:"sandbox,omitempty"`
+}
+
 // CanonicalPerformanceStandard — Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset
 type CanonicalPerformanceStandard struct {
 	Metric    PerformanceStandardMetric `json:"metric"`
@@ -13044,6 +13055,69 @@ type RefineProposalsData struct {
 	Results     []RefinementResult `json:"results,omitempty"`  // Ordered results. If any result is finalized, every result MUST be finalized; a
 	Products    []CanonicalProduct `json:"products,omitempty"` // Canonical products needed to evaluate the resulting terms. For revised or
 	Replayed    *bool              `json:"replayed,omitempty"`
+}
+
+// SyncReportingStatusRequest — Submit the authenticated consumer's operational reporting status for expected configuration
+type SyncReportingStatusRequest struct {
+	AdcpVersion      string                    `json:"adcp_version,omitempty"`
+	AdcpMajorVersion any                       `json:"adcp_major_version,omitempty"`
+	Account          CanonicalAccountRef       `json:"account"`
+	IdempotencyKey   string                    `json:"idempotency_key"` // Client-generated batch key. Exact retries reuse the key and body.
+	Statuses         []ReportingConsumerStatus `json:"statuses"`        // Immutable status updates. New state uses a new reporting_status_id and
+	Context          any                       `json:"context,omitempty"`
+	Ext              any                       `json:"ext,omitempty"`
+}
+
+// SyncReportingStatusResponse — Per-statement durable recording results. Successful readback proves that the seller recorded the
+type SyncReportingStatusResponse struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Transport-managed conversation identifier. On A2A, this maps to the native
+	Context                any                     `json:"context,omitempty"`
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Status batches complete synchronously with one result per submitted statement.
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // AdCP application-layer webhook configuration for async task updates over MCP
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Opaque authorization context issued only by an approved check_governance
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Results                []any                   `json:"results"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// SyncReportingReceiptsRequest — Submit durable authenticated consumer reconciliation results for reporting materializations and
+type SyncReportingReceiptsRequest struct {
+	AdcpVersion        string                       `json:"adcp_version,omitempty"`
+	AdcpMajorVersion   any                          `json:"adcp_major_version,omitempty"`
+	Account            CanonicalAccountRef          `json:"account"`
+	IdempotencyKey     string                       `json:"idempotency_key"` // Client-generated batch key. Exact retries reuse the key and body.
+	Receipts           []any                        `json:"receipts,omitempty"`
+	AdjustmentReceipts []ReportingAdjustmentReceipt `json:"adjustment_receipts,omitempty"` // Consumer acceptance or rejection of exact post-official adjustments.
+	Context            any                          `json:"context,omitempty"`
+	Ext                any                          `json:"ext,omitempty"`
+}
+
+// SyncReportingReceiptsResponse — Per-receipt durable recording results for revisions and post-official adjustments. Successful
+type SyncReportingReceiptsResponse struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Transport-managed conversation identifier. On A2A, this maps to the native
+	Context                any                     `json:"context,omitempty"`
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 string                  `json:"status"`                             // Receipt batches complete synchronously with one result per submitted receipt.
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // AdCP application-layer webhook configuration for async task updates over MCP
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Opaque authorization context issued only by an approved check_governance
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Results                []any                   `json:"results"`
+	Ext                    any                     `json:"ext,omitempty"`
 }
 
 // SyncCreativesRequest — Request parameters for syncing creative assets with upsert semantics. Provide at least one of
