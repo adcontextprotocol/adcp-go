@@ -123,6 +123,10 @@ jobs:
         working-directory: adcp/v3
         run: go test -race -count=1 ./...
 
+      - name: Test adcp/v3/signing/awskms module
+        working-directory: adcp/v3/signing/awskms
+        run: go test -race -count=1 ./...
+
       - name: Test targeting module
         working-directory: targeting
         run: go test -race -count=1 ./...
