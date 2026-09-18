@@ -67,7 +67,7 @@ func TestContextMatchRequest_ContextSignals(t *testing.T) {
 	assert.Equal(t, []string{"pasta", "home-cooking"}, cs.Keywords, "keywords")
 	assert.Equal(t, "en", cs.Language, "language")
 	assert.Equal(t, []string{"csbs"}, cs.ContentPolicies, "content_policies")
-	assert.Equal(t, "User exploring Italian cookware options for home pasta making", cs.Summary, "summary")
+	assert.Equal(t, "User exploring Italian cookware options for home pasta making", string(cs.Summary), "summary")
 	assert.Equal(t, "AQIDBA==", cs.Embedding, "embedding")
 	assert.Equal(t, "nomic-embed-text-v1.5", cs.EmbeddingModel, "embedding_model")
 	assert.Equal(t, 256, cs.EmbeddingDims, "embedding_dims")
