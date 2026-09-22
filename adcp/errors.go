@@ -10,7 +10,7 @@ import (
 // ErrorOptions configures an AdCP error response.
 type ErrorOptions struct {
 	Message    string
-	Recovery   string // "retry", "revise", "contact_support", "terminal"
+	Recovery   string // "transient", "correctable", "terminal" (core/error.json)
 	Field      string
 	Suggestion string
 	RetryAfter int
@@ -107,15 +107,30 @@ func Errorf(code string, opts ErrorOptions) (*mcp.CallToolResult, any, error) {
 	return Error[any](code, opts)
 }
 
+// defaultRecovery classifies a code when the caller supplies no Recovery.
+//
+// Every return value must be a member of the recovery enum closed by
+// core/error.json ("transient", "correctable", "terminal"). A receiver that
+// does not recognise an error code is required to read recovery for its retry
+// classification, so an out-of-enum value leaves the caller with no
+// machine-readable signal.
+//
+// The published codes below carry the classification recorded in this module's
+// pinned enums/error-code.json enumMetadata block, which the schema names as
+// the source SDKs must consume. MISSING_FIELD, INVALID_FIELD, and
+// INTERNAL_ERROR are SDK-internal: they appear in no published version of the
+// error-code enum, so their classification here is this SDK's own.
 func defaultRecovery(code string) string {
 	switch code {
-	case "RATE_LIMITED":
-		return "retry"
-	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
-		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
-		return "revise"
-	case "INTERNAL_ERROR", "SERVICE_UNAVAILABLE":
-		return "contact_support"
+	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
+		return "transient"
+	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "TERMS_REJECTED",
+		"MISSING_FIELD", // SDK-internal, unpublished
+		"INVALID_FIELD": // SDK-internal, unpublished
+		return "correctable"
+	case "ACCOUNT_NOT_FOUND",
+		"INTERNAL_ERROR": // SDK-internal, unpublished
+		return "terminal"
 	default:
 		return "terminal"
 	}
