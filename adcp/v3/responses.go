@@ -142,6 +142,9 @@ func MediaBuysDataResponse(data *GetMediaBuysResponse) (*mcp.CallToolResult, any
 
 // DeliveryResponse builds a get_media_buy_delivery response.
 func DeliveryResponse(data *DeliveryData) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INTERNAL_ERROR", ErrorOptions{Message: "get_media_buy_delivery handler returned no data"})
+	}
 	return buildResult(fmt.Sprintf("Delivery data for %d media buys", len(data.MediaBuyDeliveries)), data), data, nil
 }
 
