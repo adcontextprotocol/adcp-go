@@ -112,6 +112,10 @@ EXEMPT = {
     # OptimizationGoal is hand-flattened from a oneOf and preserves unknown
     # top-level keys for replacement-update round trips.
     'OptimizationGoal',
+    # Reporting types hand-written from core schemas
+    'ReportingConsumerStatus', 'ReportingConsumerStatusPeriod',
+    'ReportingStatusResult', 'ReportingReceipt',
+    'ReportingAdjustmentReceipt', 'ReportingReceiptResult',
 }
 
 # Map hand-written Go type name → schema path (relative to schemas/).

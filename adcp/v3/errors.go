@@ -10,7 +10,7 @@ import (
 // ErrorOptions configures an AdCP error response.
 type ErrorOptions struct {
 	Message    string
-	Recovery   string // "retry", "revise", "contact_support", "terminal"
+	Recovery   string // "transient", "correctable", "terminal"
 	Field      string
 	Suggestion string
 	RetryAfter int
@@ -109,13 +109,11 @@ func Errorf(code string, opts ErrorOptions) (*mcp.CallToolResult, any, error) {
 
 func defaultRecovery(code string) string {
 	switch code {
-	case "RATE_LIMITED":
-		return "retry"
+	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
+		return "transient"
 	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
 		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
-		return "revise"
-	case "INTERNAL_ERROR", "SERVICE_UNAVAILABLE":
-		return "contact_support"
+		return "correctable"
 	default:
 		return "terminal"
 	}
