@@ -84,15 +84,16 @@ func newTestService(t *testing.T, opts testServiceOptions) *Service {
 		audForService = audSvc
 	}
 	svc, err := NewService(ServiceConfig{
-		Engine:          engine,
-		FCap:            fcapSvc,
-		Audience:        audForService,
-		ConfigService:   configSvc,
-		FCapTimeout:     50 * time.Millisecond,
-		AudienceTimeout: 50 * time.Millisecond,
-		Verifier:        opts.verifier,
-		RecipientKeys:   opts.recipientKeys,
-		AgeResolver:     opts.ageResolver,
+		Engine:                      engine,
+		FCap:                        fcapSvc,
+		Audience:                    audForService,
+		ConfigService:               configSvc,
+		FCapTimeout:                 50 * time.Millisecond,
+		AudienceTimeout:             50 * time.Millisecond,
+		StrictOnUndecodableIdentity: opts.strictOnUndecodable,
+		Verifier:                    opts.verifier,
+		RecipientKeys:               opts.recipientKeys,
+		AgeResolver:                 opts.ageResolver,
 	})
 	require.NoError(t, err)
 	return svc
@@ -103,6 +104,10 @@ type testServiceOptions struct {
 	cappedTuples     []capTuple
 	memberships      []membershipFixture
 	audienceDisabled bool
+
+	// strictOnUndecodable opts in to fail-closed on ANY undecoded
+	// identity (vs the permissive all-undecoded-only default).
+	strictOnUndecodable bool
 
 	// verified-identity deps (all optional; zero value disables the stage).
 	verifier      targeting.AttestationVerifier

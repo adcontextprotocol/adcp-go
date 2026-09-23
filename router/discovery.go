@@ -71,6 +71,10 @@ func NewDiscovery(providers *ProviderSet, health *ProviderHealth, cfg DiscoveryC
 				// fan-out.
 				ForceAttemptHTTP2: true,
 			},
+			// TMP provider-endpoint rules forbid redirects on any
+			// provider hop, including discovery polls. Same rationale as
+			// the fan-out client (see router.go).
+			CheckRedirect: noFollowRedirect,
 		},
 		logger:        slog.Default(),
 		endpoint:      cfg.Endpoint,

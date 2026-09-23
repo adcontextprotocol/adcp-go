@@ -72,6 +72,10 @@ func NewHealthChecker(providers *ProviderSet, health *ProviderHealth, cfg Health
 				// fan-out and reuse its ALPN-negotiated connections.
 				ForceAttemptHTTP2: true,
 			},
+			// TMP provider-endpoint rules forbid redirects on any
+			// provider hop, including health probes. Same rationale as
+			// the fan-out client (see router.go).
+			CheckRedirect: noFollowRedirect,
 		},
 		logger:    slog.Default(),
 		interval:  interval,

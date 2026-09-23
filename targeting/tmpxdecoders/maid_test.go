@@ -51,6 +51,19 @@ func TestMAID_RejectsMisplacedDashes(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestMAID_RejectsMisplacedDashes_DoesNotLeakToken pins the PII
+// contract on the MAID decoder's error surface. The canonicalizer
+// WARN-logs decoder errors verbatim (identityagent/canonicalizer.go),
+// so any raw MAID inside an error message reaches structured logs —
+// a persistent device advertising identifier does not belong there.
+// The malformed-separator branch used to embed userToken via %q.
+func TestMAID_RejectsMisplacedDashes_DoesNotLeakToken(t *testing.T) {
+	const token = "aaaaaaaa1bbbb1cccc1dddd1eeeeeeeeeeee" // 36 chars, dashes in wrong spots
+	_, err := MAID{}.Decode(t.Context(), token)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), token, "error MUST NOT embed the raw MAID (persistent device identifier)")
+}
+
 func TestMAID_RejectsNonHex(t *testing.T) {
 	_, err := MAID{}.Decode(t.Context(), "zzze8400-e29b-41d4-a716-446655440000")
 	assert.Error(t, err)

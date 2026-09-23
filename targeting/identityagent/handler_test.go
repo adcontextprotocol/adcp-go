@@ -96,12 +96,14 @@ func TestIdentityHandlerInvalidRequestIDIsNotEchoed(t *testing.T) {
 		Logger:                     slog.New(slog.NewJSONHandler(&logs, nil)),
 	})
 
-	body := `{
-		"type": "identity_match_request",
-		"request_id": "bad/id",
-		"seller_agent_url": "https://seller.example.com/agent",
-		"identities": [{"user_token": "tok_test_abc", "uid_type": "uid2"}]
-	}`
+	// DEL (0x7F) is a legal JSON string byte but a control byte that
+	// validateEchoID / SafeRequestIDForEcho MUST reject.
+	body := "{" +
+		"\"type\": \"identity_match_request\"," +
+		"\"request_id\": \"bad\x7fid\"," +
+		"\"seller_agent_url\": \"https://seller.example.com/agent\"," +
+		"\"identities\": [{\"user_token\": \"tok_test_abc\", \"uid_type\": \"uid2\"}]" +
+		"}"
 	req := httptest.NewRequest("POST", "/identity", strings.NewReader(body))
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -111,14 +113,14 @@ func TestIdentityHandlerInvalidRequestIDIsNotEchoed(t *testing.T) {
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 	assert.Empty(t, resp.RequestID)
 	assert.Equal(t, "invalid request", resp.Message)
-	assert.NotContains(t, w.Body.String(), "bad/id")
+	assert.NotContains(t, w.Body.String(), "\x7f")
 
 	logText := logs.String()
 	assert.Contains(t, logText, "invalid identity-match request")
 	assert.Contains(t, logText, `"method":"POST"`)
 	assert.Contains(t, logText, `"path":"/identity"`)
 	assert.Contains(t, logText, `"request_id_valid":false`)
-	assert.NotContains(t, logText, "bad/id")
+	assert.NotContains(t, logText, "\x7f")
 }
 
 func TestIdentityHandlerLongRequestIDIsNotEchoed(t *testing.T) {

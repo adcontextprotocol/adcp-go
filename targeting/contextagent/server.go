@@ -103,6 +103,16 @@ func NewServer(cfg ServerConfig) *http.Server {
 	mux.Handle("POST /context", ctxHandler)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		// Per docs/network-surface.md and spec §Health: return 503 when
+		// the process has flipped its readiness signal (drain window
+		// before shutdown), 200 otherwise. Body stays minimal —
+		// version and per-subsystem information belong on /live, not
+		// here, because /health is the router-facing liveness surface
+		// and MUST NOT leak internal topology to public callers.
+		if cfg.IsRunning != nil && !cfg.IsRunning() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "shutting_down"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 

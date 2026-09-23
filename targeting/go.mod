@@ -3,7 +3,7 @@ module github.com/adcontextprotocol/adcp-go/targeting
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.24.1
@@ -24,7 +24,7 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/adcontextprotocol/adcp-go/uid2client v0.1.0
+	github.com/adcontextprotocol/adcp-go/uid2client v0.2.0
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

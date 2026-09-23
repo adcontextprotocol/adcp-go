@@ -400,3 +400,60 @@ func mustMarshal(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+// --- error envelope: recovery must be a member of the core/error.json enum ---
+
+// TestMCP_TermsRejected_RecoveryIsEnumMember dispatches the one path in this
+// reference seller that sets adcp.ErrorOptions.Recovery explicitly, and asserts
+// the value that reaches the wire is a member of the closed recovery enum.
+//
+// An explicit Recovery bypasses the SDK's own defaultRecovery classification
+// entirely, so this is not covered by the SDK's tests: a seller copying the
+// documented vocabulary into a handler can emit an out-of-enum value no matter
+// what the SDK defaults to. This is the reference implementation every seller
+// is built from, so the value it emits is the one adopters copy.
+func TestMCP_TermsRejected_RecoveryIsEnumMember(t *testing.T) {
+	session := newMCPTestSession(t)
+
+	result := callTool(t, session, "create_media_buy", map[string]any{
+		"packages": []any{
+			map[string]any{
+				"product_id": "premium-display", "pricing_option_id": "pd-cpm-15", "budget": 500.0,
+				"measurement_terms": map[string]any{
+					"billing_measurement": map[string]any{
+						// c3 with 1% variance fails the seller's declared terms,
+						// which is what makes this return TERMS_REJECTED.
+						"measurement_window":   "c3",
+						"max_variance_percent": 1.0,
+					},
+				},
+			},
+		},
+	})
+	if !result.IsError {
+		t.Fatalf("want TERMS_REJECTED error result, got success: %s", mustMarshal(t, result.StructuredContent))
+	}
+
+	wire := structuredMap(t, result)
+	adcpError, ok := wire["adcp_error"].(map[string]any)
+	if !ok {
+		t.Fatalf("no adcp_error in result: %s", mustMarshal(t, result.StructuredContent))
+	}
+	if code, _ := adcpError["code"].(string); code != "TERMS_REJECTED" {
+		t.Fatalf("want code TERMS_REJECTED, got %v", adcpError["code"])
+	}
+
+	// core/error.json closes recovery to exactly these three members. A
+	// receiver that does not recognise the code reads this field for its retry
+	// classification, so anything else leaves it with no signal at all.
+	recovery, _ := adcpError["recovery"].(string)
+	switch recovery {
+	case "transient", "correctable", "terminal":
+	default:
+		t.Errorf("recovery = %q, which is not a member of the core/error.json recovery enum "+
+			"(transient, correctable, terminal)", recovery)
+	}
+	if recovery != "correctable" {
+		t.Errorf("recovery = %q, want correctable (the buyer can revise the terms and resend)", recovery)
+	}
+}

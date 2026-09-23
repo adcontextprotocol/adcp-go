@@ -378,6 +378,14 @@ def schema_is_closed_inline(schema):
         return False
     if schema.get('additionalProperties') is False:
         return True
+    ref = schema.get('$ref')
+    if ref:
+        # A bare $ref (optionally with sibling keys like title/description,
+        # which draft-07 ignores) means the schema was extracted into its own
+        # file. Follow it so extraction doesn't look like the type went open.
+        resolved = _resolve_ref(ref)
+        if isinstance(resolved, dict):
+            return schema_is_closed_inline(resolved)
     branches = schema.get('oneOf') or []
     if branches:
         return all(schema_is_closed_inline(branch) for branch in branches)

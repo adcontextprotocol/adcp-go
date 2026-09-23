@@ -269,7 +269,7 @@ func TestOffer_RichResponse(t *testing.T) {
 		Brand:     json.RawMessage(`{"name":"Acme Corp","advertiser_domain":"acme.example.com"}`),
 		Price:     &OfferPrice{Amount: 12.50, Currency: "USD", Model: string(PriceModelCPM)},
 		Summary:   "Acme product recommendation for cooking context",
-		Macros:    map[string]string{"click_url": "https://track.example.com/c/123"},
+		CreativeData: map[string]string{"sponsor_label": "Sponsored by Acme"},
 	}
 
 	data, err := json.Marshal(offer)
@@ -282,7 +282,7 @@ func TestOffer_RichResponse(t *testing.T) {
 	assert.NotEmpty(t, got.Brand, "brand should not be empty")
 	assert.Equal(t, 12.50, got.Price.Amount, "price amount")
 	assert.Equal(t, string(PriceModelCPM), got.Price.Model, "price model")
-	assert.Equal(t, "https://track.example.com/c/123", got.Macros["click_url"], "macros click_url")
+	assert.Equal(t, "Sponsored by Acme", got.CreativeData["sponsor_label"], "creative_data sponsor_label")
 }
 
 func TestErrorResponse_RoundTrip(t *testing.T) {
@@ -321,14 +321,16 @@ func TestMarshalJSON_RoundTrip(t *testing.T) {
 	assert.Equal(t, PropertyTypeAIAssistant, got.PropertyType, "property_type")
 }
 
-// ContextMatchResponse.cache_ttl is a *int so the router can tell
+// ProviderContextMatchResponse.cache_ttl is a *int so the router can tell
 // omission (nil → use default TTL) from explicit-zero (spec's disable
-// caching signal). This nails down the wire behavior the router
-// depends on — any codegen or JSON-tag change that regresses it would
-// silently reintroduce the bug fixed on adcp-go PR #410.
-func TestContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
+// caching signal). AdCP 3.2 relocated cache_ttl from the router→publisher
+// response to the provider→router hop; this nails down the wire behavior
+// the router depends on when consuming provider responses — any codegen
+// or JSON-tag change that regresses it would silently reintroduce the bug
+// fixed on adcp-go PR #410.
+func TestProviderContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
 	t.Run("nil pointer omits the field", func(t *testing.T) {
-		resp := &ContextMatchResponse{
+		resp := &ProviderContextMatchResponse{
 			Type:      TypeContextMatchResponse,
 			RequestID: "ctx-1",
 			Offers:    []Offer{{PackageID: "pkg-1"}},
@@ -341,7 +343,7 @@ func TestContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
 
 	t.Run("explicit zero marshals as 0", func(t *testing.T) {
 		zero := 0
-		resp := &ContextMatchResponse{
+		resp := &ProviderContextMatchResponse{
 			Type:      TypeContextMatchResponse,
 			RequestID: "ctx-1",
 			Offers:    []Offer{{PackageID: "pkg-1"}},
@@ -355,7 +357,7 @@ func TestContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
 
 	t.Run("positive value marshals as the integer", func(t *testing.T) {
 		ttl := 600
-		resp := &ContextMatchResponse{
+		resp := &ProviderContextMatchResponse{
 			Type:      TypeContextMatchResponse,
 			RequestID: "ctx-1",
 			CacheTTL:  &ttl,
@@ -366,20 +368,20 @@ func TestContextMatchResponse_CacheTTLWireBehavior(t *testing.T) {
 	})
 
 	t.Run("absent field decodes to nil", func(t *testing.T) {
-		var got ContextMatchResponse
+		var got ProviderContextMatchResponse
 		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[]}`), &got))
 		assert.Nil(t, got.CacheTTL, "absent field must decode to nil, not to a pointer to zero")
 	})
 
 	t.Run("zero field decodes to *int(0)", func(t *testing.T) {
-		var got ContextMatchResponse
+		var got ProviderContextMatchResponse
 		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[],"cache_ttl":0}`), &got))
 		require.NotNil(t, got.CacheTTL, "cache_ttl=0 on the wire must decode to a non-nil pointer so the router can honor the disable-caching signal")
 		assert.Equal(t, 0, *got.CacheTTL)
 	})
 
 	t.Run("positive field decodes to *int(n)", func(t *testing.T) {
-		var got ContextMatchResponse
+		var got ProviderContextMatchResponse
 		require.NoError(t, json.Unmarshal([]byte(`{"type":"context_match_response","request_id":"x","offers":[],"cache_ttl":900}`), &got))
 		require.NotNil(t, got.CacheTTL)
 		assert.Equal(t, 900, *got.CacheTTL)

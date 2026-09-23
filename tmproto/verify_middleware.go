@@ -78,17 +78,17 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 		if err != nil {
 			var mb *http.MaxBytesError
 			if errors.As(err, &mb) {
-				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "", "request body too large")
 				return
 			}
-			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
+			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "", "failed to read request body")
 			return
 		}
 		_ = r.Body.Close()
 
 		var parsed ContextMatchRequest
 		if err := decodeStrict(body, &parsed); err != nil {
-			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "request body is not valid JSON")
+			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "", "request body is not valid JSON")
 			return
 		}
 
@@ -101,14 +101,14 @@ func VerifyContextMatchHandler(next http.Handler, opts VerifyOptions) http.Handl
 				next.ServeHTTP(w, r)
 				return
 			}
-			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature required")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, parsed.RequestID, "signature required")
 			return
 		}
 
 		if err := VerifyContextMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp context-match signature rejected",
 				"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID), "kid", kid, "error", err)
-			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, parsed.RequestID, "signature verification failed")
 			return
 		}
 
@@ -125,17 +125,17 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 		if err != nil {
 			var mb *http.MaxBytesError
 			if errors.As(err, &mb) {
-				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "request body too large")
+				writeVerifierError(w, http.StatusRequestEntityTooLarge, ErrorCodeInvalidRequest, "", "request body too large")
 				return
 			}
-			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "failed to read request body")
+			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "", "failed to read request body")
 			return
 		}
 		_ = r.Body.Close()
 
 		var parsed IdentityMatchRequest
 		if err := decodeStrict(body, &parsed); err != nil {
-			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "request body is not valid JSON")
+			writeVerifierError(w, http.StatusBadRequest, ErrorCodeInvalidRequest, "", "request body is not valid JSON")
 			return
 		}
 
@@ -148,14 +148,14 @@ func VerifyIdentityMatchHandler(next http.Handler, opts VerifyOptions) http.Hand
 				next.ServeHTTP(w, r)
 				return
 			}
-			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature required")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, parsed.RequestID, "signature required")
 			return
 		}
 
 		if err := VerifyIdentityMatch(&parsed, opts.OwnEndpointURL, sig, kid, opts.KeyStore, opts.now()); err != nil {
 			opts.logger().Warn("tmp identity-match signature rejected",
 				"path", r.URL.Path, "request_id", SafeRequestIDForEcho(parsed.RequestID), "kid", kid, "error", err)
-			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, "signature verification failed")
+			writeVerifierError(w, http.StatusUnauthorized, ErrorCodeInvalidRequest, parsed.RequestID, "signature verification failed")
 			return
 		}
 
@@ -180,11 +180,13 @@ func decodeStrict(body []byte, v any) error {
 	return dec.Decode(v)
 }
 
-func writeVerifierError(w http.ResponseWriter, status int, code ErrorCode, message string) {
+func writeVerifierError(w http.ResponseWriter, status int, code ErrorCode, requestID, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(ErrorResponse{
-		Code:    code,
-		Message: message,
+		Type:      TypeError,
+		RequestID: SafeRequestIDForEcho(requestID),
+		Code:      code,
+		Message:   message,
 	})
 }

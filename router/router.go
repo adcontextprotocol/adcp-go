@@ -238,7 +238,17 @@ func NewRouter(providers []ProviderConfig, registry *Registry, health *ProviderH
 		if !r.skipEndpointValidation {
 			transport.DialContext = safeDialContext
 		}
-		r.client = &http.Client{Transport: transport}
+		r.client = &http.Client{
+			Transport: transport,
+			// TMP provider-endpoint rules ("no redirects", spec §Provider
+			// Endpoints): a 3xx response could re-target the signed body
+			// to whatever host DNS/rebind lands on, replaying identity
+			// tokens, sealed credentials, and artifact bytes there.
+			// safeDialContext blocks only private destinations; a public
+			// attacker-controlled host would still resolve. Refuse to
+			// follow and let the caller observe the 3xx.
+			CheckRedirect: noFollowRedirect,
+		}
 	}
 	if !r.skipEndpointValidation {
 		for _, p := range r.providers.All() {
@@ -426,7 +436,7 @@ func (r *Router) effectiveTimeout(providerTimeout time.Duration) time.Duration {
 
 type contextResult struct {
 	providerID string
-	response   *tmproto.ContextMatchResponse
+	response   *tmproto.ProviderContextMatchResponse
 }
 
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, cmReq *tmproto.ContextMatchRequest, body []byte) []contextResult {
@@ -511,7 +521,7 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			sigHeaders := r.signContextHeaders(signed, p.Endpoint)
 
 			callStart := time.Now()
-			var cmResp tmproto.ContextMatchResponse
+			var cmResp tmproto.ProviderContextMatchResponse
 			err := r.callProvider(callCtx, p.Endpoint+"/context", callBody, sigHeaders, &cmResp)
 			elapsed := time.Since(callStart)
 			timeout, parentCancelled := classifyCallFailure(callCtx)
@@ -719,7 +729,7 @@ func (r *Router) logProviderCallFailure(providerID, requestID string, err error)
 // empty strings and the caller skips the check.
 func responseMessageTypes(target any) (got, expected string) {
 	switch t := target.(type) {
-	case *tmproto.ContextMatchResponse:
+	case *tmproto.ProviderContextMatchResponse:
 		return t.Type, tmproto.TypeContextMatchResponse
 	case *tmproto.ProviderIdentityMatchResponse:
 		return t.Type, tmproto.TypeIdentityMatchResponse
@@ -819,7 +829,8 @@ var providerHopForbiddenFields = []string{
 	"ext",
 }
 
-// mergeContextResponses combines offers and signals from multiple providers.
+// mergeContextResponses combines offers and signals from multiple providers
+// into the router→publisher `context-match-response.json` shape.
 //
 // Packages are provider-specific per docs/trusted-match/router-architecture.mdx
 // §"Response Aggregation": duplicate `package_id` across providers is a
@@ -828,8 +839,17 @@ var providerHopForbiddenFields = []string{
 // emit a warning naming both providers when the same package_id appears in
 // more than one response.
 //
-// Enrichment signals are concatenated per the same section — see signalsMerger
-// for the per-key behavior.
+// Signals split per AdCP 3.2:
+//   - Non-attributed keys (segments, extras) go into merged.Signals.
+//   - Provider-local targeting_kvs move into
+//     merged.SignalsByProvider[provider_id], keyed by the
+//     publisher-assigned provider_id from provider registration. The
+//     router-hop schema FORBIDS flattened signals.targeting_kvs on
+//     this response — signalsMerger.result() strips it accordingly.
+//
+// cache_ttl is NOT propagated to the merged response — under 3.2 it
+// lives only on the provider-hop shape and is consumed by the router
+// (ContextCache.Put), never re-emitted to publishers.
 func mergeContextResponses(requestID string, responses []contextResult, logger *slog.Logger) *tmproto.ContextMatchResponse {
 	merged := &tmproto.ContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
@@ -867,10 +887,11 @@ func mergeContextResponses(requestID string, responses []contextResult, logger *
 			seenPkg[offer.PackageID] = res.providerID
 			merged.Offers = append(merged.Offers, offer)
 		}
-		signals.add(res.response.Signals)
+		signals.add(res.providerID, res.response.Signals)
 	}
 
 	merged.Signals = signals.result()
+	merged.SignalsByProvider = signals.byProviderResult()
 
 	return merged
 }

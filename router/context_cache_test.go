@@ -42,7 +42,7 @@ func TestContextCache_NilSafe(t *testing.T) {
 	resp, ok := c.Get("rid", "pl", "prov", "", "")
 	assert.False(t, ok)
 	assert.Nil(t, resp)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{})
 	assert.Equal(t, 0, c.Size())
 }
 
@@ -51,7 +51,7 @@ func TestContextCache_NilSafe(t *testing.T) {
 // back into the cached entry.
 func TestContextCache_HitReturnsClone(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	resp := &tmproto.ContextMatchResponse{
+	resp := &tmproto.ProviderContextMatchResponse{
 		Type:      tmproto.TypeContextMatchResponse,
 		RequestID: "orig",
 		Offers:    []tmproto.Offer{{PackageID: "pkg-a"}},
@@ -85,14 +85,14 @@ func TestContextCache_HitDeepClonesOffers(t *testing.T) {
 	c := NewContextCache(time.Minute)
 	price := tmproto.OfferPrice{Amount: 5.00, Currency: "USD", Model: "cpm"}
 	cm := json.RawMessage(`{"kind":"markdown"}`)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{
 			PackageID:        "pkg-a",
 			SellerAgent:      json.RawMessage(`{"agent_url":"https://orig.example"}`),
 			Brand:            json.RawMessage(`{"name":"Orig"}`),
 			Price:            &price,
 			CreativeManifest: &cm,
-			Macros:           map[string]string{"CID": "orig"},
+			CreativeData:     map[string]string{"CID": "orig"},
 		}},
 	})
 
@@ -106,7 +106,7 @@ func TestContextCache_HitDeepClonesOffers(t *testing.T) {
 	o.Brand[0] = 'X'
 	o.Price.Amount = 999
 	(*o.CreativeManifest)[0] = 'X'
-	o.Macros["CID"] = "MUTATED"
+	o.CreativeData["CID"] = "MUTATED"
 
 	got2, ok := c.Get("rid", "pl", "prov", "", "")
 	require.True(t, ok)
@@ -115,7 +115,7 @@ func TestContextCache_HitDeepClonesOffers(t *testing.T) {
 	assert.Equal(t, byte('{'), o2.Brand[0], "Brand bytes must be isolated from mutation via a cached hit")
 	assert.Equal(t, 5.00, o2.Price.Amount, "Price must be a distinct allocation")
 	assert.Equal(t, byte('{'), (*o2.CreativeManifest)[0], "CreativeManifest bytes must be isolated")
-	assert.Equal(t, "orig", o2.Macros["CID"], "Macros map must be a distinct allocation")
+	assert.Equal(t, "orig", o2.CreativeData["CID"], "CreativeData map must be a distinct allocation")
 }
 
 // Entries expire on TTL. The cache uses an injectable clock so we
@@ -125,7 +125,7 @@ func TestContextCache_TTLExpiration(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "orig"})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
 	_, ok := c.Get("rid", "pl", "prov", "", "")
 	require.True(t, ok, "fresh entry must hit")
 
@@ -148,7 +148,7 @@ func TestContextCache_ProviderTTLOverride(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		RequestID: "orig",
 		CacheTTL:  ttlPtr(2), // 2 seconds — tighter than the default 1h
 	})
@@ -173,7 +173,7 @@ func TestContextCache_TTLClampsToMax(t *testing.T) {
 	c.now = func() time.Time { return now }
 
 	// 30 days — well past the schema-enforced 24h ceiling.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		CacheTTL: ttlPtr(30 * 24 * 3600),
 	})
 
@@ -198,7 +198,7 @@ func TestContextCache_TTLOverflowSafe(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		CacheTTL: ttlPtr(math.MaxInt),
 	})
 
@@ -221,7 +221,7 @@ func TestContextCache_AbsentTTLUsesDefault(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{}) // CacheTTL nil
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{}) // CacheTTL nil
 
 	// Cached for the default TTL.
 	now = now.Add(1500 * time.Millisecond)
@@ -243,7 +243,7 @@ func TestContextCache_AbsentTTLUsesDefault(t *testing.T) {
 func TestContextCache_ExplicitZeroTTLDisablesCaching(t *testing.T) {
 	c := NewContextCache(1 * time.Hour) // long default that would apply if we mishandled zero
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		RequestID: "orig",
 		CacheTTL:  ttlPtr(0),
 	})
@@ -261,7 +261,7 @@ func TestContextCache_NegativeTTLUsesDefault(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{CacheTTL: ttlPtr(-1)})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{CacheTTL: ttlPtr(-1)})
 
 	// Cached for the default TTL rather than dropped or immediately
 	// expired.
@@ -274,8 +274,8 @@ func TestContextCache_NegativeTTLUsesDefault(t *testing.T) {
 // separate cache entries — the spec key includes provider_id.
 func TestContextCache_KeyPartitionedByProvider(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov-a", "", "", &tmproto.ContextMatchResponse{RequestID: "for-a"})
-	c.Put("rid", "pl", "prov-b", "", "", &tmproto.ContextMatchResponse{RequestID: "for-b"})
+	c.Put("rid", "pl", "prov-a", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "for-a"})
+	c.Put("rid", "pl", "prov-b", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "for-b"})
 
 	a, okA := c.Get("rid", "pl", "prov-a", "", "")
 	b, okB := c.Get("rid", "pl", "prov-b", "", "")
@@ -295,7 +295,7 @@ func TestContextCache_KeyPartitionedByProvider(t *testing.T) {
 // external review on #410 flagged as a High-severity blocker.
 func TestContextCache_KeyPartitionedBySeller(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "https://seller-a.example/agent", "US", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "https://seller-a.example/agent", "US", &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-for-a"}},
 	})
 
@@ -317,7 +317,7 @@ func TestContextCache_KeyPartitionedBySeller(t *testing.T) {
 // above.
 func TestContextCache_KeyPartitionedByCountry(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "https://s.example/agent", "US", &tmproto.ContextMatchResponse{
+	c.Put("rid", "pl", "prov", "https://s.example/agent", "US", &tmproto.ProviderContextMatchResponse{
 		Offers: []tmproto.Offer{{PackageID: "pkg-us"}},
 	})
 
@@ -337,15 +337,15 @@ func TestContextCache_MaxEntriesEvictsOldest(t *testing.T) {
 	c.now = func() time.Time { return now }
 
 	// Insert entry #1.
-	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r1"})
+	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r1"})
 	// Advance the clock so insertedAt differs.
 	now = now.Add(time.Second)
-	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r2"})
+	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
 	assert.Equal(t, 2, c.Size())
 
 	// Insert #3 pushes size to 3 → oldest (rid-1) evicted.
 	now = now.Add(time.Second)
-	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r3"})
+	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r3"})
 	assert.Equal(t, 2, c.Size(), "cap must hold at MaxEntries after eviction")
 
 	_, ok1 := c.Get("rid-1", "pl", "prov", "", "")
@@ -364,17 +364,17 @@ func TestContextCache_MaxEntriesSweepsExpiredBeforeEvicting(t *testing.T) {
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
 
-	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ContextMatchResponse{
+	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
 		CacheTTL: ttlPtr(1), // 1-second TTL
 	})
 	now = now.Add(time.Second)
-	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r2"})
+	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
 
 	// Advance past rid-1's TTL but keep rid-2 fresh.
 	now = now.Add(2 * time.Second) // rid-1 expired, rid-2 alive
 	// Third insert triggers cap enforcement: sweep drops rid-1, no
 	// eviction of the live rid-2 needed.
-	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r3"})
+	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r3"})
 
 	_, ok2 := c.Get("rid-2", "pl", "prov", "", "")
 	_, ok3 := c.Get("rid-3", "pl", "prov", "", "")
@@ -386,9 +386,9 @@ func TestContextCache_MaxEntriesSweepsExpiredBeforeEvicting(t *testing.T) {
 // enforcement path skips both sweep and evict on that path.
 func TestContextCache_MaxEntriesAllowsInPlaceOverwrite(t *testing.T) {
 	c := NewContextCache(time.Minute, WithContextCacheMaxEntries(1))
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r1"})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r1"})
 	// Overwrite the same key — must not evict anything and size stays at 1.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "r2"})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
 	assert.Equal(t, 1, c.Size())
 	got, ok := c.Get("rid", "pl", "prov", "", "")
 	require.True(t, ok)
@@ -405,7 +405,7 @@ func TestContextCache_MetricsCounts(t *testing.T) {
 	_, _ = c.Get("rid", "pl", "prov", "", "")
 
 	// One populated, then two hits.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "orig"})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
 	_, _ = c.Get("rid", "pl", "prov", "", "")
 	_, _ = c.Get("rid", "pl", "prov", "", "")
 
@@ -417,7 +417,7 @@ func TestContextCache_MetricsCounts(t *testing.T) {
 // exercises the mu-protected map.
 func TestContextCache_ConcurrentSafe(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "orig"})
+	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
 
 	var wg sync.WaitGroup
 	var hits atomic.Int64
@@ -428,7 +428,7 @@ func TestContextCache_ConcurrentSafe(t *testing.T) {
 					hits.Add(1)
 				}
 				if j%10 == 0 {
-					c.Put("rid", "pl", "prov", "", "", &tmproto.ContextMatchResponse{RequestID: "orig"})
+					c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
 				}
 			}
 		})

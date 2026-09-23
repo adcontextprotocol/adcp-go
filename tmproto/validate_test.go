@@ -246,8 +246,9 @@ func TestValidateIdentityRequest(t *testing.T) {
 
 func TestSafeRequestIDForEcho(t *testing.T) {
 	assert.Equal(t, "req-1", SafeRequestIDForEcho("req-1"))
+	assert.Equal(t, "urn:uuid:9b0e5a7c-4c8f-4a5e-9c6a-2a8e4b1e0f3a", SafeRequestIDForEcho("urn:uuid:9b0e5a7c-4c8f-4a5e-9c6a-2a8e4b1e0f3a"))
+	assert.Equal(t, "path/like/id", SafeRequestIDForEcho("path/like/id"))
 	assert.Empty(t, SafeRequestIDForEcho(""))
-	assert.Empty(t, SafeRequestIDForEcho("bad/id"))
 	assert.Empty(t, SafeRequestIDForEcho(strings.Repeat("a", MaxIDLength+1)))
 }
 

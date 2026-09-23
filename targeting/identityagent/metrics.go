@@ -47,6 +47,14 @@ const (
 	OutcomeTimeout  = "timeout"
 	OutcomeError    = "error"
 	OutcomeCanceled = "canceled"
+	// OutcomeFailClosedUndecodable is emitted by the fcap stage when it
+	// fails closed because the request's identities could not be canonicalized
+	// — either wholly (the permissive default: TMP invariant #2 cannot be
+	// verified when zero identities decoded) or partially (under a strict
+	// deployment gated on StrictOnUndecodableIdentity). Distinct from
+	// OutcomeError so operators separate genuine store failures from
+	// decoder-coverage gaps.
+	OutcomeFailClosedUndecodable = "fail_closed_undecodable"
 )
 
 // TMPX per-identity drop reasons. Each reason corresponds to one branch in

@@ -5,12 +5,12 @@ go 1.27.0
 require (
 	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/adcontextprotocol/adcp-go/registry/redisstore v0.0.0
-	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.5.1
 	github.com/redis/go-redis/v9 v9.22.0
 )
 
 require (
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0 // indirect
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.0 // indirect
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

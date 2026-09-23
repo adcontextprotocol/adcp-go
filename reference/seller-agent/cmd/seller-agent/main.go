@@ -373,7 +373,7 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 			if bm.MeasurementWindow != "c7" || bm.MaxVariancePercent < 5 {
 				return nil, adcp.NewError("TERMS_REJECTED", adcp.ErrorOptions{
 					Message:    "Measurement terms must use c7 with at least 5 percent variance.",
-					Recovery:   "revise",
+					Recovery:   "correctable",
 					Field:      "packages[0].measurement_terms",
 					Suggestion: "Use measurement_window c7 and max_variance_percent 10.",
 				})

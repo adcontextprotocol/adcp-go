@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -87,6 +88,12 @@ type Config struct {
 	// value" — but Validate rejects empty, so deployments must declare
 	// support explicitly.
 	SupportedADCPMajorVersions []int
+	// SupportedAdcpVersions is the release-precision negotiation surface
+	// (version-envelope.json §adcp_version). Sourced from
+	// SUPPORTED_ADCP_VERSIONS as a comma-separated list. Empty disables
+	// release-precision validation and the handler falls back to the
+	// deprecated major-version check.
+	SupportedAdcpVersions []string
 
 	LogLevel string
 
@@ -110,6 +117,21 @@ type Config struct {
 
 	AudienceTimeout time.Duration
 	FCapTimeout     time.Duration
+
+	// StrictOnUndecodableIdentity, when true, tells the identity service
+	// to fail closed on the fcap stage as soon as ANY inbound identity
+	// failed to canonicalize. Default false: only the all-undecodable
+	// case fails closed. Opt in with
+	// TMP_FCAP_STRICT_ON_UNDECODABLE_IDENTITY=true for regulated
+	// deployments that require the strict reading of TMP invariant #2.
+	StrictOnUndecodableIdentity bool
+
+	// RequireConsent, when true, rejects an identity-match request that
+	// omits the `consent` object per identity-match-request.json §consent.
+	// Off by default; operators in a jurisdiction that requires consent
+	// set CONSENT_REQUIRED=true so requests without consent information
+	// are rejected before the store is touched.
+	RequireConsent bool
 
 	Metrics MetricsConfig
 	Pprof   PprofConfig
@@ -476,6 +498,14 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	strictOnUndecodable, err := lookupBool("TMP_FCAP_STRICT_ON_UNDECODABLE_IDENTITY", false)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	requireConsent, err := lookupBool("CONSENT_REQUIRED", false)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	metricsEnabled, err := lookupBool("METRICS_ENABLED", false)
 	if err != nil {
 		errs = append(errs, err)
@@ -484,6 +514,7 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	supportedAdcpVers := lookupStringList("SUPPORTED_ADCP_VERSIONS")
 	supportedVersions, err := lookupIntList("SUPPORTED_ADCP_MAJOR_VERSIONS", defaultSupportedADCPMajorVersions)
 	if err != nil {
 		errs = append(errs, err)
@@ -520,6 +551,7 @@ func LoadConfigFromEnv() (Config, error) {
 		AccessLogEnabled:           accessLog,
 		AdminPort:                  adminPort,
 		SupportedADCPMajorVersions: supportedVersions,
+		SupportedAdcpVersions:      supportedAdcpVers,
 		LogLevel:                   lookupString("LOG_LEVEL", defaultLogLevel),
 		TMP: TMPConfig{
 			// TrimSpace on every field: a bearer with a trailing newline
@@ -573,8 +605,10 @@ func LoadConfigFromEnv() (Config, error) {
 		FCapValkey:             fcapBlock,
 		FallbackAudienceValkey: fallbackAudienceBlock,
 		FallbackFCapValkey:     fallbackFcapBlock,
-		AudienceTimeout:        audienceTimeout,
-		FCapTimeout:            fcapTimeout,
+		AudienceTimeout:             audienceTimeout,
+		FCapTimeout:                 fcapTimeout,
+		StrictOnUndecodableIdentity: strictOnUndecodable,
+		RequireConsent:              requireConsent,
 		Metrics: MetricsConfig{
 			Enabled:   metricsEnabled,
 			Namespace: lookupString("METRICS_NAMESPACE", defaultNamespace),
@@ -866,8 +900,36 @@ func parseTmpxSlotIDs(raw string) ([]string, error) {
 		return nil, fmt.Errorf("TMPX_SLOT_IDS has %d entries, exceeds the v1 cap of %d (provider-registration.json `tmpx_slots.maxItems`); each slot carries at most %d bytes of the sealed wire and the receiver's OpenTmpx bound is %d * %d bytes",
 			len(slotIDs), tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes, tmproto.TmpxMaxSlots, tmproto.TmpxMaxWireBytes)
 	}
+	seen := make(map[string]struct{}, len(slotIDs))
+	for _, s := range slotIDs {
+		if !tmpxSlotIDPattern.MatchString(s) {
+			return nil, fmt.Errorf("TMPX_SLOT_IDS entry %q must match %s (tmpx-chunk.json §slot_id) — the router drops a provider's chunks atomically when the emitted slot_id sequence is not a valid ordered prefix of the registered list, so a bad slot_id here silently zeroes TMPX at serve time", s, tmpxSlotIDPattern)
+		}
+		if len(s) > tmpxSlotIDMaxLen {
+			return nil, fmt.Errorf("TMPX_SLOT_IDS entry %q exceeds the schema's %d-char maximum (tmpx-chunk.json §slot_id.maxLength)", s, tmpxSlotIDMaxLen)
+		}
+		if _, dup := seen[s]; dup {
+			return nil, fmt.Errorf("TMPX_SLOT_IDS entry %q duplicated (provider-registration.json §tmpx_slots.uniqueItems)", s)
+		}
+		seen[s] = struct{}{}
+	}
 	return slotIDs, nil
 }
+
+// tmpxSlotIDPattern enforces the tmpx-chunk.json §slot_id charset
+// (^[a-zA-Z][a-zA-Z0-9_]*$) so slot IDs are safe to use as
+// provider-namespaced tokens in the router's tmpx_providers map and
+// the publisher's tmpx_macro_mapping. An out-of-charset slot_id would
+// pass this agent's minimal split-and-trim but fail the router's
+// registration validator or the response schema's propertyNames on
+// the router→publisher hop; catch at startup instead.
+var tmpxSlotIDPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+
+// tmpxSlotIDMaxLen mirrors the tmpx-chunk.json §slot_id.maxLength
+// schema bound. Values above this pass the router's charset check but
+// fail its length check; keeping the same bound here surfaces the
+// misconfig at agent startup.
+const tmpxSlotIDMaxLen = 64
 
 func lookupInt(name string, def int) (int, error) {
 	v := os.Getenv(name)
@@ -930,6 +992,26 @@ func lookupIntList(name string, def []int) ([]int, error) {
 		out = append(out, n)
 	}
 	return out, nil
+}
+
+// lookupStringList parses a comma-separated env var into a trimmed
+// non-empty string slice. Returns nil when the variable is unset. An
+// empty entry is treated as configuration error rather than silently
+// dropped so version-negotiation lists (SUPPORTED_ADCP_VERSIONS) don't
+// mask typos.
+func lookupStringList(name string) []string {
+	v := os.Getenv(name)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // lookupStringMapJSON parses an env var as a JSON object of string→string.

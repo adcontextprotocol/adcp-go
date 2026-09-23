@@ -54,3 +54,77 @@ func TestRegistrable_Invalid(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateBrandDomain(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Ads.Brand.COM", "ads.brand.com"},
+		{"brand.co.uk", "brand.co.uk"},
+		{"tenant.github.io", "tenant.github.io"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := urlutil.ValidateBrandDomain(tc.input, urlutil.BrandDomainOptions{})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestValidateBrandDomain_InvalidProductionNames(t *testing.T) {
+	tests := []struct {
+		input string
+		err   error
+	}{
+		{"localhost", urlutil.ErrBrandDomainSyntax},
+		{"unknown", urlutil.ErrBrandDomainSyntax},
+		{"co.uk", urlutil.ErrBrandDomainRegistrable},
+		{"brand.unknown", urlutil.ErrBrandDomainRegistrable},
+		{"1.2.3.4", urlutil.ErrBrandDomainSyntax},
+		{"https://brand.com", urlutil.ErrBrandDomainSyntax},
+		{"brand.local", urlutil.ErrBrandDomainSpecialUse},
+	}
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := urlutil.ValidateBrandDomain(tc.input, urlutil.BrandDomainOptions{})
+			assert.Empty(t, got)
+			require.ErrorIs(t, err, tc.err)
+		})
+	}
+}
+
+func TestValidateBrandDomain_DevelopmentNamesRequireOptIn(t *testing.T) {
+	for _, domain := range []string{
+		"brand.localhost", "brand.test", "brand.example", "brand.invalid",
+		"example.com", "example.net", "example.org",
+	} {
+		t.Run(domain, func(t *testing.T) {
+			_, err := urlutil.ValidateBrandDomain(domain, urlutil.BrandDomainOptions{})
+			require.ErrorIs(t, err, urlutil.ErrBrandDomainSpecialUse)
+
+			got, err := urlutil.ValidateBrandDomain(domain, urlutil.BrandDomainOptions{
+				AllowDevelopmentDomains: true,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, domain, got)
+			assert.True(t, urlutil.IsDevelopmentBrandDomain(domain))
+		})
+	}
+}
+
+func TestValidateBrandDomain_LocalIsNeverDevelopment(t *testing.T) {
+	assert.False(t, urlutil.IsDevelopmentBrandDomain("brand.local"))
+	_, err := urlutil.ValidateBrandDomain("brand.local", urlutil.BrandDomainOptions{
+		AllowDevelopmentDomains: true,
+	})
+	require.ErrorIs(t, err, urlutil.ErrBrandDomainSpecialUse)
+}
+
+func TestValidateBrandDomain_ErrorDoesNotEchoInput(t *testing.T) {
+	input := "attacker-controlled.example/path?secret=value"
+	_, err := urlutil.ValidateBrandDomain(input, urlutil.BrandDomainOptions{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), input)
+}

@@ -3,8 +3,8 @@ module github.com/adcontextprotocol/adcp-go
 go 1.25.0
 
 require (
-	github.com/adcontextprotocol/adcp-go/targeting v0.1.0
-	github.com/adcontextprotocol/adcp-go/tmproto v0.1.0
+	github.com/adcontextprotocol/adcp-go/targeting v0.3.0
+	github.com/adcontextprotocol/adcp-go/tmproto v0.3.2
 	github.com/adcontextprotocol/adcp-go/urlcanon v0.1.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/net v0.57.0
@@ -20,6 +20,7 @@ require (
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )

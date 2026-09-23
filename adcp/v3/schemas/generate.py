@@ -1215,12 +1215,12 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'ProductFilterGeometry',
     'ProductFilterKeyword',
     'PolicyRegulatoryFramework',
+    'ForecastPointDimension',
 })
 
 OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'RefinementCapability',
     'ReportPlanOutcomeError',
-    'ForecastPointDimension',
     'ReachWindow',
     'ForecastViewability',
     'CreativeProvenanceRequirements',
@@ -1937,6 +1937,18 @@ INTENTIONAL_ANY_FIELDS = {
     ('BuildCreativeVariantAxis', 'values'): 'variant_axis.values items are schema-open ({}) — caller-fixed axis values are typed per dimension (string voices, etc.), so the element type is intentionally any',
     ('GeoBreakdownSupport', 'postal_area'): 'core/postal-area-support.json is an open propertyNames-constrained map keyed by arbitrary ISO country codes (and deprecated legacy aliases) with mixed value types (arrays of postal-system enums vs deprecated boolean aliases); it has no clean closed struct',
     ('ProductFilters', 'required_features'): '3.2 feature filters mix boolean flags with structured capability requirements',
+    ('MediaBuyAvailableAction', 'action'): 'core/media-buy-available-action-id.json is every legacy valid_actions string plus new structured-only action strings; kept dynamic rather than hardcoding the anyOf as a closed enum',
+    # rc.3 request-only targeting input (adcp#7466): the create/update overlay must
+    # distinguish omission (preserve) from an explicit `null` (clear) from a typed
+    # replacement value. Tracked as its own slice in adcp-go#536 (three-state
+    # HasRequiredValue sentinel encoding needs explicit maintainer sign-off before
+    # implementation) — left dynamic here rather than pre-empting that design call.
+    ('PackageInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('PackageUpdate', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    # rc.3 shared MediaBuy-level frequency_cap (adcp#7449): tracked as its own
+    # slice in adcp-go#536 (typed request/response, capability readback,
+    # discovery filter) — left dynamic here rather than pre-empting that work.
+    ('UpdateMediaBuyRequest', 'frequency_cap'): 'root MediaBuy frequency_cap typed request/response shape is being built in adcp-go#536; left dynamic pending that slice',
 }
 
 # The 3.2 prerelease expands many existing schemas with shapes that this

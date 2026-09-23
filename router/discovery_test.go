@@ -23,8 +23,8 @@ func testDiscovery(ps *ProviderSet, health *ProviderHealth, endpoint string, bud
 
 func TestDiscovery_AddsNewProviders(t *testing.T) {
 	regs := []tmproto.ProviderRegistration{
-		{ProviderID: "new-1", Endpoint: "https://example.com", ContextMatch: true},
-		{ProviderID: "new-2", Endpoint: "https://example.com", IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []tmproto.UIDType{tmproto.UIDTypeUID2}},
+		{ProviderID: "new_1", Endpoint: "https://example.com", ContextMatch: true},
+		{ProviderID: "new_2", Endpoint: "https://example.com", IdentityMatch: true, Countries: []string{"US"}, UIDTypes: []tmproto.UIDType{tmproto.UIDTypeUID2}},
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -13,11 +13,24 @@ if [ ! -f "$WORK_EXAMPLE" ]; then
   exit 2
 fi
 
+# Modules deliberately excluded from go.work.example: each pins a released
+# adcp/v3 tag with no replace directive (matching reference/seller-agent's
+# own convention — the released API is the point, not local main), so
+# workspace mode substituting local ./adcp/v3 source can produce type
+# mismatches unrelated to the module's own code (e.g. a field that has
+# changed shape on main since the pinned release). These modules are still
+# tested standalone (GOWORK=off) in CI; they're just not meant to be
+# workspace members.
+EXEMPT_FROM_WORKSPACE="
+./reference/hello-seller
+"
+
 # Collect declared paths inside the use ( ... ) block.
 declared=$(awk '/^use \(/{flag=1;next} /^\)/{flag=0} flag {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); if ($0 != "") print}' "$WORK_EXAMPLE" | sort -u)
 
-# Collect actual module directories (relative paths starting with ./).
-actual=$(find . -name go.mod -not -path './.git/*' -exec dirname {} \; | sort -u)
+# Collect actual module directories (relative paths starting with ./),
+# excluding the deliberately-exempt ones above.
+actual=$(find . -name go.mod -not -path './.git/*' -exec dirname {} \; | sort -u | comm -23 - <(echo "$EXEMPT_FROM_WORKSPACE" | sed '/^$/d' | sort -u))
 
 # On disk but not declared — needs to be added to the workspace file.
 missing_from_workspace=$(comm -23 <(echo "$actual") <(echo "$declared"))

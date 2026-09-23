@@ -14,7 +14,7 @@
     },
     "PricingModel": {
       "prefix": "PriceModel",
-      "names": ["CPM", "VCPM", "CPC", "CPCV", "CPV", "CPP", "CPA", "FlatRate", "Time"]
+      "names": ["CPM", "VCPM", "CPC", "CPCV", "CPV", "CPP", "CPA", "RevenueShare", "FlatRate", "Time"]
     },
     "TmpResponseType": {
       "prefix": "ResponseType",
@@ -37,7 +37,9 @@
     "TmpError": "ErrorResponse",
     "TmpProviderRegistration": "ProviderRegistration",
     "IdentityMatchResponseRouterPublisher": "IdentityMatchResponse",
-    "IdentityMatchResponseProviderRouter": "ProviderIdentityMatchResponse"
+    "IdentityMatchResponseProviderRouter": "ProviderIdentityMatchResponse",
+    "ContextMatchResponseRouterPublisher": "ContextMatchResponse",
+    "ContextMatchResponseProviderRouter": "ProviderContextMatchResponse"
   },
   "fields": {
     "ContextMatchRequest.artifact": {"type": "Artifact", "pointer": true},
@@ -47,7 +49,7 @@
     "IdentityMatchRequest.sealed_credentials": {"type": "[]SealedCredential"},
     "Offer.creative_manifest": {"type": "json.RawMessage", "pointer": true},
     "Offer.price": {"type": "OfferPrice", "pointer": true},
-    "ContextMatchResponse.cache_ttl": {"type": "int", "pointer": true},
+    "ProviderContextMatchResponse.cache_ttl": {"type": "int", "pointer": true},
     "ProviderRegistration.status": {"type": "ProviderStatus"},
     "ErrorResponse.code": {"type": "ErrorCode"},
     "IdentityMatchResponse.tmpx_providers": {"type": "map[string]TmpxProviderEntry"}
@@ -56,6 +58,7 @@
     "/schemas/latest/core/property-id.json": "string",
     "/schemas/latest/core/format-id.json": "json.RawMessage",
     "/schemas/latest/core/catalog.json": "json.RawMessage",
+    "/schemas/latest/core/package-format-snapshot.json": "json.RawMessage",
     "/schemas/latest/core/brand-ref.json": "json.RawMessage",
     "/schemas/latest/core/creative-manifest.json": "json.RawMessage",
     "/schemas/latest/core/seller-agent-ref.json": "json.RawMessage",

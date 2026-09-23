@@ -307,6 +307,78 @@ func TestRegisteredHandlersAttachContext(t *testing.T) {
 	}
 }
 
+// TestProductsResponseInjectsStatus mirrors TestCapabilitiesResponseWireShape:
+// get_products previously emitted a catalog response with no status field at
+// all, which the immutable get-products response schema requires. A handler
+// that doesn't set Status gets "completed" injected via copy-on-write; a
+// handler that sets one explicitly (e.g. an async/pending variant) keeps it.
+func TestProductsResponseInjectsStatus(t *testing.T) {
+	t.Run("empty status is injected as completed", func(t *testing.T) {
+		data := &ProductsData{Products: []Product{}, CacheScope: "public"}
+		_, out, err := ProductsResponse(data)
+
+		require.NoError(t, err)
+		assert.Empty(t, data.Status, "input must not be mutated")
+		require.IsType(t, &ProductsData{}, out)
+		assert.Equal(t, "completed", out.(*ProductsData).Status)
+	})
+
+	t.Run("explicit status is preserved", func(t *testing.T) {
+		data := &ProductsData{Products: []Product{}, Status: "submitted"}
+		_, out, err := ProductsResponse(data)
+
+		require.NoError(t, err)
+		require.IsType(t, &ProductsData{}, out)
+		assert.Equal(t, "submitted", out.(*ProductsData).Status)
+	})
+
+	t.Run("nil data returns an error instead of panicking", func(t *testing.T) {
+		result, _, err := ProductsResponse(nil)
+
+		require.NoError(t, err)
+		wire := structuredContentMap(t, result)
+		assert.True(t, result.IsError)
+		errPayload, ok := wire["adcp_error"].(map[string]any)
+		require.True(t, ok)
+		assert.Equal(t, "INTERNAL_ERROR", errPayload["code"])
+	})
+}
+
+// TestRegisteredGetProductsIncludesRequiredStatus exercises the real
+// get_products dispatch path (not just the pure response builder), asserting
+// the wire structuredContent carries "status": "completed" — the immutable
+// AdCP 3.2.0-rc.1 get-products response validator rejects a response without
+// it.
+func TestRegisteredGetProductsIncludesRequiredStatus(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
+			return &ProductsData{Products: []Product{}, CacheScope: "public"}, nil
+		},
+	}), "get_products", map[string]any{})
+	wire := structuredContentMap(t, result)
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "completed", wire["status"])
+}
+
+// TestRegisteredGetProductsNilDataDoesNotPanic exercises the dispatch path
+// for a handler that returns (nil, nil) — a natural mistake for "no products
+// match" — confirming it produces an error result instead of a nil-pointer
+// panic on the data.Sandbox assignment that runs before ProductsResponse.
+func TestRegisteredGetProductsNilDataDoesNotPanic(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
+			return nil, nil
+		},
+	}), "get_products", map[string]any{})
+	wire := structuredContentMap(t, result)
+
+	assert.True(t, result.IsError)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "INTERNAL_ERROR", errPayload["code"])
+}
+
 func TestRegisteredCapabilitiesUsesDefaultVersion(t *testing.T) {
 	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{})
 	wire := structuredContentMap(t, result)
@@ -353,6 +425,37 @@ func TestRegisteredCapabilitiesRejectsUnsupportedProtocolFilter(t *testing.T) {
 func TestRegisteredCapabilitiesPreservesVersionPinRejection(t *testing.T) {
 	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
 		"adcp_version": "9.9",
+	})
+	wire := structuredContentMap(t, result)
+
+	assert.True(t, result.IsError)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "VERSION_UNSUPPORTED", errPayload["code"])
+}
+
+// TestRegisteredCapabilitiesStablePinNeverServesAPrerelease exercises the
+// dispatch path (not just the pure NegotiateADCPVersion helper) for a stable
+// pin that has no exact match: it must downshift to the highest supported
+// stable release, never resolve onto the seller's own advertised prerelease.
+func TestRegisteredCapabilitiesStablePinNeverServesAPrerelease(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "3.2",
+	})
+	wire := structuredContentMap(t, result)
+
+	require.False(t, result.IsError)
+	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.EqualValues(t, 3, wire["adcp_major_version"])
+}
+
+// TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin exercises the
+// dispatch path for an explicit prerelease pin that has no exact match in the
+// seller's supported_versions: it must be rejected as VERSION_UNSUPPORTED,
+// never silently range-resolved onto a stable release.
+func TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin(t *testing.T) {
+	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+		"adcp_version": "3.1-rc.3",
 	})
 	wire := structuredContentMap(t, result)
 

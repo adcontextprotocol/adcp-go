@@ -132,10 +132,10 @@ func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.P
 			if len(o.Brand) > 0 {
 				out.Offers[i].Brand = append(json.RawMessage(nil), o.Brand...)
 			}
-			if len(o.Macros) > 0 {
-				macros := make(map[string]string, len(o.Macros))
-				maps.Copy(macros, o.Macros)
-				out.Offers[i].Macros = macros
+			if len(o.CreativeData) > 0 {
+				creativeData := make(map[string]string, len(o.CreativeData))
+				maps.Copy(creativeData, o.CreativeData)
+				out.Offers[i].CreativeData = creativeData
 			}
 		}
 	}
@@ -145,10 +145,10 @@ func clonePackageContextConfig(cfg *targeting.PackageContextConfig) *targeting.P
 	if len(cfg.CreativeManifest) > 0 {
 		out.CreativeManifest = append(json.RawMessage(nil), cfg.CreativeManifest...)
 	}
-	if len(cfg.Macros) > 0 {
-		macros := make(map[string]string, len(cfg.Macros))
-		maps.Copy(macros, cfg.Macros)
-		out.Macros = macros
+	if len(cfg.CreativeData) > 0 {
+		creativeData := make(map[string]string, len(cfg.CreativeData))
+		maps.Copy(creativeData, cfg.CreativeData)
+		out.CreativeData = creativeData
 	}
 	out.ContextSignals = cloneSignalProfile(cfg.ContextSignals)
 	return &out

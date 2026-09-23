@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/targeting"
 	"github.com/adcontextprotocol/adcp-go/tmproto"
 )
 
@@ -28,6 +29,8 @@ type identityHandler struct {
 	requestBodyLimit           int64
 	responseTTL                time.Duration
 	supportedADCPMajorVersions map[int]struct{}
+	supportedAdcpVersions      map[string]struct{}
+	requireConsent             bool
 	recorder                   Recorder
 	logger                     *slog.Logger
 }
@@ -67,8 +70,32 @@ type IdentityHandlerConfig struct {
 	// HTTP 400 and ErrorCodeInvalidRequest. When the field is omitted, the
 	// seller assumes its highest supported version (per the TMP schema).
 	SupportedADCPMajorVersions []int
-	Recorder                   Recorder
-	Logger                     *slog.Logger
+
+	// SupportedAdcpVersions enumerates the release-precision AdCP versions
+	// this agent will accept on inbound `adcp_version` (e.g. "3.0", "3.1",
+	// "3.1-beta"). Per version-envelope.json §adcp_version the seller
+	// validates the buyer's release pin against this list. When
+	// `adcp_version` is set on a request it takes precedence over
+	// `adcp_major_version` (deprecated fallback). An empty list disables
+	// release-precision validation and the handler falls back to the
+	// major-version check only.
+	SupportedAdcpVersions []string
+
+	// RequireConsent, when true, rejects any inbound identity-match
+	// request that omits the `consent` object with 400 invalid_request.
+	// Off by default. Set for buyer deployments operating in
+	// jurisdictions where the spec requires consent to accompany user
+	// tokens (identity-match-request.json §consent: "Buyers in regulated
+	// jurisdictions MUST NOT process the user token without consent
+	// information"). This is separate from the schema-level cross-field
+	// rule (gdpr:true ⇒ tcf_consent|gpp) that runs regardless in
+	// tmproto.ValidateIdentityRequest; RequireConsent adds the
+	// presence check the schema cannot express because the jurisdiction
+	// is deployment context, not request content.
+	RequireConsent bool
+
+	Recorder Recorder
+	Logger   *slog.Logger
 }
 
 // NewIdentityHandler returns the http.Handler for POST /identity.
@@ -85,6 +112,10 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 	for _, v := range cfg.SupportedADCPMajorVersions {
 		supported[v] = struct{}{}
 	}
+	supportedRel := make(map[string]struct{}, len(cfg.SupportedAdcpVersions))
+	for _, v := range cfg.SupportedAdcpVersions {
+		supportedRel[v] = struct{}{}
+	}
 	return &identityHandler{
 		service:                    cfg.Service,
 		tmpx:                       cfg.TMPXSealer,
@@ -93,6 +124,8 @@ func NewIdentityHandler(cfg IdentityHandlerConfig) http.Handler {
 		requestBodyLimit:           cfg.RequestBodyLimit,
 		responseTTL:                cfg.ResponseTTL,
 		supportedADCPMajorVersions: supported,
+		supportedAdcpVersions:      supportedRel,
+		requireConsent:             cfg.RequireConsent,
 		recorder:                   cfg.Recorder,
 		logger:                     cfg.Logger,
 	}
@@ -140,13 +173,30 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recordCompletion(ctx, start, "bad_request")
 		return
 	}
-	if req.AdcpMajorVersion != 0 {
+	// Version negotiation: `adcp_version` (release-precision) is authoritative
+	// per version-envelope.json §adcp_version; `adcp_major_version` is a
+	// deprecated fallback the seller honors only when `adcp_version` is
+	// omitted OR when release-precision validation is not configured on
+	// this deployment. Folding the emptiness check into the outer branch
+	// condition (rather than into an inner guard) is deliberate: an inner
+	// guard would let an `adcp_version`-carrying request slip past both
+	// checks entirely when `SupportedAdcpVersions` is empty — the default
+	// opt-in state — reintroducing the exact bypass this check exists to
+	// close.
+	//
+	// adcp/schemas/tmp/identity-match-request.json's description names
+	// VERSION_UNSUPPORTED here, but the error.json schema's `code` enum
+	// does not include it — invalid_request is the closest valid code
+	// until the spec is internally consistent.
+	if req.AdcpVersion != "" && len(h.supportedAdcpVersions) > 0 {
+		if _, ok := h.supportedAdcpVersions[req.AdcpVersion]; !ok {
+			h.logValidationFailure(r, req.RequestID, errors.New("adcp_version is not supported"))
+			h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
+			h.recordCompletion(ctx, start, "bad_request")
+			return
+		}
+	} else if req.AdcpMajorVersion != 0 {
 		if _, ok := h.supportedADCPMajorVersions[req.AdcpMajorVersion]; !ok {
-			// adcp/schemas/tmp/identity-match-request.json's description
-			// names VERSION_UNSUPPORTED here, but the error.json schema's
-			// `code` enum does not include it. Use invalid_request — the
-			// closest valid code — until the spec is internally
-			// consistent.
 			h.logValidationFailure(r, req.RequestID, errors.New("adcp_major_version is not supported"))
 			h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
 			h.recordCompletion(ctx, start, "bad_request")
@@ -154,23 +204,57 @@ func (h *identityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	serviceReq, decoded := h.buildServiceRequest(ctx, &req)
-	result := h.service.Evaluate(ctx, serviceReq)
+	// Consent-required gate: identity-match-request.json §consent says
+	// "Buyers in regulated jurisdictions MUST NOT process the user token
+	// without consent information", but the schema cannot express the
+	// jurisdiction check (it depends on where the buyer operates, not on
+	// the request content). Operators in a jurisdiction that requires
+	// consent set CONSENT_REQUIRED=true so the handler rejects a request
+	// that omits `consent` before any store lookup runs. The cross-field
+	// rule (gdpr:true ⇒ tcf_consent|gpp) still runs unconditionally in
+	// tmproto.ValidateIdentityRequest above.
+	if h.requireConsent && len(req.Consent) == 0 {
+		h.logValidationFailure(r, req.RequestID, errors.New("consent object is required in this jurisdiction"))
+		h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusBadRequest, tmproto.ErrorCodeInvalidRequest, "invalid request")
+		h.recordCompletion(ctx, start, "bad_request")
+		return
+	}
 
-	// Fail closed on budget overrun: return the standard wire shape with an
-	// empty eligible-packages array, matching what callers see for any other
-	// fail-closed outcome. RequestID is preserved so the buyer can correlate.
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		status := "timeout"
-		if !h.writeResponse(w, &tmproto.ProviderIdentityMatchResponse{
-			Type:               tmproto.TypeIdentityMatchResponse,
-			RequestID:          req.RequestID,
-			EligiblePackageIDs: []string{},
-			ServeWindowSec:     serveWindowSeconds(h.responseTTL),
-		}) {
-			status = "write_error"
+	serviceReq, decoded := h.buildServiceRequest(ctx, &req)
+	var result *targeting.IdentityResult
+	if decoded == nil {
+		// No canonicalizer wired: nothing to summarize, and the fail-closed
+		// policy would over-block on the first request. Preserve the
+		// backward-compat path.
+		result = h.service.Evaluate(ctx, serviceReq)
+	} else {
+		summary := DecodeSummary{
+			WireCount:    len(req.Identities),
+			SuccessCount: decodedSuccessCount(decoded),
 		}
-		h.recordCompletion(ctx, start, status)
+		result = h.service.EvaluateWithDecode(ctx, serviceReq, summary)
+	}
+
+	// Terminal-error surface: a request that exhausted the handler's
+	// budget OR whose service pipeline reported a non-empty Status (store
+	// timeout, provider_unavailable) is returned as a TMP ErrorResponse
+	// rather than an empty IdentityMatchResponse. The router discriminates
+	// on `type: "error"` and its circuit breaker keys off the error code —
+	// without this it cannot tell "provider timed out" from "no eligible
+	// packages" and healthy providers stay in-rotation regardless of
+	// upstream store health. Fail-closed decisions rooted in cap/audience
+	// semantics (all-capped, undecodable-identities) keep Status == ""
+	// and go through the normal empty-eligibility path below.
+	terminalStatus := ""
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		terminalStatus = targeting.StatusTimeout
+	} else if result != nil && result.Status != targeting.StatusOK {
+		terminalStatus = result.Status
+	}
+	if terminalStatus != "" {
+		errCode := errorCodeForStatus(terminalStatus)
+		h.writeError(w, tmproto.SafeRequestIDForEcho(req.RequestID), http.StatusOK, errCode, string(errCode))
+		h.recordCompletion(ctx, start, terminalStatus)
 		return
 	}
 
@@ -343,6 +427,34 @@ func (h *identityHandler) buildServiceRequest(ctx context.Context, req *tmproto.
 // Attestation-less and successfully-decoded identities are already represented
 // by the canonical set, so only undecoded attestation carriers are appended
 // (no double-counting).
+// errorCodeForStatus maps a targeting.Status* value onto the
+// tmproto.ErrorCode enum on error.json. Unknown statuses fall back to
+// internal_error so the handler never emits an unenumerated code.
+func errorCodeForStatus(status string) tmproto.ErrorCode {
+	switch status {
+	case targeting.StatusTimeout:
+		return tmproto.ErrorCodeTimeout
+	case targeting.StatusProviderUnavailable:
+		return tmproto.ErrorCodeProviderUnavailable
+	default:
+		return tmproto.ErrorCodeInternalError
+	}
+}
+
+// decodedSuccessCount tallies decoded identities whose canonicalization
+// succeeded (Bytes non-empty). Feeds Service.EvaluateWithDecode's
+// DecodeSummary so the fcap stage can fail closed when the request's
+// identities cannot be verified against cap-state (TMP invariant #2).
+func decodedSuccessCount(decoded []DecodedIdentity) int {
+	n := 0
+	for _, d := range decoded {
+		if len(d.Bytes) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
 func serviceIdentities(inbound []tmproto.IdentityToken, decoded []DecodedIdentity) []tmproto.IdentityToken {
 	out := audienceEligibleIdentities(decoded)
 	for i := range inbound {

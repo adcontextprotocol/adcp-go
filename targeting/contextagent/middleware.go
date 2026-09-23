@@ -62,9 +62,22 @@ var panicResponseBody = func() []byte {
 // metrics middleware can observe the final status after the handler
 // returns. Status defaults to 200 when WriteHeader is never called
 // explicitly.
+//
+// semanticStatus is a handler-set override for cases where the HTTP
+// status code alone does not encode the request-level outcome. TMP
+// application errors travel on HTTP 200 with an error envelope, so
+// deriving the status label purely from the code (via
+// statusFromHTTPCode) would label every timeout and internal_error as
+// "ok" — breaking the agent's own timeout- and error-rate alerts.
+// Handlers set the semantic status via setSemanticStatus before
+// writing the 200 + error envelope; the middleware prefers it over
+// the code-derived label when non-empty. Values are the same bounded
+// StatusOK / StatusTimeout / StatusServerError / StatusClientError
+// enum the middleware would otherwise emit.
 type recordingResponseWriter struct {
 	http.ResponseWriter
-	status int
+	status         int
+	semanticStatus string
 }
 
 func (w *recordingResponseWriter) WriteHeader(code int) {
@@ -79,6 +92,18 @@ func (w *recordingResponseWriter) Write(b []byte) (int, error) {
 		w.status = http.StatusOK
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+// setSemanticStatus records the outcome label the middleware should
+// prefer over the code-derived label. Called by the handler on paths
+// that intentionally return 200 with a TMP error envelope. No-op when
+// w is not a *recordingResponseWriter (test harnesses without the
+// middleware chain) — the metric would already be a noopRecorder in
+// that case, so silently dropping the override is safe.
+func setSemanticStatus(w http.ResponseWriter, status string) {
+	if rw, ok := w.(*recordingResponseWriter); ok {
+		rw.semanticStatus = status
+	}
 }
 
 // requestMetricsMiddleware emits one RequestStarted on entry and one
@@ -107,7 +132,11 @@ func requestMetricsMiddleware(next http.Handler, recorder Recorder) http.Handler
 		// see RequestStarted climb without a matching completion —
 		// looking like a stuck request instead of a recovered panic.
 		defer func() {
-			recorder.RequestCompleted(r.Context(), statusFromHTTPCode(rw.status), time.Since(start))
+			status := rw.semanticStatus
+			if status == "" {
+				status = statusFromHTTPCode(rw.status)
+			}
+			recorder.RequestCompleted(r.Context(), status, time.Since(start))
 		}()
 		next.ServeHTTP(rw, r)
 	})

@@ -367,7 +367,9 @@ return nil, adcp.NewError("BUDGET_TOO_LOW", adcp.ErrorOptions{
 })
 ```
 
-Error codes with auto-recovery: `RATE_LIMITED` (retry), `BUDGET_TOO_LOW` / `INVALID_REQUEST` (revise), `ACCOUNT_NOT_FOUND` (terminal).
+`Recovery` is optional; when omitted the SDK classifies the code for you. If you set it explicitly, it must be one of the three members `core/error.json` closes the field to: `transient` (retry after a delay), `correctable` (fix the request and resend), or `terminal` (requires human action). Any other value leaves a receiver that does not recognise your code with no machine-readable signal.
+
+Default classification for the codes the SDK knows: `RATE_LIMITED` / `SERVICE_UNAVAILABLE` (transient), `BUDGET_TOO_LOW` / `INVALID_REQUEST` / `TERMS_REJECTED` (correctable), `ACCOUNT_NOT_FOUND` (terminal). Any other code defaults to `terminal`.
 
 ## Product Definitions
 
