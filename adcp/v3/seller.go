@@ -174,6 +174,10 @@ func Register(server *mcp.Server, cfg Config) {
 					result, out, e := errorToResult(err)
 					return attachContext(result, input.Context), out, e
 				}
+				if data == nil {
+					result, out, e := errorToResult(NewError("INTERNAL_ERROR", ErrorOptions{Message: "handler returned nil result"}))
+					return attachContext(result, input.Context), out, e
+				}
 				data.Context = input.Context
 				result, out, err := DeliveryResponse(data)
 				return attachContext(result, input.Context), out, err
