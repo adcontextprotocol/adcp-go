@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.3](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.3.2...tmproto/v0.3.3) (2026-09-23)
+
+
+### Bug Fixes
+
+* **adcp:** adopt protocol 3.2.0-rc.3 bundle ([ebf1a10](https://github.com/adcontextprotocol/adcp-go/commit/ebf1a101c33f47e2d386d3035ebf9e59040ff5a1))
+* **tmproto:** regenerate types_gen.go for the rc.3 schema bump ([83ba10e](https://github.com/adcontextprotocol/adcp-go/commit/83ba10ece90fcd4a52c0f68e1bdfe7b98cc2268c))
+
 ## [0.3.2](https://github.com/adcontextprotocol/adcp-go/compare/tmproto/v0.3.1...tmproto/v0.3.2) (2026-09-08)
 
 
