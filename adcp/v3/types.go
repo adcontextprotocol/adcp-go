@@ -1263,12 +1263,29 @@ type AssetSlot struct {
 	AcceptedMediaTypes []string `json:"accepted_media_types,omitempty"`
 }
 
+// CreativeResult is the per-creative item of a sync-creatives success response.
+// It mirrors static/schemas/source/creative/sync-creatives-response.json
+// (oneOf[0].properties.creatives.items) of the pinned AdCP bundle.
+// The two deeply-nested 3.2 additions (localization and
+// macro_resolution_results) are intentionally excluded here; their object
+// graphs belong in the generated types.
 type CreativeResult struct {
-	CreativeID      string   `json:"creative_id"`
-	Action          string   `json:"action"`
-	Status          string   `json:"status,omitempty"`
-	RejectionReason string   `json:"rejection_reason,omitempty"`
-	Errors          []string `json:"errors,omitempty"`
+	CreativeID       string            `json:"creative_id"`
+	RevisionID       string            `json:"revision_id,omitempty"`
+	Account          *Account          `json:"account,omitempty"`
+	Action           string            `json:"action"`
+	Status           string            `json:"status,omitempty"`
+	PlatformID       string            `json:"platform_id,omitempty"`
+	Changes          []string          `json:"changes,omitempty"`
+	Errors           []string          `json:"errors,omitempty"`
+	Warnings         []string          `json:"warnings,omitempty"`
+	PreviewURL       string            `json:"preview_url,omitempty"`
+	ExpiresAt        string            `json:"expires_at,omitempty"`
+	AssignedTo       []string          `json:"assigned_to,omitempty"`
+	AssignmentErrors map[string]string `json:"assignment_errors,omitempty"`
+	// Deprecated: rejection_reason is not part of the AdCP spec and will be
+	// removed in a future release. Per-item failure detail belongs in Errors.
+	RejectionReason string `json:"rejection_reason,omitempty"`
 }
 
 type CreativeListItem struct {
