@@ -43,6 +43,57 @@ func TestProviderSet_Swap(t *testing.T) {
 	assert.Equal(t, "new1", ps.All()[0].ID)
 }
 
+func TestProviderSet_ReusedInputMutationRotatesEndpointAndStatus(t *testing.T) {
+	input := []ProviderConfig{{
+		ID: "provider", Endpoint: "https://old.example", Status: ProviderStatusActive,
+		PackageIDs: []string{"old-package"}, AudienceKIDs: []string{"old-kid"},
+	}}
+	ps := NewProviderSet(input)
+	_, initialRevision, ok := ps.GetWithRevision("provider")
+	require.True(t, ok)
+
+	input[0].Endpoint = "https://new.example"
+	input[0].Status = ProviderStatusInactive
+	input[0].PackageIDs[0] = "new-package"
+	input[0].AudienceKIDs[0] = "new-kid"
+	beforeSwap, revisionBeforeSwap, ok := ps.GetWithRevision("provider")
+	require.True(t, ok)
+	assert.Equal(t, "https://old.example", beforeSwap.Endpoint, "constructor input must not alias stored config")
+	assert.Equal(t, ProviderStatusActive, beforeSwap.Status)
+	assert.Equal(t, []string{"old-package"}, beforeSwap.PackageIDs)
+	assert.Equal(t, initialRevision, revisionBeforeSwap)
+
+	ps.Swap(input)
+	afterSwap, rotatedRevision, ok := ps.GetWithRevision("provider")
+	require.True(t, ok)
+	assert.Equal(t, "https://new.example", afterSwap.Endpoint)
+	assert.Equal(t, ProviderStatusInactive, afterSwap.Status)
+	assert.Equal(t, []string{"new-package"}, afterSwap.PackageIDs)
+	assert.Equal(t, []string{"new-kid"}, afterSwap.AudienceKIDs)
+	assert.Greater(t, rotatedRevision, initialRevision, "reused input must still advance the provider revision")
+	assert.Empty(t, ps.Active(), "inactive replacement must leave the active set")
+}
+
+func TestProviderSet_ReturnedConfigsCannotMutateStoredState(t *testing.T) {
+	ps := NewProviderSet([]ProviderConfig{{
+		ID: "provider", Endpoint: "https://stored.example", PackageIDs: []string{"stored-package"},
+	}})
+
+	all := ps.All()
+	all[0].Endpoint = "https://mutated.example"
+	all[0].PackageIDs[0] = "mutated-package"
+	active := ps.Active()
+	active[0].PackageIDs[0] = "mutated-active-package"
+	got, ok := ps.Get("provider")
+	require.True(t, ok)
+	got.PackageIDs[0] = "mutated-get-package"
+
+	stored, ok := ps.Get("provider")
+	require.True(t, ok)
+	assert.Equal(t, "https://stored.example", stored.Endpoint)
+	assert.Equal(t, []string{"stored-package"}, stored.PackageIDs)
+}
+
 func TestProviderSet_SwapNil(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{{ID: "a"}})
 	ps.Swap(nil)

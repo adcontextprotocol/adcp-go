@@ -1,8 +1,12 @@
 package router
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"math"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,16 +17,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// countingCacheMetrics tallies hit/miss calls per provider for
-// assertions in cache tests.
 type countingCacheMetrics struct {
-	mu     sync.Mutex
-	hits   map[string]int
-	misses map[string]int
+	mu                    sync.Mutex
+	hits                  map[string]int
+	misses                map[string]int
+	generationExhaustions map[string]int
 }
 
 func newCountingCacheMetrics() *countingCacheMetrics {
-	return &countingCacheMetrics{hits: map[string]int{}, misses: map[string]int{}}
+	return &countingCacheMetrics{
+		hits: map[string]int{}, misses: map[string]int{}, generationExhaustions: map[string]int{},
+	}
 }
 func (m *countingCacheMetrics) IncHit(id string) {
 	m.mu.Lock()
@@ -34,407 +39,689 @@ func (m *countingCacheMetrics) IncMiss(id string) {
 	defer m.mu.Unlock()
 	m.misses[id]++
 }
-
-// A nil cache is a valid value — Get/Put/Size must all no-op safely so
-// callers that omit WithContextCache don't need explicit nil checks.
-func TestContextCache_NilSafe(t *testing.T) {
-	var c *ContextCache
-	resp, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.False(t, ok)
-	assert.Nil(t, resp)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{})
-	assert.Equal(t, 0, c.Size())
+func (m *countingCacheMetrics) IncGenerationExhausted(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.generationExhaustions[id]++
 }
 
-// A Put followed by a Get under the same key returns a clone of the
-// response — mutating the returned pointer's fields must NOT reach
-// back into the cached entry.
-func TestContextCache_HitReturnsClone(t *testing.T) {
-	c := NewContextCache(time.Minute)
-	resp := &tmproto.ProviderContextMatchResponse{
-		Type:      tmproto.TypeContextMatchResponse,
-		RequestID: "orig",
-		Offers:    []tmproto.Offer{{PackageID: "pkg-a"}},
-		Signals:   map[string]any{"k": "v"},
-	}
-	c.Put("rid-1", "sidebar", "prov", "", "", resp)
-	got, ok := c.Get("rid-1", "sidebar", "prov", "", "")
+func cacheScope(t *testing.T, c *ContextCache, provider, namespace string) ContextCacheScope {
+	t.Helper()
+	scope, ok := c.Capture(provider, namespace, []byte(`{"endpoint":"https://provider.example"}`))
 	require.True(t, ok)
-	require.NotNil(t, got)
-	assert.Equal(t, "orig", got.RequestID)
-	assert.Equal(t, "pkg-a", got.Offers[0].PackageID)
-
-	// Mutating the returned response must not corrupt the cache.
-	got.RequestID = "mutated"
-	got.Offers[0].PackageID = "MUTATED"
-	got.Signals["k"] = "MUTATED"
-
-	got2, ok := c.Get("rid-1", "sidebar", "prov", "", "")
-	require.True(t, ok)
-	assert.Equal(t, "orig", got2.RequestID)
-	assert.Equal(t, "pkg-a", got2.Offers[0].PackageID)
-	assert.Equal(t, "v", got2.Signals["k"])
+	return scope
 }
 
-// Deep-clone check: mutating the Offer's inner pointer/slice/map
-// fields on the returned response must not corrupt the cached entry.
-// Regression guard for the doc note on tmproto/types_gen.go:196 —
-// the router MAY stamp SellerAgent from a package→seller map, and a
-// shallow clone here would let that stamp leak into the cache.
-func TestContextCache_HitDeepClonesOffers(t *testing.T) {
-	c := NewContextCache(time.Minute)
-	price := tmproto.OfferPrice{Amount: 5.00, Currency: "USD", Model: "cpm"}
-	cm := json.RawMessage(`{"kind":"markdown"}`)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		Offers: []tmproto.Offer{{
-			PackageID:        "pkg-a",
-			SellerAgent:      json.RawMessage(`{"agent_url":"https://orig.example"}`),
-			Brand:            json.RawMessage(`{"name":"Orig"}`),
-			Price:            &price,
-			CreativeManifest: &cm,
-			CreativeData:     map[string]string{"CID": "orig"},
-		}},
-	})
+func cacheHash(value string) [sha256.Size]byte { return sha256.Sum256([]byte(value)) }
 
-	got, ok := c.Get("rid", "pl", "prov", "", "")
-	require.True(t, ok)
-	require.Len(t, got.Offers, 1)
-
-	// Mutate every reference-typed field on the returned Offer.
-	o := &got.Offers[0]
-	o.SellerAgent[0] = 'X'
-	o.Brand[0] = 'X'
-	o.Price.Amount = 999
-	(*o.CreativeManifest)[0] = 'X'
-	o.CreativeData["CID"] = "MUTATED"
-
-	got2, ok := c.Get("rid", "pl", "prov", "", "")
-	require.True(t, ok)
-	o2 := got2.Offers[0]
-	assert.Equal(t, byte('{'), o2.SellerAgent[0], "SellerAgent bytes must be isolated from mutation via a cached hit")
-	assert.Equal(t, byte('{'), o2.Brand[0], "Brand bytes must be isolated from mutation via a cached hit")
-	assert.Equal(t, 5.00, o2.Price.Amount, "Price must be a distinct allocation")
-	assert.Equal(t, byte('{'), (*o2.CreativeManifest)[0], "CreativeManifest bytes must be isolated")
-	assert.Equal(t, "orig", o2.CreativeData["CID"], "CreativeData map must be a distinct allocation")
-}
-
-// Entries expire on TTL. The cache uses an injectable clock so we
-// don't have to sleep.
-func TestContextCache_TTLExpiration(t *testing.T) {
-	c := NewContextCache(500 * time.Millisecond)
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
-
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	require.True(t, ok, "fresh entry must hit")
-
-	// Advance past TTL.
-	now = now.Add(600 * time.Millisecond)
-	_, ok = c.Get("rid", "pl", "prov", "", "")
-	assert.False(t, ok, "expired entry must miss")
-
-	// Expired entries are evicted on the miss so Size drops.
-	assert.Equal(t, 0, c.Size())
-}
-
-// ttlPtr is a helper so tests can pass a positive/zero/negative
-// cache_ttl through the *int field.
 func ttlPtr(n int) *int { return &n }
 
-// Provider cache_ttl overrides the router's default when present.
-func TestContextCache_ProviderTTLOverride(t *testing.T) {
-	c := NewContextCache(1 * time.Hour) // long default
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
-
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		RequestID: "orig",
-		CacheTTL:  ttlPtr(2), // 2 seconds — tighter than the default 1h
-	})
-
-	// Just under 2s → still cached.
-	now = now.Add(1500 * time.Millisecond)
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.True(t, ok)
-
-	// Past 2s → expired.
-	now = now.Add(1 * time.Second)
-	_, ok = c.Get("rid", "pl", "prov", "", "")
-	assert.False(t, ok, "provider-supplied cache_ttl must be honored over the default")
+type signalCloneCustom struct {
+	Counts map[string]int `json:"counts"`
+	Values []int          `json:"values"`
 }
 
-// A cache_ttl above MaxContextCacheTTL (86400s) is clamped, protecting
-// the router from a provider (or upstream bug) demanding a
-// week-long entry.
-func TestContextCache_TTLClampsToMax(t *testing.T) {
-	c := NewContextCache(time.Minute)
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
+type signalNamedIntPointer *int
 
-	// 30 days — well past the schema-enforced 24h ceiling.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		CacheTTL: ttlPtr(30 * 24 * 3600),
-	})
-
-	// Just past 24h — must be expired regardless of what the provider
-	// asked for.
-	now = now.Add(MaxContextCacheTTL + time.Minute)
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.False(t, ok, "provider cache_ttl must be clamped to MaxContextCacheTTL")
+type signalTextMapKey struct {
+	Value string
 }
 
-// A pathologically large cache_ttl must not overflow the Duration
-// conversion. Clamping in seconds first (before multiplying by
-// time.Second) guarantees the entry is stored with MaxContextCacheTTL,
-// not silently dropped because Duration wrapped to negative.
-//
-// math.MaxInt is used so this compiles on both 32-bit (where int is
-// int32; MaxInt seconds still exercises the clamp path) and 64-bit
-// (where int is int64; MaxInt * time.Second overflows the Duration
-// multiplication if the clamp weren't seconds-first).
-func TestContextCache_TTLOverflowSafe(t *testing.T) {
-	c := NewContextCache(time.Minute)
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
+func (k *signalTextMapKey) MarshalText() ([]byte, error) { return []byte(k.Value), nil }
 
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		CacheTTL: ttlPtr(math.MaxInt),
-	})
+type signalHiddenMutable struct {
+	Values []int `json:"values"`
+}
 
-	// Just under the max → cached.
-	now = now.Add(MaxContextCacheTTL - time.Minute)
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.True(t, ok, "overflow-sized cache_ttl must still cache up to MaxContextCacheTTL")
+type signalUnexportedEmbedding struct {
+	signalHiddenMutable
+}
 
-	// Just past the max → expired.
-	now = now.Add(2 * time.Minute)
-	_, ok = c.Get("rid", "pl", "prov", "", "")
+type signalLockedMarshaler struct {
+	mutex sync.Mutex
+	Value int
+}
+
+func (s *signalLockedMarshaler) MarshalJSON() ([]byte, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return json.Marshal(struct {
+		Value int `json:"value"`
+	}{Value: s.Value})
+}
+
+func TestContextCache_NilSafe(t *testing.T) {
+	var c *ContextCache
+	_, ok := c.Capture("prov", "generation-1", nil)
 	assert.False(t, ok)
-}
-
-// cache_ttl absent (nil pointer) falls back to the router's default TTL.
-// This is the majority case: providers using the generated Go type
-// that don't want to override just leave the field zero-valued.
-func TestContextCache_AbsentTTLUsesDefault(t *testing.T) {
-	c := NewContextCache(2 * time.Second)
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
-
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{}) // CacheTTL nil
-
-	// Cached for the default TTL.
-	now = now.Add(1500 * time.Millisecond)
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.True(t, ok)
-
-	// Past default TTL → expired.
-	now = now.Add(1 * time.Second)
-	_, ok = c.Get("rid", "pl", "prov", "", "")
+	_, ok = c.GetScoped(ContextCacheScope{}, cacheHash("request"))
 	assert.False(t, ok)
-}
-
-// cache_ttl == 0 (explicit) is the spec's "disable caching" signal
-// (spec §Caching: "0 disables caching"). The entry MUST NOT be stored,
-// so a subsequent Get is a miss and the router falls back to a fresh
-// fan-out. This is the fix for the request-changes review on #410:
-// a non-Go provider that sends cache_ttl=0 after a targeting-config
-// change must not have its now-stale offers served for 5 minutes.
-func TestContextCache_ExplicitZeroTTLDisablesCaching(t *testing.T) {
-	c := NewContextCache(1 * time.Hour) // long default that would apply if we mishandled zero
-
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		RequestID: "orig",
-		CacheTTL:  ttlPtr(0),
-	})
-
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.False(t, ok, "cache_ttl=0 is the spec's disable-caching signal — entry must not be stored")
+	c.PutScoped(ContextCacheScope{}, cacheHash("request"), &tmproto.ProviderContextMatchResponse{})
 	assert.Equal(t, 0, c.Size())
 }
 
-// A negative cache_ttl (which the wire schema should reject, but we're
-// defensive) falls back to the default rather than storing an
-// immediately-expired entry.
-func TestContextCache_NegativeTTLUsesDefault(t *testing.T) {
-	c := NewContextCache(2 * time.Second)
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
-
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{CacheTTL: ttlPtr(-1)})
-
-	// Cached for the default TTL rather than dropped or immediately
-	// expired.
-	now = now.Add(1500 * time.Millisecond)
-	_, ok := c.Get("rid", "pl", "prov", "", "")
-	assert.True(t, ok, "negative TTL should fall back to default, not collapse to expired")
+func TestContextCache_LegacyPlacementAPIAlwaysBypasses(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	c.Put("rid", "placement", "prov", "https://seller.example", "US", &tmproto.ProviderContextMatchResponse{})
+	_, hit := c.Get("rid", "placement", "prov", "https://seller.example", "US")
+	assert.False(t, hit)
+	assert.Equal(t, 0, c.Size())
 }
 
-// Different providers for the same (property, placement) tuple are
-// separate cache entries — the spec key includes provider_id.
-func TestContextCache_KeyPartitionedByProvider(t *testing.T) {
+func TestContextCache_EmptyOrInvalidNamespaceBypasses(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov-a", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "for-a"})
-	c.Put("rid", "pl", "prov-b", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "for-b"})
-
-	a, okA := c.Get("rid", "pl", "prov-a", "", "")
-	b, okB := c.Get("rid", "pl", "prov-b", "", "")
-	require.True(t, okA)
-	require.True(t, okB)
-	assert.Equal(t, "for-a", a.RequestID)
-	assert.Equal(t, "for-b", b.RequestID)
-	assert.Equal(t, 2, c.Size())
+	for _, namespace := range []string{"", "contains space", "line\nbreak", string(bytes.Repeat([]byte{'x'}, MaxContextCacheNamespaceBytes+1))} {
+		_, ok := c.Capture("prov", namespace, nil)
+		assert.False(t, ok, "namespace must fail closed")
+	}
+	assert.Equal(t, 0, c.Size())
 }
 
-// Two sellers hitting the same {property_rid, placement_id, provider_id}
-// MUST NOT share a cache entry. Different sellers have different
-// authorized package sets on this repo's targeting engine
-// (targeting/engine.go: ActivePackages includes canonicalSeller as a
-// scope), so a shared entry would disclose one seller's offers to
-// another. Regression guard for the cross-seller disclosure the
-// external review on #410 flagged as a High-severity blocker.
-func TestContextCache_KeyPartitionedBySeller(t *testing.T) {
+func TestContextCache_HitReturnsDeepClone(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "https://seller-a.example/agent", "US", &tmproto.ProviderContextMatchResponse{
-		Offers: []tmproto.Offer{{PackageID: "pkg-for-a"}},
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("request")
+	price := tmproto.OfferPrice{Amount: 5, Currency: "USD", Model: "cpm"}
+	manifest := json.RawMessage(`{"kind":"markdown"}`)
+	cyclic := map[string]any{"value": "original"}
+	cyclic["self"] = cyclic
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
+		RequestID: "original",
+		CacheTTL:  ttlPtr(60),
+		Offers: []tmproto.Offer{{
+			PackageID:        "pkg-a",
+			SellerAgent:      json.RawMessage(`{"agent_url":"https://seller.example"}`),
+			Brand:            json.RawMessage(`{"name":"Original"}`),
+			Price:            &price,
+			CreativeManifest: &manifest,
+			CreativeData:     map[string]string{"CID": "original"},
+		}},
+		Signals: map[string]any{
+			"key":          "original",
+			"nested_map":   map[string]any{"value": "original"},
+			"nested_array": []any{"original", map[string]any{"value": "original"}},
+			"cyclic":       cyclic,
+		},
 	})
 
-	// Same property/placement/provider, different seller → miss.
-	_, ok := c.Get("rid", "pl", "prov", "https://seller-b.example/agent", "US")
-	assert.False(t, ok, "seller B must not receive seller A's cached response")
-
-	// Seller A still hits.
-	got, ok := c.Get("rid", "pl", "prov", "https://seller-a.example/agent", "US")
+	got, ok := c.GetScoped(scope, hash)
 	require.True(t, ok)
-	assert.Equal(t, "pkg-for-a", got.Offers[0].PackageID)
+	got.RequestID = "mutated"
+	*got.CacheTTL = 0
+	got.Offers[0].PackageID = "mutated"
+	got.Offers[0].SellerAgent[0] = 'X'
+	got.Offers[0].Brand[0] = 'X'
+	got.Offers[0].Price.Amount = 999
+	(*got.Offers[0].CreativeManifest)[0] = 'X'
+	got.Offers[0].CreativeData["CID"] = "mutated"
+	got.Signals["key"] = "mutated"
+	got.Signals["nested_map"].(map[string]any)["value"] = "mutated"
+	got.Signals["nested_array"].([]any)[0] = "mutated"
+	got.Signals["nested_array"].([]any)[1].(map[string]any)["value"] = "mutated"
+	got.Signals["cyclic"].(map[string]any)["self"].(map[string]any)["value"] = "mutated"
 
-	assert.Equal(t, 1, c.Size(), "no ghost entries created by the seller-B miss")
+	again, ok := c.GetScoped(scope, hash)
+	require.True(t, ok)
+	assert.Equal(t, "original", again.RequestID)
+	assert.Equal(t, 60, *again.CacheTTL)
+	assert.Equal(t, "pkg-a", again.Offers[0].PackageID)
+	assert.Equal(t, byte('{'), again.Offers[0].SellerAgent[0])
+	assert.Equal(t, byte('{'), again.Offers[0].Brand[0])
+	assert.Equal(t, float64(5), again.Offers[0].Price.Amount)
+	assert.Equal(t, byte('{'), (*again.Offers[0].CreativeManifest)[0])
+	assert.Equal(t, "original", again.Offers[0].CreativeData["CID"])
+	assert.Equal(t, "original", again.Signals["key"])
+	assert.Equal(t, "original", again.Signals["nested_map"].(map[string]any)["value"])
+	assert.Equal(t, "original", again.Signals["nested_array"].([]any)[0])
+	assert.Equal(t, "original", again.Signals["nested_array"].([]any)[1].(map[string]any)["value"])
+	assert.Equal(t, "original", again.Signals["cyclic"].(map[string]any)["self"].(map[string]any)["value"])
 }
 
-// country partitions the cache too — the engine's ActivePackages
-// scopes on country as well, so a US-cached response must not serve
-// a GB request. Same failure mode class as the seller isolation
-// above.
-func TestContextCache_KeyPartitionedByCountry(t *testing.T) {
+func TestContextCache_ClonePreservesNilAndEmptyWireShapes(t *testing.T) {
+	emptyBytes := make([]byte, 0, 1)
+	emptyStrings := make([]string, 0, 1)
+	emptyValues := make([]any, 0, 1)
+	typedMap := map[string]int{"original": 1}
+	typedSlice := []int{1, 2}
+	custom := &signalCloneCustom{Counts: map[string]int{"original": 1}, Values: []int{1, 2}}
+	namedValue := 1
+	namedPointer := signalNamedIntPointer(&namedValue)
+	src := &tmproto.ProviderContextMatchResponse{
+		Type:   tmproto.TypeContextMatchResponse,
+		Offers: make([]tmproto.Offer, 0, 1),
+		Signals: map[string]any{
+			"bytes":          emptyBytes,
+			"strings":        emptyStrings,
+			"values":         emptyValues,
+			"map":            map[string]any{},
+			"string_map":     map[string]string{},
+			"nil_bytes":      []byte(nil),
+			"nil_strings":    []string(nil),
+			"nil_values":     []any(nil),
+			"nil_map":        map[string]any(nil),
+			"nil_string_map": map[string]string(nil),
+			"typed_map":      typedMap,
+			"typed_slice":    typedSlice,
+			"custom":         custom,
+			"named_pointer":  namedPointer,
+		},
+	}
+	wantJSON, err := json.Marshal(src)
+	require.NoError(t, err)
+
+	cloned, safe := cloneContextResponse(src)
+	require.True(t, safe)
+	gotJSON, err := json.Marshal(cloned)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(wantJSON), string(gotJSON))
+	require.NotNil(t, cloned.Offers)
+	require.NotNil(t, cloned.Signals)
+	require.NotNil(t, cloned.Signals["bytes"].([]byte))
+	require.NotNil(t, cloned.Signals["strings"].([]string))
+	require.NotNil(t, cloned.Signals["values"].([]any))
+	require.NotNil(t, cloned.Signals["map"].(map[string]any))
+	require.NotNil(t, cloned.Signals["string_map"].(map[string]string))
+	require.NotNil(t, cloned.Signals["typed_map"].(map[string]int))
+	require.NotNil(t, cloned.Signals["typed_slice"].([]int))
+	require.NotNil(t, cloned.Signals["custom"].(*signalCloneCustom))
+	require.IsType(t, signalNamedIntPointer(nil), cloned.Signals["named_pointer"])
+	assert.Nil(t, cloned.Signals["nil_bytes"])
+	assert.Nil(t, cloned.Signals["nil_strings"])
+	assert.Nil(t, cloned.Signals["nil_values"])
+	assert.Nil(t, cloned.Signals["nil_map"])
+	assert.Nil(t, cloned.Signals["nil_string_map"])
+
+	cloned.Offers = append(cloned.Offers, tmproto.Offer{PackageID: "clone-only"})
+	cloned.Signals["new"] = true
+	cloned.Signals["bytes"] = append(cloned.Signals["bytes"].([]byte), 1)
+	cloned.Signals["strings"] = append(cloned.Signals["strings"].([]string), "clone-only")
+	cloned.Signals["values"] = append(cloned.Signals["values"].([]any), "clone-only")
+	cloned.Signals["map"].(map[string]any)["new"] = true
+	cloned.Signals["string_map"].(map[string]string)["new"] = "clone-only"
+	cloned.Signals["typed_map"].(map[string]int)["original"] = 2
+	cloned.Signals["typed_slice"].([]int)[0] = 2
+	cloned.Signals["custom"].(*signalCloneCustom).Counts["original"] = 2
+	cloned.Signals["custom"].(*signalCloneCustom).Values[0] = 2
+	*cloned.Signals["named_pointer"].(signalNamedIntPointer) = 2
+	assert.Empty(t, src.Offers)
+	assert.NotContains(t, src.Signals, "new")
+	assert.Equal(t, byte(0), emptyBytes[:cap(emptyBytes)][0])
+	assert.Equal(t, "", emptyStrings[:cap(emptyStrings)][0])
+	assert.Nil(t, emptyValues[:cap(emptyValues)][0])
+	assert.Empty(t, src.Signals["map"])
+	assert.Empty(t, src.Signals["string_map"])
+	assert.Equal(t, 1, typedMap["original"])
+	assert.Equal(t, 1, typedSlice[0])
+	assert.Equal(t, 1, custom.Counts["original"])
+	assert.Equal(t, 1, custom.Values[0])
+	assert.Equal(t, 1, namedValue)
+
+	emptyCreativeData := map[string]string{}
+	var nilManifest json.RawMessage
+	srcOffer := tmproto.Offer{
+		SellerAgent:      json.RawMessage{},
+		Brand:            json.RawMessage{},
+		CreativeManifest: &nilManifest,
+		CreativeData:     emptyCreativeData,
+	}
+	offer := cloneOffer(srcOffer)
+	require.NotNil(t, offer.SellerAgent)
+	require.NotNil(t, offer.Brand)
+	require.NotNil(t, offer.CreativeManifest)
+	assert.Nil(t, *offer.CreativeManifest)
+	require.NotNil(t, offer.CreativeData)
+	srcOfferJSON, err := json.Marshal(srcOffer)
+	require.NoError(t, err)
+	clonedOfferJSON, err := json.Marshal(offer)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(srcOfferJSON), string(clonedOfferJSON))
+	offer.CreativeData["new"] = "clone-only"
+	assert.Empty(t, emptyCreativeData)
+
+	nilClone, safe := cloneContextResponse(&tmproto.ProviderContextMatchResponse{})
+	require.True(t, safe)
+	assert.Nil(t, nilClone.Offers)
+	assert.Nil(t, nilClone.Signals)
+}
+
+func TestContextCache_UnsafeTypedSignalsBypassInsertion(t *testing.T) {
+	bigValue := big.NewInt(1)
+	hiddenValue := &signalUnexportedEmbedding{signalHiddenMutable: signalHiddenMutable{Values: []int{1}}}
+	textKey := &signalTextMapKey{Value: "key"}
+	tests := []struct {
+		name   string
+		value  any
+		mutate func()
+	}{
+		{
+			name:  "big.Int has unexported mutable state",
+			value: bigValue,
+			mutate: func() {
+				bigValue.SetInt64(2)
+			},
+		},
+		{
+			name:  "unexported embedding contains exported slice",
+			value: hiddenValue,
+			mutate: func() {
+				hiddenValue.Values[0] = 2
+			},
+		},
+		{
+			name:  "TextMarshaler pointer map key remains mutable",
+			value: map[*signalTextMapKey]int{textKey: 1},
+			mutate: func() {
+				textKey.Value = "mutated"
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewContextCache(time.Minute)
+			scope := cacheScope(t, c, "prov", "generation-1")
+			hash := cacheHash(tt.name)
+			response := &tmproto.ProviderContextMatchResponse{Signals: map[string]any{"value": tt.value}}
+			_, safe := cloneContextResponse(response)
+			assert.False(t, safe)
+			c.PutScoped(scope, hash, response)
+			assert.Zero(t, c.Size(), "unsafe Signals must bypass cache insertion")
+			tt.mutate()
+			_, hit := c.GetScoped(scope, hash)
+			assert.False(t, hit)
+		})
+	}
+}
+
+func TestContextCache_LockedUnexportedStateBypassesInsertion(t *testing.T) {
+	value := &signalLockedMarshaler{Value: 1}
+	value.mutex.Lock()
+	defer value.mutex.Unlock()
+	if value.mutex.TryLock() {
+		value.mutex.Unlock()
+		t.Fatal("test mutex unexpectedly unlocked")
+	}
+
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "https://s.example/agent", "US", &tmproto.ProviderContextMatchResponse{
-		Offers: []tmproto.Offer{{PackageID: "pkg-us"}},
+	scope := cacheScope(t, c, "prov", "generation-1")
+	response := &tmproto.ProviderContextMatchResponse{Signals: map[string]any{"value": value}}
+	_, safe := cloneContextResponse(response)
+	assert.False(t, safe)
+	c.PutScoped(scope, cacheHash("locked"), response)
+	assert.Zero(t, c.Size())
+	if value.mutex.TryLock() {
+		value.mutex.Unlock()
+		t.Fatal("cache admission unexpectedly changed caller-owned mutex state")
+	}
+}
+
+func TestContextCache_NamedPointerSignalPreservesTypeAndIsolation(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("named-pointer")
+	value := 1
+	pointer := signalNamedIntPointer(&value)
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
+		Signals: map[string]any{"value": pointer},
+	})
+	value = 2
+
+	got, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	cloned, ok := got.Signals["value"].(signalNamedIntPointer)
+	require.True(t, ok, "clone must preserve the defined pointer type")
+	assert.Equal(t, 1, *cloned)
+	*cloned = 3
+	again, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, *again.Signals["value"].(signalNamedIntPointer))
+}
+
+func TestContextCache_UnsafeResponseRemovesOnlyCurrentExactKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		ttl    int
+		unsafe bool
+	}{
+		{name: "safe explicit zero", ttl: 0},
+		{name: "unsafe negative TTL", ttl: -1, unsafe: true},
+		{name: "unsafe zero TTL", ttl: 0, unsafe: true},
+		{name: "unsafe positive TTL", ttl: 1, unsafe: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewContextCache(time.Minute)
+			hash := cacheHash("same-key")
+			unrelatedHash := cacheHash("unrelated-key")
+			current := cacheScope(t, c, "prov", "generation-1")
+			otherProvider := cacheScope(t, c, "other", "generation-1")
+			c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "safe"})
+			c.PutScoped(current, unrelatedHash, &tmproto.ProviderContextMatchResponse{RequestID: "unrelated-hash"})
+			c.PutScoped(otherProvider, hash, &tmproto.ProviderContextMatchResponse{RequestID: "unrelated-provider"})
+
+			replacement := &tmproto.ProviderContextMatchResponse{RequestID: "replacement", CacheTTL: ttlPtr(tt.ttl)}
+			if tt.unsafe {
+				replacement.Signals = map[string]any{"value": big.NewInt(1)}
+			}
+			c.PutScoped(current, hash, replacement)
+			_, hit := c.GetScoped(current, hash)
+			assert.False(t, hit, "no-cache or unsafe replacement must remove the exact warm key")
+			unrelated, hit := c.GetScoped(current, unrelatedHash)
+			require.True(t, hit)
+			assert.Equal(t, "unrelated-hash", unrelated.RequestID)
+			other, hit := c.GetScoped(otherProvider, hash)
+			require.True(t, hit)
+			assert.Equal(t, "unrelated-provider", other.RequestID)
+			assert.Equal(t, 2, c.Size())
+		})
+	}
+
+	t.Run("stale scope cannot evict current generation", func(t *testing.T) {
+		c := NewContextCache(time.Minute)
+		hash := cacheHash("same-key")
+		old := cacheScope(t, c, "prov", "generation-1")
+		current := cacheScope(t, c, "prov", "generation-2")
+		c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new-generation"})
+		c.PutScoped(old, hash, &tmproto.ProviderContextMatchResponse{
+			RequestID: "stale-unsafe",
+			CacheTTL:  ttlPtr(0),
+			Signals:   map[string]any{"value": big.NewInt(2)},
+		})
+		got, hit := c.GetScoped(current, hash)
+		require.True(t, hit, "no-cache/unsafe stale scope must not evict the current generation")
+		assert.Equal(t, "new-generation", got.RequestID)
+		assert.Equal(t, 1, c.Size())
+	})
+}
+
+func TestContextCache_TypedSignalsAreIsolatedOnPutAndGet(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("typed-signals")
+	typedMap := map[string]int{"value": 1}
+	typedSlice := []int{1}
+	typedInt := 1
+	custom := &signalCloneCustom{Counts: map[string]int{"value": 1}, Values: []int{1}}
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{
+		Signals: map[string]any{
+			"map":    typedMap,
+			"slice":  typedSlice,
+			"int":    &typedInt,
+			"custom": custom,
+		},
 	})
 
-	_, ok := c.Get("rid", "pl", "prov", "https://s.example/agent", "GB")
-	assert.False(t, ok, "country partition must isolate GB from a US-cached response")
+	// Mutating the caller-owned response after Put must not reach the entry.
+	typedMap["value"] = 2
+	typedSlice[0] = 2
+	typedInt = 2
+	custom.Counts["value"] = 2
+	custom.Values[0] = 2
+	got, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, got.Signals["map"].(map[string]int)["value"])
+	assert.Equal(t, 1, got.Signals["slice"].([]int)[0])
+	assert.Equal(t, 1, *got.Signals["int"].(*int))
+	assert.Equal(t, 1, got.Signals["custom"].(*signalCloneCustom).Counts["value"])
+	assert.Equal(t, 1, got.Signals["custom"].(*signalCloneCustom).Values[0])
 
-	got, ok := c.Get("rid", "pl", "prov", "https://s.example/agent", "US")
-	require.True(t, ok)
-	assert.Equal(t, "pkg-us", got.Offers[0].PackageID)
+	// Mutating one returned hit must likewise not reach a later hit.
+	got.Signals["map"].(map[string]int)["value"] = 3
+	got.Signals["slice"].([]int)[0] = 3
+	*got.Signals["int"].(*int) = 3
+	got.Signals["custom"].(*signalCloneCustom).Counts["value"] = 3
+	got.Signals["custom"].(*signalCloneCustom).Values[0] = 3
+	again, hit := c.GetScoped(scope, hash)
+	require.True(t, hit)
+	assert.Equal(t, 1, again.Signals["map"].(map[string]int)["value"])
+	assert.Equal(t, 1, again.Signals["slice"].([]int)[0])
+	assert.Equal(t, 1, *again.Signals["int"].(*int))
+	assert.Equal(t, 1, again.Signals["custom"].(*signalCloneCustom).Counts["value"])
+	assert.Equal(t, 1, again.Signals["custom"].(*signalCloneCustom).Values[0])
 }
 
-// MaxEntries cap bounds memory. When the cache is full and a new key
-// arrives, the oldest insert is evicted so map size stays at the cap.
+func TestContextCache_TTLSemantics(t *testing.T) {
+	tests := []struct {
+		name       string
+		configured time.Duration
+		provider   *int
+		advance    time.Duration
+		wantHit    bool
+	}{
+		{"default alive", 2 * time.Second, nil, 1500 * time.Millisecond, true},
+		{"default expired", 2 * time.Second, nil, 3 * time.Second, false},
+		{"provider override alive", time.Hour, ttlPtr(2), 1500 * time.Millisecond, true},
+		{"provider override expired", time.Hour, ttlPtr(2), 3 * time.Second, false},
+		{"explicit zero", time.Hour, ttlPtr(0), 0, false},
+		{"negative falls back", 2 * time.Second, ttlPtr(-1), 1500 * time.Millisecond, true},
+		{"maximum clamp", time.Minute, ttlPtr(math.MaxInt), MaxContextCacheTTL + time.Second, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewContextCache(tt.configured)
+			now := time.Unix(1_000_000_000, 0)
+			c.now = func() time.Time { return now }
+			scope := cacheScope(t, c, "prov", "generation-1")
+			hash := cacheHash("request")
+			c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{CacheTTL: tt.provider})
+			now = now.Add(tt.advance)
+			_, hit := c.GetScoped(scope, hash)
+			assert.Equal(t, tt.wantHit, hit)
+		})
+	}
+}
+
+func TestContextCache_KeyPartitionsProviderNamespaceAndContext(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	a1 := cacheScope(t, c, "provider-a", "generation-1")
+	b1 := cacheScope(t, c, "provider-b", "generation-1")
+	h1, h2 := cacheHash("request-one"), cacheHash("request-two")
+	c.PutScoped(a1, h1, &tmproto.ProviderContextMatchResponse{RequestID: "a-one"})
+	c.PutScoped(b1, h1, &tmproto.ProviderContextMatchResponse{RequestID: "b-one"})
+	c.PutScoped(a1, h2, &tmproto.ProviderContextMatchResponse{RequestID: "a-two"})
+
+	gotA1, ok := c.GetScoped(a1, h1)
+	require.True(t, ok)
+	gotB1, ok := c.GetScoped(b1, h1)
+	require.True(t, ok)
+	gotA2, ok := c.GetScoped(a1, h2)
+	require.True(t, ok)
+	assert.Equal(t, "a-one", gotA1.RequestID)
+	assert.Equal(t, "b-one", gotB1.RequestID)
+	assert.Equal(t, "a-two", gotA2.RequestID)
+	assert.Equal(t, 3, c.Size())
+}
+
+func TestContextCache_NamespaceRotationPurgesAndRejectsReuse(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	hash := cacheHash("request")
+	first := cacheScope(t, c, "prov", "generation-1")
+	c.PutScoped(first, hash, &tmproto.ProviderContextMatchResponse{RequestID: "old"})
+
+	second := cacheScope(t, c, "prov", "generation-2")
+	assert.Equal(t, 0, c.Size(), "rotation must make old entries unreachable immediately")
+	_, hit := c.GetScoped(first, hash)
+	assert.False(t, hit)
+	c.PutScoped(first, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-old"})
+	assert.Equal(t, 0, c.Size(), "an old in-flight response must not populate the new generation")
+
+	c.PutScoped(second, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new"})
+	_, hit = c.GetScoped(second, hash)
+	require.True(t, hit)
+
+	_, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://provider.example"}`))
+	assert.False(t, ok, "generation-token reuse must fail closed")
+	assert.Equal(t, 1, c.Size(), "a stale reused token must not purge the active generation")
+	got, hit := c.GetScoped(second, hash)
+	require.True(t, hit, "the active generation must survive a stale reused token")
+	assert.Equal(t, "new", got.RequestID)
+}
+
+func TestContextCache_UnknownValidityInvalidatesGeneration(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	scope, ok := c.Capture("prov", "generation-1", evaluation)
+	require.True(t, ok)
+	hash := cacheHash("request")
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{})
+	c.invalidateEvaluation("prov", evaluation, 0)
+	assert.Equal(t, 0, c.Size())
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-inflight"})
+	assert.Equal(t, 0, c.Size(), "global uncertainty must reject stale in-flight insertion")
+	_, ok = c.Capture("prov", "generation-1", evaluation)
+	assert.False(t, ok, "validity recovery requires a novel generation token")
+	_, ok = c.Capture("prov", "generation-2", evaluation)
+	assert.True(t, ok)
+}
+
+func TestContextCache_ProviderEvaluationContextRotation(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	hash := cacheHash("request")
+	oldScope, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://old.example"}`))
+	require.True(t, ok)
+	c.PutScoped(oldScope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "old"})
+	newScope, ok := c.Capture("prov", "generation-1", []byte(`{"endpoint":"https://new.example"}`))
+	require.True(t, ok)
+	assert.NotEqual(t, oldScope, newScope)
+	assert.Equal(t, 0, c.Size())
+}
+
+func TestContextCache_StaleEvaluationCannotInvalidateCurrentRevision(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	hash := cacheHash("request")
+	oldEvaluation := []byte(`{"endpoint":"https://old.example","revision":1}`)
+	newEvaluation := []byte(`{"endpoint":"https://new.example","revision":2}`)
+	oldScope, ok := c.captureAtRevision("prov", "generation-1", oldEvaluation, 1)
+	require.True(t, ok)
+	newScope, ok := c.captureAtRevision("prov", "generation-1", newEvaluation, 2)
+	require.True(t, ok)
+	c.PutScoped(newScope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "new"})
+
+	c.invalidateEvaluation("prov", oldEvaluation, 1)
+	got, hit := c.GetScoped(newScope, hash)
+	require.True(t, hit, "a stale evaluation must not purge the replacement revision")
+	assert.Equal(t, "new", got.RequestID)
+	c.PutScoped(oldScope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "late-old"})
+	got, hit = c.GetScoped(newScope, hash)
+	require.True(t, hit, "a stale scope must not overwrite the replacement revision")
+	assert.Equal(t, "new", got.RequestID)
+}
+
+func TestContextCache_DoesNotRetainNamespaceOrRequestPreimage(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	namespace := "opaque-sensitive-generation-marker"
+	preimage := "private-request-preimage-marker"
+	scope := cacheScope(t, c, "prov", namespace)
+	c.PutScoped(scope, cacheHash(preimage), &tmproto.ProviderContextMatchResponse{RequestID: "response"})
+
+	internal := fmt.Sprintf("%#v", c)
+	assert.NotContains(t, internal, namespace)
+	assert.NotContains(t, internal, preimage)
+}
+
+func TestContextCache_NamespaceDigestUsesUnambiguousFraming(t *testing.T) {
+	c := NewContextCache(time.Minute)
+	assert.NotEqual(t, c.namespaceDigest("ab", []byte("c")), c.namespaceDigest("a", []byte("bc")))
+}
+
+func TestContextCache_GenerationHistoryExhaustionIsObservableAndSafe(t *testing.T) {
+	metrics := newCountingCacheMetrics()
+	c := NewContextCache(time.Minute, WithContextCacheMetrics(metrics))
+	const providerID = "bounded_provider"
+	const namespaceMarker = "sensitive-generation-marker"
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	for i := range maxContextCacheGenerationsPerProvider {
+		namespace := fmt.Sprintf("%s-%04d", namespaceMarker, i)
+		_, ok := c.Capture(providerID, namespace, evaluation)
+		require.True(t, ok)
+	}
+
+	_, ok := c.Capture(providerID, namespaceMarker+"-exhausted", evaluation)
+	assert.False(t, ok, "history exhaustion must fail closed")
+	_, ok = c.Capture(providerID, namespaceMarker+"-later", evaluation)
+	assert.False(t, ok, "an exhausted provider remains bypass-only until restart")
+	assert.Zero(t, c.Size())
+	metrics.mu.Lock()
+	assert.Equal(t, map[string]int{providerID: 1}, metrics.generationExhaustions)
+	metrics.mu.Unlock()
+	internal := fmt.Sprintf("%#v %#v", c, metrics)
+	assert.NotContains(t, internal, namespaceMarker)
+}
+
+func TestContextCache_ReplayAtGenerationLimitDoesNotExhaustCurrent(t *testing.T) {
+	metrics := newCountingCacheMetrics()
+	c := NewContextCache(time.Minute, WithContextCacheMetrics(metrics))
+	const providerID = "bounded_provider"
+	evaluation := []byte(`{"endpoint":"https://provider.example"}`)
+	var current ContextCacheScope
+	for i := range maxContextCacheGenerationsPerProvider {
+		namespace := fmt.Sprintf("generation-%04d", i)
+		var ok bool
+		current, ok = c.Capture(providerID, namespace, evaluation)
+		require.True(t, ok)
+	}
+	hash := cacheHash("warm-current")
+	c.PutScoped(current, hash, &tmproto.ProviderContextMatchResponse{RequestID: "current"})
+
+	_, ok := c.Capture(providerID, "generation-0000", evaluation)
+	assert.False(t, ok, "a replayed generation must bypass")
+	got, hit := c.GetScoped(current, hash)
+	require.True(t, hit, "replay at the history limit must not block the current generation")
+	assert.Equal(t, "current", got.RequestID)
+	metrics.mu.Lock()
+	assert.Empty(t, metrics.generationExhaustions)
+	metrics.mu.Unlock()
+}
+
 func TestContextCache_MaxEntriesEvictsOldest(t *testing.T) {
 	c := NewContextCache(time.Minute, WithContextCacheMaxEntries(2))
 	now := time.Unix(1_000_000_000, 0)
 	c.now = func() time.Time { return now }
-
-	// Insert entry #1.
-	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r1"})
-	// Advance the clock so insertedAt differs.
-	now = now.Add(time.Second)
-	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
+	scope := cacheScope(t, c, "prov", "generation-1")
+	for _, value := range []string{"one", "two", "three"} {
+		c.PutScoped(scope, cacheHash(value), &tmproto.ProviderContextMatchResponse{RequestID: value})
+		now = now.Add(time.Second)
+	}
 	assert.Equal(t, 2, c.Size())
-
-	// Insert #3 pushes size to 3 → oldest (rid-1) evicted.
-	now = now.Add(time.Second)
-	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r3"})
-	assert.Equal(t, 2, c.Size(), "cap must hold at MaxEntries after eviction")
-
-	_, ok1 := c.Get("rid-1", "pl", "prov", "", "")
-	_, ok2 := c.Get("rid-2", "pl", "prov", "", "")
-	_, ok3 := c.Get("rid-3", "pl", "prov", "", "")
-	assert.False(t, ok1, "oldest insert (rid-1) must be evicted first")
-	assert.True(t, ok2, "middle insert (rid-2) must survive")
-	assert.True(t, ok3, "newest insert (rid-3) must be present")
+	_, hit := c.GetScoped(scope, cacheHash("one"))
+	assert.False(t, hit)
+	_, hit = c.GetScoped(scope, cacheHash("two"))
+	assert.True(t, hit)
+	_, hit = c.GetScoped(scope, cacheHash("three"))
+	assert.True(t, hit)
 }
 
-// When the cap is hit but some entries are expired, sweep them first
-// before touching live entries — an expired-and-evictable entry
-// shouldn't cost a still-live one its slot.
-func TestContextCache_MaxEntriesSweepsExpiredBeforeEvicting(t *testing.T) {
-	c := NewContextCache(time.Minute, WithContextCacheMaxEntries(2))
-	now := time.Unix(1_000_000_000, 0)
-	c.now = func() time.Time { return now }
-
-	c.Put("rid-1", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{
-		CacheTTL: ttlPtr(1), // 1-second TTL
-	})
-	now = now.Add(time.Second)
-	c.Put("rid-2", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
-
-	// Advance past rid-1's TTL but keep rid-2 fresh.
-	now = now.Add(2 * time.Second) // rid-1 expired, rid-2 alive
-	// Third insert triggers cap enforcement: sweep drops rid-1, no
-	// eviction of the live rid-2 needed.
-	c.Put("rid-3", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r3"})
-
-	_, ok2 := c.Get("rid-2", "pl", "prov", "", "")
-	_, ok3 := c.Get("rid-3", "pl", "prov", "", "")
-	assert.True(t, ok2, "live rid-2 must survive when sweep alone reclaims a slot")
-	assert.True(t, ok3, "new rid-3 must be present")
-}
-
-// Overwriting an existing key doesn't grow the map, so the cap
-// enforcement path skips both sweep and evict on that path.
-func TestContextCache_MaxEntriesAllowsInPlaceOverwrite(t *testing.T) {
-	c := NewContextCache(time.Minute, WithContextCacheMaxEntries(1))
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r1"})
-	// Overwrite the same key — must not evict anything and size stays at 1.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "r2"})
-	assert.Equal(t, 1, c.Size())
-	got, ok := c.Get("rid", "pl", "prov", "", "")
-	require.True(t, ok)
-	assert.Equal(t, "r2", got.RequestID, "overwrite must replace the value in place")
-}
-
-// Metrics fire on every hit and miss.
 func TestContextCache_MetricsCounts(t *testing.T) {
-	m := newCountingCacheMetrics()
-	c := NewContextCache(time.Minute, WithContextCacheMetrics(m))
-
-	// Two misses.
-	_, _ = c.Get("rid", "pl", "prov", "", "")
-	_, _ = c.Get("rid", "pl", "prov", "", "")
-
-	// One populated, then two hits.
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
-	_, _ = c.Get("rid", "pl", "prov", "", "")
-	_, _ = c.Get("rid", "pl", "prov", "", "")
-
-	assert.Equal(t, 2, m.hits["prov"])
-	assert.Equal(t, 2, m.misses["prov"])
+	metrics := newCountingCacheMetrics()
+	c := NewContextCache(time.Minute, WithContextCacheMetrics(metrics))
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("request")
+	_, _ = c.GetScoped(scope, hash)
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{})
+	_, _ = c.GetScoped(scope, hash)
+	assert.Equal(t, 1, metrics.hits["prov"])
+	assert.Equal(t, 1, metrics.misses["prov"])
 }
 
-// Concurrent Get/Put must not race. With the -race detector this
-// exercises the mu-protected map.
 func TestContextCache_ConcurrentSafe(t *testing.T) {
 	c := NewContextCache(time.Minute)
-	c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
+	scope := cacheScope(t, c, "prov", "generation-1")
+	hash := cacheHash("request")
+	c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "original"})
 
 	var wg sync.WaitGroup
 	var hits atomic.Int64
 	for range 32 {
 		wg.Go(func() {
-			for j := range 200 {
-				if _, ok := c.Get("rid", "pl", "prov", "", ""); ok {
+			for i := range 200 {
+				if _, ok := c.GetScoped(scope, hash); ok {
 					hits.Add(1)
 				}
-				if j%10 == 0 {
-					c.Put("rid", "pl", "prov", "", "", &tmproto.ProviderContextMatchResponse{RequestID: "orig"})
+				if i%10 == 0 {
+					c.PutScoped(scope, hash, &tmproto.ProviderContextMatchResponse{RequestID: "original"})
 				}
 			}
 		})
 	}
 	wg.Wait()
-
-	// Every iteration should hit — the entry is always fresh.
 	assert.Equal(t, int64(32*200), hits.Load())
 }

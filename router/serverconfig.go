@@ -66,15 +66,14 @@ type CacheConfig struct {
 	// collapses to that default.
 	DefaultTTLSeconds int `json:"default_ttl_seconds,omitempty"`
 	// MaxEntries caps the number of live cache entries so a caller
-	// varying placement/seller/country cannot grow the map without
-	// bound. Zero or unset applies DefaultContextCacheMaxEntries.
+	// varying any context-hashed request dimension cannot grow the map
+	// without bound. Zero or unset applies DefaultContextCacheMaxEntries.
 	MaxEntries int `json:"max_entries,omitempty"`
 }
 
 // DefaultContextCacheMaxEntries is the fallback cap when the operator
-// does not configure MaxEntries. Sized well above any realistic
-// {property_rid × placement × provider × seller × country} product
-// for a real deployment.
+// does not configure MaxEntries. Sized for a realistic working set of
+// {provider_id, cache_namespace, context_hash} tuples.
 const DefaultContextCacheMaxEntries = 10_000
 
 // MaxEntriesResolved returns the cap the cache should apply, honoring

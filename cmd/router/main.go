@@ -124,6 +124,7 @@ func main() {
 	reg.DefineCounter("tmp_offers_total", "Total offers returned across all providers.", nil)
 	reg.DefineCounter("tmp_context_cache_hits_total", "Context Match cache hits by provider.", []string{"provider"})
 	reg.DefineCounter("tmp_context_cache_misses_total", "Context Match cache misses by provider.", []string{"provider"})
+	reg.DefineCounter("tmp_context_cache_generation_exhausted_total", "Context Match cache generation-history exhaustion by provider.", []string{"provider"})
 
 	// Wire fan-out metrics now that registry exists.
 	fanOutMetrics.reg = reg
@@ -570,5 +571,11 @@ func (a *contextCacheMetricsAdapter) IncHit(providerID string) {
 func (a *contextCacheMetricsAdapter) IncMiss(providerID string) {
 	if a.reg != nil {
 		a.reg.CounterInc("tmp_context_cache_misses_total", providerID)
+	}
+}
+
+func (a *contextCacheMetricsAdapter) IncGenerationExhausted(providerID string) {
+	if a.reg != nil {
+		a.reg.CounterInc("tmp_context_cache_generation_exhausted_total", providerID)
 	}
 }

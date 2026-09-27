@@ -88,6 +88,10 @@ const (
 	// Also stamped into its suppression keys, so the seeder writes
 	// suppressions under the same value.
 	ContextProviderID = "e2e_context"
+	// ContextCacheNamespace is a trusted, non-secret generation token for the
+	// hermetic context provider. The stack has fixed auth, configuration, model,
+	// package, and rules state for one run, so a static namespace is safe here.
+	ContextCacheNamespace = "e2e-context-generation-v1"
 	// IdentityProviderID is the provider_id the identity-agent runs under.
 	IdentityProviderID = "e2e_identity"
 
@@ -182,12 +186,10 @@ const UnregisteredPropertyRID = "019700ff-0e2e-7000-8000-0000000000ff"
 // eligibility — its only job here is to separate the router's Context Match
 // cache entries.
 //
-// The router keys cached provider responses on
-// {property_rid, placement_id, provider_id, seller_agent_url, country}.
-// artifact_refs are NOT part of that key, so two requests that differ only
-// by artifact would share one cache entry. Every context scenario therefore
-// gets a placement of its own, which guarantees each one is a real fan-out
-// and not a hit on a neighbouring scenario's entry.
+// The router keys cached provider responses by provider, trusted namespace,
+// and an exact hash of the forwarded request. Every context scenario still
+// gets a placement of its own so its first request is predictably a miss and
+// its metrics remain independent of neighbouring scenarios.
 //
 // These are the base names. The verifier suffixes each one with a per-run
 // nonce so a second run against an already-warm router is also a real
