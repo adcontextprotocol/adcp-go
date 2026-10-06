@@ -223,6 +223,7 @@ func TestMutatingToolsMatchSchemas(t *testing.T) {
 	}
 	want := map[string]bool{}
 	for _, f := range files {
+		// #nosec G304 -- test reads request schemas matched by a fixed glob under adcp/v3/schemas.
 		raw, err := os.ReadFile(f)
 		require.NoError(t, err)
 		var s struct {

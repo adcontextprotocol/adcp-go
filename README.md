@@ -45,7 +45,7 @@ module.
 ## Building an Agent
 
 ```bash
-go get github.com/adcontextprotocol/adcp-go/adcp/v3
+go get github.com/adcontextprotocol/adcp-go/adcp
 ```
 
 ```go
@@ -56,23 +56,15 @@ import (
     "log"
     "time"
 
-    "github.com/adcontextprotocol/adcp-go/adcp/v3"
-    "github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
+    "github.com/adcontextprotocol/adcp-go/adcp"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
-    // Build the store once at startup, outside any server factory.
-    store := idempotency.New(idempotency.Options{
-        Backend: idempotency.NewMemoryBackend(time.Minute), // idempotency.NewPgBackend(db) for multi-instance
-        TTL:     24 * time.Hour,
-    })
-
     server := mcp.NewServer(&mcp.Implementation{Name: "my-agent", Version: "1.0.0"}, nil)
 
     adcp.Register(server, adcp.Config{
         IdempotencyReplayTTL: 24 * time.Hour,
-        Idempotency:          store,
         Capabilities: &adcp.CapabilitiesData{
             SupportedProtocols: []string{"media_buy"},
             MediaBuy: &adcp.MediaBuyCapabilities{

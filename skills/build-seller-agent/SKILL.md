@@ -41,8 +41,7 @@ import (
     "sync/atomic"
     "time"
 
-    "github.com/adcontextprotocol/adcp-go/adcp/v3"
-    "github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
+    "github.com/adcontextprotocol/adcp-go/adcp"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -104,19 +103,12 @@ func main() {
         delivery:  make(map[string]*struct{ Impressions, Clicks int; Spend float64 }),
     }
 
-    // Build the store once, outside the per-session server factory below.
-    store := idempotency.New(idempotency.Options{
-        Backend: idempotency.NewMemoryBackend(time.Minute), // idempotency.NewPgBackend(db) for multi-instance
-        TTL:     24 * time.Hour,
-    })
-
     log.Fatal(adcp.Serve(func() *mcp.Server {
         server := mcp.NewServer(&mcp.Implementation{Name: "my-seller", Version: "1.0.0"}, nil)
 
         adcp.Register(server, adcp.Config{
             Sandbox:              true,
-            IdempotencyReplayTTL: 24 * time.Hour, // required — must equal the store TTL
-            Idempotency:          store,          // required — Register panics without it
+            IdempotencyReplayTTL: 24 * time.Hour, // required — how long you retain idempotency_key responses
 
             // Optional — declare typed 3.0 capability blocks. Omit to ship a minimal response.
             Capabilities: &adcp.CapabilitiesData{
@@ -348,7 +340,7 @@ module your-seller-agent
 go 1.25
 
 require (
-    github.com/adcontextprotocol/adcp-go/adcp/v3 v3.2.1
+    github.com/adcontextprotocol/adcp-go/adcp v0.0.0
     github.com/modelcontextprotocol/go-sdk v1.5.0
 )
 ```
@@ -439,14 +431,14 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
 ```go
 import (
-    "github.com/adcontextprotocol/adcp-go/adcp/v3"
+    "github.com/adcontextprotocol/adcp-go/adcp"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 ```
 
 | Function | Usage |
 |----------|-------|
-| `adcp.Register(server, adcp.Config{...})` | Wire handlers — only set the tools you support. Auto-detects capabilities. `Idempotency` (built once, TTL equal to `IdempotencyReplayTTL`) is required. |
+| `adcp.Register(server, adcp.Config{...})` | Wire handlers — only set the tools you support. Auto-detects capabilities. |
 | `adcp.Config.IdempotencyReplayTTL` | **Required.** How long you retain idempotency_key responses. Must be 1h–7d; 24h is standard. |
 | `adcp.Config.Capabilities` | Optional typed CapabilitiesData — declare account / media_buy / audience_targeting blocks. Filled in automatically if nil. |
 | `adcp.Config.ResolveAccount` | Automatic account resolution. Returns ACCOUNT_NOT_FOUND if nil. |
