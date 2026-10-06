@@ -413,7 +413,10 @@ type Config struct {
 	// server factory you pass to Serve — Serve creates a server per session,
 	// so a per-Register store would not replay across sessions. Its TTL must
 	// equal IdempotencyReplayTTL. Use idempotency.NewPgBackend for
-	// multi-instance deployments.
+	// multi-instance deployments. Keys are scoped per principal
+	// (idempotency.WithPrincipal / PrincipalFromContext). Calls without a
+	// principal share one anonymous scope; authenticate callers so keys cannot
+	// collide across buyers.
 	Idempotency *idempotency.Store
 
 	// Capabilities, if set, declares the full typed capabilities response.

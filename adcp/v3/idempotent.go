@@ -35,8 +35,8 @@ var mutatingTools = map[string]bool{
 }
 
 // anonymousPrincipal scopes idempotency keys for unauthenticated callers,
-// who are indistinguishable from each other anyway. Use Config.RequirePrincipal
-// to reject unauthenticated mutating calls instead.
+// who are indistinguishable from each other anyway.
+// Authenticate callers so each gets its own scope.
 const anonymousPrincipal = "anonymous"
 
 // errNotCached carries a tool-level error result out of Store.Wrap without
@@ -98,6 +98,7 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			return Errorf("INTERNAL_ERROR", ErrorOptions{Message: "cached response is not a JSON object"})
 		}
 		data["replayed"] = true
+		delete(data, "context")
 		return attachContext(buildResult("Replayed cached response", data), requestContext(raw)), data, nil
 	}
 }

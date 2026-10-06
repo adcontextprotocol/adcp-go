@@ -121,6 +121,20 @@ func TestRegisterDoesNotCacheErrorResults(t *testing.T) {
 	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
 }
 
+func TestRegisterReplayDropsCachedContext(t *testing.T) {
+	var calls int32
+	cs := newRegisteredSession(t, baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)}))
+	key := idempotency.Generate()
+
+	callSession(t, cs, "create_media_buy", map[string]any{
+		"idempotency_key": key, "context": map[string]any{"attempt": "1"},
+	})
+	second := callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": key})
+
+	assert.Equal(t, true, second["replayed"])
+	assert.Nil(t, second["context"], "replay must not echo the first request's context")
+}
+
 func TestRegisterReadToolsAreNotWrapped(t *testing.T) {
 	cs := newRegisteredSession(t, baseTestConfig(Config{
 		GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
