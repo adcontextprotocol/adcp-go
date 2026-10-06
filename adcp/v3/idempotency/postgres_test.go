@@ -243,3 +243,31 @@ func TestPgReplaceIfHashDriverError(t *testing.T) {
 	_, err := b.ReplaceIfHash(context.Background(), "s", "k", "claim", &Entry{Hash: "final"})
 	require.ErrorContains(t, err, "idempotency: pg replace")
 }
+
+// webhook.Store.Dedup stores entries with nil Response; the column is NOT
+// NULL, so the bound arg must be an empty slice, not nil.
+func TestPgPutIfAbsentNilResponseBindsEmptySlice(t *testing.T) {
+	b, mock, done := newPgMock(t)
+	defer done()
+	exp := time.Now().Add(time.Hour).UTC()
+	mock.ExpectQuery(putRegexp.String()).
+		WithArgs("s", "k", "h", []byte{}, sqlmock.AnyArg(), exp).
+		WillReturnRows(sqlmock.NewRows([]string{"hash"}).AddRow("h"))
+
+	_, stored, err := b.PutIfAbsent(context.Background(), "s", "k", &Entry{Hash: "h", Response: nil, ExpiresAt: exp})
+	require.NoError(t, err)
+	assert.True(t, stored)
+}
+
+func TestPgReplaceIfHashNilResponseBindsEmptySlice(t *testing.T) {
+	b, mock, done := newPgMock(t)
+	defer done()
+	exp := time.Now().Add(time.Hour).UTC()
+	mock.ExpectExec(replaceRegexp.String()).
+		WithArgs("s", "k", "claim", "final", []byte{}, sqlmock.AnyArg(), exp).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	ok, err := b.ReplaceIfHash(context.Background(), "s", "k", "claim", &Entry{Hash: "final", Response: nil, ExpiresAt: exp})
+	require.NoError(t, err)
+	assert.True(t, ok)
+}

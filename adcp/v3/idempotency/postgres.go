@@ -66,7 +66,7 @@ func (b *PgBackend) PutIfAbsent(ctx context.Context, scope, key string, entry *E
 		createdAt = time.Now().UTC()
 	}
 	var gotHash string
-	err := b.db.QueryRowContext(ctx, insert, scope, key, entry.Hash, entry.Response, createdAt, entry.ExpiresAt).Scan(&gotHash)
+	err := b.db.QueryRowContext(ctx, insert, scope, key, entry.Hash, responseBytes(entry.Response), createdAt, entry.ExpiresAt).Scan(&gotHash)
 	if err == nil {
 		return nil, true, nil
 	}
@@ -96,7 +96,7 @@ func (b *PgBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash strin
 	if createdAt.IsZero() {
 		createdAt = time.Now().UTC()
 	}
-	res, err := b.db.ExecContext(ctx, q, scope, key, oldHash, entry.Hash, entry.Response, createdAt, entry.ExpiresAt)
+	res, err := b.db.ExecContext(ctx, q, scope, key, oldHash, entry.Hash, responseBytes(entry.Response), createdAt, entry.ExpiresAt)
 	if err != nil {
 		return false, fmt.Errorf("idempotency: pg replace: %w", err)
 	}
@@ -119,4 +119,13 @@ func (b *PgBackend) DeleteIfHash(ctx context.Context, scope, key, hash string) (
 		return false, fmt.Errorf("idempotency: pg delete: %w", err)
 	}
 	return n == 1, nil
+}
+
+// responseBytes maps a nil response to an empty slice: the response
+// column is NOT NULL and database/sql binds nil []byte as NULL.
+func responseBytes(b []byte) []byte {
+	if b == nil {
+		return []byte{}
+	}
+	return b
 }
