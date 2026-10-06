@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -467,7 +468,7 @@ func TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin(t *testing.T) {
 
 func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 	ctxValue := map[string]any{"trace_id": "ctx-1", "retry": false}
-	args := map[string]any{"context": ctxValue}
+	args := map[string]any{"context": ctxValue, "idempotency_key": "create-media-buy-stamp-0001"}
 
 	t.Run("success stamps sandbox and context", func(t *testing.T) {
 		result := callRegisteredTool(t, baseTestConfig(Config{
@@ -563,6 +564,9 @@ func TestRegisteredCreateMediaBuyStampsVariants(t *testing.T) {
 
 func baseTestConfig(cfg Config) Config {
 	cfg.IdempotencyReplayTTL = 24 * time.Hour
+	if cfg.Idempotency == nil {
+		cfg.Idempotency = idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: cfg.IdempotencyReplayTTL})
+	}
 	if cfg.Capabilities == nil {
 		cfg.Capabilities = &CapabilitiesData{SupportedProtocols: []string{"media_buy"}}
 	}
@@ -580,7 +584,7 @@ func TestRegisteredRefineProposalsPreflightsBeforeMutation(t *testing.T) {
 			return nil, nil
 		},
 	}), "refine_proposals", map[string]any{
-		"idempotency_key": "idem-preflight",
+		"idempotency_key": "idem-preflight-0001",
 		"refinements":     []any{map[string]any{"proposal_id": "p-1", "action": "revise", "ask": "reduce the rate"}},
 	})
 
@@ -602,7 +606,7 @@ func TestRegisteredRefineProposalsDoesNotTreatContextAsAccount(t *testing.T) {
 			return &RefineProposalsData{Status: "submitted", TaskID: "task-1"}, nil
 		},
 	}), "refine_proposals", map[string]any{
-		"idempotency_key": "idem-context",
+		"idempotency_key": "idem-context-00001",
 		"context":         map[string]any{"trace": "opaque"},
 		"refinements":     []any{map[string]any{"proposal_id": "p-1", "action": "revise", "ask": "reduce the rate"}},
 	})
@@ -628,7 +632,7 @@ func TestRegisteredRefineProposalsUsesAtomicFinalizeWrapper(t *testing.T) {
 			return execute()
 		},
 	}), "refine_proposals", map[string]any{
-		"idempotency_key": "idem-finalize",
+		"idempotency_key": "idem-finalize-0001",
 		"refinements":     []any{map[string]any{"proposal_id": "draft-1", "action": "finalize"}},
 	})
 
