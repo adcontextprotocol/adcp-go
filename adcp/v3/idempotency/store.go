@@ -251,6 +251,9 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 	}
 }
 
+// claimFinalizeTimeout bounds the detached claim release/replace calls.
+const claimFinalizeTimeout = 10 * time.Second
+
 // runClaimed claims (scope, key) before executing h so concurrent duplicates
 // see IDEMPOTENCY_IN_FLIGHT instead of running the handler again.
 func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req []byte, scope, key, hash string, now time.Time) (*Result, error) {
@@ -274,10 +277,16 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	// IDEMPOTENCY_IN_FLIGHT, then IDEMPOTENCY_EXPIRED, and never
 	// re-executes an ambiguous outcome.
 	resp, err := h(ctx, req)
+	// Finalize detached from the caller's cancellation so a cancelled request
+	// still records or releases its claim, but bounded so a hung backend
+	// cannot block forever.
+	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), claimFinalizeTimeout)
+	defer cancel()
+
 	if err != nil {
 		// Handler failures are not cached (see Handler): release the claim
 		// so a retry with the same key can execute.
-		if _, relErr := b.DeleteIfHash(context.WithoutCancel(ctx), scope, key, claimHash); relErr != nil {
+		if _, relErr := b.DeleteIfHash(fctx, scope, key, claimHash); relErr != nil {
 			return nil, errors.Join(err, relErr)
 		}
 		return nil, err
@@ -287,7 +296,7 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	// retries then see IN_FLIGHT instead of executing the handler twice.
 	// A false result means the claim vanished (swept after TTL); the fresh
 	// response is still correct for this caller, so it is ignored.
-	if _, err := b.ReplaceIfHash(context.WithoutCancel(ctx), scope, key, claimHash, final); err != nil {
+	if _, err := b.ReplaceIfHash(fctx, scope, key, claimHash, final); err != nil {
 		return nil, err
 	}
 	return &Result{Response: resp, Replayed: false, Key: key}, nil
