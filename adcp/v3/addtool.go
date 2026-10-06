@@ -35,6 +35,7 @@ func AddTool[In any](server *mcp.Server, name, description string, handler func(
 		Name:        name,
 		Description: description,
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx = withRequestPrincipal(ctx, req)
 		var input In
 		if req.Params.Arguments != nil {
 			if parseErr := json.Unmarshal(req.Params.Arguments, &input); parseErr != nil {

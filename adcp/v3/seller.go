@@ -48,6 +48,9 @@ func Register(server *mcp.Server, cfg Config) {
 	if cfg.Idempotency != nil && cfg.Idempotency.TTL() != cfg.IdempotencyReplayTTL {
 		panic(fmt.Sprintf("adcp.Register: Config.Idempotency TTL (%s) must equal IdempotencyReplayTTL (%s) — capabilities would advertise the wrong replay window", cfg.Idempotency.TTL(), cfg.IdempotencyReplayTTL))
 	}
+	if cfg.RequirePrincipal {
+		server.AddReceivingMiddleware(requirePrincipal)
+	}
 	idem := cfg.Idempotency
 	sandbox := cfg.Sandbox
 
@@ -456,8 +459,8 @@ type Config struct {
 	// would not replay across sessions. Its TTL must equal
 	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
 	// multi-instance deployments. A store requires an authenticated
-	// principal: keys are scoped per principal, which your auth middleware
-	// injects with idempotency.WithPrincipal. Calls without one are refused
+	// principal: keys are scoped per principal, supplied by WithBearerAuth
+	// or by MCP receiving middleware (Server.AddReceivingMiddleware) via idempotency.WithPrincipal. Calls without one are refused
 	// with SERVICE_UNAVAILABLE; the MCP session ID is never used as a scope.
 	Idempotency *idempotency.Store
 
@@ -471,7 +474,19 @@ type Config struct {
 	// ResolveAccount converts an AccountReference (brand + operator) to your
 	// internal account object. Called automatically before handlers that receive
 	// an account field. Return nil for unknown accounts (SDK sends ACCOUNT_NOT_FOUND).
+	//
+	// The authenticated caller is available via PrincipalFromContext(ctx).
+	// You MUST check that this principal may act for ref; otherwise any
+	// caller can name another tenant's brand/operator and act on it.
 	ResolveAccount func(ctx context.Context, ref AccountReference) (any, error)
+
+	// RequirePrincipal rejects every tool except get_adcp_capabilities with
+	// AUTH_REQUIRED unless the request carries an authenticated principal
+	// (see WithBearerAuth). Leave false only for public/sandbox agents.
+	// Only principals from WithBearerAuth (bearer TokenInfo) are recognized:
+	// adopters with their own auth middleware must set TokenInfo via go-sdk
+	// auth, or leave this false and enforce auth themselves.
+	RequirePrincipal bool
 
 	// --- Media buy ---
 	SyncAccounts    func(ctx context.Context, req *SyncAccountsRequest) ([]AccountResult, error)
