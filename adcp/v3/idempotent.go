@@ -44,11 +44,11 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // IDEMPOTENCY_CONFLICT; a concurrent duplicate returns IDEMPOTENCY_IN_FLIGHT.
 // Error results are never cached. A nil store returns handler unchanged.
 //
-// Keys are scoped to the principal in ctx (idempotency.WithPrincipal, set by
-// your auth middleware); without one, to the MCP session ID
-// ("mcp-session:<id>"). With neither (e.g. a stateless transport and no
-// auth) the call is refused with SERVICE_UNAVAILABLE before the key is
-// validated or the handler runs, so unidentified callers never share a scope.
+// A store requires an authenticated principal: keys are scoped to the
+// principal in ctx, injected by your auth middleware with
+// idempotency.WithPrincipal. The MCP transport session ID is never used (a
+// stateless transport accepts a client-chosen one). Without a principal the
+// call is refused with SERVICE_UNAVAILABLE and the handler does not run.
 //
 // Register applies this to every mutating tool. Use it directly for tools
 // you add with AddTool:
@@ -69,10 +69,7 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			return Errorf("INVALID_REQUEST", ErrorOptions{Message: "Tool arguments must be a JSON object", Recovery: "correctable"})
 		}
 		if idempotency.PrincipalFromContext(ctx) == "" {
-			if req.Session == nil || req.Session.ID() == "" {
-				return serviceUnavailable("Idempotency principal could not be resolved; authenticate callers or use a session-based transport.")
-			}
-			ctx = idempotency.WithPrincipal(ctx, "mcp-session:"+req.Session.ID())
+			return serviceUnavailable("Idempotency principal could not be resolved; authenticate callers (e.g. bearer auth) before enabling idempotency.")
 		}
 
 		var fresh *mcp.CallToolResult

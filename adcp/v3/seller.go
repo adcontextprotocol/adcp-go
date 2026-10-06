@@ -421,9 +421,10 @@ type Config struct {
 	// Serve — Serve creates a server per session, so a per-Register store
 	// would not replay across sessions. Its TTL must equal
 	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
-	// multi-instance deployments. Keys are scoped per principal
-	// (idempotency.WithPrincipal / PrincipalFromContext), else per MCP
-	// session ID; calls with neither are refused with SERVICE_UNAVAILABLE.
+	// multi-instance deployments. A store requires an authenticated
+	// principal: keys are scoped per principal, which your auth middleware
+	// injects with idempotency.WithPrincipal. Calls without one are refused
+	// with SERVICE_UNAVAILABLE; the MCP session ID is never used as a scope.
 	Idempotency *idempotency.Store
 
 	// Capabilities, if set, declares the full typed capabilities response.
