@@ -100,10 +100,15 @@ type VerificationOptions struct {
 //   - 200 — first delivery handled successfully, OR replay of a stored key
 //   - 400 — missing / malformed idempotency_key, malformed body
 //   - 401 — sender identity could not be resolved
-//   - 409 — idempotency_key reused with a different payload (sender bug)
+//   - 409 — idempotency_key reused with a different payload (sender bug),
+//     including a changed resend after a failed delivery, until the TTL
 //   - 410 — idempotency_key is valid but past the dedup window
 //   - 413 — body exceeds MaxBodyBytes
-//   - 500 — Handler returned an error; sender should retry
+//   - 500 — Handler returned an error; sender should retry the same payload
+//   - 503 + Retry-After — the key is still being processed, or its handler
+//     panicked or the process crashed mid-delivery; the key stays fenced
+//     until an operator clears its row, so Handlers should return errors
+//     rather than panic
 func HTTPHandler(opts HTTPHandlerOptions) http.Handler {
 	if opts.Store == nil {
 		panic("webhook: HTTPHandlerOptions.Store is required")

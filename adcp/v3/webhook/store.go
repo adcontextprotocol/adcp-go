@@ -32,7 +32,8 @@ type Options struct {
 
 // Store deduplicates inbound webhook events by idempotency_key, scoped to the
 // authenticated sender identity. Keys from different senders are independent,
-// matching the receiver guidance added in adcontextprotocol/adcp#2417.
+// matching the receiver guidance added in adcontextprotocol/adcp#2417. See
+// Handler for how failed, panicked or crashed deliveries leave a key.
 type Store struct {
 	inner *idempotency.Store
 }
@@ -55,6 +56,13 @@ func (s *Store) TTL() time.Duration { return s.inner.TTL() }
 // Handler is the receiver's business handler. Return nil to commit the dedup
 // record (subsequent retries of this idempotency_key will be skipped);
 // return an error to reject the delivery so the sender can retry.
+//
+// After a rejected delivery the key stays bound to that payload until the
+// TTL: an identical resend runs the handler again, but a resend with a
+// different canonical body under the same key is a conflict (409 from
+// HTTPHandler). Return errors rather than panic: a panic or process crash
+// mid-handler leaves the key fenced (503 + Retry-After from HTTPHandler)
+// until an operator clears its row in the Backend.
 type Handler func(ctx context.Context, body []byte) error
 
 // Result describes the outcome of a Dedup call.
@@ -81,7 +89,9 @@ type Result struct {
 //   - *idempotency.ConflictError   — key seen before with a different payload
 //   - *idempotency.ExpiredError    — key was valid but is past TTL
 //
-// Handler errors are propagated unwrapped.
+// A handler error is returned as-is when its claim is released. If the
+// release itself fails, the returned error joins the handler error with
+// idempotency.ErrReleaseFailed (use errors.Is), and the key stays fenced.
 func (s *Store) Dedup(ctx context.Context, body []byte, h Handler) (*Result, error) {
 	if h == nil {
 		return nil, errors.New("webhook: Handler is required")
