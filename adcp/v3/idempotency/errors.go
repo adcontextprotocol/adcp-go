@@ -27,6 +27,13 @@ var ErrRecordFailed = errors.New("idempotency: response could not be recorded")
 // handler failed: the key stays fenced until reconciled.
 var ErrReleaseFailed = errors.New("idempotency: claim could not be released")
 
+// ErrOutcomeUnknown marks a handler error after which the handler may or may
+// not have taken effect. Wrap it into the error a Handler returns (errors.Is
+// must match) to keep the key's claim fenced instead of releasing it: retries
+// get IDEMPOTENCY_IN_FLIGHT until an operator reconciles the key. Wrap
+// returns the handler's error unchanged.
+var ErrOutcomeUnknown = errors.New("idempotency: request outcome is unknown")
+
 // ConflictError is returned when an idempotency key is reused with a different
 // canonicalized payload. Recovery is caller-driven: either resend the original
 // payload or mint a fresh key.

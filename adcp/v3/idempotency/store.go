@@ -179,8 +179,9 @@ func (s *Store) MergeCapability(caps map[string]any) {
 // should NOT be cached (so a retry can re-execute) MUST be returned as a Go
 // error. After such a failure the key stays bound to that payload until the
 // TTL: an exact retry re-executes, a different payload gets
-// IDEMPOTENCY_CONFLICT. The middleware cannot distinguish a "success"
-// envelope from a "failed" envelope hidden inside resp.
+// IDEMPOTENCY_CONFLICT. An error matching ErrOutcomeUnknown instead keeps
+// the key fenced (see ErrOutcomeUnknown). The middleware cannot distinguish
+// a "success" envelope from a "failed" envelope hidden inside resp.
 type Handler func(ctx context.Context, req []byte) (resp []byte, err error)
 
 // Result is the outcome of a wrapped call. Callers read Replayed to set the
@@ -321,6 +322,11 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), claimFinalizeTimeout)
 	defer cancel()
 
+	if errors.Is(err, ErrOutcomeUnknown) {
+		// The handler may have taken effect: keep the claim so a retry
+		// cannot execute it twice.
+		return nil, err
+	}
 	if err != nil {
 		// Handler failures are not cached (see Handler): release the claim
 		// to a retryable marker so an exact retry can execute while a

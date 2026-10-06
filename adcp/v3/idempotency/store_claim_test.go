@@ -3,6 +3,7 @@ package idempotency
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -202,4 +203,27 @@ func TestWrapRetryAfterHandlerErrorReexecutesSamePayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, replay.Replayed)
 	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+}
+
+func TestWrapOutcomeUnknownKeepsClaim(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	var calls int32
+	cause := errors.New("connection reset mid-commit")
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, cause)
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	req := mustJSON(t, map[string]any{"idempotency_key": Generate()})
+
+	_, err := wrapped(ctx, req)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+	require.ErrorIs(t, err, cause)
+
+	_, err = wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight, "an unknown outcome must stay fenced")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }

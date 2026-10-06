@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
@@ -42,7 +43,11 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // semantics: a repeated idempotency_key with the same payload returns the
 // cached response with replayed=true; a different payload returns
 // IDEMPOTENCY_CONFLICT; a concurrent duplicate returns IDEMPOTENCY_IN_FLIGHT.
-// Error results are never cached. A nil store returns handler unchanged.
+// Error results are never cached and release the key for an exact retry. A
+// handler Go error means the outcome is unknown: it becomes
+// SERVICE_UNAVAILABLE (without the error text) and the key stays fenced
+// (IDEMPOTENCY_IN_FLIGHT) until reconciled. A nil store returns handler
+// unchanged.
 //
 // A store requires an authenticated principal: keys are scoped to the
 // principal in ctx, injected by your auth middleware with
@@ -97,7 +102,7 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			result, out, err := handler(ctx, req, input)
 			if err != nil {
 				handlerErr = err
-				return nil, err
+				return nil, fmt.Errorf("%w: %w", idempotency.ErrOutcomeUnknown, err)
 			}
 			fresh, freshOut = result, out
 			if result == nil || result.IsError {
@@ -119,7 +124,8 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		case errors.Is(err, errNotCached):
 			return fresh, freshOut, nil
 		case handlerErr != nil:
-			return nil, nil, handlerErr
+			// The handler may have committed; its claim stays fenced.
+			return serviceUnavailable("The request outcome is unknown. Reconcile by natural key before retrying.")
 		case err != nil:
 			return idempotencyErrorResult(err)
 		case !res.Replayed:

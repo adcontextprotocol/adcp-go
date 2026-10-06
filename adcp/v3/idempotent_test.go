@@ -370,7 +370,6 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 	errResult := func() (*mcp.CallToolResult, any, error) {
 		return Errorf("INVALID_STATE", ErrorOptions{Message: "nope"})
 	}
-	goErr := func() (*mcp.CallToolResult, any, error) { return nil, nil, errors.New("handler boom") }
 	tests := []struct {
 		name      string
 		fail      string
@@ -382,7 +381,6 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 		{"claim fails", "PutIfAbsent", okResult, checkMsg, 0},
 		{"record fails", "ReplaceIfHash", okResult, recordMsg, 1},
 		{"release after error result fails", "ReplaceIfHash", errResult, releaseMsg, 1},
-		{"release after handler error fails", "ReplaceIfHash", goErr, releaseMsg, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -409,15 +407,31 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 	}
 }
 
-func TestWithIdempotencyPassesThroughHandlerError(t *testing.T) {
+// A handler Go error means the outcome is unknown: the claim stays fenced so
+// a retry cannot execute twice, and the raw error never reaches the wire.
+func TestWithIdempotencyHandlerErrorKeepsKeyFenced(t *testing.T) {
 	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
-	boom := errors.New("handler boom")
+	var calls int32
 	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
-		return nil, nil, boom
+		atomic.AddInt32(&calls, 1)
+		return nil, nil, errors.New("handler boom db-secret-host")
 	})
 	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
-	_, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": idempotency.Generate()})
-	assert.ErrorIs(t, err, boom)
+	args := map[string]any{"idempotency_key": idempotency.Generate()}
+
+	result, _, err := callWrapped(ctx, h, "create_media_buy", args)
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+	assert.Equal(t, "transient", e["recovery"])
+	assert.Equal(t, "The request outcome is unknown. Reconcile by natural key before retrying.", e["message"])
+	wire, _ := json.Marshal(result)
+	assert.NotContains(t, string(wire), "db-secret-host")
+
+	result, _, err = callWrapped(ctx, h, "create_media_buy", args)
+	require.NoError(t, err)
+	assert.Equal(t, "IDEMPOTENCY_IN_FLIGHT", adcpErrorOf(t, structuredContentMap(t, result))["code"])
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }
 
 const noPrincipalMsg = "Idempotency principal could not be resolved; authenticate callers (e.g. bearer auth) before enabling idempotency."
