@@ -238,3 +238,42 @@ func TestMutatingToolsMatchSchemas(t *testing.T) {
 	}
 	assert.Equal(t, want, mutatingTools)
 }
+
+func TestRegisterReportsInFlightForConcurrentDuplicate(t *testing.T) {
+	var calls int32
+	started, release := make(chan struct{}), make(chan struct{})
+	cs := newRegisteredSession(t, baseTestConfig(Config{
+		CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+			if atomic.AddInt32(&calls, 1) == 1 {
+				close(started)
+				<-release
+			}
+			return &CreateMediaBuySuccess{MediaBuyID: "mb-1", Packages: []Package{}}, nil
+		},
+	}))
+	args := map[string]any{"idempotency_key": idempotency.Generate()}
+
+	firstDone := make(chan map[string]any, 1)
+	go func() {
+		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_media_buy", Arguments: args})
+		if err != nil {
+			firstDone <- map[string]any{"transport_error": err.Error()}
+			return
+		}
+		firstDone <- structuredContentMap(t, res)
+	}()
+	<-started
+
+	second := adcpErrorOf(t, callSession(t, cs, "create_media_buy", args))
+	assert.Equal(t, "IDEMPOTENCY_IN_FLIGHT", second["code"])
+	assert.Equal(t, "transient", second["recovery"])
+	retryAfter, ok := second["retry_after"].(float64)
+	require.True(t, ok, "retry_after missing: %v", second)
+	assert.GreaterOrEqual(t, retryAfter, 1.0)
+	assert.LessOrEqual(t, retryAfter, 30.0)
+
+	close(release)
+	first := <-firstDone
+	assert.Equal(t, "mb-1", first["media_buy_id"])
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
