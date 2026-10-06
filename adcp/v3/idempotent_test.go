@@ -351,13 +351,6 @@ func (b *failingBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash 
 	return b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, e)
 }
 
-func (b *failingBackend) DeleteIfHash(ctx context.Context, scope, key, hash string) (bool, error) {
-	if b.fail == "DeleteIfHash" {
-		return false, errBackendSecret
-	}
-	return b.MemoryBackend.DeleteIfHash(ctx, scope, key, hash)
-}
-
 type wrappedHandler = func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error)
 
 func callWrapped(ctx context.Context, h wrappedHandler, name string, args map[string]any) (*mcp.CallToolResult, any, error) {
@@ -388,8 +381,8 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 		{"get fails", "Get", okResult, checkMsg, 0},
 		{"claim fails", "PutIfAbsent", okResult, checkMsg, 0},
 		{"record fails", "ReplaceIfHash", okResult, recordMsg, 1},
-		{"release after error result fails", "DeleteIfHash", errResult, releaseMsg, 1},
-		{"release after handler error fails", "DeleteIfHash", goErr, releaseMsg, 1},
+		{"release after error result fails", "ReplaceIfHash", errResult, releaseMsg, 1},
+		{"release after handler error fails", "ReplaceIfHash", goErr, releaseMsg, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

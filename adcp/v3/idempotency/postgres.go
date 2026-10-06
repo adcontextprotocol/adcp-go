@@ -117,20 +117,6 @@ func (b *PgBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash strin
 	return n == 1, nil
 }
 
-// DeleteIfHash implements ClaimBackend with a hash-fenced DELETE.
-func (b *PgBackend) DeleteIfHash(ctx context.Context, scope, key, hash string) (bool, error) {
-	const q = `DELETE FROM adcp_idempotency WHERE scope = $1 AND key = $2 AND hash = $3`
-	res, err := b.db.ExecContext(ctx, q, scope, key, hash)
-	if err != nil {
-		return false, fmt.Errorf("idempotency: pg delete: %w", err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("idempotency: pg delete: %w", err)
-	}
-	return n == 1, nil
-}
-
 // responseBytes maps a nil response to an empty slice: the response
 // column is NOT NULL and database/sql binds nil []byte as NULL.
 func responseBytes(b []byte) []byte {

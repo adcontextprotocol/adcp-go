@@ -34,7 +34,6 @@ var (
 	getRegexp     = regexp.MustCompile(`SELECT .* FROM adcp_idempotency`)
 	putRegexp     = regexp.MustCompile(`INSERT INTO adcp_idempotency`)
 	replaceRegexp = regexp.MustCompile(`UPDATE adcp_idempotency`)
-	deleteRegexp  = regexp.MustCompile(`DELETE FROM adcp_idempotency`)
 )
 
 func TestPgGetHit(t *testing.T) {
@@ -221,18 +220,6 @@ func TestPgReplaceIfHash(t *testing.T) {
 			assert.Equal(t, tt.want, ok)
 		})
 	}
-}
-
-func TestPgDeleteIfHash(t *testing.T) {
-	b, mock, done := newPgMock(t)
-	defer done()
-	mock.ExpectExec(deleteRegexp.String()).
-		WithArgs("s", "k", "claim").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-
-	ok, err := b.DeleteIfHash(context.Background(), "s", "k", "claim")
-	require.NoError(t, err)
-	assert.True(t, ok)
 }
 
 func TestPgReplaceIfHashDriverError(t *testing.T) {

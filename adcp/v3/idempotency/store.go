@@ -24,6 +24,12 @@ const (
 // claim unique so a stale owner can never replace or release a newer claim.
 const inFlightPrefix = "__adcp_in_flight__:"
 
+// retryablePrefix marks a released claim after the handler failed:
+// retryablePrefix + requestHash + ":" + token. It keeps the key bound to the
+// failed payload until it expires: an exact retry may re-execute, a
+// different payload gets IDEMPOTENCY_CONFLICT.
+const retryablePrefix = "__adcp_retryable__:"
+
 // maxInFlightRetryAfter caps the retry_after hint on IDEMPOTENCY_IN_FLIGHT so
 // a fresh claim doesn't tell buyers to wait out the whole replay window.
 const maxInFlightRetryAfter = 30 * time.Second
@@ -39,13 +45,13 @@ func newClaimHash(requestHash string) (string, error) {
 // isClaimHash reports whether h belongs to an unresolved in-flight claim.
 func isClaimHash(h string) bool { return strings.HasPrefix(h, inFlightPrefix) }
 
-// claimRequestHash returns the request hash embedded in a claim's Hash, or
-// ok=false when the entry is a completed response.
-func claimRequestHash(h string) (string, bool) {
-	if !isClaimHash(h) {
+// markerRequestHash returns the request hash embedded in a claim or
+// retryable-marker Hash with the given prefix, or ok=false otherwise.
+func markerRequestHash(h, prefix string) (string, bool) {
+	rest, ok := strings.CutPrefix(h, prefix)
+	if !ok {
 		return "", false
 	}
-	rest := h[len(inFlightPrefix):]
 	i := strings.LastIndex(rest, ":")
 	if i < 0 {
 		return "", false
@@ -168,8 +174,10 @@ func (s *Store) MergeCapability(caps map[string]any) {
 //
 // Contract: returning a nil error caches resp as-is. Task-level failures that
 // should NOT be cached (so a retry can re-execute) MUST be returned as a Go
-// error. The middleware cannot distinguish a "success" envelope from a
-// "failed" envelope hidden inside resp.
+// error. After such a failure the key stays bound to that payload until the
+// TTL: an exact retry re-executes, a different payload gets
+// IDEMPOTENCY_CONFLICT. The middleware cannot distinguish a "success"
+// envelope from a "failed" envelope hidden inside resp.
 type Handler func(ctx context.Context, req []byte) (resp []byte, err error)
 
 // Result is the outcome of a wrapped call. Callers read Replayed to set the
@@ -215,14 +223,15 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 
 		now := s.opts.Clock()
 
-		if existing, err := s.opts.Backend.Get(ctx, scope, key); err != nil {
+		existing, err := s.opts.Backend.Get(ctx, scope, key)
+		if err != nil {
 			return nil, err
-		} else if existing != nil {
-			return s.evaluateExisting(existing, hash, key, now)
 		}
-
 		if cb, ok := s.opts.Backend.(ClaimBackend); ok {
-			return s.runClaimed(ctx, cb, h, req, scope, key, hash, now)
+			return s.runClaimed(ctx, cb, h, req, scope, key, hash, now, existing)
+		}
+		if existing != nil {
+			return s.evaluateExisting(existing, hash, key, now)
 		}
 
 		resp, err := h(ctx, req)
@@ -258,22 +267,45 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 const claimFinalizeTimeout = 10 * time.Second
 
 // runClaimed claims (scope, key) before executing h so concurrent duplicates
-// see IDEMPOTENCY_IN_FLIGHT instead of running the handler again.
-func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req []byte, scope, key, hash string, now time.Time) (*Result, error) {
+// see IDEMPOTENCY_IN_FLIGHT instead of running the handler again. existing is
+// the entry already read for the key, if any.
+func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req []byte, scope, key, hash string, now time.Time, existing *Entry) (*Result, error) {
 	claimHash, err := newClaimHash(hash)
 	if err != nil {
 		return nil, err
 	}
 	claim := &Entry{Hash: claimHash, Response: []byte{}, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
-	winner, stored, err := b.PutIfAbsent(ctx, scope, key, claim)
-	if err != nil {
-		return nil, err
-	}
-	if !stored {
-		if winner == nil {
+	if existing == nil {
+		winner, stored, err := b.PutIfAbsent(ctx, scope, key, claim)
+		if err != nil {
+			return nil, err
+		}
+		if !stored && winner == nil {
 			return nil, &InFlightError{Key: key, RetryAfter: time.Second}
 		}
-		return s.evaluateExisting(winner, hash, key, now)
+		existing = winner
+	}
+	if existing != nil {
+		if !s.reclaimable(existing, hash, now) {
+			return s.evaluateExisting(existing, hash, key, now)
+		}
+		// Exact retry after a failed attempt: swap the retryable marker for
+		// a fresh claim. Losing that race means another retry got there
+		// first, so report whatever is there now.
+		ok, err := b.ReplaceIfHash(ctx, scope, key, existing.Hash, claim)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			cur, err := b.Get(ctx, scope, key)
+			if err != nil {
+				return nil, err
+			}
+			if cur == nil {
+				return nil, &InFlightError{Key: key, RetryAfter: time.Second}
+			}
+			return s.evaluateExisting(cur, hash, key, now)
+		}
 	}
 
 	// A panicking handler leaves its claim in place: the key reports
@@ -288,8 +320,15 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 
 	if err != nil {
 		// Handler failures are not cached (see Handler): release the claim
-		// so a retry with the same key can execute.
-		if _, relErr := b.DeleteIfHash(fctx, scope, key, claimHash); relErr != nil {
+		// to a retryable marker so an exact retry can execute while a
+		// different payload under this key still conflicts.
+		marker := &Entry{
+			Hash:      retryablePrefix + strings.TrimPrefix(claimHash, inFlightPrefix),
+			Response:  []byte{},
+			CreatedAt: now,
+			ExpiresAt: s.opts.Clock().Add(s.opts.TTL),
+		}
+		if _, relErr := b.ReplaceIfHash(fctx, scope, key, claimHash, marker); relErr != nil {
 			return nil, errors.Join(err, fmt.Errorf("%w: %w", ErrReleaseFailed, relErr))
 		}
 		return nil, err
@@ -312,19 +351,38 @@ func (s *Store) evaluateExisting(existing *Entry, hash, key string, now time.Tim
 	// An unresolved claim never expires into an executable key: its outcome
 	// is unknown, so it stays IN_FLIGHT (retry_after floors at 1s past its
 	// lease) until the owner records/releases it or an operator reconciles.
-	if claimed, ok := claimRequestHash(existing.Hash); ok {
+	if claimed, ok := markerRequestHash(existing.Hash, inFlightPrefix); ok {
 		if claimed != hash {
 			return nil, &ConflictError{Key: key}
 		}
 		return nil, &InFlightError{Key: key, RetryAfter: inFlightRetryAfter(existing.ExpiresAt, now)}
 	}
-	if !existing.ExpiresAt.IsZero() && now.After(existing.ExpiresAt.Add(s.opts.ClockSkew)) {
+	if s.expired(existing, now) {
 		return nil, &ExpiredError{Key: key}
+	}
+	if marked, ok := markerRequestHash(existing.Hash, retryablePrefix); ok {
+		if marked != hash {
+			return nil, &ConflictError{Key: key}
+		}
+		// A live marker for this payload is reclaimed in runClaimed; here
+		// another retry won that reclaim.
+		return nil, &InFlightError{Key: key, RetryAfter: time.Second}
 	}
 	if existing.Hash != hash {
 		return nil, &ConflictError{Key: key}
 	}
 	return &Result{Response: existing.Response, Replayed: true, Key: key}, nil
+}
+
+// expired reports whether e is past its replay window plus clock skew.
+func (s *Store) expired(e *Entry, now time.Time) bool {
+	return !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt.Add(s.opts.ClockSkew))
+}
+
+// reclaimable reports whether e is a live retryable marker for this payload.
+func (s *Store) reclaimable(e *Entry, hash string, now time.Time) bool {
+	marked, ok := markerRequestHash(e.Hash, retryablePrefix)
+	return ok && marked == hash && !s.expired(e, now)
 }
 
 // extractKey reads idempotency_key from the top level of a JSON request.

@@ -40,9 +40,7 @@ type Backend interface {
 type ClaimBackend interface {
 	Backend
 	// ReplaceIfHash atomically replaces (scope, key) only when its current
-	// Hash equals oldHash. It reports whether the row was replaced.
+	// Hash equals oldHash. It reports whether the row was replaced. The
+	// store uses it to record, release and reclaim claims.
 	ReplaceIfHash(ctx context.Context, scope, key, oldHash string, entry *Entry) (bool, error)
-	// DeleteIfHash atomically deletes (scope, key) only when its current Hash
-	// equals hash. It reports whether the row was deleted.
-	DeleteIfHash(ctx context.Context, scope, key, hash string) (bool, error)
 }

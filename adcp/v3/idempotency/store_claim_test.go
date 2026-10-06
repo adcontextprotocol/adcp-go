@@ -3,6 +3,7 @@ package idempotency
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -141,4 +142,64 @@ func TestInFlightRetryAfterBounds(t *testing.T) {
 			assert.Equal(t, tt.want, inFlightRetryAfter(tt.expiresAt, now))
 		})
 	}
+}
+
+func TestWrapHandlerErrorKeepsPayloadBinding(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return nil, errors.New("upstream timeout")
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+
+	_, err := wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 100}))
+	require.EqualError(t, err, "upstream timeout")
+
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 200}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+
+	now = now.Add(s.opts.TTL + s.opts.ClockSkew + time.Second)
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 200}))
+	var expired *ExpiredError
+	require.ErrorAs(t, err, &expired)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWrapRetryAfterHandlerErrorReexecutesSamePayload(t *testing.T) {
+	now := time.Now().UTC()
+	s, b := newTestStore(t, &now)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []byte(`{"ok":true}`), nil
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key, "budget": 100})
+
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+	scope, err := s.opts.Scope(ctx, req)
+	require.NoError(t, err)
+	marker, err := b.Get(ctx, scope, key)
+	require.NoError(t, err)
+	require.NotNil(t, marker, "a failed attempt leaves a retryable marker")
+	assert.True(t, strings.HasPrefix(marker.Hash, retryablePrefix))
+
+	res, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, res.Replayed)
+	replay, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, replay.Replayed)
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
 }
