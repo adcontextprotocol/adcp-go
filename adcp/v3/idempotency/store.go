@@ -143,6 +143,9 @@ func New(opts Options) *Store {
 	return &Store{opts: opts, keyRequired: required}
 }
 
+// KeyRequired reports whether a missing idempotency_key is rejected.
+func (s *Store) KeyRequired() bool { return s.keyRequired }
+
 // TTL returns the configured replay window.
 func (s *Store) TTL() time.Duration { return s.opts.TTL }
 

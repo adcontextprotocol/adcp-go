@@ -541,3 +541,54 @@ func TestRegisterWithoutStoreValidatesKeyFormat(t *testing.T) {
 	assert.Nil(t, callSession(t, cs, "create_media_buy", map[string]any{})["adcp_error"])
 	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }
+
+// The key is validated before the principal is resolved (TS order), so a
+// bad or missing key is correctable even when the caller is unauthenticated.
+func TestWithIdempotencyValidatesKeyBeforePrincipal(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    map[string]any
+		code    string
+		message string
+	}{
+		{"missing key", map[string]any{}, "INVALID_REQUEST", "idempotency_key is required on state-changing requests"},
+		{"malformed key", map[string]any{"idempotency_key": "short"}, "INVALID_REQUEST", ""},
+		{"valid key", map[string]any{"idempotency_key": idempotency.Generate()}, "SERVICE_UNAVAILABLE", noPrincipalMsg},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+			var calls int32
+			h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+				atomic.AddInt32(&calls, 1)
+				return buildResult("ok", map[string]any{}), nil, nil
+			})
+			result, _, err := callWrapped(context.Background(), h, "create_media_buy", tt.args)
+			require.NoError(t, err)
+			e := adcpErrorOf(t, structuredContentMap(t, result))
+			assert.Equal(t, tt.code, e["code"])
+			if tt.code == "INVALID_REQUEST" {
+				assert.Equal(t, "idempotency_key", e["field"])
+				assert.Equal(t, "correctable", e["recovery"])
+			}
+			if tt.message != "" {
+				assert.Equal(t, tt.message, e["message"])
+			}
+			assert.Zero(t, atomic.LoadInt32(&calls))
+		})
+	}
+}
+
+func TestWithIdempotencyOptionalKeyRunsWithoutPrincipal(t *testing.T) {
+	optional := false
+	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour, KeyRequired: &optional})
+	var calls int32
+	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		atomic.AddInt32(&calls, 1)
+		return buildResult("ok", map[string]any{"ok": true}), nil, nil
+	})
+	result, _, err := callWrapped(context.Background(), h, "si_terminate_session", map[string]any{})
+	require.NoError(t, err)
+	assert.Nil(t, structuredContentMap(t, result)["adcp_error"])
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}

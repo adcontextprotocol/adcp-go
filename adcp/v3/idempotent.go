@@ -50,6 +50,10 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // stateless transport accepts a client-chosen one). Without a principal the
 // call is refused with SERVICE_UNAVAILABLE and the handler does not run.
 //
+// Checks run in this order: a malformed idempotency_key, then a missing one
+// (when the store requires keys), is INVALID_REQUEST; a missing optional key
+// runs the handler uncached; only then is the principal resolved.
+//
 // Register applies this to every mutating tool. Use it directly for tools
 // you add with AddTool:
 //
@@ -64,7 +68,21 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		if len(raw) == 0 {
 			raw = []byte("{}")
 		}
-		hashed, err := bindToolName(raw, req.Params.Name)
+		var args map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &args); err != nil || args == nil {
+			return Errorf("INVALID_REQUEST", ErrorOptions{Message: "Tool arguments must be a JSON object", Recovery: "correctable"})
+		}
+		present, err := checkKey(args)
+		if err != nil {
+			return idempotencyErrorResult(err)
+		}
+		if !present {
+			if store.KeyRequired() {
+				return Errorf("INVALID_REQUEST", ErrorOptions{Message: "idempotency_key is required on state-changing requests", Recovery: "correctable", Field: "idempotency_key"})
+			}
+			return handler(ctx, req, input)
+		}
+		hashed, err := bindToolName(args, req.Params.Name)
 		if err != nil {
 			return Errorf("INVALID_REQUEST", ErrorOptions{Message: "Tool arguments must be a JSON object", Recovery: "correctable"})
 		}
@@ -124,17 +142,33 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 // other tool's response.
 const toolHashField = "$adcp_tool"
 
-func bindToolName(raw []byte, tool string) ([]byte, error) {
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
-		return nil, errors.New("adcp: arguments are not a JSON object")
-	}
+// bindToolName returns args with the tool name added under toolHashField.
+// It copies args so the caller's map is unchanged.
+func bindToolName(args map[string]json.RawMessage, tool string) ([]byte, error) {
 	name, err := json.Marshal(tool)
 	if err != nil {
 		return nil, err
 	}
+	m := make(map[string]json.RawMessage, len(args)+1)
+	for k, v := range args {
+		m[k] = v
+	}
 	m[toolHashField] = name
 	return json.Marshal(m)
+}
+
+// checkKey reports whether args carries idempotency_key and, if so, whether
+// it is well formed.
+func checkKey(args map[string]json.RawMessage) (present bool, err error) {
+	raw, ok := args["idempotency_key"]
+	if !ok {
+		return false, nil
+	}
+	var key string
+	if err := json.Unmarshal(raw, &key); err != nil {
+		return true, &idempotency.InvalidKeyError{Reason: "not a string"}
+	}
+	return true, idempotency.Validate(key)
 }
 
 // withKeyFormatCheck rejects a present but malformed idempotency_key when
@@ -143,17 +177,8 @@ func withKeyFormatCheck[In any](handler func(context.Context, *mcp.CallToolReque
 	return func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
 		var args map[string]json.RawMessage
 		_ = json.Unmarshal(req.Params.Arguments, &args)
-		if raw, ok := args["idempotency_key"]; ok {
-			var key string
-			err := json.Unmarshal(raw, &key)
-			if err != nil {
-				err = &idempotency.InvalidKeyError{Reason: "not a string"}
-			} else {
-				err = idempotency.Validate(key)
-			}
-			if err != nil {
-				return idempotencyErrorResult(err)
-			}
+		if _, err := checkKey(args); err != nil {
+			return idempotencyErrorResult(err)
 		}
 		return handler(ctx, req, input)
 	}
