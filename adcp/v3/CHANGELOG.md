@@ -1,14 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### ⚠ Breaking
-- `Register` now requires `Config.Idempotency` and deduplicates every mutating tool. Previously capabilities advertised idempotency support while no deduplication happened. Mutating calls without a valid `idempotency_key` now return `INVALID_REQUEST` (field `idempotency_key`), as the schemas require.
-
-### Features
-- `WithIdempotency` wraps custom `AddTool` handlers with replay semantics.
-- `idempotency.Store` claims keys before executing and returns `IDEMPOTENCY_IN_FLIGHT` (transient, with `retry_after`) for concurrent duplicates.
-
 ## [3.2.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.0...adcp/v3.2.1) (2026-09-05)
 
 

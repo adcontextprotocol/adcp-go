@@ -44,9 +44,16 @@ honors `adcp_version`, legacy `adcp_major_version`, and the `protocols` filter,
 then emits `supported_versions`.
 
 ```go
+// Build once at startup, outside any per-session server factory.
+store := idempotency.New(idempotency.Options{
+    Backend: idempotency.NewMemoryBackend(time.Minute), // idempotency.NewPgBackend(db) for multi-instance
+    TTL:     24 * time.Hour,
+})
+
 adcp.Register(server, adcp.Config{
     Sandbox:              true,
     IdempotencyReplayTTL: 24 * time.Hour,
+    Idempotency:          store,
     Capabilities: &adcp.CapabilitiesData{
         SupportedProtocols: []string{"media_buy", "creative"},
         MediaBuy: &adcp.MediaBuyCapabilities{

@@ -283,11 +283,10 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 		return nil, err
 	}
 	final := &Entry{Hash: hash, Response: resp, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
-	// The handler succeeded but the result could not be stored. Returning
-	// the error keeps the claim, so retries see IN_FLIGHT instead of
-	// executing twice.
+	// If the result cannot be stored (error), return it and keep the claim:
+	// retries then see IN_FLIGHT instead of executing the handler twice.
 	// A false result means the claim vanished (swept after TTL); the fresh
-	// response is still correct for this caller.
+	// response is still correct for this caller, so it is ignored.
 	if _, err := b.ReplaceIfHash(context.WithoutCancel(ctx), scope, key, claimHash, final); err != nil {
 		return nil, err
 	}
