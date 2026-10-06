@@ -41,7 +41,7 @@ import (
     "sync/atomic"
     "time"
 
-    "github.com/adcontextprotocol/adcp-go/adcp"
+    "github.com/adcontextprotocol/adcp-go/adcp/v3"
     "github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -348,7 +348,7 @@ module your-seller-agent
 go 1.25
 
 require (
-    github.com/adcontextprotocol/adcp-go/adcp v0.0.0
+    github.com/adcontextprotocol/adcp-go/adcp/v3 v0.0.0
     github.com/modelcontextprotocol/go-sdk v1.5.0
 )
 ```
@@ -439,7 +439,7 @@ Use lowercase pricing models: `"cpm"`, `"cpc"`, `"cpcv"`, not `"CPM"`.
 
 ```go
 import (
-    "github.com/adcontextprotocol/adcp-go/adcp"
+    "github.com/adcontextprotocol/adcp-go/adcp/v3"
     "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 ```
