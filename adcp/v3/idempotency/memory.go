@@ -7,8 +7,8 @@ import (
 )
 
 // MemoryBackend is an in-process Backend suitable for tests and reference
-// servers. A background sweeper removes expired entries; callers should invoke
-// Close to stop it.
+// servers. A background sweeper removes expired entries (never unresolved
+// in-flight claims); callers should invoke Close to stop it.
 type MemoryBackend struct {
 	mu      sync.Mutex
 	entries map[string]*Entry
@@ -69,7 +69,9 @@ func (b *MemoryBackend) sweep() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for k, e := range b.entries {
-		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt) {
+		// Unresolved claims are never swept: deleting one would let the key
+		// re-execute an outcome that may already have taken effect.
+		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt) && !isClaimHash(e.Hash) {
 			delete(b.entries, k)
 		}
 	}

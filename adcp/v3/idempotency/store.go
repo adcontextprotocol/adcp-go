@@ -36,13 +36,16 @@ func newClaimHash(requestHash string) (string, error) {
 	return inFlightPrefix + requestHash + ":" + hex.EncodeToString(b[:]), nil
 }
 
+// isClaimHash reports whether h belongs to an unresolved in-flight claim.
+func isClaimHash(h string) bool { return strings.HasPrefix(h, inFlightPrefix) }
+
 // claimRequestHash returns the request hash embedded in a claim's Hash, or
 // ok=false when the entry is a completed response.
 func claimRequestHash(h string) (string, bool) {
-	rest, ok := strings.CutPrefix(h, inFlightPrefix)
-	if !ok {
+	if !isClaimHash(h) {
 		return "", false
 	}
+	rest := h[len(inFlightPrefix):]
 	i := strings.LastIndex(rest, ":")
 	if i < 0 {
 		return "", false
@@ -274,7 +277,7 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	}
 
 	// A panicking handler leaves its claim in place: the key reports
-	// IDEMPOTENCY_IN_FLIGHT, then IDEMPOTENCY_EXPIRED, and never
+	// IDEMPOTENCY_IN_FLIGHT until an operator reconciles it, and never
 	// re-executes an ambiguous outcome.
 	resp, err := h(ctx, req)
 	// Finalize detached from the caller's cancellation so a cancelled request
@@ -294,8 +297,9 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	final := &Entry{Hash: hash, Response: resp, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
 	// If the result cannot be stored (error), return it and keep the claim:
 	// retries then see IN_FLIGHT instead of executing the handler twice.
-	// A false result means the claim vanished (swept after TTL); the fresh
-	// response is still correct for this caller, so it is ignored.
+	// A false result means the claim was removed out of band (operator
+	// reconciliation); the fresh response is still correct for this caller,
+	// so it is ignored.
 	if _, err := b.ReplaceIfHash(fctx, scope, key, claimHash, final); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrRecordFailed, err)
 	}
@@ -305,14 +309,17 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 // evaluateExisting applies TTL (with clock skew) and hash-match rules to a
 // stored entry and returns the replay result or a typed error.
 func (s *Store) evaluateExisting(existing *Entry, hash, key string, now time.Time) (*Result, error) {
-	if !existing.ExpiresAt.IsZero() && now.After(existing.ExpiresAt.Add(s.opts.ClockSkew)) {
-		return nil, &ExpiredError{Key: key}
-	}
+	// An unresolved claim never expires into an executable key: its outcome
+	// is unknown, so it stays IN_FLIGHT (retry_after floors at 1s past its
+	// lease) until the owner records/releases it or an operator reconciles.
 	if claimed, ok := claimRequestHash(existing.Hash); ok {
 		if claimed != hash {
 			return nil, &ConflictError{Key: key}
 		}
 		return nil, &InFlightError{Key: key, RetryAfter: inFlightRetryAfter(existing.ExpiresAt, now)}
+	}
+	if !existing.ExpiresAt.IsZero() && now.After(existing.ExpiresAt.Add(s.opts.ClockSkew)) {
+		return nil, &ExpiredError{Key: key}
 	}
 	if existing.Hash != hash {
 		return nil, &ConflictError{Key: key}

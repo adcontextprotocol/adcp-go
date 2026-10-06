@@ -86,3 +86,26 @@ func TestMemoryReplaceAndDeleteIfHash(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 }
+
+func TestMemorySweepKeepsUnresolvedClaims(t *testing.T) {
+	now := time.Now()
+	b := newMemoryBackend(0, func() time.Time { return now })
+	ctx := context.Background()
+	past := now.Add(-time.Hour)
+	_, _, err := b.PutIfAbsent(ctx, "s", "done", &Entry{Hash: "h", Response: []byte(`{}`), ExpiresAt: past})
+	require.NoError(t, err)
+	claim, err := newClaimHash("h")
+	require.NoError(t, err)
+	_, _, err = b.PutIfAbsent(ctx, "s", "claim", &Entry{Hash: claim, ExpiresAt: past})
+	require.NoError(t, err)
+
+	b.sweep()
+
+	got, err := b.Get(ctx, "s", "done")
+	require.NoError(t, err)
+	assert.Nil(t, got, "expired completed entry is swept")
+	got, err = b.Get(ctx, "s", "claim")
+	require.NoError(t, err)
+	require.NotNil(t, got, "unresolved claim survives the sweep")
+	assert.Equal(t, claim, got.Hash)
+}

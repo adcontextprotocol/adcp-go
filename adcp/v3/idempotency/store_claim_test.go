@@ -112,9 +112,16 @@ func TestWrapExpiredClaimIsNotReexecuted(t *testing.T) {
 		atomic.AddInt32(&calls, 1)
 		return []byte(`{}`), nil
 	})
+	// An unresolved claim stays fenced past its lease: never executable,
+	// never IDEMPOTENCY_EXPIRED, until the owner or an operator resolves it.
 	_, err = wrapped(ctx, req)
-	var expired *ExpiredError
-	require.ErrorAs(t, err, &expired)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight)
+	assert.Equal(t, time.Second, inFlight.RetryAfter)
+
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 1}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict)
 	assert.Zero(t, atomic.LoadInt32(&calls))
 }
 

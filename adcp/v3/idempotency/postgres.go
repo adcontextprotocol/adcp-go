@@ -10,6 +10,15 @@ import (
 
 // PostgresSchema is the table definition PgBackend expects. Create it once in
 // your migration tooling before enabling the backend.
+//
+// The SDK runs no expiry cleanup. Any cleanup job you add MUST exclude rows
+// whose hash starts with '__adcp_in_flight__:' — they are unresolved claims
+// whose outcome is unknown and need reconciliation, and deleting one lets
+// the key re-execute. For example:
+//
+//	DELETE FROM adcp_idempotency
+//	WHERE expires_at < now() - interval '1 minute'
+//	  AND NOT starts_with(hash, '__adcp_in_flight__:');
 const PostgresSchema = `
 CREATE TABLE IF NOT EXISTS adcp_idempotency (
     scope       TEXT        NOT NULL,
@@ -26,7 +35,8 @@ CREATE INDEX IF NOT EXISTS adcp_idempotency_expires_at_idx
 
 // PgBackend is a Postgres-backed Backend. The PRIMARY KEY on (scope, key)
 // provides the atomicity PutIfAbsent relies on. Uses database/sql so callers
-// can wire any Postgres driver (pgx stdlib adapter, lib/pq, etc.).
+// can wire any Postgres driver (pgx stdlib adapter, lib/pq, etc.). It never
+// deletes expired rows; see PostgresSchema for the cleanup rule on claims.
 type PgBackend struct {
 	db *sql.DB
 }
