@@ -127,23 +127,26 @@ func idempotencyErrorResult(err error) (*mcp.CallToolResult, any, error) {
 	case errors.As(err, &inFlight):
 		return Errorf(idempotency.CodeIdempotencyInFlight, ErrorOptions{
 			Message:    "A request with this idempotency_key is still being processed",
+			Recovery:   "transient",
 			RetryAfter: int(inFlight.RetryAfter / time.Second),
 			Suggestion: "Retry after retry_after seconds with the SAME idempotency_key.",
 		})
 	case errors.As(err, &conflict):
 		return Errorf(idempotency.CodeIdempotencyConflict, ErrorOptions{
 			Message:    "idempotency_key was already used with a different payload",
+			Recovery:   "correctable",
 			Field:      "idempotency_key",
 			Suggestion: "Resend the original payload, or use a new idempotency_key for a new request.",
 		})
 	case errors.As(err, &expired):
 		return Errorf(idempotency.CodeIdempotencyExpired, ErrorOptions{
 			Message:    "idempotency_key is past the seller's replay window",
+			Recovery:   "correctable",
 			Field:      "idempotency_key",
 			Suggestion: "Check whether the original request took effect before retrying with a new idempotency_key.",
 		})
 	case errors.As(err, &missing), errors.As(err, &invalid):
-		return Errorf("INVALID_REQUEST", ErrorOptions{Message: err.Error(), Field: "idempotency_key"})
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: err.Error(), Recovery: "correctable", Field: "idempotency_key"})
 	}
 	return nil, nil, err
 }

@@ -97,6 +97,7 @@ func TestRegisterRequiresIdempotencyKeyOnMutatingTools(t *testing.T) {
 	e := adcpErrorOf(t, callSession(t, cs, "create_media_buy", map[string]any{}))
 	assert.Equal(t, "INVALID_REQUEST", e["code"])
 	assert.Equal(t, "idempotency_key", e["field"])
+	assert.Equal(t, "correctable", e["recovery"])
 	assert.Zero(t, atomic.LoadInt32(&calls))
 }
 
@@ -153,6 +154,49 @@ func TestIdempotencyErrorResultInFlight(t *testing.T) {
 	assert.Equal(t, "IDEMPOTENCY_IN_FLIGHT", e["code"])
 	assert.Equal(t, "transient", e["recovery"])
 	assert.EqualValues(t, 7, e["retry_after"])
+}
+
+func TestIdempotencyErrorResultRecovery(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		code     string
+		recovery string
+	}{
+		{
+			name:     "in-flight error",
+			err:      &idempotency.InFlightError{Key: "k", RetryAfter: time.Second},
+			code:     "IDEMPOTENCY_IN_FLIGHT",
+			recovery: "transient",
+		},
+		{
+			name:     "conflict error",
+			err:      &idempotency.ConflictError{Key: "k"},
+			code:     "IDEMPOTENCY_CONFLICT",
+			recovery: "correctable",
+		},
+		{
+			name:     "expired error",
+			err:      &idempotency.ExpiredError{Key: "k"},
+			code:     "IDEMPOTENCY_EXPIRED",
+			recovery: "correctable",
+		},
+		{
+			name:     "missing key error",
+			err:      &idempotency.MissingKeyError{},
+			code:     "INVALID_REQUEST",
+			recovery: "correctable",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, _, err := idempotencyErrorResult(tt.err)
+			require.NoError(t, err)
+			e := adcpErrorOf(t, structuredContentMap(t, result))
+			assert.Equal(t, tt.code, e["code"])
+			assert.Equal(t, tt.recovery, e["recovery"])
+		})
+	}
 }
 
 // TestMutatingToolsMatchSchemas keeps mutatingTools in sync with the bundle:
