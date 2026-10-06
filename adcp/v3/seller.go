@@ -483,6 +483,9 @@ type Config struct {
 	// RequirePrincipal rejects every tool except get_adcp_capabilities with
 	// AUTH_REQUIRED unless the request carries an authenticated principal
 	// (see WithBearerAuth). Leave false only for public/sandbox agents.
+	// Only principals from WithBearerAuth (bearer TokenInfo) are recognized:
+	// adopters with their own auth middleware must set TokenInfo via go-sdk
+	// auth, or leave this false and enforce auth themselves.
 	RequirePrincipal bool
 
 	// --- Media buy ---

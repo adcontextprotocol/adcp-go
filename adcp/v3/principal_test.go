@@ -96,3 +96,28 @@ func TestBearerAuthRejectsBadToken(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
+
+func TestBearerAuthRejectsTokenWithoutPrincipal(t *testing.T) {
+	for name, info := range map[string]*auth.TokenInfo{
+		"empty UserID": {Expiration: time.Now().Add(time.Hour)},
+		"nil info":     nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			v := func(context.Context, string, *http.Request) (*auth.TokenInfo, error) {
+				return info, nil
+			}
+			srv := httptest.NewServer(Handler(func() *mcp.Server {
+				return mcp.NewServer(&mcp.Implementation{Name: "x", Version: "v0"}, nil)
+			}, WithBearerAuth(v)))
+			defer srv.Close()
+
+			req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", nil)
+			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer x")
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+		})
+	}
+}

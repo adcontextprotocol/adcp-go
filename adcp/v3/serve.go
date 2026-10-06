@@ -1,6 +1,7 @@
 package adcp
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,10 +33,13 @@ func WithPath(path string) ServeOption {
 }
 
 // WithBearerAuth verifies Authorization: Bearer tokens with verifier. The
-// verifier must set TokenInfo.UserID (the principal) and a non-zero
+// verifier must set TokenInfo.UserID (the principal) to a non-empty value
+// (otherwise the request gets 401) and a non-zero
 // Expiration (go-sdk rejects tokens without one; use a far-future time for
 // static API keys). Requests without an Authorization header pass through
-// anonymously so get_adcp_capabilities stays discoverable; combine with
+// anonymously so get_adcp_capabilities stays discoverable; a present
+// Authorization header that is not a valid Bearer token is rejected with 401,
+// never treated as anonymous. Combine with
 // Config.RequirePrincipal to reject anonymous calls to other tools.
 func WithBearerAuth(verifier auth.TokenVerifier) ServeOption {
 	return func(c *serveConfig) { c.verifier = verifier }
@@ -61,7 +65,19 @@ func Handler(createAgent func() *mcp.Server, opts ...ServeOption) http.Handler {
 }
 
 func optionalBearer(verifier auth.TokenVerifier, next http.Handler) http.Handler {
-	required := auth.RequireBearerToken(verifier, nil)(next)
+	// A verified token must name a principal: idempotency keys and account
+	// checks are scoped by it, so a token without one is rejected as invalid.
+	checked := func(ctx context.Context, token string, r *http.Request) (*auth.TokenInfo, error) {
+		info, err := verifier(ctx, token, r)
+		if err != nil {
+			return nil, err
+		}
+		if info == nil || info.UserID == "" {
+			return nil, fmt.Errorf("%w: token has no usable principal (UserID)", auth.ErrInvalidToken)
+		}
+		return info, nil
+	}
+	required := auth.RequireBearerToken(checked, nil)(next)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") == "" {
 			next.ServeHTTP(w, r)
