@@ -12,8 +12,8 @@ import (
 type Options struct {
 	// Backend stores webhook dedup records. Required. It is safe to share the
 	// same Backend with the request-side idempotency.Store — webhook keys are
-	// scoped under "webhook:sender:<id>", so collisions with request keys
-	// (scoped under "principal:<id>") cannot occur.
+	// scoped in the "webhook" namespace and request keys in "principal", both
+	// built with idempotency.EncodeScope, so collisions cannot occur.
 	Backend idempotency.Backend
 
 	// TTL is the dedup window. Required. Must lie in
@@ -110,14 +110,15 @@ func (s *Store) Dedup(ctx context.Context, body []byte, h Handler) (*Result, err
 }
 
 // webhookScope scopes a webhook key to the authenticated sender identity.
-// The "webhook:" prefix ensures the scope namespace is disjoint from the
-// request-side "principal:" scopes, so a shared Backend is safe.
+// The "webhook" namespace keeps it disjoint from the request-side
+// "principal" scopes, and idempotency.EncodeScope's length prefixes keep it
+// injective, so a shared Backend is safe.
 func webhookScope(ctx context.Context, _ []byte) (string, error) {
 	sender := SenderFromContext(ctx)
 	if sender == "" {
 		return "", errors.New("webhook: sender identity missing from context; set via WithSender")
 	}
-	return "webhook:sender:" + sender, nil
+	return idempotency.EncodeScope("webhook", "sender", sender), nil
 }
 
 type senderKey struct{}
