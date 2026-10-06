@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/signing"
@@ -295,6 +297,7 @@ func clientNoRedirect(src *http.Client) *http.Client {
 
 func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var (
+		inFlight *idempotency.InFlightError
 		conflict *idempotency.ConflictError
 		expired  *idempotency.ExpiredError
 		missing  *idempotency.MissingKeyError
@@ -302,6 +305,11 @@ func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		syntax   *json.SyntaxError
 	)
 	switch {
+	case errors.As(err, &inFlight):
+		// Same delivery still being processed: tell the sender to retry later
+		// with the same key rather than logging a handler failure.
+		w.Header().Set("Retry-After", strconv.Itoa(int(inFlight.RetryAfter/time.Second)))
+		http.Error(w, "webhook delivery in progress", http.StatusServiceUnavailable)
 	case errors.As(err, &conflict):
 		logger.Warn("webhook: idempotency_key reused with different payload", "key", idempotency.LogKey(conflict.Key))
 		http.Error(w, "idempotency_key conflict", http.StatusConflict)

@@ -270,6 +270,9 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 		return s.evaluateExisting(winner, hash, key, now)
 	}
 
+	// A panicking handler leaves its claim in place: the key reports
+	// IDEMPOTENCY_IN_FLIGHT, then IDEMPOTENCY_EXPIRED, and never
+	// re-executes an ambiguous outcome.
 	resp, err := h(ctx, req)
 	if err != nil {
 		// Handler failures are not cached (see Handler): release the claim
@@ -280,6 +283,9 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 		return nil, err
 	}
 	final := &Entry{Hash: hash, Response: resp, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
+	// The handler succeeded but the result could not be stored. Returning
+	// the error keeps the claim, so retries see IN_FLIGHT instead of
+	// executing twice.
 	// A false result means the claim vanished (swept after TTL); the fresh
 	// response is still correct for this caller.
 	if _, err := b.ReplaceIfHash(context.WithoutCancel(ctx), scope, key, claimHash, final); err != nil {

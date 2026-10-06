@@ -164,3 +164,30 @@ func TestHTTPHandlerPanicsOnAllowUnverifiedWithoutSender(t *testing.T) {
 			})
 		})
 }
+
+func TestHTTPHandlerConcurrentDuplicate503(t *testing.T) {
+	body := []byte(`{"idempotency_key":"` + testKey + `","event":"x"}`)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	h := func(_ context.Context, _ []byte) error {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-release
+		}
+		return nil
+	}
+	handler := newTestHTTPHandler(t, h, "sender-A")
+
+	done := make(chan int, 1)
+	go func() { done <- postJSON(handler, body).Code }()
+	<-started
+
+	rec := postJSON(handler, body)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "30", rec.Header().Get("Retry-After"))
+
+	close(release)
+	assert.Equal(t, http.StatusOK, <-done)
+	assert.Equal(t, int32(1), calls.Load())
+}
