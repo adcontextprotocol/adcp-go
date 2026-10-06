@@ -145,13 +145,37 @@ func TestRegisterReadToolsAreNotWrapped(t *testing.T) {
 	assert.Nil(t, wire["adcp_error"])
 }
 
-func TestRegisterPanicsWithoutIdempotencyStore(t *testing.T) {
-	cfg := baseTestConfig(Config{})
+func TestRegisterWithoutStoreAdvertisesUnsupported(t *testing.T) {
+	var calls int32
+	cfg := baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)})
 	cfg.Idempotency = nil
-	server := mcp.NewServer(&mcp.Implementation{Name: "x", Version: "v0"}, nil)
-	assert.PanicsWithValue(t,
-		"adcp.Register: Config.Idempotency is required — build one store outside your server factory: idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(time.Minute), TTL: cfg.IdempotencyReplayTTL})",
-		func() { Register(server, cfg) })
+	cs := newRegisteredSession(t, cfg)
+
+	caps := callSession(t, cs, "get_adcp_capabilities", map[string]any{})
+	idem, ok := caps["adcp"].(map[string]any)["idempotency"].(map[string]any)
+	require.True(t, ok, "adcp.idempotency must be an object: %v", caps)
+	assert.Equal(t, false, idem["supported"])
+	assert.NotContains(t, idem, "replay_ttl_seconds")
+
+	assert.Nil(t, callSession(t, cs, "create_media_buy", map[string]any{})["adcp_error"], "keyless call executes")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+
+	key := idempotency.Generate()
+	callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": key})
+	callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": key})
+	assert.EqualValues(t, 3, atomic.LoadInt32(&calls), "same key executes twice without a store")
+}
+
+func TestBuildCapabilitiesPresetCannotClaimSupportWithoutStore(t *testing.T) {
+	caps := buildCapabilities(Config{
+		IdempotencyReplayTTL: 24 * time.Hour,
+		Capabilities: &CapabilitiesData{
+			SupportedProtocols: []string{"media_buy"},
+			ADCP:               &ADCPVersion{Idempotency: IdempotencyCaps{Supported: true, ReplayTTLSeconds: 86400}},
+		},
+	})
+	assert.False(t, caps.ADCP.Idempotency.Supported)
+	assert.Zero(t, caps.ADCP.Idempotency.ReplayTTLSeconds)
 }
 
 func TestRegisterPanicsOnIdempotencyTTLMismatch(t *testing.T) {

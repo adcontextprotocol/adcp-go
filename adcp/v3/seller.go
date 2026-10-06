@@ -16,6 +16,10 @@ import (
 // startup if it is unset or out of range — AdCP 3.0 requires sellers to
 // declare adcp.idempotency.replay_ttl_seconds in capabilities.
 //
+// Config.Idempotency is optional. Without it the agent does not deduplicate
+// mutating tools and advertises adcp.idempotency.supported: false; set it to
+// deduplicate and advertise supported: true with the replay window.
+//
 // Account resolution: if ResolveAccount is set, handlers that accept an
 // AccountReference receive the resolved account. If the account is not found,
 // the SDK returns ACCOUNT_NOT_FOUND automatically.
@@ -27,7 +31,7 @@ import (
 //
 //	adcp.Register(server, adcp.Config{
 //	    IdempotencyReplayTTL: 24 * time.Hour,
-//	    Idempotency: store, // idempotency.New(...) built once at startup
+//	    Idempotency: store, // optional; idempotency.New(...) built once, outside the server factory
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
 //	        return db.FindAccount(ref.Brand.Domain, ref.Operator)
 //	    },
@@ -40,10 +44,7 @@ import (
 //	})
 func Register(server *mcp.Server, cfg Config) {
 	caps := buildCapabilities(cfg)
-	if cfg.Idempotency == nil {
-		panic("adcp.Register: Config.Idempotency is required — build one store outside your server factory: idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(time.Minute), TTL: cfg.IdempotencyReplayTTL})")
-	}
-	if cfg.Idempotency.TTL() != cfg.IdempotencyReplayTTL {
+	if cfg.Idempotency != nil && cfg.Idempotency.TTL() != cfg.IdempotencyReplayTTL {
 		panic(fmt.Sprintf("adcp.Register: Config.Idempotency TTL (%s) must equal IdempotencyReplayTTL (%s) — capabilities would advertise the wrong replay window", cfg.Idempotency.TTL(), cfg.IdempotencyReplayTTL))
 	}
 	idem := cfg.Idempotency
@@ -409,10 +410,12 @@ type Config struct {
 	IdempotencyReplayTTL time.Duration
 
 	// Idempotency deduplicates every mutating tool (create_media_buy,
-	// sync_*, activate_signal, ...). Required: build it ONCE, outside the
-	// server factory you pass to Serve — Serve creates a server per session,
-	// so a per-Register store would not replay across sessions. Its TTL must
-	// equal IdempotencyReplayTTL. Use idempotency.NewPgBackend for
+	// sync_*, activate_signal, ...). Optional: without it the agent does not
+	// deduplicate and advertises adcp.idempotency.supported: false. To
+	// deduplicate, build it ONCE, outside the server factory you pass to
+	// Serve — Serve creates a server per session, so a per-Register store
+	// would not replay across sessions. Its TTL must equal
+	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
 	// multi-instance deployments. Keys are scoped per principal
 	// (idempotency.WithPrincipal / PrincipalFromContext). Calls without a
 	// principal share one anonymous scope; authenticate callers so keys cannot
@@ -620,7 +623,12 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 	if existing := caps.ADCP.Idempotency.ReplayTTLSeconds; existing != 0 && existing != ttlSeconds {
 		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL (%ds) conflicts with Capabilities.ADCP.Idempotency.ReplayTTLSeconds (%ds) — set one or the other, not both", ttlSeconds, existing))
 	}
-	caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
+	if cfg.Idempotency == nil {
+		// No store = no replay; a preset cannot claim support the SDK can't honor.
+		caps.ADCP.Idempotency = IdempotencyCaps{Supported: false}
+	} else {
+		caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
+	}
 
 	if len(caps.SupportedProtocols) == 0 {
 		caps.SupportedProtocols = detectProtocols(cfg)

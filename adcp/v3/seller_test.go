@@ -60,6 +60,7 @@ func TestBuildCapabilitiesPanicsOnTTLConflict(t *testing.T) {
 func TestBuildCapabilitiesDefaults(t *testing.T) {
 	caps := buildCapabilities(Config{
 		IdempotencyReplayTTL: 24 * time.Hour,
+		Idempotency:          idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour}),
 		GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
 			return nil, nil
 		},
@@ -105,6 +106,7 @@ func TestBuildCapabilitiesPreservesCallerSupportedVersions(t *testing.T) {
 func TestBuildCapabilitiesPreservesCallerBlocks(t *testing.T) {
 	caps := buildCapabilities(Config{
 		IdempotencyReplayTTL: 1 * time.Hour,
+		Idempotency:          idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 1 * time.Hour}),
 		Capabilities: &CapabilitiesData{
 			SupportedProtocols: []string{"media_buy"},
 			Account: &AccountCapabilities{
@@ -158,6 +160,7 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	// must be present as an object (not null), and media_buy blocks survive.
 	result, _, err := CapabilitiesResponse(buildCapabilities(Config{
 		IdempotencyReplayTTL: 24 * time.Hour,
+		Idempotency:          idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour}),
 		Capabilities: &CapabilitiesData{
 			SupportedProtocols: []string{"media_buy"},
 			MediaBuy: &MediaBuyCapabilities{
