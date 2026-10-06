@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,11 +20,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// withTestPrincipal stands in for auth middleware: the in-memory transport has
+// no session ID, so idempotent tools need a principal to scope keys.
+func withTestPrincipal(principal string) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			return next(idempotency.WithPrincipal(ctx, principal), method, req)
+		}
+	}
+}
+
 func newRegisteredSession(t *testing.T, cfg Config) *mcp.ClientSession {
 	t.Helper()
 	server := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0.0.1"}, nil)
+	server.AddReceivingMiddleware(withTestPrincipal("test-buyer"))
 	Register(server, cfg)
+	return connectInMemory(t, server)
+}
 
+func connectInMemory(t *testing.T, server *mcp.Server) *mcp.ClientSession {
+	t.Helper()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
 	ss, err := server.Connect(ctx, serverTransport, nil)
@@ -408,4 +425,46 @@ func TestWithIdempotencyPassesThroughHandlerError(t *testing.T) {
 	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
 	_, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": idempotency.Generate()})
 	assert.ErrorIs(t, err, boom)
+}
+
+func TestRegisterRefusesIdempotentCallWithoutPrincipalOrSession(t *testing.T) {
+	var calls int32
+	server := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0.0.1"}, nil)
+	Register(server, baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)}))
+	cs := connectInMemory(t, server)
+
+	e := adcpErrorOf(t, callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": idempotency.Generate()}))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+	assert.Equal(t, "transient", e["recovery"])
+	assert.Equal(t, "Idempotency principal could not be resolved; authenticate callers or use a session-based transport.", e["message"])
+	assert.Zero(t, atomic.LoadInt32(&calls))
+}
+
+func TestRegisterScopesKeysByMCPSessionWithoutPrincipal(t *testing.T) {
+	var calls int32
+	cfg := baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)})
+	server := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0.0.1"}, nil)
+	Register(server, cfg)
+	httpServer := httptest.NewServer(mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, nil))
+	t.Cleanup(httpServer.Close)
+
+	connect := func() *mcp.ClientSession {
+		client := mcp.NewClient(&mcp.Implementation{Name: "seller-test-client", Version: "v0.0.1"}, nil)
+		cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = cs.Close() })
+		return cs
+	}
+	args := map[string]any{"idempotency_key": idempotency.Generate()}
+
+	first := connect()
+	assert.Equal(t, "mb-1", callSession(t, first, "create_media_buy", args)["media_buy_id"])
+	replay := callSession(t, first, "create_media_buy", args)
+	assert.Equal(t, true, replay["replayed"])
+	assert.Equal(t, "mb-1", replay["media_buy_id"])
+
+	other := callSession(t, connect(), "create_media_buy", args)
+	assert.Nil(t, other["replayed"], "another session must not replay this session's response")
+	assert.Equal(t, "mb-2", other["media_buy_id"])
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
 }

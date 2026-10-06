@@ -34,11 +34,6 @@ var mutatingTools = map[string]bool{
 	"update_property_list": true, "update_rights": true,
 }
 
-// anonymousPrincipal scopes idempotency keys for unauthenticated callers,
-// who are indistinguishable from each other anyway.
-// Authenticate callers so each gets its own scope.
-const anonymousPrincipal = "anonymous"
-
 // errNotCached carries a tool-level error result out of Store.Wrap without
 // caching it, so a retry with the same key re-executes.
 var errNotCached = errors.New("adcp: error result is not cached")
@@ -48,6 +43,12 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // cached response with replayed=true; a different payload returns
 // IDEMPOTENCY_CONFLICT; a concurrent duplicate returns IDEMPOTENCY_IN_FLIGHT.
 // Error results are never cached. A nil store returns handler unchanged.
+//
+// Keys are scoped to the principal in ctx (idempotency.WithPrincipal, set by
+// your auth middleware); without one, to the MCP session ID
+// ("mcp-session:<id>"). With neither (e.g. a stateless transport and no
+// auth) the call is refused with SERVICE_UNAVAILABLE before the key is
+// validated or the handler runs, so unidentified callers never share a scope.
 //
 // Register applies this to every mutating tool. Use it directly for tools
 // you add with AddTool:
@@ -64,7 +65,10 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			raw = []byte("{}")
 		}
 		if idempotency.PrincipalFromContext(ctx) == "" {
-			ctx = idempotency.WithPrincipal(ctx, anonymousPrincipal)
+			if req.Session == nil || req.Session.ID() == "" {
+				return serviceUnavailable("Idempotency principal could not be resolved; authenticate callers or use a session-based transport.")
+			}
+			ctx = idempotency.WithPrincipal(ctx, "mcp-session:"+req.Session.ID())
 		}
 
 		var fresh *mcp.CallToolResult

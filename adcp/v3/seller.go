@@ -417,9 +417,8 @@ type Config struct {
 	// would not replay across sessions. Its TTL must equal
 	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
 	// multi-instance deployments. Keys are scoped per principal
-	// (idempotency.WithPrincipal / PrincipalFromContext). Calls without a
-	// principal share one anonymous scope; authenticate callers so keys cannot
-	// collide across buyers.
+	// (idempotency.WithPrincipal / PrincipalFromContext), else per MCP
+	// session ID; calls with neither are refused with SERVICE_UNAVAILABLE.
 	Idempotency *idempotency.Store
 
 	// Capabilities, if set, declares the full typed capabilities response.

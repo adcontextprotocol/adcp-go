@@ -690,6 +690,7 @@ func callRegisteredTool(t *testing.T, cfg Config, name string, args map[string]a
 	t.Helper()
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0.0.1"}, nil)
+	server.AddReceivingMiddleware(withTestPrincipal("test-buyer"))
 	Register(server, cfg)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
