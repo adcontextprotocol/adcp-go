@@ -252,11 +252,11 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Reporting tools ---
 
 	if cfg.SyncReportingStatus != nil {
-		AddTool(server, "sync_reporting_status", "Submit consumer reporting status",
+		addSellerTool(server, idem, "sync_reporting_status", "Submit consumer reporting status",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncReportingStatusRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncReportingStatus(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncReportingStatusResponseData(results)
@@ -265,11 +265,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.SyncReportingReceipts != nil {
-		AddTool(server, "sync_reporting_receipts", "Submit consumer reporting receipts",
+		addSellerTool(server, idem, "sync_reporting_receipts", "Submit consumer reporting receipts",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncReportingReceiptsRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncReportingReceipts(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncReportingReceiptsResponseData(results)

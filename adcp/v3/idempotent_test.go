@@ -826,3 +826,30 @@ func TestOutcomeUnknownClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestRegisterDeduplicatesReportingTools(t *testing.T) {
+	var calls int32
+	cs := newRegisteredSession(t, baseTestConfig(Config{
+		SyncReportingStatus: func(context.Context, *SyncReportingStatusRequest) ([]ReportingStatusResult, error) {
+			atomic.AddInt32(&calls, 1)
+			return []ReportingStatusResult{}, nil
+		},
+		SyncReportingReceipts: func(context.Context, *SyncReportingReceiptsRequest) ([]ReportingReceiptResult, error) {
+			atomic.AddInt32(&calls, 1)
+			return []ReportingReceiptResult{}, nil
+		},
+	}))
+	for _, tool := range []string{"sync_reporting_status", "sync_reporting_receipts"} {
+		t.Run(tool, func(t *testing.T) {
+			atomic.StoreInt32(&calls, 0)
+			key := idempotency.Generate()
+			callSession(t, cs, tool, map[string]any{"idempotency_key": key})
+			replay := callSession(t, cs, tool, map[string]any{"idempotency_key": key})
+			assert.Equal(t, true, replay["replayed"])
+			assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+
+			missing := callSession(t, cs, tool, map[string]any{})
+			assert.Equal(t, "INVALID_REQUEST", adcpErrorOf(t, missing)["code"])
+		})
+	}
+}
