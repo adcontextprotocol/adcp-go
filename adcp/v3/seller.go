@@ -409,18 +409,19 @@ func mutationErrorResult(store *idempotency.Store, err error) (*mcp.CallToolResu
 
 // outcomeUnknown mirrors the TS SDK's mutating-handler classification: an
 // untyped error, or a typed one whose recovery is transient, may follow a
-// commit, so it cannot be released for blind re-execution. A typed error's
-// recovery is its explicit ErrorOptions.Recovery, else the schema's
-// enumMetadata recovery for its code (transientErrorCodes).
+// commit, so it cannot be released for blind re-execution. As in TS, a
+// standard code's schema recovery (transientErrorCodes) takes precedence;
+// otherwise an explicit ErrorOptions.Recovery of "transient", or the legacy
+// "retry" that ErrorOptions still documents, marks the outcome unknown.
 func outcomeUnknown(err error) bool {
 	var he *handlerError
 	if !errors.As(err, &he) {
 		return true
 	}
-	if he.opts.Recovery != "" {
-		return he.opts.Recovery == "transient"
+	if transientErrorCodes[he.code] {
+		return true
 	}
-	return transientErrorCodes[he.code]
+	return he.opts.Recovery == "transient" || he.opts.Recovery == "retry"
 }
 
 // transientErrorCodes are the codes error-code.json enumMetadata classifies

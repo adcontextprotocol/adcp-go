@@ -805,3 +805,24 @@ func TestWithIdempotencyRejectsReservedToolField(t *testing.T) {
 	assert.Equal(t, "correctable", e["recovery"])
 	assert.Zero(t, atomic.LoadInt32(&calls))
 }
+
+func TestOutcomeUnknownClassification(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"untyped error", errors.New("db timeout"), true},
+		{"schema-transient code", NewError("SERVICE_UNAVAILABLE", ErrorOptions{}), true},
+		{"schema-transient code wins over explicit recovery", NewError("RATE_LIMITED", ErrorOptions{Recovery: "correctable"}), true},
+		{"explicit transient", NewError("BUDGET_TOO_LOW", ErrorOptions{Recovery: "transient"}), true},
+		{"legacy retry vocabulary", NewError("BUDGET_TOO_LOW", ErrorOptions{Recovery: "retry"}), true},
+		{"non-transient typed", NewError("BUDGET_TOO_LOW", ErrorOptions{}), false},
+		{"legacy revise vocabulary", NewError("BUDGET_TOO_LOW", ErrorOptions{Recovery: "revise"}), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, outcomeUnknown(tt.err))
+		})
+	}
+}
