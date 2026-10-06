@@ -7,9 +7,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// PrincipalFromContext returns the authenticated principal for the current
-// tool call (TokenInfo.UserID from WithBearerAuth), or "" when the caller is
-// anonymous. ResolveAccount should use it to check that the principal may
+// PrincipalFromContext returns the principal for the current tool call: the
+// verified TokenInfo.UserID from WithBearerAuth, or a value set with
+// idempotency.WithPrincipal in MCP receiving middleware; "" when anonymous. ResolveAccount should use it to check that the principal may
 // act for the requested account — the SDK does not know your account model.
 func PrincipalFromContext(ctx context.Context) string {
 	return idempotency.PrincipalFromContext(ctx)

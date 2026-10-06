@@ -2,8 +2,10 @@ package adcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -41,6 +43,11 @@ func WithPath(path string) ServeOption {
 // Authorization header that is not a valid Bearer token is rejected with 401,
 // never treated as anonymous. Combine with
 // Config.RequirePrincipal to reject anonymous calls to other tools.
+//
+// Rejections should wrap auth.ErrInvalidToken (401) or auth.ErrOAuth (400);
+// any other verifier error is logged and answered with a generic 500, never
+// its text. The principal is resolved per request, never cached per session:
+// an anonymous session may later carry bearer requests from any principal.
 func WithBearerAuth(verifier auth.TokenVerifier) ServeOption {
 	return func(c *serveConfig) { c.verifier = verifier }
 }
@@ -64,13 +71,22 @@ func Handler(createAgent func() *mcp.Server, opts ...ServeOption) http.Handler {
 	return mux
 }
 
+// errVerifierUnavailable replaces non-auth verifier errors on the wire.
+var errVerifierUnavailable = errors.New("token verification unavailable")
+
 func optionalBearer(verifier auth.TokenVerifier, next http.Handler) http.Handler {
 	// A verified token must name a principal: idempotency keys and account
 	// checks are scoped by it, so a token without one is rejected as invalid.
 	checked := func(ctx context.Context, token string, r *http.Request) (*auth.TokenInfo, error) {
 		info, err := verifier(ctx, token, r)
 		if err != nil {
-			return nil, err
+			if errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrOAuth) {
+				return nil, err
+			}
+			// go-sdk writes other verifier errors into the 500 body; log the
+			// cause and return a generic message so internals never reach callers.
+			slog.ErrorContext(ctx, "adcp: bearer token verification failed", "error", err)
+			return nil, errVerifierUnavailable
 		}
 		if info == nil || info.UserID == "" {
 			return nil, fmt.Errorf("%w: token has no usable principal (UserID)", auth.ErrInvalidToken)

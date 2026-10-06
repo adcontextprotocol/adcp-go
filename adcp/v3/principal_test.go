@@ -2,13 +2,15 @@ package adcp
 
 import (
 	"context"
-	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -166,4 +168,38 @@ func TestBearerAuthRejectsTokenWithoutPrincipal(t *testing.T) {
 			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 		})
 	}
+}
+
+func bearerPost(t *testing.T, h http.Handler, authorization string) (int, string) {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/mcp", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", authorization)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, string(body)
+}
+
+func emptyAgent() *mcp.Server {
+	return mcp.NewServer(&mcp.Implementation{Name: "x", Version: "v0"}, nil)
+}
+
+func TestBearerAuthRejectsNonBearerScheme(t *testing.T) {
+	code, _ := bearerPost(t, Handler(emptyAgent, WithBearerAuth(staticVerifier)), "Basic dXNlcjpwYXNz")
+	assert.Equal(t, http.StatusUnauthorized, code, "a present non-Bearer Authorization header is never anonymous")
+}
+
+func TestBearerAuthDoesNotLeakVerifierErrors(t *testing.T) {
+	v := func(context.Context, string, *http.Request) (*auth.TokenInfo, error) {
+		return nil, errors.New("dial tcp 10.0.0.7:5432: connection refused")
+	}
+	code, body := bearerPost(t, Handler(emptyAgent, WithBearerAuth(v)), "Bearer x")
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.NotContains(t, body, "10.0.0.7")
+	assert.NotContains(t, body, "connection refused")
 }
