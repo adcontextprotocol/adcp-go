@@ -14,10 +14,12 @@ import (
 // The SDK runs no expiry cleanup. Any cleanup job you add MUST exclude rows
 // whose hash starts with '__adcp_in_flight__:' — they are unresolved claims
 // whose outcome is unknown and need reconciliation, and deleting one lets
-// the key re-execute. For example:
+// the key re-execute. It MUST also keep rows for a grace period of at least
+// the Store's ClockSkew past expires_at, since the Store still serves them
+// then. For example, binding $1 to an interval no shorter than ClockSkew:
 //
 //	DELETE FROM adcp_idempotency
-//	WHERE expires_at < now() - interval '1 minute'
+//	WHERE expires_at < now() - $1::interval
 //	  AND NOT starts_with(hash, '__adcp_in_flight__:');
 const PostgresSchema = `
 CREATE TABLE IF NOT EXISTS adcp_idempotency (

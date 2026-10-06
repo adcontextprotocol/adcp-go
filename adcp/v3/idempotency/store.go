@@ -136,6 +136,9 @@ func New(opts Options) *Store {
 	if opts.ClockSkew == 0 {
 		opts.ClockSkew = DefaultClockSkew
 	}
+	if mb, ok := opts.Backend.(*MemoryBackend); ok && opts.ClockSkew > mb.grace {
+		panic(fmt.Sprintf("idempotency: Options.ClockSkew (%s) exceeds MemoryBackend's retention grace (%s); its sweeper would delete entries the store still serves", opts.ClockSkew, mb.grace))
+	}
 	required := true
 	if opts.KeyRequired != nil {
 		required = *opts.KeyRequired
@@ -337,19 +340,26 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 			CreatedAt: now,
 			ExpiresAt: s.opts.Clock().Add(s.opts.TTL),
 		}
-		if _, relErr := b.ReplaceIfHash(fctx, scope, key, claimHash, marker); relErr != nil {
+		released, relErr := b.ReplaceIfHash(fctx, scope, key, claimHash, marker)
+		if relErr != nil {
 			return nil, errors.Join(err, fmt.Errorf("%w: %w", ErrReleaseFailed, relErr))
+		}
+		if !released {
+			return nil, errors.Join(err, ErrClaimLost)
 		}
 		return nil, err
 	}
 	final := &Entry{Hash: hash, Response: resp, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
-	// If the result cannot be stored (error), return it and keep the claim:
-	// retries then see IN_FLIGHT instead of executing the handler twice.
-	// A false result means the claim was removed out of band (operator
-	// reconciliation); the fresh response is still correct for this caller,
-	// so it is ignored.
-	if _, err := b.ReplaceIfHash(fctx, scope, key, claimHash, final); err != nil {
+	// If the result cannot be stored (error), keep the claim: retries then
+	// see IN_FLIGHT instead of executing the handler twice. A false result
+	// means the claim was removed or replaced out of band, so this response
+	// is not what the key now holds.
+	recorded, err := b.ReplaceIfHash(fctx, scope, key, claimHash, final)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrRecordFailed, err)
+	}
+	if !recorded {
+		return nil, ErrClaimLost
 	}
 	return &Result{Response: resp, Replayed: false, Key: key}, nil
 }

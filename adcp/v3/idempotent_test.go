@@ -345,8 +345,12 @@ func (b *failingBackend) PutIfAbsent(ctx context.Context, scope, key string, e *
 }
 
 func (b *failingBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, e *idempotency.Entry) (bool, error) {
-	if b.fail == "ReplaceIfHash" {
+	switch b.fail {
+	case "ReplaceIfHash":
 		return false, errBackendSecret
+	case "ReplaceIfHash:lose":
+		// The claim was removed out of band before it could be finalized.
+		return false, nil
 	}
 	return b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, e)
 }
@@ -363,6 +367,7 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 		checkMsg   = "Idempotency check failed"
 		recordMsg  = "The response could not be recorded in the idempotency store. Reconcile by natural key before retrying."
 		releaseMsg = "The idempotency claim could not be released. Reconcile by natural key before retrying."
+		lostMsg    = "The request lost its idempotency claim before its response could be recorded. Retry safely."
 	)
 	okResult := func() (*mcp.CallToolResult, any, error) {
 		return buildResult("ok", map[string]any{"media_buy_id": "mb-1"}), map[string]any{"media_buy_id": "mb-1"}, nil
@@ -381,6 +386,8 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 		{"claim fails", "PutIfAbsent", okResult, checkMsg, 0},
 		{"record fails", "ReplaceIfHash", okResult, recordMsg, 1},
 		{"release after error result fails", "ReplaceIfHash", errResult, releaseMsg, 1},
+		{"claim lost before record", "ReplaceIfHash:lose", okResult, lostMsg, 1},
+		{"claim lost before release", "ReplaceIfHash:lose", errResult, lostMsg, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -605,4 +612,63 @@ func TestWithIdempotencyOptionalKeyRunsWithoutPrincipal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, structuredContentMap(t, result)["adcp_error"])
 	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWithIdempotencyReclaimFailureIsServiceUnavailable(t *testing.T) {
+	fb := &failingBackend{MemoryBackend: idempotency.NewMemoryBackend(0)}
+	store := idempotency.New(idempotency.Options{Backend: fb, TTL: 24 * time.Hour})
+	var calls int32
+	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		atomic.AddInt32(&calls, 1)
+		return Errorf("INVALID_STATE", ErrorOptions{Message: "nope"})
+	})
+	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+	args := map[string]any{"idempotency_key": idempotency.Generate()}
+	_, _, err := callWrapped(ctx, h, "create_media_buy", args)
+	require.NoError(t, err)
+
+	fb.fail = "ReplaceIfHash" // the retry's marker reclaim fails
+	result, _, err := callWrapped(ctx, h, "create_media_buy", args)
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+	assert.Equal(t, "transient", e["recovery"])
+	wire, _ := json.Marshal(result)
+	assert.NotContains(t, string(wire), "db-secret-host")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWithIdempotencyNilStoreValidatesKeyFormat(t *testing.T) {
+	var calls int32
+	h := WithIdempotency(nil, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		atomic.AddInt32(&calls, 1)
+		return buildResult("ok", map[string]any{}), nil, nil
+	})
+	result, _, err := callWrapped(context.Background(), h, "update_media_buy", map[string]any{"idempotency_key": "short"})
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "INVALID_REQUEST", e["code"])
+	assert.Equal(t, "idempotency_key", e["field"])
+	assert.Zero(t, atomic.LoadInt32(&calls))
+
+	_, _, err = callWrapped(context.Background(), h, "update_media_buy", map[string]any{})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWithIdempotencyRejectsReservedToolField(t *testing.T) {
+	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+	var calls int32
+	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		atomic.AddInt32(&calls, 1)
+		return buildResult("ok", map[string]any{}), nil, nil
+	})
+	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+	result, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": idempotency.Generate(), "$adcp_tool": "update_media_buy"})
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "INVALID_REQUEST", e["code"])
+	assert.Equal(t, "$adcp_tool", e["field"])
+	assert.Equal(t, "correctable", e["recovery"])
+	assert.Zero(t, atomic.LoadInt32(&calls))
 }

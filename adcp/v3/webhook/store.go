@@ -91,7 +91,8 @@ type Result struct {
 //
 // A handler error is returned as-is when its claim is released. If the
 // release itself fails, the returned error joins the handler error with
-// idempotency.ErrReleaseFailed (use errors.Is), and the key stays fenced.
+// idempotency.ErrReleaseFailed (use errors.Is), and the key stays fenced; if
+// the claim was removed out of band first, it joins idempotency.ErrClaimLost.
 func (s *Store) Dedup(ctx context.Context, body []byte, h Handler) (*Result, error) {
 	if h == nil {
 		return nil, errors.New("webhook: Handler is required")

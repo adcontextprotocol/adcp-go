@@ -98,3 +98,29 @@ func TestMemorySweepKeepsUnresolvedClaims(t *testing.T) {
 	require.NotNil(t, got, "unresolved claim survives the sweep")
 	assert.Equal(t, claim, got.Hash)
 }
+
+// The store serves entries until ExpiresAt+ClockSkew, so the sweeper must
+// keep them through that window.
+func TestMemorySweepKeepsEntriesInsideClockSkew(t *testing.T) {
+	now := time.Now()
+	b := newMemoryBackend(0, func() time.Time { return now })
+	ctx := context.Background()
+	for k, expires := range map[string]time.Time{
+		"inside":  now.Add(-DefaultClockSkew / 2),
+		"outside": now.Add(-2 * DefaultClockSkew),
+	} {
+		_, _, err := b.PutIfAbsent(ctx, "s", k, &Entry{Hash: "h", Response: []byte(`{}`), ExpiresAt: expires})
+		require.NoError(t, err)
+	}
+	b.sweep()
+	e, _ := b.Get(ctx, "s", "inside")
+	assert.NotNil(t, e, "an entry inside the skew window must survive")
+	e, _ = b.Get(ctx, "s", "outside")
+	assert.Nil(t, e)
+}
+
+func TestNewPanicsWhenClockSkewExceedsMemoryGrace(t *testing.T) {
+	assert.PanicsWithValue(t,
+		"idempotency: Options.ClockSkew (2m0s) exceeds MemoryBackend's retention grace (1m0s); its sweeper would delete entries the store still serves",
+		func() { New(Options{Backend: NewMemoryBackend(0), TTL: time.Hour, ClockSkew: 2 * time.Minute}) })
+}

@@ -7,12 +7,16 @@ import (
 )
 
 // MemoryBackend is an in-process Backend suitable for tests and reference
-// servers. A background sweeper removes expired entries (never unresolved
-// in-flight claims); callers should invoke Close to stop it.
+// servers. A background sweeper removes entries once they are past ExpiresAt
+// plus a retention grace of DefaultClockSkew (never unresolved in-flight
+// claims); callers should invoke Close to stop it. The grace must be at least
+// the Store's ClockSkew, which serves entries until then, so New panics on a
+// larger ClockSkew with a MemoryBackend.
 type MemoryBackend struct {
 	mu      sync.Mutex
 	entries map[string]*Entry
 	clock   func() time.Time
+	grace   time.Duration
 	stop    chan struct{}
 	stopped chan struct{}
 }
@@ -28,6 +32,7 @@ func newMemoryBackend(sweepInterval time.Duration, clock func() time.Time) *Memo
 	b := &MemoryBackend{
 		entries: map[string]*Entry{},
 		clock:   clock,
+		grace:   DefaultClockSkew,
 		stop:    make(chan struct{}),
 		stopped: make(chan struct{}),
 	}
@@ -71,7 +76,7 @@ func (b *MemoryBackend) sweep() {
 	for k, e := range b.entries {
 		// Unresolved claims are never swept: deleting one would let the key
 		// re-execute an outcome that may already have taken effect.
-		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt) && !isClaimHash(e.Hash) {
+		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt.Add(b.grace)) && !isClaimHash(e.Hash) {
 			delete(b.entries, k)
 		}
 	}

@@ -46,8 +46,8 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // Error results are never cached and release the key for an exact retry. A
 // handler Go error means the outcome is unknown: it becomes
 // SERVICE_UNAVAILABLE (without the error text) and the key stays fenced
-// (IDEMPOTENCY_IN_FLIGHT) until reconciled. A nil store returns handler
-// unchanged.
+// (IDEMPOTENCY_IN_FLIGHT) until reconciled. With a nil store nothing is
+// deduplicated, but a present malformed idempotency_key is still rejected.
 //
 // A store requires an authenticated principal: keys are scoped to the
 // principal in ctx, injected by your auth middleware with
@@ -66,7 +66,7 @@ var errNotCached = errors.New("adcp: error result is not cached")
 //	    adcp.WithIdempotency(store, updateMediaBuy))
 func WithIdempotency[In any](store *idempotency.Store, handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error) {
 	if store == nil {
-		return handler
+		return withKeyFormatCheck(handler)
 	}
 	return func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
 		raw := []byte(req.Params.Arguments)
@@ -76,6 +76,9 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		var args map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &args); err != nil || args == nil {
 			return Errorf("INVALID_REQUEST", ErrorOptions{Message: "Tool arguments must be a JSON object", Recovery: "correctable"})
+		}
+		if _, ok := args[toolHashField]; ok {
+			return Errorf("INVALID_REQUEST", ErrorOptions{Message: toolHashField + " is a reserved field", Recovery: "correctable", Field: toolHashField})
 		}
 		present, err := checkKey(args)
 		if err != nil {
@@ -121,6 +124,8 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			return serviceUnavailable("The idempotency claim could not be released. Reconcile by natural key before retrying.")
 		case errors.Is(err, idempotency.ErrRecordFailed):
 			return serviceUnavailable("The response could not be recorded in the idempotency store. Reconcile by natural key before retrying.")
+		case errors.Is(err, idempotency.ErrClaimLost):
+			return serviceUnavailable("The request lost its idempotency claim before its response could be recorded. Retry safely.")
 		case errors.Is(err, errNotCached):
 			return fresh, freshOut, nil
 		case handlerErr != nil:
@@ -145,7 +150,7 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 // toolHashField is a reserved top-level field WithIdempotency adds to the
 // payload it hashes (never to the handler input or the response), so the same
 // key and arguments on two different tools conflict instead of replaying the
-// other tool's response.
+// other tool's response. Arguments that already carry it are rejected.
 const toolHashField = "$adcp_tool"
 
 // bindToolName returns args with the tool name added under toolHashField.
@@ -178,7 +183,7 @@ func checkKey(args map[string]json.RawMessage) (present bool, err error) {
 }
 
 // withKeyFormatCheck rejects a present but malformed idempotency_key when
-// replay is disabled, so buyers learn of bad keys before relying on them.
+// there is no store, so buyers learn of bad keys before relying on them.
 func withKeyFormatCheck[In any](handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error) {
 	return func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
 		var args map[string]json.RawMessage

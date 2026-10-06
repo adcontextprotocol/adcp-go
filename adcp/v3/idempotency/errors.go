@@ -27,6 +27,11 @@ var ErrRecordFailed = errors.New("idempotency: response could not be recorded")
 // handler failed: the key stays fenced until reconciled.
 var ErrReleaseFailed = errors.New("idempotency: claim could not be released")
 
+// ErrClaimLost is returned when a claim was removed or replaced out of band
+// (e.g. by an operator) before the handler's response could be recorded or
+// its claim released.
+var ErrClaimLost = errors.New("idempotency: claim lost before it could be finalized")
+
 // ErrOutcomeUnknown marks a handler error after which the handler may or may
 // not have taken effect. Wrap it into the error a Handler returns (errors.Is
 // must match) to keep the key's claim fenced instead of releasing it: retries

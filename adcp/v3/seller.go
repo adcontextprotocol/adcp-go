@@ -390,11 +390,7 @@ func Register(server *mcp.Server, cfg Config) {
 // format-checked; a missing one is allowed.
 func addSellerTool[In any](server *mcp.Server, store *idempotency.Store, name, description string, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) {
 	if mutatingTools[name] {
-		if store == nil {
-			h = withKeyFormatCheck(h)
-		} else {
-			h = WithIdempotency(store, h)
-		}
+		h = WithIdempotency(store, h)
 	}
 	AddTool(server, name, description, h)
 }

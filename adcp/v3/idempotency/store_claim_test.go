@@ -227,3 +227,110 @@ func TestWrapOutcomeUnknownKeepsClaim(t *testing.T) {
 	require.ErrorAs(t, err, &inFlight, "an unknown outcome must stay fenced")
 	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
 }
+
+// hookBackend wraps MemoryBackend to inject races and lost claims.
+type hookBackend struct {
+	*MemoryBackend
+	hideGet      bool                             // Get misses, as if the row appeared after it
+	loseFinalize bool                             // record/release find the claim gone
+	onReclaim    func(scope, key, oldHash string) // runs before a marker reclaim
+}
+
+func (b *hookBackend) Get(ctx context.Context, scope, key string) (*Entry, error) {
+	if b.hideGet {
+		return nil, nil
+	}
+	return b.MemoryBackend.Get(ctx, scope, key)
+}
+
+func (b *hookBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, e *Entry) (bool, error) {
+	if b.loseFinalize && isClaimHash(oldHash) {
+		return false, nil
+	}
+	if b.onReclaim != nil && strings.HasPrefix(oldHash, retryablePrefix) {
+		f := b.onReclaim
+		b.onReclaim = nil
+		f(scope, key, oldHash)
+	}
+	return b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, e)
+}
+
+func newHookStore(t *testing.T) (*Store, *hookBackend) {
+	t.Helper()
+	b := &hookBackend{MemoryBackend: NewMemoryBackend(0)}
+	return New(Options{Backend: b, TTL: time.Hour}), b
+}
+
+// failOnce returns a handler that errors on its first call and counts calls.
+func failOnce(calls *int32) Handler {
+	return func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(calls, 1) == 1 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []byte(`{"ok":true}`), nil
+	}
+}
+
+func TestWrapReportsLostClaim(t *testing.T) {
+	ctx := WithPrincipal(context.Background(), "p1")
+	t.Run("record", func(t *testing.T) {
+		s, b := newHookStore(t)
+		b.loseFinalize = true
+		_, err := s.Wrap(func(context.Context, []byte) ([]byte, error) { return []byte(`{}`), nil })(ctx, mustJSON(t, map[string]any{"idempotency_key": Generate()}))
+		require.ErrorIs(t, err, ErrClaimLost)
+	})
+	t.Run("release", func(t *testing.T) {
+		s, b := newHookStore(t)
+		b.loseFinalize = true
+		boom := errors.New("boom")
+		_, err := s.Wrap(func(context.Context, []byte) ([]byte, error) { return nil, boom })(ctx, mustJSON(t, map[string]any{"idempotency_key": Generate()}))
+		require.ErrorIs(t, err, ErrClaimLost)
+		require.ErrorIs(t, err, boom)
+	})
+}
+
+func TestWrapReclaimRaceLoserSeesInFlight(t *testing.T) {
+	s, b := newHookStore(t)
+	ctx := WithPrincipal(context.Background(), "p1")
+	req := mustJSON(t, map[string]any{"idempotency_key": Generate()})
+	var calls int32
+	wrapped := s.Wrap(failOnce(&calls))
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+
+	// Another retry reclaims the marker between our Get and ReplaceIfHash.
+	b.onReclaim = func(scope, key, oldHash string) {
+		reqHash, _ := markerRequestHash(oldHash, retryablePrefix)
+		other, err := newClaimHash(reqHash)
+		require.NoError(t, err)
+		ok, err := b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, &Entry{Hash: other, Response: []byte{}, ExpiresAt: time.Now().Add(time.Hour)})
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	_, err = wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWrapPutIfAbsentLosesToLiveMarker(t *testing.T) {
+	s, b := newHookStore(t)
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key})
+	var calls int32
+	wrapped := s.Wrap(failOnce(&calls))
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+
+	// The marker appears after Get, so the claim's PutIfAbsent loses to it.
+	b.hideGet = true
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 1}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict, "a different payload still conflicts with the marker")
+
+	res, err := wrapped(ctx, req)
+	require.NoError(t, err, "the same payload reclaims the marker")
+	assert.False(t, res.Replayed)
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+}
