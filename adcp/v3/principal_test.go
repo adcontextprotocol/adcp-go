@@ -2,8 +2,10 @@ package adcp
 
 import (
 	"context"
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,15 +40,59 @@ func httpSession(t *testing.T, cfg Config, token string) *mcp.ClientSession {
 		return s
 	}, WithBearerAuth(staticVerifier)))
 	t.Cleanup(srv.Close)
+	return connectBearer(t, srv.URL, token)
+}
 
+func connectBearer(t *testing.T, baseURL, token string) *mcp.ClientSession {
+	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "c", Version: "v0"}, nil)
 	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
-		Endpoint:   srv.URL + "/mcp",
+		Endpoint:   baseURL + "/mcp",
 		HTTPClient: &http.Client{Transport: bearerTransport{token: token}},
 	}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cs.Close() })
 	return cs
+}
+
+// TestBearerPrincipalScopesIdempotency covers the end-to-end path a seller
+// uses: WithBearerAuth supplies the principal that the idempotency store
+// requires, replays stay within one buyer, and the same key from another
+// buyer executes in that buyer's own scope.
+func TestBearerPrincipalScopesIdempotency(t *testing.T) {
+	var calls int32
+	cfg := baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)})
+	buyers := func(_ context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+		if token != "buyer-a" && token != "buyer-b" {
+			return nil, auth.ErrInvalidToken
+		}
+		return &auth.TokenInfo{UserID: token, Expiration: time.Now().Add(time.Hour)}, nil
+	}
+	srv := httptest.NewServer(Handler(func() *mcp.Server {
+		s := mcp.NewServer(&mcp.Implementation{Name: "seller-test", Version: "v0"}, nil)
+		Register(s, cfg)
+		return s
+	}, WithBearerAuth(buyers)))
+	t.Cleanup(srv.Close)
+
+	key := idempotency.Generate()
+	args := func() map[string]any { return map[string]any{"idempotency_key": key} }
+
+	a := connectBearer(t, srv.URL, "buyer-a")
+	first := callSession(t, a, "create_media_buy", args())
+	replay := callSession(t, connectBearer(t, srv.URL, "buyer-a"), "create_media_buy", args())
+	other := callSession(t, connectBearer(t, srv.URL, "buyer-b"), "create_media_buy", args())
+
+	assert.Equal(t, "mb-1", first["media_buy_id"])
+	assert.Equal(t, "mb-1", replay["media_buy_id"], "same buyer replays across sessions")
+	assert.Equal(t, true, replay["replayed"])
+	assert.Equal(t, "mb-2", other["media_buy_id"], "another buyer's identical key executes in its own scope")
+	assert.Nil(t, other["replayed"])
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+
+	anon := callSession(t, connectBearer(t, srv.URL, ""), "create_media_buy", args())
+	assert.Equal(t, "SERVICE_UNAVAILABLE", adcpErrorOf(t, anon)["code"], "keyed call without a principal is refused")
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
 }
 
 func principalEchoConfig(seen *string) Config {
@@ -93,7 +139,7 @@ func TestBearerAuthRejectsBadToken(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer bad-token")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
 
@@ -116,7 +162,7 @@ func TestBearerAuthRejectsTokenWithoutPrincipal(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer x")
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 		})
 	}

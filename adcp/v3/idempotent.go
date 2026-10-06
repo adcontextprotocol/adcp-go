@@ -57,8 +57,8 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // deduplicated, but a present malformed idempotency_key is still rejected.
 //
 // A store requires an authenticated principal: keys are scoped to the
-// principal in ctx, injected by your auth middleware with
-// idempotency.WithPrincipal. The MCP transport session ID is never used (a
+// principal in ctx, supplied by WithBearerAuth or injected by your own auth
+// middleware with idempotency.WithPrincipal. The MCP transport session ID is never used (a
 // stateless transport accepts a client-chosen one). Without a principal the
 // call is refused with SERVICE_UNAVAILABLE and the handler does not run.
 //

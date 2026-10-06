@@ -459,8 +459,8 @@ type Config struct {
 	// would not replay across sessions. Its TTL must equal
 	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
 	// multi-instance deployments. A store requires an authenticated
-	// principal: keys are scoped per principal, which your auth middleware
-	// injects with idempotency.WithPrincipal. Calls without one are refused
+	// principal: keys are scoped per principal, supplied by WithBearerAuth
+	// or by your own auth middleware via idempotency.WithPrincipal. Calls without one are refused
 	// with SERVICE_UNAVAILABLE; the MCP session ID is never used as a scope.
 	Idempotency *idempotency.Store
 
