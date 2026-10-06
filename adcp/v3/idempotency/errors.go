@@ -36,7 +36,9 @@ var ErrClaimLost = errors.New("idempotency: claim lost before it could be finali
 // not have taken effect. Wrap it into the error a Handler returns (errors.Is
 // must match) to keep the key's claim fenced instead of releasing it: retries
 // get IDEMPOTENCY_IN_FLIGHT until an operator reconciles the key. Wrap
-// returns the handler's error unchanged.
+// returns the handler's error unchanged. Fencing needs a ClaimBackend
+// (MemoryBackend, PgBackend): a custom Backend that is not one keeps no
+// claim, so a retry re-executes the handler.
 var ErrOutcomeUnknown = errors.New("idempotency: request outcome is unknown")
 
 // ConflictError is returned when an idempotency key is reused with a different

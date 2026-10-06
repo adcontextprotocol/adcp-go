@@ -11,7 +11,10 @@ import (
 // plus a retention grace of DefaultClockSkew (never unresolved in-flight
 // claims); callers should invoke Close to stop it. The grace must be at least
 // the Store's ClockSkew, which serves entries until then, so New panics on a
-// larger ClockSkew with a MemoryBackend.
+// larger ClockSkew with a MemoryBackend. That check only sees an unwrapped
+// *MemoryBackend; the grace applies regardless of wrapping. The sweeper uses
+// the backend's clock (time.Now), not Options.Clock, so a Store whose Clock
+// runs behind real time can find entries already swept.
 type MemoryBackend struct {
 	mu      sync.Mutex
 	entries map[string]*Entry

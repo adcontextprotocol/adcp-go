@@ -62,7 +62,9 @@ func (s *Store) TTL() time.Duration { return s.inner.TTL() }
 // different canonical body under the same key is a conflict (409 from
 // HTTPHandler). Return errors rather than panic: a panic or process crash
 // mid-handler leaves the key fenced (503 + Retry-After from HTTPHandler)
-// until an operator clears its row in the Backend.
+// until an operator clears its row in the Backend. Returning an error that
+// wraps idempotency.ErrOutcomeUnknown opts that delivery into the same
+// fencing (503 until reconciled) instead of releasing the key.
 type Handler func(ctx context.Context, body []byte) error
 
 // Result describes the outcome of a Dedup call.
