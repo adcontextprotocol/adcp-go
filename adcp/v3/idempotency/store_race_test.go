@@ -14,7 +14,7 @@ import (
 
 // TestWrapConcurrentSameKeySamePayload forces the PutIfAbsent race: many
 // goroutines issue the same idempotent request; exactly one handler run must
-// be observable, the rest must see Replayed=true.
+// be observable; the rest replay or see InFlightError.
 func TestWrapConcurrentSameKeySamePayload(t *testing.T) {
 	now := time.Now().UTC()
 	b := newMemoryBackend(0, func() time.Time { return now })
@@ -49,9 +49,13 @@ func TestWrapConcurrentSameKeySamePayload(t *testing.T) {
 	close(start)
 	wg.Wait()
 
-	freshCount := 0
-	replayCount := 0
+	freshCount, replayCount, inFlightCount := 0, 0, 0
 	for i, r := range results {
+		var inFlight *InFlightError
+		if errors.As(errs[i], &inFlight) {
+			inFlightCount++
+			continue
+		}
 		require.NoError(t, errs[i])
 		require.NotNil(t, r)
 		if r.Replayed {
@@ -61,11 +65,8 @@ func TestWrapConcurrentSameKeySamePayload(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 1, freshCount, "exactly one goroutine should see fresh execution")
-	assert.Equal(t, N-1, replayCount, "all others should replay")
-	// Handler may run more than once when multiple goroutines race past the
-	// initial Get miss, but the middleware MUST collapse duplicates to a
-	// single authoritative response.
-	assert.GreaterOrEqual(t, atomic.LoadInt32(&handlerCalls), int32(1))
+	assert.Equal(t, N-1, replayCount+inFlightCount, "all others replay or see IDEMPOTENCY_IN_FLIGHT")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&handlerCalls), "the claim must collapse concurrent duplicates to one execution")
 }
 
 // TestWrapConflictOnPutIfAbsentPath drives the race branch directly: Get

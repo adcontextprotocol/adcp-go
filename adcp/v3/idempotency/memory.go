@@ -104,3 +104,29 @@ func (b *MemoryBackend) PutIfAbsent(_ context.Context, scope, key string, entry 
 	return nil, true, nil
 }
 
+var _ ClaimBackend = (*MemoryBackend)(nil)
+
+// ReplaceIfHash implements ClaimBackend.
+func (b *MemoryBackend) ReplaceIfHash(_ context.Context, scope, key, oldHash string, entry *Entry) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	k := scopeKey(scope, key)
+	if e, ok := b.entries[k]; !ok || e.Hash != oldHash {
+		return false, nil
+	}
+	cp := *entry
+	b.entries[k] = &cp
+	return true, nil
+}
+
+// DeleteIfHash implements ClaimBackend.
+func (b *MemoryBackend) DeleteIfHash(_ context.Context, scope, key, hash string) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	k := scopeKey(scope, key)
+	if e, ok := b.entries[k]; !ok || e.Hash != hash {
+		return false, nil
+	}
+	delete(b.entries, k)
+	return true, nil
+}

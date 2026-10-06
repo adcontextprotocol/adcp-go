@@ -55,3 +55,34 @@ func TestMemorySweeperRemovesExpired(t *testing.T) {
 	}, time.Second, 5*time.Millisecond)
 }
 
+func TestMemoryReplaceAndDeleteIfHash(t *testing.T) {
+	b := NewMemoryBackend(0)
+	defer b.Close()
+	ctx := context.Background()
+
+	_, stored, err := b.PutIfAbsent(ctx, "s", "k", &Entry{Hash: "claim"})
+	require.NoError(t, err)
+	require.True(t, stored)
+
+	ok, err := b.ReplaceIfHash(ctx, "s", "k", "wrong", &Entry{Hash: "final"})
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	ok, err = b.ReplaceIfHash(ctx, "s", "k", "claim", &Entry{Hash: "final", Response: []byte(`{}`)})
+	require.NoError(t, err)
+	assert.True(t, ok)
+	got, err := b.Get(ctx, "s", "k")
+	require.NoError(t, err)
+	assert.Equal(t, "final", got.Hash)
+
+	ok, err = b.DeleteIfHash(ctx, "s", "k", "claim")
+	require.NoError(t, err)
+	assert.False(t, ok)
+
+	ok, err = b.DeleteIfHash(ctx, "s", "k", "final")
+	require.NoError(t, err)
+	assert.True(t, ok)
+	got, err = b.Get(ctx, "s", "k")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}

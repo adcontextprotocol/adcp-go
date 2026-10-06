@@ -1,6 +1,9 @@
 package idempotency
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Protocol error codes this package maps onto. Only IDEMPOTENCY_CONFLICT and
 // IDEMPOTENCY_EXPIRED are idempotency-specific in the AdCP enum; missing or
@@ -10,6 +13,7 @@ import "fmt"
 const (
 	CodeIdempotencyConflict = "IDEMPOTENCY_CONFLICT"
 	CodeIdempotencyExpired  = "IDEMPOTENCY_EXPIRED"
+	CodeIdempotencyInFlight = "IDEMPOTENCY_IN_FLIGHT"
 	CodeInvalidRequest      = "INVALID_REQUEST"
 )
 
@@ -89,3 +93,19 @@ func (e *MissingCapabilityError) Error() string {
 	}
 	return "idempotency: seller " + e.AgentID + " capabilities missing adcp.idempotency.replay_ttl_seconds"
 }
+
+// InFlightError is returned when an earlier request with the same key and
+// payload is still executing. Recovery is transient: retry after RetryAfter
+// with the SAME key — minting a new key would turn a safe retry into a
+// double execution.
+type InFlightError struct {
+	Key        string
+	RetryAfter time.Duration
+}
+
+func (e *InFlightError) Error() string {
+	return fmt.Sprintf("idempotency: key %s is still being processed", LogKey(e.Key))
+}
+
+// Code returns the protocol error code.
+func (*InFlightError) Code() string { return CodeIdempotencyInFlight }

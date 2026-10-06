@@ -2,9 +2,12 @@ package idempotency
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -15,6 +18,41 @@ const (
 	// DefaultClockSkew is the spec's ±60s tolerance around the TTL boundary.
 	DefaultClockSkew = 60 * time.Second
 )
+
+// inFlightPrefix marks a claim entry written before the handler runs:
+// inFlightPrefix + requestHash + ":" + random token. The token makes every
+// claim unique so a stale owner can never replace or release a newer claim.
+const inFlightPrefix = "__adcp_in_flight__:"
+
+// maxInFlightRetryAfter caps the retry_after hint on IDEMPOTENCY_IN_FLIGHT so
+// a fresh claim doesn't tell buyers to wait out the whole replay window.
+const maxInFlightRetryAfter = 30 * time.Second
+
+func newClaimHash(requestHash string) (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("idempotency: claim token: %w", err)
+	}
+	return inFlightPrefix + requestHash + ":" + hex.EncodeToString(b[:]), nil
+}
+
+// claimRequestHash returns the request hash embedded in a claim's Hash, or
+// ok=false when the entry is a completed response.
+func claimRequestHash(h string) (string, bool) {
+	rest, ok := strings.CutPrefix(h, inFlightPrefix)
+	if !ok {
+		return "", false
+	}
+	i := strings.LastIndex(rest, ":")
+	if i < 0 {
+		return "", false
+	}
+	return rest[:i], true
+}
+
+func inFlightRetryAfter(expiresAt, now time.Time) time.Duration {
+	return min(maxInFlightRetryAfter, max(time.Second, expiresAt.Sub(now).Truncate(time.Second)))
+}
 
 // Options configures a Store.
 type Options struct {
@@ -180,6 +218,10 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 			return s.evaluateExisting(existing, hash, key, now)
 		}
 
+		if cb, ok := s.opts.Backend.(ClaimBackend); ok {
+			return s.runClaimed(ctx, cb, h, req, scope, key, hash, now)
+		}
+
 		resp, err := h(ctx, req)
 		if err != nil {
 			return nil, err
@@ -209,11 +251,54 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 	}
 }
 
+// runClaimed claims (scope, key) before executing h so concurrent duplicates
+// see IDEMPOTENCY_IN_FLIGHT instead of running the handler again.
+func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req []byte, scope, key, hash string, now time.Time) (*Result, error) {
+	claimHash, err := newClaimHash(hash)
+	if err != nil {
+		return nil, err
+	}
+	claim := &Entry{Hash: claimHash, Response: []byte{}, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
+	winner, stored, err := b.PutIfAbsent(ctx, scope, key, claim)
+	if err != nil {
+		return nil, err
+	}
+	if !stored {
+		if winner == nil {
+			return nil, &InFlightError{Key: key, RetryAfter: time.Second}
+		}
+		return s.evaluateExisting(winner, hash, key, now)
+	}
+
+	resp, err := h(ctx, req)
+	if err != nil {
+		// Handler failures are not cached (see Handler): release the claim
+		// so a retry with the same key can execute.
+		if _, relErr := b.DeleteIfHash(context.WithoutCancel(ctx), scope, key, claimHash); relErr != nil {
+			return nil, errors.Join(err, relErr)
+		}
+		return nil, err
+	}
+	final := &Entry{Hash: hash, Response: resp, CreatedAt: now, ExpiresAt: now.Add(s.opts.TTL)}
+	// A false result means the claim vanished (swept after TTL); the fresh
+	// response is still correct for this caller.
+	if _, err := b.ReplaceIfHash(context.WithoutCancel(ctx), scope, key, claimHash, final); err != nil {
+		return nil, err
+	}
+	return &Result{Response: resp, Replayed: false, Key: key}, nil
+}
+
 // evaluateExisting applies TTL (with clock skew) and hash-match rules to a
 // stored entry and returns the replay result or a typed error.
 func (s *Store) evaluateExisting(existing *Entry, hash, key string, now time.Time) (*Result, error) {
 	if !existing.ExpiresAt.IsZero() && now.After(existing.ExpiresAt.Add(s.opts.ClockSkew)) {
 		return nil, &ExpiredError{Key: key}
+	}
+	if claimed, ok := claimRequestHash(existing.Hash); ok {
+		if claimed != hash {
+			return nil, &ConflictError{Key: key}
+		}
+		return nil, &InFlightError{Key: key, RetryAfter: inFlightRetryAfter(existing.ExpiresAt, now)}
 	}
 	if existing.Hash != hash {
 		return nil, &ConflictError{Key: key}
