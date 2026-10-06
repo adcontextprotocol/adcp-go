@@ -501,3 +501,19 @@ func TestWithIdempotencyRejectsNonObjectArguments(t *testing.T) {
 	assert.Equal(t, "correctable", e["recovery"])
 	assert.Zero(t, atomic.LoadInt32(&calls))
 }
+
+func TestRegisterWithoutStoreValidatesKeyFormat(t *testing.T) {
+	var calls int32
+	cfg := baseTestConfig(Config{CreateMediaBuy: countingCreateMediaBuy(&calls)})
+	cfg.Idempotency = nil
+	cs := newRegisteredSession(t, cfg)
+
+	e := adcpErrorOf(t, callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": "short"}))
+	assert.Equal(t, "INVALID_REQUEST", e["code"])
+	assert.Equal(t, "idempotency_key", e["field"])
+	assert.Equal(t, "correctable", e["recovery"])
+	assert.Zero(t, atomic.LoadInt32(&calls))
+
+	assert.Nil(t, callSession(t, cs, "create_media_buy", map[string]any{})["adcp_error"])
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}

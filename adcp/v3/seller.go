@@ -386,10 +386,15 @@ func Register(server *mcp.Server, cfg Config) {
 }
 
 // addSellerTool registers a Register-managed tool, applying idempotency to
-// mutating tools.
+// mutating tools. Without a store, a present idempotency_key is still
+// format-checked; a missing one is allowed.
 func addSellerTool[In any](server *mcp.Server, store *idempotency.Store, name, description string, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) {
 	if mutatingTools[name] {
-		h = WithIdempotency(store, h)
+		if store == nil {
+			h = withKeyFormatCheck(h)
+		} else {
+			h = WithIdempotency(store, h)
+		}
 	}
 	AddTool(server, name, description, h)
 }

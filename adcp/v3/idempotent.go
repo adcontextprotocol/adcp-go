@@ -140,6 +140,28 @@ func bindToolName(raw []byte, tool string) ([]byte, error) {
 	return json.Marshal(m)
 }
 
+// withKeyFormatCheck rejects a present but malformed idempotency_key when
+// replay is disabled, so buyers learn of bad keys before relying on them.
+func withKeyFormatCheck[In any](handler func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error) {
+	return func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, any, error) {
+		var args map[string]json.RawMessage
+		_ = json.Unmarshal(req.Params.Arguments, &args)
+		if raw, ok := args["idempotency_key"]; ok {
+			var key string
+			err := json.Unmarshal(raw, &key)
+			if err != nil {
+				err = &idempotency.InvalidKeyError{Reason: "not a string"}
+			} else {
+				err = idempotency.Validate(key)
+			}
+			if err != nil {
+				return idempotencyErrorResult(err)
+			}
+		}
+		return handler(ctx, req, input)
+	}
+}
+
 // requestContext returns the caller's context object so replays echo the
 // current request's context, not the one cached with the first response.
 func requestContext(raw []byte) any {
