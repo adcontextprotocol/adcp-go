@@ -1,0 +1,336 @@
+package idempotency
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestWrapClaimBlocksConcurrentDuplicate(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			close(started)
+			<-release
+		}
+		return []byte(`{"media_buy_id":"mb-1"}`), nil
+	})
+
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key, "budget": 100})
+
+	type outcome struct {
+		res *Result
+		err error
+	}
+	first := make(chan outcome, 1)
+	go func() {
+		r, err := wrapped(ctx, req)
+		first <- outcome{r, err}
+	}()
+	<-started
+
+	_, err := wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight)
+	assert.Equal(t, 30*time.Second, inFlight.RetryAfter)
+	assert.Equal(t, CodeIdempotencyInFlight, inFlight.Code())
+
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 200}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict)
+
+	close(release)
+	got := <-first
+	require.NoError(t, got.err)
+	assert.False(t, got.res.Replayed)
+
+	replay, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, replay.Replayed)
+	assert.JSONEq(t, `{"media_buy_id":"mb-1"}`, string(replay.Response))
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWrapClaimReleasedOnHandlerError(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []byte(`{"ok":true}`), nil
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	req := mustJSON(t, map[string]any{"idempotency_key": Generate()})
+
+	_, err := wrapped(ctx, req)
+	require.EqualError(t, err, "upstream timeout")
+
+	res, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, res.Replayed)
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+}
+
+func TestWrapExpiredClaimIsNotReexecuted(t *testing.T) {
+	now := time.Now().UTC()
+	s, b := newTestStore(t, &now)
+
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key})
+	reqHash, err := s.opts.Hash(req)
+	require.NoError(t, err)
+	claimHash, err := newClaimHash(reqHash)
+	require.NoError(t, err)
+	scope, err := s.opts.Scope(ctx, req)
+	require.NoError(t, err)
+	_, stored, err := b.PutIfAbsent(ctx, scope, key, &Entry{
+		Hash:      claimHash,
+		Response:  []byte{},
+		ExpiresAt: now.Add(-2 * time.Hour),
+	})
+	require.NoError(t, err)
+	require.True(t, stored)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return []byte(`{}`), nil
+	})
+	// An unresolved claim stays fenced past its lease: never executable,
+	// never IDEMPOTENCY_EXPIRED, until the owner or an operator resolves it.
+	_, err = wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight)
+	assert.Equal(t, time.Second, inFlight.RetryAfter)
+
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 1}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict)
+	assert.Zero(t, atomic.LoadInt32(&calls))
+}
+
+func TestInFlightRetryAfterBounds(t *testing.T) {
+	now := time.Now()
+	tests := []struct {
+		name      string
+		expiresAt time.Time
+		want      time.Duration
+	}{
+		{"capped at 30s", now.Add(time.Hour), 30 * time.Second},
+		{"remaining time", now.Add(7 * time.Second), 7 * time.Second},
+		{"floored at 1s", now.Add(100 * time.Millisecond), time.Second},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, inFlightRetryAfter(tt.expiresAt, now))
+		})
+	}
+}
+
+func TestWrapHandlerErrorKeepsPayloadBinding(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return nil, errors.New("upstream timeout")
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+
+	_, err := wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 100}))
+	require.EqualError(t, err, "upstream timeout")
+
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 200}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+
+	now = now.Add(s.opts.TTL + s.opts.ClockSkew + time.Second)
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 200}))
+	var expired *ExpiredError
+	require.ErrorAs(t, err, &expired)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWrapRetryAfterHandlerErrorReexecutesSamePayload(t *testing.T) {
+	now := time.Now().UTC()
+	s, b := newTestStore(t, &now)
+
+	var calls int32
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []byte(`{"ok":true}`), nil
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key, "budget": 100})
+
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+	scope, err := s.opts.Scope(ctx, req)
+	require.NoError(t, err)
+	marker, err := b.Get(ctx, scope, key)
+	require.NoError(t, err)
+	require.NotNil(t, marker, "a failed attempt leaves a retryable marker")
+	assert.True(t, strings.HasPrefix(marker.Hash, retryablePrefix))
+
+	res, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.False(t, res.Replayed)
+	replay, err := wrapped(ctx, req)
+	require.NoError(t, err)
+	assert.True(t, replay.Replayed)
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+}
+
+func TestWrapOutcomeUnknownKeepsClaim(t *testing.T) {
+	now := time.Now().UTC()
+	s, _ := newTestStore(t, &now)
+
+	var calls int32
+	cause := errors.New("connection reset mid-commit")
+	wrapped := s.Wrap(func(context.Context, []byte) ([]byte, error) {
+		atomic.AddInt32(&calls, 1)
+		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, cause)
+	})
+	ctx := WithPrincipal(context.Background(), "p1")
+	req := mustJSON(t, map[string]any{"idempotency_key": Generate()})
+
+	_, err := wrapped(ctx, req)
+	require.ErrorIs(t, err, ErrOutcomeUnknown)
+	require.ErrorIs(t, err, cause)
+
+	_, err = wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight, "an unknown outcome must stay fenced")
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+// hookBackend wraps MemoryBackend to inject races and lost claims.
+type hookBackend struct {
+	*MemoryBackend
+	hideGet      bool                             // Get misses, as if the row appeared after it
+	loseFinalize bool                             // record/release find the claim gone
+	onReclaim    func(scope, key, oldHash string) // runs before a marker reclaim
+}
+
+func (b *hookBackend) Get(ctx context.Context, scope, key string) (*Entry, error) {
+	if b.hideGet {
+		return nil, nil
+	}
+	return b.MemoryBackend.Get(ctx, scope, key)
+}
+
+func (b *hookBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, e *Entry) (bool, error) {
+	if b.loseFinalize && isClaimHash(oldHash) {
+		return false, nil
+	}
+	if b.onReclaim != nil && strings.HasPrefix(oldHash, retryablePrefix) {
+		f := b.onReclaim
+		b.onReclaim = nil
+		f(scope, key, oldHash)
+	}
+	return b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, e)
+}
+
+func newHookStore(t *testing.T) (*Store, *hookBackend) {
+	t.Helper()
+	b := &hookBackend{MemoryBackend: NewMemoryBackend(0)}
+	return New(Options{Backend: b, TTL: time.Hour}), b
+}
+
+// failOnce returns a handler that errors on its first call and counts calls.
+func failOnce(calls *int32) Handler {
+	return func(context.Context, []byte) ([]byte, error) {
+		if atomic.AddInt32(calls, 1) == 1 {
+			return nil, errors.New("upstream timeout")
+		}
+		return []byte(`{"ok":true}`), nil
+	}
+}
+
+func TestWrapReportsLostClaim(t *testing.T) {
+	ctx := WithPrincipal(context.Background(), "p1")
+	t.Run("record", func(t *testing.T) {
+		s, b := newHookStore(t)
+		b.loseFinalize = true
+		_, err := s.Wrap(func(context.Context, []byte) ([]byte, error) { return []byte(`{}`), nil })(ctx, mustJSON(t, map[string]any{"idempotency_key": Generate()}))
+		require.ErrorIs(t, err, ErrClaimLost)
+	})
+	t.Run("release", func(t *testing.T) {
+		s, b := newHookStore(t)
+		b.loseFinalize = true
+		boom := errors.New("boom")
+		_, err := s.Wrap(func(context.Context, []byte) ([]byte, error) { return nil, boom })(ctx, mustJSON(t, map[string]any{"idempotency_key": Generate()}))
+		require.ErrorIs(t, err, ErrClaimLost)
+		require.ErrorIs(t, err, boom)
+	})
+}
+
+func TestWrapReclaimRaceLoserSeesInFlight(t *testing.T) {
+	s, b := newHookStore(t)
+	ctx := WithPrincipal(context.Background(), "p1")
+	req := mustJSON(t, map[string]any{"idempotency_key": Generate()})
+	var calls int32
+	wrapped := s.Wrap(failOnce(&calls))
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+
+	// Another retry reclaims the marker between our Get and ReplaceIfHash.
+	b.onReclaim = func(scope, key, oldHash string) {
+		reqHash, _ := markerRequestHash(oldHash, retryablePrefix)
+		other, err := newClaimHash(reqHash)
+		require.NoError(t, err)
+		ok, err := b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, &Entry{Hash: other, Response: []byte{}, ExpiresAt: time.Now().Add(time.Hour)})
+		require.NoError(t, err)
+		require.True(t, ok)
+	}
+	_, err = wrapped(ctx, req)
+	var inFlight *InFlightError
+	require.ErrorAs(t, err, &inFlight)
+	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+func TestWrapPutIfAbsentLosesToLiveMarker(t *testing.T) {
+	s, b := newHookStore(t)
+	ctx := WithPrincipal(context.Background(), "p1")
+	key := Generate()
+	req := mustJSON(t, map[string]any{"idempotency_key": key})
+	var calls int32
+	wrapped := s.Wrap(failOnce(&calls))
+	_, err := wrapped(ctx, req)
+	require.Error(t, err)
+
+	// The marker appears after Get, so the claim's PutIfAbsent loses to it.
+	b.hideGet = true
+	_, err = wrapped(ctx, mustJSON(t, map[string]any{"idempotency_key": key, "budget": 1}))
+	var conflict *ConflictError
+	require.ErrorAs(t, err, &conflict, "a different payload still conflicts with the marker")
+
+	res, err := wrapped(ctx, req)
+	require.NoError(t, err, "the same payload reclaims the marker")
+	assert.False(t, res.Replayed)
+	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
+}

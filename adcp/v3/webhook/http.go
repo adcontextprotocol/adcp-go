@@ -9,6 +9,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/signing"
@@ -98,10 +100,15 @@ type VerificationOptions struct {
 //   - 200 — first delivery handled successfully, OR replay of a stored key
 //   - 400 — missing / malformed idempotency_key, malformed body
 //   - 401 — sender identity could not be resolved
-//   - 409 — idempotency_key reused with a different payload (sender bug)
+//   - 409 — idempotency_key reused with a different payload (sender bug),
+//     including a changed resend after a failed delivery, until the TTL
 //   - 410 — idempotency_key is valid but past the dedup window
 //   - 413 — body exceeds MaxBodyBytes
-//   - 500 — Handler returned an error; sender should retry
+//   - 500 — Handler returned an error; sender should retry the same payload
+//   - 503 + Retry-After — the key is still being processed, or its handler
+//     panicked or the process crashed mid-delivery; the key stays fenced
+//     until an operator clears its row, so Handlers should return errors
+//     rather than panic
 func HTTPHandler(opts HTTPHandlerOptions) http.Handler {
 	if opts.Store == nil {
 		panic("webhook: HTTPHandlerOptions.Store is required")
@@ -295,6 +302,7 @@ func clientNoRedirect(src *http.Client) *http.Client {
 
 func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var (
+		inFlight *idempotency.InFlightError
 		conflict *idempotency.ConflictError
 		expired  *idempotency.ExpiredError
 		missing  *idempotency.MissingKeyError
@@ -302,6 +310,11 @@ func writeError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		syntax   *json.SyntaxError
 	)
 	switch {
+	case errors.As(err, &inFlight):
+		// Same delivery still being processed: tell the sender to retry later
+		// with the same key rather than logging a handler failure.
+		w.Header().Set("Retry-After", strconv.Itoa(int(inFlight.RetryAfter/time.Second)))
+		http.Error(w, "webhook delivery in progress", http.StatusServiceUnavailable)
 	case errors.As(err, &conflict):
 		logger.Warn("webhook: idempotency_key reused with different payload", "key", idempotency.LogKey(conflict.Key))
 		http.Error(w, "idempotency_key conflict", http.StatusConflict)

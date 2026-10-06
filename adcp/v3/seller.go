@@ -2,9 +2,11 @@ package adcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -14,6 +16,10 @@ import (
 // IdempotencyReplayTTL is required (see Config docs). Register panics at
 // startup if it is unset or out of range — AdCP 3.0 requires sellers to
 // declare adcp.idempotency.replay_ttl_seconds in capabilities.
+//
+// Config.Idempotency is optional. Without it the agent does not deduplicate
+// mutating tools and advertises adcp.idempotency.supported: false; set it to
+// deduplicate and advertise supported: true with the replay window.
 //
 // Account resolution: if ResolveAccount is set, handlers that accept an
 // AccountReference receive the resolved account. If the account is not found,
@@ -26,6 +32,7 @@ import (
 //
 //	adcp.Register(server, adcp.Config{
 //	    IdempotencyReplayTTL: 24 * time.Hour,
+//	    Idempotency: store, // optional; idempotency.New(...) built once, outside the server factory
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
 //	        return db.FindAccount(ref.Brand.Domain, ref.Operator)
 //	    },
@@ -38,6 +45,10 @@ import (
 //	})
 func Register(server *mcp.Server, cfg Config) {
 	caps := buildCapabilities(cfg)
+	if cfg.Idempotency != nil && cfg.Idempotency.TTL() != cfg.IdempotencyReplayTTL {
+		panic(fmt.Sprintf("adcp.Register: Config.Idempotency TTL (%s) must equal IdempotencyReplayTTL (%s) — capabilities would advertise the wrong replay window", cfg.Idempotency.TTL(), cfg.IdempotencyReplayTTL))
+	}
+	idem := cfg.Idempotency
 	sandbox := cfg.Sandbox
 
 	// Capabilities (always registered)
@@ -71,11 +82,11 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Media buy tools ---
 
 	if cfg.SyncAccounts != nil {
-		AddTool(server, "sync_accounts", "Register advertiser accounts",
+		addSellerTool(server, idem, "sync_accounts", "Register advertiser accounts",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncAccountsRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncAccounts(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncAccountsResponse(results, sandbox)
@@ -84,11 +95,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.SyncGovernance != nil {
-		AddTool(server, "sync_governance", "Register governance agents",
+		addSellerTool(server, idem, "sync_governance", "Register governance agents",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncGovernanceRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncGovernance(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := GovernanceResponse(results)
@@ -97,7 +108,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.GetProducts != nil {
-		AddTool(server, "get_products", "Available advertising products",
+		addSellerTool(server, idem, "get_products", "Available advertising products",
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetProductsRequest) (*mcp.CallToolResult, any, error) {
 				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Account)
 				if result != nil {
@@ -120,7 +131,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.CreateMediaBuy != nil {
-		AddTool(server, "create_media_buy", "Create a media buy",
+		addSellerTool(server, idem, "create_media_buy", "Create a media buy",
 			func(ctx context.Context, req *mcp.CallToolRequest, input CreateMediaBuyRequest) (*mcp.CallToolResult, any, error) {
 				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Account)
 				if result != nil {
@@ -128,7 +139,7 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				buy, err := cfg.CreateMediaBuy(ctx, acct, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				buy = stampCreateMediaBuyResult(buy, sandbox, input.Context)
@@ -138,7 +149,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.GetMediaBuys != nil {
-		AddTool(server, "get_media_buys", "List media buys",
+		addSellerTool(server, idem, "get_media_buys", "List media buys",
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetMediaBuysRequest) (*mcp.CallToolResult, any, error) {
 				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Account)
 				if result != nil {
@@ -163,7 +174,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.GetDelivery != nil {
-		AddTool(server, "get_media_buy_delivery", "Delivery metrics",
+		addSellerTool(server, idem, "get_media_buy_delivery", "Delivery metrics",
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetMediaBuyDeliveryRequest) (*mcp.CallToolResult, any, error) {
 				acct, result := resolveAccount(ctx, cfg.ResolveAccount, input.Account)
 				if result != nil {
@@ -183,7 +194,7 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Proposal negotiation ---
 
 	if cfg.RefineProposals != nil {
-		AddTool(server, "refine_proposals", "Revise or finalize proposals",
+		addSellerTool(server, idem, "refine_proposals", "Revise or finalize proposals",
 			func(ctx context.Context, req *mcp.CallToolRequest, input RefineProposalsRequest) (*mcp.CallToolResult, any, error) {
 				// refine_proposals is scoped by proposal_id and has no account field;
 				// applications resolve ownership inside their proposal callback.
@@ -227,7 +238,7 @@ func Register(server *mcp.Server, cfg Config) {
 					data, err = execute()
 				}
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := RefineProposalsResponse(data)
@@ -238,7 +249,7 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Creative tools ---
 
 	if cfg.ListCreativeFormats != nil {
-		AddTool(server, "list_creative_formats", "Available creative formats",
+		addSellerTool(server, idem, "list_creative_formats", "Available creative formats",
 			func(ctx context.Context, req *mcp.CallToolRequest, input ListCreativeFormatsRequest) (*mcp.CallToolResult, any, error) {
 				formats, err := cfg.ListCreativeFormats(ctx, &input)
 				if err != nil {
@@ -251,11 +262,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.SyncCreatives != nil {
-		AddTool(server, "sync_creatives", "Submit creatives for review",
+		addSellerTool(server, idem, "sync_creatives", "Submit creatives for review",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncCreativesRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncCreatives(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncCreativesResponse(results, sandbox)
@@ -266,7 +277,7 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Signals tools ---
 
 	if cfg.GetSignals != nil {
-		AddTool(server, "get_signals", "Discover available signals",
+		addSellerTool(server, idem, "get_signals", "Discover available signals",
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetSignalsRequest) (*mcp.CallToolResult, any, error) {
 				signals, err := cfg.GetSignals(ctx, &input)
 				if err != nil {
@@ -279,11 +290,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.ActivateSignal != nil {
-		AddTool(server, "activate_signal", "Activate a signal",
+		addSellerTool(server, idem, "activate_signal", "Activate a signal",
 			func(ctx context.Context, req *mcp.CallToolRequest, input ActivateSignalRequest) (*mcp.CallToolResult, any, error) {
 				deployments, err := cfg.ActivateSignal(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := ActivateSignalResponse(deployments, sandbox)
@@ -294,11 +305,11 @@ func Register(server *mcp.Server, cfg Config) {
 	// --- Collection tools ---
 
 	if cfg.CreateCollectionList != nil {
-		AddTool(server, "create_collection_list", "Create a managed collection list",
+		addSellerTool(server, idem, "create_collection_list", "Create a managed collection list",
 			func(ctx context.Context, req *mcp.CallToolRequest, input CreateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.CreateCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				if result == nil || result.List == nil {
@@ -311,7 +322,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.GetCollectionList != nil {
-		AddTool(server, "get_collection_list", "Retrieve a collection list",
+		addSellerTool(server, idem, "get_collection_list", "Retrieve a collection list",
 			func(ctx context.Context, req *mcp.CallToolRequest, input GetCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.GetCollectionList(ctx, &input)
 				if err != nil {
@@ -328,11 +339,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.UpdateCollectionList != nil {
-		AddTool(server, "update_collection_list", "Update a collection list",
+		addSellerTool(server, idem, "update_collection_list", "Update a collection list",
 			func(ctx context.Context, req *mcp.CallToolRequest, input UpdateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				list, err := cfg.UpdateCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				if list == nil {
@@ -345,11 +356,11 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.DeleteCollectionList != nil {
-		AddTool(server, "delete_collection_list", "Delete a collection list",
+		addSellerTool(server, idem, "delete_collection_list", "Delete a collection list",
 			func(ctx context.Context, req *mcp.CallToolRequest, input DeleteCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				err := cfg.DeleteCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := DeleteCollectionListResponse(input.ListID)
@@ -358,7 +369,7 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 
 	if cfg.ListCollectionLists != nil {
-		AddTool(server, "list_collection_lists", "List collection lists",
+		addSellerTool(server, idem, "list_collection_lists", "List collection lists",
 			func(ctx context.Context, req *mcp.CallToolRequest, input ListCollectionListsRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.ListCollectionLists(ctx, &input)
 				if err != nil {
@@ -375,6 +386,53 @@ func Register(server *mcp.Server, cfg Config) {
 	}
 }
 
+// addSellerTool registers a Register-managed tool, applying idempotency to
+// mutating tools. Without a store, a present idempotency_key is still
+// format-checked; a missing one is allowed.
+func addSellerTool[In any](server *mcp.Server, store *idempotency.Store, name, description string, h func(context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, any, error)) {
+	if mutatingTools[name] {
+		h = WithIdempotency(store, h)
+	}
+	AddTool(server, name, description, h)
+}
+
+// mutationErrorResult converts a mutating Config handler's error. With a
+// store, an outcome-unknown error is returned as a Go error so
+// WithIdempotency keeps the key fenced and answers SERVICE_UNAVAILABLE;
+// everything else, and every error without a store, is errorToResult.
+func mutationErrorResult(store *idempotency.Store, err error) (*mcp.CallToolResult, any, error) {
+	if store != nil && outcomeUnknown(err) {
+		return nil, nil, err
+	}
+	return errorToResult(err)
+}
+
+// outcomeUnknown mirrors the TS SDK's mutating-handler classification: an
+// untyped error, or a typed one whose recovery is transient, may follow a
+// commit, so it cannot be released for blind re-execution. As in TS, a
+// standard code's schema recovery (transientErrorCodes) takes precedence;
+// otherwise an explicit ErrorOptions.Recovery of "transient", or the legacy
+// "retry" that ErrorOptions still documents, marks the outcome unknown.
+func outcomeUnknown(err error) bool {
+	var he *handlerError
+	if !errors.As(err, &he) {
+		return true
+	}
+	if transientErrorCodes[he.code] {
+		return true
+	}
+	return he.opts.Recovery == "transient" || he.opts.Recovery == "retry"
+}
+
+// transientErrorCodes are the codes error-code.json enumMetadata classifies
+// as recovery: transient. TestTransientErrorCodesMatchSchema keeps it in sync.
+var transientErrorCodes = map[string]bool{
+	"RATE_LIMITED": true, "SERVICE_UNAVAILABLE": true, "CONFLICT": true,
+	"IDEMPOTENCY_IN_FLIGHT": true, "CAMPAIGN_SUSPENDED": true,
+	"GOVERNANCE_UNAVAILABLE": true, "STALE_RESPONSE": true,
+	"SIGNED_RESPONSE_ENVELOPE_EXPIRED": true,
+}
+
 // Config declares which AdCP tools your agent supports. Set only the handlers
 // you implement — unset handlers mean the tool isn't registered.
 //
@@ -389,6 +447,19 @@ type Config struct {
 	// replay window. Must be in [1h, 7d]; 24h is recommended. Register panics
 	// if this is zero or outside the valid range.
 	IdempotencyReplayTTL time.Duration
+
+	// Idempotency deduplicates every mutating tool (create_media_buy,
+	// sync_*, activate_signal, ...). Optional: without it the agent does not
+	// deduplicate and advertises adcp.idempotency.supported: false. To
+	// deduplicate, build it ONCE, outside the server factory you pass to
+	// Serve — Serve creates a server per session, so a per-Register store
+	// would not replay across sessions. Its TTL must equal
+	// IdempotencyReplayTTL (Register panics on mismatch). Use idempotency.NewPgBackend for
+	// multi-instance deployments. A store requires an authenticated
+	// principal: keys are scoped per principal, which your auth middleware
+	// injects with idempotency.WithPrincipal. Calls without one are refused
+	// with SERVICE_UNAVAILABLE; the MCP session ID is never used as a scope.
+	Idempotency *idempotency.Store
 
 	// Capabilities, if set, declares the full typed capabilities response.
 	// supported_protocols and adcp.idempotency are filled in automatically if
@@ -591,7 +662,12 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 	if existing := caps.ADCP.Idempotency.ReplayTTLSeconds; existing != 0 && existing != ttlSeconds {
 		panic(fmt.Sprintf("adcp.Register: Config.IdempotencyReplayTTL (%ds) conflicts with Capabilities.ADCP.Idempotency.ReplayTTLSeconds (%ds) — set one or the other, not both", ttlSeconds, existing))
 	}
-	caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
+	if cfg.Idempotency == nil {
+		// No store = no replay; a preset cannot claim support the SDK can't honor.
+		caps.ADCP.Idempotency = IdempotencyCaps{Supported: false}
+	} else {
+		caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
+	}
 
 	if len(caps.SupportedProtocols) == 0 {
 		caps.SupportedProtocols = detectProtocols(cfg)

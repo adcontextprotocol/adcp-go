@@ -1,6 +1,10 @@
 package idempotency
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 // Protocol error codes this package maps onto. Only IDEMPOTENCY_CONFLICT and
 // IDEMPOTENCY_EXPIRED are idempotency-specific in the AdCP enum; missing or
@@ -10,8 +14,32 @@ import "fmt"
 const (
 	CodeIdempotencyConflict = "IDEMPOTENCY_CONFLICT"
 	CodeIdempotencyExpired  = "IDEMPOTENCY_EXPIRED"
+	CodeIdempotencyInFlight = "IDEMPOTENCY_IN_FLIGHT"
 	CodeInvalidRequest      = "INVALID_REQUEST"
 )
+
+// ErrRecordFailed wraps a backend error from storing a successful response:
+// the handler ran but its result is not recorded, so a retry could execute
+// it again. Callers should reconcile by natural key.
+var ErrRecordFailed = errors.New("idempotency: response could not be recorded")
+
+// ErrReleaseFailed wraps a backend error from releasing a claim after the
+// handler failed: the key stays fenced until reconciled.
+var ErrReleaseFailed = errors.New("idempotency: claim could not be released")
+
+// ErrClaimLost is returned when a claim was removed or replaced out of band
+// (e.g. by an operator) before the handler's response could be recorded or
+// its claim released.
+var ErrClaimLost = errors.New("idempotency: claim lost before it could be finalized")
+
+// ErrOutcomeUnknown marks a handler error after which the handler may or may
+// not have taken effect. Wrap it into the error a Handler returns (errors.Is
+// must match) to keep the key's claim fenced instead of releasing it: retries
+// get IDEMPOTENCY_IN_FLIGHT until an operator reconciles the key. Wrap
+// returns the handler's error unchanged. Fencing needs a ClaimBackend
+// (MemoryBackend, PgBackend): a custom Backend that is not one keeps no
+// claim, so a retry re-executes the handler.
+var ErrOutcomeUnknown = errors.New("idempotency: request outcome is unknown")
 
 // ConflictError is returned when an idempotency key is reused with a different
 // canonicalized payload. Recovery is caller-driven: either resend the original
@@ -89,3 +117,19 @@ func (e *MissingCapabilityError) Error() string {
 	}
 	return "idempotency: seller " + e.AgentID + " capabilities missing adcp.idempotency.replay_ttl_seconds"
 }
+
+// InFlightError is returned when an earlier request with the same key and
+// payload is still executing. Recovery is transient: retry after RetryAfter
+// with the SAME key — minting a new key would turn a safe retry into a
+// double execution.
+type InFlightError struct {
+	Key        string
+	RetryAfter time.Duration
+}
+
+func (e *InFlightError) Error() string {
+	return fmt.Sprintf("idempotency: key %s is still being processed", LogKey(e.Key))
+}
+
+// Code returns the protocol error code.
+func (*InFlightError) Code() string { return CodeIdempotencyInFlight }

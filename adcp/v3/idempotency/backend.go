@@ -31,3 +31,16 @@ type Backend interface {
 	// hash-compare without an extra round trip.
 	PutIfAbsent(ctx context.Context, scope, key string, entry *Entry) (existing *Entry, stored bool, err error)
 }
+
+// ClaimBackend is a Backend that can fence an in-flight claim. Store.Wrap
+// writes a claim before running the handler when the backend implements
+// this, so concurrent duplicates never execute twice. MemoryBackend and
+// PgBackend implement it; custom backends without it keep the legacy
+// execute-then-store behavior.
+type ClaimBackend interface {
+	Backend
+	// ReplaceIfHash atomically replaces (scope, key) only when its current
+	// Hash equals oldHash. It reports whether the row was replaced. The
+	// store uses it to record, release and reclaim claims.
+	ReplaceIfHash(ctx context.Context, scope, key, oldHash string, entry *Entry) (bool, error)
+}

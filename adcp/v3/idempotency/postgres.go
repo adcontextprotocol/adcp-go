@@ -10,6 +10,17 @@ import (
 
 // PostgresSchema is the table definition PgBackend expects. Create it once in
 // your migration tooling before enabling the backend.
+//
+// The SDK runs no expiry cleanup. Any cleanup job you add MUST exclude rows
+// whose hash starts with '__adcp_in_flight__:' — they are unresolved claims
+// whose outcome is unknown and need reconciliation, and deleting one lets
+// the key re-execute. It MUST also keep rows for a grace period of at least
+// the Store's ClockSkew past expires_at, since the Store still serves them
+// then. For example, binding $1 to an interval no shorter than ClockSkew:
+//
+//	DELETE FROM adcp_idempotency
+//	WHERE expires_at < now() - $1::interval
+//	  AND NOT starts_with(hash, '__adcp_in_flight__:');
 const PostgresSchema = `
 CREATE TABLE IF NOT EXISTS adcp_idempotency (
     scope       TEXT        NOT NULL,
@@ -26,7 +37,8 @@ CREATE INDEX IF NOT EXISTS adcp_idempotency_expires_at_idx
 
 // PgBackend is a Postgres-backed Backend. The PRIMARY KEY on (scope, key)
 // provides the atomicity PutIfAbsent relies on. Uses database/sql so callers
-// can wire any Postgres driver (pgx stdlib adapter, lib/pq, etc.).
+// can wire any Postgres driver (pgx stdlib adapter, lib/pq, etc.). It never
+// deletes expired rows; see PostgresSchema for the cleanup rule on claims.
 type PgBackend struct {
 	db *sql.DB
 }
@@ -66,7 +78,7 @@ func (b *PgBackend) PutIfAbsent(ctx context.Context, scope, key string, entry *E
 		createdAt = time.Now().UTC()
 	}
 	var gotHash string
-	err := b.db.QueryRowContext(ctx, insert, scope, key, entry.Hash, entry.Response, createdAt, entry.ExpiresAt).Scan(&gotHash)
+	err := b.db.QueryRowContext(ctx, insert, scope, key, entry.Hash, responseBytes(entry.Response), createdAt, entry.ExpiresAt).Scan(&gotHash)
 	if err == nil {
 		return nil, true, nil
 	}
@@ -83,4 +95,35 @@ func (b *PgBackend) PutIfAbsent(ctx context.Context, scope, key string, entry *E
 		return nil, false, nil
 	}
 	return existing, false, nil
+}
+
+var _ ClaimBackend = (*PgBackend)(nil)
+
+// ReplaceIfHash implements ClaimBackend with a hash-fenced UPDATE.
+func (b *PgBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, entry *Entry) (bool, error) {
+	const q = `UPDATE adcp_idempotency
+	           SET hash = $4, response = $5, created_at = $6, expires_at = $7
+	           WHERE scope = $1 AND key = $2 AND hash = $3`
+	createdAt := entry.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	res, err := b.db.ExecContext(ctx, q, scope, key, oldHash, entry.Hash, responseBytes(entry.Response), createdAt, entry.ExpiresAt)
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg replace: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg replace: %w", err)
+	}
+	return n == 1, nil
+}
+
+// responseBytes maps a nil response to an empty slice: the response
+// column is NOT NULL and database/sql binds nil []byte as NULL.
+func responseBytes(b []byte) []byte {
+	if b == nil {
+		return []byte{}
+	}
+	return b
 }

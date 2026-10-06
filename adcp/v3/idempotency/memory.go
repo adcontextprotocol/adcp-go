@@ -7,12 +7,19 @@ import (
 )
 
 // MemoryBackend is an in-process Backend suitable for tests and reference
-// servers. A background sweeper removes expired entries; callers should invoke
-// Close to stop it.
+// servers. A background sweeper removes entries once they are past ExpiresAt
+// plus a retention grace of DefaultClockSkew (never unresolved in-flight
+// claims); callers should invoke Close to stop it. The grace must be at least
+// the Store's ClockSkew, which serves entries until then, so New panics on a
+// larger ClockSkew with a MemoryBackend. That check only sees an unwrapped
+// *MemoryBackend; the grace applies regardless of wrapping. The sweeper uses
+// the backend's clock (time.Now), not Options.Clock, so a Store whose Clock
+// runs behind real time can find entries already swept.
 type MemoryBackend struct {
 	mu      sync.Mutex
 	entries map[string]*Entry
 	clock   func() time.Time
+	grace   time.Duration
 	stop    chan struct{}
 	stopped chan struct{}
 }
@@ -28,6 +35,7 @@ func newMemoryBackend(sweepInterval time.Duration, clock func() time.Time) *Memo
 	b := &MemoryBackend{
 		entries: map[string]*Entry{},
 		clock:   clock,
+		grace:   DefaultClockSkew,
 		stop:    make(chan struct{}),
 		stopped: make(chan struct{}),
 	}
@@ -69,7 +77,9 @@ func (b *MemoryBackend) sweep() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for k, e := range b.entries {
-		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt) {
+		// Unresolved claims are never swept: deleting one would let the key
+		// re-execute an outcome that may already have taken effect.
+		if !e.ExpiresAt.IsZero() && now.After(e.ExpiresAt.Add(b.grace)) && !isClaimHash(e.Hash) {
 			delete(b.entries, k)
 		}
 	}
@@ -104,3 +114,17 @@ func (b *MemoryBackend) PutIfAbsent(_ context.Context, scope, key string, entry 
 	return nil, true, nil
 }
 
+var _ ClaimBackend = (*MemoryBackend)(nil)
+
+// ReplaceIfHash implements ClaimBackend.
+func (b *MemoryBackend) ReplaceIfHash(_ context.Context, scope, key, oldHash string, entry *Entry) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	k := scopeKey(scope, key)
+	if e, ok := b.entries[k]; !ok || e.Hash != oldHash {
+		return false, nil
+	}
+	cp := *entry
+	b.entries[k] = &cp
+	return true, nil
+}
