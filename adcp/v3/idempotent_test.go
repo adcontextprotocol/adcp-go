@@ -468,3 +468,43 @@ func TestRegisterScopesKeysByMCPSessionWithoutPrincipal(t *testing.T) {
 	assert.Equal(t, "mb-2", other["media_buy_id"])
 	assert.EqualValues(t, 2, atomic.LoadInt32(&calls))
 }
+
+func TestWithIdempotencyBindsToolNameIntoHash(t *testing.T) {
+	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+	var createCalls, updateCalls int32
+	counting := func(calls *int32) wrappedHandler {
+		return WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+			atomic.AddInt32(calls, 1)
+			return buildResult("ok", map[string]any{"list_id": "l-1"}), map[string]any{"list_id": "l-1"}, nil
+		})
+	}
+	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+	args := map[string]any{"idempotency_key": idempotency.Generate(), "name": "same"}
+
+	first, _, err := callWrapped(ctx, counting(&createCalls), "create_collection_list", args)
+	require.NoError(t, err)
+	assert.Nil(t, structuredContentMap(t, first)["adcp_error"])
+
+	second, _, err := callWrapped(ctx, counting(&updateCalls), "update_collection_list", args)
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, second))
+	assert.Equal(t, "IDEMPOTENCY_CONFLICT", e["code"])
+	assert.EqualValues(t, 1, atomic.LoadInt32(&createCalls))
+	assert.Zero(t, atomic.LoadInt32(&updateCalls))
+}
+
+func TestWithIdempotencyRejectsNonObjectArguments(t *testing.T) {
+	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+	var calls int32
+	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		atomic.AddInt32(&calls, 1)
+		return buildResult("ok", map[string]any{}), nil, nil
+	})
+	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+	result, _, err := h(ctx, &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: "create_media_buy", Arguments: json.RawMessage(`[1]`)}}, nil)
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "INVALID_REQUEST", e["code"])
+	assert.Equal(t, "correctable", e["recovery"])
+	assert.Zero(t, atomic.LoadInt32(&calls))
+}

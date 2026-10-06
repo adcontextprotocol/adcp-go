@@ -64,6 +64,10 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		if len(raw) == 0 {
 			raw = []byte("{}")
 		}
+		hashed, err := bindToolName(raw, req.Params.Name)
+		if err != nil {
+			return Errorf("INVALID_REQUEST", ErrorOptions{Message: "Tool arguments must be a JSON object", Recovery: "correctable"})
+		}
 		if idempotency.PrincipalFromContext(ctx) == "" {
 			if req.Session == nil || req.Session.ID() == "" {
 				return serviceUnavailable("Idempotency principal could not be resolved; authenticate callers or use a session-based transport.")
@@ -89,7 +93,7 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 				structured = jsonRoundTrip(out)
 			}
 			return json.Marshal(structured)
-		})(ctx, raw)
+		})(ctx, hashed)
 		switch {
 		case errors.Is(err, idempotency.ErrReleaseFailed):
 			// The key is stuck behind its claim; even a handler error is
@@ -115,6 +119,25 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		delete(data, "context")
 		return attachContext(buildResult("Replayed cached response", data), requestContext(raw)), data, nil
 	}
+}
+
+// toolHashField is a reserved top-level field WithIdempotency adds to the
+// payload it hashes (never to the handler input or the response), so the same
+// key and arguments on two different tools conflict instead of replaying the
+// other tool's response.
+const toolHashField = "$adcp_tool"
+
+func bindToolName(raw []byte, tool string) ([]byte, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return nil, errors.New("adcp: arguments are not a JSON object")
+	}
+	name, err := json.Marshal(tool)
+	if err != nil {
+		return nil, err
+	}
+	m[toolHashField] = name
+	return json.Marshal(m)
 }
 
 // requestContext returns the caller's context object so replays echo the
