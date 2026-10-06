@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -102,8 +103,9 @@ type Options struct {
 
 // ScopeFn derives the storage scope for a request. Per-principal scope is a
 // security requirement: keys from different principals MUST NOT collide.
-// A handler may return a richer scope (e.g. "principal:sess") to narrow
-// uniqueness further — si_send_message scopes to (principal, session_id).
+// A handler may return a richer scope to narrow uniqueness further —
+// si_send_message scopes to (principal, session_id); build scopes with
+// EncodeScope so distinct components can never produce the same string.
 type ScopeFn func(ctx context.Context, payload []byte) (string, error)
 
 // Store holds idempotency configuration and wraps mutating handlers.
@@ -441,6 +443,29 @@ func PrincipalFromContext(ctx context.Context) string {
 	return ""
 }
 
+// EncodeScope builds a scope string as namespace followed by each part
+// length-prefixed (":<len>:<part>", len in bytes), e.g.
+// EncodeScope("principal", "a", "session", "b") == "principal:1:a:7:session:1:b".
+// Length prefixes make the encoding injective: distinct (namespace, parts)
+// never produce the same scope, whatever bytes the parts contain (principals
+// are often URLs or URNs full of ':'). namespace is a code constant and must
+// not contain ':'; EncodeScope panics if it does. The result is an opaque key,
+// not meant to be parsed. Custom ScopeFns should build their scopes with it.
+func EncodeScope(namespace string, parts ...string) string {
+	if strings.Contains(namespace, ":") {
+		panic("idempotency: EncodeScope namespace must not contain ':'")
+	}
+	var b strings.Builder
+	b.WriteString(namespace)
+	for _, part := range parts {
+		b.WriteByte(':')
+		b.WriteString(strconv.Itoa(len(part)))
+		b.WriteByte(':')
+		b.WriteString(part)
+	}
+	return b.String()
+}
+
 // PrincipalScope is the default ScopeFn. It requires a principal in context —
 // unscoped keys would let one caller observe another caller's cached responses.
 func PrincipalScope(ctx context.Context, _ []byte) (string, error) {
@@ -448,7 +473,7 @@ func PrincipalScope(ctx context.Context, _ []byte) (string, error) {
 	if p == "" {
 		return "", errors.New("idempotency: principal missing from context; call WithPrincipal before invoking the wrapped handler")
 	}
-	return "principal:" + p, nil
+	return EncodeScope("principal", p), nil
 }
 
 // SessionScope scopes keys to (principal, session). Use for si_send_message,
@@ -481,6 +506,6 @@ func SessionScope(sessionIDField string) ScopeFn {
 		if sid == "" {
 			return "", fmt.Errorf("idempotency: session id field %q is empty", sessionIDField)
 		}
-		return "principal:" + principal + ":session:" + sid, nil
+		return EncodeScope("principal", principal, "session", sid), nil
 	}
 }
