@@ -84,3 +84,39 @@ func (b *PgBackend) PutIfAbsent(ctx context.Context, scope, key string, entry *E
 	}
 	return existing, false, nil
 }
+
+var _ ClaimBackend = (*PgBackend)(nil)
+
+// ReplaceIfHash implements ClaimBackend with a hash-fenced UPDATE.
+func (b *PgBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, entry *Entry) (bool, error) {
+	const q = `UPDATE adcp_idempotency
+	           SET hash = $4, response = $5, created_at = $6, expires_at = $7
+	           WHERE scope = $1 AND key = $2 AND hash = $3`
+	createdAt := entry.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+	res, err := b.db.ExecContext(ctx, q, scope, key, oldHash, entry.Hash, entry.Response, createdAt, entry.ExpiresAt)
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg replace: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg replace: %w", err)
+	}
+	return n == 1, nil
+}
+
+// DeleteIfHash implements ClaimBackend with a hash-fenced DELETE.
+func (b *PgBackend) DeleteIfHash(ctx context.Context, scope, key, hash string) (bool, error) {
+	const q = `DELETE FROM adcp_idempotency WHERE scope = $1 AND key = $2 AND hash = $3`
+	res, err := b.db.ExecContext(ctx, q, scope, key, hash)
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg delete: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("idempotency: pg delete: %w", err)
+	}
+	return n == 1, nil
+}

@@ -31,8 +31,10 @@ func newPgMock(t *testing.T) (*PgBackend, sqlmock.Sqlmock, func()) {
 // asserted is what arguments bind and what the result shape is, validated
 // via WithArgs and WillReturnRows.
 var (
-	getRegexp = regexp.MustCompile(`SELECT .* FROM adcp_idempotency`)
-	putRegexp = regexp.MustCompile(`INSERT INTO adcp_idempotency`)
+	getRegexp     = regexp.MustCompile(`SELECT .* FROM adcp_idempotency`)
+	putRegexp     = regexp.MustCompile(`INSERT INTO adcp_idempotency`)
+	replaceRegexp = regexp.MustCompile(`UPDATE adcp_idempotency`)
+	deleteRegexp  = regexp.MustCompile(`DELETE FROM adcp_idempotency`)
 )
 
 func TestPgGetHit(t *testing.T) {
@@ -194,4 +196,50 @@ func TestPgPutIfAbsentSetsCreatedAtWhenZero(t *testing.T) {
 	_, stored, err := b.PutIfAbsent(context.Background(), "s", "k", entry)
 	require.NoError(t, err)
 	assert.True(t, stored)
+}
+
+func TestPgReplaceIfHash(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		affected int64
+		want     bool
+	}{
+		{"replaced", 1, true},
+		{"fenced out", 0, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			b, mock, done := newPgMock(t)
+			defer done()
+			exp := time.Now().Add(time.Hour).UTC()
+			mock.ExpectExec(replaceRegexp.String()).
+				WithArgs("s", "k", "claim", "final", []byte(`{}`), sqlmock.AnyArg(), exp).
+				WillReturnResult(sqlmock.NewResult(0, tt.affected))
+
+			ok, err := b.ReplaceIfHash(context.Background(), "s", "k", "claim",
+				&Entry{Hash: "final", Response: []byte(`{}`), ExpiresAt: exp})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, ok)
+		})
+	}
+}
+
+func TestPgDeleteIfHash(t *testing.T) {
+	b, mock, done := newPgMock(t)
+	defer done()
+	mock.ExpectExec(deleteRegexp.String()).
+		WithArgs("s", "k", "claim").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	ok, err := b.DeleteIfHash(context.Background(), "s", "k", "claim")
+	require.NoError(t, err)
+	assert.True(t, ok)
+}
+
+func TestPgReplaceIfHashDriverError(t *testing.T) {
+	b, mock, done := newPgMock(t)
+	defer done()
+	mock.ExpectExec(replaceRegexp.String()).WillReturnError(errors.New("conn reset"))
+
+	_, err := b.ReplaceIfHash(context.Background(), "s", "k", "claim", &Entry{Hash: "final"})
+	require.ErrorContains(t, err, "idempotency: pg replace")
 }
