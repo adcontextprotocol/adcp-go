@@ -3,6 +3,7 @@ package adcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -301,4 +302,110 @@ func TestRegisterReportsInFlightForConcurrentDuplicate(t *testing.T) {
 	first := <-firstDone
 	assert.Equal(t, "mb-1", first["media_buy_id"])
 	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+// failingBackend wraps MemoryBackend and fails the named method with an error
+// whose text must never reach the wire.
+type failingBackend struct {
+	*idempotency.MemoryBackend
+	fail string
+}
+
+var errBackendSecret = errors.New("pg: dial tcp db-secret-host:5432: connection refused")
+
+func (b *failingBackend) Get(ctx context.Context, scope, key string) (*idempotency.Entry, error) {
+	if b.fail == "Get" {
+		return nil, errBackendSecret
+	}
+	return b.MemoryBackend.Get(ctx, scope, key)
+}
+
+func (b *failingBackend) PutIfAbsent(ctx context.Context, scope, key string, e *idempotency.Entry) (*idempotency.Entry, bool, error) {
+	if b.fail == "PutIfAbsent" {
+		return nil, false, errBackendSecret
+	}
+	return b.MemoryBackend.PutIfAbsent(ctx, scope, key, e)
+}
+
+func (b *failingBackend) ReplaceIfHash(ctx context.Context, scope, key, oldHash string, e *idempotency.Entry) (bool, error) {
+	if b.fail == "ReplaceIfHash" {
+		return false, errBackendSecret
+	}
+	return b.MemoryBackend.ReplaceIfHash(ctx, scope, key, oldHash, e)
+}
+
+func (b *failingBackend) DeleteIfHash(ctx context.Context, scope, key, hash string) (bool, error) {
+	if b.fail == "DeleteIfHash" {
+		return false, errBackendSecret
+	}
+	return b.MemoryBackend.DeleteIfHash(ctx, scope, key, hash)
+}
+
+type wrappedHandler = func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error)
+
+func callWrapped(ctx context.Context, h wrappedHandler, name string, args map[string]any) (*mcp.CallToolResult, any, error) {
+	raw, _ := json.Marshal(args)
+	return h(ctx, &mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: name, Arguments: raw}}, args)
+}
+
+func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
+	const (
+		checkMsg   = "Idempotency check failed"
+		recordMsg  = "The response could not be recorded in the idempotency store. Reconcile by natural key before retrying."
+		releaseMsg = "The idempotency claim could not be released. Reconcile by natural key before retrying."
+	)
+	okResult := func() (*mcp.CallToolResult, any, error) {
+		return buildResult("ok", map[string]any{"media_buy_id": "mb-1"}), map[string]any{"media_buy_id": "mb-1"}, nil
+	}
+	errResult := func() (*mcp.CallToolResult, any, error) {
+		return Errorf("INVALID_STATE", ErrorOptions{Message: "nope"})
+	}
+	goErr := func() (*mcp.CallToolResult, any, error) { return nil, nil, errors.New("handler boom") }
+	tests := []struct {
+		name      string
+		fail      string
+		handler   func() (*mcp.CallToolResult, any, error)
+		message   string
+		wantCalls int32
+	}{
+		{"get fails", "Get", okResult, checkMsg, 0},
+		{"claim fails", "PutIfAbsent", okResult, checkMsg, 0},
+		{"record fails", "ReplaceIfHash", okResult, recordMsg, 1},
+		{"release after error result fails", "DeleteIfHash", errResult, releaseMsg, 1},
+		{"release after handler error fails", "DeleteIfHash", goErr, releaseMsg, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb := &failingBackend{MemoryBackend: idempotency.NewMemoryBackend(0), fail: tt.fail}
+			store := idempotency.New(idempotency.Options{Backend: fb, TTL: 24 * time.Hour})
+			var calls int32
+			h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+				atomic.AddInt32(&calls, 1)
+				return tt.handler()
+			})
+			key := idempotency.Generate()
+			ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+			result, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": key})
+			require.NoError(t, err, "store failures must be AdCP errors, not transport errors")
+			e := adcpErrorOf(t, structuredContentMap(t, result))
+			assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+			assert.Equal(t, "transient", e["recovery"])
+			assert.Equal(t, tt.message, e["message"])
+			wire, _ := json.Marshal(result)
+			assert.NotContains(t, string(wire), "db-secret-host")
+			assert.NotContains(t, string(wire), key)
+			assert.Equal(t, tt.wantCalls, atomic.LoadInt32(&calls))
+		})
+	}
+}
+
+func TestWithIdempotencyPassesThroughHandlerError(t *testing.T) {
+	store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+	boom := errors.New("handler boom")
+	h := WithIdempotency(store, func(context.Context, *mcp.CallToolRequest, map[string]any) (*mcp.CallToolResult, any, error) {
+		return nil, nil, boom
+	})
+	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+	_, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": idempotency.Generate()})
+	assert.ErrorIs(t, err, boom)
 }

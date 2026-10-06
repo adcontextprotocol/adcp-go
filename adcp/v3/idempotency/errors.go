@@ -1,6 +1,7 @@
 package idempotency
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
@@ -16,6 +17,15 @@ const (
 	CodeIdempotencyInFlight = "IDEMPOTENCY_IN_FLIGHT"
 	CodeInvalidRequest      = "INVALID_REQUEST"
 )
+
+// ErrRecordFailed wraps a backend error from storing a successful response:
+// the handler ran but its result is not recorded, so a retry could execute
+// it again. Callers should reconcile by natural key.
+var ErrRecordFailed = errors.New("idempotency: response could not be recorded")
+
+// ErrReleaseFailed wraps a backend error from releasing a claim after the
+// handler failed: the key stays fenced until reconciled.
+var ErrReleaseFailed = errors.New("idempotency: claim could not be released")
 
 // ConflictError is returned when an idempotency key is reused with a different
 // canonicalized payload. Recovery is caller-driven: either resend the original

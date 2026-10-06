@@ -235,7 +235,7 @@ func (s *Store) Wrap(h Handler) func(ctx context.Context, req []byte) (*Result, 
 		}
 		winner, stored, err := s.opts.Backend.PutIfAbsent(ctx, scope, key, entry)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%w: %w", ErrRecordFailed, err)
 		}
 		if stored {
 			return &Result{Response: resp, Replayed: false, Key: key}, nil
@@ -287,7 +287,7 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 		// Handler failures are not cached (see Handler): release the claim
 		// so a retry with the same key can execute.
 		if _, relErr := b.DeleteIfHash(fctx, scope, key, claimHash); relErr != nil {
-			return nil, errors.Join(err, relErr)
+			return nil, errors.Join(err, fmt.Errorf("%w: %w", ErrReleaseFailed, relErr))
 		}
 		return nil, err
 	}
@@ -297,7 +297,7 @@ func (s *Store) runClaimed(ctx context.Context, b ClaimBackend, h Handler, req [
 	// A false result means the claim vanished (swept after TTL); the fresh
 	// response is still correct for this caller, so it is ignored.
 	if _, err := b.ReplaceIfHash(fctx, scope, key, claimHash, final); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrRecordFailed, err)
 	}
 	return &Result{Response: resp, Replayed: false, Key: key}, nil
 }

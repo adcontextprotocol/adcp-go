@@ -69,9 +69,11 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 
 		var fresh *mcp.CallToolResult
 		var freshOut any
+		var handlerErr error
 		res, err := store.Wrap(func(ctx context.Context, _ []byte) ([]byte, error) {
 			result, out, err := handler(ctx, req, input)
 			if err != nil {
+				handlerErr = err
 				return nil, err
 			}
 			fresh, freshOut = result, out
@@ -85,8 +87,16 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			return json.Marshal(structured)
 		})(ctx, raw)
 		switch {
+		case errors.Is(err, idempotency.ErrReleaseFailed):
+			// The key is stuck behind its claim; even a handler error is
+			// reported as transient so the buyer reconciles before retrying.
+			return serviceUnavailable("The idempotency claim could not be released. Reconcile by natural key before retrying.")
+		case errors.Is(err, idempotency.ErrRecordFailed):
+			return serviceUnavailable("The response could not be recorded in the idempotency store. Reconcile by natural key before retrying.")
 		case errors.Is(err, errNotCached):
 			return fresh, freshOut, nil
+		case handlerErr != nil:
+			return nil, nil, handlerErr
 		case err != nil:
 			return idempotencyErrorResult(err)
 		case !res.Replayed:
@@ -113,9 +123,15 @@ func requestContext(raw []byte) any {
 	return env.Context
 }
 
+// serviceUnavailable is a transient AdCP error that never carries backend
+// error text or the idempotency key.
+func serviceUnavailable(msg string) (*mcp.CallToolResult, any, error) {
+	return Errorf("SERVICE_UNAVAILABLE", ErrorOptions{Message: msg, Recovery: "transient"})
+}
+
 // idempotencyErrorResult maps idempotency store errors onto AdCP error
-// results. Anything else (handler transport errors, scope misconfiguration)
-// passes through unchanged.
+// results. Anything unrecognized is a store failure (backend, scope or hash)
+// and becomes SERVICE_UNAVAILABLE without its raw text.
 func idempotencyErrorResult(err error) (*mcp.CallToolResult, any, error) {
 	var (
 		inFlight *idempotency.InFlightError
@@ -149,5 +165,5 @@ func idempotencyErrorResult(err error) (*mcp.CallToolResult, any, error) {
 	case errors.As(err, &missing), errors.As(err, &invalid):
 		return Errorf("INVALID_REQUEST", ErrorOptions{Message: err.Error(), Recovery: "correctable", Field: "idempotency_key"})
 	}
-	return nil, nil, err
+	return serviceUnavailable("Idempotency check failed")
 }
