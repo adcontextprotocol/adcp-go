@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -15,8 +16,9 @@ import (
 type ServeOption func(*serveConfig)
 
 type serveConfig struct {
-	port int
-	path string
+	port     int
+	path     string
+	verifier auth.TokenVerifier
 }
 
 // WithPort sets the listen port (default: PORT env or 3001).
@@ -27,6 +29,46 @@ func WithPort(port int) ServeOption {
 // WithPath sets the MCP endpoint path (default: /mcp).
 func WithPath(path string) ServeOption {
 	return func(c *serveConfig) { c.path = path }
+}
+
+// WithBearerAuth verifies Authorization: Bearer tokens with verifier. The
+// verifier must set TokenInfo.UserID (the principal) and a non-zero
+// Expiration (go-sdk rejects tokens without one; use a far-future time for
+// static API keys). Requests without an Authorization header pass through
+// anonymously so get_adcp_capabilities stays discoverable; combine with
+// Config.RequirePrincipal to reject anonymous calls to other tools.
+func WithBearerAuth(verifier auth.TokenVerifier) ServeOption {
+	return func(c *serveConfig) { c.verifier = verifier }
+}
+
+// Handler returns the AdCP MCP HTTP handler Serve uses, for mounting in your
+// own http.Server or router.
+func Handler(createAgent func() *mcp.Server, opts ...ServeOption) http.Handler {
+	cfg := &serveConfig{path: "/mcp"}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	var h http.Handler = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return createAgent()
+	}, nil)
+	if cfg.verifier != nil {
+		h = optionalBearer(cfg.verifier, h)
+	}
+	mux := http.NewServeMux()
+	mux.Handle(cfg.path, h)
+	mux.Handle(cfg.path+"/", h)
+	return mux
+}
+
+func optionalBearer(verifier auth.TokenVerifier, next http.Handler) http.Handler {
+	required := auth.RequireBearerToken(verifier, nil)(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		required.ServeHTTP(w, r)
+	})
 }
 
 // Serve starts an HTTP server that serves an AdCP MCP agent.
@@ -55,14 +97,6 @@ func Serve(createAgent func() *mcp.Server, opts ...ServeOption) error {
 		}
 	}
 
-	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return createAgent()
-	}, nil)
-
-	mux := http.NewServeMux()
-	mux.Handle(cfg.path, handler)
-	mux.Handle(cfg.path+"/", handler)
-
 	addr := fmt.Sprintf(":%d", cfg.port)
 	url := fmt.Sprintf("http://localhost:%d%s", cfg.port, cfg.path)
 
@@ -71,7 +105,7 @@ func Serve(createAgent func() *mcp.Server, opts ...ServeOption) error {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           Handler(createAgent, opts...),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
