@@ -2,6 +2,7 @@ package adcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -85,7 +86,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncAccountsRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncAccounts(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncAccountsResponse(results, sandbox)
@@ -98,7 +99,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncGovernanceRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncGovernance(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := GovernanceResponse(results)
@@ -138,7 +139,7 @@ func Register(server *mcp.Server, cfg Config) {
 				}
 				buy, err := cfg.CreateMediaBuy(ctx, acct, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				buy = stampCreateMediaBuyResult(buy, sandbox, input.Context)
@@ -237,7 +238,7 @@ func Register(server *mcp.Server, cfg Config) {
 					data, err = execute()
 				}
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := RefineProposalsResponse(data)
@@ -265,7 +266,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncCreativesRequest) (*mcp.CallToolResult, any, error) {
 				results, err := cfg.SyncCreatives(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := SyncCreativesResponse(results, sandbox)
@@ -293,7 +294,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input ActivateSignalRequest) (*mcp.CallToolResult, any, error) {
 				deployments, err := cfg.ActivateSignal(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := ActivateSignalResponse(deployments, sandbox)
@@ -308,7 +309,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input CreateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				result, err := cfg.CreateCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				if result == nil || result.List == nil {
@@ -342,7 +343,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input UpdateCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				list, err := cfg.UpdateCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				if list == nil {
@@ -359,7 +360,7 @@ func Register(server *mcp.Server, cfg Config) {
 			func(ctx context.Context, req *mcp.CallToolRequest, input DeleteCollectionListRequest) (*mcp.CallToolResult, any, error) {
 				err := cfg.DeleteCollectionList(ctx, &input)
 				if err != nil {
-					result, out, e := errorToResult(err)
+					result, out, e := mutationErrorResult(idem, err)
 					return attachContext(result, input.Context), out, e
 				}
 				result, out, err := DeleteCollectionListResponse(input.ListID)
@@ -393,6 +394,42 @@ func addSellerTool[In any](server *mcp.Server, store *idempotency.Store, name, d
 		h = WithIdempotency(store, h)
 	}
 	AddTool(server, name, description, h)
+}
+
+// mutationErrorResult converts a mutating Config handler's error. With a
+// store, an outcome-unknown error is returned as a Go error so
+// WithIdempotency keeps the key fenced and answers SERVICE_UNAVAILABLE;
+// everything else, and every error without a store, is errorToResult.
+func mutationErrorResult(store *idempotency.Store, err error) (*mcp.CallToolResult, any, error) {
+	if store != nil && outcomeUnknown(err) {
+		return nil, nil, err
+	}
+	return errorToResult(err)
+}
+
+// outcomeUnknown mirrors the TS SDK's mutating-handler classification: an
+// untyped error, or a typed one whose recovery is transient, may follow a
+// commit, so it cannot be released for blind re-execution. A typed error's
+// recovery is its explicit ErrorOptions.Recovery, else the schema's
+// enumMetadata recovery for its code (transientErrorCodes).
+func outcomeUnknown(err error) bool {
+	var he *handlerError
+	if !errors.As(err, &he) {
+		return true
+	}
+	if he.opts.Recovery != "" {
+		return he.opts.Recovery == "transient"
+	}
+	return transientErrorCodes[he.code]
+}
+
+// transientErrorCodes are the codes error-code.json enumMetadata classifies
+// as recovery: transient. TestTransientErrorCodesMatchSchema keeps it in sync.
+var transientErrorCodes = map[string]bool{
+	"RATE_LIMITED": true, "SERVICE_UNAVAILABLE": true, "CONFLICT": true,
+	"IDEMPOTENCY_IN_FLIGHT": true, "CAMPAIGN_SUSPENDED": true,
+	"GOVERNANCE_UNAVAILABLE": true, "STALE_RESPONSE": true,
+	"SIGNED_RESPONSE_ENVELOPE_EXPIRED": true,
 }
 
 // Config declares which AdCP tools your agent supports. Set only the handlers

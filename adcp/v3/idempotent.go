@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
@@ -46,7 +47,13 @@ var errNotCached = errors.New("adcp: error result is not cached")
 // Error results are never cached and release the key for an exact retry. A
 // handler Go error means the outcome is unknown: it becomes
 // SERVICE_UNAVAILABLE (without the error text) and the key stays fenced
-// (IDEMPOTENCY_IN_FLIGHT) until reconciled. With a nil store nothing is
+// (IDEMPOTENCY_IN_FLIGHT) until reconciled; the cause is logged with slog,
+// never sent. Fencing needs a ClaimBackend (MemoryBackend, PgBackend): a
+// custom Backend that is not one keeps no claim, so a retry re-executes. A
+// handler Go error on a call without a key (KeyRequired false) is also
+// SERVICE_UNAVAILABLE, with nothing to fence. Register returns a Config
+// handler's untyped or transient typed error from a mutating tool as a Go
+// error so it fences too. With a nil store nothing is
 // deduplicated, but a present malformed idempotency_key is still rejected.
 //
 // A store requires an authenticated principal: keys are scoped to the
@@ -88,7 +95,14 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			if store.KeyRequired() {
 				return Errorf("INVALID_REQUEST", ErrorOptions{Message: "idempotency_key is required on state-changing requests", Recovery: "correctable", Field: "idempotency_key"})
 			}
-			return handler(ctx, req, input)
+			// No claim to fence, but the outcome is still unknown; keep the
+			// handler's error text off the wire.
+			result, out, err := handler(ctx, req, input)
+			if err != nil {
+				slog.ErrorContext(ctx, "adcp: handler outcome unknown", "tool", req.Params.Name, "error", err)
+				return serviceUnavailable(outcomeUnknownMsg)
+			}
+			return result, out, nil
 		}
 		hashed, err := bindToolName(args, req.Params.Name)
 		if err != nil {
@@ -117,20 +131,29 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 			}
 			return json.Marshal(structured)
 		})(ctx, hashed)
+		var key string
+		_ = json.Unmarshal(args["idempotency_key"], &key)
+		logFailure := func(msg string) {
+			slog.ErrorContext(ctx, msg, "tool", req.Params.Name, "key", idempotency.LogKey(key), "error", err)
+		}
 		switch {
 		case errors.Is(err, idempotency.ErrReleaseFailed):
+			logFailure("adcp: idempotency claim release failed")
 			// The key is stuck behind its claim; even a handler error is
 			// reported as transient so the buyer reconciles before retrying.
 			return serviceUnavailable("The idempotency claim could not be released. Reconcile by natural key before retrying.")
 		case errors.Is(err, idempotency.ErrRecordFailed):
+			logFailure("adcp: idempotency response record failed")
 			return serviceUnavailable("The response could not be recorded in the idempotency store. Reconcile by natural key before retrying.")
 		case errors.Is(err, idempotency.ErrClaimLost):
+			logFailure("adcp: idempotency claim lost")
 			return serviceUnavailable("The request lost its idempotency claim before its response could be recorded. Retry safely.")
 		case errors.Is(err, errNotCached):
 			return fresh, freshOut, nil
 		case handlerErr != nil:
 			// The handler may have committed; its claim stays fenced.
-			return serviceUnavailable("The request outcome is unknown. Reconcile by natural key before retrying.")
+			slog.ErrorContext(ctx, "adcp: handler outcome unknown; idempotency key fenced", "tool", req.Params.Name, "key", idempotency.LogKey(key), "error", handlerErr)
+			return serviceUnavailable(outcomeUnknownMsg)
 		case err != nil:
 			return idempotencyErrorResult(err)
 		case !res.Replayed:
@@ -146,6 +169,8 @@ func WithIdempotency[In any](store *idempotency.Store, handler func(context.Cont
 		return attachContext(buildResult("Replayed cached response", data), requestContext(raw)), data, nil
 	}
 }
+
+const outcomeUnknownMsg = "The request outcome is unknown. Reconcile by natural key before retrying."
 
 // toolHashField is a reserved top-level field WithIdempotency adds to the
 // payload it hashes (never to the handler input or the response), so the same

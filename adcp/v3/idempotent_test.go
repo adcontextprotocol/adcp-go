@@ -1,10 +1,12 @@
 package adcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -119,12 +121,14 @@ func TestRegisterRequiresIdempotencyKeyOnMutatingTools(t *testing.T) {
 	assert.Zero(t, atomic.LoadInt32(&calls))
 }
 
+// A typed, non-transient rejection is a known outcome: it is returned as-is
+// and the key is released so an exact retry re-executes.
 func TestRegisterDoesNotCacheErrorResults(t *testing.T) {
 	var calls int32
 	cs := newRegisteredSession(t, baseTestConfig(Config{
 		CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
 			if atomic.AddInt32(&calls, 1) == 1 {
-				return nil, NewError("SERVICE_UNAVAILABLE", ErrorOptions{Message: "ad server down"})
+				return nil, NewError("BUDGET_TOO_LOW", ErrorOptions{Message: "budget below minimum", Recovery: "correctable"})
 			}
 			return &CreateMediaBuySuccess{MediaBuyID: "mb-ok", Packages: []Package{}}, nil
 		},
@@ -132,7 +136,7 @@ func TestRegisterDoesNotCacheErrorResults(t *testing.T) {
 	key := idempotency.Generate()
 
 	first := callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": key})
-	assert.Equal(t, "SERVICE_UNAVAILABLE", adcpErrorOf(t, first)["code"])
+	assert.Equal(t, "BUDGET_TOO_LOW", adcpErrorOf(t, first)["code"])
 
 	second := callSession(t, cs, "create_media_buy", map[string]any{"idempotency_key": key})
 	assert.Equal(t, "mb-ok", second["media_buy_id"])
@@ -282,6 +286,28 @@ func TestMutatingToolsMatchSchemas(t *testing.T) {
 	assert.Equal(t, want, mutatingTools)
 }
 
+func TestTransientErrorCodesMatchSchema(t *testing.T) {
+	raw, err := os.ReadFile("schemas/enums/error-code.json")
+	if errors.Is(err, os.ErrNotExist) {
+		t.Skip("schemas not downloaded; run adcp/v3/schemas/download.sh")
+	}
+	require.NoError(t, err)
+	var s struct {
+		EnumMetadata map[string]json.RawMessage `json:"enumMetadata"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &s))
+	want := map[string]bool{}
+	for code, m := range s.EnumMetadata {
+		var meta struct {
+			Recovery string `json:"recovery"`
+		}
+		if json.Unmarshal(m, &meta) == nil && meta.Recovery == "transient" {
+			want[code] = true
+		}
+	}
+	assert.Equal(t, want, transientErrorCodes)
+}
+
 func TestRegisterReportsInFlightForConcurrentDuplicate(t *testing.T) {
 	var calls int32
 	started, release := make(chan struct{}), make(chan struct{})
@@ -400,8 +426,18 @@ func TestWithIdempotencyStoreFailuresAreServiceUnavailable(t *testing.T) {
 			})
 			key := idempotency.Generate()
 			ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
+			logs := captureLogs(t)
 			result, _, err := callWrapped(ctx, h, "create_media_buy", map[string]any{"idempotency_key": key})
 			require.NoError(t, err, "store failures must be AdCP errors, not transport errors")
+			if tt.wantCalls > 0 {
+				assert.Contains(t, logs.String(), "level=ERROR", "unrecorded outcomes are logged")
+				assert.Contains(t, logs.String(), "tool=create_media_buy")
+				assert.Contains(t, logs.String(), "key="+idempotency.LogKey(key))
+				if tt.fail == "ReplaceIfHash" {
+					assert.Contains(t, logs.String(), "db-secret-host", "operators need the backend cause")
+				}
+			}
+			assert.NotContains(t, logs.String(), key)
 			e := adcpErrorOf(t, structuredContentMap(t, result))
 			assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
 			assert.Equal(t, "transient", e["recovery"])
@@ -424,7 +460,9 @@ func TestWithIdempotencyHandlerErrorKeepsKeyFenced(t *testing.T) {
 		return nil, nil, errors.New("handler boom db-secret-host")
 	})
 	ctx := idempotency.WithPrincipal(context.Background(), "buyer-1")
-	args := map[string]any{"idempotency_key": idempotency.Generate()}
+	key := idempotency.Generate()
+	args := map[string]any{"idempotency_key": key}
+	logs := captureLogs(t)
 
 	result, _, err := callWrapped(ctx, h, "create_media_buy", args)
 	require.NoError(t, err)
@@ -434,11 +472,106 @@ func TestWithIdempotencyHandlerErrorKeepsKeyFenced(t *testing.T) {
 	assert.Equal(t, "The request outcome is unknown. Reconcile by natural key before retrying.", e["message"])
 	wire, _ := json.Marshal(result)
 	assert.NotContains(t, string(wire), "db-secret-host")
+	assert.Contains(t, logs.String(), "level=ERROR")
+	assert.Contains(t, logs.String(), `msg="adcp: handler outcome unknown; idempotency key fenced"`)
+	assert.Contains(t, logs.String(), "tool=create_media_buy")
+	assert.Contains(t, logs.String(), "key="+idempotency.LogKey(key))
+	assert.Contains(t, logs.String(), "handler boom db-secret-host", "operators need the cause")
+	assert.NotContains(t, logs.String(), key)
 
 	result, _, err = callWrapped(ctx, h, "create_media_buy", args)
 	require.NoError(t, err)
 	assert.Equal(t, "IDEMPOTENCY_IN_FLIGHT", adcpErrorOf(t, structuredContentMap(t, result))["code"])
 	assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+}
+
+// A Config handler error whose outcome is unknown (untyped, or typed
+// transient) keeps the key fenced like a WithIdempotency handler Go error.
+func TestRegisterFencesUnknownMutationOutcome(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		err  error
+	}{
+		{"plain error", errors.New("ad server db-secret-host timed out")},
+		{"wrapped typed transient code", fmt.Errorf("wrap: %w", NewError("SERVICE_UNAVAILABLE", ErrorOptions{Message: "db-secret-host down"}))},
+		{"explicit transient recovery", NewError("VENDOR_TIMEOUT", ErrorOptions{Message: "db-secret-host slow", Recovery: "transient"})},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			var calls int32
+			cs := newRegisteredSession(t, baseTestConfig(Config{
+				CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+					atomic.AddInt32(&calls, 1)
+					return nil, tt.err
+				},
+			}))
+			key := idempotency.Generate()
+			args := map[string]any{"idempotency_key": key}
+
+			result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_media_buy", Arguments: args})
+			require.NoError(t, err)
+			e := adcpErrorOf(t, structuredContentMap(t, result))
+			assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+			assert.Equal(t, "transient", e["recovery"])
+			assert.Equal(t, outcomeUnknownMsg, e["message"])
+			wire, _ := json.Marshal(result)
+			assert.NotContains(t, string(wire), "db-secret-host")
+
+			assert.Equal(t, "IDEMPOTENCY_IN_FLIGHT", adcpErrorOf(t, callSession(t, cs, "create_media_buy", args))["code"])
+			assert.EqualValues(t, 1, atomic.LoadInt32(&calls))
+			assert.Contains(t, logs.String(), "level=ERROR")
+			assert.Contains(t, logs.String(), "tool=create_media_buy")
+			assert.NotContains(t, logs.String(), key, "full keys never reach logs")
+		})
+	}
+}
+
+// Without a store nothing is fenced: handler errors stay results, as before.
+func TestRegisterWithoutStoreKeepsHandlerErrorsAsResults(t *testing.T) {
+	cfg := baseTestConfig(Config{
+		CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+			return nil, errors.New("db-secret-host down")
+		},
+	})
+	cfg.Idempotency = nil
+	cs := newRegisteredSession(t, cfg)
+
+	result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_media_buy", Arguments: map[string]any{"idempotency_key": idempotency.Generate()}})
+	require.NoError(t, err)
+	assert.Equal(t, "INTERNAL_ERROR", adcpErrorOf(t, structuredContentMap(t, result))["code"])
+	wire, _ := json.Marshal(result)
+	assert.NotContains(t, string(wire), "db-secret-host")
+}
+
+// With an optional key omitted there is no claim to fence, but the handler
+// error must still not reach the wire as raw text.
+func TestRegisterUnkeyedMutationErrorIsOutcomeUnknown(t *testing.T) {
+	required := false
+	cs := newRegisteredSession(t, baseTestConfig(Config{
+		Idempotency: idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour, KeyRequired: &required}),
+		CreateMediaBuy: func(context.Context, any, *CreateMediaBuyRequest) (CreateMediaBuyResponse, error) {
+			return nil, errors.New("db-secret-host down")
+		},
+	}))
+
+	result, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "create_media_buy", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	e := adcpErrorOf(t, structuredContentMap(t, result))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", e["code"])
+	assert.Equal(t, outcomeUnknownMsg, e["message"])
+	wire, _ := json.Marshal(result)
+	assert.NotContains(t, string(wire), "db-secret-host")
+}
+
+// captureLogs routes the default slog logger into a buffer for one test.
+// Tests in this package do not run in parallel.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
 }
 
 const noPrincipalMsg = "Idempotency principal could not be resolved; authenticate callers (e.g. bearer auth) before enabling idempotency."
