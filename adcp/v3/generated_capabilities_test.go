@@ -147,3 +147,47 @@ func TestMeasurementWindowOptionalBoolPreservesFalse(t *testing.T) {
 		t.Fatalf("measurement window false pointer did not round-trip: %#v", decoded)
 	}
 }
+
+func TestCapabilitiesAnonymousDiscoveryIsTriState(t *testing.T) {
+	cases := []struct {
+		name string
+		val  *bool
+		want string
+	}{
+		{name: "absent", val: nil, want: `{}`},
+		{name: "false", val: Bool(false), want: `{"anonymous_discovery":false}`},
+		{name: "true", val: Bool(true), want: `{"anonymous_discovery":true}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mb, err := json.Marshal(MediaBuyCapabilities{AnonymousDiscovery: tc.val})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(mb) != tc.want {
+				t.Fatalf("media_buy = %s, want %s", mb, tc.want)
+			}
+			sig, err := json.Marshal(SignalsCapabilities{AnonymousDiscovery: tc.val})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(sig) != tc.want {
+				t.Fatalf("signals = %s, want %s", sig, tc.want)
+			}
+
+			var gotMB MediaBuyCapabilities
+			if err := json.Unmarshal(mb, &gotMB); err != nil {
+				t.Fatal(err)
+			}
+			var gotSig SignalsCapabilities
+			if err := json.Unmarshal(sig, &gotSig); err != nil {
+				t.Fatal(err)
+			}
+			for _, got := range []*bool{gotMB.AnonymousDiscovery, gotSig.AnonymousDiscovery} {
+				if (got == nil) != (tc.val == nil) || (got != nil && *got != *tc.val) {
+					t.Fatalf("round trip = %v, want %v", got, tc.val)
+				}
+			}
+		})
+	}
+}

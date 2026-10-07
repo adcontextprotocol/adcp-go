@@ -1960,12 +1960,11 @@ INTENTIONAL_ANY_FIELDS = {
     ('UpdateMediaBuyRequest', 'frequency_cap'): 'root MediaBuy frequency_cap typed request/response shape is being built in adcp-go#536; left dynamic pending that slice',
 }
 
-# The 3.2 prerelease expands many existing schemas with shapes that this
-# generator cannot yet represent (nested objects, unions, and composed refs).
-# Keep the exact rc.1 compatibility surface explicit so adding another dynamic
-# fallback still fails coverage. Proposal-negotiation fields are not in this
-# set: those are fully typed above. Remove entries as generator support is
-# added, and clear the set before adopting stable 3.2.
+# AdCP 3.2 expands many existing schemas with shapes that this generator
+# cannot yet represent (nested objects, unions, and composed refs). Keep the
+# exact 3.2 compatibility surface explicit so adding another dynamic fallback
+# still fails coverage. Proposal-negotiation fields are not in this set: those
+# are fully typed above. Remove entries as generator support is added.
 SCHEMA_32_RC_ANY_FIELDS = {
     ('Account', 'destination_billing_entity'),
     ('Account', 'identity_change'),
@@ -1980,6 +1979,7 @@ SCHEMA_32_RC_ANY_FIELDS = {
     ('CanonicalProduct', 'audience_evidence_selections'),
     ('CanonicalProduct', 'catalog_match'),
     ('CanonicalProduct', 'demographic_targeting'),
+    ('CanonicalProduct', 'execution_requirements'),
     ('CanonicalProduct', 'forecast'),
     ('CanonicalProduct', 'format_options'),
     ('CanonicalProduct', 'list_applications'),
@@ -1988,6 +1988,7 @@ SCHEMA_32_RC_ANY_FIELDS = {
     ('CanonicalProduct', 'placements'),
     ('CanonicalProduct', 'pricing_options'),
     ('CanonicalProduct', 'reporting_capabilities'),
+    ('CanonicalProduct', 'targeting_resolution'),
     ('CanonicalProposal', 'commercial_terms'),
     ('CanonicalProposal', 'forecast'),
     ('CanonicalProposal', 'total_budget_guidance'),
@@ -2092,6 +2093,7 @@ SCHEMA_32_RC_ANY_FIELDS = {
     ('Product', 'audience_evidence'),
     ('Product', 'audience_evidence_selections'),
     ('Product', 'demographic_targeting'),
+    ('Product', 'execution_requirements'),
     ('Product', 'list_applications'),
     ('Product', 'overlay_support'),
     ('Product', 'targeting_resolution'),
