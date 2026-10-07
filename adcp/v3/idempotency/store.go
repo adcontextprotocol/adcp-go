@@ -524,14 +524,14 @@ func ContextIDScope(ctx context.Context, payload []byte) (string, error) {
 	}
 	raw, ok := m["context_id"]
 	if !ok {
-		return "principal:" + principal, nil
+		return EncodeScope("principal", principal), nil
 	}
 	var cid string
 	if err := json.Unmarshal(raw, &cid); err != nil {
 		return "", fmt.Errorf("idempotency: context_id is not a string")
 	}
 	if cid == "" {
-		return "principal:" + principal, nil
+		return EncodeScope("principal", principal), nil
 	}
-	return "principal:" + principal + ":ctx:" + cid, nil
+	return EncodeScope("principal", principal, "ctx", cid), nil
 }

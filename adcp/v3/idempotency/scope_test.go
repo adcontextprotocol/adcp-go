@@ -75,3 +75,20 @@ func TestPrincipalScopeRequiresPrincipal(t *testing.T) {
 	_, err := PrincipalScope(context.Background(), nil)
 	require.Error(t, err)
 }
+
+func contextIDScope(t *testing.T, p, body string) string {
+	t.Helper()
+	s, err := ContextIDScope(WithPrincipal(context.Background(), p), []byte(body))
+	require.NoError(t, err)
+	return s
+}
+
+// TestContextIDScopeCannotCollide covers inputs that collided when
+// ContextIDScope joined components with plain string concatenation.
+func TestContextIDScopeCannotCollide(t *testing.T) {
+	assert.NotEqual(t, contextIDScope(t, "a:ctx:b", `{}`), contextIDScope(t, "a", `{"context_id":"b"}`))
+	assert.NotEqual(t, contextIDScope(t, "1:a", `{}`), principalScope(t, "a"))
+	assert.Equal(t, principalScope(t, "a"), contextIDScope(t, "a", `{}`), "no context_id falls back to the principal scope")
+	assert.Equal(t, principalScope(t, "a"), contextIDScope(t, "a", `{"context_id":""}`))
+	assert.Equal(t, EncodeScope("principal", "a", "ctx", "b"), contextIDScope(t, "a", `{"context_id":"b"}`))
+}
