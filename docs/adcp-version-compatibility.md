@@ -1,10 +1,26 @@
 # AdCP 3.x Version Compatibility
 
 The Go SDK is generated from the latest supported AdCP 3.x schema bundle, but
-the wire contract is not "latest only." It supports both 3.0 and 3.1 clients
-and servers.
+the wire contract is not "latest only." It supports older 3.x clients and
+servers, and the frozen v2 module `adcp/` and `adcp/v3` negotiate differently.
 
-## Contract
+## Contract (`adcp/v3`)
+
+`adcp/v3` is generated from the AdCP 3.2.2 bundle and serves 3.2 by default.
+
+- `SupportedADCPVersions()` advertises
+  `["3.0", "3.1", "3.2-rc.1", "3.2-rc.3", "3.2"]`.
+- Requests without a version pin, or pinned only to major `3`, are served as
+  the highest supported stable release (`3.2`).
+- A stable pin with an exact match is served as pinned; `3.2.2` normalizes to
+  `3.2`. A stable pin with no exact match downshifts to the highest supported
+  stable release at or below it, and never resolves onto a prerelease.
+- A prerelease pin is served only on an exact match. `3.2-rc.3` is served as
+  `3.2-rc.3`; `3.2-rc.2` against the default list returns
+  `VERSION_UNSUPPORTED` rather than being served as `3.2`.
+- Requests pinned to an unsupported major return `VERSION_UNSUPPORTED`.
+
+## Contract (frozen v2 module `adcp/`)
 
 - `adcp_version` is the buyer's release-precision version pin.
 - `adcp_major_version` remains accepted and emitted through 3.x for backward
@@ -38,7 +54,7 @@ and servers.
 Buyer requests should set both fields through 3.x:
 
 ```go
-env, ok := adcp.VersionEnvelopeFor("3.1")
+env, ok := adcp.VersionEnvelopeFor("3.2")
 if !ok {
     return fmt.Errorf("invalid AdCP version")
 }
