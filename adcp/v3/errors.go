@@ -10,7 +10,7 @@ import (
 // ErrorOptions configures an AdCP error response.
 type ErrorOptions struct {
 	Message    string
-	Recovery   string // "retry", "revise", "contact_support", "terminal"
+	Recovery   string // "transient", "correctable", "terminal" (core/error.json)
 	Field      string
 	Suggestion string
 	RetryAfter int
@@ -70,10 +70,16 @@ type adcpErrorWrapper struct {
 
 // Error builds an L3-compliant AdCP error response.
 // Returns isError: true + structuredContent.adcp_error.
+//
+// An explicit Recovery is normalized by normalizeRecovery first, so callers
+// still using the pre-enum "retry"/"revise"/"contact_support" vocabulary get
+// an in-enum value on the wire.
 func Error[T any](code string, opts ErrorOptions) (*mcp.CallToolResult, T, error) {
 	recovery := opts.Recovery
 	if recovery == "" {
 		recovery = defaultRecovery(code)
+	} else {
+		recovery = normalizeRecovery(recovery)
 	}
 
 	payload := adcpErrorPayload{
@@ -107,15 +113,61 @@ func Errorf(code string, opts ErrorOptions) (*mcp.CallToolResult, any, error) {
 	return Error[any](code, opts)
 }
 
+// normalizeRecovery rewrites an explicit Recovery value that predates the
+// core/error.json enum onto the enum member with the same meaning. Before
+// this SDK classified defaults per the enum, it documented "retry",
+// "revise" and "contact_support" as the Recovery vocabulary, and existing
+// integrations may still pass those strings explicitly. The mapping mirrors
+// the old default classification this fix replaced:
+//
+//	retry           -> transient   (retryable: RATE_LIMITED, SERVICE_UNAVAILABLE)
+//	revise          -> correctable (caller-revisable: INVALID_REQUEST, BUDGET_TOO_LOW, ...)
+//	contact_support -> terminal    (caller cannot recover: INTERNAL_ERROR, ACCOUNT_NOT_FOUND)
+//
+// Values already in the enum pass through unchanged. Any other value is
+// left untouched so a misbehaving caller stays visible instead of being
+// silently reclassified.
+//
+// This is the explicit-value counterpart of defaultRecovery: defaults were
+// fixed first, but an explicit value bypasses the switch entirely, so
+// without this the old values still reach the wire verbatim.
+func normalizeRecovery(recovery string) string {
+	switch recovery {
+	case "retry":
+		return "transient"
+	case "revise":
+		return "correctable"
+	case "contact_support":
+		return "terminal"
+	default:
+		return recovery
+	}
+}
+
+// defaultRecovery classifies a code when the caller supplies no Recovery.
+//
+// Every return value must be a member of the recovery enum closed by
+// core/error.json ("transient", "correctable", "terminal"). A receiver that
+// does not recognise an error code is required to read recovery for its retry
+// classification, so an out-of-enum value leaves the caller with no
+// machine-readable signal.
+//
+// The published codes below carry the classification recorded in this module's
+// pinned enums/error-code.json enumMetadata block, which the schema names as
+// the source SDKs must consume. MISSING_FIELD, INVALID_FIELD, and
+// INTERNAL_ERROR are SDK-internal: they appear in no published version of the
+// error-code enum, so their classification here is this SDK's own.
 func defaultRecovery(code string) string {
 	switch code {
-	case "RATE_LIMITED":
-		return "retry"
-	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
-		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
-		return "revise"
-	case "INTERNAL_ERROR", "SERVICE_UNAVAILABLE":
-		return "contact_support"
+	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
+		return "transient"
+	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "TERMS_REJECTED",
+		"MISSING_FIELD", // SDK-internal, unpublished
+		"INVALID_FIELD": // SDK-internal, unpublished
+		return "correctable"
+	case "ACCOUNT_NOT_FOUND",
+		"INTERNAL_ERROR": // SDK-internal, unpublished
+		return "terminal"
 	default:
 		return "terminal"
 	}
