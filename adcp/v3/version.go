@@ -14,6 +14,8 @@ const (
 	ADCPProtocolVersion32RC1 = "3.2-rc.1"
 	// ADCPProtocolVersion32RC3 is the 3.2-rc.3 release-candidate wire version.
 	ADCPProtocolVersion32RC3 = "3.2-rc.3"
+	// ADCPProtocolVersion32 is the 3.2 release-precision wire version.
+	ADCPProtocolVersion32 = "3.2"
 	// ADCPMajorVersion3 is the legacy major-version value for all AdCP 3.x releases.
 	ADCPMajorVersion3 = 3
 )
@@ -21,14 +23,14 @@ const (
 // SupportedADCPVersions returns the 3.x release-precision versions this SDK
 // supports on the wire. Callers receive a fresh slice.
 func SupportedADCPVersions() []string {
-	return []string{ADCPProtocolVersion30, ADCPProtocolVersion31, ADCPProtocolVersion32RC1, ADCPProtocolVersion32RC3}
+	return []string{ADCPProtocolVersion30, ADCPProtocolVersion31, ADCPProtocolVersion32RC1, ADCPProtocolVersion32RC3, ADCPProtocolVersion32}
 }
 
 // DefaultADCPVersion returns the highest stable 3.x release-precision version
 // this SDK emits when a request does not pin adcp_version. Prereleases must be
 // selected explicitly by a negotiated peer.
 func DefaultADCPVersion() string {
-	return ADCPProtocolVersion31
+	return ADCPProtocolVersion32
 }
 
 // VersionEnvelopeFor returns a request/response version envelope for a
