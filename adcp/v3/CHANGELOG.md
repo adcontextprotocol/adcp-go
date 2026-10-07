@@ -1,5 +1,59 @@
 # Changelog
 
+## [3.3.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.1...adcp/v3.3.0) (2026-10-07)
+
+
+### Features
+
+* **adcp:** adopt the AdCP 3.2.2 schema bundle ([5949251](https://github.com/adcontextprotocol/adcp-go/commit/594925166376e225110b2f5dffb42577bc3327f3))
+* **adcp:** bearer auth, principal context, and RequirePrincipal ([0d9f04a](https://github.com/adcontextprotocol/adcp-go/commit/0d9f04aa1099db0e05e2d7f2272ce6ac4ca0720d))
+* **adcp:** bearer auth, request principals, and RequirePrincipal ([a726bf2](https://github.com/adcontextprotocol/adcp-go/commit/a726bf2dc5842987f2831a1e08a346f677cd9937))
+* **adcp:** keep anonymous_discovery consistent with RequirePrincipal ([d2fb00b](https://github.com/adcontextprotocol/adcp-go/commit/d2fb00b7876a0173a4b102bd2834d9be10f50877))
+* **adcp:** serve AdCP 3.2 as the default wire version ([b1fc062](https://github.com/adcontextprotocol/adcp-go/commit/b1fc062a084906061db8b65ce49e312c73ca586e))
+* adopt AdCP 3.2.0-rc.3 protocol additions ([f0be265](https://github.com/adcontextprotocol/adcp-go/commit/f0be2658bf58482967297720d717b5ac9cbc6a1b))
+* adopt AdCP 3.2.0-rc.3 protocol additions ([#536](https://github.com/adcontextprotocol/adcp-go/issues/536)) ([363701f](https://github.com/adcontextprotocol/adcp-go/commit/363701f032b1765e25626899c232d04dddaffa54))
+* **idempotency:** hash-fenced claim replace/release for PgBackend ([b110ba8](https://github.com/adcontextprotocol/adcp-go/commit/b110ba8dc3708d83e1079ff118eabedd4dad4115))
+
+
+### Bug Fixes
+
+* **adcp:** adopt protocol 3.2.0-rc.3 bundle ([ebf1a10](https://github.com/adcontextprotocol/adcp-go/commit/ebf1a101c33f47e2d386d3035ebf9e59040ff5a1))
+* **adcp:** adopt protocol 3.2.0-rc.3 bundle ([69a0b8f](https://github.com/adcontextprotocol/adcp-go/commit/69a0b8fccc29f568be5e3e4795d8ccbc5fb7fa91))
+* **adcp:** bind the tool name into the idempotency request hash ([0b1e7d9](https://github.com/adcontextprotocol/adcp-go/commit/0b1e7d92cf5bc911a301d8ad9d3667cb59b08428))
+* **adcp:** deduplicate mutating tools in Register and emit IDEMPOTENCY_IN_FLIGHT ([7324270](https://github.com/adcontextprotocol/adcp-go/commit/732427085e3368f2f6ad0c11496cd4c5eb11ef08))
+* **adcp:** deduplicate mutating tools in Register via idempotency store ([a653e15](https://github.com/adcontextprotocol/adcp-go/commit/a653e158e20fcb084eeb4746e9d825bceb8d6e55))
+* **adcp:** deduplicate reporting sync tools through the idempotency store ([d799717](https://github.com/adcontextprotocol/adcp-go/commit/d799717d576b6946d27596887d25bec285857a12))
+* **adcp:** drop cached context on idempotent replay; document principal scoping ([110b878](https://github.com/adcontextprotocol/adcp-go/commit/110b87878f3e36a254d0b7d0d08fc78479f3cd0d))
+* **adcp:** fence legacy "retry" recovery and let schema-transient codes win ([efa3477](https://github.com/adcontextprotocol/adcp-go/commit/efa34776f3ed88174f02fbe46db421ba81f14009))
+* **adcp:** keep verifier errors off the wire and clarify principal sources ([76e659d](https://github.com/adcontextprotocol/adcp-go/commit/76e659d3970b8addcf6bf89198694b6bfcd7e17e))
+* **adcp:** make Config.Idempotency optional and advertise supported:false without it ([13c6641](https://github.com/adcontextprotocol/adcp-go/commit/13c664165092e01f591b6925e231315e9dc07f27))
+* **adcp:** map idempotency store failures to SERVICE_UNAVAILABLE ([9e9f789](https://github.com/adcontextprotocol/adcp-go/commit/9e9f789d3f1fd3f58cde149ab90719cb53af530d))
+* **adcp:** reject bearer tokens without a usable principal ([1968048](https://github.com/adcontextprotocol/adcp-go/commit/19680489532dd027cb73edc95a900b55b99334fc))
+* **adcp:** scope idempotency keys by MCP session and refuse unscoped calls ([8d2117a](https://github.com/adcontextprotocol/adcp-go/commit/8d2117a247b571b2921b026d7c600b8c5c768c51))
+* **adcp:** scope idempotency keys by principal only, never the MCP session ID ([2d94af4](https://github.com/adcontextprotocol/adcp-go/commit/2d94af401180dcf2afdd10d1132b1b10a0fab555))
+* **adcp:** set explicit recovery on idempotency errors instead of reworking defaultRecovery ([87c7235](https://github.com/adcontextprotocol/adcp-go/commit/87c723568bcddae60f44aa4d9205a8f13a3d3f6d))
+* **adcp:** validate idempotency_key before resolving the principal ([47f0a70](https://github.com/adcontextprotocol/adcp-go/commit/47f0a70ece071bed744fed8b2be68665437ce831))
+* **adcp:** validate idempotency_key format even without a store ([a28e7cc](https://github.com/adcontextprotocol/adcp-go/commit/a28e7cc10dde2a0920a190460cf743a1549e63dd))
+* add reporting schema fields to SCHEMA_32_RC_ANY_FIELDS ([4305cd6](https://github.com/adcontextprotocol/adcp-go/commit/4305cd68f4f192a1196f67193ecb0f53c819926c))
+* **idempotency:** bound claim finalize and release with a timeout ([1d1b893](https://github.com/adcontextprotocol/adcp-go/commit/1d1b8930f613ec07b77bb78677f4f83484b088e8))
+* **idempotency:** build ContextIDScope with EncodeScope ([207c453](https://github.com/adcontextprotocol/adcp-go/commit/207c453da9d8dfd4de0fc423d09d1112fd81c6fe))
+* **idempotency:** claim keys before executing to emit IDEMPOTENCY_IN_FLIGHT ([a3fab26](https://github.com/adcontextprotocol/adcp-go/commit/a3fab26423e213368937ede4e23a45c9ac726701))
+* **idempotency:** fence unknown Register mutation outcomes and log their cause ([2b95de6](https://github.com/adcontextprotocol/adcp-go/commit/2b95de64ce4ee47bb774d8e65aa63e194927ea2f))
+* **idempotency:** keep the key fenced when a handler outcome is unknown ([28268f7](https://github.com/adcontextprotocol/adcp-go/commit/28268f7e3de28e2b8e907459f4c9cc2d359321fa))
+* **idempotency:** keep the payload binding after a handler failure ([0772d93](https://github.com/adcontextprotocol/adcp-go/commit/0772d93b338d40f244cad2c69399048b37ecadd5))
+* **idempotency:** keep unresolved claims fenced instead of expiring them ([41c2d08](https://github.com/adcontextprotocol/adcp-go/commit/41c2d08e17dbd9d42233e9112793ebe9867c294c))
+* **idempotency:** length-prefix scope components so scopes cannot collide ([244232f](https://github.com/adcontextprotocol/adcp-go/commit/244232fa6e9c7f79bea5bf2a3562d4dc60b73829))
+* **idempotency:** length-prefix scope components so scopes cannot collide ([c28b857](https://github.com/adcontextprotocol/adcp-go/commit/c28b857d79d7d44bb8de9652c3a1a5b92adbb1ad))
+* **idempotency:** report lost claims and sweep only past the clock-skew window ([c430f06](https://github.com/adcontextprotocol/adcp-go/commit/c430f06a6c8d46a47db5cea9719962603b46c40d))
+* **idempotency:** store empty response instead of NULL in PgBackend ([367b058](https://github.com/adcontextprotocol/adcp-go/commit/367b05855266ed5ce490ddfdd192c090bbf6176a))
+* keep v2 README and skill examples unchanged; annotate schema read for gosec ([bc9077d](https://github.com/adcontextprotocol/adcp-go/commit/bc9077dd495f5fbd0b6c7b50b8a7b8cd21a8dab7))
+* regenerate types_gen.go after KNOWN_TYPES update ([ec588cb](https://github.com/adcontextprotocol/adcp-go/commit/ec588cb386b9cfafad26ac54fdf9ac3d63b6b20d))
+* **server:** include required status in the catalog response envelope ([400237b](https://github.com/adcontextprotocol/adcp-go/commit/400237b05dbe4e046c5ea4fe9a1422a4059d9ad1))
+* **server:** include required status in the catalog response envelope ([36ffe0d](https://github.com/adcontextprotocol/adcp-go/commit/36ffe0d4a88b0a2571aa97d754945951284b689e)), closes [#533](https://github.com/adcontextprotocol/adcp-go/issues/533)
+* **version:** honor exact prerelease pins in 3.x negotiation ([50d659e](https://github.com/adcontextprotocol/adcp-go/commit/50d659ea708907b944dfc3e9227c66f82124dd5f))
+* **version:** honor exact prerelease pins in 3.x negotiation ([8a1f40a](https://github.com/adcontextprotocol/adcp-go/commit/8a1f40a7ac400b49695e02c8f0673a6fdf163556)), closes [#527](https://github.com/adcontextprotocol/adcp-go/issues/527)
+* **webhook:** return 503 with Retry-After for in-flight duplicate deliveries ([52a36b2](https://github.com/adcontextprotocol/adcp-go/commit/52a36b29c819490a426add3570b2312e325396a7))
+
 ## [3.2.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.0...adcp/v3.2.1) (2026-09-05)
 
 
