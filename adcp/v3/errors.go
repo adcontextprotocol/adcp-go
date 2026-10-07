@@ -70,10 +70,16 @@ type adcpErrorWrapper struct {
 
 // Error builds an L3-compliant AdCP error response.
 // Returns isError: true + structuredContent.adcp_error.
+//
+// An explicit Recovery is normalized by normalizeRecovery first, so callers
+// still using the pre-enum "retry"/"revise"/"contact_support" vocabulary get
+// an in-enum value on the wire.
 func Error[T any](code string, opts ErrorOptions) (*mcp.CallToolResult, T, error) {
 	recovery := opts.Recovery
 	if recovery == "" {
 		recovery = defaultRecovery(code)
+	} else {
+		recovery = normalizeRecovery(recovery)
 	}
 
 	payload := adcpErrorPayload{
@@ -105,6 +111,37 @@ func Error[T any](code string, opts ErrorOptions) (*mcp.CallToolResult, T, error
 // matching the adcp.AddTool handler signature without requiring a type parameter.
 func Errorf(code string, opts ErrorOptions) (*mcp.CallToolResult, any, error) {
 	return Error[any](code, opts)
+}
+
+// normalizeRecovery rewrites an explicit Recovery value that predates the
+// core/error.json enum onto the enum member with the same meaning. Before
+// this SDK classified defaults per the enum, it documented "retry",
+// "revise" and "contact_support" as the Recovery vocabulary, and existing
+// integrations may still pass those strings explicitly. The mapping mirrors
+// the old default classification this fix replaced:
+//
+//	retry           -> transient   (retryable: RATE_LIMITED, SERVICE_UNAVAILABLE)
+//	revise          -> correctable (caller-revisable: INVALID_REQUEST, BUDGET_TOO_LOW, ...)
+//	contact_support -> terminal    (caller cannot recover: INTERNAL_ERROR, ACCOUNT_NOT_FOUND)
+//
+// Values already in the enum pass through unchanged. Any other value is
+// left untouched so a misbehaving caller stays visible instead of being
+// silently reclassified.
+//
+// This is the explicit-value counterpart of defaultRecovery: defaults were
+// fixed first, but an explicit value bypasses the switch entirely, so
+// without this the old values still reach the wire verbatim.
+func normalizeRecovery(recovery string) string {
+	switch recovery {
+	case "retry":
+		return "transient"
+	case "revise":
+		return "correctable"
+	case "contact_support":
+		return "terminal"
+	default:
+		return recovery
+	}
 }
 
 // defaultRecovery classifies a code when the caller supplies no Recovery.
