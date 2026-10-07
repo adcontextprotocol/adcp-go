@@ -32,6 +32,62 @@ func TestBuildCapabilitiesRequiresIdempotencyTTL(t *testing.T) {
 	}, "above 7d should panic")
 }
 
+func TestBuildCapabilitiesAnonymousDiscovery(t *testing.T) {
+	base := func(caps *CapabilitiesData, requirePrincipal bool) Config {
+		caps.SupportedProtocols = []string{"media_buy", "signals"}
+		return Config{IdempotencyReplayTTL: 24 * time.Hour, Capabilities: caps, RequirePrincipal: requirePrincipal}
+	}
+
+	t.Run("RequirePrincipal advertises false on declared blocks", func(t *testing.T) {
+		in := &CapabilitiesData{MediaBuy: &MediaBuyCapabilities{}, Signals: &SignalsCapabilities{}}
+		caps := buildCapabilities(base(in, true))
+		require.NotNil(t, caps.MediaBuy.AnonymousDiscovery)
+		assert.False(t, *caps.MediaBuy.AnonymousDiscovery)
+		require.NotNil(t, caps.Signals.AnonymousDiscovery)
+		assert.False(t, *caps.Signals.AnonymousDiscovery)
+		assert.Nil(t, in.MediaBuy.AnonymousDiscovery, "caller's Capabilities must not be mutated")
+		assert.Nil(t, in.Signals.AnonymousDiscovery, "caller's Capabilities must not be mutated")
+	})
+
+	t.Run("RequirePrincipal does not invent undeclared blocks", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{}, true))
+		assert.Nil(t, caps.MediaBuy)
+		assert.Nil(t, caps.Signals)
+	})
+
+	t.Run("without RequirePrincipal absence stays unspecified", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{}, Signals: &SignalsCapabilities{}}, false))
+		assert.Nil(t, caps.MediaBuy.AnonymousDiscovery)
+		assert.Nil(t, caps.Signals.AnonymousDiscovery)
+	})
+
+	t.Run("explicit true is kept without RequirePrincipal", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)}}, false))
+		assert.True(t, *caps.MediaBuy.AnonymousDiscovery)
+	})
+
+	t.Run("media_buy true conflicts with RequirePrincipal", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)}}, true))
+		})
+	})
+
+	t.Run("signals true conflicts with RequirePrincipal", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{Signals: &SignalsCapabilities{AnonymousDiscovery: Bool(true)}}, true))
+		})
+	})
+
+	t.Run("media_buy true conflicts with account.required_for_products", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{
+				Account:  &AccountCapabilities{SupportedBilling: []string{"operator"}, RequiredForProducts: Bool(true)},
+				MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)},
+			}, false))
+		})
+	})
+}
+
 func TestBuildCapabilitiesPanicsOnEmptyProtocols(t *testing.T) {
 	// No handlers + no Capabilities override = empty supported_protocols,
 	// which fails the 3.0 schema (minItems: 1).
@@ -69,8 +125,8 @@ func TestBuildCapabilitiesDefaults(t *testing.T) {
 	require.NotNil(t, caps.ADCP)
 	assert.Equal(t, 86400, caps.ADCP.Idempotency.ReplayTTLSeconds)
 	assert.Equal(t, []int{3}, caps.ADCP.MajorVersions)
-	assert.Equal(t, []string{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3"}, caps.ADCP.SupportedVersions)
-	assert.Equal(t, "3.1", caps.AdcpVersion)
+	assert.Equal(t, []string{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3", "3.2"}, caps.ADCP.SupportedVersions)
+	assert.Equal(t, "3.2", caps.AdcpVersion)
 	assert.Equal(t, 3, caps.AdcpMajorVersion)
 	assert.Contains(t, caps.SupportedProtocols, "media_buy")
 }
@@ -181,8 +237,8 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	idem, ok := adcp["idempotency"].(map[string]any)
 	require.True(t, ok, "adcp.idempotency must be present as an object (required in 3.0)")
 	assert.EqualValues(t, 86400, idem["replay_ttl_seconds"])
-	assert.Equal(t, []any{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3"}, adcp["supported_versions"])
-	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.Equal(t, []any{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3", "3.2"}, adcp["supported_versions"])
+	assert.Equal(t, "3.2", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
 
 	mb, ok := wire["media_buy"].(map[string]any)
@@ -388,11 +444,11 @@ func TestRegisteredCapabilitiesUsesDefaultVersion(t *testing.T) {
 	wire := structuredContentMap(t, result)
 
 	assert.False(t, result.IsError)
-	assert.Equal(t, "3.1", wire["adcp_version"])
+	assert.Equal(t, "3.2", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
 	adcpBlock, ok := wire["adcp"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, []any{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3"}, adcpBlock["supported_versions"])
+	assert.Equal(t, []any{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3", "3.2"}, adcpBlock["supported_versions"])
 }
 
 func TestRegisteredCapabilitiesFiltersProtocols(t *testing.T) {
@@ -443,7 +499,12 @@ func TestRegisteredCapabilitiesPreservesVersionPinRejection(t *testing.T) {
 // pin that has no exact match: it must downshift to the highest supported
 // stable release, never resolve onto the seller's own advertised prerelease.
 func TestRegisteredCapabilitiesStablePinNeverServesAPrerelease(t *testing.T) {
-	result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+	result := callRegisteredTool(t, baseTestConfig(Config{
+		Capabilities: &CapabilitiesData{
+			SupportedProtocols: []string{"media_buy"},
+			ADCP:               &ADCPVersion{SupportedVersions: []string{"3.1", "3.2-rc.3"}},
+		},
+	}), "get_adcp_capabilities", map[string]any{
 		"adcp_version": "3.2",
 	})
 	wire := structuredContentMap(t, result)
@@ -451,6 +512,27 @@ func TestRegisteredCapabilitiesStablePinNeverServesAPrerelease(t *testing.T) {
 	require.False(t, result.IsError)
 	assert.Equal(t, "3.1", wire["adcp_version"])
 	assert.EqualValues(t, 3, wire["adcp_major_version"])
+}
+
+func TestRegisteredCapabilitiesServesPinnedVersions(t *testing.T) {
+	for _, tt := range []struct{ pin, want string }{
+		{pin: "3.2", want: "3.2"},
+		{pin: "3.2.2", want: "3.2"},
+		{pin: "3.2-rc.3", want: "3.2-rc.3"},
+		{pin: "3.2.0-rc.3", want: "3.2-rc.3"},
+		{pin: "3.1", want: "3.1"},
+	} {
+		t.Run(tt.pin, func(t *testing.T) {
+			result := callRegisteredTool(t, baseTestConfig(Config{}), "get_adcp_capabilities", map[string]any{
+				"adcp_version": tt.pin,
+			})
+			wire := structuredContentMap(t, result)
+
+			require.False(t, result.IsError)
+			assert.Equal(t, tt.want, wire["adcp_version"])
+			assert.EqualValues(t, 3, wire["adcp_major_version"])
+		})
+	}
 }
 
 // TestRegisteredCapabilitiesRejectsUnmatchedPrereleasePin exercises the

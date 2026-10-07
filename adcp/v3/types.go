@@ -93,6 +93,7 @@ type MediaBuyCapabilities struct {
 	AcceptancePolicyDiscovery    any                                   `json:"acceptance_policy_discovery,omitempty"`
 	SupportedPricingModels       []string                              `json:"supported_pricing_models,omitempty"`
 	BuyingModes                  []string                              `json:"buying_modes,omitempty"`
+	AnonymousDiscovery           *bool                                 `json:"anonymous_discovery,omitempty"`
 	MeasurementTermsAcceptance   *bool                                 `json:"measurement_terms_acceptance,omitempty"`
 	AvailabilityHorizon          *bool                                 `json:"availability_horizon,omitempty"`
 	LifecycleTools               []string                              `json:"lifecycle_tools,omitempty"`
@@ -298,6 +299,7 @@ type PortfolioCaps struct {
 type SignalsCapabilities struct {
 	DataProviderDomains []string        `json:"data_provider_domains,omitempty"`
 	DiscoveryModes      []string        `json:"discovery_modes,omitempty"`
+	AnonymousDiscovery  *bool           `json:"anonymous_discovery,omitempty"`
 	Features            map[string]bool `json:"features,omitempty"`
 }
 

@@ -20,6 +20,7 @@ func TestNormalizeADCPVersion(t *testing.T) {
 		{name: "pre release", in: "3.1.0-rc.3", want: "3.1-rc.3", ok: true},
 		{name: "3.2 release candidate", in: "3.2.0-rc.1", want: "3.2-rc.1", ok: true},
 		{name: "build metadata", in: "3.1.2+scope.deploy.4821", want: "3.1", ok: true},
+		{name: "3.2 patch release", in: "3.2.2", want: "3.2", ok: true},
 		{name: "invalid", in: "3", ok: false},
 	}
 
@@ -40,6 +41,15 @@ func TestVersionEnvelopeFor(t *testing.T) {
 	assert.Equal(t, 3, env.AdcpMajorVersion)
 }
 
+func TestDefaultADCPVersion(t *testing.T) {
+	assert.Equal(t, "3.2", DefaultADCPVersion())
+	assert.Equal(t, ADCPProtocolVersion32, DefaultADCPVersion())
+}
+
+func TestSupportedADCPVersions(t *testing.T) {
+	assert.Equal(t, []string{"3.0", "3.1", "3.2-rc.1", "3.2-rc.3", "3.2"}, SupportedADCPVersions())
+}
+
 func TestNegotiateADCPVersion(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -52,9 +62,13 @@ func TestNegotiateADCPVersion(t *testing.T) {
 		{name: "explicit 3.0", requestVersion: "3.0", want: "3.0", ok: true},
 		{name: "explicit 3.1", requestVersion: "3.1", want: "3.1", ok: true},
 		{name: "explicit 3.2 RC", requestVersion: "3.2-rc.1", want: "3.2-rc.1", ok: true},
-		{name: "stable pin downshifts to highest stable release, never a same-minor prerelease", requestVersion: "3.2", want: "3.1", ok: true},
-		{name: "legacy major remains stable", requestMajor: 3, want: "3.1", ok: true},
-		{name: "default remains stable", want: "3.1", ok: true},
+		{name: "explicit 3.2 RC3 still honored", requestVersion: "3.2-rc.3", want: "3.2-rc.3", ok: true},
+		{name: "explicit 3.2", requestVersion: "3.2", want: "3.2", ok: true},
+		{name: "explicit 3.2 full semver", requestVersion: "3.2.2", want: "3.2", ok: true},
+		{name: "stable pin downshifts to highest stable release", requestVersion: "3.3", want: "3.2", ok: true},
+		{name: "stable pin never downshifts onto a same-minor prerelease", requestVersion: "3.2", supported: []string{"3.1", "3.2-rc.3"}, want: "3.1", ok: true},
+		{name: "legacy major selects highest stable", requestMajor: 3, want: "3.2", ok: true},
+		{name: "default is highest stable", want: "3.2", ok: true},
 		{name: "downshift", requestVersion: "3.1", supported: []string{"3.0"}, want: "3.0", ok: true},
 		{name: "prerelease pin without exact match is unsupported, not downshifted to stable", requestVersion: "3.1-rc.3", supported: []string{"3.0", "3.1"}, ok: false},
 		{name: "stable pin against a seller offering only a prerelease is unsupported", requestVersion: "3.1.0", supported: []string{"3.1-rc.3"}, ok: false},
@@ -80,11 +94,11 @@ func TestNegotiateADCPVersionMajorPresence(t *testing.T) {
 		want string
 		ok   bool
 	}{
-		{name: "omitted major defaults stable", req: adcpVersionRequest{}, want: "3.1", ok: true},
+		{name: "omitted major defaults stable", req: adcpVersionRequest{}, want: "3.2", ok: true},
 		{name: "explicit zero major is invalid", req: adcpVersionRequest{major: 0, majorProvided: true}, ok: false},
 		{name: "negative major is invalid", req: adcpVersionRequest{major: -1, majorProvided: true}, ok: false},
 		{name: "unsupported positive major is invalid", req: adcpVersionRequest{major: 4, majorProvided: true}, ok: false},
-		{name: "supported major selects highest stable release", req: adcpVersionRequest{major: 3, majorProvided: true}, want: "3.1", ok: true},
+		{name: "supported major selects highest stable release", req: adcpVersionRequest{major: 3, majorProvided: true}, want: "3.2", ok: true},
 	}
 
 	for _, tt := range tests {
