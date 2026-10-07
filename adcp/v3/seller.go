@@ -514,6 +514,8 @@ type Config struct {
 	// Only principals from WithBearerAuth (bearer TokenInfo) are recognized:
 	// adopters with their own auth middleware must set TokenInfo via go-sdk
 	// auth, or leave this false and enforce auth themselves.
+	// When true, declared media_buy and signals capability blocks advertise
+	// anonymous_discovery: false, and an explicit true panics at Register.
 	RequirePrincipal bool
 
 	// --- Media buy ---
@@ -671,6 +673,40 @@ const (
 	idempotencyReplayTTLMax = 7 * 24 * time.Hour
 )
 
+// applyAnonymousDiscovery keeps the 3.2 anonymous_discovery flags consistent
+// with what Register enforces. RequirePrincipal rejects unauthenticated
+// discovery, so a declared media_buy or signals block advertises false instead
+// of leaving buyers to probe for AUTH_MISSING, and an explicit true panics.
+// It also panics on media_buy true with account.required_for_products true,
+// which the schema defines as inconsistent. Blocks are copied, never mutated
+// in the caller's Config.
+func applyAnonymousDiscovery(caps *CapabilitiesData, requirePrincipal bool) {
+	if caps.MediaBuy != nil {
+		mb := *caps.MediaBuy
+		caps.MediaBuy = &mb
+		mb.AnonymousDiscovery = resolveAnonymousDiscovery("media_buy", mb.AnonymousDiscovery, requirePrincipal)
+		if mb.AnonymousDiscovery != nil && *mb.AnonymousDiscovery &&
+			caps.Account != nil && caps.Account.RequiredForProducts != nil && *caps.Account.RequiredForProducts {
+			panic("adcp.Register: Capabilities.MediaBuy.AnonymousDiscovery is true but Capabilities.Account.RequiredForProducts is true — an anonymous caller cannot select protected account context")
+		}
+	}
+	if caps.Signals != nil {
+		sig := *caps.Signals
+		caps.Signals = &sig
+		sig.AnonymousDiscovery = resolveAnonymousDiscovery("signals", sig.AnonymousDiscovery, requirePrincipal)
+	}
+}
+
+func resolveAnonymousDiscovery(block string, declared *bool, requirePrincipal bool) *bool {
+	if !requirePrincipal {
+		return declared
+	}
+	if declared != nil && *declared {
+		panic(fmt.Sprintf("adcp.Register: Capabilities %s.anonymous_discovery is true but Config.RequirePrincipal rejects unauthenticated discovery — set one or the other", block))
+	}
+	return Bool(false)
+}
+
 // buildCapabilities constructs the CapabilitiesData returned from
 // get_adcp_capabilities. It panics if IdempotencyReplayTTL is missing or
 // out of range, if the caller and Config disagree on the replay window, or if
@@ -715,6 +751,8 @@ func buildCapabilities(cfg Config) *CapabilitiesData {
 	} else {
 		caps.ADCP.Idempotency = IdempotencyCaps{Supported: true, ReplayTTLSeconds: ttlSeconds}
 	}
+
+	applyAnonymousDiscovery(&caps, cfg.RequirePrincipal)
 
 	if len(caps.SupportedProtocols) == 0 {
 		caps.SupportedProtocols = detectProtocols(cfg)

@@ -32,6 +32,62 @@ func TestBuildCapabilitiesRequiresIdempotencyTTL(t *testing.T) {
 	}, "above 7d should panic")
 }
 
+func TestBuildCapabilitiesAnonymousDiscovery(t *testing.T) {
+	base := func(caps *CapabilitiesData, requirePrincipal bool) Config {
+		caps.SupportedProtocols = []string{"media_buy", "signals"}
+		return Config{IdempotencyReplayTTL: 24 * time.Hour, Capabilities: caps, RequirePrincipal: requirePrincipal}
+	}
+
+	t.Run("RequirePrincipal advertises false on declared blocks", func(t *testing.T) {
+		in := &CapabilitiesData{MediaBuy: &MediaBuyCapabilities{}, Signals: &SignalsCapabilities{}}
+		caps := buildCapabilities(base(in, true))
+		require.NotNil(t, caps.MediaBuy.AnonymousDiscovery)
+		assert.False(t, *caps.MediaBuy.AnonymousDiscovery)
+		require.NotNil(t, caps.Signals.AnonymousDiscovery)
+		assert.False(t, *caps.Signals.AnonymousDiscovery)
+		assert.Nil(t, in.MediaBuy.AnonymousDiscovery, "caller's Capabilities must not be mutated")
+		assert.Nil(t, in.Signals.AnonymousDiscovery, "caller's Capabilities must not be mutated")
+	})
+
+	t.Run("RequirePrincipal does not invent undeclared blocks", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{}, true))
+		assert.Nil(t, caps.MediaBuy)
+		assert.Nil(t, caps.Signals)
+	})
+
+	t.Run("without RequirePrincipal absence stays unspecified", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{}, Signals: &SignalsCapabilities{}}, false))
+		assert.Nil(t, caps.MediaBuy.AnonymousDiscovery)
+		assert.Nil(t, caps.Signals.AnonymousDiscovery)
+	})
+
+	t.Run("explicit true is kept without RequirePrincipal", func(t *testing.T) {
+		caps := buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)}}, false))
+		assert.True(t, *caps.MediaBuy.AnonymousDiscovery)
+	})
+
+	t.Run("media_buy true conflicts with RequirePrincipal", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)}}, true))
+		})
+	})
+
+	t.Run("signals true conflicts with RequirePrincipal", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{Signals: &SignalsCapabilities{AnonymousDiscovery: Bool(true)}}, true))
+		})
+	})
+
+	t.Run("media_buy true conflicts with account.required_for_products", func(t *testing.T) {
+		assert.Panics(t, func() {
+			buildCapabilities(base(&CapabilitiesData{
+				Account:  &AccountCapabilities{SupportedBilling: []string{"operator"}, RequiredForProducts: Bool(true)},
+				MediaBuy: &MediaBuyCapabilities{AnonymousDiscovery: Bool(true)},
+			}, false))
+		})
+	})
+}
+
 func TestBuildCapabilitiesPanicsOnEmptyProtocols(t *testing.T) {
 	// No handlers + no Capabilities override = empty supported_protocols,
 	// which fails the 3.0 schema (minItems: 1).
