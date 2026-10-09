@@ -499,9 +499,10 @@ type Config struct {
 	// is built from the registered handlers.
 	Capabilities *CapabilitiesData
 
-	// ResolveAccount converts an AccountReference (brand + operator) to your
-	// internal account object. Called automatically before handlers that receive
-	// an account field. Return nil for unknown accounts (SDK sends ACCOUNT_NOT_FOUND).
+	// ResolveAccount converts an AccountReference (brand + operator, or a bare
+	// account_id) to your internal account object. Called automatically before
+	// handlers that receive an account field. Return nil for unknown accounts
+	// (SDK sends ACCOUNT_NOT_FOUND).
 	//
 	// The authenticated caller is available via PrincipalFromContext(ctx).
 	// You MUST check that this principal may act for ref; otherwise any
@@ -595,7 +596,10 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		result, _, _ := Errorf("INTERNAL_ERROR", ErrorOptions{Message: "unexpected account reference type"})
 		return nil, result
 	}
-	if acctRef.Brand == nil && acctRef.Operator == "" {
+	// An account_id-only reference still names an account: it must go to the
+	// resolver so an unknown ID surfaces ACCOUNT_NOT_FOUND instead of
+	// silently running with no account (public pricing).
+	if acctRef.Brand == nil && acctRef.Operator == "" && acctRef.AccountID == "" {
 		return nil, nil
 	}
 	acct, err := resolver(ctx, acctRef)
