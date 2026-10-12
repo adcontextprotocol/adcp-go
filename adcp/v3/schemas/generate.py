@@ -166,6 +166,8 @@ TOOL_SCHEMAS = [
     "creative/preview-creative-response.json",
     "creative/list-creative-formats-request.json",
     "creative/list-creative-formats-response.json",
+    "creative/validate-input-request.json",
+    "creative/validate-input-response.json",
     # Signals
     "signals/get-signals-request.json",
     "signals/get-signals-response.json",
@@ -309,6 +311,7 @@ CORE_SCHEMAS = [
 # Schemas that are not standalone tool requests/responses, but are important
 # SDK input shapes referenced by tool schemas.
 SUPPORT_SCHEMAS = [
+    "creative/validate-input-result.json",
     "media-buy/package-request.json",
     "media-buy/package-update.json",
     "media-buy/proposal-refinement.json",
@@ -1058,6 +1061,22 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "creative/preview-creative-request.json#/properties/requests/items",
     ),
     (
+        "ValidateInputTarget",
+        "creative/validate-input-request.json#/properties/targets/items",
+    ),
+    (
+        "ValidateInputResultTarget",
+        "creative/validate-input-result.json#/properties/target",
+    ),
+    (
+        "ValidateInputViolation",
+        "creative/validate-input-result.json#/properties/violations/items",
+    ),
+    (
+        "ValidateInputWarning",
+        "creative/validate-input-result.json#/properties/warnings/items",
+    ),
+    (
         "ForcedDirective",
         "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced",
     ),
@@ -1258,6 +1277,10 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'ArtifactWebhookConfig',
     'PreviewCreativeInput',
     'PreviewCreativeBatchRequest',
+    'ValidateInputTarget',
+    'ValidateInputResultTarget',
+    'ValidateInputViolation',
+    'ValidateInputWarning',
     'DeliveryAttributionWindow',
     'DeliveryReportingDimensions',
     'DeliveryReportingGeoDimension',
@@ -1511,6 +1534,10 @@ INLINE_TYPE_HINTS = {
     ('PreviewCreativeRequest', 'inputs'): 'PreviewCreativeInput',
     ('PreviewCreativeRequest', 'requests'): 'PreviewCreativeBatchRequest',
     ('PreviewCreativeBatchRequest', 'inputs'): 'PreviewCreativeInput',
+    ('ValidateInputRequest', 'targets'): 'ValidateInputTarget',
+    ('ValidateInputResult', 'target'): 'ValidateInputResultTarget',
+    ('ValidateInputResult', 'violations'): 'ValidateInputViolation',
+    ('ValidateInputResult', 'warnings'): 'ValidateInputWarning',
     ('ForcedDirectiveSuccess', 'forced'): 'ForcedDirective',
     ('SyncPlansRequest', 'plans'): 'Plan',
     ('GetProductsResponse', 'proposals'): 'Proposal',
@@ -1922,6 +1949,11 @@ INTENTIONAL_ANY_FIELDS = {
     ('CheckGovernanceRequest', 'payload'): 'governance can evaluate different protocol payloads',
     ('CheckGovernanceFinding', 'details'): 'governance finding details are structured but category-specific',
     ('ReportPlanOutcomeFinding', 'details'): 'outcome finding details are structured but category-specific',
+    ('ValidateInputViolation', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
+    ('ValidateInputViolation', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
+    ('ValidateInputViolation', 'retry_with'): 'validate_input retry hints are advisory, platform-shaped input',
+    ('ValidateInputWarning', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
+    ('ValidateInputWarning', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
     # 3.1 forward-compatible allowances for auto-discovered referenced schemas.
     ('ProductFormatDeclaration', 'params'): 'canonical format parameters are schema-specific',
     ('VendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
