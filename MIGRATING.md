@@ -1,5 +1,56 @@
 # Migrating adcp-go
 
+## Behavior change: signed HTTP clients cap agent responses at 4 MiB
+
+Clients built with `signing.NewSignedHTTPClient` now reject any agent response
+larger than 4 MiB. This ships as a **minor** release of `adcp/v3`: the API is
+backward compatible, but a caller that today buffers an eight-megabyte
+`get_products` answer will start seeing an error.
+
+Agent responses are untrusted input. A single oversized response is enough to
+drive a buyer, crawler, or compliance grader out of memory, and that
+protection cannot depend on every adopter remembering to opt in — so the cap
+is on by default.
+
+**What you will see.** The failing call returns a
+`*signing.ResponseTooLargeError`, which matches
+`errors.Is(err, signing.ErrResponseTooLarge)`. A response that declared an
+oversized `Content-Length` fails from `client.Do` (wrapped in `*url.Error`)
+before the body is read; anything else fails on the read that crosses the
+limit. The body is never silently truncated.
+
+**How to raise the limit.** Per client:
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:            kid,
+    PrivateKey:       priv,
+    MaxResponseBytes: 32 << 20, // 32 MiB
+    MaxSSEEventBytes: 1 << 20,  // optional: keep single SSE events tight
+})
+```
+
+Per call, when only one operation needs the headroom:
+
+```go
+ctx := signing.WithResponseLimits(ctx, signing.ResponseLimits{MaxResponseBytes: 32 << 20})
+req, _ := http.NewRequestWithContext(ctx, "POST", agentURL, body)
+resp, err := client.Do(req)
+```
+
+To turn the cap off entirely — only for a peer you control — set
+`MaxResponseBytes: signing.UnlimitedResponseBytes`. Zero keeps the 4 MiB
+default, so an unset field leaves you protected.
+
+Other details worth knowing: the cap counts decompressed bytes (it sits
+outside `net/http`'s transparent gzip), and `text/event-stream` responses are
+capped both per event and cumulatively per call, so a long-lived stream that
+legitimately exceeds 4 MiB over its lifetime needs an explicit higher
+`MaxResponseBytes`. The lower-level `(*Signer).RoundTripper` is unchanged and
+does not cap on its own; wrap it in `signing.NewResponseLimitTransport` to get
+the same protection. Full reference:
+[`adcp/signing/README.md`](adcp/signing/README.md#response-size-limits).
+
 ## Migrating to adcp-go v3 / sub-modules
 
 `adcp-go` 3.0 reshapes the repository into a Go multi-module workspace. If you

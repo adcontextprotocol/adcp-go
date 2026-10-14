@@ -234,6 +234,26 @@ mw := signing.Middleware(signing.MiddlewareOptions{
 http.ListenAndServe(":8080", mw(yourHandler))
 ```
 
+**Response size is capped by default:**
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:      "buyer-ed25519-2026",
+    PrivateKey: priv,
+    // MaxResponseBytes defaults to signing.DefaultMaxResponseBytes (4 MiB).
+    // Raise it for an agent with a genuinely large catalog; set
+    // signing.UnlimitedResponseBytes to turn the cap off.
+})
+```
+
+Agent responses are untrusted input, so `NewSignedHTTPClient` rejects any
+response over 4 MiB with a typed `*signing.ResponseTooLargeError` instead of
+buffering it. The cap is enforced while the body streams (declared
+`Content-Length` is pre-rejected), counts decompressed bytes, and covers SSE
+both per event and cumulatively per call. Override it per client with
+`MaxResponseBytes` / `MaxSSEEventBytes` or per call with
+`signing.WithResponseLimits`. See [`adcp/signing/README.md`](adcp/signing/README.md#response-size-limits).
+
 **Generate a signing keypair:**
 
 ```bash

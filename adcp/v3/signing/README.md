@@ -73,6 +73,64 @@ The signer:
 - attaches `Signature`, `Signature-Input`, and optionally `Content-Digest`,
 - uses Ed25519 (deterministic) or ES256 with IEEE P1363 (`r||s`) encoding — **not** DER.
 
+## Response size limits
+
+Agent responses are untrusted input. `NewSignedHTTPClient` caps every response
+at **4 MiB** (`signing.DefaultMaxResponseBytes`) by default — no opt-in
+required. A seller that answers `get_products` with a multi-megabyte body
+fails the call instead of driving the caller out of memory.
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:            "my-agent-ed25519-2026",
+    PrivateKey:       priv,
+    MaxResponseBytes: 32 << 20, // this seller publishes a large catalog
+    MaxSSEEventBytes: 1 << 20,  // but no single SSE event should be that big
+})
+```
+
+Per call, for the one operation that needs the headroom:
+
+```go
+ctx := signing.WithResponseLimits(ctx, signing.ResponseLimits{MaxResponseBytes: 32 << 20})
+req, _ := http.NewRequestWithContext(ctx, "POST", agentURL, body)
+resp, err := client.Do(req)
+```
+
+What the cap guarantees:
+
+- **Enforced while reading, never truncating.** An oversized `Content-Length`
+  is rejected before the body is read at all; otherwise the read that crosses
+  the limit fails. At most `limit + 1` bytes are ever pulled from the peer,
+  and the caller always gets an error — a short body never looks like a
+  complete one.
+- **Typed error.** Every rejection is a `*signing.ResponseTooLargeError` and
+  matches `errors.Is(err, signing.ErrResponseTooLarge)`. `Scope` says whether
+  the whole body or a single SSE event tripped it; `Limit`, `Read`, and
+  `ContentLength` carry the numbers. A pre-reject surfaces from `client.Do`
+  (wrapped in `*url.Error`); a mid-stream reject surfaces from the read.
+- **SSE is covered.** A `text/event-stream` response is capped per event
+  (`MaxSSEEventBytes`, which inherits `MaxResponseBytes`) *and* cumulatively
+  per call (`MaxResponseBytes`), so a peer cannot escape the limit by
+  answering with a stream. Whatever decodes the body — `bufio.Scanner`, an SSE
+  library, an MCP streamable-HTTP client — gets both checks from the wrapper
+  with no SSE-specific wiring, because the counting happens under
+  `resp.Body.Read`. A long-lived stream that legitimately runs past
+  `MaxResponseBytes` over its lifetime needs an explicit higher cumulative cap
+  (or `signing.UnlimitedResponseBytes`) with `MaxSSEEventBytes` kept tight.
+- **Decompressed bytes count.** The cap sits outside `net/http`'s transparent
+  gzip, so a body that is 100 KiB on the wire and 8 MiB inflated is rejected
+  at 8 MiB. If you set `Accept-Encoding` yourself, net/http hands you the
+  encoded bytes and bounding your own decoder is on you.
+- **Opt-out is explicit.** `MaxResponseBytes: signing.UnlimitedResponseBytes`
+  (any negative value) turns the cap off. Zero means "use the default", so
+  leaving the field unset keeps you protected.
+
+Building the client yourself?
+`signing.NewResponseLimitTransport(inner, signing.ResponseLimits{})` applies
+the same cap to any `http.RoundTripper`, including the lower-level
+`(*Signer).RoundTripper`, which does not cap on its own.
+
 ## Verifying (seller side)
 
 ```go
