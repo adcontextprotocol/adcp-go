@@ -216,6 +216,14 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		return nil, err
 	}
 
+	// A response that carries no body has nothing to cap. HEAD, 204, and 304
+	// still echo the resource's Content-Length without sending those bytes,
+	// so pre-rejecting on it would fail a transfer that never happens; a 101
+	// hands back the raw upgraded connection, which is not ours to limit.
+	if !responseCarriesBody(r, resp) {
+		return resp, nil
+	}
+
 	// Pre-reject on the declared length so an oversized body is never read.
 	// resp.ContentLength is -1 when none was declared, and net/http already
 	// clears it on responses it transparently decompressed.
@@ -244,6 +252,27 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		contentLength: resp.ContentLength,
 	}
 	return resp, nil
+}
+
+// responseCarriesBody reports whether the response can carry a body this
+// transport is responsible for bounding.
+func responseCarriesBody(req *http.Request, resp *http.Response) bool {
+	if resp.Body == nil || resp.Body == http.NoBody {
+		return false
+	}
+	if req != nil && req.Method == http.MethodHead {
+		return false
+	}
+	// 1xx (including a 101 upgrade's raw connection), 204, and 304 never
+	// carry a response body.
+	if resp.StatusCode < 200 {
+		return false
+	}
+	switch resp.StatusCode {
+	case http.StatusNoContent, http.StatusNotModified:
+		return false
+	}
+	return true
 }
 
 // isEventStream reports whether the Content-Type is SSE.

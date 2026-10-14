@@ -44,6 +44,7 @@ type stubTransport struct {
 	body          *countingBody
 	contentLength int64
 	contentType   string
+	status        int // zero means 200
 }
 
 func (t *stubTransport) RoundTrip(*http.Request) (*http.Response, error) {
@@ -51,8 +52,12 @@ func (t *stubTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	if t.contentType != "" {
 		header.Set("Content-Type", t.contentType)
 	}
+	status := t.status
+	if status == 0 {
+		status = http.StatusOK
+	}
 	return &http.Response{
-		StatusCode:    http.StatusOK,
+		StatusCode:    status,
 		Header:        header,
 		Body:          t.body,
 		ContentLength: t.contentLength,
@@ -602,3 +607,54 @@ func getAndDrain(t *testing.T, client *http.Client, url string) error {
 	_, err = io.ReadAll(resp.Body)
 	return err
 }
+
+func TestResponseLimitTransportIgnoresBodylessResponses(t *testing.T) {
+	// A HEAD response echoes the resource's Content-Length without sending
+	// the bytes; so do 204 and 304. None of them may be pre-rejected.
+	t.Run("HEAD", func(t *testing.T) {
+		stub := &stubTransport{
+			body:          &countingBody{r: bytes.NewReader(nil)},
+			contentLength: 100 << 20,
+			contentType:   "application/json",
+		}
+		rt := NewResponseLimitTransport(stub, ResponseLimits{MaxResponseBytes: 512})
+
+		req, err := http.NewRequest("HEAD", "https://seller.example.com/adcp/get_products", nil)
+		require.NoError(t, err)
+		resp, err := rt.RoundTrip(req)
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, int64(100<<20), resp.ContentLength)
+	})
+
+	for _, status := range []int{http.StatusNoContent, http.StatusNotModified} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			stub := &stubTransport{
+				body:          &countingBody{r: bytes.NewReader(nil)},
+				contentLength: 100 << 20,
+				status:        status,
+			}
+			rt := NewResponseLimitTransport(stub, ResponseLimits{MaxResponseBytes: 512})
+
+			resp, err := doGET(t, rt, context.Background())
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			assert.Equal(t, status, resp.StatusCode)
+		})
+	}
+
+	t.Run("http.NoBody", func(t *testing.T) {
+		rt := NewResponseLimitTransport(roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: http.NoBody}, nil
+		}), ResponseLimits{MaxResponseBytes: 512})
+
+		resp, err := doGET(t, rt, context.Background())
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		assert.Equal(t, http.NoBody, resp.Body, "a bodyless response needs no wrapper")
+	})
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
