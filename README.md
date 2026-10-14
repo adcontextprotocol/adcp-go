@@ -252,7 +252,7 @@ buffering it. The cap is enforced while the body streams (declared
 `Content-Length` is pre-rejected), counts decompressed bytes, and covers SSE
 both per event and cumulatively per call. Override it per client with
 `MaxResponseBytes` / `MaxSSEEventBytes` or per call with
-`signing.WithResponseLimits`. See [`adcp/signing/README.md`](adcp/signing/README.md#response-size-limits).
+`signing.WithResponseLimits`. See [`adcp/v3/signing/README.md`](adcp/v3/signing/README.md#response-size-limits).
 
 **Generate a signing keypair:**
 

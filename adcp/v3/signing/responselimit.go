@@ -133,7 +133,10 @@ func (l ResponseLimits) resolve() ResponseLimits {
 
 // merge layers a per-call override over the transport's limits: a zero field
 // on the override inherits the transport's value, a non-zero field (including
-// a negative "unlimited") wins.
+// a negative "unlimited") wins. Inheritance is resolved afterwards, so a
+// call that raises MaxResponseBytes raises the inherited per-event cap with
+// it — which is what the override exists for, since an MCP streamable-HTTP
+// response usually arrives as one large event.
 func (l ResponseLimits) merge(override ResponseLimits) ResponseLimits {
 	out := l
 	if override.MaxResponseBytes != 0 {
@@ -158,7 +161,15 @@ type responseLimitsKey struct{}
 //	resp, err := client.Do(req) // 32 MiB for this call only
 //
 // A zero field inherits the client's configured value; a negative field
-// (UnlimitedResponseBytes) disables that cap for the call.
+// (UnlimitedResponseBytes) disables that cap for the call. Because
+// MaxSSEEventBytes inherits MaxResponseBytes, an override that disables the
+// body cap disables the per-event cap too unless the transport set
+// MaxSSEEventBytes explicitly — set it on the override to keep events
+// bounded while the call as a whole runs unbounded.
+//
+// The override rides on the context, so it applies to every
+// ResponseLimitTransport the context reaches, not only the client you had in
+// mind. Scope the context to the one call that needs it.
 func WithResponseLimits(ctx context.Context, limits ResponseLimits) context.Context {
 	return context.WithValue(ctx, responseLimitsKey{}, limits)
 }
@@ -179,11 +190,15 @@ func responseLimitsFromContext(ctx context.Context) (ResponseLimits, bool) {
 // kill this guards against.
 //
 // Wrap it around the outermost transport so it counts the bytes the caller
-// actually reads. With net/http's default transparent gzip (the caller sets
-// no Accept-Encoding header), that is the *decompressed* byte count, so a
-// compressed bomb is caught at its inflated size. A caller that sets
-// Accept-Encoding itself owns the decoding, and therefore owns bounding it —
-// the cap then applies to the encoded bytes it reads off the wire.
+// actually reads. The count is always of *decompressed* bytes, so a
+// compressed bomb is caught at its inflated size rather than its wire size.
+// net/http decompresses transparently only for the gzip it negotiated
+// itself, so whenever a body cap is in force this transport takes over
+// content negotiation: a request that carries its own Accept-Encoding naming
+// a compressing coding has that header dropped, leaving net/http to ask for
+// gzip and inflate the result under the counter. An Accept-Encoding of
+// identity is left alone (those bytes are already uncompressed), and a
+// request whose cap is disabled is never touched.
 type ResponseLimitTransport struct {
 	// Inner is the transport to wrap. Nil means http.DefaultTransport.
 	Inner http.RoundTripper
@@ -210,6 +225,16 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		limits = limits.merge(override)
 	}
 	limits = limits.resolve()
+
+	// Hand content negotiation back to net/http so the bytes this transport
+	// counts are the inflated ones. Without this, a caller-set
+	// Accept-Encoding makes net/http skip transparent decompression and the
+	// counter sees only the wire size — a 128 KiB body that inflates to
+	// 64 MiB would sail past a 4 MiB cap.
+	if limits.MaxResponseBytes >= 0 && overridesContentCoding(r.Header.Get("Accept-Encoding")) {
+		r = r.Clone(r.Context())
+		r.Header.Del("Accept-Encoding")
+	}
 
 	resp, err := inner.RoundTrip(r)
 	if err != nil {
@@ -252,6 +277,24 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		contentLength: resp.ContentLength,
 	}
 	return resp, nil
+}
+
+// overridesContentCoding reports whether an Accept-Encoding header takes
+// content negotiation away from net/http in a way that would leave this
+// transport counting compressed bytes. An absent header, or one that accepts
+// nothing but identity, is already safe.
+func overridesContentCoding(acceptEncoding string) bool {
+	if strings.TrimSpace(acceptEncoding) == "" {
+		return false
+	}
+	for coding := range strings.SplitSeq(acceptEncoding, ",") {
+		// Drop any q-value / parameters before comparing the coding token.
+		coding, _, _ = strings.Cut(coding, ";")
+		if !strings.EqualFold(strings.TrimSpace(coding), "identity") {
+			return true
+		}
+	}
+	return false
 }
 
 // responseCarriesBody reports whether the response can carry a body this
@@ -368,6 +411,7 @@ func (b *limitedResponseBody) scanEvents(chunk []byte) error {
 		if b.newlineRun >= 2 {
 			// Blank line: the event ended. Start counting the next one.
 			b.newlineRun = 0
+			b.afterCR = false
 			b.eventRead = 0
 			continue
 		}

@@ -101,11 +101,17 @@ What the cap guarantees:
   (or `signing.UnlimitedResponseBytes`) with `MaxSSEEventBytes` kept tight.
 - **Decompressed bytes count.** The cap sits outside `net/http`'s transparent
   gzip, so a body that is 100 KiB on the wire and 8 MiB inflated is rejected
-  at 8 MiB. If you set `Accept-Encoding` yourself, net/http hands you the
-  encoded bytes and bounding your own decoder is on you.
+  at 8 MiB. Because net/http only decompresses the gzip it negotiated itself,
+  a capped request that carries its own `Accept-Encoding` naming a
+  compressing coding has that header dropped so negotiation — and the
+  inflation — happens under the counter. `Accept-Encoding: identity` is left
+  alone, as is any request whose cap is disabled.
 - **Opt-out is explicit.** `MaxResponseBytes: signing.UnlimitedResponseBytes`
   (any negative value) turns the cap off. Zero means "use the default", so
-  leaving the field unset keeps you protected.
+  leaving the field unset keeps you protected. Since `MaxSSEEventBytes`
+  inherits `MaxResponseBytes`, opting out of the body cap opts out of the
+  per-event cap as well — set `MaxSSEEventBytes` explicitly to keep events
+  bounded while the call runs unbounded.
 
 Building the client yourself?
 `signing.NewResponseLimitTransport(inner, signing.ResponseLimits{})` applies

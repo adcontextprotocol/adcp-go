@@ -40,16 +40,23 @@ resp, err := client.Do(req)
 
 To turn the cap off entirely — only for a peer you control — set
 `MaxResponseBytes: signing.UnlimitedResponseBytes`. Zero keeps the 4 MiB
-default, so an unset field leaves you protected.
+default, so an unset field leaves you protected. Because `MaxSSEEventBytes`
+inherits `MaxResponseBytes`, opting out of the body cap opts out of the
+per-event cap too; pass an explicit `MaxSSEEventBytes` alongside it if you
+want a long-running stream's individual events to stay bounded.
 
-Other details worth knowing: the cap counts decompressed bytes (it sits
-outside `net/http`'s transparent gzip), and `text/event-stream` responses are
+Other details worth knowing: the cap counts decompressed bytes, so a gzip
+bomb is rejected at its inflated size. To guarantee that, a capped request
+that carries its own `Accept-Encoding` naming a compressing coding has the
+header dropped, leaving `net/http` to negotiate gzip and inflate the body
+under the counter; `Accept-Encoding: identity` and requests with the cap
+disabled are left untouched. `text/event-stream` responses are
 capped both per event and cumulatively per call, so a long-lived stream that
 legitimately exceeds 4 MiB over its lifetime needs an explicit higher
 `MaxResponseBytes`. The lower-level `(*Signer).RoundTripper` is unchanged and
 does not cap on its own; wrap it in `signing.NewResponseLimitTransport` to get
 the same protection. Full reference:
-[`adcp/signing/README.md`](adcp/signing/README.md#response-size-limits).
+[`adcp/v3/signing/README.md`](adcp/v3/signing/README.md#response-size-limits).
 
 ## Migrating to adcp-go v3 / sub-modules
 

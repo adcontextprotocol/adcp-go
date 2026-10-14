@@ -63,8 +63,9 @@
 // unless told otherwise. The cap is enforced while the body streams — an
 // oversized declared Content-Length is rejected before the body is read, and
 // otherwise the read that crosses the limit fails with a
-// *ResponseTooLargeError. text/event-stream responses are capped per event
-// and cumulatively per call. Raise or disable it with
+// *ResponseTooLargeError. The count is of decompressed bytes, and
+// text/event-stream responses are capped per event and cumulatively per
+// call. Raise or disable it with
 // SignedHTTPClientOptions.MaxResponseBytes, per call with
 // WithResponseLimits, or apply the same wrapper to a hand-built client with
 // NewResponseLimitTransport.
