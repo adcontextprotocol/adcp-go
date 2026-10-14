@@ -57,11 +57,16 @@ type SignedHTTPClientOptions struct {
 	// `/adcp/<op>`. Only consulted when CapabilityProvider is also set.
 	OperationResolver func(*http.Request) string
 
-	// Inner is the transport the signing layer wraps. Defaults to
-	// http.DefaultTransport. http.DefaultTransport honors HTTP_PROXY env
-	// vars and shares its connection pool process-wide; pass a custom
-	// transport when you need isolation (per-tenant proxies, custom mTLS,
-	// retry middleware, telemetry).
+	// Inner is the transport the signing layer wraps. Defaults to a clone of
+	// http.DefaultTransport with MaxResponseHeaderBytes lowered to
+	// DefaultMaxResponseHeaderBytes — net/http's own 10 MiB ceiling would
+	// let a peer spend megabytes above the response-size cap, which only
+	// covers the body. The clone keeps http.DefaultTransport's settings
+	// (including HTTP_PROXY handling) but carries its own connection pool,
+	// so reuse the returned client per peer rather than building one per
+	// call. Pass a custom transport when you need different limits or
+	// isolation (per-tenant proxies, custom mTLS, retry middleware,
+	// telemetry) — a transport you supply is used exactly as given.
 	Inner http.RoundTripper
 
 	// Timeout is set on the returned *http.Client. Zero means no timeout
@@ -157,7 +162,7 @@ func NewSignedHTTPClient(opts SignedHTTPClientOptions) (*http.Client, error) {
 
 	inner := opts.Inner
 	if inner == nil {
-		inner = http.DefaultTransport
+		inner = newBoundedHeaderTransport()
 	}
 
 	var transport http.RoundTripper

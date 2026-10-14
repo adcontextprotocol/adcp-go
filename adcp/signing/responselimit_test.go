@@ -41,16 +41,20 @@ func (b *countingBody) Close() error {
 // stubTransport returns a canned response, bypassing the network so the
 // tests can control Content-Length and Content-Type exactly.
 type stubTransport struct {
-	body          *countingBody
-	contentLength int64
-	contentType   string
-	status        int // zero means 200
+	body            *countingBody
+	contentLength   int64
+	contentType     string
+	contentEncoding string
+	status          int // zero means 200
 }
 
 func (t *stubTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	header := http.Header{}
 	if t.contentType != "" {
 		header.Set("Content-Type", t.contentType)
+	}
+	if t.contentEncoding != "" {
+		header.Set("Content-Encoding", t.contentEncoding)
 	}
 	status := t.status
 	if status == 0 {
@@ -874,4 +878,230 @@ func TestResponseLimitsOptOutInteractionWithSSEEventCap(t *testing.T) {
 		require.NoError(t, err, "an override for a large catalog must cover the single event carrying it")
 		assert.Equal(t, payload, got)
 	})
+}
+
+func TestResponseLimitTransportClosesConnectionWhenCapTrips(t *testing.T) {
+	// A caller that checks the error and returns without Close() must not
+	// leak the socket: the body is terminally unusable once a cap trips, so
+	// the limiter releases it itself.
+	t.Run("body cap", func(t *testing.T) {
+		stub := newStub(jsonPayload(4096), -1, "application/json")
+		rt := NewResponseLimitTransport(stub, ResponseLimits{MaxResponseBytes: 512})
+
+		resp, err := doGET(t, rt, context.Background())
+		require.NoError(t, err)
+		_, err = io.ReadAll(resp.Body)
+		require.ErrorIs(t, err, ErrResponseTooLarge)
+		assert.True(t, stub.body.closed, "cap rejection must release the connection")
+
+		// And the usual deferred Close is a harmless no-op.
+		require.NoError(t, resp.Body.Close())
+	})
+
+	t.Run("sse event cap", func(t *testing.T) {
+		sse := []byte("data: " + strings.Repeat("y", 4096) + "\n\n")
+		stub := newStub(sse, -1, "text/event-stream")
+		rt := NewResponseLimitTransport(stub, ResponseLimits{
+			MaxResponseBytes: 1 << 20,
+			MaxSSEEventBytes: 256,
+		})
+
+		resp, err := doGET(t, rt, context.Background())
+		require.NoError(t, err)
+		_, err = io.ReadAll(resp.Body)
+		require.ErrorIs(t, err, ErrResponseTooLarge)
+		assert.True(t, stub.body.closed)
+		require.NoError(t, resp.Body.Close())
+	})
+}
+
+func TestResponseLimitTransportEventCapAppliesWhenBodyCapDisabled(t *testing.T) {
+	// The documented long-lived-stream recipe is "unlimited body, tight
+	// event cap". Content-Type is the peer's to choose, so the event cap is
+	// the only remaining bound and must not depend on an honest label.
+	body := []byte("data: " + strings.Repeat("y", 65536) + "\n\n")
+
+	for _, contentType := range []string{"text/event-stream", "application/json", ""} {
+		t.Run("content-type="+contentType, func(t *testing.T) {
+			stub := newStub(body, -1, contentType)
+			rt := NewResponseLimitTransport(stub, ResponseLimits{
+				MaxResponseBytes: UnlimitedResponseBytes,
+				MaxSSEEventBytes: 1024,
+			})
+
+			resp, err := doGET(t, rt, context.Background())
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+
+			_, err = io.ReadAll(resp.Body)
+			require.Error(t, err, "a mislabeled stream must not escape the only cap left")
+
+			var tooLarge *ResponseTooLargeError
+			require.ErrorAs(t, err, &tooLarge)
+			assert.Equal(t, ScopeSSEEvent, tooLarge.Scope)
+			assert.Equal(t, int64(1024), tooLarge.Limit)
+		})
+	}
+}
+
+func TestResponseLimitTransportKeepsEventCapContentTypeGatedWhenBodyIsCapped(t *testing.T) {
+	// With a finite body cap the body cap already backstops a mislabeled
+	// stream, so a tight SSE event cap must not start rejecting ordinary
+	// JSON responses that sit under the body cap.
+	payload := jsonPayload(8192)
+	stub := newStub(payload, -1, "application/json")
+	rt := NewResponseLimitTransport(stub, ResponseLimits{
+		MaxResponseBytes: 1 << 20,
+		MaxSSEEventBytes: 1024,
+	})
+
+	resp, err := doGET(t, rt, context.Background())
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	got, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, payload, got)
+}
+
+func TestResponseLimitTransportRejectsUnaccountableContentEncoding(t *testing.T) {
+	// net/http only inflates the gzip it negotiated. A peer answering with
+	// a coding nobody offered has an unknowable inflated size, so counting
+	// its wire bytes would be a false guarantee.
+	for _, encoding := range []string{"deflate", "br", "zstd"} {
+		t.Run(encoding, func(t *testing.T) {
+			stub := newStub(jsonPayload(64), -1, "application/json")
+			stub.contentEncoding = encoding
+			rt := NewResponseLimitTransport(stub, ResponseLimits{})
+
+			resp, err := doGET(t, rt, context.Background())
+			if resp != nil {
+				defer func() { _ = resp.Body.Close() }()
+			}
+			require.Error(t, err)
+			assert.Nil(t, resp)
+			assert.ErrorIs(t, err, ErrUnsupportedContentEncoding)
+
+			var encErr *UnsupportedContentEncodingError
+			require.ErrorAs(t, err, &encErr)
+			assert.Equal(t, encoding, encErr.Encoding)
+			assert.True(t, stub.body.closed)
+		})
+	}
+}
+
+func TestResponseLimitTransportAcceptsAccountableContentEncoding(t *testing.T) {
+	for _, encoding := range []string{"", "identity", "IDENTITY"} {
+		t.Run("encoding="+encoding, func(t *testing.T) {
+			payload := jsonPayload(64)
+			stub := newStub(payload, -1, "application/json")
+			stub.contentEncoding = encoding
+			rt := NewResponseLimitTransport(stub, ResponseLimits{})
+
+			resp, err := doGET(t, rt, context.Background())
+			require.NoError(t, err)
+			defer func() { _ = resp.Body.Close() }()
+			got, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Equal(t, payload, got)
+		})
+	}
+
+	t.Run("transparently decompressed gzip", func(t *testing.T) {
+		// resp.Uncompressed means net/http already inflated it; the header
+		// it leaves behind must not be mistaken for an unsolicited coding.
+		rt := NewResponseLimitTransport(roundTripFunc(func(*http.Request) (*http.Response, error) {
+			header := http.Header{"Content-Encoding": []string{"gzip"}}
+			return &http.Response{
+				StatusCode:    http.StatusOK,
+				Header:        header,
+				Body:          io.NopCloser(strings.NewReader(`{"ok":true}`)),
+				ContentLength: -1,
+				Uncompressed:  true,
+			}, nil
+		}), ResponseLimits{})
+
+		resp, err := doGET(t, rt, context.Background())
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		_, err = io.ReadAll(resp.Body)
+		require.NoError(t, err)
+	})
+
+	t.Run("opted-out caller keeps control", func(t *testing.T) {
+		payload := jsonPayload(64)
+		stub := newStub(payload, -1, "application/json")
+		stub.contentEncoding = "br"
+		rt := NewResponseLimitTransport(stub, ResponseLimits{
+			MaxResponseBytes: UnlimitedResponseBytes,
+		})
+
+		resp, err := doGET(t, rt, context.Background())
+		require.NoError(t, err)
+		defer func() { _ = resp.Body.Close() }()
+		got, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, payload, got)
+	})
+}
+
+func TestUnsupportedContentCodingSanitizesPeerValue(t *testing.T) {
+	assert.Equal(t, "", unsupportedContentCoding(""))
+	assert.Equal(t, "", unsupportedContentCoding("  "))
+	assert.Equal(t, "", unsupportedContentCoding("identity"))
+	assert.Equal(t, "gzip", unsupportedContentCoding("gzip"))
+	// Peer-controlled junk never reaches the error string verbatim.
+	assert.Equal(t, "unrecognized", unsupportedContentCoding("br, \n\ninjected: header"))
+	assert.Equal(t, "unrecognized", unsupportedContentCoding("gzip; q=1"))
+	assert.Len(t, unsupportedContentCoding(strings.Repeat("a", 500)), 32)
+}
+
+func TestNewSignedHTTPClientBoundsResponseHeaders(t *testing.T) {
+	// Response headers are parsed before the body cap can see anything, so
+	// the default transport's 10 MiB header ceiling would be a way to spend
+	// memory above the cap.
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:      "test-kid",
+		PrivateKey: priv,
+	})
+	require.NoError(t, err)
+
+	limited, ok := client.Transport.(*ResponseLimitTransport)
+	require.True(t, ok, "the outermost transport should be the response limiter")
+	signing, ok := limited.Inner.(*signingTransport)
+	require.True(t, ok, "expected the always-sign transport underneath")
+	inner, ok := signing.inner.(*http.Transport)
+	require.True(t, ok, "the default inner transport should be a cloned *http.Transport")
+
+	assert.Equal(t, DefaultMaxResponseHeaderBytes, inner.MaxResponseHeaderBytes)
+	assert.Equal(t, int64(64*1024), DefaultMaxResponseHeaderBytes)
+	assert.NotSame(t, http.DefaultTransport, inner, "must not mutate the process-global transport")
+
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	require.True(t, ok)
+	assert.Equal(t, int64(0), defaultTransport.MaxResponseHeaderBytes,
+		"http.DefaultTransport must be left untouched")
+}
+
+func TestNewSignedHTTPClientKeepsSuppliedInnerTransport(t *testing.T) {
+	_, priv, err := ed25519.GenerateKey(nil)
+	require.NoError(t, err)
+
+	supplied := roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, nil })
+	client, err := NewSignedHTTPClient(SignedHTTPClientOptions{
+		KeyID:      "test-kid",
+		PrivateKey: priv,
+		Inner:      supplied,
+	})
+	require.NoError(t, err)
+
+	limited, ok := client.Transport.(*ResponseLimitTransport)
+	require.True(t, ok)
+	signing, ok := limited.Inner.(*signingTransport)
+	require.True(t, ok)
+	_, ok = signing.inner.(roundTripFunc)
+	assert.True(t, ok, "a supplied Inner must be used exactly as given")
 }

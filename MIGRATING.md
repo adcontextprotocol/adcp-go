@@ -17,7 +17,21 @@ is on by default.
 `errors.Is(err, signing.ErrResponseTooLarge)`. A response that declared an
 oversized `Content-Length` fails from `client.Do` (wrapped in `*url.Error`)
 before the body is read; anything else fails on the read that crosses the
-limit. The body is never silently truncated.
+limit. The peer chooses which of those two surfaces you hit, so handle both.
+The body is never silently truncated. Because `client.Do` now has a new error
+path, note that `*url.Error`'s message carries the full request URL — log it,
+and keep returning `"internal error"` to your own callers.
+
+Two smaller behavior changes ride along. A response whose `Content-Encoding`
+the peer was never offered (anything but `identity` that net/http did not
+inflate itself) is rejected with `*signing.UnsupportedContentEncodingError`,
+because its inflated size is unknowable. And a client built without an
+explicit `Inner` transport now uses a clone of `http.DefaultTransport` with
+`MaxResponseHeaderBytes` lowered to 64 KiB — headers are parsed before the
+body cap can see anything, and net/http's 10 MiB default left that above the
+cap. The clone has its own connection pool, so reuse one client per peer
+rather than constructing one per call; pass your own `Inner` to keep the
+shared pool or a different header bound.
 
 **How to raise the limit.** Per client:
 

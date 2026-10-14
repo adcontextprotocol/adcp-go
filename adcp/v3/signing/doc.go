@@ -65,7 +65,10 @@
 // otherwise the read that crosses the limit fails with a
 // *ResponseTooLargeError. The count is of decompressed bytes, and
 // text/event-stream responses are capped per event and cumulatively per
-// call. Raise or disable it with
+// call. The same clients bound the response header block at
+// DefaultMaxResponseHeaderBytes and reject a content coding they cannot
+// account for with *UnsupportedContentEncodingError. Raise or disable the
+// body cap with
 // SignedHTTPClientOptions.MaxResponseBytes, per call with
 // WithResponseLimits, or apply the same wrapper to a hand-built client with
 // NewResponseLimitTransport.

@@ -113,10 +113,44 @@ What the cap guarantees:
   per-event cap as well — set `MaxSSEEventBytes` explicitly to keep events
   bounded while the call runs unbounded.
 
+Two more responses the cap rejects outright, because their size cannot be
+accounted for: a `Content-Encoding` the peer was never offered (anything but
+`identity` that net/http did not inflate itself) fails with
+`*signing.UnsupportedContentEncodingError`, matching
+`errors.Is(err, signing.ErrUnsupportedContentEncoding)`.
+
+Response *headers* are bounded too, but by the transport rather than this
+wrapper: clients from `NewSignedHTTPClient` use a clone of
+`http.DefaultTransport` with `MaxResponseHeaderBytes` lowered from net/http's
+10 MiB default to `signing.DefaultMaxResponseHeaderBytes` (64 KiB), so a peer
+cannot spend megabytes on headers the body cap never sees. The clone carries
+its own connection pool, so reuse one client per peer instead of building one
+per call. A transport you pass as `Inner` is used exactly as given — set
+`MaxResponseHeaderBytes` on it yourself.
+
 Building the client yourself?
 `signing.NewResponseLimitTransport(inner, signing.ResponseLimits{})` applies
 the same cap to any `http.RoundTripper`, including the lower-level
 `(*Signer).RoundTripper`, which does not cap on its own.
+
+### Handling the rejection
+
+- **The peer picks which surface fails.** Declaring an oversized
+  `Content-Length` makes `client.Do` return the error with a nil response;
+  omitting it makes the read fail instead. Handle both — a caller that only
+  checks one can be steered into the other.
+- **Log the error, don't echo it.** `client.Do` wraps the rejection in
+  `*url.Error`, whose message includes the full request URL and query. Follow
+  the usual rule for a service boundary: `slog.Error(...)` with the error,
+  `"internal error"` on the wire.
+- **The cap does not make padding visible.** `json.NewDecoder(resp.Body).Decode(&v)`
+  stops at the first complete JSON value, so megabytes of trailing junk are
+  never read and never counted. Call `dec.More()` afterwards if you want to
+  reject a padded response rather than ignore its tail.
+- **HTTP/2 buffers below the cap.** Under h2, net/http's per-stream flow
+  control window (4 MiB) is in flight regardless of this limiter, and the
+  connection window is far larger. At crawler fan-out, tune the transport's
+  HTTP/2 settings as well.
 
 ## Verifying (seller side)
 

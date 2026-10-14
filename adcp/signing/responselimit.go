@@ -90,6 +90,32 @@ func (e *ResponseTooLargeError) Error() string {
 // Is makes every ResponseTooLargeError match errors.Is(err, ErrResponseTooLarge).
 func (e *ResponseTooLargeError) Is(target error) bool { return target == ErrResponseTooLarge }
 
+// ErrUnsupportedContentEncoding is the sentinel for a response whose content
+// coding the size cap cannot account for. Match it with errors.Is.
+var ErrUnsupportedContentEncoding = errors.New("adcp: agent response uses a content coding the size cap cannot account for")
+
+// UnsupportedContentEncodingError reports that a peer answered with a
+// Content-Encoding that was never offered and that net/http did not decode.
+// Its inflated size is unknowable, so the response is rejected rather than
+// counted at its (meaningless) wire size.
+type UnsupportedContentEncodingError struct {
+	// Encoding is the coding the peer declared, validated against the HTTP
+	// token charset and truncated. It is "unrecognized" when the peer's
+	// value was not a well-formed token.
+	Encoding string
+}
+
+func (e *UnsupportedContentEncodingError) Error() string {
+	return "adcp: agent response declared unsupported Content-Encoding " + e.Encoding +
+		"; the response-size cap cannot account for it"
+}
+
+// Is makes every UnsupportedContentEncodingError match
+// errors.Is(err, ErrUnsupportedContentEncoding).
+func (e *UnsupportedContentEncodingError) Is(target error) bool {
+	return target == ErrUnsupportedContentEncoding
+}
+
 // ResponseLimits bounds how much memory one agent response may cost the
 // caller. The zero value means "use the defaults" — a 4 MiB body cap, with
 // the same number as the per-event cap for SSE responses.
@@ -262,8 +288,24 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		}
 	}
 
+	// Reject a content coding this transport cannot account for. With a cap
+	// in force the peer was only ever offered gzip (or identity), and
+	// net/http has already inflated the gzip it negotiated — so anything
+	// still encoded here is unsolicited, and its inflated size is unknown.
+	if limits.MaxResponseBytes >= 0 && !resp.Uncompressed {
+		if coding := unsupportedContentCoding(resp.Header.Get("Content-Encoding")); coding != "" {
+			_ = resp.Body.Close()
+			return nil, &UnsupportedContentEncodingError{Encoding: coding}
+		}
+	}
+
+	// The per-event cap also applies when the body cap is off: that is the
+	// documented recipe for a long-lived stream, and Content-Type is the
+	// peer's to choose, so gating the only remaining bound on it would let a
+	// mislabeled body run unbounded. With a finite body cap the content type
+	// decides, since the body cap already backstops a mislabeled stream.
 	maxEvent := UnlimitedResponseBytes
-	if isEventStream(resp.Header.Get("Content-Type")) {
+	if limits.MaxResponseBytes < 0 || isEventStream(resp.Header.Get("Content-Type")) {
 		maxEvent = limits.MaxSSEEventBytes
 	}
 	if limits.MaxResponseBytes < 0 && maxEvent < 0 {
@@ -277,6 +319,37 @@ func (t *ResponseLimitTransport) RoundTrip(r *http.Request) (*http.Response, err
 		contentLength: resp.ContentLength,
 	}
 	return resp, nil
+}
+
+// unsupportedContentCoding returns the content coding of a response this
+// transport cannot size-account for, or "" when the response is safe
+// (absent, empty, or identity). The returned token is validated against the
+// RFC 9110 token charset and truncated, so a peer cannot smuggle arbitrary
+// bytes into a caller's logs through the error.
+func unsupportedContentCoding(contentEncoding string) string {
+	coding := strings.TrimSpace(contentEncoding)
+	if coding == "" || strings.EqualFold(coding, "identity") {
+		return ""
+	}
+	const maxTokenLen = 32
+	if len(coding) > maxTokenLen {
+		coding = coding[:maxTokenLen]
+	}
+	for i := 0; i < len(coding); i++ {
+		if !isTokenByte(coding[i]) {
+			return "unrecognized"
+		}
+	}
+	return coding
+}
+
+// isTokenByte reports whether c is allowed in an RFC 9110 token.
+func isTokenByte(c byte) bool {
+	switch {
+	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		return true
+	}
+	return strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0
 }
 
 // overridesContentCoding reports whether an Accept-Encoding header takes
@@ -343,6 +416,9 @@ type limitedResponseBody struct {
 	read      int64 // cumulative bytes read from inner
 	eventRead int64 // bytes read since the last SSE event boundary
 
+	closed   bool
+	closeErr error
+
 	// SSE line-terminator state, carried across Read boundaries. SSE treats
 	// CRLF, CR, and LF alike, and two in a row end an event.
 	newlineRun int
@@ -367,18 +443,16 @@ func (b *limitedResponseBody) Read(p []byte) (int, error) {
 	if n > 0 {
 		b.read += int64(n)
 		if b.maxBody >= 0 && b.read > b.maxBody {
-			b.err = &ResponseTooLargeError{
+			return 0, b.fail(&ResponseTooLargeError{
 				Scope:         ScopeResponseBody,
 				Limit:         b.maxBody,
 				Read:          b.read,
 				ContentLength: b.contentLength,
-			}
-			return 0, b.err
+			})
 		}
 		if b.maxEvent >= 0 {
 			if eventErr := b.scanEvents(p[:n]); eventErr != nil {
-				b.err = eventErr
-				return 0, b.err
+				return 0, b.fail(eventErr)
 			}
 		}
 	}
@@ -427,4 +501,49 @@ func (b *limitedResponseBody) scanEvents(chunk []byte) error {
 	return nil
 }
 
-func (b *limitedResponseBody) Close() error { return b.inner.Close() }
+// fail makes err terminal and releases the connection. The body can never
+// produce another byte once a cap has tripped, so holding the socket open
+// buys nothing — and a caller that checks the error and returns without
+// closing would otherwise leak the connection and its reader goroutines,
+// trading the memory DoS this guards against for an fd exhaustion one.
+func (b *limitedResponseBody) fail(err error) error {
+	b.err = err
+	_ = b.closeInner()
+	return err
+}
+
+func (b *limitedResponseBody) closeInner() error {
+	if b.closed {
+		return b.closeErr
+	}
+	b.closed = true
+	b.closeErr = b.inner.Close()
+	return b.closeErr
+}
+
+// Close releases the underlying body. It is idempotent, so the usual
+// `defer resp.Body.Close()` after a cap rejection is a no-op rather than a
+// double close.
+func (b *limitedResponseBody) Close() error { return b.closeInner() }
+
+// DefaultMaxResponseHeaderBytes bounds the response header block of clients
+// built by NewSignedHTTPClient: 64 KiB. net/http's own default is 10 MiB,
+// which a hostile peer can spend in full on headers — memory the body cap
+// never sees. 64 KiB is far above anything an AdCP response legitimately
+// needs. Supply SignedHTTPClientOptions.Inner to choose a different bound.
+const DefaultMaxResponseHeaderBytes int64 = 64 << 10
+
+// newBoundedHeaderTransport clones http.DefaultTransport and lowers its
+// response-header ceiling. Cloning rather than mutating is mandatory:
+// http.DefaultTransport is process-global shared state.
+func newBoundedHeaderTransport() http.RoundTripper {
+	base, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		// A host application replaced http.DefaultTransport. Honor it
+		// rather than second-guessing, and leave its limits alone.
+		return http.DefaultTransport
+	}
+	cloned := base.Clone()
+	cloned.MaxResponseHeaderBytes = DefaultMaxResponseHeaderBytes
+	return cloned
+}
