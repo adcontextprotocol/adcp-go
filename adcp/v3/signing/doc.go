@@ -56,6 +56,19 @@
 // attached), and the failure is logged at INFO instead of rejected. See
 // MIGRATION.md's "Step B — warn_for" for the full staged-enforcement recipe.
 //
+// # Response size limits
+//
+// Agent responses are untrusted input, so clients built by
+// NewSignedHTTPClient cap every response at DefaultMaxResponseBytes (4 MiB)
+// unless told otherwise. The cap is enforced while the body streams — an
+// oversized declared Content-Length is rejected before the body is read, and
+// otherwise the read that crosses the limit fails with a
+// *ResponseTooLargeError. text/event-stream responses are capped per event
+// and cumulatively per call. Raise or disable it with
+// SignedHTTPClientOptions.MaxResponseBytes, per call with
+// WithResponseLimits, or apply the same wrapper to a hand-built client with
+// NewResponseLimitTransport.
+//
 // # Testing handlers that expect signed requests
 //
 // See the signingtest subpackage for NewTestAgent and SignAndSend, which
