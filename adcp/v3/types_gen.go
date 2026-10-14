@@ -10463,6 +10463,13 @@ type GetProductsTargetingResolution struct {
 	Ext            any       `json:"ext,omitempty"`
 }
 
+// ProposalDecline — Terminal buyer feedback for one immutable proposal snapshot.
+type ProposalDecline struct {
+	ProposalID string                `json:"proposal_id"` // Immutable proposal ID returned by request_proposals or refine_proposals.
+	Reason     ProposalDeclineReason `json:"reason"`
+	Detail     string                `json:"detail,omitempty"` // Optional short, non-identifying explanation. MUST NOT identify a competitor or
+}
+
 // PriceGuidance — Pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.
 type PriceGuidance struct {
 	P25 float64 `json:"p25,omitempty"` // 25th percentile of recent winning bids
@@ -12512,6 +12519,12 @@ type PreviewCreativeBatchRequest struct {
 	ItemLimit        int                    `json:"item_limit,omitempty"`        // Maximum number of catalog items to render in this preview.
 }
 
+type DeclineProposalResult struct {
+	Outcome    string `json:"outcome"`
+	ProposalID string `json:"proposal_id"`
+	Reason     string `json:"reason,omitempty"` // Why the seller could not apply a decline. Present only for outcome unable.
+}
+
 type ValidateInputTarget struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"` // Agent-local capability_id from get_adcp_capabilities
@@ -12931,6 +12944,68 @@ type UpdateMediaBuyRequest struct {
 	IdempotencyKey         string                  `json:"idempotency_key"`                    // Client-generated idempotency key for safe retries. If an update fails without
 	Context                any                     `json:"context,omitempty"`
 	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// RequestProposalsRequest — Ask a seller to create one or more indicative media-plan proposals from a brief. Provide exactly
+type RequestProposalsRequest struct {
+	Account                *CanonicalAccountRef      `json:"account,omitempty"` // Alternative brand source for proposal terms. Provide either this natural-key
+	AdcpVersion            string                    `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                      `json:"adcp_major_version,omitempty"`
+	ContextID              string                    `json:"context_id,omitempty"` // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                       `json:"context,omitempty"`
+	GovernanceContext      string                    `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"`
+	IdempotencyKey         string                    `json:"idempotency_key"` // Client-generated key required for retry-safe proposal creation.
+	Brand                  *BrandKey                 `json:"brand,omitempty"` // Alternative brand source for proposal terms. Provide either top-level brand or
+	Brief                  string                    `json:"brief"`           // Campaign goal, strategy, and requirements that are not represented in
+	Criteria               *ProductDiscoveryCriteria `json:"criteria,omitempty"`
+	Opportunity            *OpportunityContext       `json:"opportunity,omitempty"` // Optional planning-cycle context that the seller associates with every proposal
+}
+
+// RequestProposalsResponse — One or more immutable draft media-plan proposals and compact canonical products referenced by
+type RequestProposalsResponse struct {
+	Outcome     string                      `json:"outcome,omitempty"`
+	Status      string                      `json:"status,omitempty"`
+	TaskID      string                      `json:"task_id,omitempty"`
+	Message     string                      `json:"message,omitempty"`
+	Errors      []AdcpError                 `json:"errors,omitempty"`
+	Context     any                         `json:"context,omitempty"`
+	Ext         any                         `json:"ext,omitempty"`
+	AdcpVersion string                      `json:"adcp_version,omitempty"`
+	Reason      string                      `json:"reason,omitempty"`
+	Suggestions []string                    `json:"suggestions,omitempty"`
+	Proposals   []CanonicalProposal         `json:"proposals,omitempty"`
+	Products    []CanonicalProduct          `json:"products,omitempty"`
+	Incomplete  []GetProductsIncompleteItem `json:"incomplete,omitempty"` // Usable partial discovery result retained from the established get_products
+	// Deprecated: Deprecated AdCP 3.x projection instruction for purchasing products returned without a proposal.
+	PurchaseContinuation map[string]any                  `json:"purchase_continuation,omitempty"` // Deprecated AdCP 3.x projection instruction for purchasing products returned
+	TargetingResolution  *GetProductsTargetingResolution `json:"targeting_resolution,omitempty"`  // Response-level confirmation of structured targeting interpreted from explicit
+	Replayed             *bool                           `json:"replayed,omitempty"`
+}
+
+// DeclineProposalsRequest — Terminally decline one or more immutable proposals. Repeating an already-applied decline with a
+type DeclineProposalsRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	ContextID              string                  `json:"context_id,omitempty"` // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                     `json:"context,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`       // Client-generated key required for retry-safe proposal decline.
+	Declines               []ProposalDecline       `json:"declines"`              // Proposal declines to apply. proposal_id is the semantic uniqueness key and
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"` // Optional planning-cycle update. Every named proposal MUST belong to this
+}
+
+// DeclineProposalsResponse — One ordered terminal result for each requested proposal decline.
+type DeclineProposalsResponse struct {
+	Status   string                  `json:"status,omitempty"`
+	TaskID   string                  `json:"task_id,omitempty"`
+	Message  string                  `json:"message,omitempty"`
+	Errors   []AdcpError             `json:"errors,omitempty"`
+	Context  any                     `json:"context,omitempty"`
+	Ext      any                     `json:"ext,omitempty"`
+	Results  []DeclineProposalResult `json:"results,omitempty"`
+	Replayed *bool                   `json:"replayed,omitempty"`
 }
 
 // GetMediaBuysRequest — Request parameters for retrieving media buy status, creative approval state, and optional delivery
