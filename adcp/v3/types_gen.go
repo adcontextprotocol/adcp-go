@@ -12543,12 +12543,6 @@ type ValidateInputViolation struct {
 	RetryWith map[string]any `json:"retry_with,omitempty"` // Optional advisory adjustment hint. Platforms MAY suggest a corrected input
 }
 
-type ValidateInputWarning struct {
-	Rule      string `json:"rule"`
-	Expected  any    `json:"expected,omitempty"`
-	Predicted any    `json:"predicted,omitempty"`
-}
-
 // ForcedDirective — Echo of the registered directive. The next matching operation call from this sandbox account will
 type ForcedDirective struct {
 	Arm          string   `json:"arm"`                     // Arm the seller will emit on the next forced operation response.

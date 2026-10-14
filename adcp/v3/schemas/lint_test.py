@@ -15,6 +15,8 @@ ACCOUNT_SETUP_SCHEMA_PATHS_EXIST = all(
     (lint.SCRIPT_DIR / spec.split("#", 1)[0]).exists()
     for spec in ACCOUNT_SETUP_SCHEMA_SPECS
 )
+VALIDATE_INPUT_WARNING_SCHEMA_SPEC = "creative/validate-input-result.json#/properties/warnings/items"
+VALIDATE_INPUT_RESULT_SCHEMA_EXISTS = (lint.SCRIPT_DIR / "creative/validate-input-result.json").exists()
 CHECK_GOVERNANCE_CONDITION_SCHEMA_SPECS = (
     lint.gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS["CheckGovernanceCondition"]
 )
@@ -679,6 +681,47 @@ class OptionalNumericPointerLintTest(unittest.TestCase):
             lint.gen.INLINE_TYPE_HINTS = original_hints
             lint.OPTIONAL_NUMERIC_SCALAR_OK = original_waivers
             lint.gen._reset_will_generate_cache()
+
+
+class RequiredPropertiesDeclaredLintTest(unittest.TestCase):
+    @unittest.skipUnless(VALIDATE_INPUT_RESULT_SCHEMA_EXISTS, "validate_input schemas are not present")
+    def test_current_generated_structs_declare_their_required_properties(self):
+        self.assertEqual([], lint.validate_required_properties_declared())
+
+    @unittest.skipUnless(VALIDATE_INPUT_RESULT_SCHEMA_EXISTS, "validate_input schemas are not present")
+    def test_validate_input_warning_still_requires_an_undeclared_field(self):
+        schema = lint.load_schema_spec(VALIDATE_INPUT_WARNING_SCHEMA_SPEC)
+        undeclared = set(lint.gen.schema_required_names(schema)) - set(lint.gen.schema_properties(schema))
+        message = (
+            "the validate_input warning shape changed upstream: once it declares field, move "
+            "ValidateInputWarning back from types.go, KNOWN_TYPES and EXEMPT to INLINE_SCHEMA_TYPES"
+        )
+        self.assertEqual({"field"}, undeclared, message)
+        self.assertEqual({"rule", "expected", "predicted"}, set(lint.gen.schema_properties(schema)), message)
+
+    def test_required_but_undeclared_property_is_reported(self):
+        schema = {
+            "type": "object",
+            "required": ["rule", "field"],
+            "properties": {"rule": {"type": "string"}},
+        }
+        entries = [{"name": "WarningItem", "schema": "x.json#/items", "schema_obj": schema, "kind": "struct"}]
+        with mock.patch.object(lint.gen, "generated_schema_entries", return_value=entries):
+            reports = lint.validate_required_properties_declared()
+        self.assertEqual(1, len(reports))
+        self.assertEqual("WarningItem", reports[0]["type"])
+        self.assertEqual(["field"], reports[0]["undeclared"])
+
+    def test_required_declared_in_an_allof_branch_is_accepted(self):
+        schema = {
+            "type": "object",
+            "required": ["rule", "field"],
+            "allOf": [{"properties": {"field": {"type": "string"}}}],
+            "properties": {"rule": {"type": "string"}},
+        }
+        entries = [{"name": "Composed", "schema": "y.json", "schema_obj": schema, "kind": "struct"}]
+        with mock.patch.object(lint.gen, "generated_schema_entries", return_value=entries):
+            self.assertEqual([], lint.validate_required_properties_declared())
 
 
 if __name__ == "__main__":

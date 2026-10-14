@@ -63,6 +63,9 @@ EXEMPT = {
     'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
     'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
     'TestControllerError',
+    # validate_input warnings: the schema requires `field` but does not declare
+    # it; types.go defines the warning from the violation shape it names.
+    'ValidateInputWarning',
     # inputs (agent-specific helpers, schemas are inline in request schemas)
     'EmptyInput', 'AccountInput', 'GovernanceAccountInput',
     'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
@@ -691,6 +694,32 @@ def validate_hand_written_inline_schema_divergence():
     return reports
 
 
+def validate_required_properties_declared():
+    """Verify every schema emitted as a Go struct declares what it requires.
+
+    The generator builds struct fields from `gen.schema_properties`. A name in
+    `gen.schema_required_names` that it does not declare is silently dropped, so
+    Go can neither read it nor emit a valid payload. Such a schema needs a
+    hand-written type (KNOWN_TYPES) or a fix upstream.
+    """
+    reports = []
+    for entry in gen.generated_schema_entries():
+        if entry.get('kind') != 'struct':
+            continue
+        schema = entry['schema_obj']
+        undeclared = sorted(
+            set(gen.schema_required_names(schema)) - set(gen.schema_properties(schema))
+        )
+        if undeclared:
+            reports.append({
+                'type': entry['name'],
+                'schema': entry.get('schema', '?'),
+                'error': 'required properties are not declared, so the generated struct drops them',
+                'undeclared': undeclared,
+            })
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -1072,6 +1101,7 @@ def main():
     shared_inline_errors = validate_shared_inline_overrides()
     cross_type_inline_errors = validate_cross_type_inline_hints()
     union_schema_errors = validate_union_schema_specs()
+    required_undeclared_errors = validate_required_properties_declared()
     custom_wire_field_errors = validate_custom_wire_fields(
         go_structs,
         custom_json_methods,
@@ -1109,12 +1139,24 @@ def main():
             'shared_inline_errors': shared_inline_errors,
             'cross_type_inline_errors': cross_type_inline_errors,
             'union_schema_errors': union_schema_errors,
+            'required_undeclared_errors': required_undeclared_errors,
             'custom_wire_field_errors': custom_wire_field_errors,
             'optional_bool_pointer': optional_bool_reports,
             'optional_numeric_pointer': optional_numeric_reports,
         }
         print(json.dumps(out, indent=2))
     else:
+        if required_undeclared_errors:
+            print(
+                'Required-but-undeclared property errors in '
+                f'{len(required_undeclared_errors)} type(s):'
+            )
+            for r in required_undeclared_errors:
+                print()
+                print(f'  {r["type"]}  ({r.get("schema", "?")})')
+                print(f'    error:      {r["error"]}')
+                print(f'    undeclared: {", ".join(r["undeclared"])}')
+            print()
         if inline_schema_errors:
             print(f'Inline schema pointer errors in {len(inline_schema_errors)} type(s):')
             for r in inline_schema_errors:
@@ -1276,6 +1318,7 @@ def main():
         or bool(cross_type_inline_errors)
         or bool(hand_written_inline_schema_divergence)
         or bool(union_schema_errors)
+        or bool(required_undeclared_errors)
         or bool(custom_wire_field_errors)
         or bool(optional_bool_reports)
         or bool(reports)

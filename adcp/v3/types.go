@@ -1698,3 +1698,13 @@ func ReportingAdjustmentReceiptUnchangedResult(receipt ReportingAdjustmentReceip
 func ReportingReceiptFailedResult(receiptID string, errors ...AdcpError) ReportingReceiptResult {
 	return ReportingReceiptResult{Result: "failed", ReportingReceiptID: receiptID, Errors: errors}
 }
+
+// ValidateInputWarning is a non-blocking validate_input observation. The schema
+// gives warnings "the same item shape as violations" and requires `rule` and
+// `field`, but declares only `rule`, `expected` and `predicted` under
+// properties, so a generated struct would drop `field`. It takes the violation
+// shape the schema names, which carries `field` and `retry_with`. Decoding is
+// therefore stricter than the warnings schema alone: a non-string `field` or a
+// non-object `retry_with`, which that schema leaves untyped or undeclared, is
+// rejected as it is for a violation.
+type ValidateInputWarning ValidateInputViolation

@@ -52,6 +52,9 @@ KNOWN_TYPES = {
     'SignalPricing', 'ActivationKey', 'CatalogResult',
     'EventSourceResult', 'LogEventResult',
     'CheckGovernanceCondition',
+    # validate_input warning items require `field` without declaring it, so a
+    # generated struct would drop it; hand-written in types.go (lint EXEMPT).
+    'ValidateInputWarning',
     # oneOf schemas — hand-writing flattens the union into a single struct with
     # all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
@@ -1081,10 +1084,6 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "creative/validate-input-result.json#/properties/violations/items",
     ),
     (
-        "ValidateInputWarning",
-        "creative/validate-input-result.json#/properties/warnings/items",
-    ),
-    (
         "ForcedDirective",
         "compliance/comply-test-controller-response.json#/oneOf/3/properties/forced",
     ),
@@ -1289,7 +1288,6 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'ValidateInputTarget',
     'ValidateInputResultTarget',
     'ValidateInputViolation',
-    'ValidateInputWarning',
     'DeliveryAttributionWindow',
     'DeliveryReportingDimensions',
     'DeliveryReportingGeoDimension',
@@ -1971,8 +1969,6 @@ INTENTIONAL_ANY_FIELDS = {
     ('ValidateInputViolation', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
     ('ValidateInputViolation', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
     ('ValidateInputViolation', 'retry_with'): 'validate_input retry hints are advisory, platform-shaped input',
-    ('ValidateInputWarning', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
-    ('ValidateInputWarning', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
     # 3.1 forward-compatible allowances for auto-discovered referenced schemas.
     ('ProductFormatDeclaration', 'params'): 'canonical format parameters are schema-specific',
     ('VendorMetricValue', 'breakdown'): 'vendor metric breakdowns are vendor-defined',
