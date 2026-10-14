@@ -513,3 +513,84 @@ func structuredContentMap(t *testing.T, result *mcp.CallToolResult) map[string]a
 	require.Truef(t, ok, "expected structured content map, got %T", result.StructuredContent)
 	return m
 }
+
+// --- nil handler results must not panic the dispatcher ---
+
+// TestRegisteredHandlersRejectNilResult covers every seller dispatch path that
+// writes to the handler's returned pointer before passing it to a response
+// builder. A handler returning (nil, nil) is a handler bug, but the SDK must
+// answer it with an AdCP error envelope rather than panicking the process:
+// these run inside an MCP tool dispatch, so a nil dereference takes down the
+// agent rather than failing one request.
+//
+// get_media_buys already guards this way; these are the paths that did not.
+func TestRegisteredHandlersRejectNilResult(t *testing.T) {
+	tests := []struct {
+		name string
+		tool string
+		args map[string]any
+		cfg  Config
+	}{
+		{
+			name: "get_products",
+			tool: "get_products",
+			args: map[string]any{"buying_mode": "brief"},
+			cfg: baseTestConfig(Config{
+				GetProducts: func(context.Context, any, *GetProductsRequest) (*ProductsData, error) {
+					return nil, nil
+				},
+			}),
+		},
+		{
+			name: "get_media_buy_delivery",
+			tool: "get_media_buy_delivery",
+			args: map[string]any{},
+			cfg: baseTestConfig(Config{
+				GetDelivery: func(context.Context, any, *GetMediaBuyDeliveryRequest) (*DeliveryData, error) {
+					return nil, nil
+				},
+			}),
+		},
+		{
+			name: "get_media_buys (already guarded — pins the established behavior)",
+			tool: "get_media_buys",
+			args: map[string]any{},
+			cfg: baseTestConfig(Config{
+				GetMediaBuys: func(context.Context, any, *GetMediaBuysRequest) (*GetMediaBuysResponse, error) {
+					return nil, nil
+				},
+			}),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := callRegisteredTool(t, tt.cfg, tt.tool, tt.args)
+
+			require.True(t, result.IsError, "a nil handler result must produce an error result")
+			wire := structuredContentMap(t, result)
+			adcpError, ok := wire["adcp_error"].(map[string]any)
+			require.Truef(t, ok, "expected adcp_error envelope, got %v", wire)
+			assert.Equal(t, "INTERNAL_ERROR", adcpError["code"])
+		})
+	}
+}
+
+// TestResponseBuildersRejectNilData covers the same contract at the exported
+// response-builder boundary, which an adopter can call directly without going
+// through Register.
+func TestResponseBuildersRejectNilData(t *testing.T) {
+	t.Run("ProductsResponse", func(t *testing.T) {
+		result, _, err := ProductsResponse(nil)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError, "ProductsResponse(nil) must return an error result")
+	})
+
+	t.Run("DeliveryResponse", func(t *testing.T) {
+		result, _, err := DeliveryResponse(nil)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.True(t, result.IsError, "DeliveryResponse(nil) must return an error result")
+	})
+}

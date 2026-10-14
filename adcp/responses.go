@@ -23,6 +23,9 @@ func CapabilitiesResponse(data *CapabilitiesData) (*mcp.CallToolResult, any, err
 
 // ProductsResponse builds a get_products response.
 func ProductsResponse(data *ProductsData) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INTERNAL_ERROR", ErrorOptions{Message: "get_products handler returned no data"})
+	}
 	return buildResult(fmt.Sprintf("Found %d products", len(data.Products)), data), data, nil
 }
 
@@ -133,6 +136,9 @@ func MediaBuysDataResponse(data *GetMediaBuysResponse) (*mcp.CallToolResult, any
 
 // DeliveryResponse builds a get_media_buy_delivery response.
 func DeliveryResponse(data *DeliveryData) (*mcp.CallToolResult, any, error) {
+	if data == nil {
+		return Errorf("INTERNAL_ERROR", ErrorOptions{Message: "get_media_buy_delivery handler returned no data"})
+	}
 	return buildResult(fmt.Sprintf("Delivery data for %d media buys", len(data.MediaBuyDeliveries)), data), data, nil
 }
 
