@@ -1270,21 +1270,23 @@ type AssetSlot struct {
 // macro_resolution_results) are intentionally excluded here; their object
 // graphs belong in the generated types.
 type CreativeResult struct {
-	CreativeID       string            `json:"creative_id"`
-	RevisionID       string            `json:"revision_id,omitempty"`
-	Account          *Account          `json:"account,omitempty"`
-	Action           string            `json:"action"`
-	Status           string            `json:"status,omitempty"`
-	PlatformID       string            `json:"platform_id,omitempty"`
-	Changes          []string          `json:"changes,omitempty"`
-	Errors           []string          `json:"errors,omitempty"`
-	Warnings         []string          `json:"warnings,omitempty"`
-	PreviewURL       string            `json:"preview_url,omitempty"`
-	ExpiresAt        string            `json:"expires_at,omitempty"`
-	AssignedTo       []string          `json:"assigned_to,omitempty"`
-	AssignmentErrors map[string]string `json:"assignment_errors,omitempty"`
-	// Deprecated: rejection_reason is not part of the AdCP spec and will be
-	// removed in a future release. Per-item failure detail belongs in Errors.
+	CreativeID             string                  `json:"creative_id"`
+	RevisionID             string                  `json:"revision_id,omitempty"`
+	Account                *Account                `json:"account,omitempty"`
+	Action                 string                  `json:"action"`
+	Status                 string                  `json:"status,omitempty"`
+	PlatformID             string                  `json:"platform_id,omitempty"`
+	Changes                []string                `json:"changes,omitempty"`
+	Errors                 []string                `json:"errors,omitempty"`
+	Warnings               []string                `json:"warnings,omitempty"`
+	PreviewURL             string                  `json:"preview_url,omitempty"`
+	ExpiresAt              string                  `json:"expires_at,omitempty"`
+	AssignedTo             []string                `json:"assigned_to,omitempty"`
+	AssignmentErrors       map[string]string       `json:"assignment_errors,omitempty"`
+	Localization           any                     `json:"localization,omitempty"`
+	MacroResolutionResults []MacroResolutionResult `json:"macro_resolution_results,omitempty"`
+	// Deprecated: not part of the AdCP schema. Failure detail belongs in
+	// errors[] as core/error.json objects; see #546.
 	RejectionReason string `json:"rejection_reason,omitempty"`
 }
 

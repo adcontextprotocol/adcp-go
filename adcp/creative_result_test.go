@@ -17,7 +17,7 @@ func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 		"creative_id": "cr-1",
 		"account": {"account_id": "acct-1", "name": "Acme", "status": "active"},
 		"action": "updated",
-		"status": "active",
+		"status": "approved",
 		"platform_id": "gam-123",
 		"changes": ["name", "format_id"],
 		"errors": [],
@@ -35,7 +35,7 @@ func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 	require.NotNil(t, got.Account)
 	assert.Equal(t, "acct-1", got.Account.AccountID)
 	assert.Equal(t, "updated", got.Action)
-	assert.Equal(t, "active", got.Status)
+	assert.Equal(t, "approved", got.Status)
 	assert.Equal(t, "gam-123", got.PlatformID)
 	assert.Equal(t, []string{"name", "format_id"}, got.Changes)
 	assert.Equal(t, []string{"low resolution asset"}, got.Warnings)

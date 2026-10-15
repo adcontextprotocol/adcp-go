@@ -1234,8 +1234,8 @@ type CreativeResult struct {
 	ExpiresAt        string            `json:"expires_at,omitempty"`
 	AssignedTo       []string          `json:"assigned_to,omitempty"`
 	AssignmentErrors map[string]string `json:"assignment_errors,omitempty"`
-	// Deprecated: rejection_reason is not part of the AdCP spec and will be
-	// removed in a future release. Per-item failure detail belongs in Errors.
+	// Deprecated: not part of the AdCP schema. Failure detail belongs in
+	// errors[] as core/error.json objects; see #546.
 	RejectionReason string `json:"rejection_reason,omitempty"`
 }
 

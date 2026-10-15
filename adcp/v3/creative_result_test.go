@@ -11,7 +11,7 @@ import (
 // TestCreativeResultSpecFieldsRoundTrip verifies CreativeResult marshals and
 // unmarshals every field of the sync-creatives-response.json per-creative item
 // (issue #365: 8 fields were missing, rejection_reason was non-spec).
-// The v3 package pins AdCP 3.2.0-rc.3, which also defines revision_id.
+// The v3 schema also defines revision_id (absent from the v1 schema).
 func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 	// Wire-shaped payload per static/schemas/source/creative/sync-creatives-response.json.
 	const payload = `{
@@ -19,7 +19,7 @@ func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 		"revision_id": "rev-7",
 		"account": {"account_id": "acct-1", "name": "Acme", "status": "active"},
 		"action": "updated",
-		"status": "active",
+		"status": "approved",
 		"platform_id": "gam-123",
 		"changes": ["name", "format_id"],
 		"errors": [],
@@ -38,7 +38,7 @@ func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 	require.NotNil(t, got.Account)
 	assert.Equal(t, "acct-1", got.Account.AccountID)
 	assert.Equal(t, "updated", got.Action)
-	assert.Equal(t, "active", got.Status)
+	assert.Equal(t, "approved", got.Status)
 	assert.Equal(t, "gam-123", got.PlatformID)
 	assert.Equal(t, []string{"name", "format_id"}, got.Changes)
 	assert.Equal(t, []string{"low resolution asset"}, got.Warnings)
@@ -72,4 +72,23 @@ func TestCreativeResultSpecFieldsRoundTrip(t *testing.T) {
 	plain, err := json.Marshal(CreativeResult{CreativeID: "cr-2", Action: "created"})
 	require.NoError(t, err)
 	assert.NotContains(t, string(plain), "rejection_reason")
+}
+
+// TestCreativeResultLocalizationRoundTrip verifies a localized creative
+// result (schema: localization is required on the item whenever the request
+// carried a non-null localization object) survives decode-then-encode
+// unchanged, comparing the whole JSON document.
+func TestCreativeResultLocalizationRoundTrip(t *testing.T) {
+	const payload = `{"creative_id":"summer_image_localized","action":"created","status":"pending_review","localization":{"default_locale_variant_id":"loc_en_us","unmatched_locale_action":"do_not_serve","locale_matching":"rfc4647_lookup","variants":[{"locale_variant_id":"loc_en_us","locale":"en-US","role":"source","assets":{"image":{"asset_type":"image","url":"https://cdn.example.com/summer-en.jpg","width":1080,"height":1080}}}]}}`
+
+	var got CreativeResult
+	require.NoError(t, json.Unmarshal([]byte(payload), &got))
+	require.NotNil(t, got.Localization, "localization must not be dropped on decode")
+
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	var wantMap, gotMap map[string]any
+	require.NoError(t, json.Unmarshal([]byte(payload), &wantMap))
+	require.NoError(t, json.Unmarshal(raw, &gotMap))
+	assert.Equal(t, wantMap, gotMap, "localized CreativeResult must round-trip unchanged")
 }
