@@ -1285,7 +1285,12 @@ func newServer(b *backend) *mcp.Server {
 			if ref.Brand != nil {
 				domain = ref.Brand.Domain
 			}
-			id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+			// An account_id reference names the account sync_accounts
+			// returned; look that id up before deriving the natural key.
+			id := ref.AccountID
+			if id == "" {
+				id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+			}
 			if acct, ok := b.accounts[id]; ok {
 				return acct, nil
 			}

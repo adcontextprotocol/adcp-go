@@ -27,6 +27,11 @@ import (
 //	adcp.Register(server, adcp.Config{
 //	    IdempotencyReplayTTL: 24 * time.Hour,
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
+//	        // Exactly one form is set: AccountID, or Brand+Operator.
+//	        // Brand is nil for an account_id reference — branch first.
+//	        if ref.AccountID != "" {
+//	            return db.FindAccountByID(ref.AccountID)
+//	        }
 //	        return db.FindAccount(ref.Brand.Domain, ref.Operator)
 //	    },
 //	    GetProducts: func(ctx context.Context, acct any, req *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
@@ -338,9 +343,14 @@ type Config struct {
 	// is built from the registered handlers.
 	Capabilities *CapabilitiesData
 
-	// ResolveAccount converts an AccountReference (brand + operator) to your
-	// internal account object. Called automatically before handlers that receive
-	// an account field. Return nil for unknown accounts (SDK sends ACCOUNT_NOT_FOUND).
+	// ResolveAccount converts an AccountReference (brand + operator, or a bare
+	// account_id) to your internal account object. Called automatically before
+	// handlers that receive an account field. Return nil for unknown accounts
+	// (SDK sends ACCOUNT_NOT_FOUND).
+	//
+	// Exactly one form is set on the reference: AccountID, or Brand and
+	// Operator together. Brand is nil for an account_id reference, so
+	// resolvers must branch on AccountID before dereferencing Brand.
 	ResolveAccount func(ctx context.Context, ref AccountReference) (any, error)
 
 	// --- Media buy ---
@@ -404,7 +414,10 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		result, _, _ := Errorf("INTERNAL_ERROR", ErrorOptions{Message: "unexpected account reference type"})
 		return nil, result
 	}
-	if acctRef.Brand == nil && acctRef.Operator == "" {
+	// An account_id-only reference still names an account: it must go to the
+	// resolver so an unknown ID surfaces ACCOUNT_NOT_FOUND instead of
+	// silently running with no account (public pricing).
+	if acctRef.Brand == nil && acctRef.Operator == "" && acctRef.AccountID == "" {
 		return nil, nil
 	}
 	acct, err := resolver(ctx, acctRef)
@@ -413,10 +426,18 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		return nil, result
 	}
 	if acct == nil {
+		msg := "Account not found. Call sync_accounts first to register this brand and operator."
+		suggestion := "Call sync_accounts with the brand and operator before making this request."
+		if acctRef.AccountID != "" {
+			// Per enums/error-code.json: for an account_id, the fix is to
+			// verify the ID, not to re-register a brand/operator pair.
+			msg = "Account not found."
+			suggestion = "Verify the account_id via list_accounts, or contact the seller."
+		}
 		result, _, _ := Errorf("ACCOUNT_NOT_FOUND", ErrorOptions{
-			Message:    "Account not found. Call sync_accounts first to register this brand and operator.",
+			Message:    msg,
 			Field:      "account",
-			Suggestion: "Call sync_accounts with the brand and operator before making this request.",
+			Suggestion: suggestion,
 		})
 		return nil, result
 	}

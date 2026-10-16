@@ -98,7 +98,13 @@ func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (
 	if ref.Brand != nil {
 		domain = ref.Brand.Domain
 	}
-	id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+	// Accounts are keyed by the id sync_accounts returned, so an
+	// account_id reference looks up that id directly; only natural-key
+	// references derive the id from brand+operator.
+	id := ref.AccountID
+	if id == "" {
+		id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+	}
 	if acct, ok := b.accounts[id]; ok {
 		return acct, nil
 	}
