@@ -1267,8 +1267,9 @@ type AssetSlot struct {
 // It mirrors static/schemas/source/creative/sync-creatives-response.json
 // (oneOf[0].properties.creatives.items) of the pinned AdCP bundle.
 // The two deeply-nested 3.2 additions (localization and
-// macro_resolution_results) are intentionally excluded here; their object
-// graphs belong in the generated types.
+// macro_resolution_results) are present but kept shallow here: localization
+// is carried as `any` and macro_resolution_results uses the generated
+// MacroResolutionResult type, rather than hand-expanding their object graphs.
 type CreativeResult struct {
 	CreativeID             string                  `json:"creative_id"`
 	RevisionID             string                  `json:"revision_id,omitempty"`
