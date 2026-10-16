@@ -1441,6 +1441,7 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'CancellationPolicy': 'core/cancellation-policy.json',
     'CollectionListRef': 'core/collection-list-ref.json',
     'CreativeConsumption': 'core/creative-consumption.json',
+    'CreativeResult': 'creative/sync-creatives-response.json#/oneOf/0/properties/creatives/items',
     'IndustryIdentifier': 'core/industry-identifier.json',
     'ContentRating': 'core/content-rating.json',
     'AttributionWindow': 'core/attribution-window.json',
