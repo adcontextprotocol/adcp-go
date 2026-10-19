@@ -141,7 +141,9 @@ func TestGrantEvaluation(t *testing.T) {
 			reason:  GrantReasonAbsent,
 		},
 		{
-			name:    "a public-suffix grantee covers no claim, and the record still reads",
+			// A public suffix can never be a signer's operator, so this pins
+			// only that the record carrying such a grant stays readable.
+			name:    "a record with a public-suffix grantee still reads",
 			records: with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"github.io","scopes":["adcp:media_buying"]},{"grantee":"agency-7k3q.com","scopes":["adcp:media_buying"]}]}`}),
 			req:     GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"},
 			want:    true,
@@ -822,6 +824,15 @@ func TestHostGranteeCoversNoClaim(t *testing.T) {
 	}
 	require.Contains(t, logs.String(), "the grant covers no claim")
 	require.Contains(t, logs.String(), "operator=brand-7k3q.com")
+	require.Contains(t, logs.String(), "grantee=t1.vendor-7k3q.com")
+
+	// A public-suffix grantee is warned about too.
+	logs.Reset()
+	server.set(trustURL("brand2-7k3q.com"), 200, `{"grants":[{"grantee":"github.io","scopes":["adcp:media_buying"]}]}`)
+	res, err := g.Check(context.Background(), GrantRequest{AgentOrigin: "https://t1.vendor-7k3q.com", BrandDomain: "brand2-7k3q.com", AccountOperator: "vendor-7k3q.com"})
+	require.NoError(t, err)
+	require.False(t, res.Authorized)
+	require.Contains(t, logs.String(), "grantee=github.io")
 
 	_, err = MarshalTrustRecord(&TrustRecord{Grants: []TrustGrant{{Grantee: "t1.vendor-7k3q.com", Scopes: []string{ScopeMediaBuying}}}}, "brand-7k3q.com")
 	require.ErrorContains(t, err, "agents[]", "an author is told to narrow with agents[]")

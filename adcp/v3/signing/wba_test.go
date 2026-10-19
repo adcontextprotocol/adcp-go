@@ -720,10 +720,11 @@ func TestWBAOriginPortIsCanonical(t *testing.T) {
 	o, err := webBotAuthOrigin("https://buyer.example.com:443")
 	require.NoError(t, err)
 	require.Equal(t, "https://buyer.example.com", o, "the default port is stripped")
+	key := newWBARig(t).key
 	for _, bad := range []string{"https://buyer.example.com:0443", "https://buyer.example.com:08443", "https://buyer.example.com:00443", "https://buyer.example.com:0", "https://buyer.example.com:65536", "https://buyer.example.com:99999"} {
 		_, err := webBotAuthOrigin(bad)
 		require.Error(t, err, bad)
-		_, err = SignKeyDirectory(bad, []any{newWBARig(t).key}, wbaTestNow, time.Hour)
+		_, err = SignKeyDirectory(bad, []any{key}, wbaTestNow, time.Hour)
 		require.Error(t, err, "the signer refuses %s too", bad)
 	}
 }
