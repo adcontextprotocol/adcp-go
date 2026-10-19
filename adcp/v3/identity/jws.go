@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/psl"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/safefetch"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/strictjson"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/signing"
@@ -325,13 +326,13 @@ func (v *JWSVerifier) Verify(ctx context.Context, jws string, opts JWSVerifyOpti
 	}
 
 	if opts.Artifact == GovernanceContext {
-		var claims struct {
-			Iss *string `json:"iss"`
-		}
-		if err := json.Unmarshal(payload, &claims); err != nil || claims.Iss == nil {
+		// Read iss by its exact name: encoding/json would match "ISS".
+		var claims map[string]json.RawMessage
+		var iss string
+		if err := json.Unmarshal(payload, &claims); err != nil || json.Unmarshal(claims["iss"], &iss) != nil {
 			return nil, jwsInvalid("payload has no iss")
 		}
-		if o, err := signing.CanonicalOrigin(*claims.Iss); err != nil || o != origin {
+		if o, err := signing.CanonicalOrigin(iss); err != nil || o != origin {
 			return nil, jwsInvalid("iss is not at the issuer's origin")
 		}
 	}
@@ -463,17 +464,22 @@ type ArchiveFetcher func(ctx context.Context, url string) (*TrustResponse, error
 
 // HTTPGovernanceKeyArchive reads the governance key archive at
 // O + GovernanceKeyArchivePath on every lookup. Historical verification is
-// an audit path, so it does not cache; at most MaxConcurrent fetches run at
-// once (default 4), and a lookup beyond that fails as unavailable.
+// an audit path, so it does not cache. At most MaxConcurrent fetches run at
+// once (default 4); a lookup waits for a slot until its context ends. One
+// operator (a registrable domain) has at most one fetch in flight, and a
+// second lookup for it fails as unavailable, so one operator serving slow
+// archives cannot hold every slot.
 type HTTPGovernanceKeyArchive struct {
 	// Fetch defaults to an SSRF-safe HTTPS fetch with a 256 KiB cap.
 	Fetch ArchiveFetcher
 	// MaxConcurrent bounds concurrent archive fetches. Defaults to 4.
 	MaxConcurrent int
 
-	once  sync.Once
-	fetch ArchiveFetcher
-	slots chan struct{}
+	once     sync.Once
+	fetch    ArchiveFetcher
+	slots    chan struct{}
+	mu       sync.Mutex
+	inFlight map[string]bool
 }
 
 func (a *HTTPGovernanceKeyArchive) init() {
@@ -493,23 +499,40 @@ func (a *HTTPGovernanceKeyArchive) init() {
 		n = 4
 	}
 	a.slots = make(chan struct{}, n)
+	a.inFlight = map[string]bool{}
 }
 
 // ArchivedKey implements GovernanceKeyArchive. The archive is a JWK Set.
-// Keys are matched by their computed JWK thumbprint; an entry whose kid
-// member is present and is not that thumbprint is skipped, because its
-// revocation would be published under that other kid, which the origin's
-// revocation list does not retain for Web Bot Auth keys. An entry carrying
+// Keys are matched by their computed JWK thumbprint, and an entry must carry
+// that thumbprint as its kid: any other entry is skipped, because its
+// revocation would be published under another kid (or none), which the
+// origin's revocation list does not retain for Web Bot Auth keys. An entry carrying
 // private key material fails the whole archive, as it does a key directory.
 // A 404 or 410 means the origin publishes no archive (it is a SHOULD): the
 // key is not found.
 func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thumbprint string) (*signing.JWK, error) {
 	a.once.Do(a.init)
+	operator, ok := psl.RegistrableDomain(origin)
+	if !ok {
+		operator = origin
+	}
+	a.mu.Lock()
+	if a.inFlight[operator] {
+		a.mu.Unlock()
+		return nil, errors.New("identity: governance key archive fetch capacity exceeded for operator")
+	}
+	a.inFlight[operator] = true
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		delete(a.inFlight, operator)
+		a.mu.Unlock()
+	}()
 	select {
 	case a.slots <- struct{}{}:
 		defer func() { <-a.slots }()
-	default:
-		return nil, errors.New("identity: governance key archive fetch capacity exceeded")
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 	res, err := a.fetch(ctx, origin+GovernanceKeyArchivePath)
 	if err != nil {
@@ -546,7 +569,7 @@ func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thum
 			continue
 		}
 		tp, err := signing.JWKThumbprint(jwk)
-		if err != nil || tp != thumbprint || (jwk.Kid != "" && jwk.Kid != tp) || found != nil {
+		if err != nil || tp != thumbprint || jwk.Kid != tp || found != nil {
 			continue
 		}
 		jwk.Kid = tp

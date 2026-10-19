@@ -393,6 +393,7 @@ func TestJWSAlgAndKid(t *testing.T) {
 		{"header members that differ only in case", dupHeader(r.key, r.kid, payload), "strict JSON"},
 		{"iss at another origin", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.other-7k3q.com"}`)), "iss is not at the issuer's origin"},
 		{"no iss", compactJWS(r.key, hdr(nil), []byte(`{}`)), "payload has no iss"},
+		{"iss spelled ISS", compactJWS(r.key, hdr(nil), []byte(`{"ISS":"https://gov.vendor-7k3q.com"}`)), "payload has no iss"},
 		{"duplicate iss in payload", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.vendor-7k3q.com","iss":"https://x.example"}`)), "payload is not strict JSON"},
 		{"not compact", "a.b", "not a compact JWS"},
 		{"padded segment", sign(hdr(nil)) + "=", "canonical base64url"},
@@ -428,6 +429,7 @@ func TestJWSHistory(t *testing.T) {
 	retired, retiredKid := newEd25519(t)
 	retiredJWK, err := signing.PublicDirectoryKey(retired)
 	require.NoError(t, err)
+	retiredJWK.Kid = retiredKid
 	entry, _ := json.Marshal(retiredJWK)
 	r.mu.Lock()
 	r.archive[govOrigin] = `{"keys":[` + string(entry) + `]}`
@@ -490,6 +492,16 @@ func TestJWSHistory(t *testing.T) {
 	_, err = fresh.v.Verify(ctx, tok, hist)
 	requireJWSError(t, err, false, false)
 	require.ErrorContains(t, err, "not in the issuer's key directory")
+	// An entry with no kid is skipped too.
+	noKid := retiredJWK
+	noKid.Kid = ""
+	noKidEntry, _ := json.Marshal(noKid)
+	fresh = newJWSRig(t)
+	fresh.mu.Lock()
+	fresh.archive[govOrigin] = `{"keys":[` + string(noKidEntry) + `]}`
+	fresh.mu.Unlock()
+	_, err = fresh.v.Verify(ctx, tok, hist)
+	requireJWSError(t, err, false, false)
 	// The same key with kid set to its thumbprint, beside a P-256 key the
 	// archive skips, verifies.
 	withKid.Kid = retiredKid
@@ -531,20 +543,32 @@ func TestJWSVerifierConfiguration(t *testing.T) {
 
 func TestGovernanceKeyArchiveCapacity(t *testing.T) {
 	release := make(chan struct{})
-	started := make(chan struct{})
+	started := make(chan struct{}, 4)
 	a := &HTTPGovernanceKeyArchive{MaxConcurrent: 1, Fetch: func(ctx context.Context, _ string) (*TrustResponse, error) {
-		close(started)
+		started <- struct{}{}
 		<-release
 		return &TrustResponse{Status: 404}, nil
 	}}
-	done := make(chan error)
+	done := make(chan error, 2)
+	go func() {
+		_, err := a.ArchivedKey(context.Background(), "https://a.slow-7k3q.com", "x")
+		done <- err
+	}()
+	<-started
+	// One operator has one fetch in flight: another of its origins fails.
+	_, err := a.ArchivedKey(context.Background(), "https://b.slow-7k3q.com", "x")
+	require.ErrorContains(t, err, "capacity exceeded for operator")
+	// Another operator waits for a global slot until its context ends...
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err = a.ArchivedKey(ctx, govOrigin, "x")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	// ...and gets one when it frees.
 	go func() {
 		_, err := a.ArchivedKey(context.Background(), govOrigin, "x")
 		done <- err
 	}()
-	<-started
-	_, err := a.ArchivedKey(context.Background(), govOrigin, "x")
-	require.ErrorContains(t, err, "capacity")
 	close(release)
+	require.NoError(t, <-done)
 	require.NoError(t, <-done)
 }
