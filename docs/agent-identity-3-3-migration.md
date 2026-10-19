@@ -21,6 +21,7 @@ Everything here is **opt-in and experimental**.
 | trust.json authoring and validation | `identity.ValidateTrustRecord`, `identity.MarshalTrustRecord` |
 | Trust-record evaluation | `identity.NewTrustRecordEvaluator`, `identity.TrustRecordURL`, `identity.AuthorityHistory` |
 | Bind an origin to a principal | `identity.TrustRecordEvaluator.Bind`, `identity.OriginBindings` (in memory), `identity.BindingGate` |
+| JWS artifacts on the key directory (R4) | `identity.JWSVerifier`, `identity.HTTPGovernanceKeyArchive` |
 | Grants at `sync_accounts` (DR-0025) | `identity.GrantEvaluator`, `identity.GrantGate`, `adcp.Config.SyncAccountsAuthorizer` |
 | New schema types | `identity.AgentOnboarding` and its tiers, requirements, and enums; `identity.BuyerOnboardingPosture`; `identity.PrincipalRelationship`; `identity.PrincipalChanged*` reasons; `identity.GrantAbsentDetails`; `identity.TrustRecord`; `identity.RequestSigningCapabilities` (`profiles`) |
 
@@ -147,7 +148,16 @@ mw := signing.Middleware(signing.MiddlewareOptions{
 
 ## Deprecation
 
-AdCP 3.3 deprecates the RFC 9421 profile. It stays fully functional through 3.x and is removed in 4.0. `signing.Middleware` logs this once per process when `WebBotAuth` is not set. The RFC 9421 APIs are not marked `Deprecated:` in Go, so `staticcheck` builds keep passing while 3.x still requires them. JWS document signing (governance context, response signing, rights attestations) stays on the RFC 9421 chain until 3.4.
+AdCP 3.3 deprecates the RFC 9421 profile. It stays fully functional through 3.x and is removed in 4.0. `signing.Middleware` logs this once per process when `WebBotAuth` is not set. The RFC 9421 APIs are not marked `Deprecated:` in Go, so `staticcheck` builds keep passing while 3.x still requires them. JWS document signing moved into 3.3 (adcp#8299): see JWS artifacts below.
+
+## JWS artifacts
+
+`identity.JWSVerifier` applies spec R4 to a governance context, designated-task response signing, and a rights attestation. The SDK has no verifier for these surfaces yet, so it supplies the profile selection and key rules that a surface verifier calls; the surface's own checks (claims, `aud`, `exp`, replay, `jti` revocation, the governance checklist's brand.json cross-check of `iss`) stay with the caller.
+
+- **O.** The canonical origin of `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. Pass that URL as `JWSVerifyOptions.SignerURL`. For a governance context the verified `iss` must be at O.
+- **Selection.** `SelectProfile` derives the trust record from O. A record that lists O, with any role, selects the key directory. A record that doesn't list O, an operator that has never published one, or an O with no registrable domain returns `identity.ErrJWSProfile32`: verify under the 3.2 profile. A record that can't be read is a `*JWSError` with `Unavailable` set, never the 3.2 profile; within `OutageContinuation` of the last record that listed O, the key directory is still selected.
+- **Key rules.** `alg` is `EdDSA` and `kid` is the key's JWK thumbprint, resolved in O's key directory (`signing.DirectoryResolver`). No `use`, `key_ops`, or `adcp_use` check applies beyond the directory's own rules: purpose separation is by origin. A directory that can't be read is `Unavailable`. A revoked key in O's list (`signing.OriginRevocationChecker`) is refused with `Revoked` set; `VerifiedJWS.Revocation` carries the other states for the surface's rule, such as refusing governance execution-phase tokens while the list is stale.
+- **History.** With `JWSVerifyOptions.Historical`, a governance context whose key left the directory is verified with the key from the governance key archive at O (`/.well-known/jwks-archive.json`, `identity.HTTPGovernanceKeyArchive`), matched by thumbprint. Revocation still applies.
 
 ## Rollback
 

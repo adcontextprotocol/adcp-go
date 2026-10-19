@@ -526,9 +526,22 @@ type Listing struct {
 //     restart, no durable History) there is no last record, and an outage
 //     is Unavailable without grace.
 func (e *TrustRecordEvaluator) CheckListing(ctx context.Context, origin, role string) Listing {
+	return e.checkListing(ctx, origin, func(r *TrustRecord) bool {
+		_, err := r.Agent(origin, role)
+		return err == nil
+	}, role)
+}
+
+// checkListing is CheckListing with the listing test as a predicate: lists
+// reports whether a record lists the origin. role is passed to Evaluate,
+// which checks it when non-empty.
+func (e *TrustRecordEvaluator) checkListing(ctx context.Context, origin string, lists func(*TrustRecord) bool, role string) Listing {
 	rec, err := e.Evaluate(ctx, origin, role)
 	if err == nil {
-		return Listing{Status: Listed, Record: rec}
+		if lists(rec.Record) {
+			return Listing{Status: Listed, Record: rec}
+		}
+		return Listing{Status: Unlisted, Err: &TrustRecordError{Unlisted: true, Reason: "trust record does not list the origin"}}
 	}
 	if !IsTrustRecordUnavailable(err) {
 		// Not listed, never published, or no registrable domain.
@@ -543,7 +556,7 @@ func (e *TrustRecordEvaluator) CheckListing(ctx context.Context, origin, role st
 	if herr != nil || last == nil {
 		return Listing{Status: Unavailable, Err: err}
 	}
-	if _, merr := last.Agent(origin, role); merr != nil {
+	if !lists(last.Record) {
 		return Listing{Status: Unlisted, Err: err}
 	}
 	l := Listing{Status: Unavailable, Err: err}
