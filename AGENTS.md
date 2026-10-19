@@ -71,6 +71,74 @@ The targeting engine (`targeting/`) is the shared evaluation core. Reference age
 
 Every non-draft, non-dependabot PR is reviewed by Ladon, an LLM PR reviewer that posts `--approve` / `--comment` / `--request-changes` via the AAO Secretariat GitHub App, so its review counts toward the "1 review required" branch-protection check. The workflow lives at `.github/workflows/ai-review.yml` and consumes the shared review engine remotely (`adcontextprotocol/actions/ladon/review@ladon/review/v1`) — voice, expert triage, and review format are maintained upstream in `adcontextprotocol/actions`, so there is nothing to fork or sync here. This repo supplies only its review policy — repo context, MUST-FIX gates, high-risk paths, escalation reviewers, and trivial paths — in `LADON.md` at the repo root. The workflow uses `pull_request_target` with a trusted base-SHA-only checkout (the PR head is never fetched or executed) and skips auto-review on any PR that modifies `LADON.md` or the workflow itself.
 
+### Maintainer questions: five-day lazy consensus
+
+This is an explicit SDK maintainer delegation for contributor PRs in
+`adcontextprotocol/adcp-go`, effective when this guidance is merged. It applies
+to otherwise merge-ready PRs whose only remaining blocker is an unanswered
+question to `@bokelley` about a non-breaking SDK implementation or documentation
+choice within the existing protocol contract. It does not change the AdCP WG
+constitution, ratify protocol changes, or activate the Spec Guardian design's
+WG-wide lazy-consensus rollout.
+
+**Start the clock on the PR.** The author posts a comment that mentions
+`@bokelley` and records:
+
+- Each outstanding question and the concrete proposed answer. "Fine as it
+  stands" must identify the behavior or wording that will stand.
+- The current head SHA and why the question qualifies for this delegation.
+- The notice timestamp and an explicit UTC deadline at least five calendar
+  days (120 hours, including weekends and holidays) later.
+
+Existing questions do not inherit time elapsed before this policy or before a
+complete notice. For example:
+
+```text
+@bokelley — five-day SDK consensus notice
+Head: <full commit SHA>
+Question: <specific implementation or documentation question>
+Proposed answer: <concrete default if no objection>
+Eligibility: <why this is non-breaking and outside the escalation list>
+Notice: <YYYY-MM-DDTHH:MM:SSZ>
+Deadline: <YYYY-MM-DDTHH:MM:SSZ, at least 120 hours after notice>
+```
+
+**Silence permits the stated default after the deadline.** If no substantive
+objection or hold remains, the author, or a maintainer with merge permission,
+may merge under the proposed answer. First open or update a tracked issue
+recording the question, adopted answer, rationale, and PR/notice links. Leave
+a closing PR comment linking that issue and recording the final head SHA and
+the elapsed deadline. An explicit maintainer answer can resolve the question
+sooner under the ordinary review process.
+
+**A one-line `hold` stops the clock.** Any human reviewer's substantive
+objection or explicit hold suspends this delegation; a hold has no automatic
+expiry. Resume only after the person who raised it explicitly releases it,
+then publish a revised UTC deadline preserving at least the time that
+remained. A material change to the implementation, proposed answer, or
+eligibility requires a fresh notice and a full five-day window. In particular,
+an existing security hold is never cleared by silence.
+
+**All six constitutional escalation categories still require an explicit
+decision from the appropriate human authority.** Follow the
+[AdCP WG constitution's escalation list](https://github.com/adcontextprotocol/adcp/blob/main/.agents/wg/constitution.md#escalation-list):
+
+1. Breaking changes to the public API, wire shape, semantics, or defaults.
+2. Security posture changes, including authentication, signing, transport
+   trust, tenant isolation, and the identity-agent TEE boundary.
+3. Governance changes: the WG charter, bylaws, IPR policy, constitution,
+   decision records, or this delegation itself.
+4. Member disputes, recusal questions, and political matters.
+5. Release go/no-go for RC and stable cuts.
+6. Unresolved expert disagreement after synthesis.
+
+If eligibility is uncertain, escalate rather than starting the clock. Elapsed
+time resolves only the listed maintainer question: required approvals, CI,
+branch protection, security gates, and blocking review findings still apply.
+Address every review comment and resolve every conversation thread before
+merge; a tracked issue cannot defer a blocking defect. Verify the exact final
+head before recording the consensus outcome and merging.
+
 ## Testing
 
 ```bash

@@ -300,6 +300,9 @@ TMP is **1.8x faster** than OpenRTB with **37% smaller** payloads.
 
 Contributions welcome! All contributors must agree to the [AgenticAdvertising.Org IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md) — the bot prompts new contributors on their first PR and a single signature covers all AAO repositories.
 
+For unanswered maintainer questions on otherwise merge-ready PRs, see the
+[five-day SDK review consensus guidance](AGENTS.md#maintainer-questions-five-day-lazy-consensus).
+
 ## License
 
 Apache 2.0
