@@ -231,11 +231,12 @@ type CreativeInput struct {
 	Name       string         `json:"name,omitempty"`
 	Assets     map[string]any `json:"assets,omitempty"`
 	// Localization is the sync-only materialized-localization mutation
-	// (core/creative-localization.json), kept as `any` to mirror
-	// CreativeResult.Localization in types.go: the nested variant graph
-	// stays with the generated-types pipeline. A non-nil value replaces
-	// the creative's localization; omission preserves it when the source
-	// assets are unchanged.
+	// (core/creative-localization.json), kept as `any` — the same shaping
+	// as CreativeCapabilities.Localization in types.go, and the shape
+	// CreativeResult gains for this field in #545: the nested variant
+	// graph stays with the generated-types pipeline. A non-nil value
+	// replaces the creative's localization; omission preserves it when
+	// the source assets are unchanged.
 	Localization any `json:"localization,omitempty"`
 }
 
