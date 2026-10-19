@@ -172,16 +172,17 @@ func TestJWSSelection(t *testing.T) {
 		{"a record that cannot be read is not absence", "https://gov.down-7k3q.com", 0, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p, _, err := r.v.SelectProfile(ctx, tc.url)
+			sel, err := r.v.SelectProfile(ctx, tc.url)
 			if tc.outage {
 				requireJWSError(t, err, true, false)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.want, p)
+			require.Equal(t, tc.want, sel.Profile)
+			require.False(t, sel.StaleTrustRecord)
 		})
 	}
-	_, _, err := r.v.SelectProfile(ctx, "http://gov.vendor-7k3q.com")
+	_, err := r.v.SelectProfile(ctx, "http://gov.vendor-7k3q.com")
 	requireJWSError(t, err, false, false)
 }
 
@@ -224,6 +225,41 @@ func TestJWSFallbackTo32(t *testing.T) {
 	require.ErrorIs(t, err, ErrJWSProfile32)
 }
 
+type boundOrigins map[string]bool
+
+func (b boundOrigins) PrincipalForOrigin(_ context.Context, origin string) (string, bool, error) {
+	if b == nil {
+		return "", false, errors.New("binding store down")
+	}
+	return "p", b[origin], nil
+}
+
+// TestJWSNoDowngradeForBoundOrigins pins R4's no downgrade: an origin the
+// verifier has bound is refused instead of being sent to the 3.2 profile,
+// for example after its operator delists it.
+func TestJWSNoDowngradeForBoundOrigins(t *testing.T) {
+	r := newJWSRig(t)
+	ctx := context.Background()
+	r.v.BoundOrigins = boundOrigins{"https://gov.legacy-7k3q.com": true}
+	_, err := r.v.Verify(ctx, govToken(r.key, r.kid, "https://gov.legacy-7k3q.com"), JWSVerifyOptions{Artifact: GovernanceContext, SignerURL: "https://gov.legacy-7k3q.com", Typ: govTyp})
+	requireJWSError(t, err, false, false)
+	require.ErrorContains(t, err, "bound")
+
+	// An unbound origin still falls back.
+	sel, err := r.v.SelectProfile(ctx, "https://other.legacy-7k3q.com")
+	require.NoError(t, err)
+	require.Equal(t, JWSProfile32, sel.Profile)
+
+	// A binding store that fails refuses rather than downgrading.
+	r.v.BoundOrigins = boundOrigins(nil)
+	_, err = r.v.SelectProfile(ctx, "https://gov.legacy-7k3q.com")
+	requireJWSError(t, err, true, false)
+	// A listed origin never consults the store.
+	sel, err = r.v.SelectProfile(ctx, govOrigin)
+	require.NoError(t, err)
+	require.Equal(t, JWSProfileWBA, sel.Profile)
+}
+
 func TestJWSFetchFailureIsNotAbsence(t *testing.T) {
 	r := newJWSRig(t)
 	ctx := context.Background()
@@ -234,33 +270,43 @@ func TestJWSFetchFailureIsNotAbsence(t *testing.T) {
 	requireJWSError(t, err, true, false)
 
 	// A record that was read and listed O, then fails: within the
-	// OutageContinuation bound the WBA path is still selected, never 3.2.
+	// OutageContinuation bound the WBA path is still selected, never 3.2,
+	// and the result says the record is stale.
+	flaky := "https://gov.flaky-7k3q.com"
 	r.trust.server.set(trustURL("flaky-7k3q.com"), 200, `{"agents":[{"url":"https://gov.flaky-7k3q.com","roles":["adcp:governance"]}]}`)
-	p, _, err := r.v.SelectProfile(ctx, "https://gov.flaky-7k3q.com")
+	r.setDirectory(flaky, r.key)
+	got, err := r.v.Verify(ctx, govToken(r.key, r.kid, flaky), JWSVerifyOptions{Artifact: GovernanceContext, SignerURL: flaky, Typ: govTyp})
 	require.NoError(t, err)
-	require.Equal(t, JWSProfileWBA, p)
+	require.False(t, got.StaleTrustRecord)
 	r.trust.server.fail(trustURL("flaky-7k3q.com"), errors.New("timeout"))
 	r.trust.now = r.trust.now.Add(2 * time.Minute)
-	p, _, err = r.v.SelectProfile(ctx, "https://gov.flaky-7k3q.com")
+	got, err = r.v.Verify(ctx, govToken(r.key, r.kid, flaky), JWSVerifyOptions{Artifact: GovernanceContext, SignerURL: flaky, Typ: govTyp})
 	require.NoError(t, err)
-	require.Equal(t, JWSProfileWBA, p)
+	require.True(t, got.StaleTrustRecord, "a spend-committing surface must be able to refuse")
 	// A 404 after a record was published is a failure, not absence.
 	r.trust.server.set(trustURL("flaky-7k3q.com"), 404, "")
 	r.trust.now = r.trust.now.Add(2 * time.Minute)
-	p, _, err = r.v.SelectProfile(ctx, "https://gov.flaky-7k3q.com")
+	sel, err := r.v.SelectProfile(ctx, flaky)
 	require.NoError(t, err)
-	require.Equal(t, JWSProfileWBA, p)
+	require.Equal(t, JWSProfileWBA, sel.Profile)
+	require.True(t, sel.StaleTrustRecord)
 	// Past the bound, the outage is an error, still never 3.2.
 	r.trust.now = r.trust.now.Add(10 * time.Minute)
-	_, _, err = r.v.SelectProfile(ctx, "https://gov.flaky-7k3q.com")
+	_, err = r.v.SelectProfile(ctx, flaky)
 	requireJWSError(t, err, true, false)
 	// A record read after the outage that no longer lists O selects 3.2:
 	// the operator delisted it.
 	r.trust.server.set(trustURL("flaky-7k3q.com"), 200, `{"agents":[]}`)
 	r.trust.now = r.trust.now.Add(2 * time.Minute)
-	p, _, err = r.v.SelectProfile(ctx, "https://gov.flaky-7k3q.com")
+	sel, err = r.v.SelectProfile(ctx, flaky)
 	require.NoError(t, err)
-	require.Equal(t, JWSProfile32, p)
+	require.Equal(t, JWSProfile32, sel.Profile)
+	// ...but once that record cannot be refreshed, the outage is an error:
+	// the last record read never selects 3.2 while the fetch fails.
+	r.trust.server.fail(trustURL("flaky-7k3q.com"), errors.New("timeout"))
+	r.trust.now = r.trust.now.Add(24 * time.Hour)
+	_, err = r.v.SelectProfile(ctx, flaky)
+	requireJWSError(t, err, true, false)
 
 	// The key directory cannot be read.
 	fresh := newJWSRig(t)
@@ -269,6 +315,12 @@ func TestJWSFetchFailureIsNotAbsence(t *testing.T) {
 	fresh.mu.Unlock()
 	_, err = fresh.v.Verify(ctx, govToken(fresh.key, fresh.kid, govOrigin), govOpts())
 	requireJWSError(t, err, true, false)
+
+	// A malformed token is refused before anything is fetched.
+	before := r.trust.server.count(trustURL("down-7k3q.com"))
+	_, err = r.v.Verify(ctx, "not.a.jws", JWSVerifyOptions{Artifact: GovernanceContext, SignerURL: "https://gov.down-7k3q.com", Typ: govTyp})
+	requireJWSError(t, err, false, false)
+	require.Equal(t, before, r.trust.server.count(trustURL("down-7k3q.com")))
 }
 
 func TestJWSRevocation(t *testing.T) {
@@ -280,15 +332,30 @@ func TestJWSRevocation(t *testing.T) {
 	_, err := r.v.Verify(ctx, govToken(r.key, r.kid, govOrigin), govOpts())
 	requireJWSError(t, err, false, true)
 
-	// A list that cannot be read is reported, and the caller applies the
-	// surface's rule for it.
+	// Another key of the same origin is not revoked.
+	r = newJWSRig(t)
+	second, secondKid := newEd25519(t)
+	r.setDirectory(govOrigin, r.key, second)
+	r.mu.Lock()
+	r.revoked[govOrigin] = r.kid
+	r.mu.Unlock()
+	got, err := r.v.Verify(ctx, govToken(second, secondKid, govOrigin), govOpts())
+	require.NoError(t, err)
+	require.Equal(t, signing.RevocationCurrent, got.Revocation)
+
+	// A list that cannot be read is refused as unavailable by default, and
+	// accepted only when the surface allows a stale list.
 	r = newJWSRig(t)
 	r.mu.Lock()
 	r.revErr[govOrigin] = true
 	r.mu.Unlock()
-	got, err := r.v.Verify(ctx, govToken(r.key, r.kid, govOrigin), govOpts())
+	_, err = r.v.Verify(ctx, govToken(r.key, r.kid, govOrigin), govOpts())
+	requireJWSError(t, err, true, false)
+	opts := govOpts()
+	opts.AcceptStaleRevocation = true
+	got, err = r.v.Verify(ctx, govToken(r.key, r.kid, govOrigin), opts)
 	require.NoError(t, err)
-	require.NotEqual(t, signing.RevocationCurrent, got.Revocation)
+	require.Equal(t, signing.RevocationStale, got.Revocation)
 }
 
 func TestJWSAlgAndKid(t *testing.T) {
@@ -320,10 +387,13 @@ func TestJWSAlgAndKid(t *testing.T) {
 		{"typ normalized", sign(hdr(map[string]any{"typ": "adcp-gov"})), "typ mismatch"},
 		{"unknown crit", sign(hdr(map[string]any{"crit": []string{"authorized_task"}, "authorized_task": true})), "not understood"},
 		{"b64 false", sign(hdr(map[string]any{"b64": false})), "b64"},
+		{"b64 true", sign(hdr(map[string]any{"b64": true})), "b64"},
+		{"empty payload", strings.Replace(sign(hdr(nil)), "."+base64.RawURLEncoding.EncodeToString(payload)+".", "..", 1), "not a compact JWS"},
+		{"payload that is not strict JSON", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.vendor-7k3q.com","ISS":"x"}`)), "payload is not strict JSON"},
 		{"header members that differ only in case", dupHeader(r.key, r.kid, payload), "strict JSON"},
 		{"iss at another origin", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.other-7k3q.com"}`)), "iss is not at the issuer's origin"},
 		{"no iss", compactJWS(r.key, hdr(nil), []byte(`{}`)), "payload has no iss"},
-		{"duplicate iss in payload", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.vendor-7k3q.com","iss":"https://x.example"}`)), "payload has no iss"},
+		{"duplicate iss in payload", compactJWS(r.key, hdr(nil), []byte(`{"iss":"https://gov.vendor-7k3q.com","iss":"https://x.example"}`)), "payload is not strict JSON"},
 		{"not compact", "a.b", "not a compact JWS"},
 		{"padded segment", sign(hdr(nil)) + "=", "canonical base64url"},
 		{"oversized", strings.Repeat("a", jwsMaxBytes+1), "too large"},
@@ -406,6 +476,38 @@ func TestJWSHistory(t *testing.T) {
 	_, err = fresh.v.Verify(ctx, tok, hist)
 	requireJWSError(t, err, true, false)
 
+	// An entry whose kid is not its thumbprint is skipped: its revocation
+	// would be published under that kid, which the origin's revocation
+	// list does not retain for Web Bot Auth keys.
+	withKid := retiredJWK
+	withKid.Kid = "gov-2026-03"
+	legacyEntry, _ := json.Marshal(withKid)
+	p256 := `{"kty":"EC","crv":"P-256","x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU","y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"}`
+	fresh = newJWSRig(t)
+	fresh.mu.Lock()
+	fresh.archive[govOrigin] = `{"keys":[` + p256 + `,` + string(legacyEntry) + `]}`
+	fresh.mu.Unlock()
+	_, err = fresh.v.Verify(ctx, tok, hist)
+	requireJWSError(t, err, false, false)
+	require.ErrorContains(t, err, "not in the issuer's key directory")
+	// The same key with kid set to its thumbprint, beside a P-256 key the
+	// archive skips, verifies.
+	withKid.Kid = retiredKid
+	thumbEntry, _ := json.Marshal(withKid)
+	fresh = newJWSRig(t)
+	fresh.mu.Lock()
+	fresh.archive[govOrigin] = `{"keys":[` + p256 + `,` + string(thumbEntry) + `]}`
+	fresh.mu.Unlock()
+	got, err = fresh.v.Verify(ctx, tok, hist)
+	require.NoError(t, err)
+	require.True(t, got.Archived)
+
+	// An origin that publishes no archive (404): the key is not found, a
+	// refusal rather than an outage.
+	fresh = newJWSRig(t)
+	_, err = fresh.v.Verify(ctx, tok, hist)
+	requireJWSError(t, err, false, false)
+
 	// History applies to a governance context only, and needs an archive.
 	_, err = r.v.Verify(ctx, tok, JWSVerifyOptions{Artifact: RightsAttestation, SignerURL: govOrigin, Typ: govTyp, Historical: true})
 	require.Error(t, err)
@@ -425,4 +527,24 @@ func TestJWSVerifierConfiguration(t *testing.T) {
 	require.Error(t, err, "Typ is required")
 	_, err = r.v.Verify(context.Background(), "a.b.c", JWSVerifyOptions{SignerURL: govOrigin, Typ: govTyp})
 	require.Error(t, err, "Artifact is required")
+}
+
+func TestGovernanceKeyArchiveCapacity(t *testing.T) {
+	release := make(chan struct{})
+	started := make(chan struct{})
+	a := &HTTPGovernanceKeyArchive{MaxConcurrent: 1, Fetch: func(ctx context.Context, _ string) (*TrustResponse, error) {
+		close(started)
+		<-release
+		return &TrustResponse{Status: 404}, nil
+	}}
+	done := make(chan error)
+	go func() {
+		_, err := a.ArchivedKey(context.Background(), govOrigin, "x")
+		done <- err
+	}()
+	<-started
+	_, err := a.ArchivedKey(context.Background(), govOrigin, "x")
+	require.ErrorContains(t, err, "capacity")
+	close(release)
+	require.NoError(t, <-done)
 }

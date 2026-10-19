@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/safefetch"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/strictjson"
@@ -48,10 +49,11 @@ const (
 )
 
 // ErrJWSProfile32 is returned by JWSVerifier.Verify when R4 selects the 3.2
-// profile: the trust record derived from O does not list O (or the operator
-// has never published one, or O has no registrable domain). The caller
-// verifies the artifact with its 3.2 verifier. It is never returned for a
-// fetch failure.
+// profile: the trust record derived from O was read and does not list O, the
+// operator has never published one, or O has no registrable domain. The
+// caller verifies the artifact with its 3.2 verifier. It is never returned
+// while the record cannot be read, nor for an origin the verifier has bound
+// (JWSVerifier.BoundOrigins).
 var ErrJWSProfile32 = errors.New("identity: no trust record lists the issuer's origin; verify the JWS under the 3.2 profile")
 
 // JWSError is a refusal of a JWS artifact on the Web Bot Auth path.
@@ -86,22 +88,33 @@ type GovernanceKeyArchive interface {
 //
 // Selection (R4, R3a step 1) never reads an unsigned field: O comes from the
 // URL the caller names for the artifact, and the trust record derived from
-// O decides. A record that lists O selects this path. A record that does not
-// list O, an operator that has never published one, or an O with no
-// registrable domain returns ErrJWSProfile32. A record that cannot be read
-// is a JWSError with Unavailable set, never the 3.2 profile, unless the last
+// O decides. A record that lists O selects this path. A record that was read
+// and does not list O, an operator that has never published one, or an O
+// with no registrable domain selects the 3.2 profile (ErrJWSProfile32),
+// except for an origin the verifier has bound (BoundOrigins), which is
+// refused instead (R4, no downgrade). A record that cannot be read now is a
+// JWSError with Unavailable set, never the 3.2 profile, unless the last
 // record read listed O and is within the evaluator's OutageContinuation
-// bound, in which case this path is still selected.
+// bound: this path is then still selected, and VerifiedJWS.StaleTrustRecord
+// is set so that a spend-committing surface can refuse, as R3a requires.
+// Public deployments need a durable AuthorityHistory, so a 404 after a
+// record was published is never read as an operator that never published
+// one.
 //
 // Key rules: alg is EdDSA, kid is the key's JWK thumbprint, and the key is
 // the one O's key directory publishes under that thumbprint. Purpose
 // separation is by origin (D2), so use, key_ops, and adcp_use are not
-// checked beyond the directory's own rules. Revocation is O's list.
+// checked beyond the directory's own rules. Revocation is O's list: a
+// revoked key is refused, and so is a key whose list state is not current
+// unless the caller accepts that (JWSVerifyOptions.AcceptStaleRevocation).
 //
-// Verify checks only the key, signature, and protected header rules R4
-// adds. Every other check of the surface (claims, aud, exp, replay, the
-// governance checklist's brand.json cross-check of iss, jti revocation) is
-// unchanged and stays with the caller.
+// A verified JWS proves which origin signed it, not that the origin may act
+// for anyone. Every other check of the surface is unchanged and stays with
+// the caller: claims, aud, exp, replay, the relying-party record (the
+// buyer's brand.json for a governance iss, the brand_domain brand.json for a
+// designated response, the rights holder's for a rights attestation), and
+// revoked_jtis, which OriginRevocationChecker does not retain (it keeps key
+// revocations only).
 type JWSVerifier struct {
 	// Records evaluates the trust record derived from O. Required.
 	Records *TrustRecordEvaluator
@@ -111,6 +124,10 @@ type JWSVerifier struct {
 	// Revocation reports the key's state in O's revocation list. Required;
 	// usually the signing.OriginRevocationChecker the request path uses.
 	Revocation signing.WBARevocationChecker
+	// BoundOrigins, when set, enforces R4's no downgrade: an origin bound to
+	// a principal (R5) is never sent to the 3.2 profile. Usually the
+	// signing.MiddlewareOptions.BoundOrigins store. A lookup error refuses.
+	BoundOrigins signing.OriginBindingLookup
 	// Archive is the governance key archive for historical verification of
 	// a governance context. Nil disables historical verification.
 	Archive GovernanceKeyArchive
@@ -122,22 +139,29 @@ type JWSVerifyOptions struct {
 	Artifact JWSArtifact
 	// SignerURL is the URL whose canonical origin is O: iss for a governance
 	// context, agent_url for designated-task response signing, and
-	// rights_agent.url for a rights attestation. Required. For a governance
-	// context the verified payload's iss must have the same canonical
-	// origin.
+	// rights_agent.url for a rights attestation. Required. Take it from the
+	// signed artifact or from the verifier's own context, never from an
+	// unsigned field. For a governance context the verified payload's iss
+	// must have the same canonical origin.
 	SignerURL string
 	// Typ is the exact protected-header typ the surface requires, for
 	// example "adcp-gov+jws". Required; compared byte for byte.
 	Typ string
 	// Crit lists the protected-header extensions the caller processes. A
 	// crit entry not listed here, or one the header does not carry, is
-	// refused. b64 is never accepted.
+	// refused. A b64 header member is never accepted.
 	Crit []string
 	// Historical verifies a governance context after its key left O's key
 	// directory: a key the directory does not publish is looked up in the
 	// governance key archive at O. Only governance agents publish that
 	// archive, so it applies to GovernanceContext only.
 	Historical bool
+	// AcceptStaleRevocation accepts a key whose revocation state is
+	// RevocationStale or RevocationNoList, for a surface whose rules allow
+	// it (for example, a governance intent-phase token with a short exp).
+	// By default those states are refused as Unavailable. A revoked key,
+	// or a state that cannot be read, is always refused.
+	AcceptStaleRevocation bool
 }
 
 // VerifiedJWS is a JWS artifact verified on the Web Bot Auth path.
@@ -150,14 +174,27 @@ type VerifiedJWS struct {
 	Header map[string]json.RawMessage
 	// Payload is the decoded payload. Its claims are not checked.
 	Payload []byte
-	// Revocation is the key's state in O's revocation list. A revoked key
-	// is refused; the caller applies the surface's rule for the other
-	// states (for example, a governance execution-phase token is refused
-	// while the list is RevocationStale).
+	// Revocation is the key's state in O's revocation list:
+	// RevocationCurrent, or RevocationStale or RevocationNoList when the
+	// caller set AcceptStaleRevocation.
 	Revocation signing.RevocationState
 	// Archived reports a key found in the governance key archive, not in
 	// O's current key directory.
 	Archived bool
+	// StaleTrustRecord reports that the trust record derived from O could
+	// not be read and the profile was selected from the last record that
+	// listed O, within the evaluator's OutageContinuation bound. A
+	// spend-committing surface refuses the artifact when it is set (R3a).
+	StaleTrustRecord bool
+}
+
+// JWSSelection is the outcome of JWSVerifier.SelectProfile.
+type JWSSelection struct {
+	Profile JWSProfile
+	// Origin is O.
+	Origin string
+	// StaleTrustRecord: see VerifiedJWS.StaleTrustRecord.
+	StaleTrustRecord bool
 }
 
 const (
@@ -173,24 +210,43 @@ const (
 
 // SelectProfile applies R4's selection rule to signerURL: JWSProfileWBA when
 // the trust record derived from O lists O, JWSProfile32 when no trust record
-// lists O, and a JWSError with Unavailable set when the record cannot be
-// read (a fetch failure is not absence).
-func (v *JWSVerifier) SelectProfile(ctx context.Context, signerURL string) (JWSProfile, string, error) {
+// lists O, and a JWSError when the record cannot be read now (a fetch
+// failure is not absence) or O is bound and would be sent to 3.2.
+func (v *JWSVerifier) SelectProfile(ctx context.Context, signerURL string) (JWSSelection, error) {
 	if v.Records == nil {
-		return 0, "", errJWSNotConfigured
+		return JWSSelection{}, errJWSNotConfigured
 	}
 	origin, err := signing.CanonicalOrigin(signerURL)
 	if err != nil || !strings.HasPrefix(origin, "https://") {
-		return 0, "", jwsInvalid("signer URL has no canonical https origin")
+		return JWSSelection{}, jwsInvalid("signer URL has no canonical https origin")
 	}
+	sel := JWSSelection{Origin: origin}
 	l := v.Records.checkListing(ctx, origin, func(r *TrustRecord) bool { return r.listsOrigin(origin) }, "")
 	switch {
-	case l.Status == Listed, l.Status == Unavailable && l.WithinGrace:
-		return JWSProfileWBA, origin, nil
-	case l.Status == Unlisted:
-		return JWSProfile32, origin, nil
+	case l.Status == Listed:
+		sel.Profile = JWSProfileWBA
+		return sel, nil
+	case l.Status == Unavailable && l.WithinGrace:
+		sel.Profile, sel.StaleTrustRecord = JWSProfileWBA, true
+		return sel, nil
+	case l.Status == Unlisted && !IsTrustRecordUnavailable(l.Err):
+		// The record was read (or was never published, or O has no
+		// registrable domain). An Unlisted outcome that carries a fetch
+		// failure comes from the last record read; R4 never selects 3.2
+		// while the record cannot be read.
+		if v.BoundOrigins != nil {
+			_, bound, berr := v.BoundOrigins.PrincipalForOrigin(ctx, origin)
+			if berr != nil {
+				return sel, &JWSError{Reason: "origin binding lookup failed", Unavailable: true, Wrapped: berr}
+			}
+			if bound {
+				return sel, jwsInvalid("origin is bound and is never verified under the 3.2 profile")
+			}
+		}
+		sel.Profile = JWSProfile32
+		return sel, nil
 	default:
-		return 0, origin, &JWSError{Reason: "trust record unavailable", Unavailable: true, Wrapped: l.Err}
+		return sel, &JWSError{Reason: "trust record unavailable", Unavailable: true, Wrapped: l.Err}
 	}
 }
 
@@ -218,14 +274,8 @@ func (v *JWSVerifier) Verify(ctx context.Context, jws string, opts JWSVerifyOpti
 		return nil, errors.New("identity: historical verification requires an Archive")
 	}
 
-	profile, origin, err := v.SelectProfile(ctx, opts.SignerURL)
-	if err != nil {
-		return nil, err
-	}
-	if profile == JWSProfile32 {
-		return nil, ErrJWSProfile32
-	}
-
+	// The token is parsed before anything is fetched, so a malformed token
+	// costs no network access.
 	hdrB64, payloadB64, sigB64, header, err := parseCompactJWS(jws, opts)
 	if err != nil {
 		return nil, err
@@ -234,6 +284,19 @@ func (v *JWSVerifier) Verify(ctx context.Context, jws string, opts JWSVerifyOpti
 	if json.Unmarshal(header["kid"], &kid) != nil || !isThumbprint(kid) {
 		return nil, jwsInvalid("kid is not a JWK thumbprint")
 	}
+	payload, _ := base64.RawURLEncoding.Strict().DecodeString(payloadB64)
+	if err := strictjson.Validate(payload, 0); err != nil {
+		return nil, jwsInvalid("payload is not strict JSON")
+	}
+
+	sel, err := v.SelectProfile(ctx, opts.SignerURL)
+	if err != nil {
+		return nil, err
+	}
+	if sel.Profile == JWSProfile32 {
+		return nil, ErrJWSProfile32
+	}
+	origin := sel.Origin
 
 	jwk, err := v.Keys.ResolveWBAKey(ctx, origin, kid)
 	if err != nil {
@@ -260,13 +323,12 @@ func (v *JWSVerifier) Verify(ctx context.Context, jws string, opts JWSVerifyOpti
 	if err != nil || !ed25519.Verify(pub, []byte(hdrB64+"."+payloadB64), sig) {
 		return nil, jwsInvalid("signature did not verify")
 	}
-	payload, _ := base64.RawURLEncoding.Strict().DecodeString(payloadB64)
 
 	if opts.Artifact == GovernanceContext {
 		var claims struct {
 			Iss *string `json:"iss"`
 		}
-		if err := strictjson.Unmarshal(payload, 0, &claims); err != nil || claims.Iss == nil {
+		if err := json.Unmarshal(payload, &claims); err != nil || claims.Iss == nil {
 			return nil, jwsInvalid("payload has no iss")
 		}
 		if o, err := signing.CanonicalOrigin(*claims.Iss); err != nil || o != origin {
@@ -275,21 +337,28 @@ func (v *JWSVerifier) Verify(ctx context.Context, jws string, opts JWSVerifyOpti
 	}
 
 	state, rerr := v.Revocation.CheckWBAKey(ctx, origin, kid)
-	if state == signing.RevocationRevoked {
+	switch {
+	case state == signing.RevocationRevoked:
 		return nil, &JWSError{Reason: "signing key revoked", Revoked: true, Wrapped: rerr}
+	case state == signing.RevocationCurrent:
+	case (state == signing.RevocationStale || state == signing.RevocationNoList) && opts.AcceptStaleRevocation:
+	default:
+		return nil, &JWSError{Reason: "revocation list " + state.String(), Unavailable: true, Wrapped: rerr}
 	}
-	return &VerifiedJWS{Origin: origin, KeyID: kid, Header: header, Payload: payload, Revocation: state, Archived: archived}, nil
+	return &VerifiedJWS{Origin: origin, KeyID: kid, Header: header, Payload: payload, Revocation: state,
+		Archived: archived, StaleTrustRecord: sel.StaleTrustRecord}, nil
 }
 
 // parseCompactJWS splits a compact JWS and checks its protected header: every
-// segment canonical unpadded base64url, a strict-JSON header of at most 8 KiB
-// with alg EdDSA, the exact typ, and only understood crit extensions.
+// segment non-empty canonical unpadded base64url, a strict-JSON header of at
+// most 8 KiB with alg EdDSA, the exact typ, no b64 member, and only
+// understood crit extensions.
 func parseCompactJWS(jws string, opts JWSVerifyOptions) (hdrB64, payloadB64, sigB64 string, header map[string]json.RawMessage, err error) {
 	if len(jws) > jwsMaxBytes {
 		return "", "", "", nil, jwsInvalid("is too large")
 	}
 	parts := strings.Split(jws, ".")
-	if len(parts) != 3 || parts[0] == "" || parts[2] == "" {
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return "", "", "", nil, jwsInvalid("is not a compact JWS")
 	}
 	for _, p := range parts {
@@ -311,7 +380,7 @@ func parseCompactJWS(jws string, opts JWSVerifyOptions) (hdrB64, payloadB64, sig
 	if json.Unmarshal(header["typ"], &typ) != nil || typ != opts.Typ {
 		return "", "", "", nil, jwsInvalid("typ mismatch")
 	}
-	if b64, ok := header["b64"]; ok && string(b64) != "true" {
+	if _, ok := header["b64"]; ok {
 		return "", "", "", nil, jwsInvalid("b64 is not supported")
 	}
 	if c, ok := header["crit"]; ok {
@@ -394,21 +463,24 @@ type ArchiveFetcher func(ctx context.Context, url string) (*TrustResponse, error
 
 // HTTPGovernanceKeyArchive reads the governance key archive at
 // O + GovernanceKeyArchivePath on every lookup. Historical verification is
-// an audit path, so it does not cache.
+// an audit path, so it does not cache; at most MaxConcurrent fetches run at
+// once (default 4), and a lookup beyond that fails as unavailable.
 type HTTPGovernanceKeyArchive struct {
 	// Fetch defaults to an SSRF-safe HTTPS fetch with a 256 KiB cap.
 	Fetch ArchiveFetcher
+	// MaxConcurrent bounds concurrent archive fetches. Defaults to 4.
+	MaxConcurrent int
+
+	once  sync.Once
+	fetch ArchiveFetcher
+	slots chan struct{}
 }
 
-// ArchivedKey implements GovernanceKeyArchive. The archive is a JWK Set;
-// keys are matched by their computed JWK thumbprint, never by a kid member,
-// and an entry carrying private key material fails the whole archive, as it
-// does a key directory.
-func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thumbprint string) (*signing.JWK, error) {
-	fetch := a.Fetch
-	if fetch == nil {
+func (a *HTTPGovernanceKeyArchive) init() {
+	a.fetch = a.Fetch
+	if a.fetch == nil {
 		client := safefetch.NewClient()
-		fetch = func(ctx context.Context, url string) (*TrustResponse, error) {
+		a.fetch = func(ctx context.Context, url string) (*TrustResponse, error) {
 			r, err := safefetch.Get(ctx, client, url, safefetch.Options{Accept: "application/jwk-set+json, application/json", MaxBytes: archiveMaxBytes})
 			if err != nil {
 				return nil, err
@@ -416,9 +488,35 @@ func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thum
 			return &TrustResponse{Status: r.Status, Body: r.Body}, nil
 		}
 	}
-	res, err := fetch(ctx, origin+GovernanceKeyArchivePath)
+	n := a.MaxConcurrent
+	if n <= 0 {
+		n = 4
+	}
+	a.slots = make(chan struct{}, n)
+}
+
+// ArchivedKey implements GovernanceKeyArchive. The archive is a JWK Set.
+// Keys are matched by their computed JWK thumbprint; an entry whose kid
+// member is present and is not that thumbprint is skipped, because its
+// revocation would be published under that other kid, which the origin's
+// revocation list does not retain for Web Bot Auth keys. An entry carrying
+// private key material fails the whole archive, as it does a key directory.
+// A 404 or 410 means the origin publishes no archive (it is a SHOULD): the
+// key is not found.
+func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thumbprint string) (*signing.JWK, error) {
+	a.once.Do(a.init)
+	select {
+	case a.slots <- struct{}{}:
+		defer func() { <-a.slots }()
+	default:
+		return nil, errors.New("identity: governance key archive fetch capacity exceeded")
+	}
+	res, err := a.fetch(ctx, origin+GovernanceKeyArchivePath)
 	if err != nil {
 		return nil, err
+	}
+	if res.Status == http.StatusNotFound || res.Status == http.StatusGone {
+		return nil, nil
 	}
 	if res.Status != http.StatusOK || len(res.Body) > archiveMaxBytes {
 		return nil, fmt.Errorf("identity: governance key archive unavailable (HTTP %d)", res.Status)
@@ -447,10 +545,12 @@ func (a *HTTPGovernanceKeyArchive) ArchivedKey(ctx context.Context, origin, thum
 		if _, err := ed25519Key(jwk); err != nil {
 			continue
 		}
-		if tp, err := signing.JWKThumbprint(jwk); err == nil && tp == thumbprint && found == nil {
-			jwk.Kid = tp
-			found = &jwk
+		tp, err := signing.JWKThumbprint(jwk)
+		if err != nil || tp != thumbprint || (jwk.Kid != "" && jwk.Kid != tp) || found != nil {
+			continue
 		}
+		jwk.Kid = tp
+		found = &jwk
 	}
 	return found, nil
 }

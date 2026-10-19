@@ -525,6 +525,9 @@ type Listing struct {
 //     past its freshness. Without authority history (another replica, a
 //     restart, no durable History) there is no last record, and an outage
 //     is Unavailable without grace.
+//
+// role is required: an empty role matches no agents[] entry, so the origin
+// is Unlisted.
 func (e *TrustRecordEvaluator) CheckListing(ctx context.Context, origin, role string) Listing {
 	return e.checkListing(ctx, origin, func(r *TrustRecord) bool {
 		_, err := r.Agent(origin, role)
