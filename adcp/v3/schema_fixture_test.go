@@ -216,9 +216,8 @@ func readTranslatedSchema(rel string) ([]byte, error) {
 // walkSchemaPatterns visits every subschema of doc that carries a pattern
 // keyword, and reports each patternProperties key that is not valid RE2.
 // It follows the keywords that hold subschemas in draft-07 and in 2020-12, as
-// jsonschema-go compiles both, so a
-// "pattern" key inside examples, const, enum or default data is never taken
-// for the keyword. A subschema this walk missed still reaches Resolve, which
+// jsonschema-go compiles both, so a "pattern" key inside examples, const,
+// enum or default data is never taken for the keyword. A subschema this walk missed still reaches Resolve, which
 // fails on an invalid pattern rather than skipping it.
 func walkSchemaPatterns(node any, ptr string, onPattern func(obj map[string]any, ptr string), onBadKey func(ptr, key string)) {
 	obj, ok := node.(map[string]any)
@@ -309,7 +308,7 @@ var re2Translations = []re2Translation{
 		Reason:   `\uXXXX escapes are written \xXX; \s is spelled out as ECMA-262 whitespace (space here, the rest of ASCII via \x00-\x1F).`,
 		At:       []string{"core/macro-bearing-url.json#/anyOf/2/pattern"},
 		Match:    []string{"https://ads.example/click?u=%%CLICK_URL%%", "http://[::1]:8080/a%20b", "https://x.example"},
-		NoMatch:  []string{"https://ads.example/a b", "https://ads.example/a\u00a0b", "https://ads.example/a\tb", "https://ads.example/%zz", "ftp://x.example/"},
+		NoMatch:  []string{"https://ads.example/a b", "https://ads.example/a\u00a0b", "https://ads.example/a\tb", "https://ads.example/%zz", "ftp://x.example/", "https://ads.example/a\ufeffb"},
 	},
 	{
 		Original: `^https://(?![^/]*@)(?!localhost(?:[:/]|$))(?!\[)(?!\d+(?:\.\d+){3}(?::|/|$))(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?::\d+)?(?:/|$)`,
@@ -341,8 +340,8 @@ var re2Translations = []re2Translation{
 			"core/reporting-schedule-offering.json#/properties/delivery_sla/pattern",
 			"core/reporting-schedule.json#/properties/delivery_sla/pattern",
 		},
-		Match:   []string{"P1D", "PT4H", "P1Y2M3DT4H5M6S", "P0D", "PT30M"},
-		NoMatch: []string{"P", "PT", "P1DT", "1D", "P1H", "PT1D"},
+		Match:   []string{"P1D", "PT4H", "P1Y2M3DT4H5M6S", "P0D", "PT30M", "P1M2D"},
+		NoMatch: []string{"P", "PT", "P1DT", "1D", "P1H", "PT1D", "PY"},
 	},
 	{
 		Original: `^P(?=.*[1-9])(?=\d|T)(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$`,
@@ -357,7 +356,7 @@ var re2Translations = []re2Translation{
 			"core/reporting-schedule-offering.json#/properties/period_duration/pattern",
 			"core/reporting-schedule.json#/properties/period_duration/pattern",
 		},
-		Match:   []string{"P1D", "PT1H", "P0Y1M", "P0DT0H10M", "P1Y2M3DT4H5M6S"},
+		Match:   []string{"P1D", "PT1H", "P0Y1M", "P0DT0H10M", "P1Y2M3DT4H5M6S", "P0Y1D"},
 		NoMatch: []string{"P0D", "PT0S", "P0Y0M0DT0H0M0S", "P", "PT", "P1DT"},
 	},
 	{
@@ -567,7 +566,7 @@ func TestSchemaBundleExamplesValidate(t *testing.T) {
 
 // TestAssertSchemaValidRejectsKnownBadFixtures replays two fixtures that
 // passed CI and review because the Go types accept any string or object: the
-// first heads of adcontextprotocol/adcp-go#545 (c715938) and #581 (dd5a97a),
+// first heads of adcontextprotocol/adcp-go#545 (c715938) and #581 (7643ff1),
 // verbatim. Each is rejected, and the defect named is what makes it invalid.
 func TestAssertSchemaValidRejectsKnownBadFixtures(t *testing.T) {
 	requireSchemaBundle(t)
