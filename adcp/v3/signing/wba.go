@@ -490,8 +490,17 @@ func verifyWebBotAuthRequest(r *http.Request, opts WBAVerifyOptions) (*VerifiedS
 		count  int
 	)
 	for _, e := range inputs {
+		// RFC 9421 §4.1: every Signature-Input member is an inner list, so
+		// a member that is not makes the field malformed, 400, whatever its
+		// label or tag (profile verification step 1). This runs before the
+		// web-bot-auth member is chosen, so a malformed web-bot-auth member
+		// is 400, not "no web-bot-auth signature". The Signature half of the
+		// check runs after the 403 below: an AdCP 3.0 or 3.1 signer's
+		// unpadded base64url Signature is often not an RFC 8941 Byte
+		// Sequence, and it needs the 403 and Accept-Signature hint to
+		// switch profiles.
 		if !e.member.inner {
-			continue
+			return nil, wbaFail(http.StatusBadRequest, "", "Signature-Input member is malformed")
 		}
 		if tag, ok := stringParam(e.member.params, "tag"); ok && tag == ProfileTagWebBotAuth {
 			if count == 0 {

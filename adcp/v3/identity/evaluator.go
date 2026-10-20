@@ -444,7 +444,7 @@ func (e *TrustRecordEvaluator) resolve(ctx context.Context, domain, recordURL st
 		if err != nil {
 			return nil, trustErr("trust record is invalid", err)
 		}
-		e.warnHostGrantees(domain, rec)
+		e.warnNonRegistrableGrantees(domain, rec)
 		if rec.AuthoritativeLocation == "" {
 			return &EvaluatedTrustRecord{OperatorDomain: domain, SourceURL: source, Record: rec, ExpiresAt: expires}, nil
 		}
@@ -740,18 +740,16 @@ func (e *TrustRecordEvaluator) Bind(ctx context.Context, signer *signing.Verifie
 	return rec, nil
 }
 
-// warnHostGrantees logs each grant whose grantee is a host under a
-// registrable domain rather than the registrable domain itself, with no
-// agents[] narrowing. Grantees are compared as registrable domains, so such
-// a grant reaches every agent of that operator, not only the host named
-// (for a multi-tenant vendor, every tenant). Whether the spec should
-// narrow it implicitly is an open question; until it is settled the grant
-// is read as written and the operator is told.
-func (e *TrustRecordEvaluator) warnHostGrantees(domain string, rec *TrustRecord) {
+// warnNonRegistrableGrantees logs each grant whose grantee is not a
+// registrable domain: a host under one, or a public suffix. Such a grant
+// covers no claim (L2 Grants in trust.json), so the operator is told why it
+// has no effect. Its scopes still count for exclusive_grants. The grantee is
+// a lowercase DNS name (the schema's domain pattern), so it is safe to log.
+func (e *TrustRecordEvaluator) warnNonRegistrableGrantees(domain string, rec *TrustRecord) {
 	for i, g := range rec.Grants {
-		if d, ok := psl.RegistrableDomain(g.Grantee); ok && d != g.Grantee && g.Agents == nil {
-			e.logger.Warn("identity: trust record grants a host without agents[]; the grant covers the whole registrable domain",
-				"operator", domain, "grant", i, "registrable_domain", d)
+		if !isRegistrableDomain(g.Grantee) {
+			e.logger.Warn("identity: trust record grant names a grantee that is not a registrable domain; the grant covers no claim",
+				"operator", domain, "grant", i, "grantee", g.Grantee)
 		}
 	}
 }

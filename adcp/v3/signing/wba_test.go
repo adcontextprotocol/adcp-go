@@ -688,6 +688,12 @@ func TestWBASignatureAgentIsExactlyAnOrigin(t *testing.T) {
 		"default port spelled out": "https://buyer.example.com:443",
 		"userinfo":                 "https://u@buyer.example.com",
 		"http":                     "http://buyer.example.com",
+		// A port with a leading zero survived CanonicalOrigin as a second
+		// spelling of the identity; WHATWG (the judge) refuses it.
+		"default port with a leading zero": "https://buyer.example.com:0443",
+		"port with a leading zero":         "https://buyer.example.com:08443",
+		"port out of range":                "https://buyer.example.com:99999",
+		"port zero":                        "https://buyer.example.com:0",
 	} {
 		t.Run(name, func(t *testing.T) {
 			opts := rig.opts()
@@ -698,6 +704,28 @@ func TestWBASignatureAgentIsExactlyAnOrigin(t *testing.T) {
 			require.False(t, we.DiscoveryFailure)
 			require.Equal(t, before, rig.dirs.count(rig.origin), "refused before any directory fetch")
 		})
+	}
+}
+
+// TestWBAOriginPortIsCanonical: a Web Bot Auth origin's port is decimal,
+// 1 to 65535, with no leading zero, wherever an origin is named (signer,
+// directory, revocation, Signature-Agent), so one identity has one
+// spelling.
+func TestWBAOriginPortIsCanonical(t *testing.T) {
+	for _, ok := range []string{"https://buyer.example.com", "https://buyer.example.com:8443", "https://buyer.example.com:1", "https://buyer.example.com:65535"} {
+		o, err := webBotAuthOrigin(ok)
+		require.NoError(t, err, ok)
+		require.Equal(t, ok, o)
+	}
+	o, err := webBotAuthOrigin("https://buyer.example.com:443")
+	require.NoError(t, err)
+	require.Equal(t, "https://buyer.example.com", o, "the default port is stripped")
+	key := newWBARig(t).key
+	for _, bad := range []string{"https://buyer.example.com:0443", "https://buyer.example.com:08443", "https://buyer.example.com:00443", "https://buyer.example.com:0", "https://buyer.example.com:65536", "https://buyer.example.com:99999"} {
+		_, err := webBotAuthOrigin(bad)
+		require.Error(t, err, bad)
+		_, err = SignKeyDirectory(bad, []any{key}, wbaTestNow, time.Hour)
+		require.Error(t, err, "the signer refuses %s too", bad)
 	}
 }
 
@@ -715,6 +743,7 @@ func TestWBAMalformedSignatureMemberIs400(t *testing.T) {
 		{"sibling Signature member is an inner list", sibling, "cdn=(1 2)"},
 		{"sibling Signature member has a parameter", sibling, "cdn=:AAAA:;x=1"},
 		{"sibling Signature-Input member is a token", `cdn=token;tag="cdn-edge"`, "cdn=:AAAA:"},
+		{"sibling Signature-Input member is a token tagged web-bot-auth", `cdn=token;tag="web-bot-auth"`, "cdn=:AAAA:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rig := newWBARig(t)
@@ -725,6 +754,42 @@ func TestWBAMalformedSignatureMemberIs400(t *testing.T) {
 			requireWBAStatus(t, err, http.StatusBadRequest)
 		})
 	}
+
+	// A malformed web-bot-auth Signature-Input member is 400, not "no
+	// web-bot-auth signature": the Signature-Input check runs before the
+	// member is chosen. So is a malformed member when the request carries
+	// no web-bot-auth member at all.
+	for name, input := range map[string]string{ // #nosec G101 -- Signature-Input fixtures, no credentials.
+		"web-bot-auth Signature-Input member is a token":  `sig1=token;tag="web-bot-auth"`,
+		"Signature-Input token beside an RFC 9421 member": `sig1=("@method");created=1;keyid="k";tag="adcp/request-signing/v1", cdn=token`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			rig := newWBARig(t)
+			r := rig.signedRequest(t, `{"jsonrpc":"2.0","id":1}`)
+			r.Header.Set("Signature-Input", input)
+			sig := "sig1=:AAAA:"
+			if strings.Contains(input, "cdn=") {
+				sig += ", cdn=:AAAA:"
+			}
+			r.Header.Set("Signature", sig)
+			_, err := VerifyWebBotAuthRequest(r, rig.opts())
+			requireWBAStatus(t, err, http.StatusBadRequest)
+		})
+	}
+
+	// The Signature half keeps #571's order: a request with no web-bot-auth
+	// member gets 403 with Accept-Signature before Signature is parsed, so
+	// an AdCP 3.0 or 3.1 signer whose unpadded base64url Signature is not
+	// an RFC 8941 Byte Sequence is told to switch profiles.
+	t.Run("malformed Signature with no web-bot-auth member stays 403", func(t *testing.T) {
+		rig := newWBARig(t)
+		r := rig.signedRequest(t, `{"jsonrpc":"2.0","id":1}`)
+		r.Header.Set("Signature-Input", `sig1=("@method");created=1;keyid="k";tag="adcp/request-signing/v1"`)
+		r.Header.Set("Signature", "sig1=token")
+		_, err := VerifyWebBotAuthRequest(r, rig.opts())
+		we := requireWBAError(t, err, http.StatusForbidden)
+		require.NotEmpty(t, we.ResponseHeader().Get("Accept-Signature"))
+	})
 
 	for name, mutate := range map[string]func(string) string{
 		"web-bot-auth Signature member is a token":       func(string) string { return "sig1=token" },
