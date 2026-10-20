@@ -67,9 +67,7 @@ EXEMPT = {
     # it; types.go defines the warning from the violation shape it names.
     'ValidateInputWarning',
     # inputs (agent-specific helpers, schemas are inline in request schemas)
-    'EmptyInput', 'AccountInput', 'GovernanceAccountInput',
-    'CreativeInput', 'CatalogInput', 'EventSourceInput', 'DestinationInput',
-    'CreativeFilters', 'SignalFilters',
+    'EmptyInput', 'EventSourceInput', 'SignalFilters',
     # response builders (funcs, not structs — KNOWN_TYPES collision guard)
     'SyncCreativesResponse', 'SyncAccountsResponse', 'GovernanceResponse',
     'ListCreativesResponse', 'PreviewCreativeResponse', 'BuildCreativeResponse',
@@ -77,18 +75,16 @@ EXEMPT = {
     'SyncCatalogsResponse', 'SyncEventSourcesResponse', 'LogEventResponse',
     'PerformanceFeedbackResponse',
     # plan types — inline nested in sync-plans-request.json, generator cannot descend
-    'Plan', 'PlanBudget', 'PlanBudgetAllocation', 'PlanFlight',
-    'PlanChannels', 'PlanChannelMixTarget', 'PlanDelegation',
-    'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
+    'Plan', 'PlanBudget', 'PlanDelegationBudget', 'PlanPortfolioBudgetCap',
     'HumanOverride',
     # sync-response inline items (schemas live inside tool response schemas)
     'AccountResult', 'AccountSetup', 'CreativeResult', 'CatalogResult',
     'EventSourceResult', 'LogEventResult', 'GovernanceResult',
     'GovernanceAccount', 'GovernanceAgent', 'CreativeListItem',
-    'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
-    'PackageStatus', 'PackageCreativeApproval', 'PackageSnapshot',
-    'SyncCreativeAssignment', 'DeliveryTotals', 'DeliveryData',
-    'ReportingPeriod', 'PreviewResult', 'Preview',
+    'MediaBuyListItem', 'MediaBuyData',
+    'PackageStatus', 'PackageCreativeApproval',
+    'DeliveryTotals', 'DeliveryData',
+    'ReportingPeriod', 'PreviewResult',
     'PreviewRender', 'BuildCreativeResult', 'ProductsData',
     # Legacy capability response wrapper also carries transport-envelope fields;
     # migrate it separately from schema bundle upgrades.
@@ -99,13 +95,10 @@ EXEMPT = {
     'UpdateCollectionListResponse', 'DeleteCollectionListResponse',
     'ListCollectionListsResponse',
     # collection list structural types (hand-shaped, separate review)
-    'CollectionList', 'CollectionListFilters', 'BaseCollectionSource',
-    'DistributionID', 'ResolvedCollection', 'CollectionPagination',
-    # governance Plan's DataSubjectContestation is also inline
-    'DataSubjectContestation',
+    'CollectionList', 'BaseCollectionSource', 'ResolvedCollection',
+    'CollectionPagination',  # no Go field holds it; GetCollectionListRequest uses CollectionRequestPagination
     # nested shapes embedded inside other schemas — no top-level schema file
     'BillingMeasurement',  # nested in measurement-terms.json
-    'MakegoodPolicy',      # nested in measurement-terms.json
     'CancellationFee',     # nested in cancellation-policy.json
     # Render / AssetSlot intentionally deferred to the format.json rework task
     'Render', 'AssetSlot',
@@ -116,16 +109,147 @@ EXEMPT = {
     # top-level keys for replacement-update round trips.
     'OptimizationGoal',
     # Reporting types hand-written from core schemas
-    'ReportingConsumerStatus', 'ReportingConsumerStatusPeriod',
-    'ReportingStatusResult', 'ReportingReceipt',
-    'ReportingAdjustmentReceipt', 'ReportingReceiptResult',
+    'ReportingStatusResult', 'ReportingReceipt', 'ReportingReceiptResult',
 }
+
+# Field-level drift a paired hand-written type carries today. Pairing a type in
+# generate.py's HAND_WRITTEN_SCHEMA_SPECS and taking it out of EXEMPT makes lint
+# compare it with its schema; the drift it already has is listed here, field by
+# field, so --strict passes while every gap is still printed in each run.
+#
+#   Go type name -> finding kind -> {json field: issue that owns the gap}
+#
+# Kinds are the lists lint reports for a paired type: missing_in_go,
+# extra_in_go and required_with_omitempty (schema drift), and
+# optional_bool_pointer and optional_numeric_pointer (hand-written pointer
+# checks). Each entry names its issue as `#123` or `owner/repo#123`; #564 owns
+# what no narrower issue covers yet, and stays open while it owns entries. An
+# entry that no longer matches a finding fails lint, so the list only shrinks:
+# the PR that adds a field deletes its entry. Entries are keyed by type, so for
+# a type with several HAND_WRITTEN_INLINE_SCHEMA_SPECS pointers one entry
+# covers that field on every pointer.
+KNOWN_SCHEMA_GAPS = {
+    'AccountInput': {
+        'missing_in_go': {
+            'account': '#564',
+            'billing_entity': '#564',
+            'currency': '#564',
+            'destination_billing_entity': '#564',
+            'notification_configs': '#564',
+            'operator_identity': '#564',
+            'operator_unit': '#564',
+            'preferred_reporting_protocol': '#564',
+            'reporting_delivery_configs': '#564',
+            'revision': '#564',
+            'timezone': '#564',
+        },
+        # Top-level account_id is not a sync_accounts property; settings-update
+        # entries carry it inside `account`.
+        'extra_in_go': {
+            'account_id': '#564',
+        },
+        # lint asks for *bool on every optional boolean so an explicit false
+        # survives omitempty; the schema gives sandbox no default.
+        'optional_bool_pointer': {
+            'sandbox': '#564',
+        },
+    },
+    'CatalogInput': {
+        'missing_in_go': {
+            'category': '#564',
+            'content_id_type': '#564',
+            'conversion_events': '#564',
+            'feed_field_mappings': '#564',
+            'feed_format': '#564',
+            'gtins': '#564',
+            'ids': '#564',
+            'name': '#564',
+            'query': '#564',
+            'tags': '#564',
+            'type': '#564',
+            'update_frequency': '#564',
+            'url': '#564',
+        },
+    },
+    'CreativeFilters': {
+        'missing_in_go': {
+            'accounts': '#564',
+            'asset_types': '#564',
+            'assigned_to_packages': '#564',
+            'concept_ids': '#564',
+            'created_after': '#564',
+            'created_before': '#564',
+            'ext': '#564',
+            'format_kinds': '#564',
+            'has_served': '#564',
+            'has_variables': '#564',
+            'indicator_types': '#564',
+            'media_buy_ids': '#564',
+            'name_contains': '#564',
+            'statuses': '#564',
+            'tags': '#564',
+            'tags_any': '#564',
+            'unassigned': '#564',
+            'updated_after': '#564',
+            'updated_before': '#564',
+        },
+    },
+    'CreativeInput': {
+        'missing_in_go': {
+            'component_assets': '#564',
+            'format_kind': '#564',
+            'format_option_ref': '#564',
+            'industry_identifiers': '#564',
+            'inputs': '#564',
+            'localization': '#567',
+            'placement_ids': '#564',
+            'placement_refs': '#564',
+            'provenance': '#564',
+            'representation_selection': '#564',
+            'revision_id': '#567',
+            'rights': '#564',
+            'status': '#564',
+            'tags': '#564',
+            'weight': '#564',
+        },
+        # The schema allows an empty name and an empty assets object, which
+        # omitempty drops, leaving the item without a required property.
+        'required_with_omitempty': {
+            'assets': '#564',
+            'name': '#564',
+        },
+    },
+    'GovernanceAccountInput': {
+        # The accounts[] item is closed (additionalProperties: false), so a
+        # request that sets either field fails schema validation.
+        'extra_in_go': {
+            'brand': '#564',
+            'operator': '#564',
+        },
+        # omitempty drops only a nil account or an empty governance_agents,
+        # which the schema rejects anyway (required, minItems: 1).
+        'required_with_omitempty': {
+            'account': '#564',
+            'governance_agents': '#564',
+        },
+    },
+}
+
+KNOWN_SCHEMA_GAP_KINDS = (
+    'missing_in_go',
+    'extra_in_go',
+    'required_with_omitempty',
+    'optional_bool_pointer',
+    'optional_numeric_pointer',
+)
+DRIFT_GAP_KINDS = ('missing_in_go', 'extra_in_go', 'required_with_omitempty')
+ISSUE_REF_RE = re.compile(r'(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*')
 
 # Map hand-written Go type name → schema path (relative to schemas/).
 # For types whose Go name doesn't match schema filename-derived PascalCase,
-# this table declares the pairing explicitly. Types with no standalone schema
-# file (nested shapes, dead code) belong in EXEMPT, not here — None entries
-# were removed because they never reach path resolution.
+# this table declares the pairing explicitly. A shape with no standalone schema
+# file is paired by JSON pointer (`file.json#/pointer`) to the node that its
+# holding field maps to; types with no schema node at all belong in EXEMPT.
 EXPLICIT_SCHEMA = gen.HAND_WRITTEN_SCHEMA_SPECS
 
 # STRUCT_RE assumes gofmt layout (closing `}` at column 0) and top-level
@@ -1047,6 +1171,9 @@ How to fix drift:
   - `required+omitempty`: the schema marks this field required but Go has
     `omitempty` in its tag. Drop `,omitempty` — Go will silently drop required
     fields from the wire when the zero value is present.
+  - Pairing a type whose fields cannot be fixed in the same PR: list each
+    finding in KNOWN_SCHEMA_GAPS with the issue that owns it, rather than
+    leaving the whole type in EXEMPT.
 See adcp/v3/schemas/generate.py's KNOWN_TYPES comment for criteria on hand-written
 vs generator-owned types."""
 
@@ -1068,6 +1195,138 @@ def _assert_exempt_subset_known(go_structs):
             'the generator does not try to emit duplicates.',
             file=sys.stderr,
         )
+
+
+def validate_known_schema_gaps_config():
+    """Require every KNOWN_SCHEMA_GAPS entry to have a known kind and an issue."""
+    reports = []
+    for type_name, kinds in sorted(KNOWN_SCHEMA_GAPS.items()):
+        for kind, fields in sorted(kinds.items()):
+            if kind not in KNOWN_SCHEMA_GAP_KINDS:
+                reports.append({
+                    'type': type_name,
+                    'kind': kind,
+                    'error': (
+                        'unknown known-gap kind; use one of '
+                        + ', '.join(KNOWN_SCHEMA_GAP_KINDS)
+                    ),
+                })
+                continue
+            for json_name, ref in sorted(fields.items()):
+                if not isinstance(ref, str) or not ISSUE_REF_RE.fullmatch(ref):
+                    reports.append({
+                        'type': type_name,
+                        'kind': kind,
+                        'json': json_name,
+                        'ref': ref,
+                        'error': (
+                            'known gap needs the issue that owns it, as #123 '
+                            'or owner/repo#123'
+                        ),
+                    })
+    return reports
+
+
+def _known_gap_ref(type_name, kind, json_name):
+    ref = KNOWN_SCHEMA_GAPS.get(type_name, {}).get(kind, {}).get(json_name)
+    if isinstance(ref, str) and ISSUE_REF_RE.fullmatch(ref):
+        return ref
+    return None
+
+
+def split_known_drift(drift, known, matched):
+    """Move KNOWN_SCHEMA_GAPS fields out of a diff_type report.
+
+    Returns the report with only the unlisted findings left, or None when none
+    are left. Each suppressed field is appended to `known` and recorded in
+    `matched` as (type, kind, json) so stale entries can be found afterwards.
+    """
+    if drift is None:
+        return None
+    if drift.get('error'):
+        return drift
+    type_name = drift['type']
+    remaining = dict(drift)
+    for kind in DRIFT_GAP_KINDS:
+        kept = []
+        for json_name in drift.get(kind, []):
+            ref = _known_gap_ref(type_name, kind, json_name)
+            if ref is None:
+                kept.append(json_name)
+                continue
+            matched.add((type_name, kind, json_name))
+            known.append({
+                'type': type_name,
+                'schema': drift.get('schema', '?'),
+                'kind': kind,
+                'json': json_name,
+                'ref': ref,
+            })
+        remaining[kind] = kept
+    if any(remaining.get(kind) for kind in DRIFT_GAP_KINDS):
+        return remaining
+    return None
+
+
+def split_known_pointer_reports(reports, kind, known, matched):
+    """Move KNOWN_SCHEMA_GAPS fields out of hand-written pointer reports."""
+    kept = []
+    for r in reports:
+        ref = None
+        if r.get('owner') == 'hand-written':
+            ref = _known_gap_ref(r['type'], kind, r['json'])
+        if ref is None:
+            kept.append(r)
+            continue
+        matched.add((r['type'], kind, r['json']))
+        known.append({
+            'type': r['type'],
+            'schema': r.get('schema', '?'),
+            'kind': kind,
+            'json': r['json'],
+            'ref': ref,
+        })
+    return kept
+
+
+def stale_known_schema_gaps(matched):
+    """Report KNOWN_SCHEMA_GAPS entries that matched no finding in this run."""
+    reports = []
+    matched_types = {type_name for type_name, _, _ in matched}
+    for type_name, kinds in sorted(KNOWN_SCHEMA_GAPS.items()):
+        if type_name not in matched_types:
+            reports.append({
+                'type': type_name,
+                'kind': 'all',
+                'error': (
+                    'stale known gaps: lint reports none of this type\'s '
+                    'entries (it is not paired, it is in EXEMPT, its schema '
+                    'pointer did not resolve, or every gap closed); pair the '
+                    'type or delete its entries'
+                ),
+            })
+            continue
+        for kind, fields in sorted(kinds.items()):
+            if kind not in KNOWN_SCHEMA_GAP_KINDS:
+                continue
+            for json_name, ref in sorted(fields.items()):
+                if (type_name, kind, json_name) in matched:
+                    continue
+                if not isinstance(ref, str) or not ISSUE_REF_RE.fullmatch(ref):
+                    continue  # validate_known_schema_gaps_config reports it
+                reports.append({
+                    'type': type_name,
+                    'kind': kind,
+                    'json': json_name,
+                    'ref': ref,
+                    'error': (
+                        'stale known gap: lint no longer reports this finding '
+                        '(the field was fixed or left the schema, the type is '
+                        'not paired, or its schema pointer did not resolve); '
+                        'delete the entry or fix the pairing'
+                    ),
+                })
+    return reports
 
 
 def main():
@@ -1106,10 +1365,24 @@ def main():
         go_structs,
         custom_json_methods,
     )
-    optional_bool_reports = optional_bool_pointer_reports(go_structs)
-    optional_numeric_reports = optional_numeric_pointer_reports(go_structs)
+    known_gaps = []
+    matched_gaps = set()
+    optional_bool_reports = split_known_pointer_reports(
+        optional_bool_pointer_reports(go_structs),
+        'optional_bool_pointer', known_gaps, matched_gaps,
+    )
+    optional_numeric_reports = split_known_pointer_reports(
+        optional_numeric_pointer_reports(go_structs),
+        'optional_numeric_pointer', known_gaps, matched_gaps,
+    )
     hand_written_inline_schema_divergence = validate_hand_written_inline_schema_divergence()
-    hand_written_inline_reports = validate_hand_written_inline_schema_specs(go_structs)
+    hand_written_inline_reports = [
+        r for r in (
+            split_known_drift(drift, known_gaps, matched_gaps)
+            for drift in validate_hand_written_inline_schema_specs(go_structs)
+        )
+        if r
+    ]
     reports.extend(hand_written_inline_reports)
 
     for type_name in sorted(gen.KNOWN_TYPES):
@@ -1124,9 +1397,17 @@ def main():
             # No schema correspondent — these are candidates for deletion.
             no_schema.append(type_name)
             continue
-        drift = diff_type(type_name, go_structs[type_name], schema_spec)
+        drift = split_known_drift(
+            diff_type(type_name, go_structs[type_name], schema_spec),
+            known_gaps, matched_gaps,
+        )
         if drift:
             reports.append(drift)
+
+    known_gap_errors = (
+        validate_known_schema_gaps_config() + stale_known_schema_gaps(matched_gaps)
+    )
+    known_gaps.sort(key=lambda g: (g['type'], g['schema'], g['kind'], g['json']))
 
     if args.json:
         out = {
@@ -1143,6 +1424,8 @@ def main():
             'custom_wire_field_errors': custom_wire_field_errors,
             'optional_bool_pointer': optional_bool_reports,
             'optional_numeric_pointer': optional_numeric_reports,
+            'known_schema_gaps': known_gaps,
+            'known_schema_gap_errors': known_gap_errors,
         }
         print(json.dumps(out, indent=2))
     else:
@@ -1288,6 +1571,14 @@ def main():
                 print(f'    Go type: {r["go_type"]}')
                 print('    fix:     use *int/*float64 or add an OPTIONAL_NUMERIC_SCALAR_OK waiver')
             print()
+        if known_gap_errors:
+            print(f'Known schema gap errors ({len(known_gap_errors)}):')
+            for r in known_gap_errors:
+                print()
+                where = r['type'] + (f'.{r["json"]}' if r.get('json') else '')
+                print(f'  {where}  ({r["kind"]}, {r.get("ref", "no issue")})')
+                print(f'    error: {r["error"]}')
+            print()
         if reports:
             print(f'Schema drift detected in {len(reports)} type(s):')
             for r in reports:
@@ -1304,6 +1595,25 @@ def main():
             print(DRIFT_REMEDIATION)
         else:
             print('No schema drift.')
+        if known_gaps:
+            print()
+            print(
+                f'Known schema gaps ({len(known_gaps)} field(s), each owned by '
+                'an issue; listed in KNOWN_SCHEMA_GAPS, not failing):'
+            )
+            by_type = OrderedDict()
+            for g in known_gaps:
+                by_type.setdefault((g['type'], g['schema']), []).append(g)
+            for (type_name, schema_spec), gaps in by_type.items():
+                print()
+                print(f'  {type_name}  ({schema_spec})')
+                for kind in KNOWN_SCHEMA_GAP_KINDS:
+                    fields = [
+                        f'{g["json"]} ({g["ref"]})'
+                        for g in gaps if g['kind'] == kind
+                    ]
+                    if fields:
+                        print(f'    {kind}: {", ".join(fields)}')
         if no_schema:
             print()
             print('Types in KNOWN_TYPES with no schema correspondent '
@@ -1323,6 +1633,7 @@ def main():
         or bool(optional_bool_reports)
         or bool(reports)
         or bool(optional_numeric_reports)
+        or bool(known_gap_errors)
         or (args.strict and bool(no_schema))
     )
     return 1 if (args.strict and has_problems) else 0
