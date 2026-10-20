@@ -8,6 +8,7 @@ import (
 
 func TestGeneratedCapabilitiesResponseUsesTypedBlocks(t *testing.T) {
 	resp := GetAdcpCapabilitiesResponse{
+		Status: TaskStatusCompleted,
 		Adcp: ADCPVersion{
 			MajorVersions: []int{3},
 			Idempotency: IdempotencyCaps{
@@ -47,6 +48,7 @@ func TestGeneratedCapabilitiesResponseUsesTypedBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal capabilities response: %v", err)
 	}
+	assertSchemaValid(t, "protocol/get-adcp-capabilities-response.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"account_id_is_opaque":true`,
