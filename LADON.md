@@ -55,13 +55,14 @@ a response-shape / HTTP-status change on a router endpoint, without a `feat!:` /
 `fix!:` commit or a `BREAKING CHANGE:` footer on at least one commit is a `high`
 finding.
 
-### Mandatory: every 3.x wire change has a pathway back
+### Mandatory: every minor-release wire change has a pathway back
 
 Per adcontextprotocol/adcp DR-0032 and DR-0033, the SDK lets application code
-speak one AdCP release and translates for older counterparts. Every PR that
-adds or changes support for a 3.x wire field, enum value, task, union variant
-or semantic rule must also handle the previous minor release, in one of four
-ways:
+speak one AdCP release and translates for older counterparts. Minor releases
+are non-breaking and backward compatible: on 3.x now, and in each later
+major's own minors from 4.1 onward. Every PR that adds or changes support for a
+wire field, enum value, task, union variant or semantic rule in a minor release
+must also handle the previous minor of the same major, in one of four ways:
 
 - **Droppable:** older counterparts never see it. On a mutating request this
   is allowed only if dropping it does not change spend, targeting, caps or
