@@ -114,14 +114,18 @@ func TestValidateTrustRecordModesAndOwner(t *testing.T) {
 		require.Error(t, err, name)
 	}
 	// An author must write a registrable domain (the error says to narrow
-	// with agents[]). A reader keeps a record whose grantee is a host
-	// (compared as its registrable domain, L2 Grants in trust.json) or has
-	// no registrable domain (that grant matches nothing).
-	_, err = ValidateTrustRecord([]byte(`{"grants":[{"grantee":"buy.agency.com","scopes":["adcp:media_buying"]}]}`), TrustRecordOptions{Owner: "example.com"})
-	require.ErrorContains(t, err, "agents[]")
-	for _, grantee := range []string{"buy.agency.com", "github.io"} {
-		_, err = ValidateTrustRecord([]byte(`{"grants":[{"grantee":"`+grantee+`","scopes":["adcp:media_buying"]}]}`), TrustRecordOptions{Mode: Reading, Owner: "example.com"})
-		require.NoError(t, err, "a reader keeps the record: %s", grantee)
+	// with agents[]). A reader keeps a record
+	// whose grantee is a host or a public suffix: that grant covers no
+	// claim (L2 Grants in trust.json).
+	for _, owner := range []string{"example.com", "www.example.com"} {
+		for _, grantee := range []string{"buy.agency.com", "github.io"} {
+			_, err = ValidateTrustRecord([]byte(`{"grants":[{"grantee":"`+grantee+`","scopes":["adcp:media_buying"]}]}`), TrustRecordOptions{Owner: owner})
+			require.ErrorContains(t, err, "agents[]", "owner %q, grantee %s", owner, grantee)
+			_, err = ValidateTrustRecord([]byte(`{"grants":[{"grantee":"`+grantee+`","scopes":["adcp:media_buying"]}]}`), TrustRecordOptions{Mode: Reading, Owner: owner})
+			require.NoError(t, err, "a reader keeps the record: owner %q, grantee %s", owner, grantee)
+		}
+		_, err = ValidateTrustRecord([]byte(`{"grants":[{"grantee":"alice.github.io","scopes":["adcp:media_buying"]}]}`), TrustRecordOptions{Owner: owner})
+		require.NoError(t, err, "alice.github.io is a registrable domain under a private-section suffix")
 	}
 	big := `{"grants":[],"ext":{"v":{"pad":"` + strings.Repeat("x", TrustRecordMaxBytes) + `"}}}`
 	_, err = ValidateTrustRecord([]byte(big), TrustRecordOptions{})
