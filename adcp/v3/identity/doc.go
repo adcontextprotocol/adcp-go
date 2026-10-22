@@ -16,7 +16,10 @@
 // so the signature path cannot consult one. A trust record is evaluated only
 // when something is gated on it: binding a principal (BindingGate,
 // TrustRecordEvaluator.Bind), evaluating a grant (GrantEvaluator), and open
-// onboarding (TrustRecordEvaluator.Evaluate with the required role).
+// onboarding (TrustRecordEvaluator.Evaluate with the required role). For a
+// JWS artifact, JWSVerifier derives the record from the issuer's origin to
+// select the profile (spec R4); the request-signature path still never reads
+// one.
 //
 // # Authority
 //

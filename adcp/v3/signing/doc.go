@@ -20,8 +20,11 @@
 // # AdCP 3.3: the RFC 9421 profile is deprecated
 //
 // AdCP 3.3 deprecates the RFC 9421 profile. It remains fully supported
-// through 3.x and is removed in 4.0. JWS document signing stays on the
-// RFC 9421 chain until 3.4. The experimental Web Bot Auth profile is opt-in:
+// through 3.x and is removed in 4.0. A JWS artifact (governance context,
+// designated-task response signing, rights attestation) from an issuer
+// whose origin a trust record lists is verified with a key from that
+// origin's key directory (identity.JWSVerifier); other issuers stay on the
+// 3.2 chain. The experimental Web Bot Auth profile is opt-in:
 // SignerOptions.AgentOrigin on the signer, and MiddlewareOptions.WebBotAuth
 // (or VerifyWebBotAuthRequest) on the verifier. Under it, identity is the
 // signer's canonical origin and keys come from that origin's key directory

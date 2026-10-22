@@ -36,8 +36,9 @@ const (
 	// advisory and never machine-satisfiable, without relaxing any
 	// authority-bearing member. One rule differs by mode: Authoring
 	// requires every grantee to be a registrable domain, while Reading
-	// keeps a record whose grantee is a host (compared as its registrable
-	// domain) or has no registrable domain (that grant matches nothing).
+	// keeps a record whose grantee is not one (a host, or a public
+	// suffix). That grant covers no claim, and its scopes still count for
+	// exclusive_grants (L2 Grants in trust.json).
 	Reading
 )
 
@@ -46,10 +47,7 @@ type TrustRecordOptions struct {
 	Mode ValidationMode
 	// Owner, when set, is the registrable domain (or a host under it) the
 	// record speaks for: the host serving it. Every agent origin must then
-	// be HTTPS under that registrable domain. In Authoring mode every
-	// grantee must be a registrable domain (narrow with agents[]); a reader
-	// accepts a host under one and compares it as its registrable domain
-	// (L2 Grants in trust.json).
+	// be HTTPS under that registrable domain.
 	Owner string
 }
 
@@ -145,15 +143,15 @@ func (r *TrustRecord) checkRules(owner string, mode ValidationMode) error {
 		}
 	}
 	for i, g := range r.Grants {
-		// A grantee is compared as its registrable domain, so a host under
-		// one names that whole operator. An author must write the
-		// registrable domain and narrow with agents[], so a grant to one
-		// tenant host is never silently a grant to every tenant. A reader
-		// keeps the record: a host grantee covers its registrable domain
-		// (TrustRecordEvaluator logs a warning when it has no agents[]),
-		// and a grantee with no registrable domain matches nothing.
+		// A grantee MUST be a registrable domain (L2 Grants in trust.json).
+		// An author writes the registrable domain and narrows with
+		// agents[]. A reader keeps the record: a grant whose grantee is
+		// not one covers no claim (TrustRecordEvaluator logs a warning),
+		// and its scopes still count for exclusive_grants. Like the other
+		// PSL rules, this needs an owner: the spec's examples use reserved
+		// .example names, which have no registrable domain.
 		if operator != "" && mode == Authoring {
-			if d, ok := psl.RegistrableDomain(g.Grantee); !ok || d != g.Grantee {
+			if !isRegistrableDomain(g.Grantee) {
 				return fmt.Errorf("grants[%d].grantee must be a registrable domain; narrow the grant to specific agents with agents[]", i)
 			}
 		}
