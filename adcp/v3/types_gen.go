@@ -9813,6 +9813,17 @@ type CanonicalAccountRef struct {
 	Sandbox      *bool         `json:"sandbox,omitempty"`
 }
 
+// CanonicalAvailableAction — A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it.
+type CanonicalAvailableAction struct {
+	Task                 string                      `json:"task"`
+	Action               string                      `json:"action"`
+	Mode                 CanonicalMediaBuyActionMode `json:"mode"`
+	Sla                  *SlaWindow                  `json:"sla,omitempty"`
+	ChangeTermID         string                      `json:"change_term_id,omitempty"`
+	TermsRef             string                      `json:"terms_ref,omitempty"`
+	ApplicablePackageIDs []string                    `json:"applicable_package_ids,omitempty"` // Exact eligible packages for a package-scoped action; omission means all
+}
+
 // CanonicalPerformanceStandard — Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset
 type CanonicalPerformanceStandard struct {
 	Metric    PerformanceStandardMetric `json:"metric"`
@@ -9925,6 +9936,13 @@ type EventSurface struct {
 	Ext          any    `json:"ext,omitempty"`
 }
 
+// ForecastRateRange — A forecast range whose low, midpoint, and high values are rates in the inclusive interval from 0
+type ForecastRateRange struct {
+	Low  float64 `json:"low,omitempty"`  // Conservative (low-end) forecast value
+	Mid  float64 `json:"mid,omitempty"`  // Expected (most likely) forecast value
+	High float64 `json:"high,omitempty"` // Optimistic (high-end) forecast value
+}
+
 // ForecastVendorMetricValue — A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values
 type ForecastVendorMetricValue struct {
 	Vendor                BrandReference `json:"vendor"`                            // Vendor that defines and forecasts this metric. Matches a
@@ -9939,8 +9957,9 @@ type ForecastVendorMetricValue struct {
 
 // FormatOptionRef — Discriminated reference to a product format option. The global canonical shape is still named by
 type FormatOptionRef struct {
-	Scope          string `json:"scope,omitempty"`            // Reference resolves only against the target product's inline `format_options[]`.
-	FormatOptionID string `json:"format_option_id,omitempty"` // Stable format option ID from the target product's inline `format_options[]`.
+	Scope           string `json:"scope,omitempty"`            // Reference resolves only against the target product's inline `format_options[]`.
+	PublisherDomain string `json:"publisher_domain,omitempty"` // Publisher domain where the adagents.json declaring this format option is hosted.
+	FormatOptionID  string `json:"format_option_id,omitempty"` // Stable format option ID from the target product's inline `format_options[]`.
 }
 
 // FrequencyCapConstraints — Structured frequency-cap constraints. Count and duration declarations are exact: each uses either

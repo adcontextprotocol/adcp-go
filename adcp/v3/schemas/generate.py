@@ -58,7 +58,6 @@ KNOWN_TYPES = {
     # oneOf schemas — hand-writing flattens the union into a single struct with
     # all variant fields.
     'PricingOption', 'Deployment', 'PublisherPropertySelector',
-    'CanonicalMediaBuyAction',
     'ReportingConsumerStatus', 'ReportingConsumerStatusPeriod',
     'ReportingStatusResult',
     'ReportingReceipt', 'ReportingAdjustmentReceipt', 'ReportingReceiptResult',
@@ -1548,6 +1547,10 @@ REF_ALIASES = {
     'RefineProposalsResponse': 'RefineProposalsData',
     'DeliveryMetrics': 'DeliveryTotals',
     'StartTiming': 'string',  # start_time is a string or "asap"
+    # enums/canonical-media-buy-action.json is the string enum and already owns
+    # CanonicalMediaBuyAction in Go; core/canonical-media-buy-action.json is the
+    # object that available_actions items reference.
+    'CanonicalMediaBuyAction': 'CanonicalAvailableAction',
     'AccountInput': 'AccountInput',
     'GovernanceAccountInput': 'GovernanceAccountInput',
     'CreativeInput': 'CreativeInput',
@@ -2332,12 +2335,17 @@ def ref_to_schema_path(ref):
         return None
     return rel
 
-def iter_auto_discovery_refs(schema):
+def iter_auto_discovery_refs(schema, include_union_variants=False):
     """Yield $refs that are part of the ordinary object field graph.
 
     Top-level and nested oneOf/anyOf branches are deliberately skipped for
     auto-discovery. Those unions usually need explicit SDK policy (flatten,
     variant helpers, or intentional openness) instead of incidental type export.
+
+    With include_union_variants, the top-level oneOf branches are walked: the
+    generator emits them as typed variant structs (see resolve_composed_union),
+    so the types their fields reference must be reachable too. Nested oneOf and
+    anyOf inside a variant stay skipped.
     """
     if isinstance(schema, dict):
         ref = schema.get('$ref')
@@ -2345,6 +2353,9 @@ def iter_auto_discovery_refs(schema):
             yield ref
         for key, value in schema.items():
             if key in ('oneOf', 'anyOf'):
+                if include_union_variants and key == 'oneOf':
+                    for branch in value:
+                        yield from iter_auto_discovery_refs(branch)
                 continue
             yield from iter_auto_discovery_refs(value)
     elif isinstance(schema, list):
@@ -2397,6 +2408,30 @@ def schema_accepts_empty_array(schema):
             return int(branch.get('minItems', 0)) == 0
     return True
 
+# Keys that give a property its own shape. A property schema with none of them
+# (`{"const": "sync_creatives"}`, `{"enum": [...]}`) only narrows the values of a
+# property declared elsewhere.
+_SHAPE_KEYS = (
+    '$ref', 'type', 'properties', 'items', 'additionalProperties',
+    'allOf', 'anyOf', 'oneOf',
+)
+
+def _is_value_narrowing(prop):
+    return isinstance(prop, dict) and not any(key in prop for key in _SHAPE_KEYS)
+
+def _merge_property(props, json_name, prop):
+    """Record `prop` for `json_name`, unless it only constrains a property that
+    already has a shape. A oneOf branch that re-declares a shared field as
+    `{"enum": [...]}`, or forbids a sibling branch's field with the boolean
+    schema `false`, is a validation constraint on that field, not a new field
+    type, so the declaration that gave the field its shape stays the Go type."""
+    existing = props.get(json_name)
+    if existing is not None:
+        existing_has_shape = isinstance(existing, dict) and not _is_value_narrowing(existing)
+        if existing_has_shape and (isinstance(prop, bool) or _is_value_narrowing(prop)):
+            return
+    props[json_name] = prop
+
 def schema_properties(schema, _visited=None):
     """Return an ordered union of properties declared directly, through $ref,
     or through composition. allOf is flattened for generated Go structs."""
@@ -2410,18 +2445,31 @@ def schema_properties(schema, _visited=None):
         _visited.add(ref)
         ref_schema = resolve_ref_schema(ref)
         if ref_schema:
-            props.update(schema_properties(ref_schema, _visited))
+            for json_name, prop in schema_properties(ref_schema, _visited).items():
+                _merge_property(props, json_name, prop)
     for key in ('allOf', 'anyOf', 'oneOf'):
         for branch in schema.get(key, []):
-            props.update(schema_properties(branch, _visited))
+            for json_name, prop in schema_properties(branch, _visited).items():
+                _merge_property(props, json_name, prop)
     for json_name, prop in schema.get('properties', {}).items():
-        props[json_name] = prop
+        _merge_property(props, json_name, prop)
     return props
+
+def _allof_refs(branch):
+    """The `$ref`s an alternative inherits through its own `allOf`."""
+    if not isinstance(branch, dict):
+        return set()
+    return {
+        part['$ref'] for part in branch.get('allOf', [])
+        if isinstance(part, dict) and isinstance(part.get('$ref'), str)
+    }
 
 def schema_required_names(schema, _visited=None):
     """Return fields required by the schema. For generation, allOf-required
     fields are required; anyOf/oneOf branch requirements are intentionally not
-    merged because only one branch applies."""
+    merged because only one branch applies. The exception is a base every
+    branch extends through `allOf: [{"$ref": base}]`: whichever branch applies,
+    the base's required fields apply with it."""
     if _visited is None:
         _visited = set()
     required = set()
@@ -2436,6 +2484,15 @@ def schema_required_names(schema, _visited=None):
     required.update(schema.get('required', []))
     for branch in schema.get('allOf', []):
         required.update(schema_required_names(branch, _visited))
+    for key in ('oneOf', 'anyOf'):
+        branches = schema.get(key)
+        if not branches:
+            continue
+        shared_bases = set.intersection(*(_allof_refs(branch) for branch in branches))
+        for base in sorted(shared_bases):
+            base_schema = resolve_ref_schema(base)
+            if base_schema:
+                required.update(schema_required_names(base_schema, set(_visited)))
     return required
 
 def has_struct_fields(schema):
@@ -2504,9 +2561,10 @@ def _reset_will_generate_cache():
     current CORE_SCHEMAS/TOOL_SCHEMAS/WEBHOOK_SCHEMAS. Called at the top of
     `generate()` to guarantee correctness when the module is used across
     multiple runs (e.g. imported by lint.py then invoked standalone)."""
-    global _WILL_GENERATE_CACHE, _AUTO_REF_SCHEMA_CACHE
+    global _WILL_GENERATE_CACHE, _AUTO_REF_SCHEMA_CACHE, _SCALAR_ALIAS_NAMES_CACHE
     _WILL_GENERATE_CACHE = None
     _AUTO_REF_SCHEMA_CACHE = None
+    _SCALAR_ALIAS_NAMES_CACHE = None
 
 
 def _schema_spec_path(spec):
@@ -2553,6 +2611,7 @@ def _explicit_generated_type_names():
             names.add(pascal_case(Path(rel).stem))
     names.update(INLINE_SCHEMA_TYPES.keys())
     names.update(supported_union_schemas(skip_names=KNOWN_TYPES).keys())
+    names.update(_schema_type_name(rel) for rel in composed_union_target_paths())
     return names
 
 
@@ -2582,7 +2641,8 @@ def auto_ref_schema_paths():
     if _AUTO_REF_SCHEMA_CACHE is not None:
         return _AUTO_REF_SCHEMA_CACHE
 
-    configured = set(_generation_seed_schema_paths())
+    union_targets = composed_union_target_paths()
+    configured = set(_generation_seed_schema_paths()) | union_targets
     discovered = set()
     queued = list(_generation_seed_schema_paths())
     visited = set()
@@ -2598,7 +2658,9 @@ def auto_ref_schema_paths():
             print(f'// Warning: skipped schema {rel}: {e}', file=sys.stderr)
             continue
 
-        for ref in iter_auto_discovery_refs(schema):
+        for ref in iter_auto_discovery_refs(
+            schema, include_union_variants=rel in union_targets,
+        ):
             ref_path = ref_to_schema_path(ref)
             if not ref_path or ref_path in visited:
                 continue
@@ -2719,6 +2781,12 @@ def _will_generate_set():
             stem = Path(rel).stem
             name = REF_ALIASES.get(pascal_case(stem), pascal_case(stem))
             names.add(name)
+        else:
+            composition = tool_union_composition(rel, schema)
+            if composition:
+                stem = Path(rel).stem
+                names.add(REF_ALIASES.get(pascal_case(stem), pascal_case(stem)))
+                names.add(composition[0])
     for name, spec in INLINE_SCHEMA_TYPES.items():
         try:
             schema = load_schema_spec(spec)
@@ -2787,6 +2855,99 @@ def resolve_allof_go_type_info(branches, required=False):
         return resolve_go_type_info(structural_branches[0], required)
 
     return 'any', 'unsupported_allOf'
+
+_SCALAR_ALIAS_NAMES_CACHE = None
+
+def scalar_alias_go_names():
+    """Go names that are scalar aliases: every enum type (`type X = string`) and
+    the scalar Go types a $ref can be aliased to."""
+    global _SCALAR_ALIAS_NAMES_CACHE
+    if _SCALAR_ALIAS_NAMES_CACHE is None:
+        names = {'string', 'int', 'float64', 'bool'}
+        enum_dir = SCRIPT_DIR / ENUM_DIR
+        if enum_dir.exists():
+            for f in sorted(enum_dir.iterdir()):
+                if f.suffix != '.json':
+                    continue
+                with open(f) as fh:
+                    if json.load(fh).get('enum'):
+                        names.add(pascal_case(f.stem))
+        names.update(INLINE_ENUM_TYPES)
+        _SCALAR_ALIAS_NAMES_CACHE = names
+    return _SCALAR_ALIAS_NAMES_CACHE
+
+def is_object_schema(schema):
+    """True for a schema that describes a JSON object: `type: object`,
+    `properties`, or fields declared through composition."""
+    return isinstance(schema, dict) and (
+        schema.get('type') == 'object'
+        or 'properties' in schema
+        or has_struct_fields(schema)
+    )
+
+def field_bound_refs(prop):
+    """`$ref`s whose Go type a struct field is typed with (see resolve_go_type_info)."""
+    if not isinstance(prop, dict):
+        return
+    ref = prop.get('$ref')
+    if isinstance(ref, str):
+        yield ref
+    if isinstance(prop.get('items'), dict):
+        yield from field_bound_refs(prop['items'])
+    if isinstance(prop.get('additionalProperties'), dict):
+        yield from field_bound_refs(prop['additionalProperties'])
+    for branch in prop.get('allOf', []):
+        yield from field_bound_refs(branch)
+
+def object_ref_scalar_alias_violations(type_name, schema):
+    """Fields of `schema` whose `$ref` to an object schema would be typed as a
+    string, number or bool alias.
+
+    Two protocol files can PascalCase to one Go name, and a name in KNOWN_TYPES
+    is trusted. `core/canonical-media-buy-action.json` (an object) and
+    `enums/canonical-media-buy-action.json` (a string enum) both gave
+    `CanonicalMediaBuyAction`, so an array of the objects became `[]string`.
+    """
+    scalar_names = scalar_alias_go_names()
+    violations = []
+    for json_name, prop in schema_properties(schema).items():
+        if not isinstance(prop, dict) or (type_name, json_name) in INLINE_TYPE_HINTS:
+            continue
+        for ref in field_bound_refs(prop):
+            if is_enum_ref(ref):
+                continue
+            ref_schema = resolve_ref_schema(ref)
+            if not is_object_schema(ref_schema):
+                continue
+            name = ref_to_go_name(ref)
+            name = REF_ALIASES.get(name, name)
+            if name in scalar_names:
+                violations.append({
+                    'type': type_name,
+                    'json': json_name,
+                    'ref': ref,
+                    'go_type': name,
+                })
+    return violations
+
+def format_object_ref_scalar_alias_violation(violation):
+    return (
+        f'{violation["type"]}.{violation["json"]} references {violation["ref"]}, '
+        f'an object schema, but its Go type {violation["go_type"]} is a scalar '
+        'alias (an enum or a scalar type). Give the object its own Go name with '
+        'a REF_ALIASES entry, and drop its name from KNOWN_TYPES.'
+    )
+
+_OBJECT_REF_ALIAS_VIOLATIONS = []
+
+def raise_on_object_ref_scalar_alias_violations():
+    violations = list(_OBJECT_REF_ALIAS_VIOLATIONS)
+    del _OBJECT_REF_ALIAS_VIOLATIONS[:]
+    if violations:
+        raise ValueError(
+            'object $ref bound to a scalar Go type:\n  '
+            + '\n  '.join(format_object_ref_scalar_alias_violation(v) for v in violations)
+        )
 
 def resolve_go_type_info(prop, required=False):
     """Resolve a JSON schema property to a Go type string and fallback reason.
@@ -2924,6 +3085,7 @@ def schema_to_struct(name, schema):
     """Convert a JSON schema to a Go struct definition string."""
     props = schema_properties(schema)
     required_set = schema_required_names(schema)
+    _OBJECT_REF_ALIAS_VIOLATIONS.extend(object_ref_scalar_alias_violations(name, schema))
 
     fields = []
     for json_name, prop in props.items():
@@ -2959,6 +3121,98 @@ def schema_to_struct(name, schema):
 def is_tool_response_schema(path):
     return Path(path).stem.endswith('-response')
 
+def resolve_composed_union(schema, _seen=None):
+    """Find a top-level oneOf that `schema` reaches only through `$ref` and `allOf`.
+
+    `media-buy/accept-proposal-response.json` is `allOf: [{"$ref":
+    "media-buy-commitment-response.json"}]`, and the referenced file is the
+    discriminated oneOf. Returns `(schema path, union schema)` for that file, or
+    None when `schema` is not a pure pass-through to a union:
+
+    - a schema with its own `oneOf`, `anyOf` or `properties` is not a pass-through
+      (a top-level oneOf is handled directly);
+    - an `allOf` may carry other branches only when they are validation-only
+      (no properties, no `$ref`), such as `not.required` or `if`/`then`;
+    - only whole-file `$ref`s are followed, never a JSON Pointer fragment, because
+      the Go type needs a schema file to take its name from.
+    """
+    if not isinstance(schema, dict):
+        return None
+    if _seen is None:
+        _seen = set()
+    if 'oneOf' in schema or 'anyOf' in schema or schema.get('properties'):
+        return None
+
+    ref = schema.get('$ref')
+    if isinstance(ref, str):
+        if '#' in ref:
+            return None
+        rel = ref_to_schema_path(ref)
+        if not rel or rel in _seen:
+            return None
+        _seen.add(rel)
+        target = load_schema(rel)
+        if isinstance(target, dict) and 'oneOf' in target:
+            return rel, target
+        return resolve_composed_union(target, _seen)
+
+    branches = schema.get('allOf')
+    if not isinstance(branches, list):
+        return None
+    found = None
+    for branch in branches:
+        if not isinstance(branch, dict):
+            return None
+        hit = resolve_composed_union(branch, _seen)
+        if hit is not None:
+            if found is not None:
+                return None
+            found = hit
+        elif '$ref' in branch or schema_properties(branch):
+            return None
+    return found
+
+def tool_union_composition(path, schema):
+    """Return `(union name, union path, union schema)` for a tool response that
+    only passes through to a union (see resolve_composed_union), else None."""
+    if not is_tool_response_schema(path):
+        return None
+    hit = resolve_composed_union(schema)
+    if hit is None:
+        return None
+    union_path, union_schema = hit
+    return _schema_type_name(union_path), union_path, union_schema
+
+def composed_union_target_paths():
+    """Schema files that tool responses reach as a union through `$ref`/`allOf`."""
+    paths = set()
+    for rel in TOOL_SCHEMAS:
+        if not schema_exists(rel):
+            continue
+        composition = tool_union_composition(rel, load_schema(rel))
+        if composition:
+            paths.add(composition[1])
+    return paths
+
+def composed_union_alias_to_type(name, union_name, schema):
+    """Generate the Go alias a pass-through tool response has for its union."""
+    desc = safe_comment(schema.get('description', ''), 100)
+    doc = f'// {name} — {desc}\n' if desc else f'// {name} is a {union_name}.\n'
+    return f'{doc}type {name} = {union_name}\n'
+
+def composed_union_variant_items(union_name, union_path, union_schema, generated):
+    """Variants of a composed union, refusing a name another type already owns."""
+    items = top_level_union_variant_items(union_name, union_schema, union_path)
+    for idx, (vname, variant) in enumerate(items):
+        if vname in generated:
+            raise ValueError(
+                f'{union_name} variant {vname} ({union_path}#/oneOf/{idx}) '
+                'collides with another generated or hand-written type; '
+                'rename the variant title upstream or hand-write the union'
+            )
+        generated.add(vname)
+        yield idx, vname, variant
+
 def validate_top_level_tool_union(name, schema, schema_path):
     if not is_tool_response_schema(schema_path):
         raise ValueError(
@@ -2967,18 +3221,36 @@ def validate_top_level_tool_union(name, schema, schema_path):
         )
     return top_level_union_variants(name, schema, schema_path)
 
-def top_level_union_variants(name, schema, schema_path=None):
-    """Return generated variant names for a top-level oneOf schema."""
+def union_variant_go_name(title):
+    """Go type name for a oneOf branch title.
+
+    A title that is already a Go identifier (`CreateMediaBuySuccess`) is used as
+    written. A title with spaces (`Committed Media Buy`) is PascalCased word by
+    word (`CommittedMediaBuy`).
+    """
+    if not title or re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', title):
+        return title
+    words = re.findall(r'[A-Za-z0-9]+', title)
+    name = ''.join(word[0].upper() + word[1:] for word in words)
+    if not re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', name):
+        raise ValueError(
+            f'oneOf branch title {title!r} cannot be converted to a Go type name'
+        )
+    return name
+
+def top_level_union_variant_items(name, schema, schema_path=None):
+    """Return `(go name, branch schema)` for each branch of a top-level oneOf."""
     variants = []
     seen = set()
     location = f' in {schema_path}' if schema_path else ''
     for idx, variant in enumerate(schema.get('oneOf', [])):
-        vname = variant.get('title', '')
-        if not vname:
+        title = variant.get('title', '')
+        if not title:
             raise ValueError(
                 f'{name}{location} oneOf branch {idx} must have a title '
                 'so Go can generate a named variant'
             )
+        vname = union_variant_go_name(title)
         if not has_struct_fields(variant):
             raise ValueError(
                 f'{name}{location} oneOf branch {idx} ({vname}) must define '
@@ -2989,8 +3261,14 @@ def top_level_union_variants(name, schema, schema_path=None):
                 f'{name}{location} oneOf branch {idx} repeats variant {vname}'
             )
         seen.add(vname)
-        variants.append(vname)
+        variants.append((vname, variant))
     return variants
+
+def top_level_union_variants(name, schema, schema_path=None):
+    """Return generated variant names for a top-level oneOf schema."""
+    return [
+        vname for vname, _ in top_level_union_variant_items(name, schema, schema_path)
+    ]
 
 def union_interface_to_type(name, schema, schema_path=None):
     """Generate a closed Go interface for a top-level response union."""
@@ -3321,7 +3599,7 @@ def generated_schema_entries():
                     'kind': 'union_interface',
                 }
                 for idx, variant in enumerate(schema['oneOf']):
-                    vname = variant.get('title', '')
+                    vname = union_variant_go_name(variant.get('title', ''))
                     if vname and vname not in generated and has_struct_fields(variant):
                         generated.add(vname)
                         yield {
@@ -3332,6 +3610,39 @@ def generated_schema_entries():
                             'schema_obj': variant,
                             'kind': 'struct',
                         }
+                continue
+
+            composition = tool_union_composition(path, schema) if section == 'tool' else None
+            if composition:
+                union_name, union_path, union_schema = composition
+                if union_name not in generated:
+                    generated.add(union_name)
+                    yield {
+                        'section': section,
+                        'name': union_name,
+                        'schema': union_path,
+                        'schema_obj': union_schema,
+                        'kind': 'union_interface',
+                    }
+                    for idx, vname, variant in composed_union_variant_items(
+                        union_name, union_path, union_schema, generated,
+                    ):
+                        yield {
+                            'section': section,
+                            'name': vname,
+                            'schema': f'{union_path}#/oneOf/{idx}',
+                            'variant': vname,
+                            'schema_obj': variant,
+                            'kind': 'struct',
+                        }
+                yield {
+                    'section': section,
+                    'name': name,
+                    'schema': path,
+                    'schema_obj': schema,
+                    'kind': 'union_alias',
+                    'union': union_name,
+                }
                 continue
 
             if has_struct_fields(schema):
@@ -3361,7 +3672,7 @@ def any_coverage_report():
     """Return a structured report of generated `any` fallbacks."""
     records = []
     for entry in generated_schema_entries():
-        if entry['kind'] == 'union_interface':
+        if entry['kind'] in ('union_interface', 'union_alias'):
             continue
 
         schema = entry['schema_obj']
@@ -3438,6 +3749,7 @@ def print_any_coverage_summary(report):
 def generate():
     """Main generation function."""
     _reset_will_generate_cache()
+    del _OBJECT_REF_ALIAS_VIOLATIONS[:]
     # Read pinned version
     version = "unknown"
     try:
@@ -3577,12 +3889,28 @@ def generate():
             print(union_interface_to_type(name, schema, path))
             # Generate each variant
             for variant in schema['oneOf']:
-                vname = variant.get('title', '')
+                vname = union_variant_go_name(variant.get('title', ''))
                 if vname and vname not in generated:
                     generated.add(vname)
                     if has_struct_fields(variant):
                         print(schema_to_struct(vname, variant))
             print(union_marker_methods(name, schema, path))
+            continue
+
+        # A response that only passes through to a union (allOf/$ref) gets the
+        # union's interface and variants once, and an alias under its own name.
+        composition = tool_union_composition(path, schema)
+        if composition:
+            union_name, union_path, union_schema = composition
+            if union_name not in generated:
+                generated.add(union_name)
+                print(union_interface_to_type(union_name, union_schema, union_path))
+                for _, vname, variant in composed_union_variant_items(
+                    union_name, union_path, union_schema, generated,
+                ):
+                    print(schema_to_struct(vname, variant))
+                print(union_marker_methods(union_name, union_schema, union_path))
+            print(composed_union_alias_to_type(name, union_name, schema))
             continue
 
         if has_struct_fields(schema):
@@ -3625,6 +3953,8 @@ def generate():
         for name in webhook_type_names:
             print(f'func (p *{name}) IdempotencyKeyPtr() *string {{ return &p.IdempotencyKey }}')
         print()
+
+    raise_on_object_ref_scalar_alias_violations()
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
