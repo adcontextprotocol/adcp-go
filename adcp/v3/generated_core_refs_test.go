@@ -551,7 +551,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				OptimizationGoals: []OptimizationGoal{{
 					Kind:      "metric",
 					Metric:    "reach",
-					ReachUnit: "household",
+					ReachUnit: ReachUnitHouseholds,
 					TargetFrequency: &OptimizationGoalTargetFrequency{
 						Min:    1,
 						Max:    3,
@@ -562,7 +562,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				}},
 			},
 			want: []string{
-				`"optimization_goals":[{"kind":"metric","metric":"reach","priority":1,"reach_unit":"household","target":{"kind":"threshold_rate","value":0.7},"target_frequency":{"min":1,"max":3,"window":{"interval":7,"unit":"days"}}}]`,
+				`"optimization_goals":[{"kind":"metric","metric":"reach","priority":1,"reach_unit":"households","target":{"kind":"threshold_rate","value":0.7},"target_frequency":{"min":1,"max":3,"window":{"interval":7,"unit":"days"}}}]`,
 			},
 		},
 		{
@@ -720,6 +720,7 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 		CheckID:     "check-1",
 		Verdict:     "conditions",
 		PlanID:      "plan-1",
+		ExpiresAt:   "2026-06-01T00:00:00Z",
 		Explanation: "Approval requires a smaller budget.",
 		Conditions: []CheckGovernanceCondition{{
 			Field:            "planned_delivery.total_budget",
@@ -733,6 +734,7 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal check governance response: %v", err)
 	}
+	assertSchemaValid(t, "governance/check-governance-response.json", raw)
 	var decoded CheckGovernanceResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal check governance response: %v", err)
@@ -751,7 +753,8 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 		t.Fatal("HasRequiredValue = false, want true")
 	}
 
-	raw = []byte(`{"check_id":"check-1","verdict":"conditions","conditions":[{"field":"planned_delivery.total_budget","required_value":null,"reason":"Unset budget."}]}`)
+	raw = []byte(`{"check_id":"check-1","verdict":"conditions","plan_id":"plan-1","expires_at":"2026-06-01T00:00:00Z","explanation":"Approval requires a smaller budget.","conditions":[{"field":"planned_delivery.total_budget","required_value":null,"reason":"Unset budget."}]}`)
+	assertSchemaValid(t, "governance/check-governance-response.json", raw)
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal explicit null condition: %v", err)
 	}
@@ -770,7 +773,8 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 		t.Fatalf("explicit null condition did not re-marshal required_value:null:\n%s", raw)
 	}
 
-	raw = []byte(`{"check_id":"check-1","verdict":"conditions","conditions":[{"field":"planned_delivery.total_budget","reason":"Review budget."}]}`)
+	raw = []byte(`{"check_id":"check-1","verdict":"conditions","plan_id":"plan-1","expires_at":"2026-06-01T00:00:00Z","explanation":"Approval requires a smaller budget.","conditions":[{"field":"planned_delivery.total_budget","reason":"Review budget."}]}`)
+	assertSchemaValid(t, "governance/check-governance-response.json", raw)
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("unmarshal advisory condition: %v", err)
 	}
@@ -797,7 +801,8 @@ func TestCheckGovernanceConditionsRoundTrip(t *testing.T) {
 }
 
 func TestPlanAuditLogsRoundTrip(t *testing.T) {
-	raw := []byte(`{"plans":[{"plan_id":"plan-1","plan_version":1,"status":"active","budget":{"authorized":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}],"entries":[{"id":"entry-1","type":"outcome","timestamp":"2026-05-28T11:00:00Z","outcome":"completed","committed_budget":0}]},{"plan_id":"plan-2","plan_version":1,"status":"active","budget":{"authorized":0,"committed":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-2","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}]}]}`)
+	raw := []byte(`{"status":"completed","plans":[{"plan_id":"plan-1","plan_version":1,"status":"active","budget":{"authorized":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-1","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}],"entries":[{"id":"entry-1","type":"outcome","timestamp":"2026-05-28T11:00:00Z","outcome":"completed","committed_budget":0}]},{"plan_id":"plan-2","plan_version":1,"status":"active","budget":{"authorized":0,"committed":0},"summary":{"checks_performed":0},"governed_actions":[{"governance_context":"ctx-2","purchase_type":"media_buy","status":"active","committed":0,"check_count":0}]}]}`)
+	assertSchemaValid(t, "governance/get-plan-audit-logs-response.json", raw)
 
 	var decoded GetPlanAuditLogsResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -1224,16 +1229,20 @@ func TestGeneratedMediaBuyStatusFilterUnmarshalScalarAndArray(t *testing.T) {
 		t.Fatalf("empty status filter constructor returned %#v, want nil", got)
 	}
 
+	scalarRaw := []byte(`{"status_filter":"active"}`)
+	assertSchemaValid(t, "media-buy/get-media-buys-request.json", scalarRaw)
 	var listReq GetMediaBuysRequest
-	if err := json.Unmarshal([]byte(`{"status_filter":"active"}`), &listReq); err != nil {
+	if err := json.Unmarshal(scalarRaw, &listReq); err != nil {
 		t.Fatalf("unmarshal scalar status filter: %v", err)
 	}
 	if listReq.StatusFilter == nil || len(*listReq.StatusFilter) != 1 || (*listReq.StatusFilter)[0] != MediaBuyStatusActive {
 		t.Fatalf("scalar status filter did not decode as one active status: %#v", listReq.StatusFilter)
 	}
 
+	arrayRaw := []byte(`{"status_filter":["active","paused"]}`)
+	assertSchemaValid(t, "media-buy/get-media-buy-delivery-request.json", arrayRaw)
 	var deliveryReq GetMediaBuyDeliveryRequest
-	if err := json.Unmarshal([]byte(`{"status_filter":["active","paused"]}`), &deliveryReq); err != nil {
+	if err := json.Unmarshal(arrayRaw, &deliveryReq); err != nil {
 		t.Fatalf("unmarshal array status filter: %v", err)
 	}
 	if deliveryReq.StatusFilter == nil || len(*deliveryReq.StatusFilter) != 2 {
@@ -1282,6 +1291,7 @@ func TestGeneratedOptimizationGoalUnmarshalNestedShapes(t *testing.T) {
 			"priority": 1
 		}]
 	}`)
+	assertSchemaValid(t, "media-buy/package-request.json#/properties/optimization_goals", optimizationGoalsOf(t, raw))
 	var req PackageInput
 	if err := json.Unmarshal(raw, &req); err != nil {
 		t.Fatalf("unmarshal optimization goal: %v", err)
@@ -1346,7 +1356,7 @@ func TestGeneratedOptimizationGoalUnmarshalMetricShape(t *testing.T) {
 	raw := []byte(`{
 		"kind": "metric",
 		"metric": "reach",
-		"reach_unit": "household",
+		"reach_unit": "households",
 		"target_frequency": {
 			"min": 2,
 			"max": 5,
@@ -1355,11 +1365,12 @@ func TestGeneratedOptimizationGoalUnmarshalMetricShape(t *testing.T) {
 		"target": {"kind": "threshold_rate", "value": 0.65},
 		"priority": 1
 	}`)
+	assertSchemaValid(t, "core/optimization-goal.json", raw)
 	var goal OptimizationGoal
 	if err := json.Unmarshal(raw, &goal); err != nil {
 		t.Fatalf("unmarshal metric optimization goal: %v", err)
 	}
-	if goal.Kind != "metric" || goal.Metric != "reach" || goal.ReachUnit != "household" {
+	if goal.Kind != "metric" || goal.Metric != "reach" || goal.ReachUnit != ReachUnitHouseholds {
 		t.Fatalf("unexpected metric optimization goal fields: %#v", goal)
 	}
 	if goal.TargetFrequency == nil || goal.TargetFrequency.Min != 2 || goal.TargetFrequency.Max != 5 {
@@ -1483,6 +1494,7 @@ func TestGeneratedOptimizationGoalCostPerTargetSharedAcrossGoalKinds(t *testing.
 			}
 		]
 	}`)
+	assertSchemaValid(t, "media-buy/package-request.json#/properties/optimization_goals", optimizationGoalsOf(t, raw))
 	var req PackageInput
 	if err := json.Unmarshal(raw, &req); err != nil {
 		t.Fatalf("unmarshal cost_per targets: %v", err)
@@ -1567,4 +1579,18 @@ func TestGeneratedOptionalAllOfRefsOmitWhenNil(t *testing.T) {
 	if !strings.Contains(string(raw), `"suppress":{"interval":1,"unit":"hours"}`) {
 		t.Fatalf("suppress did not marshal as typed duration: %s", raw)
 	}
+}
+
+// optimizationGoalsOf returns the optimization_goals array of a package
+// fixture that carries only that field.
+func optimizationGoalsOf(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	var pkg struct {
+		OptimizationGoals json.RawMessage `json:"optimization_goals"`
+	}
+	if err := json.Unmarshal(raw, &pkg); err != nil {
+		t.Fatalf("decode optimization_goals: %v", err)
+	}
+
+	return pkg.OptimizationGoals
 }
