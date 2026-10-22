@@ -2002,7 +2002,9 @@ class InlineObjectGenerationTest(unittest.TestCase):
                 self.assertTrue(generate.field_description(type_name, json_name, {}))
 
 
-class AutoRefDiscoveryTest(unittest.TestCase):
+class SchemaFixtureCase(unittest.TestCase):
+    """Installs in-memory schemas in place of the downloaded bundle."""
+
     def setUp(self):
         self.original_core_schemas = generate.CORE_SCHEMAS
         self.original_support_schemas = generate.SUPPORT_SCHEMAS
@@ -2056,6 +2058,8 @@ class AutoRefDiscoveryTest(unittest.TestCase):
         generate.ref_to_schema_path = ref_to_schema_path
         generate._reset_will_generate_cache()
 
+
+class AutoRefDiscoveryTest(SchemaFixtureCase):
     def test_auto_ref_discovery_exports_only_clean_reachable_object_types(self):
         paths = set(generate.auto_ref_schema_paths())
 
@@ -2261,6 +2265,568 @@ class AutoRefDiscoveryTest(unittest.TestCase):
         generated = generate.schema_to_struct("Tool", entries[0]["schema_obj"])
         self.assertIn("ID string `json:\"id\"`", generated)
         self.assertIn("Name string `json:\"name,omitempty\"`", generated)
+
+
+def commitment_union_schema(extra_properties=None):
+    """A discriminated tool-response union with spaced branch titles."""
+    done = {
+        "title": "Work Done",
+        "type": "object",
+        "properties": {
+            "status": {"type": "string", "const": "completed"},
+            "item_id": {"type": "string"},
+            "count": {"type": "integer"},
+            "replayed": {"type": "boolean", "const": True},
+        },
+        "required": ["status", "item_id", "count"],
+    }
+    done["properties"].update(extra_properties or {})
+    return {
+        "type": "object",
+        "discriminator": {"propertyName": "status"},
+        "oneOf": [
+            done,
+            {
+                "title": "Work Failed",
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "const": "failed"},
+                    "errors": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["status", "errors"],
+            },
+        ],
+    }
+
+
+class ComposedUnionGenerationTest(SchemaFixtureCase):
+    def test_variant_names_follow_branch_titles(self):
+        self.assertEqual("CreateMediaBuySuccess", generate.union_variant_go_name("CreateMediaBuySuccess"))
+        self.assertEqual("CommittedMediaBuy", generate.union_variant_go_name("Committed Media Buy"))
+        self.assertEqual("ControlApplied", generate.union_variant_go_name("Control applied"))
+        self.assertEqual("MediaBuyID", generate.union_variant_go_name("Media Buy ID"))
+        self.assertEqual("", generate.union_variant_go_name(""))
+        with self.assertRaisesRegex(ValueError, "cannot be converted to a Go type name"):
+            generate.union_variant_go_name("!!!")
+        with self.assertRaisesRegex(ValueError, "cannot be converted to a Go type name"):
+            generate.union_variant_go_name("2 Fast")
+
+    def test_union_is_found_through_allof_and_ref(self):
+        union = commitment_union_schema()
+        self.install_schema_fixture({
+            "union.json": union,
+            "via-ref.json": {"$ref": "/schemas/test/union.json"},
+            "via-allof.json": {"allOf": [{"$ref": "/schemas/test/union.json"}]},
+            "via-chain.json": {"allOf": [{"$ref": "/schemas/test/via-allof.json"}]},
+            "via-validation.json": {
+                "allOf": [
+                    {"$ref": "/schemas/test/union.json"},
+                    {"not": {"required": ["errors"]}},
+                    {"if": {"required": ["a"]}, "then": {"required": ["b"]}},
+                ],
+            },
+        })
+
+        for path in ("via-ref.json", "via-allof.json", "via-chain.json", "via-validation.json"):
+            with self.subTest(path=path):
+                found = generate.resolve_composed_union(generate.load_schema(path))
+                self.assertEqual("union.json", found[0])
+                self.assertIs(union, found[1])
+
+    def test_only_a_pure_pass_through_counts_as_a_composed_union(self):
+        self.install_schema_fixture({
+            "union.json": commitment_union_schema(),
+            "plain.json": {"type": "object", "properties": {"id": {"type": "string"}}},
+            "adds-field.json": {
+                "allOf": [
+                    {"$ref": "/schemas/test/union.json"},
+                    {"properties": {"extra": {"type": "string"}}},
+                ],
+            },
+            "adds-object.json": {
+                "allOf": [
+                    {"$ref": "/schemas/test/union.json"},
+                    {"$ref": "/schemas/test/plain.json"},
+                ],
+            },
+            "two-unions.json": {
+                "allOf": [
+                    {"$ref": "/schemas/test/union.json"},
+                    {"$ref": "/schemas/test/union.json"},
+                ],
+            },
+            "fragment.json": {"$ref": "/schemas/test/union.json#/oneOf/0"},
+            "own-properties.json": {
+                "properties": {"id": {"type": "string"}},
+                "allOf": [{"$ref": "/schemas/test/union.json"}],
+            },
+            "ref-to-plain.json": {"allOf": [{"$ref": "/schemas/test/plain.json"}]},
+        })
+
+        for path in (
+            "union.json",  # a top-level oneOf is handled directly, not "through"
+            "plain.json",
+            "adds-field.json",
+            "adds-object.json",
+            "two-unions.json",
+            "fragment.json",
+            "own-properties.json",
+            "ref-to-plain.json",
+        ):
+            with self.subTest(path=path):
+                self.assertIsNone(generate.resolve_composed_union(generate.load_schema(path)))
+
+    def install_two_tools_over_one_union(self, union=None):
+        self.install_schema_fixture(
+            {
+                "union-result.json": union or commitment_union_schema(),
+                "first-response.json": {
+                    "description": "First tool.",
+                    "allOf": [{"$ref": "/schemas/test/union-result.json"}],
+                },
+                "second-response.json": {
+                    "allOf": [{"$ref": "/schemas/test/union-result.json"}],
+                },
+            },
+            tool=["first-response.json", "second-response.json"],
+        )
+
+    def test_tool_responses_share_one_union_and_alias_it(self):
+        self.install_two_tools_over_one_union()
+
+        entries = list(generate.generated_schema_entries())
+
+        self.assertEqual(
+            [
+                ("union_interface", "UnionResult"),
+                ("struct", "WorkDone"),
+                ("struct", "WorkFailed"),
+                ("union_alias", "FirstResponse"),
+                ("union_alias", "SecondResponse"),
+            ],
+            [(entry["kind"], entry["name"]) for entry in entries],
+        )
+        self.assertEqual({"UnionResult"}, {e["union"] for e in entries if e["kind"] == "union_alias"})
+        self.assertEqual("union-result.json#/oneOf/1", entries[2]["schema"])
+        alias_src = generate.composed_union_alias_to_type(
+            "FirstResponse", "UnionResult", entries[3]["schema_obj"],
+        )
+        self.assertIn("// FirstResponse — First tool.", alias_src)
+        self.assertIn("type FirstResponse = UnionResult", alias_src)
+        self.assertIn("type SecondResponse = UnionResult", generate.composed_union_alias_to_type(
+            "SecondResponse", "UnionResult", entries[4]["schema_obj"],
+        ))
+
+    def test_composed_union_names_are_generated_and_not_auto_exported_as_a_struct(self):
+        self.install_two_tools_over_one_union()
+
+        names = generate._will_generate_set()
+        self.assertTrue({"FirstResponse", "SecondResponse", "UnionResult"} <= names)
+        self.assertEqual({"union-result.json"}, generate.composed_union_target_paths())
+        # The union file is a oneOf with a discriminator, which auto-discovery
+        # would otherwise flatten into one struct named UnionResult.
+        self.assertEqual((), generate.auto_ref_schema_paths())
+
+    def test_composed_union_variants_may_not_reuse_a_generated_name(self):
+        self.install_two_tools_over_one_union()
+        generate.KNOWN_TYPES = {"WorkDone"}
+        generate._reset_will_generate_cache()
+
+        with self.assertRaisesRegex(ValueError, "variant WorkDone .* collides"):
+            list(generate.generated_schema_entries())
+
+    def test_composed_union_discovers_the_types_its_variants_reference(self):
+        union = commitment_union_schema({"item": {"$ref": "/schemas/test/item.json"}})
+        self.install_schema_fixture(
+            {
+                "union-result.json": union,
+                "item.json": {"type": "object", "properties": {"sku": {"type": "string"}}},
+                "tool-response.json": {"allOf": [{"$ref": "/schemas/test/union-result.json"}]},
+            },
+            tool=["tool-response.json"],
+        )
+
+        self.assertEqual(("item.json",), generate.auto_ref_schema_paths())
+
+    def test_variant_refs_stay_undiscovered_for_a_top_level_response_union(self):
+        # Pins what this change leaves alone: a tool response that is itself a
+        # oneOf keeps its variants' references out of auto-discovery.
+        union = commitment_union_schema({"item": {"$ref": "/schemas/test/item.json"}})
+        self.install_schema_fixture(
+            {
+                "item.json": {"type": "object", "properties": {"sku": {"type": "string"}}},
+                "tool-response.json": union,
+            },
+            tool=["tool-response.json"],
+        )
+
+        self.assertEqual((), generate.auto_ref_schema_paths())
+
+    def test_branch_that_only_narrows_a_shared_field_keeps_its_type(self):
+        self.install_schema_fixture({
+            "base.json": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "enum": ["a", "b"]},
+                    "action": {"type": "string"},
+                    "mode": {"type": "string"},
+                },
+                "required": ["task", "action"],
+                "additionalProperties": False,
+            },
+        })
+        with mock.patch.object(generate, "resolve_ref_schema", side_effect=lambda ref: generate.load_schema("base.json")):
+            union = {
+                "oneOf": [
+                    {
+                        "allOf": [{"$ref": "/schemas/test/base.json"}],
+                        "required": ["task"],
+                        "properties": {"task": {"const": "a"}, "action": {"enum": ["x", "y"]}},
+                    },
+                    {
+                        "allOf": [{"$ref": "/schemas/test/base.json"}],
+                        "required": ["task"],
+                        "properties": {"task": {"const": "b"}, "action": {"enum": ["z"]}},
+                    },
+                ],
+            }
+
+            props = generate.schema_properties(union)
+            required = generate.schema_required_names(union)
+            source = generate.schema_to_struct("Shared", union)
+
+        self.assertEqual({"type": "string"}, dict(props["action"]))
+        self.assertEqual({"task", "action"}, required)
+        self.assertIn('Task string `json:"task"`', source)
+        self.assertIn('Action string `json:"action"`', source)
+        self.assertIn('Mode string `json:"mode,omitempty"`', source)
+        self.assertNotIn("any", source)
+
+    def test_boolean_schema_in_a_later_branch_does_not_drop_the_field(self):
+        # format-option-ref.json forbids publisher_domain in its product-scoped
+        # branch with `false`; the publisher-scoped branch still declares it.
+        union = {
+            "oneOf": [
+                {"properties": {"scope": {"const": "publisher"}, "domain": {"type": "string"}}},
+                {"properties": {"scope": {"const": "product"}, "domain": False}},
+            ],
+        }
+        self.assertEqual({"type": "string"}, dict(generate.schema_properties(union)["domain"]))
+        self.assertIn('Domain string `json:"domain,omitempty"`', generate.schema_to_struct("Ref", union))
+
+        # A real declaration after a `false` still wins.
+        reversed_union = {"oneOf": [union["oneOf"][1], union["oneOf"][0]]}
+        self.assertEqual({"type": "string"}, dict(generate.schema_properties(reversed_union)["domain"]))
+
+    @unittest.skipUnless(
+        (generate.SCRIPT_DIR / "core" / "format-option-ref.json").exists(),
+        "schema bundle has not been downloaded",
+    )
+    def test_format_option_ref_keeps_the_publisher_domain(self):
+        source = generate.schema_to_struct(
+            "FormatOptionRef", generate.load_schema("core/format-option-ref.json"),
+        )
+        self.assertIn('PublisherDomain string `json:"publisher_domain,omitempty"`', source)
+
+    def test_shared_base_requirements_apply_only_when_every_branch_extends_it(self):
+        base = {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}
+        with mock.patch.object(generate, "resolve_ref_schema", return_value=base):
+            every_branch = {
+                "oneOf": [
+                    {"allOf": [{"$ref": "/schemas/test/base.json"}]},
+                    {"allOf": [{"$ref": "/schemas/test/base.json"}], "properties": {"a": {"type": "string"}}},
+                ],
+            }
+            one_branch = {
+                "oneOf": [
+                    {"allOf": [{"$ref": "/schemas/test/base.json"}]},
+                    {"properties": {"a": {"type": "string"}}},
+                ],
+            }
+            no_base = {"oneOf": [{"required": ["id"]}, {"required": ["id"]}]}
+
+            self.assertEqual({"id"}, generate.schema_required_names(every_branch))
+            self.assertEqual(set(), generate.schema_required_names(one_branch))
+            # Existing behaviour, unchanged: branch requirements are not merged.
+            self.assertEqual(set(), generate.schema_required_names(no_base))
+
+    @unittest.skipUnless(shutil.which("go"), "go command not found")
+    def test_composed_union_runtime_accepts_variants_through_both_aliases(self):
+        union = commitment_union_schema()
+        self.install_two_tools_over_one_union(union)
+        generated = "\n".join([
+            generate.union_interface_to_type("UnionResult", union, "union-result.json"),
+            *(
+                generate.schema_to_struct(vname, variant)
+                for _, vname, variant in generate.composed_union_variant_items(
+                    "UnionResult", "union-result.json", union, set(),
+                )
+            ),
+            generate.union_marker_methods("UnionResult", union, "union-result.json"),
+            generate.composed_union_alias_to_type("FirstResponse", "UnionResult", {}),
+            generate.composed_union_alias_to_type("SecondResponse", "UnionResult", {}),
+        ])
+        source = textwrap.dedent(f"""
+            package uniontest
+
+            import "testing"
+
+            {generated}
+
+            func TestComposedUnion(t *testing.T) {{
+                var first FirstResponse = WorkDone{{}}
+                var second SecondResponse = &WorkFailed{{}}
+                var shared UnionResult = first
+                _, _ = second, shared
+            }}
+        """)
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(f"{tmp}/go.mod", "w") as f:
+                f.write("module uniontest\n\ngo 1.22\n")
+            with open(f"{tmp}/union_test.go", "w") as f:
+                f.write(source)
+            subprocess.run(["go", "test", "."], cwd=tmp, check=True)
+
+
+BUNDLE_PRESENT = (generate.SCRIPT_DIR / "media-buy" / "media-buy-commitment-response.json").exists()
+
+
+@unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+class CommitmentResponseGenerationTest(unittest.TestCase):
+    """accept_proposal and buy_products, both answered by the commitment union."""
+
+    def setUp(self):
+        generate._reset_will_generate_cache()
+        self.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def test_both_tools_answer_with_the_commitment_union(self):
+        self.assertEqual("union_interface", self.entries["MediaBuyCommitmentResponse"]["kind"])
+        for tool in ("AcceptProposalResponse", "BuyProductsResponse"):
+            with self.subTest(tool=tool):
+                self.assertEqual("union_alias", self.entries[tool]["kind"])
+                self.assertEqual("MediaBuyCommitmentResponse", self.entries[tool]["union"])
+        self.assertEqual(
+            ["CommittedMediaBuy", "CommitmentError", "CommitmentSubmitted"],
+            [
+                name for name, entry in self.entries.items()
+                if entry["kind"] == "struct" and entry.get("variant")
+                and entry["schema"].startswith("media-buy/media-buy-commitment-response.json#/oneOf/")
+            ],
+        )
+        # The union is not also flattened into one struct.
+        self.assertNotEqual("struct", self.entries["MediaBuyCommitmentResponse"]["kind"])
+
+    def test_available_actions_are_the_action_object_not_the_enum(self):
+        committed = self.entries["CommittedMediaBuy"]
+        source = generate.schema_to_struct("CommittedMediaBuy", committed["schema_obj"])
+        self.assertIn(
+            'AvailableActions []CanonicalAvailableAction `json:"available_actions"`',
+            source,
+        )
+
+        action = generate.schema_to_struct(
+            "CanonicalAvailableAction",
+            generate.load_schema("core/canonical-media-buy-action.json"),
+        )
+        for field in (
+            'Task string `json:"task"`',
+            'Action string `json:"action"`',
+            'Mode CanonicalMediaBuyActionMode `json:"mode"`',
+            'ApplicablePackageIDs []string `json:"applicable_package_ids,omitempty"`',
+        ):
+            with self.subTest(field=field):
+                self.assertIn(" ".join(field.split()), " ".join(action.split()))
+
+        # The string enum keeps its public name.
+        self.assertIn("type CanonicalMediaBuyAction = string", generate.generate_enums())
+
+    def test_commitment_union_adds_no_unreviewed_any(self):
+        report = generate.any_coverage_report()
+        self.assertEqual(
+            [],
+            [
+                (r["type"], r["json"]) for r in report["records"]
+                if not r["allowed"]
+            ],
+        )
+
+    def test_typed_request_fields_reach_no_null_branch(self):
+        # A typed Go field decodes null like omission and drops it on encode;
+        # adcp-go#536 is deciding the request-side encoding. So every request
+        # field whose schema reaches a null branch must stay a reviewed `any`.
+        def reaches_null(node, seen):
+            if isinstance(node, list):
+                return any(reaches_null(item, seen) for item in node)
+            if not isinstance(node, dict):
+                return False
+            if node.get("type") == "null" or (
+                isinstance(node.get("type"), list) and "null" in node["type"]
+            ):
+                return True
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.endswith("/media-buy/product-purchase-input.json"):
+                return False  # ProductPurchaseInput is checked as its own type below
+            if isinstance(ref, str) and ref not in seen:
+                seen.add(ref)
+                if reaches_null(generate.resolve_ref_schema(ref), seen):
+                    return True
+            return any(reaches_null(value, seen) for key, value in node.items() if key != "$ref")
+
+        for name in ("AcceptProposalRequest", "BuyProductsRequest", "ProductPurchaseInput"):
+            schema = self.entries[name]["schema_obj"]
+            required = generate.schema_required_names(schema)
+            for json_name, prop in generate.schema_properties(schema).items():
+                go_type, _ = generate.field_go_type_info(name, json_name, prop, required)
+                with self.subTest(type=name, field=json_name):
+                    if reaches_null(prop, set()):
+                        self.assertTrue(generate.contains_dynamic_any(go_type), go_type)
+                        self.assertIn((name, json_name), generate.INTENTIONAL_ANY_FIELDS)
+
+
+class ObjectRefScalarAliasGuardTest(unittest.TestCase):
+    """adcp-go#564 check 3: an object $ref must not become a scalar alias."""
+
+    ACTION_REF = "https://adcontextprotocol.org/schemas/3.2.2/core/canonical-media-buy-action.json"
+
+    def setUp(self):
+        generate._reset_will_generate_cache()
+        del generate._OBJECT_REF_ALIAS_VIOLATIONS[:]
+
+    def tearDown(self):
+        generate._reset_will_generate_cache()
+        del generate._OBJECT_REF_ALIAS_VIOLATIONS[:]
+
+    def object_ref_schema(self, name="Shape"):
+        return {"type": "object", "properties": {"id": {"type": "string"}}}
+
+    def test_object_ref_resolving_to_an_alias_name_is_reported(self):
+        schema = {"properties": {"things": {"type": "array", "items": {"$ref": "/schemas/3.2.2/core/shape.json"}}}}
+
+        with (
+            mock.patch.object(generate, "resolve_ref_schema", return_value=self.object_ref_schema()),
+            mock.patch.object(generate, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            violations = generate.object_ref_scalar_alias_violations("Holder", schema)
+
+        self.assertEqual(
+            [{
+                "type": "Holder",
+                "json": "things",
+                "ref": "/schemas/3.2.2/core/shape.json",
+                "go_type": "Shape",
+            }],
+            violations,
+        )
+
+    def test_guard_covers_every_way_a_field_binds_a_ref(self):
+        ref = {"$ref": "/schemas/3.2.2/core/shape.json"}
+        schema = {
+            "properties": {
+                "direct": ref,
+                "items": {"type": "array", "items": ref},
+                "map": {"type": "object", "additionalProperties": ref},
+                "validation_only_allof": {"allOf": [ref, {"not": {"required": ["id"]}}]},
+            },
+        }
+
+        with (
+            mock.patch.object(generate, "resolve_ref_schema", return_value=self.object_ref_schema()),
+            mock.patch.object(generate, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            violations = generate.object_ref_scalar_alias_violations("Holder", schema)
+
+        self.assertEqual(
+            ["direct", "items", "map", "validation_only_allof"],
+            [v["json"] for v in violations],
+        )
+
+    def test_guard_ignores_what_is_not_an_object_bound_to_an_alias(self):
+        ref = {"$ref": "/schemas/3.2.2/core/shape.json"}
+        enum_ref = {"$ref": "/schemas/3.2.2/enums/shape.json"}
+        schema = {
+            "properties": {
+                "object_with_own_name": ref,
+                "enum": enum_ref,
+                "oneOf_is_any": {"oneOf": [ref, {"type": "string"}]},
+                "hinted": ref,
+            },
+        }
+        string_schema = {"type": "string", "enum": ["a"]}
+
+        with mock.patch.object(generate, "scalar_alias_go_names", return_value={"Other"}):
+            with mock.patch.object(generate, "resolve_ref_schema", return_value=self.object_ref_schema()):
+                self.assertEqual([], generate.object_ref_scalar_alias_violations("Holder", schema))
+
+        with mock.patch.object(generate, "scalar_alias_go_names", return_value={"Shape"}):
+            # An enum $ref is meant to be the enum.
+            with mock.patch.object(generate, "resolve_ref_schema", return_value=string_schema):
+                self.assertEqual([], generate.object_ref_scalar_alias_violations("Holder", schema))
+            # A field with an explicit INLINE_TYPE_HINTS entry names its own type.
+            with (
+                mock.patch.object(generate, "resolve_ref_schema", return_value=self.object_ref_schema()),
+                mock.patch.dict(generate.INLINE_TYPE_HINTS, {("Holder", "hinted"): "Own"}),
+            ):
+                reported = {v["json"] for v in generate.object_ref_scalar_alias_violations("Holder", schema)}
+            self.assertEqual({"object_with_own_name"}, reported)
+
+    def test_generation_fails_when_a_struct_binds_an_object_ref_to_an_alias(self):
+        schema = {"properties": {"things": {"type": "array", "items": {"$ref": "/schemas/3.2.2/core/shape.json"}}}}
+
+        with (
+            mock.patch.object(generate, "resolve_ref_schema", return_value=self.object_ref_schema()),
+            mock.patch.object(generate, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            generate.schema_to_struct("Holder", schema)
+
+        with self.assertRaisesRegex(ValueError, r"Holder\.things references /schemas/3\.2\.2/core/shape\.json"):
+            generate.raise_on_object_ref_scalar_alias_violations()
+        # The list is cleared once reported.
+        generate.raise_on_object_ref_scalar_alias_violations()
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_the_canonical_action_object_does_not_bind_to_the_enum_name(self):
+        schema = {"properties": {"available_actions": {"type": "array", "items": {"$ref": self.ACTION_REF}}}}
+
+        self.assertEqual([], generate.object_ref_scalar_alias_violations("CommittedMediaBuy", schema))
+
+        # Without the REF_ALIASES entry the object resolves to the string enum's
+        # name, which is the bug the guard exists for.
+        aliases = {k: v for k, v in generate.REF_ALIASES.items() if k != "CanonicalMediaBuyAction"}
+        with mock.patch.object(generate, "REF_ALIASES", aliases):
+            violations = generate.object_ref_scalar_alias_violations("CommittedMediaBuy", schema)
+        self.assertEqual(
+            [("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction")],
+            [(v["type"], v["json"], v["go_type"]) for v in violations],
+        )
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_generation_fails_on_the_pre_fix_tables(self):
+        aliases = {k: v for k, v in generate.REF_ALIASES.items() if k != "CanonicalMediaBuyAction"}
+        with (
+            mock.patch.object(generate, "REF_ALIASES", aliases),
+            mock.patch.object(generate, "KNOWN_TYPES", set(generate.KNOWN_TYPES) | {"CanonicalMediaBuyAction"}),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            generate._reset_will_generate_cache()
+            with self.assertRaisesRegex(
+                ValueError, r"CommittedMediaBuy\.available_actions references .*canonical-media-buy-action\.json",
+            ):
+                generate.generate()
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_current_tables_generate_cleanly(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            generate.generate()
+
+    def test_scalar_alias_names_include_enums_and_scalar_types(self):
+        names = generate.scalar_alias_go_names()
+
+        self.assertTrue({"string", "int", "float64", "bool"} <= names)
+        self.assertIn("OptimizationMetric", names)  # inline enum
+        if BUNDLE_PRESENT:
+            self.assertIn("CanonicalMediaBuyAction", names)
+            self.assertIn("Pacing", names)
+            self.assertNotIn("CanonicalProposal", names)
 
 
 class PackageSchemaOwnershipTest(unittest.TestCase):

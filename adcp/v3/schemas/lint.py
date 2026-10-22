@@ -844,6 +844,33 @@ def validate_required_properties_declared():
     return reports
 
 
+def validate_object_refs_not_scalar_aliases():
+    """Verify no generated field binds a `$ref` to an object schema to a string
+    or number alias (adcp-go#564, check 3).
+
+    `enums/canonical-media-buy-action.json` and
+    `core/canonical-media-buy-action.json` both PascalCase to
+    `CanonicalMediaBuyAction`, a name that KNOWN_TYPES trusted and the enum
+    owned, so an array of the objects was generated as `[]string`.
+    """
+    reports = []
+    for entry in gen.generated_schema_entries():
+        if entry.get('kind') != 'struct':
+            continue
+        for violation in gen.object_ref_scalar_alias_violations(
+            entry['name'], entry['schema_obj'],
+        ):
+            reports.append({
+                'type': violation['type'],
+                'schema': entry.get('schema', '?'),
+                'json': violation['json'],
+                'ref': violation['ref'],
+                'go_type': violation['go_type'],
+                'error': gen.format_object_ref_scalar_alias_violation(violation),
+            })
+    return reports
+
+
 def validate_union_schema_specs():
     """Smoke-test generated union schema pointers and shared-helper equivalence."""
     reports = []
@@ -1361,6 +1388,7 @@ def main():
     cross_type_inline_errors = validate_cross_type_inline_hints()
     union_schema_errors = validate_union_schema_specs()
     required_undeclared_errors = validate_required_properties_declared()
+    object_ref_alias_errors = validate_object_refs_not_scalar_aliases()
     custom_wire_field_errors = validate_custom_wire_fields(
         go_structs,
         custom_json_methods,
@@ -1421,6 +1449,7 @@ def main():
             'cross_type_inline_errors': cross_type_inline_errors,
             'union_schema_errors': union_schema_errors,
             'required_undeclared_errors': required_undeclared_errors,
+            'object_ref_alias_errors': object_ref_alias_errors,
             'custom_wire_field_errors': custom_wire_field_errors,
             'optional_bool_pointer': optional_bool_reports,
             'optional_numeric_pointer': optional_numeric_reports,
@@ -1439,6 +1468,21 @@ def main():
                 print(f'  {r["type"]}  ({r.get("schema", "?")})')
                 print(f'    error:      {r["error"]}')
                 print(f'    undeclared: {", ".join(r["undeclared"])}')
+            print()
+        if object_ref_alias_errors:
+            print(
+                'Object $ref bound to a scalar Go type in '
+                f'{len(object_ref_alias_errors)} field(s):'
+            )
+            for r in object_ref_alias_errors:
+                print()
+                print(f'  {r["type"]}.{r["json"]}  ({r.get("schema", "?")})')
+                print(f'    ref:     {r["ref"]}')
+                print(f'    Go type: {r["go_type"]}')
+                print(
+                    '    fix:     add a REF_ALIASES entry giving the object its own '
+                    'Go name, and drop the name from KNOWN_TYPES'
+                )
             print()
         if inline_schema_errors:
             print(f'Inline schema pointer errors in {len(inline_schema_errors)} type(s):')
@@ -1629,6 +1673,7 @@ def main():
         or bool(hand_written_inline_schema_divergence)
         or bool(union_schema_errors)
         or bool(required_undeclared_errors)
+        or bool(object_ref_alias_errors)
         or bool(custom_wire_field_errors)
         or bool(optional_bool_reports)
         or bool(reports)
