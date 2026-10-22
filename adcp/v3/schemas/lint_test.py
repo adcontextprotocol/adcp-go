@@ -1055,6 +1055,27 @@ class ObjectRefScalarAliasLintTest(unittest.TestCase):
         self.assertEqual([], lint.validate_object_refs_not_scalar_aliases())
 
     @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
+    def test_guard_fires_on_the_tables_from_before_the_fix(self):
+        # main kept CanonicalMediaBuyAction in KNOWN_TYPES, so the generator
+        # trusted the name and typed available_actions as []string.
+        aliases = {
+            key: value for key, value in lint.gen.REF_ALIASES.items()
+            if key != "CanonicalMediaBuyAction"
+        }
+        known = set(lint.gen.KNOWN_TYPES) | {"CanonicalMediaBuyAction"}
+        with (
+            mock.patch.object(lint.gen, "REF_ALIASES", aliases),
+            mock.patch.object(lint.gen, "KNOWN_TYPES", known),
+        ):
+            lint.gen._reset_will_generate_cache()
+            reports = lint.validate_object_refs_not_scalar_aliases()
+
+        self.assertEqual(
+            [("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction")],
+            [(r["type"], r["json"], r["go_type"]) for r in reports],
+        )
+
+    @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
     def test_strict_lint_exits_nonzero_for_a_bound_object_ref(self):
         report = {"type": "Holder", "schema": "h.json", "json": "things", "ref": "r", "go_type": "Shape", "error": "e"}
         with (

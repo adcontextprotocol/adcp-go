@@ -2591,6 +2591,102 @@ class ComposedUnionGenerationTest(SchemaFixtureCase):
 BUNDLE_PRESENT = (generate.SCRIPT_DIR / "media-buy" / "media-buy-commitment-response.json").exists()
 
 
+@unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+class CommitmentResponseGenerationTest(unittest.TestCase):
+    """accept_proposal and buy_products, both answered by the commitment union."""
+
+    def setUp(self):
+        generate._reset_will_generate_cache()
+        self.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def test_both_tools_answer_with_the_commitment_union(self):
+        self.assertEqual("union_interface", self.entries["MediaBuyCommitmentResponse"]["kind"])
+        for tool in ("AcceptProposalResponse", "BuyProductsResponse"):
+            with self.subTest(tool=tool):
+                self.assertEqual("union_alias", self.entries[tool]["kind"])
+                self.assertEqual("MediaBuyCommitmentResponse", self.entries[tool]["union"])
+        self.assertEqual(
+            ["CommittedMediaBuy", "CommitmentError", "CommitmentSubmitted"],
+            [
+                name for name, entry in self.entries.items()
+                if entry["kind"] == "struct" and entry.get("variant")
+                and entry["schema"].startswith("media-buy/media-buy-commitment-response.json#/oneOf/")
+            ],
+        )
+        # The union is not also flattened into one struct.
+        self.assertNotEqual("struct", self.entries["MediaBuyCommitmentResponse"]["kind"])
+
+    def test_available_actions_are_the_action_object_not_the_enum(self):
+        committed = self.entries["CommittedMediaBuy"]
+        source = generate.schema_to_struct("CommittedMediaBuy", committed["schema_obj"])
+        self.assertIn(
+            'AvailableActions []CanonicalAvailableAction `json:"available_actions"`',
+            source,
+        )
+
+        action = generate.schema_to_struct(
+            "CanonicalAvailableAction",
+            generate.load_schema("core/canonical-media-buy-action.json"),
+        )
+        for field in (
+            'Task string `json:"task"`',
+            'Action string `json:"action"`',
+            'Mode CanonicalMediaBuyActionMode `json:"mode"`',
+            'ApplicablePackageIDs []string `json:"applicable_package_ids,omitempty"`',
+        ):
+            with self.subTest(field=field):
+                self.assertIn(" ".join(field.split()), " ".join(action.split()))
+
+        # The string enum keeps its public name.
+        self.assertIn("type CanonicalMediaBuyAction = string", generate.generate_enums())
+
+    def test_commitment_union_adds_no_unreviewed_any(self):
+        report = generate.any_coverage_report()
+        self.assertEqual(
+            [],
+            [
+                (r["type"], r["json"]) for r in report["records"]
+                if not r["allowed"]
+            ],
+        )
+
+    def test_typed_request_fields_reach_no_null_branch(self):
+        # A typed Go field decodes null like omission and drops it on encode;
+        # adcp-go#536 is deciding the request-side encoding. So every request
+        # field whose schema reaches a null branch must stay a reviewed `any`.
+        def reaches_null(node, seen):
+            if isinstance(node, list):
+                return any(reaches_null(item, seen) for item in node)
+            if not isinstance(node, dict):
+                return False
+            if node.get("type") == "null" or (
+                isinstance(node.get("type"), list) and "null" in node["type"]
+            ):
+                return True
+            ref = node.get("$ref")
+            if isinstance(ref, str) and ref.endswith("/media-buy/product-purchase-input.json"):
+                return False  # ProductPurchaseInput is checked as its own type below
+            if isinstance(ref, str) and ref not in seen:
+                seen.add(ref)
+                if reaches_null(generate.resolve_ref_schema(ref), seen):
+                    return True
+            return any(reaches_null(value, seen) for key, value in node.items() if key != "$ref")
+
+        for name in ("AcceptProposalRequest", "BuyProductsRequest", "ProductPurchaseInput"):
+            schema = self.entries[name]["schema_obj"]
+            required = generate.schema_required_names(schema)
+            for json_name, prop in generate.schema_properties(schema).items():
+                go_type, _ = generate.field_go_type_info(name, json_name, prop, required)
+                with self.subTest(type=name, field=json_name):
+                    if reaches_null(prop, set()):
+                        self.assertTrue(generate.contains_dynamic_any(go_type), go_type)
+                        self.assertIn((name, json_name), generate.INTENTIONAL_ANY_FIELDS)
+
+    def test_targeting_overlay_keeps_the_536_reason(self):
+        reason = generate.INTENTIONAL_ANY_FIELDS[("ProductPurchaseInput", "targeting_overlay")]
+        self.assertIn("adcp-go#536", reason)
+
+
 class ObjectRefScalarAliasGuardTest(unittest.TestCase):
     """adcp-go#564 check 3: an object $ref must not become a scalar alias."""
 
@@ -2706,6 +2802,20 @@ class ObjectRefScalarAliasGuardTest(unittest.TestCase):
             [("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction")],
             [(v["type"], v["json"], v["go_type"]) for v in violations],
         )
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_generation_fails_on_the_pre_fix_tables(self):
+        aliases = {k: v for k, v in generate.REF_ALIASES.items() if k != "CanonicalMediaBuyAction"}
+        with (
+            mock.patch.object(generate, "REF_ALIASES", aliases),
+            mock.patch.object(generate, "KNOWN_TYPES", set(generate.KNOWN_TYPES) | {"CanonicalMediaBuyAction"}),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            generate._reset_will_generate_cache()
+            with self.assertRaisesRegex(
+                ValueError, r"CommittedMediaBuy\.available_actions references .*canonical-media-buy-action\.json",
+            ):
+                generate.generate()
 
     @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
     def test_current_tables_generate_cleanly(self):

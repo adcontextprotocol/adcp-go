@@ -158,6 +158,10 @@ TOOL_SCHEMAS = [
     "media-buy/build-creative-response.json",
     "media-buy/refine-proposals-request.json",
     "media-buy/refine-proposals-response.json",
+    "media-buy/accept-proposal-request.json",
+    "media-buy/accept-proposal-response.json",
+    "media-buy/buy-products-request.json",
+    "media-buy/buy-products-response.json",
     # Reporting
     "media-buy/sync-reporting-status-request.json",
     "media-buy/sync-reporting-status-response.json",
@@ -1071,6 +1075,11 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/decline-proposals-response.json#/properties/results/items",
     ),
     (
+        "PurchaseBinding",
+        "media-buy/media-buy-commitment-response.json"
+        "#/oneOf/0/properties/purchase_bindings/items",
+    ),
+    (
         "ValidateInputTarget",
         "creative/validate-input-request.json#/properties/targets/items",
     ),
@@ -1127,6 +1136,9 @@ INLINE_SCHEMA_DESCRIPTIONS = {
         'GetSignals response row with listing identity, enrichment, activation, and pricing fields.'
     ),
     'SignalCoverageForecastScope': 'Explicit denominator for the coverage forecast.',
+    'CommittedMediaBuy': 'Committed Media Buy, the commitment result with status "completed".',
+    'CommitmentError': 'Commitment Error, the commitment result with status "failed".',
+    'CommitmentSubmitted': 'Commitment Submitted, the commitment result with status "submitted".',
 }
 
 FIELD_DESCRIPTION_OVERRIDES = {
@@ -1163,6 +1175,7 @@ FIELD_DESCRIPTION_FALLBACK_SPECS = {
 # helper cannot silently default to data-dropping open-object semantics.
 CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'DeclineProposalResult',
+    'PurchaseBinding',
     'RefinementConstraints',
     'CPMConstraint',
     'ImpressionsConstraint',
@@ -1390,6 +1403,9 @@ SHARED_INLINE_OVERRIDES = {
 CROSS_TYPE_INLINE_HINTS = {
     ('PerformanceFeedback', 'measurement_period'): 'DatetimeRange',
     ('RequestProposalsResponse', 'incomplete'): 'GetProductsIncompleteItem',
+    ('AcceptProposalRequest', 'total_budget'): 'MediaBuyBudget',
+    ('BuyProductsRequest', 'total_budget'): 'MediaBuyBudget',
+    ('AcceptProposalRequest', 'io_acceptance'): 'IOAcceptance',
 }
 
 # Named enum helpers generated from inline JSON Schema pointers. These cover
@@ -1587,6 +1603,25 @@ INLINE_TYPE_HINTS = {
     ('RefineProposalsRequest', 'adcp_major_version'): '*int',
     ('RequestProposalsRequest', 'adcp_major_version'): '*int',
     ('DeclineProposalsRequest', 'adcp_major_version'): '*int',
+    ('AcceptProposalRequest', 'adcp_major_version'): '*int',
+    ('BuyProductsRequest', 'adcp_major_version'): '*int',
+    # Optional request numbers: an explicit 0 cap is not the same as no cap, so
+    # these are pointers.
+    ('AcceptProposalRequest', 'daily_budget_cap'): '*float64',
+    ('BuyProductsRequest', 'daily_budget_cap'): '*float64',
+    ('AcceptProposalRequest', 'total_budget'): '*MediaBuyBudget',
+    ('BuyProductsRequest', 'total_budget'): '*MediaBuyBudget',
+    ('AcceptProposalRequest', 'io_acceptance'): '*IOAcceptance',
+    ('CommittedMediaBuy', 'purchase_bindings'): 'PurchaseBinding',
+    ('ProductPurchaseInput', 'format_option_refs'): '[]FormatOptionRef',
+    ('ProductPurchaseInput', 'catalog_ids'): '[]string',
+    ('ProductPurchaseInput', 'budget'): '*float64',
+    ('ProductPurchaseInput', 'daily_budget_cap'): '*float64',
+    ('ProductPurchaseInput', 'min_spend_target'): '*float64',
+    ('ProductPurchaseInput', 'impressions'): '*float64',
+    ('ProductPurchaseInput', 'pacing'): 'string',
+    ('ProductPurchaseInput', 'audience_evidence_pins'): '[]AudienceEvidencePin',
+    ('ProductPurchaseInput', 'performance_standards'): '[]CanonicalPerformanceStandard',
     ('RequestProposalsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('DeclineProposalsResponse', 'results'): 'DeclineProposalResult',
     ('RefineProposalsRequest', 'refinements'): 'ProposalRefinement',
@@ -1997,6 +2032,15 @@ INTENTIONAL_ANY_FIELDS = {
     ('CheckGovernanceFinding', 'details'): 'governance finding details are structured but category-specific',
     ('ReportPlanOutcomeFinding', 'details'): 'outcome finding details are structured but category-specific',
     ('RequestProposalsResponse', 'purchase_continuation'): 'deprecated 3.x projection-only coordinator state that a native 3.2 seller must not emit; removed in 4.0',
+    ('CommittedMediaBuy', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
+    ('BuyProductsRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
+    ('BuyProductsRequest', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; CreateMediaBuyRequest.bidding stays any too',
+    ('ProductPurchaseInput', 'pricing'): 'core/canonical-pricing-option.json is not generated: its free-form parameters object has no reviewed Go type',
+    ('ProductPurchaseInput', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; PackageInput.bidding stays any too',
+    ('ProductPurchaseInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('ProductPurchaseInput', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
+    ('ProductPurchaseInput', 'audience_evidence_requirements'): 'core/product-audience-evidence-requirements.json is not generated: accepted_attestation_issuers is an array of a oneOf with no Go type yet',
+    ('ProductPurchaseInput', 'measurement_terms'): 'core/canonical-measurement-terms.json is not generated: billing_measurement and makegood_policy are inline objects with no Go type yet',
     ('ValidateInputViolation', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
     ('ValidateInputViolation', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
     ('ValidateInputViolation', 'retry_with'): 'validate_input retry hints are advisory, platform-shaped input',

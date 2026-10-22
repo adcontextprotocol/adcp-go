@@ -10399,6 +10399,14 @@ type VendorMetricOptimization struct {
 	SupportedMetrics []VendorMetricOptimizationSupportedMetric `json:"supported_metrics"` // Vendor-defined metrics this product can steer delivery toward. Each entry
 }
 
+// WarningResource — Typed AdCP identity for the resource or relationship affected by a successful-operation warning.
+type WarningResource struct {
+	ResourceType string `json:"resource_type"`
+	MediaBuyID   string `json:"media_buy_id,omitempty"`
+	PackageID    string `json:"package_id,omitempty"`
+	CreativeID   string `json:"creative_id,omitempty"`
+}
+
 // WebhookActivityRecord — Single webhook delivery attempt surfaced to a calling principal as a buyer-side debug aid.
 type WebhookActivityRecord struct {
 	IdempotencyKey   string           `json:"idempotency_key"`              // Equals the `idempotency_key` carried in the webhook payload itself (see
@@ -10480,6 +10488,32 @@ type GetProductsRejected struct {
 type GetProductsTargetingResolution struct {
 	BriefTargeting Targeting `json:"brief_targeting"` // Structured delivery constraints the seller resolved from explicit hard
 	Ext            any       `json:"ext,omitempty"`
+}
+
+// ProductPurchaseInput — Request-only canonical product selection for buy_products. It shares the strict Product Purchase
+type ProductPurchaseInput struct {
+	ProductID                    string                         `json:"product_id"`
+	PricingOptionID              string                         `json:"pricing_option_id"`
+	Pricing                      any                            `json:"pricing,omitempty"`
+	FormatOptionRefs             []FormatOptionRef              `json:"format_option_refs,omitempty"`
+	CatalogIDs                   []string                       `json:"catalog_ids,omitempty"`
+	Budget                       *float64                       `json:"budget,omitempty"`
+	DailyBudgetCap               *float64                       `json:"daily_budget_cap,omitempty"`
+	MinSpendTarget               *float64                       `json:"min_spend_target,omitempty"`
+	Impressions                  *float64                       `json:"impressions,omitempty"`
+	StartTime                    string                         `json:"start_time,omitempty"`
+	EndTime                      string                         `json:"end_time,omitempty"`
+	Pacing                       string                         `json:"pacing,omitempty"`
+	Bidding                      any                            `json:"bidding,omitempty"`
+	TargetingOverlay             any                            `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
+	OptimizationGoals            any                            `json:"optimization_goals,omitempty"`
+	AudienceEvidenceRequirements any                            `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
+	AudienceEvidencePins         []AudienceEvidencePin          `json:"audience_evidence_pins,omitempty"`
+	AgencyEstimateNumber         string                         `json:"agency_estimate_number,omitempty"`
+	Context                      any                            `json:"context,omitempty"`
+	Ext                          any                            `json:"ext,omitempty"`
+	MeasurementTerms             any                            `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
+	PerformanceStandards         []CanonicalPerformanceStandard `json:"performance_standards,omitempty"`
 }
 
 // ProposalDecline — Terminal buyer feedback for one immutable proposal snapshot.
@@ -12544,6 +12578,12 @@ type DeclineProposalResult struct {
 	Reason     string `json:"reason,omitempty"` // Why the seller could not apply a decline. Present only for outcome unable.
 }
 
+type PurchaseBinding struct {
+	PurchaseIndex int    `json:"purchase_index"`
+	ProductID     string `json:"product_id"`
+	PackageID     string `json:"package_id"`
+}
+
 type ValidateInputTarget struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"` // Agent-local capability_id from get_adcp_capabilities
@@ -13355,6 +13395,113 @@ type RefineProposalsData struct {
 	Products    []CanonicalProduct `json:"products,omitempty"` // Canonical products needed to evaluate the resulting terms. For revised or
 	Replayed    *bool              `json:"replayed,omitempty"`
 }
+
+// AcceptProposalRequest — Accept one committed immutable proposal. Depending on proposal_kind, acceptance creates a
+type AcceptProposalRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Name                   string                  `json:"name,omitempty"` // Human-readable MediaBuy name supplied by the buyer for trafficking UI display
+	Account                CanonicalAccountRef     `json:"account"`
+	ProposalID             string                  `json:"proposal_id"`
+	ProposalTermsDigest    string                  `json:"proposal_terms_digest"`         // terms_digest from the committed proposal. The seller MUST atomically verify
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`        // Execution amount when the committed proposal defines scalable percentages or
+	DailyBudgetCap         *float64                `json:"daily_budget_cap,omitempty"`    // Optional hard aggregate daily spend ceiling applied when the committed
+	BudgetCapTimezone      string                  `json:"budget_cap_timezone,omitempty"` // Optional shared IANA cap-day timezone override. Requires
+	IoAcceptance           *IOAcceptance           `json:"io_acceptance,omitempty"`
+	PurchaseOrderRef       string                  `json:"purchase_order_ref,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"` // Optional reporting delivery configuration established atomically when the
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"`       // Optional planning-cycle closure. Success infers closed with
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// MediaBuyCommitmentResponse is a discriminated union — use one of the generated variant structs.
+type MediaBuyCommitmentResponse interface {
+	isMediaBuyCommitmentResponse()
+}
+
+// CommittedMediaBuy — Committed Media Buy, the commitment result with status "completed".
+type CommittedMediaBuy struct {
+	Status           string                     `json:"status"`
+	MediaBuyID       string                     `json:"media_buy_id"`
+	Name             string                     `json:"name,omitempty"` // Persisted human-readable MediaBuy name for trafficking UI display and
+	Revision         int                        `json:"revision"`
+	MediaBuyStatus   MediaBuyStatus             `json:"media_buy_status,omitempty"`
+	ConfirmedAt      *string                    `json:"confirmed_at,omitempty"`
+	AcceptedProposal CanonicalProposal          `json:"accepted_proposal"`
+	PurchaseBindings []PurchaseBinding          `json:"purchase_bindings"` // Execution identities assigned to the immutable purchases. purchase_index is
+	AvailableActions []CanonicalAvailableAction `json:"available_actions"`
+	Warnings         []any                      `json:"warnings,omitempty"` // Non-blocking observations about this completed commitment. The MediaBuy was
+	Context          any                        `json:"context,omitempty"`
+	Ext              any                        `json:"ext,omitempty"`
+	Replayed         *bool                      `json:"replayed,omitempty"`
+}
+
+// CommitmentError — Commitment Error, the commitment result with status "failed".
+type CommitmentError struct {
+	Status   string      `json:"status"`
+	Errors   []AdcpError `json:"errors"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+// CommitmentSubmitted — Commitment Submitted, the commitment result with status "submitted".
+type CommitmentSubmitted struct {
+	Status   string      `json:"status"`
+	TaskID   string      `json:"task_id"`
+	Message  string      `json:"message,omitempty"`
+	Errors   []AdcpError `json:"errors,omitempty"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+func (CommittedMediaBuy) isMediaBuyCommitmentResponse()   {}
+func (CommitmentError) isMediaBuyCommitmentResponse()     {}
+func (CommitmentSubmitted) isMediaBuyCommitmentResponse() {}
+
+// AcceptProposalResponse — Compact proposal-acceptance result containing the resulting MediaBuy identity and accepted
+type AcceptProposalResponse = MediaBuyCommitmentResponse
+
+// BuyProductsRequest — Create a MediaBuy directly from published product offers. Provide exactly one brand source
+type BuyProductsRequest struct {
+	Account                CanonicalAccountRef     `json:"account"` // Execution account. A natural-key account is the single brand source and MUST
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Name                   string                  `json:"name,omitempty"`                // Human-readable name for this media buy, shared by buyer and seller for
+	Brand                  *BrandKey               `json:"brand,omitempty"`               // Brand source required when account is ID-only. Omit when account already
+	AdvertiserIndustry     AdvertiserIndustry      `json:"advertiser_industry,omitempty"` // Industry classification for this campaign. Sellers may infer it from the
+	FeedVersion            string                  `json:"feed_version"`                  // list_products feed_version containing the published offers being accepted.
+	PricingVersion         string                  `json:"pricing_version,omitempty"`     // list_products pricing_version containing the accepted rate. Buyers MUST
+	Purchases              []ProductPurchaseInput  `json:"purchases"`
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`
+	DailyBudgetCap         *float64                `json:"daily_budget_cap,omitempty"`    // Optional hard aggregate daily spend ceiling in total_budget.currency or the
+	FrequencyCap           *MediaBuyFrequencyCap   `json:"frequency_cap,omitempty"`       // Optional max-impression cap using one counter across purchases. Buyers send it
+	BudgetCapTimezone      string                  `json:"budget_cap_timezone,omitempty"` // Optional IANA timezone override shared by every aggregate and purchase daily
+	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
+	StartTime              string                  `json:"start_time"`
+	EndTime                string                  `json:"end_time"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"` // Aggregate media-buy pacing. In seller-optimized allocation, a seller declaring
+	Bidding                any                     `json:"bidding,omitempty"`
+	Paused                 *bool                   `json:"paused,omitempty"`
+	PurchaseOrderRef       string                  `json:"purchase_order_ref,omitempty"`
+	AgencyEstimateNumber   string                  `json:"agency_estimate_number,omitempty"`
+	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"` // Authorized per-buy billing entity override.
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"` // Optional reporting delivery configuration established atomically with the
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"`       // Optional planning-cycle closure for a direct product purchase. Success infers
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// BuyProductsResponse — Compact direct-purchase result containing the MediaBuy identity and accepted immutable proposal
+type BuyProductsResponse = MediaBuyCommitmentResponse
 
 // SyncReportingStatusRequest — Submit the authenticated consumer's operational reporting status for expected configuration
 type SyncReportingStatusRequest struct {
