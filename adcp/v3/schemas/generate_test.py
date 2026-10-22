@@ -2682,10 +2682,6 @@ class CommitmentResponseGenerationTest(unittest.TestCase):
                         self.assertTrue(generate.contains_dynamic_any(go_type), go_type)
                         self.assertIn((name, json_name), generate.INTENTIONAL_ANY_FIELDS)
 
-    def test_targeting_overlay_keeps_the_536_reason(self):
-        reason = generate.INTENTIONAL_ANY_FIELDS[("ProductPurchaseInput", "targeting_overlay")]
-        self.assertIn("adcp-go#536", reason)
-
 
 class ObjectRefScalarAliasGuardTest(unittest.TestCase):
     """adcp-go#564 check 3: an object $ref must not become a scalar alias."""

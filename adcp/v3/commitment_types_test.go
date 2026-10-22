@@ -123,6 +123,7 @@ func TestCommitmentResponseVariantFollowsStatus(t *testing.T) {
 		{`{"status":"submitted","task_id":"task_2"}`, &CommitmentSubmitted{}},
 	}
 	for _, tc := range cases {
+		assertSchemaValid(t, "media-buy/buy-products-response.json", []byte(tc.raw))
 		got, err := decodeCommitmentResponse([]byte(tc.raw))
 		require.NoError(t, err)
 		assert.IsType(t, tc.want, got)
@@ -158,8 +159,10 @@ func TestCommittedMediaBuyAvailableActionsAreObjects(t *testing.T) {
 }
 
 func TestCommitmentRequestsKeepExplicitZeroAndFalse(t *testing.T) {
+	buyRaw := []byte(`{"adcp_version":"3.2","adcp_major_version":3,"idempotency_key":"buy-products-000002","name":"Autumn buy","account":{"brand":{"domain":"example.com","brand_id":"outdoor"},"operator":"agency.example"},"advertiser_industry":"retail","feed_version":"feed_1","pricing_version":"price_1","purchases":[{"product_id":"prod_1","pricing_option_id":"po_1","pricing":{"pricing_option_id":"po_1","pricing_model":"cpm","fixed_price":5,"currency":"EUR"},"format_option_refs":[{"scope":"publisher","publisher_domain":"pub.example","format_option_id":"fo_1"},{"scope":"product","format_option_id":"fo_2"}],"catalog_ids":["cat_1"],"budget":0,"daily_budget_cap":0,"min_spend_target":0,"impressions":0,"start_time":"2026-11-01T00:00:00Z","end_time":"2026-11-30T00:00:00Z","pacing":"even","bidding":{"max_bid":4.5},"targeting_overlay":{"geo_countries":["DE"],"device_type":null},"optimization_goals":[{"kind":"metric","metric":"clicks"}],"audience_evidence_requirements":{"requirement_mode":"required","evidence_presence":"when_available"},"audience_evidence_pins":[{"evidence_id":"ev_1","snapshot_id":"snap_1","version":"1","content_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"agency_estimate_number":"EST-1","context":{"line":1},"ext":{"vendor":{"k":"v"}},"measurement_terms":{},"performance_standards":[{"metric":"viewability","threshold":0,"standard":"mrc","vendor":{"domain":"ias.example"}}]},{"product_id":"prod_2","pricing_option_id":"po_2","budget":2500.5,"impressions":100000}],"total_budget":{"amount":5000,"currency":"EUR"},"daily_budget_cap":0,"frequency_cap":{"max_impressions":3,"per":"devices","window":{"interval":1,"unit":"days"}},"budget_cap_timezone":"Europe/Berlin","budget_allocation":{"mode":"fixed"},"start_time":"2026-11-01T00:00:00Z","end_time":"2026-11-30T00:00:00Z","pacing":"asap","bidding":{"automatic":true},"paused":false,"purchase_order_ref":"PO-2","agency_estimate_number":"EST-2","invoice_recipient":{"legal_name":"Agency GmbH"},"governance_context":"gov-ctx-2","push_notification_config":{"url":"https://buyer.example/hooks/tasks"},"reporting_webhook":{"url":"https://buyer.example/hooks/reporting","authentication":{"schemes":["HMAC-SHA256"],"credentials":"cyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"},"reporting_frequency":"hourly"},"opportunity":{"opportunity_id":"opp_2"},"context":{"line":2},"ext":{"vendor":{"k":"v"}}}`)
+	assertSchemaValid(t, "media-buy/buy-products-request.json", buyRaw)
 	var buy BuyProductsRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"adcp_version":"3.2","adcp_major_version":3,"idempotency_key":"buy-products-000002","name":"Autumn buy","account":{"brand":{"domain":"example.com","brand_id":"outdoor"},"operator":"agency.example"},"advertiser_industry":"retail","feed_version":"feed_1","pricing_version":"price_1","purchases":[{"product_id":"prod_1","pricing_option_id":"po_1","pricing":{"pricing_option_id":"po_1","pricing_model":"cpm","fixed_price":5,"currency":"EUR"},"format_option_refs":[{"scope":"publisher","publisher_domain":"pub.example","format_option_id":"fo_1"},{"scope":"product","format_option_id":"fo_2"}],"catalog_ids":["cat_1"],"budget":0,"daily_budget_cap":0,"min_spend_target":0,"impressions":0,"start_time":"2026-11-01T00:00:00Z","end_time":"2026-11-30T00:00:00Z","pacing":"even","bidding":{"max_bid":4.5},"targeting_overlay":{"geo_countries":["DE"],"device_type":null},"optimization_goals":[{"kind":"metric","metric":"clicks"}],"audience_evidence_requirements":{"requirement_mode":"required","evidence_presence":"when_available"},"audience_evidence_pins":[{"evidence_id":"ev_1","snapshot_id":"snap_1","version":"1","content_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"agency_estimate_number":"EST-1","context":{"line":1},"ext":{"vendor":{"k":"v"}},"measurement_terms":{},"performance_standards":[{"metric":"viewability","threshold":0,"standard":"mrc","vendor":{"domain":"ias.example"}}]},{"product_id":"prod_2","pricing_option_id":"po_2","budget":2500.5,"impressions":100000}],"total_budget":{"amount":5000,"currency":"EUR"},"daily_budget_cap":0,"frequency_cap":{"max_impressions":3,"per":"devices","window":{"interval":1,"unit":"days"}},"budget_cap_timezone":"Europe/Berlin","budget_allocation":{"mode":"fixed"},"start_time":"2026-11-01T00:00:00Z","end_time":"2026-11-30T00:00:00Z","pacing":"asap","bidding":{"automatic":true},"paused":false,"purchase_order_ref":"PO-2","agency_estimate_number":"EST-2","invoice_recipient":{"legal_name":"Agency GmbH"},"governance_context":"gov-ctx-2","push_notification_config":{"url":"https://buyer.example/hooks/tasks"},"reporting_webhook":{"url":"https://buyer.example/hooks/reporting","authentication":{"schemes":["HMAC-SHA256"],"credentials":"cyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"},"reporting_frequency":"hourly"},"opportunity":{"opportunity_id":"opp_2"},"context":{"line":2},"ext":{"vendor":{"k":"v"}}}`), &buy))
+	require.NoError(t, json.Unmarshal(buyRaw, &buy))
 
 	require.NotNil(t, buy.DailyBudgetCap)
 	assert.Zero(t, *buy.DailyBudgetCap)
@@ -181,8 +184,10 @@ func TestCommitmentRequestsKeepExplicitZeroAndFalse(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"product_id":"prod_2","pricing_option_id":"po_2","budget":2500.5,"impressions":100000}`, string(out))
 
+	acceptRaw := []byte(`{"adcp_major_version":3,"idempotency_key":"accept-prop-0000002","name":"Autumn plan","account":{"brand":{"domain":"example.com"},"operator":"agency.example"},"proposal_id":"prop_1","proposal_terms_digest":"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","total_budget":{"amount":0,"currency":"EUR"},"daily_budget_cap":0,"budget_cap_timezone":"Europe/Berlin","io_acceptance":{"io_id":"io_1","accepted_at":"2026-10-22T09:00:00Z","signatory":"Jo Buyer","signature_id":"sig_1"},"purchase_order_ref":"PO-1","governance_context":"gov-ctx-1","push_notification_config":{"url":"https://buyer.example/hooks/tasks","token":"tok_0123456789abcdef"},"reporting_webhook":{"url":"https://buyer.example/hooks/reporting","authentication":{"schemes":["Bearer"],"credentials":"cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"},"reporting_frequency":"daily"},"opportunity":{"opportunity_id":"opp_1","status":"closed","close_reason":"accepted_with_seller"},"context":{"trace":"t1"},"ext":{"vendor":{"k":"v"}}}`)
+	assertSchemaValid(t, "media-buy/accept-proposal-request.json", acceptRaw)
 	var accept AcceptProposalRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"adcp_major_version":3,"idempotency_key":"accept-prop-0000002","name":"Autumn plan","account":{"brand":{"domain":"example.com"},"operator":"agency.example"},"proposal_id":"prop_1","proposal_terms_digest":"sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","total_budget":{"amount":0,"currency":"EUR"},"daily_budget_cap":0,"budget_cap_timezone":"Europe/Berlin","io_acceptance":{"io_id":"io_1","accepted_at":"2026-10-22T09:00:00Z","signatory":"Jo Buyer","signature_id":"sig_1"},"purchase_order_ref":"PO-1","governance_context":"gov-ctx-1","push_notification_config":{"url":"https://buyer.example/hooks/tasks","token":"tok_0123456789abcdef"},"reporting_webhook":{"url":"https://buyer.example/hooks/reporting","authentication":{"schemes":["Bearer"],"credentials":"cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"},"reporting_frequency":"daily"},"opportunity":{"opportunity_id":"opp_1","status":"closed","close_reason":"accepted_with_seller"},"context":{"trace":"t1"},"ext":{"vendor":{"k":"v"}}}`), &accept))
+	require.NoError(t, json.Unmarshal(acceptRaw, &accept))
 	require.NotNil(t, accept.DailyBudgetCap)
 	assert.Zero(t, *accept.DailyBudgetCap)
 	require.NotNil(t, accept.AdcpMajorVersion)
@@ -214,4 +219,25 @@ func TestCommittedMediaBuyNullConfirmedAtDecodesToNil(t *testing.T) {
 	out, err := json.Marshal(committed)
 	require.NoError(t, err)
 	assert.NotContains(t, string(out), "confirmed_at")
+}
+
+// ForecastRateRange and WarningResource are generated because the generator
+// now reaches them; nothing else in the SDK uses them yet.
+func TestGeneratedForecastRateRangeAndWarningResourceRoundTrip(t *testing.T) {
+	rate := `{"low":0,"mid":0.25,"high":1}`
+	assertSchemaValid(t, "core/forecast-rate-range.json", []byte(rate))
+	var fr ForecastRateRange
+	require.NoError(t, json.Unmarshal([]byte(rate), &fr))
+	out, err := json.Marshal(fr)
+	require.NoError(t, err)
+	// low is a plain float64 with omitempty, like ForecastRange: an explicit 0 is omitted.
+	assert.JSONEq(t, `{"mid":0.25,"high":1}`, string(out))
+
+	resource := `{"resource_type":"package","media_buy_id":"mb_1","package_id":"pkg_1"}`
+	assertSchemaValid(t, "core/warning-resource.json", []byte(resource))
+	var wr WarningResource
+	require.NoError(t, json.Unmarshal([]byte(resource), &wr))
+	out, err = json.Marshal(wr)
+	require.NoError(t, err)
+	assert.JSONEq(t, resource, string(out))
 }
