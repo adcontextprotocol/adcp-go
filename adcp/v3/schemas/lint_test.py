@@ -630,6 +630,10 @@ class OptionalNumericPointerLintTest(unittest.TestCase):
 
     def test_optional_bool_lint_current_schema_is_clean(self):
         reports = lint.optional_bool_pointer_reports(lint.parse_go_structs())
+        # Only fields listed in KNOWN_SCHEMA_GAPS may remain.
+        reports = lint.split_known_pointer_reports(
+            reports, "optional_bool_pointer", [], set(),
+        )
         self.assertEqual([], reports)
 
     def test_optional_numeric_lint_catches_current_schema_candidates(self):
@@ -722,6 +726,261 @@ class RequiredPropertiesDeclaredLintTest(unittest.TestCase):
         entries = [{"name": "Composed", "schema": "y.json", "schema_obj": schema, "kind": "struct"}]
         with mock.patch.object(lint.gen, "generated_schema_entries", return_value=entries):
             self.assertEqual([], lint.validate_required_properties_declared())
+
+
+CREATIVE_INPUT_SCHEMA_SPEC = lint.gen.HAND_WRITTEN_SCHEMA_SPECS["CreativeInput"]
+CREATIVE_INPUT_SCHEMA_EXISTS = (
+    lint.SCRIPT_DIR / CREATIVE_INPUT_SCHEMA_SPEC.split("#", 1)[0]
+).exists()
+
+
+class KnownSchemaGapsLintTest(unittest.TestCase):
+    SCHEMA = {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+            "id": {"type": "string"},
+            "name": {"type": "string"},
+            "tags": {"type": "array"},
+            "status": {"type": "string"},
+        },
+    }
+    GO_FIELDS = [
+        ("ID", "string", "id", False),
+        ("Name", "string", "name", True),
+        ("Legacy", "string", "legacy", True),
+    ]
+
+    def run_strict_lint(self, known_gaps, inline_drift=None):
+        """Run lint.main() --strict --json on one Shape type.
+
+        Shape is paired through HAND_WRITTEN_SCHEMA_SPECS, or, when
+        `inline_drift` is given, only through the inline registry whose
+        diff reports are `inline_drift`.
+        """
+        empty = [
+            "validate_inline_schema_specs",
+            "validate_inline_additional_properties_policies",
+            "validate_shared_inline_overrides",
+            "validate_cross_type_inline_hints",
+            "validate_union_schema_specs",
+            "validate_required_properties_declared",
+            "validate_custom_wire_fields",
+            "optional_bool_pointer_reports",
+            "optional_numeric_pointer_reports",
+            "validate_hand_written_inline_schema_divergence",
+        ]
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(
+                lint, "validate_hand_written_inline_schema_specs",
+                return_value=inline_drift or [],
+            ))
+            for name in empty:
+                stack.enter_context(mock.patch.object(lint, name, return_value=[]))
+            for target, attr, value in (
+                (lint.Path, "exists", True),
+                (lint, "parse_go_structs", {"Shape": self.GO_FIELDS}),
+                (lint, "parse_custom_json_methods", {}),
+                (lint, "_assert_exempt_subset_known", None),
+                (lint, "load_schema_spec", self.SCHEMA),
+            ):
+                stack.enter_context(mock.patch.object(target, attr, return_value=value))
+            explicit = {} if inline_drift else {"Shape": "shape.json"}
+            stack.enter_context(mock.patch.object(lint, "EXPLICIT_SCHEMA", explicit))
+            stack.enter_context(mock.patch.object(lint, "EXEMPT", {"Shape"} if inline_drift else set()))
+            stack.enter_context(mock.patch.object(lint, "KNOWN_SCHEMA_GAPS", known_gaps))
+            stack.enter_context(mock.patch.object(lint.gen, "KNOWN_TYPES", {"Shape"}))
+            stack.enter_context(mock.patch.object(sys, "argv", ["lint.py", "--strict", "--json"]))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                rc = lint.main()
+        return rc, json.loads(out.getvalue())
+
+    ALL_GAPS = {
+        "Shape": {
+            "missing_in_go": {"tags": "#564", "status": "#564"},
+            "extra_in_go": {"legacy": "#545"},
+            "required_with_omitempty": {"name": "adcontextprotocol/adcp#8212"},
+        },
+    }
+
+    def test_pairing_reports_each_missing_field(self):
+        rc, payload = self.run_strict_lint({})
+
+        self.assertEqual(1, rc)
+        self.assertEqual(1, len(payload["drift"]))
+        drift = payload["drift"][0]
+        self.assertEqual("Shape", drift["type"])
+        self.assertEqual(["status", "tags"], drift["missing_in_go"])
+        self.assertEqual(["legacy"], drift["extra_in_go"])
+        self.assertEqual(["name"], drift["required_with_omitempty"])
+
+    def test_listed_gaps_pass_strict_and_stay_reported(self):
+        rc, payload = self.run_strict_lint(self.ALL_GAPS)
+
+        self.assertEqual(0, rc)
+        self.assertEqual([], payload["drift"])
+        self.assertEqual([], payload["known_schema_gap_errors"])
+        self.assertEqual(
+            {
+                ("missing_in_go", "status", "#564"),
+                ("missing_in_go", "tags", "#564"),
+                ("extra_in_go", "legacy", "#545"),
+                ("required_with_omitempty", "name", "adcontextprotocol/adcp#8212"),
+            },
+            {(g["kind"], g["json"], g["ref"]) for g in payload["known_schema_gaps"]},
+        )
+
+    def test_known_gap_suppresses_only_its_own_field(self):
+        gaps = {"Shape": {"missing_in_go": {"tags": "#564"}}}
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(1, rc)
+        drift = payload["drift"][0]
+        self.assertEqual(["status"], drift["missing_in_go"])
+        self.assertEqual(["legacy"], drift["extra_in_go"])
+        self.assertEqual(["name"], drift["required_with_omitempty"])
+
+    def test_known_gap_applies_to_hand_written_inline_drift(self):
+        inline_drift = {
+            "type": "Shape",
+            "schema": "parent.json#/properties/shape",
+            "missing_in_go": ["tags", "status"],
+            "extra_in_go": [],
+            "required_with_omitempty": [],
+        }
+        gaps = {"Shape": {"missing_in_go": {"tags": "#564"}}}
+        rc, payload = self.run_strict_lint(gaps, inline_drift=[inline_drift])
+
+        self.assertEqual(1, rc)
+        self.assertEqual(["status"], payload["hand_written_inline_drift"][0]["missing_in_go"])
+        self.assertEqual(
+            [("Shape", "missing_in_go", "tags")],
+            [(g["type"], g["kind"], g["json"]) for g in payload["known_schema_gaps"]],
+        )
+        self.assertEqual([], payload["known_schema_gap_errors"])
+
+    def test_known_gap_is_scoped_to_its_kind_and_type(self):
+        gaps = {
+            "Shape": {"missing_in_go": {"legacy": "#564"}},
+            "Other": {"missing_in_go": {"tags": "#564"}},
+        }
+        known = []
+        matched = set()
+        drift = {
+            "type": "Shape",
+            "schema": "shape.json",
+            "missing_in_go": ["tags"],
+            "extra_in_go": ["legacy"],
+            "required_with_omitempty": [],
+        }
+        with mock.patch.object(lint, "KNOWN_SCHEMA_GAPS", gaps):
+            remaining = lint.split_known_drift(drift, known, matched)
+
+        self.assertEqual(["tags"], remaining["missing_in_go"])
+        self.assertEqual(["legacy"], remaining["extra_in_go"])
+        self.assertEqual([], known)
+        self.assertEqual(set(), matched)
+
+    def test_stale_entry_fails(self):
+        gaps = {
+            "Shape": {
+                **self.ALL_GAPS["Shape"],
+                "missing_in_go": {**self.ALL_GAPS["Shape"]["missing_in_go"], "id": "#564"},
+            },
+        }
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(1, rc)
+        self.assertEqual([], payload["drift"])
+        errors = payload["known_schema_gap_errors"]
+        self.assertEqual(
+            [("Shape", "missing_in_go", "id")],
+            [(e["type"], e["kind"], e.get("json")) for e in errors],
+        )
+        self.assertIn("stale", errors[0]["error"])
+
+    def test_entries_for_an_unpaired_type_fail(self):
+        gaps = {**self.ALL_GAPS, "Unpaired": {"missing_in_go": {"x": "#564"}}}
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(1, rc)
+        self.assertEqual(
+            [("Unpaired", "all")],
+            [(e["type"], e["kind"]) for e in payload["known_schema_gap_errors"]],
+        )
+
+    def test_entry_without_issue_reference_fails(self):
+        for ref in ("", "TODO", "564", "#", "#0", "#564\n", " #564", "https://example.com/1", None):
+            with self.subTest(ref=ref):
+                gaps = {
+                    "Shape": {
+                        **self.ALL_GAPS["Shape"],
+                        "missing_in_go": {"tags": "#564", "status": ref},
+                    },
+                }
+                rc, payload = self.run_strict_lint(gaps)
+
+                self.assertEqual(1, rc)
+                # The finding stays reported: an entry without an owner
+                # suppresses nothing.
+                self.assertEqual(["status"], payload["drift"][0]["missing_in_go"])
+                self.assertEqual(
+                    [("Shape", "status")],
+                    [(e["type"], e.get("json")) for e in payload["known_schema_gap_errors"]],
+                )
+
+    def test_unknown_kind_fails(self):
+        gaps = {"Shape": {**self.ALL_GAPS["Shape"], "missing": {"tags": "#564"}}}
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(1, rc)
+        self.assertEqual(
+            [("Shape", "missing")],
+            [(e["type"], e["kind"]) for e in payload["known_schema_gap_errors"]],
+        )
+
+    def test_pointer_report_gap_suppresses_only_hand_written_field(self):
+        reports = [
+            {"owner": "hand-written", "type": "Shape", "json": "sandbox"},
+            {"owner": "hand-written", "type": "Shape", "json": "paused"},
+            {"owner": "generated", "type": "Shape", "json": "sandbox"},
+        ]
+        known = []
+        matched = set()
+        gaps = {"Shape": {"optional_bool_pointer": {"sandbox": "#564"}}}
+        with mock.patch.object(lint, "KNOWN_SCHEMA_GAPS", gaps):
+            kept = lint.split_known_pointer_reports(
+                reports, "optional_bool_pointer", known, matched,
+            )
+            kept_numeric = lint.split_known_pointer_reports(
+                reports, "optional_numeric_pointer", [], set(),
+            )
+
+        self.assertEqual(reports[1:], kept)
+        self.assertEqual(reports, kept_numeric)
+        self.assertEqual({("Shape", "optional_bool_pointer", "sandbox")}, matched)
+
+    def test_current_known_gaps_have_issue_references(self):
+        self.assertEqual([], lint.validate_known_schema_gaps_config())
+
+    def test_known_gap_types_are_paired(self):
+        for type_name in lint.KNOWN_SCHEMA_GAPS:
+            with self.subTest(type=type_name):
+                paired = (
+                    type_name in lint.EXPLICIT_SCHEMA and type_name not in lint.EXEMPT
+                ) or type_name in lint.gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS
+                self.assertTrue(paired, f"{type_name} has known gaps but is not paired")
+
+    @unittest.skipUnless(CREATIVE_INPUT_SCHEMA_EXISTS, "sync_creatives schema is not present")
+    def test_creative_input_pairing_reports_dropped_request_fields(self):
+        go_structs = lint.parse_go_structs()
+        drift = lint.diff_type(
+            "CreativeInput", go_structs["CreativeInput"], CREATIVE_INPUT_SCHEMA_SPEC,
+        )
+
+        for field in ("format_kind", "tags", "representation_selection"):
+            self.assertIn(field, drift["missing_in_go"])
 
 
 if __name__ == "__main__":

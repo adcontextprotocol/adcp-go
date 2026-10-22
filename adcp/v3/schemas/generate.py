@@ -1483,6 +1483,34 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'OptimizationGoalThresholdRateTarget': 'core/optimization-goal.json#/oneOf/0/properties/target/oneOf/1',
     'OptimizationGoalPerAdSpendTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/1',
     'OptimizationGoalMaximizeValueTarget': 'core/optimization-goal.json#/oneOf/1/properties/target/oneOf/2',
+    # Request item types: each is paired with the request schema node the
+    # generated request field points at. Drift they still carry is listed
+    # field by field in lint.py's KNOWN_SCHEMA_GAPS.
+    'AccountInput': 'account/sync-accounts-request.json#/properties/accounts/items',
+    'CatalogInput': 'media-buy/sync-catalogs-request.json#/properties/catalogs/items',
+    'CreativeFilters': 'creative/list-creatives-request.json#/properties/filters',
+    'CreativeInput': 'creative/sync-creatives-request.json#/properties/creatives/items',
+    'GovernanceAccountInput': 'account/sync-governance-request.json#/properties/accounts/items',
+    'DestinationInput': 'signals/activate-signal-request.json#/properties/destinations/items',
+    'SyncCreativeAssignment': 'creative/sync-creatives-request.json#/properties/assignments/items',
+    # Shapes nested in another hand-written type or a core schema, paired by
+    # JSON pointer where they have no standalone schema file.
+    'PlanBudgetAllocation': 'governance/sync-plans-request.json#/properties/plans/items/properties/budget/properties/allocations/additionalProperties',
+    'PlanChannelMixTarget': 'governance/sync-plans-request.json#/properties/plans/items/properties/channels/properties/mix_targets/additionalProperties',
+    'PlanChannels': 'governance/sync-plans-request.json#/properties/plans/items/properties/channels',
+    'PlanDelegation': 'governance/sync-plans-request.json#/properties/plans/items/properties/delegations/items',
+    'PlanFlight': 'governance/sync-plans-request.json#/properties/plans/items/properties/flight',
+    'PlanPortfolio': 'governance/sync-plans-request.json#/properties/plans/items/properties/portfolio',
+    'MediaBuyHistoryEntry': 'media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/history/items',
+    'PackageSnapshot': 'media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/snapshot',
+    'Preview': 'creative/preview-creative-response.json#/oneOf/0/properties/previews/items',
+    'CollectionListFilters': 'collection/collection-list-filters.json',
+    'DistributionID': 'collection/collection-list-filters.json#/properties/exclude_distribution_ids/items',
+    'DataSubjectContestation': 'core/brand-ref.json#/properties/data_subject_contestation',
+    'MakegoodPolicy': 'core/measurement-terms.json#/properties/makegood_policy',
+    'ReportingAdjustmentReceipt': 'core/reporting-adjustment-receipt.json',
+    'ReportingConsumerStatus': 'core/reporting-consumer-status.json',
+    'ReportingConsumerStatusPeriod': 'core/reporting-consumer-status.json#/properties/period',
 }
 
 # Hand-written inline types that do not have standalone schema files but should
