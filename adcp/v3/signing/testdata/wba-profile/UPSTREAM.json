@@ -1,15 +1,15 @@
 {
-  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from adcontextprotocol/adcp PR #7894. Draft vectors for the experimental AdCP 3.3 profile, not released compliance inputs: replace them from the released test-vectors/wba-profile/ set when AdCP 3.3 ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
+  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from adcontextprotocol/adcp PR #8298, which carries the vectors of PR #7894. Draft vectors for the experimental AdCP 3.3 profile, not released compliance inputs: replace them from the released test-vectors/wba-profile/ set when AdCP 3.3 ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
   "repository": "https://github.com/adcontextprotocol/adcp",
-  "pr": 7894,
-  "commit": "e59294701d733b0ea2a004a2f0c091c8eccdcaae",
+  "pr": 8298,
+  "commit": "f44785a5b65db93988f30ad3d23ba5849f1a1d5e",
   "path": "static/compliance/source/test-vectors/wba-profile/",
   "spec": "docs/building/by-layer/L1/wba-profile.mdx",
   "not_vendored": {
     "scenarios.json": "Failure scenarios for the interop harness (tests/wba-interop/ in adcontextprotocol/adcp), which the wba-interop CI job runs against this SDK's adapter at its own pinned commit."
   },
   "files": {
-    "README.md": "sha256:1dfacdbe62e9157435e6b2bf4b714c193bd4f3126a4b0433299c370d8c1b292b",
+    "README.md": "sha256:d48f31c47fe968cab4c4c2326d63463e635577539aa868eaa8f5ecec57833cbe",
     "keys.json": "sha256:257850b14fe217f67596808040e2c7b4f62bd36bf2c25d0712d066733008b100",
     "negative/001-missing-nonce.json": "sha256:79a9de2bc336a3b12b20e8cb026614646dc84dbbf05d897c6c34808682062acf",
     "negative/002-replayed-nonce.json": "sha256:51d2ce5c81d8a8e60b99d5a7eaef80f18baba2a104de93d1fc8aeac5c7aaa7be",
