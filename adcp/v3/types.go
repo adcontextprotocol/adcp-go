@@ -1265,12 +1265,44 @@ type AssetSlot struct {
 	AcceptedMediaTypes []string `json:"accepted_media_types,omitempty"`
 }
 
+// CreativeResult is the per-creative item of a sync-creatives success response.
+// It mirrors static/schemas/source/creative/sync-creatives-response.json
+// (oneOf[0].properties.creatives.items) of the pinned AdCP bundle.
+// The two deeply-nested 3.2 additions (localization and
+// macro_resolution_results) are present but kept shallow here: localization
+// is carried as `any` and macro_resolution_results uses the generated
+// MacroResolutionResult type, rather than hand-expanding their object graphs.
 type CreativeResult struct {
-	CreativeID      string   `json:"creative_id"`
-	Action          string   `json:"action"`
-	Status          string   `json:"status,omitempty"`
-	RejectionReason string   `json:"rejection_reason,omitempty"`
-	Errors          []string `json:"errors,omitempty"`
+	CreativeID string `json:"creative_id"`
+	RevisionID string `json:"revision_id,omitempty"`
+	// Account is the owning account for this creative. It, and the
+	// other account/resource metadata on this type (PlatformID,
+	// AssignedTo), is not a container for end-user identifiers.
+	// Callers must be authorized for the account and the resources
+	// returned.
+	Account *Account `json:"account,omitempty"`
+	Action  string   `json:"action"`
+	Status  string   `json:"status,omitempty"`
+	// PlatformID is the seller's creative identifier for this
+	// creative.
+	PlatformID string   `json:"platform_id,omitempty"`
+	Changes    []string `json:"changes,omitempty"`
+	Errors     []string `json:"errors,omitempty"`
+	Warnings   []string `json:"warnings,omitempty"`
+	// PreviewURL is a preview link for this creative. It may carry
+	// sensitive access tokens and should be handled accordingly;
+	// do not assume preview URLs are token-free.
+	PreviewURL string `json:"preview_url,omitempty"`
+	ExpiresAt  string `json:"expires_at,omitempty"`
+	// AssignedTo lists the package IDs this creative was
+	// successfully assigned to.
+	AssignedTo             []string                `json:"assigned_to,omitempty"`
+	AssignmentErrors       map[string]string       `json:"assignment_errors,omitempty"`
+	Localization           any                     `json:"localization,omitempty"`
+	MacroResolutionResults []MacroResolutionResult `json:"macro_resolution_results,omitempty"`
+	// Deprecated: not part of the AdCP schema. Failure detail belongs in
+	// errors[] as core/error.json objects; see #546.
+	RejectionReason string `json:"rejection_reason,omitempty"`
 }
 
 type CreativeListItem struct {

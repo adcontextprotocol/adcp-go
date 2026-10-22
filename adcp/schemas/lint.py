@@ -48,6 +48,16 @@ CUSTOM_WIRE_FIELDS = {
     'CheckGovernanceCondition': {'required_value'},
 }
 
+# Go fields a hand-written type deliberately carries beyond its paired
+# schema — e.g. deprecated fields kept for backward compatibility until
+# their removal lands. They are not drift; listing them here keeps the
+# pairing check strict for everything else.
+ALLOWED_EXTRA_FIELDS = {
+    # rejection_reason is deprecated and non-spec (#365); removal is a
+    # breaking change tracked separately from the schema pairing.
+    'CreativeResult': {'rejection_reason'},
+}
+
 # Types we deliberately do not diff against a named schema file:
 #   - oneOf union flatteners (Go can't express oneOf natively)
 #   - error/helper types that carry no schema
@@ -79,7 +89,7 @@ EXEMPT = {
     'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
     'HumanOverride',
     # sync-response inline items (schemas live inside tool response schemas)
-    'AccountResult', 'AccountSetup', 'CreativeResult', 'CatalogResult',
+    'AccountResult', 'AccountSetup', 'CatalogResult',
     'EventSourceResult', 'LogEventResult', 'GovernanceResult',
     'GovernanceAccount', 'GovernanceAgent', 'CreativeListItem',
     'MediaBuyListItem', 'MediaBuyData', 'MediaBuyHistoryEntry',
@@ -976,7 +986,7 @@ def diff_type(type_name, go_fields, schema_spec):
         if omitempty and tag in schema_required
     })
     missing = sorted(schema_props - go_tags)
-    extra = sorted(go_tags - schema_props)
+    extra = sorted(go_tags - schema_props - ALLOWED_EXTRA_FIELDS.get(type_name, set()))
     if not missing and not extra and not required_with_omitempty:
         return None
     return {
