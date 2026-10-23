@@ -39,12 +39,12 @@ type DirectoryResponse struct {
 // VerifyDirectoryResponse validates a signed key directory served at
 // origin and returns its usable keys indexed by RFC 7638 thumbprint. It
 // checks:
-//   - status 200, a body of at most 256 KiB, and a JWK Set media type
-//     (application/http-message-signatures-directory+json,
-//     application/jwk-set+json, or application/json);
-//   - strict JSON with 1 to 100 keys and no private key material. Keys the
-//     profile cannot use (key types other than Ed25519 and RSA, use other
-//     than sig, key_ops without verify) are skipped, at least one must
+//   - status 200, a body of at most 256 KiB, and the media type
+//     application/http-message-signatures-directory+json (WBA §5.5.1);
+//   - strict JSON with 1 to 100 keys and no private key material on any
+//     key, skipped or not (no d, p, q, dp, dq, qi, oth, or k member, in any
+//     case). Keys the profile cannot use (key types other than Ed25519, RSA
+//     included, use other than sig, key_ops without verify) are skipped, at least one must
 //     remain, and a kid, when present, does not affect lookup: a key is
 //     found by its thumbprint, which the request's keyid must equal;
 //   - the response signatures (WBA Appendix B.1), which the profile
@@ -53,7 +53,8 @@ type DirectoryResponse struct {
 //     "@authority";req and content-digest, naming the key's thumbprint as
 //     keyid, inside its validity window with no clock skew (so a created in
 //     the future is refused), and verifying under that key. A signature
-//     naming any other key (one the profile skipped, say) is not read.
+//     naming any other key (one the profile skipped, say) is not read, but
+//     must be well formed (RFC 9421 §4.1 and §4.2), as every member is.
 //
 // An unsigned directory, or one with a usable key that did not sign it, is
 // refused.
@@ -73,10 +74,7 @@ func verifyDirectoryResponse(origin string, resp *DirectoryResponse, now time.Ti
 	if resp == nil || resp.Status != http.StatusOK || len(resp.Body) > directoryMaxBytes {
 		return nil, time.Time{}, errors.New("signing: invalid key directory response")
 	}
-	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get(contentTypeHeader))
-	switch mediaType {
-	case DirectoryMediaType, "application/jwk-set+json", "application/json":
-	default:
+	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get(contentTypeHeader)); mediaType != DirectoryMediaType {
 		return nil, time.Time{}, errors.New("signing: key directory has the wrong media type")
 	}
 	keys, err := parseDirectoryKeys(resp.Body)
@@ -100,6 +98,9 @@ func verifyDirectoryResponse(origin string, resp *DirectoryResponse, now time.Ti
 	}
 	if !sameKeys(inputs.keys(), signatures.keys()) {
 		return nil, time.Time{}, errors.New("signing: key directory Signature and Signature-Input labels differ")
+	}
+	if !wbaFieldsWellFormed(inputs, signatures) {
+		return nil, time.Time{}, errors.New("signing: key directory Signature or Signature-Input member is malformed")
 	}
 	verified := map[string]struct{}{}
 	var earliest int64
@@ -171,7 +172,7 @@ func parseDirectoryKeys(body []byte) (map[string]JWK, error) {
 		// private member names under case folding too.
 		for name := range members {
 			switch strictjson.Fold(name) {
-			case strictjson.Fold("d"), strictjson.Fold("p"), strictjson.Fold("q"), strictjson.Fold("dp"), strictjson.Fold("dq"), strictjson.Fold("qi"), strictjson.Fold("k"):
+			case strictjson.Fold("d"), strictjson.Fold("p"), strictjson.Fold("q"), strictjson.Fold("dp"), strictjson.Fold("dq"), strictjson.Fold("qi"), strictjson.Fold("oth"), strictjson.Fold("k"):
 				return nil, errors.New("signing: key directory entry carries private key material")
 			}
 		}
@@ -207,9 +208,9 @@ func parseDirectoryKeys(body []byte) (map[string]JWK, error) {
 }
 
 // SignKeyDirectory builds the signed key directory response an origin
-// serves at DirectoryPath (WBA §5.5 and Appendix B.1). Each private key
-// (ed25519.PrivateKey, or *rsa.PrivateKey of 2048 to 8192 bits) is published as its
-// PublicDirectoryKey and signs the response once, covering "@authority";req
+// serves at DirectoryPath (WBA §5.5 and Appendix B.1). Each private key, an
+// ed25519.PrivateKey, is published as its PublicDirectoryKey and signs the
+// response once, covering "@authority";req
 // and content-digest. created is the signatures' created time (time.Now
 // minus DirectorySkewAllowance when zero) and lifetime their validity from
 // created (DefaultDirectoryLifetime when zero). Serve Body byte for byte

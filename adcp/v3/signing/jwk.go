@@ -22,8 +22,9 @@ type JWK struct {
 	AdcpUse string   `json:"adcp_use,omitempty"`
 	X       string   `json:"x,omitempty"`
 	Y       string   `json:"y,omitempty"`
-	// N and E are an RSA key's modulus and exponent. Only the Web Bot Auth
-	// profile verifies with RSA keys (rsa-pss-sha512).
+	// N and E are an RSA key's modulus and exponent. No profile verifies
+	// with RSA keys; they are decoded so that JWKThumbprint covers RSA. A Web
+	// Bot Auth key directory skips an RSA key by its kty alone.
 	N string `json:"n,omitempty"`
 	E string `json:"e,omitempty"`
 

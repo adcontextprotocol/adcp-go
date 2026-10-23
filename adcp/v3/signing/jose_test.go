@@ -146,7 +146,9 @@ func TestVerifyRevocationJWSProfileChecks(t *testing.T) {
 	require.NoError(t, err)
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
-	rsaJWK, err := PublicDirectoryKey(rsaKey)
+	rsaJWK, err := jwkFromPublicKey(&rsaKey.PublicKey)
+	require.NoError(t, err)
+	rsaJWK.Kid, err = JWKThumbprint(rsaJWK)
 	require.NoError(t, err)
 	resolve := func(kid string) (*JWK, error) {
 		for _, k := range []JWK{jwk, rsaJWK} {
@@ -180,7 +182,8 @@ func TestVerifyRevocationJWSProfileChecks(t *testing.T) {
 	prot, pay, sig = signJWS(t, key, map[string]any{"alg": "EdDSA", "typ": RevocationListTyp, "kid": jwk.Kid}, payload)
 	foldedDup := []byte(`{"payload":"` + pay + `","protected":"` + prot + `","signature":"` + sig + `","Signature":"` + sig + `"}`)
 
-	// PS512 with a 32-byte salt: RFC 7518 §3.5 fixes the salt at 64.
+	// PS512, with the RFC 7518 §3.5 salt length and with another one: the
+	// Web Bot Auth path, revocation lists included, is Ed25519 only.
 	pssJWS := func(salt int) []byte {
 		hb, err := json.Marshal(map[string]any{"alg": "PS512", "typ": RevocationListTyp, "kid": rsaJWK.Kid})
 		require.NoError(t, err)
@@ -190,10 +193,6 @@ func TestVerifyRevocationJWSProfileChecks(t *testing.T) {
 		require.NoError(t, err)
 		return []byte(input + "." + base64.RawURLEncoding.EncodeToString(s))
 	}
-	got, err = verifyRevocationJWS(pssJWS(64), resolve)
-	require.NoError(t, err)
-	require.Equal(t, payload, got)
-
 	for name, body := range map[string][]byte{
 		"protected header repeats kid under case folding": compact(map[string]any{"alg": "EdDSA", "typ": RevocationListTyp, "kid": jwk.Kid, "KID": "other"}),
 		"protected header repeats typ under case folding": compact(map[string]any{"alg": "EdDSA", "typ": RevocationListTyp, "kid": jwk.Kid, "TYP": "JWT"}),
@@ -201,6 +200,7 @@ func TestVerifyRevocationJWSProfileChecks(t *testing.T) {
 		"crit not a list":                                 compact(map[string]any{"alg": "EdDSA", "typ": RevocationListTyp, "kid": jwk.Kid, "crit": "b64"}),
 		"alg only unprotected":                            unprotectedAlg,
 		"JSON members fold-dup":                           foldedDup,
+		"PS512":                                           pssJWS(64),
 		"PS512 with 32-byte salt":                         pssJWS(32),
 	} {
 		_, err := verifyRevocationJWS(body, resolve)

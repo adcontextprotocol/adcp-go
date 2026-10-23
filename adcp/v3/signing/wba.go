@@ -60,14 +60,14 @@ const (
 )
 
 // validWBANonce reports whether nonce encodes exactly 64 bytes, canonically,
-// in base64url (RFC 4648 §5, unpadded or padded) or padded standard base64.
-// The profile's nonce is 64 random bytes, base64url-encoded, and this
-// package's signer emits unpadded base64url. Padded standard base64 is
-// accepted too: the Web Bot Auth architecture draft's own Appendix A nonces
-// and Cloudflare's web-bot-auth library use it. A nonce of any other length
+// as unpadded base64url (RFC 4648 §5) or padded standard base64 (§4): the
+// two forms Cloudflare's web-bot-auth validateNonce accepts. This package's
+// signer emits unpadded base64url. Padded standard base64 is what that
+// library's generateNonce and the Web Bot Auth architecture draft's
+// Appendix A nonces use. Padded base64url, and a nonce of any other length,
 // is refused.
 func validWBANonce(nonce string) bool {
-	for _, enc := range []*base64.Encoding{base64.RawURLEncoding, base64.URLEncoding, base64.StdEncoding} {
+	for _, enc := range []*base64.Encoding{base64.RawURLEncoding, base64.StdEncoding} {
 		b, err := enc.DecodeString(nonce)
 		if err == nil && len(b) == wbaNonceBytes && enc.EncodeToString(b) == nonce {
 			return true
@@ -425,7 +425,8 @@ var errWBANotConfigured = errors.New("signing: Web Bot Auth verification require
 // verifies on its own: an intermediary that signs a request is its signer,
 // and whether it may act for another party is an authorization question,
 // not a second signature. Signature-Input members with another tag are
-// not read.
+// not read, but every member of both fields must be well formed (RFC 9421
+// §4.1 and §4.2): a malformed member under any label is 400.
 //
 // A failure is a *WBAError carrying the status to answer: 400 when the
 // signature fields do not parse, 429 with Accept-Signature and a fresh nonce
@@ -489,8 +490,17 @@ func verifyWebBotAuthRequest(r *http.Request, opts WBAVerifyOptions) (*VerifiedS
 		count  int
 	)
 	for _, e := range inputs {
+		// RFC 9421 §4.1: every Signature-Input member is an inner list, so
+		// a member that is not makes the field malformed, 400, whatever its
+		// label or tag (profile verification step 1). This runs before the
+		// web-bot-auth member is chosen, so a malformed web-bot-auth member
+		// is 400, not "no web-bot-auth signature". The Signature half of the
+		// check runs after the 403 below: an AdCP 3.0 or 3.1 signer's
+		// unpadded base64url Signature is often not an RFC 8941 Byte
+		// Sequence, and it needs the 403 and Accept-Signature hint to
+		// switch profiles.
 		if !e.member.inner {
-			continue
+			return nil, wbaFail(http.StatusBadRequest, "", "Signature-Input member is malformed")
 		}
 		if tag, ok := stringParam(e.member.params, "tag"); ok && tag == ProfileTagWebBotAuth {
 			if count == 0 {
@@ -521,6 +531,9 @@ func verifyWebBotAuthRequest(r *http.Request, opts WBAVerifyOptions) (*VerifiedS
 	}
 	if !sameKeys(inputs.keys(), signatures.keys()) {
 		return nil, wbaFail(http.StatusBadRequest, "", "Signature and Signature-Input labels differ")
+	}
+	if !wbaFieldsWellFormed(inputs, signatures) {
+		return nil, wbaFail(http.StatusBadRequest, "", "Signature or Signature-Input member is malformed")
 	}
 	if count > 1 {
 		return nil, wbaFail(http.StatusForbidden, label, "more than one web-bot-auth signature")
@@ -555,10 +568,10 @@ func verifyWebBotAuthRequest(r *http.Request, opts WBAVerifyOptions) (*VerifiedS
 	if !ok || !validWBANonce(nonce) {
 		return nil, wbaFail(http.StatusForbidden, label, "missing nonce, or not 64 bytes in canonical base64")
 	}
-	// alg is required and names one of the profile's two algorithms; it
-	// must also match the directory key (wbaVerifyCrypto).
-	if alg, ok := stringParam(member.params, "alg"); !ok || (Algorithm(alg) != AlgEd25519 && Algorithm(alg) != AlgRSAPSSSHA512) {
-		return nil, wbaFail(http.StatusForbidden, label, "alg must be ed25519 or rsa-pss-sha512")
+	// alg is required and names the profile's one algorithm; it must also
+	// match the directory key (wbaVerifyCrypto).
+	if alg, ok := stringParam(member.params, "alg"); !ok || Algorithm(alg) != AlgEd25519 {
+		return nil, wbaFail(http.StatusForbidden, label, "alg must be ed25519")
 	}
 	agent, ok := agents.get(label)
 	if !ok || agent.inner || agent.item.value.kind != sfString {
@@ -567,7 +580,7 @@ func verifyWebBotAuthRequest(r *http.Request, opts WBAVerifyOptions) (*VerifiedS
 	if typ, present := sfParamValue(agent.item.params, "type"); present && (typ.kind != sfToken && typ.kind != sfString || typ.s != "directory") {
 		return nil, wbaFail(http.StatusForbidden, label, "unsupported Signature-Agent member type")
 	}
-	origin, err := webBotAuthOrigin(agent.item.value.s)
+	origin, err := signatureAgentOrigin(agent.item.value.s)
 	if err != nil {
 		return nil, &WBAError{Status: http.StatusForbidden, Label: label, Reason: "invalid signer origin", Wrapped: err}
 	}
@@ -747,6 +760,26 @@ func sameKeys(a, b []string) bool {
 	return true
 }
 
+// wbaFieldsWellFormed reports whether every Signature-Input member is an
+// inner list and every Signature member an unparameterized byte sequence
+// (RFC 9421 §4.1 and §4.2), whatever its label. Cloudflare's
+// http-message-sig refuses a field that breaks either rule as malformed, so
+// a malformed member with another tag makes the field malformed too, though
+// nothing else is read from that member.
+func wbaFieldsWellFormed(inputs, signatures sfDict) bool {
+	for _, e := range inputs {
+		if !e.member.inner {
+			return false
+		}
+	}
+	for _, e := range signatures {
+		if e.member.inner || e.member.item.value.kind != sfBinary || len(e.member.item.params) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // wbaHeaderPrecheck rejects ambiguous signature fields before parsing (400):
 // a signed field on more than one header line, and a comma-joined
 // Content-Type.
@@ -870,25 +903,16 @@ func wbaSignatureBase(method, rawURL string, h http.Header, member sfMember, dir
 }
 
 // wbaKeyAlgorithm derives the signature algorithm from a directory key and
-// checks the key may verify: Ed25519 (ed25519) or RSA (2048 to 8192 bits,
-// rsa-pss-sha512), the profile's two algorithms; use "sig" when present, no
-// private member, a matching alg when present, and key_ops containing
-// "verify" when present. Any other key, P-256 included, is not a Web Bot
-// Auth key: ES256 stays on the AdCP RFC 9421 profile.
+// checks the key may verify: Ed25519 (ed25519), the profile's one
+// algorithm; use "sig" when present, no private member, a matching alg when
+// present, and key_ops containing "verify" when present. Any other key is
+// not a Web Bot Auth key: RSA is not part of the profile, and ES256 stays on
+// the AdCP RFC 9421 profile.
 func wbaKeyAlgorithm(jwk JWK) (Algorithm, error) {
-	var alg Algorithm
-	var jwsAlg string
-	switch {
-	case jwk.Kty == "OKP" && jwk.Crv == "Ed25519":
-		alg, jwsAlg = AlgEd25519, string(jwkAlgEdDSA)
-	case jwk.Kty == "RSA" && jwk.Crv == "":
-		if _, err := rsaPublicKey(jwk); err != nil {
-			return "", wbaFail(http.StatusForbidden, "", "unsupported RSA directory key")
-		}
-		alg, jwsAlg = AlgRSAPSSSHA512, jwkAlgPS512
-	default:
+	if jwk.Kty != "OKP" || jwk.Crv != "Ed25519" {
 		return "", wbaFail(http.StatusForbidden, "", "unsupported directory key")
 	}
+	alg, jwsAlg := AlgEd25519, string(jwkAlgEdDSA)
 	if (jwk.Use != "" && jwk.Use != "sig") || jwk.PrivateD != "" || jwk.TestOnlyPrivateD != "" {
 		return "", wbaFail(http.StatusForbidden, "", "directory key is not a public signing key")
 	}
@@ -937,6 +961,13 @@ func wbaVerifyCrypto(member, signature sfMember, jwk JWK, base string) (Algorith
 		return "", wbaFail(http.StatusForbidden, "", "signature did not verify")
 	}
 	return alg, nil
+}
+
+// verifyWithJWK verifies sig over base under a Web Bot Auth directory key
+// with the algorithm wbaKeyAlgorithm derived for it.
+func verifyWithJWK(alg Algorithm, jwk JWK, base, sig []byte) bool {
+	pub, err := jwk.PublicKey()
+	return err == nil && verifySignature(alg, pub, base, sig)
 }
 
 // wbaDigestMatches reports whether the Content-Digest sha-256 member equals

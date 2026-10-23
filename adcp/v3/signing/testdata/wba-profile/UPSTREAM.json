@@ -1,22 +1,22 @@
 {
-  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from adcontextprotocol/adcp PR #7894 at its head when it left draft. Draft vectors for the experimental AdCP 3.3 profile, not released compliance inputs: replace them from the released test-vectors/wba-profile/ set when AdCP 3.3 ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
+  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from adcontextprotocol/adcp PR #7894. Draft vectors for the experimental AdCP 3.3 profile, not released compliance inputs: replace them from the released test-vectors/wba-profile/ set when AdCP 3.3 ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
   "repository": "https://github.com/adcontextprotocol/adcp",
   "pr": 7894,
-  "commit": "e24eeb090c4365707641099cbbb45f9945c6d6e0",
+  "commit": "e59294701d733b0ea2a004a2f0c091c8eccdcaae",
   "path": "static/compliance/source/test-vectors/wba-profile/",
   "spec": "docs/building/by-layer/L1/wba-profile.mdx",
   "not_vendored": {
-    "governance/": "Governance-token vectors grade a governance JWS verifier keyed on the issuer's Web Bot Auth directory. This SDK has no governance-token verifier; how documents are signed is a separate decision (RFC #7878, D11), and governance JWS stays on the RFC 9421 chain."
+    "scenarios.json": "Failure scenarios for the interop harness (tests/wba-interop/ in adcontextprotocol/adcp), which the wba-interop CI job runs against this SDK's adapter at its own pinned commit."
   },
   "files": {
-    "README.md": "sha256:0dca00383bd0907bbf0fadfe09fb9787fd7cdfeabbcdc23b52c17038e1976bfd",
-    "keys.json": "sha256:08637bc288547315e6ce72e895d18ff5f3ab20a5f24375a15d0ebda43a993b3c",
-    "negative/001-missing-nonce.json": "sha256:12a60d6067c347976f2ec1769c2078c07f049f490a17c3da602898b4fdc8c3ad",
-    "negative/002-replayed-nonce.json": "sha256:7471d84d3aca75a196439b80c9a605230601c5495464daf6da6d7f9baeed1971",
-    "negative/003-signature-agent-not-covered.json": "sha256:fd2203fe8e445344c4fa27331d119216f6fd8383e8cfd0cb0c85b1dcd29019fc",
-    "negative/004-key-not-in-named-directory.json": "sha256:366094bc9af941dd20127402c8ebf03ab6eff1094dc54363fabec759b75ceb67",
+    "README.md": "sha256:1dfacdbe62e9157435e6b2bf4b714c193bd4f3126a4b0433299c370d8c1b292b",
+    "keys.json": "sha256:257850b14fe217f67596808040e2c7b4f62bd36bf2c25d0712d066733008b100",
+    "negative/001-missing-nonce.json": "sha256:79a9de2bc336a3b12b20e8cb026614646dc84dbbf05d897c6c34808682062acf",
+    "negative/002-replayed-nonce.json": "sha256:51d2ce5c81d8a8e60b99d5a7eaef80f18baba2a104de93d1fc8aeac5c7aaa7be",
+    "negative/003-signature-agent-not-covered.json": "sha256:ec58e8615d3f933e5693ceb310ef50f35d2a39356b238c5cdec28377b72548c8",
+    "negative/004-key-not-in-named-directory.json": "sha256:1d830742a0cc8f3e556abb7734b093c66f81582a7138b639fae29f358e44371b",
     "negative/005-malformed-signature-agent.json": "sha256:c0bf6e2d95be5f47d18a26abbcf0c38b2fb8a229a77d4acc4cad76fecad61f59",
-    "negative/006-two-signatures.json": "sha256:6dc88d4db2205ba7f0611fd9d4e2e6d7106ed45ea9c8238c5a801abb660901a1",
+    "negative/006-two-signatures.json": "sha256:87cb93e1f9bc4fba2eadb0df7832d51c9edf2d0add02aab5cee8265b9d7f1661",
     "positive/001-single-signer-request.json": "sha256:213b69f5f029c6da37abbc4dafff0f89e7604c5a6a4acca59b8c9df4a3d88e25",
     "positive/002-signed-directory-response.json": "sha256:b07b0a947d943225c29fcb819008d080ca83f209d56be785a1a7b15f15e82dbe"
   }

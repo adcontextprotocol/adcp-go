@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -29,9 +28,8 @@ type SignerOptions struct {
 
 	// PrivateKey is the private key half: ed25519.PrivateKey or
 	// *ecdsa.PrivateKey on P-256. Use LoadPrivateKey to parse PEM files.
-	// With AgentOrigin (Web Bot Auth) it is ed25519.PrivateKey or an
-	// *rsa.PrivateKey of 2048 to 8192 bits: the profile signs only with
-	// ed25519 and rsa-pss-sha512, so a P-256 key is refused there.
+	// With AgentOrigin (Web Bot Auth) it is ed25519.PrivateKey: the profile
+	// signs only with ed25519, so a P-256 key is refused there.
 	PrivateKey any
 
 	// Profile selects the signing profile — tag and required JWK adcp_use.
@@ -105,16 +103,6 @@ func NewSigner(opts SignerOptions) (*Signer, error) {
 			return nil, fmt.Errorf("signing: unsupported ECDSA curve %q (only P-256)", ec.Curve.Params().Name)
 		}
 		alg = AlgES256
-	case *rsa.PrivateKey:
-		// RSA (rsa-pss-sha512) is a Web Bot Auth key type only; the AdCP
-		// RFC 9421 profile does not admit it.
-		if opts.AgentOrigin == "" {
-			return nil, fmt.Errorf("signing: RSA keys sign only under Web Bot Auth (set AgentOrigin)")
-		}
-		if n := opts.PrivateKey.(*rsa.PrivateKey).N.BitLen(); n < rsaMinModulus || n > rsaMaxModulus {
-			return nil, fmt.Errorf("signing: Web Bot Auth RSA keys are %d to %d bits", rsaMinModulus, rsaMaxModulus)
-		}
-		alg = AlgRSAPSSSHA512
 	default:
 		return nil, fmt.Errorf("signing: unsupported private key type %T", opts.PrivateKey)
 	}

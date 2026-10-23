@@ -111,13 +111,28 @@ func TestGrantEvaluation(t *testing.T) {
 			want: true,
 		},
 		{
-			// L2 Grants in trust.json: grantee is compared as a registrable
-			// domain, so a grant to a host under the operator's domain
-			// names that operator, and the brand's record stays readable.
-			name:    "a grantee host under the signer's operator domain is that operator",
+			// L2 Grants in trust.json: a grantee MUST be a registrable
+			// domain, and a grant whose grantee is a host covers no claim.
+			// It is never widened to the host's registrable domain.
+			name:    "a grantee host under the signer's operator domain covers no claim",
 			records: with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"buy.agency-7k3q.com","scopes":["adcp:media_buying"]}]}`}),
 			req:     GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"},
-			want:    true,
+			reason:  GrantReasonAbsent,
+		},
+		{
+			name:    "a host grantee narrowed with agents[] still covers no claim",
+			records: with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"buy.agency-7k3q.com","scopes":["adcp:media_buying"],"agents":[{"url":"https://buy.agency-7k3q.com/mcp"}]}]}`}),
+			req:     GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"},
+			reason:  GrantReasonAbsent,
+		},
+		{
+			name: "a host grantee covers no claim on the second link either",
+			records: with(baseRecords, map[string]string{
+				"brand-7k3q.com":  `{"grants":[{"grantee":"agency-7k3q.com","scopes":["adcp:media_buying"]}]}`,
+				"agency-7k3q.com": `{"agents":[{"url":"https://buy.agency-7k3q.com/mcp","roles":["adcp:buying"]}],"grants":[{"grantee":"agent.platform-7k3q.com","scopes":["adcp:media_buying"]}]}`,
+			}),
+			req:    GrantRequest{AgentOrigin: platformAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"},
+			reason: GrantReasonAbsent,
 		},
 		{
 			name:    "a grantee host under another domain is not the operator",
@@ -126,9 +141,39 @@ func TestGrantEvaluation(t *testing.T) {
 			reason:  GrantReasonAbsent,
 		},
 		{
-			name:    "a grantee with no registrable domain matches nothing, and the record still reads",
+			// A public suffix can never be a signer's operator, so this pins
+			// only that the record carrying such a grant stays readable.
+			name:    "a record with a public-suffix grantee still reads",
 			records: with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"github.io","scopes":["adcp:media_buying"]},{"grantee":"agency-7k3q.com","scopes":["adcp:media_buying"]}]}`}),
 			req:     GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"},
+			want:    true,
+		},
+		{
+			// alice.github.io is registrable (github.io is a PRIVATE-section
+			// suffix), so a grant to it reaches Alice's agents.
+			name: "a grantee under a private-section suffix is a registrable domain",
+			records: map[string]string{
+				"alice.github.io": `{"agents":[{"url":"https://buy.alice.github.io/mcp","roles":["adcp:buying"]}]}`,
+				"brand-7k3q.com":  `{"grants":[{"grantee":"alice.github.io","scopes":["adcp:media_buying"]}]}`,
+			},
+			req:  GrantRequest{AgentOrigin: "https://buy.alice.github.io", BrandDomain: "brand-7k3q.com", AccountOperator: "alice.github.io"},
+			want: true,
+		},
+		{
+			name: "a grant to one private-section domain does not reach its sibling",
+			records: map[string]string{
+				"bob.github.io":  `{"agents":[{"url":"https://buy.bob.github.io/mcp","roles":["adcp:buying"]}]}`,
+				"brand-7k3q.com": `{"grants":[{"grantee":"alice.github.io","scopes":["adcp:media_buying"]}]}`,
+			},
+			req:    GrantRequest{AgentOrigin: "https://buy.bob.github.io", BrandDomain: "brand-7k3q.com", AccountOperator: "bob.github.io"},
+			reason: GrantReasonAbsent,
+		},
+		{
+			// account.operator and the brand's domain compare as registrable
+			// domains, so hosts under them name their operators.
+			name:    "account.operator and the brand's domain compare as registrable domains",
+			records: with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"agency-7k3q.com","scopes":["adcp:media_buying"]}]}`}),
+			req:     GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "shop.brand-7k3q.com", AccountOperator: "ops.agency-7k3q.com"},
 			want:    true,
 		},
 		{
@@ -757,13 +802,12 @@ func TestGrantOutageRules(t *testing.T) {
 	})
 }
 
-// TestHostGranteeReachesTheWholeOperator pins today's reading of a grant to
-// a host: the grantee is compared as its registrable domain (L2 Grants in
-// trust.json), so a grant to one tenant host of a multi-tenant vendor
-// reaches every tenant the vendor lists. Whether the spec should narrow it
-// implicitly is pending; until then the evaluator reads it as written and
-// logs a warning, and MarshalTrustRecord refuses to author it.
-func TestHostGranteeReachesTheWholeOperator(t *testing.T) {
+// TestHostGranteeCoversNoClaim pins L2 Grants in trust.json: a grantee MUST
+// be a registrable domain, and a grant to a host covers no claim, so a grant
+// to one tenant host of a multi-tenant vendor reaches no tenant, the named
+// one included. The evaluator reads the record, logs a warning, and
+// MarshalTrustRecord refuses to author it.
+func TestHostGranteeCoversNoClaim(t *testing.T) {
 	server := newTrustServer()
 	server.set(trustURL("vendor-7k3q.com"), 200, `{"agents":[{"url":"https://t1.vendor-7k3q.com/mcp","roles":["adcp:buying"]},{"url":"https://t2.vendor-7k3q.com/mcp","roles":["adcp:buying"]}]}`)
 	server.set(trustURL("brand-7k3q.com"), 200, `{"grants":[{"grantee":"t1.vendor-7k3q.com","scopes":["adcp:media_buying"]}]}`)
@@ -775,11 +819,56 @@ func TestHostGranteeReachesTheWholeOperator(t *testing.T) {
 	for _, tenant := range []string{"https://t1.vendor-7k3q.com", "https://t2.vendor-7k3q.com"} {
 		res, err := g.Check(context.Background(), GrantRequest{AgentOrigin: tenant, BrandDomain: "brand-7k3q.com", AccountOperator: "vendor-7k3q.com"})
 		require.NoError(t, err)
-		require.True(t, res.Authorized, tenant)
+		require.False(t, res.Authorized, tenant)
+		require.Equal(t, GrantReasonAbsent, res.Reason, tenant)
 	}
-	require.Contains(t, logs.String(), "grants a host without agents[]")
+	require.Contains(t, logs.String(), "the grant covers no claim")
 	require.Contains(t, logs.String(), "operator=brand-7k3q.com")
+	require.Contains(t, logs.String(), "grantee=t1.vendor-7k3q.com")
+
+	// A public-suffix grantee is warned about too.
+	logs.Reset()
+	server.set(trustURL("brand2-7k3q.com"), 200, `{"grants":[{"grantee":"github.io","scopes":["adcp:media_buying"]}]}`)
+	res, err := g.Check(context.Background(), GrantRequest{AgentOrigin: "https://t1.vendor-7k3q.com", BrandDomain: "brand2-7k3q.com", AccountOperator: "vendor-7k3q.com"})
+	require.NoError(t, err)
+	require.False(t, res.Authorized)
+	require.Contains(t, logs.String(), "grantee=github.io")
 
 	_, err = MarshalTrustRecord(&TrustRecord{Grants: []TrustGrant{{Grantee: "t1.vendor-7k3q.com", Scopes: []string{ScopeMediaBuying}}}}, "brand-7k3q.com")
 	require.ErrorContains(t, err, "agents[]", "an author is told to narrow with agents[]")
+}
+
+// TestNonRegistrableGranteeScopesStayExclusive pins the rule that keeps the
+// grantee rule from failing open: a grant that covers no claim still counts
+// for exclusive_grants, so the seller's discretion is not consulted for its
+// scopes.
+func TestNonRegistrableGranteeScopesStayExclusive(t *testing.T) {
+	yes := func(context.Context, GrantRequest) (bool, error) { return true, nil }
+	req := GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"}
+	for _, grantee := range []string{"buy.agency-7k3q.com", "github.io"} {
+		t.Run(grantee, func(t *testing.T) {
+			r := grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"` + grantee + `","scopes":["adcp:media_buying"]}],"exclusive_grants":true}`}))
+			hookCalled := false
+			hook := func(ctx context.Context, req GrantRequest) (bool, error) { hookCalled = true; return yes(ctx, req) }
+			res, err := (&GrantEvaluator{Records: r.eval, SellerAuthorization: hook}).Check(context.Background(), req)
+			require.NoError(t, err)
+			require.False(t, res.Authorized)
+			require.Equal(t, GrantReasonAbsent, res.Reason)
+			require.False(t, hookCalled, "the grant's scopes keep grants[] exhaustive")
+
+			// Scopes the grant does not name stay at the seller's discretion.
+			creative := req
+			creative.Scope = ScopeCreativeGeneration
+			res, err = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(context.Background(), creative)
+			require.NoError(t, err)
+			require.True(t, res.Authorized)
+
+			// Without exclusive_grants, the uncovered claim is at the
+			// seller's discretion.
+			r = grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"` + grantee + `","scopes":["adcp:media_buying"]}]}`}))
+			res, err = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(context.Background(), req)
+			require.NoError(t, err)
+			require.True(t, res.Authorized)
+		})
+	}
 }

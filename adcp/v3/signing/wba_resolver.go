@@ -127,7 +127,7 @@ func NewDirectoryResolver(opts DirectoryResolverOptions) *DirectoryResolver {
 	if d.fetch == nil {
 		client := safefetch.NewClient()
 		d.fetch = func(ctx context.Context, url string) (*DirectoryResponse, error) {
-			r, err := safefetch.Get(ctx, client, url, safefetch.Options{Accept: DirectoryMediaType + ", application/jwk-set+json;q=0.9, application/json;q=0.8", MaxBytes: directoryMaxBytes})
+			r, err := safefetch.Get(ctx, client, url, safefetch.Options{Accept: DirectoryMediaType, MaxBytes: directoryMaxBytes})
 			if err != nil {
 				return nil, err
 			}

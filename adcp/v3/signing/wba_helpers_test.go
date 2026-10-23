@@ -223,6 +223,15 @@ func (rig *wbaRig) signedRequest(t *testing.T, body string) *http.Request {
 	return r
 }
 
+// signWithAgent signs a GET for rig's key with value as the Signature-Agent
+// member, used as given, so a test can sign a value the signer never emits.
+func (rig *wbaRig) signWithAgent(t *testing.T, value string) *http.Request {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, "https://seller.example.com/adcp/get_principal", nil)
+	require.NoError(t, signWebBotAuthRequest(r, rig.key, WBASignOptions{Clock: wbaClock}, value))
+	return r
+}
+
 func requireWBAError(t *testing.T, err error, status int) *WBAError {
 	t.Helper()
 	we := AsWBAError(err)

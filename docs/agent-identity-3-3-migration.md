@@ -4,7 +4,7 @@ This note covers the experimental AdCP 3.3 agent-identity support in `github.com
 
 Everything here is **opt-in and experimental**.
 - **Wire pin.** It is unchanged: `adcp/v3/schemas/VERSION` stays at 3.2.x, and nothing advertises 3.3.
-- **Pinned drafts.** The Web Bot Auth wire rules and vectors are pinned to adcontextprotocol/adcp#7894 at `e24eeb09`, the profile as it left draft (provenance and checksums in [`adcp/v3/signing/testdata/wba-profile/UPSTREAM.json`](../adcp/v3/signing/testdata/wba-profile/UPSTREAM.json)). The identity schemas are pinned to the draft commits in [`adcp/v3/identity/testdata/schemas/UPSTREAM.json`](../adcp/v3/identity/testdata/schemas/UPSTREAM.json).
+- **Pinned drafts.** The Web Bot Auth wire rules and vectors are pinned to adcontextprotocol/adcp#7894 at `e5929470` (provenance and checksums in [`adcp/v3/signing/testdata/wba-profile/UPSTREAM.json`](../adcp/v3/signing/testdata/wba-profile/UPSTREAM.json)). The identity schemas are pinned to the draft commits in [`adcp/v3/identity/testdata/schemas/UPSTREAM.json`](../adcp/v3/identity/testdata/schemas/UPSTREAM.json).
 - **Change.** Both may still change before 3.3 ships.
 - **Default behavior.** Existing APIs behave exactly as before unless you set the new options.
 
@@ -21,6 +21,7 @@ Everything here is **opt-in and experimental**.
 | trust.json authoring and validation | `identity.ValidateTrustRecord`, `identity.MarshalTrustRecord` |
 | Trust-record evaluation | `identity.NewTrustRecordEvaluator`, `identity.TrustRecordURL`, `identity.AuthorityHistory` |
 | Bind an origin to a principal | `identity.TrustRecordEvaluator.Bind`, `identity.OriginBindings` (in memory), `identity.BindingGate` |
+| JWS artifacts on the key directory (R4) | `identity.JWSVerifier`, `identity.HTTPGovernanceKeyArchive` |
 | Grants at `sync_accounts` (DR-0025) | `identity.GrantEvaluator`, `identity.GrantGate`, `adcp.Config.SyncAccountsAuthorizer` |
 | New schema types | `identity.AgentOnboarding` and its tiers, requirements, and enums; `identity.BuyerOnboardingPosture`; `identity.PrincipalRelationship`; `identity.PrincipalChanged*` reasons; `identity.GrantAbsentDetails`; `identity.TrustRecord`; `identity.RequestSigningCapabilities` (`profiles`) |
 
@@ -30,7 +31,7 @@ Everything here is **opt-in and experimental**.
 2. Sign with the Web Bot Auth profile:
 
    ```go
-   priv, _, _ := signing.LoadPrivateKey(pemBytes) // Ed25519 (PrivateKey may also be an *rsa.PrivateKey of 2048 to 8192 bits; P-256 is refused)
+   priv, _, _ := signing.LoadPrivateKey(pemBytes) // Ed25519 only: RSA and P-256 keys are refused
    client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
        PrivateKey:         priv,
        AgentOrigin:        "https://buyer.example.com",
@@ -39,7 +40,7 @@ Everything here is **opt-in and experimental**.
    })
    ```
 
-   `AgentOrigin` sets and covers `Signature-Agent`. The signature carries `tag="web-bot-auth"`, a 64-byte random nonce (unpadded base64url), the key's thumbprint as `keyid`, and `alg`: `ed25519`, or `rsa-pss-sha512` for an RSA key. Those are the profile's only algorithms, so a P-256 key cannot sign under Web Bot Auth; keep it for RFC 9421. A request carries exactly one Web Bot Auth signature, so an intermediary that forwards a request for someone else signs it as itself, and the brand's `brand.json` or `trust.json` says whether it may. `@target-uri` is the URI the request is sent to, unchanged. The digest is always covered on a body. With a `CapabilityProvider`, the client sends only when the seller lists `web-bot-auth`. Otherwise it returns `ErrWebBotAuthNotAdvertised` and never downgrades on its own. `identity.AdvertisedRequestSigningProfiles` reads the list from a capabilities response.
+   `AgentOrigin` sets and covers `Signature-Agent`. The signature carries `tag="web-bot-auth"`, a 64-byte random nonce (unpadded base64url), the key's thumbprint as `keyid`, and `alg="ed25519"`. Ed25519 is the profile's only algorithm, so an RSA or P-256 key cannot sign under Web Bot Auth; keep a P-256 key for RFC 9421. A request carries exactly one Web Bot Auth signature, so an intermediary that forwards a request for someone else signs it as itself, and the brand's `brand.json` or `trust.json` says whether it may. `@target-uri` is the URI the request is sent to, unchanged. The digest is always covered on a body. With a `CapabilityProvider`, the client sends only when the seller lists `web-bot-auth`. Otherwise it returns `ErrWebBotAuthNotAdvertised` and never downgrades on its own. `identity.AdvertisedRequestSigningProfiles` reads the list from a capabilities response.
 
 3. Serve the key directory on that origin, signed once per key (WBA Appendix B.1). The profile requires the signatures, and verifiers using this SDK refuse a plain JWK Set:
 
@@ -83,15 +84,16 @@ mw := signing.Middleware(signing.MiddlewareOptions{
 - **Body.** A non-empty signed body must be strict JSON: no duplicate keys, including keys that differ only in case. Anything else is `400`.
 - **Authorities.** Set `Authorities` so that a signature captured at another seller cannot be replayed to this endpoint under that seller's `Host`.
 - **Layers.** Verification (`signing.VerifyWebBotAuthRequest`) needs only the key directory and replay state, so it can run in front of the server. Revocation, bindings, and grants are the authorization layer after it. The middleware runs both.
+- **Signature-Agent.** The member value is the signer's origin, spelled exactly as its canonical `https` origin: a lowercase host, no default port, and no trailing slash, path, query, fragment, or userinfo. Any other value, such as `https://buyer.example.com/` or `https://buyer.example.com/agents/a`, is refused with `403` before any directory fetch.
 - **One signature.** A request carries exactly one `web-bot-auth` signature and one `Signature-Agent` member. More is refused with `403` and `Accept-Signature`, even when each signature verifies.
-- **Required parameters.** `created`, `expires`, `keyid`, `alg`, `nonce`, and `tag`. `alg` is `ed25519` or `rsa-pss-sha512` and must match the directory key.
+- **Required parameters.** `created`, `expires`, `keyid`, `alg`, `nonce`, and `tag`. `alg` is `ed25519` and must match the directory key.
 - **Unsigned requests** that need a signature (an operation in `RequiredFor` or a method in `ProtocolMethodsRequiredFor`, read by exact member name, a body carrying `push_notification_config.authentication` under any letter case, or a body that is not strict JSON) get `401` with `request_signature_required` plus `Accept-Signature` for Web Bot Auth, since the middleware also accepts the RFC 9421 profile. A seller that advertises only `web-bot-auth` sets `WebBotAuthOptions.Exclusive`: those requests get `403` with `Accept-Signature`, and every signed request is verified under Web Bot Auth.
 - **Interop.**
-  - Nonces must be 64 bytes. The profile's encoding is base64url; padded standard base64, which Cloudflare's library and the WBA architecture draft's own vectors use, is also accepted.
+  - Nonces must be 64 bytes, as unpadded base64url (the encoding this signer emits) or padded standard base64 (which Cloudflare's library and the WBA architecture draft's own vectors use). These are the two forms Cloudflare's `validateNonce` accepts; padded base64url is refused.
   - `@target-uri` is the target URI as received, percent-encoding included (RFC 9421 §2.2.2), so `/a%7Eb/mcp/` is signed and verified as sent. `@authority` is normalized (§2.2.3). The canonical origin is used only for the `Signature-Agent` identity.
-  - RSA keys verify with `rsa-pss-sha512` (2048 to 8192 bits), as in the draft's Appendix E vectors.
+  - Keys are Ed25519 only. A directory that also lists an RSA key, or any other key the profile cannot use, skips that key, and the key needs no directory signature.
   - Cross-implementation fixtures from the TypeScript SDK, generated against Cloudflare's `web-bot-auth@0.2.0` and `http-message-sig@0.3.0`, are vendored under `adcp/v3/signing/testdata/wba-interop/` (provenance in `UPSTREAM.json`). The Go verifier accepts both the Cloudflare-signed and the TypeScript-signed requests and their signed directories, percent-encoded path included, and builds the same signature base. With the fixtures' `created` and nonce, the Go signer reproduces the TypeScript signatures byte for byte.
-- **Key directories.** Directories must be signed, one signature per usable key (WBA Appendix B.1). An unsigned directory, or one with a key that did not sign it, is a discovery failure.
+- **Key directories.** Directories must be served as `application/http-message-signatures-directory+json` (WBA §5.5.1), and signed, one signature per usable key (WBA Appendix B.1). A directory with another media type is invalid. An unsigned directory, or one with a key that did not sign it, is a discovery failure.
   - **Discovery failures** (WBA §6.10) cover a directory that doesn't resolve: network or TLS error, timeout, any status other than `200` (including 404, 410, 429, 5xx), an invalid directory, or a fetch refused by the resolver's own limits.
   - A discovery failure never evicts a cached directory. Its keys keep verifying for up to `MaxStale` (24 h by default, never past the directory signatures' expiry). When the refusal comes from the resolver's own limits, they keep verifying for one more 5-minute cache period only.
   - With no usable cached copy, the request is unverified, and what happens is local policy (`WebBotAuthOptions.OnDiscoveryFailure`). The default is `403` with `Accept-Signature`. `DiscoveryFailureAnonymous` serves the request as anonymous, except operations in `RequiredFor`.
@@ -133,7 +135,7 @@ mw := signing.Middleware(signing.MiddlewareOptions{
   - The hook reads the per-request signer (Web Bot Auth or RFC 9421) and checks every entry before the handler runs.
   - An identity-established Web Bot Auth signer (no `PrincipalID`) never provisions accounts.
   - A missing grant is `PERMISSION_DENIED` with `{scope: "agent", reason: "grant_absent"}`. When no identity is established, or the signer's own operator doesn't list it, it is `PERMISSION_DENIED` with no details.
-  - `grantee`, `account.operator`, and the brand's domain are compared with the signer's operator as registrable domains under the pinned PSL snapshot, so a grant to `buy.agency.com` reaches every agent `agency.com` lists. For a multi-tenant vendor, that is every tenant. `MarshalTrustRecord` therefore requires a registrable-domain grantee: narrow a grant with `agents[]`. When reading, a host grantee is still compared as its registrable domain, and the evaluator logs a warning when the grant has no `agents[]` (`TrustRecordEvaluatorOptions.Logger`). Whether the spec should narrow such a grant implicitly is pending. A grantee with no registrable domain matches nothing, and the record that carries it stays readable.
+  - A grant's `grantee` must be a registrable domain under the pinned PSL snapshot. A grant whose `grantee` is not one covers no claim: a host such as `buy.agency.com` is never widened to `agency.com`, and a public suffix such as `github.io` has no registrable domain (`alice.github.io` is one). Its `scopes` still count for `exclusive_grants`, so ignoring the grant never fails open. The record that carries it stays readable, and the evaluator logs a warning (`TrustRecordEvaluatorOptions.Logger`). `MarshalTrustRecord` refuses such a grantee when `owner` has a registrable domain: write the registrable domain and narrow the grant with `agents[]`. `account.operator`, the brand's domain, `grantee`, and the signer's operator compare as registrable domains.
   - A chain takes one of three shapes:
     - the brand grants the signer's operator, which is `account.operator`;
     - a self-operated brand (it is `account.operator`) grants the signer's operator directly, for example the platform hosting its agent;
@@ -146,7 +148,17 @@ mw := signing.Middleware(signing.MiddlewareOptions{
 
 ## Deprecation
 
-AdCP 3.3 deprecates the RFC 9421 profile. It stays fully functional through 3.x and is removed in 4.0. `signing.Middleware` logs this once per process when `WebBotAuth` is not set. The RFC 9421 APIs are not marked `Deprecated:` in Go, so `staticcheck` builds keep passing while 3.x still requires them. JWS document signing (governance context, response signing, rights attestations) stays on the RFC 9421 chain until 3.4.
+AdCP 3.3 deprecates the RFC 9421 profile. It stays fully functional through 3.x and is removed in 4.0. `signing.Middleware` logs this once per process when `WebBotAuth` is not set. The RFC 9421 APIs are not marked `Deprecated:` in Go, so `staticcheck` builds keep passing while 3.x still requires them. JWS document signing moved into 3.3 (adcp#8299): see JWS artifacts below.
+
+## JWS artifacts
+
+`identity.JWSVerifier` applies spec R4 (as amended by adcp#8299) to a governance context, designated-task response signing, and a rights attestation. The SDK has no verifier for these surfaces yet, so it supplies the profile selection and key rules that a surface verifier calls. A verified JWS proves which origin signed it, not that the origin may act for anyone: the surface's own checks stay with the caller. Those include claims, `aud`, `exp`, replay, the relying-party record (the buyer's brand.json for a governance `iss`, the `brand_domain` brand.json for a designated response, the rights holder's for a rights attestation), and `revoked_jtis`. `OriginRevocationChecker` retains key revocations only, so a governance surface reads `revoked_jtis` itself.
+
+- **O.** The canonical origin of `iss` for a governance context, `agent_url` for designated-task response signing, and `rights_agent.url` for a rights attestation. Pass that URL as `JWSVerifyOptions.SignerURL`, taken from the signed artifact or your own context, never from an unsigned field. For a governance context the verified `iss` must be at O.
+- **Selection.** `SelectProfile` derives the trust record from O. A record that lists O, with any role, selects the key directory. A record that was read and doesn't list O, an operator that has never published one, or an O with no registrable domain returns `identity.ErrJWSProfile32`: verify under the 3.2 profile. A record that can't be read now is a `*JWSError` with `Unavailable` set, never the 3.2 profile, even when the last record read didn't list O. Within `OutageContinuation` of the last record that listed O, the key directory is still selected and `VerifiedJWS.StaleTrustRecord` is set: refuse spend-committing artifacts then. Set `JWSVerifier.BoundOrigins` to your binding store so a bound origin is refused instead of going to 3.2 (no downgrade). Public deployments need a durable `AuthorityHistory`.
+- **Key rules.** `alg` is `EdDSA` and `kid` is the key's JWK thumbprint, resolved in O's key directory (`signing.DirectoryResolver`). No `use`, `key_ops`, or `adcp_use` check applies beyond the directory's own rules: purpose separation is by origin. A directory that can't be read is `Unavailable`. The token is parsed before anything is fetched.
+- **Revocation.** O's list (`signing.OriginRevocationChecker`). A revoked key is refused with `Revoked` set. A list that is stale or absent is refused as `Unavailable` unless `JWSVerifyOptions.AcceptStaleRevocation` is set, for a surface that allows it (a short-lived governance intent token, say). A list state that can't be read is always refused.
+- **History.** With `JWSVerifyOptions.Historical`, a governance context whose key left the directory is verified with the key from the governance key archive at O (`/.well-known/jwks-archive.json`, `identity.HTTPGovernanceKeyArchive`). Entries match by thumbprint and must carry it as `kid`; any other entry is skipped, and a `404` means no archive. Revocation still applies. Once O is listed, a token O signed before it migrated, under a 3.2 `kid`, is refused and never sent to 3.2 (R4: never under the 3.2 profile). Audit such tokens before O is listed.
 
 ## Rollback
 

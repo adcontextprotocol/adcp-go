@@ -122,10 +122,12 @@ type GrantHook func(ctx context.Context, req GrantRequest) (bool, error)
 // GrantEvaluator evaluates demand-side grants from the brand's trust record
 // (DR-0025, specs/agent-identity-3-3.md R6):
 //   - the brand's own record authorizes, never the buyer operator's;
-//   - grantee, the account operator, and the brand's domain are compared
-//     with the signer's operator as registrable domains under the pinned
-//     PSL snapshot (L2 Grants in trust.json), so a grant to buy.agency.com
-//     names agency.com;
+//   - a grant's grantee must be a registrable domain under the pinned PSL
+//     snapshot (L2 Grants in trust.json). A grant whose grantee is not one
+//     (a host such as buy.agency.com, or a public suffix such as github.io)
+//     covers no claim, and its scopes still count for exclusive_grants;
+//   - the account operator, the brand's domain, grantee, and the signer's
+//     operator compare as registrable domains under the same snapshot;
 //   - authority is implicit when the account operator, the brand, and the
 //     signer's operator share a registrable domain;
 //   - otherwise a chain must reach the signer's operator with the account
@@ -138,7 +140,9 @@ type GrantHook func(ctx context.Context, req GrantRequest) (bool, error)
 //   - every link must cover the claim's scope, brand, countries, agent
 //     narrowing, and validity window, which is the intersection rule;
 //   - exclusive_grants makes grants[] exhaustive for the scopes it names,
-//     disabling SellerAuthorization for them;
+//     disabling SellerAuthorization for them. Every grant's scopes count,
+//     including a grant that covers no claim, so a record whose only grant
+//     for a scope names a host stays exhaustive for that scope;
 //   - a 200 from the brand's trust.json makes it the only source of grants,
 //     so LegacyAuthorization (brand.json authorized_operators) runs only
 //     when the brand has never published one. A fetch failure, including a
@@ -296,6 +300,8 @@ func (g *GrantEvaluator) Check(ctx context.Context, req GrantRequest) (GrantAuth
 	if !covered {
 		exhaustive := false
 		if brandRec.Record.ExclusiveGrants != nil && *brandRec.Record.ExclusiveGrants {
+			// Every grant's scopes count, whatever its grantee: ignoring a
+			// grant that covers no claim here would fail open.
 			for _, gr := range brandRec.Record.Grants {
 				if scopeCovers(gr.Scopes, req.Scope) {
 					exhaustive = true
@@ -394,12 +400,13 @@ func scopeCovers(scopes []string, scope string) bool {
 }
 
 // grantMatches reports whether g grants grantee (a registrable domain) the
-// requested scope, agent, brand, countries, and time. g.Grantee is compared
-// as its registrable domain under the pinned PSL snapshot (L2 Grants in
-// trust.json), so a grant to buy.agency.com is a grant to agency.com; a
-// grantee with no registrable domain matches nothing.
+// requested scope, agent, brand, countries, and time. g.Grantee must itself
+// be that registrable domain under the pinned PSL snapshot (L2 Grants in
+// trust.json): a grant to a host such as buy.agency.com, or to a public
+// suffix such as github.io, covers no claim. It is never widened to the
+// host's registrable domain.
 func grantMatches(g TrustGrant, grantee string, req GrantRequest, countries map[string]struct{}, now time.Time) bool {
-	if d, ok := psl.RegistrableDomain(g.Grantee); !ok || d != grantee || !scopeCovers(g.Scopes, req.Scope) {
+	if !isRegistrableDomain(g.Grantee) || g.Grantee != grantee || !scopeCovers(g.Scopes, req.Scope) {
 		return false
 	}
 	if g.Agents != nil {
@@ -656,4 +663,12 @@ func (g *GrantGate) SyncAccountsAuthorizer() func(ctx context.Context, req *mcp.
 		}
 		return nil
 	}
+}
+
+// isRegistrableDomain reports whether name is itself a registrable domain
+// under the pinned PSL snapshot: not a host under one, and not a public
+// suffix (github.io has none, while alice.github.io is one).
+func isRegistrableDomain(name string) bool {
+	d, ok := psl.RegistrableDomain(name)
+	return ok && d == name
 }

@@ -444,7 +444,7 @@ func (e *TrustRecordEvaluator) resolve(ctx context.Context, domain, recordURL st
 		if err != nil {
 			return nil, trustErr("trust record is invalid", err)
 		}
-		e.warnHostGrantees(domain, rec)
+		e.warnNonRegistrableGrantees(domain, rec)
 		if rec.AuthoritativeLocation == "" {
 			return &EvaluatedTrustRecord{OperatorDomain: domain, SourceURL: source, Record: rec, ExpiresAt: expires}, nil
 		}
@@ -525,10 +525,26 @@ type Listing struct {
 //     past its freshness. Without authority history (another replica, a
 //     restart, no durable History) there is no last record, and an outage
 //     is Unavailable without grace.
+//
+// role is required: an empty role matches no agents[] entry, so the origin
+// is Unlisted.
 func (e *TrustRecordEvaluator) CheckListing(ctx context.Context, origin, role string) Listing {
+	return e.checkListing(ctx, origin, func(r *TrustRecord) bool {
+		_, err := r.Agent(origin, role)
+		return err == nil
+	}, role)
+}
+
+// checkListing is CheckListing with the listing test as a predicate: lists
+// reports whether a record lists the origin. role is passed to Evaluate,
+// which checks it when non-empty.
+func (e *TrustRecordEvaluator) checkListing(ctx context.Context, origin string, lists func(*TrustRecord) bool, role string) Listing {
 	rec, err := e.Evaluate(ctx, origin, role)
 	if err == nil {
-		return Listing{Status: Listed, Record: rec}
+		if lists(rec.Record) {
+			return Listing{Status: Listed, Record: rec}
+		}
+		return Listing{Status: Unlisted, Err: &TrustRecordError{Unlisted: true, Reason: "trust record does not list the origin"}}
 	}
 	if !IsTrustRecordUnavailable(err) {
 		// Not listed, never published, or no registrable domain.
@@ -543,7 +559,7 @@ func (e *TrustRecordEvaluator) CheckListing(ctx context.Context, origin, role st
 	if herr != nil || last == nil {
 		return Listing{Status: Unavailable, Err: err}
 	}
-	if _, merr := last.Agent(origin, role); merr != nil {
+	if !lists(last.Record) {
 		return Listing{Status: Unlisted, Err: err}
 	}
 	l := Listing{Status: Unavailable, Err: err}
@@ -724,18 +740,16 @@ func (e *TrustRecordEvaluator) Bind(ctx context.Context, signer *signing.Verifie
 	return rec, nil
 }
 
-// warnHostGrantees logs each grant whose grantee is a host under a
-// registrable domain rather than the registrable domain itself, with no
-// agents[] narrowing. Grantees are compared as registrable domains, so such
-// a grant reaches every agent of that operator, not only the host named
-// (for a multi-tenant vendor, every tenant). Whether the spec should
-// narrow it implicitly is an open question; until it is settled the grant
-// is read as written and the operator is told.
-func (e *TrustRecordEvaluator) warnHostGrantees(domain string, rec *TrustRecord) {
+// warnNonRegistrableGrantees logs each grant whose grantee is not a
+// registrable domain: a host under one, or a public suffix. Such a grant
+// covers no claim (L2 Grants in trust.json), so the operator is told why it
+// has no effect. Its scopes still count for exclusive_grants. The grantee is
+// a lowercase DNS name (the schema's domain pattern), so it is safe to log.
+func (e *TrustRecordEvaluator) warnNonRegistrableGrantees(domain string, rec *TrustRecord) {
 	for i, g := range rec.Grants {
-		if d, ok := psl.RegistrableDomain(g.Grantee); ok && d != g.Grantee && g.Agents == nil {
-			e.logger.Warn("identity: trust record grants a host without agents[]; the grant covers the whole registrable domain",
-				"operator", domain, "grant", i, "registrable_domain", d)
+		if !isRegistrableDomain(g.Grantee) {
+			e.logger.Warn("identity: trust record grant names a grantee that is not a registrable domain; the grant covers no claim",
+				"operator", domain, "grant", i, "grantee", g.Grantee)
 		}
 	}
 }

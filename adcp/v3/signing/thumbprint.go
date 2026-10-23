@@ -38,9 +38,9 @@ func JWKThumbprint(jwk JWK) (string, error) {
 		pub = key.Key
 	case "RSA":
 		// go-jose's JWK decoder refuses moduli over jose.MaxRSAModulusBits
-		// (4096, a process-wide setting), and Web Bot Auth admits RSA keys
-		// up to 8192 bits, so n and e are decoded here. The thumbprint
-		// itself is still go-jose's.
+		// (4096, a process-wide setting), so n and e are decoded here and
+		// any RSA key has a thumbprint. The thumbprint itself is still
+		// go-jose's.
 		if jwk.N == "" || jwk.E == "" {
 			return "", errors.New("signing: incomplete RSA JWK")
 		}
@@ -66,27 +66,18 @@ func JWKThumbprint(jwk JWK) (string, error) {
 }
 
 // PublicDirectoryKey returns the public JWK a Web Bot Auth key directory
-// publishes for privateKey (ed25519.PrivateKey, which signs with ed25519, or
-// an *rsa.PrivateKey of 2048 to 8192 bits, which signs with rsa-pss-sha512;
-// the profile admits no other algorithm, so a P-256 key is refused):
-// kid set to the RFC 7638 thumbprint, use "sig", and no AdCP purpose member,
-// since purpose belongs to the origin under the profile.
+// publishes for privateKey, an ed25519.PrivateKey (the profile signs only
+// with ed25519, so RSA and P-256 keys are refused): kid set to the RFC 7638
+// thumbprint, use "sig", and no AdCP purpose member, since purpose belongs
+// to the origin under the profile.
 func PublicDirectoryKey(privateKey any) (JWK, error) {
-	var pub any
-	switch k := privateKey.(type) {
-	case ed25519.PrivateKey:
-		p, ok := k.Public().(ed25519.PublicKey)
-		if !ok || len(p) != ed25519.PublicKeySize {
-			return JWK{}, errors.New("signing: invalid Ed25519 key")
-		}
-		pub = p
-	case *rsa.PrivateKey:
-		if k == nil || k.N.BitLen() < rsaMinModulus || k.N.BitLen() > rsaMaxModulus {
-			return JWK{}, errors.New("signing: Web Bot Auth RSA keys are 2048 to 8192 bits")
-		}
-		pub = &k.PublicKey
-	default:
-		return JWK{}, fmt.Errorf("signing: Web Bot Auth keys are Ed25519 or RSA, not %T", privateKey)
+	k, ok := privateKey.(ed25519.PrivateKey)
+	if !ok {
+		return JWK{}, fmt.Errorf("signing: Web Bot Auth keys are Ed25519, not %T", privateKey)
+	}
+	pub, ok := k.Public().(ed25519.PublicKey)
+	if !ok || len(pub) != ed25519.PublicKeySize {
+		return JWK{}, errors.New("signing: invalid Ed25519 key")
 	}
 	jwk, err := jwkFromPublicKey(pub)
 	if err != nil {

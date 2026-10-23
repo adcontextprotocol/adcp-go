@@ -231,8 +231,9 @@ func ParseRevocationList(payload []byte, issuer string) (*RevocationList, error)
 }
 
 // revocationJWSAlgorithms are the JWS algorithms a revocation list may be
-// signed with: one per key type a Web Bot Auth key directory holds.
-var revocationJWSAlgorithms = []jose.SignatureAlgorithm{jose.EdDSA, jose.PS512}
+// signed with: EdDSA, the algorithm of the one key type a Web Bot Auth key
+// directory holds (Ed25519).
+var revocationJWSAlgorithms = []jose.SignatureAlgorithm{jose.EdDSA}
 
 // revocationMaxProtectedHeader caps the encoded protected header of a
 // revocation list JWS. A real header (alg, typ, kid) is under 200 bytes.
@@ -243,7 +244,7 @@ const revocationMaxProtectedHeader = 8 << 10
 
 // verifyRevocationJWS verifies a revocation list JWS in compact, flattened
 // JSON, or single-signature general JSON serialization and returns its
-// payload. The protected header must carry alg EdDSA or PS512, typ
+// payload. The protected header must carry alg EdDSA, typ
 // adcp-gov-revocation+jws, a kid, and no crit; the kid is resolved by
 // resolve and the key's algorithm must match alg.
 //
@@ -275,9 +276,7 @@ const revocationMaxProtectedHeader = 8 << 10
 // does not parse; the profile reads none of them.
 //
 // The signature itself is checked by verifyWithJWK, the same key policy
-// and verification Web Bot Auth HTTP signatures use: go-jose's own
-// verifier accepts any RSASSA-PSS salt length, where RFC 7518 §3.5 fixes it
-// at the hash size, and its JWK decoder caps RSA moduli at 4096 bits.
+// and verification Web Bot Auth HTTP signatures use.
 func verifyRevocationJWS(body []byte, resolve func(kid string) (*JWK, error)) ([]byte, error) {
 	body = bytes.TrimSpace(body)
 	var protectedB64, payloadB64, signatureB64 string
@@ -333,15 +332,10 @@ func verifyRevocationJWS(body []byte, resolve func(kid string) (*JWK, error)) ([
 		return nil, errors.New("signing: revocation list JWS must carry exactly one signature")
 	}
 	protected := jws.Signatures[0].Protected
-	var want Algorithm
-	switch jose.SignatureAlgorithm(protected.Algorithm) {
-	case jose.EdDSA:
-		want = AlgEd25519
-	case jose.PS512:
-		want = AlgRSAPSSSHA512
-	default:
+	if jose.SignatureAlgorithm(protected.Algorithm) != jose.EdDSA {
 		return nil, errors.New("signing: JWS alg not allowed")
 	}
+	want := AlgEd25519
 	if typ, _ := protected.ExtraHeaders[jose.HeaderType].(string); typ != RevocationListTyp {
 		return nil, errors.New("signing: JWS typ is not " + RevocationListTyp)
 	}
