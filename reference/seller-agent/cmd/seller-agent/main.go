@@ -539,6 +539,31 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 	return &adcp.DeliveryData{ReportingPeriod: adcp.ReportingPeriod{Start: now.Add(-24 * time.Hour).Format(time.RFC3339), End: now.Format(time.RFC3339)}, Currency: "USD", MediaBuyDeliveries: deliveries}, nil
 }
 
+// resolveAccount is a lookup only: an unknown reference — by account_id or
+// by natural key — returns (nil, nil), and the SDK turns that into
+// ACCOUNT_NOT_FOUND. Accounts are created only through the provisioning
+// path (the SyncAccounts handler in newServer); a discovery or media-buy
+// call must never fabricate one, or any caller could enumerate accounts by
+// naming them. See adcp-go#547 bug 3.
+func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (any, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	domain := ""
+	if ref.Brand != nil {
+		domain = ref.Brand.Domain
+	}
+	// An account_id reference names the account sync_accounts
+	// returned; look that id up before deriving the natural key.
+	id := ref.AccountID
+	if id == "" {
+		id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+	}
+	if acct, ok := b.accounts[id]; ok {
+		return acct, nil
+	}
+	return nil, nil
+}
+
 func (b *backend) forceAccountStatus(accountID, status string) (*adcp.StateTransition, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -1278,24 +1303,7 @@ func newServer(b *backend) *mcp.Server {
 				"simulate_delivery", "simulate_budget_spend",
 			}},
 		},
-		ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
-			b.mu.RLock()
-			defer b.mu.RUnlock()
-			domain := ""
-			if ref.Brand != nil {
-				domain = ref.Brand.Domain
-			}
-			// An account_id reference names the account sync_accounts
-			// returned; look that id up before deriving the natural key.
-			id := ref.AccountID
-			if id == "" {
-				id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
-			}
-			if acct, ok := b.accounts[id]; ok {
-				return acct, nil
-			}
-			return &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}, nil
-		},
+		ResolveAccount: b.resolveAccount,
 		SyncAccounts: func(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
 			b.mu.Lock()
 			defer b.mu.Unlock()

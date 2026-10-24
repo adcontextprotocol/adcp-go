@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -1069,4 +1070,46 @@ func resultErrorCode(t *testing.T, result *mcp.CallToolResult) string {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 	return wire.ADCPError.Code
+}
+
+// TestResolveAccountUnknownDoesNotFabricate pins bug 3 of adcp-go#547:
+// resolveAccount is a lookup only — an unknown account_id or natural key
+// returns (nil, nil) (the SDK answers ACCOUNT_NOT_FOUND) instead of a
+// fabricated active account, and nothing is stored. Provisioning happens
+// only through SyncAccounts.
+func TestResolveAccountUnknownDoesNotFabricate(t *testing.T) {
+	b := newTestBackend()
+	ctx := context.Background()
+
+	refs := map[string]adcp.AccountReference{
+		"natural key": {Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"},
+		"account_id":  {AccountID: "acc_nope"},
+	}
+	for name, ref := range refs {
+		acct, err := b.resolveAccount(ctx, ref)
+		if err != nil {
+			t.Fatalf("%s: resolveAccount: %v", name, err)
+		}
+		if acct != nil {
+			t.Fatalf("%s: unknown account must resolve to nil, got %v", name, acct)
+		}
+	}
+	if len(b.accounts) != 0 {
+		t.Fatalf("resolution must not create accounts, got %d", len(b.accounts))
+	}
+
+	// A provisioned account (the SyncAccounts storage shape) resolves by
+	// both its natural key and its returned account_id.
+	b.accounts["acct-acme-corp.com-acme-corp.com"] = &adcp.AccountResult{
+		AccountID: "acct-acme-corp.com-acme-corp.com", Status: "active",
+	}
+	for name, ref := range refs {
+		if name == "account_id" {
+			ref = adcp.AccountReference{AccountID: "acct-acme-corp.com-acme-corp.com"}
+		}
+		acct, err := b.resolveAccount(ctx, ref)
+		if err != nil || acct == nil {
+			t.Fatalf("%s: provisioned account must resolve (acct=%v, err=%v)", name, acct, err)
+		}
+	}
 }

@@ -46,3 +46,125 @@ func TestResolveAccountIDOnlyUnknownYieldsNotFoundV1(t *testing.T) {
 		t.Fatalf("account_id suggestion must point at list_accounts, got %q", s)
 	}
 }
+
+// The v1 package enforces the same pinned-schema validation as v3: a
+// supplied reference matching neither account-ref form is rejected with
+// INVALID_REQUEST before the resolver runs.
+func TestResolveAccountInvalidFormsRejectedV1(t *testing.T) {
+	cases := map[string]AccountReference{
+		"operator only":         {Operator: "acme-corp.com"},
+		"brand only":            {Brand: &BrandReference{Domain: "acme-corp.com"}},
+		"account_id + operator": {AccountID: "acc_123", Operator: "acme-corp.com"},
+	}
+	for name, ref := range cases {
+		t.Run(name, func(t *testing.T) {
+			called := false
+			resolver := func(ctx context.Context, ref AccountReference) (any, error) {
+				called = true
+				return "acct-1", nil
+			}
+			acct, result := resolveAccount(context.Background(), resolver, ref)
+			if called {
+				t.Fatal("resolver must not be invoked for a schema-invalid reference")
+			}
+			if acct != nil || result == nil || !result.IsError {
+				t.Fatalf("expected INVALID_REQUEST error result (acct=%v, result=%v)", acct, result)
+			}
+			wire, ok := result.StructuredContent.(map[string]any)
+			if !ok {
+				t.Fatalf("expected map wire shape, got %T", result.StructuredContent)
+			}
+			payload, ok := wire["adcp_error"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected adcp_error payload, got %v", wire)
+			}
+			if payload["code"] != "INVALID_REQUEST" {
+				t.Fatalf("expected INVALID_REQUEST, got %v", payload["code"])
+			}
+		})
+	}
+}
+
+// TestRegisteredAccountLifecycleV1 mirrors the v3 lifecycle test: the
+// combined bug 1 + bug 3 behavior of #547 against the updated v1 SDK,
+// through the registered tools, with a lookup-only resolver whose only
+// provisioning path is sync_accounts.
+func TestRegisteredAccountLifecycleV1(t *testing.T) {
+	accounts := map[string]*AccountResult{}
+	deriveID := func(ref AccountReference) string {
+		if ref.AccountID != "" {
+			return ref.AccountID
+		}
+		domain := ""
+		if ref.Brand != nil {
+			domain = ref.Brand.Domain
+		}
+		return "acct-" + domain + "-" + ref.Operator
+	}
+	cfg := baseTestConfig(Config{
+		ResolveAccount: func(_ context.Context, ref AccountReference) (any, error) {
+			if acct, ok := accounts[deriveID(ref)]; ok {
+				return acct, nil
+			}
+			return nil, nil
+		},
+		SyncAccounts: func(_ context.Context, req *SyncAccountsRequest) ([]AccountResult, error) {
+			results := make([]AccountResult, 0, len(req.Accounts))
+			for _, acct := range req.Accounts {
+				id := deriveID(AccountReference{Brand: acct.Brand, Operator: acct.Operator})
+				result := AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
+				if _, ok := accounts[id]; ok {
+					result.Action = "updated"
+				}
+				accounts[id] = &result
+				results = append(results, result)
+			}
+			return results, nil
+		},
+		GetProducts: func(_ context.Context, _ any, _ *GetProductsRequest) (*ProductsData, error) {
+			return &ProductsData{Products: []Product{}}, nil
+		},
+	})
+
+	codeOf := func(args map[string]any) string {
+		result := callRegisteredTool(t, cfg, "get_products", args)
+		if !result.IsError {
+			return ""
+		}
+		payload, ok := structuredContentMap(t, result)["adcp_error"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected adcp_error payload for %v", args)
+		}
+		code, _ := payload["code"].(string)
+		return code
+	}
+
+	naturalKey := map[string]any{"brand": map[string]any{"domain": "acme-corp.com"}, "operator": "acme-corp.com"}
+
+	if code := codeOf(map[string]any{"account": map[string]any{"account_id": "acc_nope"}}); code != "ACCOUNT_NOT_FOUND" {
+		t.Fatalf("unknown account_id: want ACCOUNT_NOT_FOUND, got %q", code)
+	}
+	if code := codeOf(map[string]any{"account": naturalKey}); code != "ACCOUNT_NOT_FOUND" {
+		t.Fatalf("unknown natural key: want ACCOUNT_NOT_FOUND, got %q", code)
+	}
+	if len(accounts) != 0 {
+		t.Fatalf("discovery calls must not provision accounts, got %d", len(accounts))
+	}
+	if code := codeOf(map[string]any{"account": map[string]any{"operator": "acme-corp.com"}}); code != "INVALID_REQUEST" {
+		t.Fatalf("operator-only reference: want INVALID_REQUEST, got %q", code)
+	}
+
+	syncResult := callRegisteredTool(t, cfg, "sync_accounts", map[string]any{
+		"idempotency_key": "lifecycle-sync-1",
+		"accounts":        []any{naturalKey},
+	})
+	if syncResult.IsError {
+		t.Fatalf("sync_accounts must provision, got %v", structuredContentMap(t, syncResult))
+	}
+	if code := codeOf(map[string]any{"account": naturalKey}); code != "" {
+		t.Fatalf("provisioned natural key must resolve, got error %q", code)
+	}
+	if code := codeOf(map[string]any{"account": map[string]any{"account_id": "acct-acme-corp.com-acme-corp.com"}}); code != "" {
+		t.Fatalf("provisioned account_id must resolve, got error %q", code)
+	}
+}

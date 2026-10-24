@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
@@ -34,8 +35,11 @@ import (
 //	    IdempotencyReplayTTL: 24 * time.Hour,
 //	    Idempotency: store, // optional; idempotency.New(...) built once, outside the server factory
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
-//	        // Exactly one form is set: AccountID, or Brand+Operator.
-//	        // Brand is nil for an account_id reference — branch first.
+//	        // The SDK validates the reference before this call (see
+//	        // Config.ResolveAccount): exactly one form is set — AccountID,
+//	        // or Brand+Operator. Brand is nil for an account_id reference —
+//	        // branch first. Check the caller may act for the account
+//	        // (adcp.PrincipalFromContext(ctx)) and honor ref.Sandbox.
 //	        if ref.AccountID != "" {
 //	            return db.FindAccountByID(ref.AccountID)
 //	        }
@@ -509,9 +513,18 @@ type Config struct {
 	// handlers that receive an account field. Return nil for unknown accounts
 	// (SDK sends ACCOUNT_NOT_FOUND).
 	//
-	// Exactly one form is set on the reference: AccountID, or Brand and
-	// Operator together. Brand is nil for an account_id reference, so
-	// resolvers must branch on AccountID before dereferencing Brand.
+	// The SDK validates a supplied reference against the pinned
+	// core/account-ref.json schema before invoking the resolver, so exactly
+	// one form is set on the reference the resolver receives: AccountID, or
+	// Brand and Operator together. Brand is nil for an account_id reference,
+	// so resolvers must branch on AccountID before dereferencing Brand. A
+	// supplied reference that matches neither schema form (for example an
+	// operator without a brand) is rejected with INVALID_REQUEST and never
+	// reaches the resolver. An omitted account field — including a decoded
+	// reference carrying no identifier — keeps the no-account path and does
+	// not invoke the resolver either. Sandbox is a modifier the flattened Go
+	// type can carry with either form; it is passed through for the resolver
+	// to honor, not treated as an identifier.
 	//
 	// The authenticated caller is available via PrincipalFromContext(ctx).
 	// You MUST check that this principal may act for ref; otherwise any
@@ -587,6 +600,33 @@ type ListCollectionListsResult struct {
 	Pagination *PaginationResponse
 }
 
+// accountDomainPattern is the domain pattern the pinned schemas apply to
+// both core/account-ref.json's operator and core/brand-ref.json's domain.
+var accountDomainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// validAccountReference reports whether a supplied (identifier-bearing)
+// AccountReference matches one of the two forms in the pinned
+// core/account-ref.json schema: {account_id} alone, or the natural key
+// {brand, operator} with a schema-valid brand domain and operator. It adds
+// no rules of its own beyond the schema. Sandbox is deliberately not part
+// of the check: the flattened Go type carries it as a modifier on either
+// form, and the resolver — not the SDK — applies its semantics. References
+// carrying no identifier at all never reach this function; resolveAccount
+// keeps them on the omitted-account path.
+func validAccountReference(ref AccountReference) bool {
+	if ref.AccountID != "" {
+		// account_id form: no natural-key fields may accompany it.
+		return ref.Brand == nil && ref.Operator == ""
+	}
+	// Natural-key form: brand and operator are both required, and both
+	// domains must match the schema pattern (brand-ref requires domain).
+	if ref.Brand == nil || ref.Operator == "" {
+		return false
+	}
+	return accountDomainPattern.MatchString(ref.Brand.Domain) &&
+		accountDomainPattern.MatchString(ref.Operator)
+}
+
 func resolveAccount(ctx context.Context, resolver func(context.Context, AccountReference) (any, error), ref any) (any, *mcp.CallToolResult) {
 	if resolver == nil {
 		return nil, nil
@@ -610,6 +650,18 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 	// silently running with no account (public pricing).
 	if acctRef.Brand == nil && acctRef.Operator == "" && acctRef.AccountID == "" {
 		return nil, nil
+	}
+	// A supplied reference must match one of the pinned schema's two forms
+	// before it reaches the resolver: an operator-only reference would
+	// otherwise arrive with a nil Brand and crash resolvers that dereference
+	// it. See validAccountReference.
+	if !validAccountReference(acctRef) {
+		result, _, _ := Errorf("INVALID_REQUEST", ErrorOptions{
+			Message:    "Invalid account reference.",
+			Field:      "account",
+			Suggestion: "Send either an account_id, or a brand and operator together.",
+		})
+		return nil, result
 	}
 	acct, err := resolver(ctx, acctRef)
 	if err != nil {

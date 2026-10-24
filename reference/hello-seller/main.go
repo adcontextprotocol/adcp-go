@@ -88,9 +88,14 @@ func newBackend() *backend {
 // internal account object. It's called automatically before every handler
 // that receives an account field — you never call it yourself.
 //
-// SWAP: look up the real account in your CRM/billing system, and return
-// (nil, nil) — not an error — for a genuinely unknown account; the SDK turns
-// that into the correct ACCOUNT_NOT_FOUND response for you.
+// This is a lookup only: an unknown reference returns (nil, nil) — not an
+// error — and the SDK turns that into the correct ACCOUNT_NOT_FOUND
+// response. Accounts are created only through the provisioning path
+// (sync_accounts, below); a discovery or media-buy call must never mint
+// one, or any caller could enumerate/fabricate accounts by naming them.
+//
+// SWAP: look up the real account in your CRM/billing system instead of the
+// in-memory map, keeping the same return-nil-for-unknown contract.
 func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (any, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -108,12 +113,31 @@ func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (
 	if acct, ok := b.accounts[id]; ok {
 		return acct, nil
 	}
-	// Demo-only: silently mint a new account for anything unrecognized.
-	// SWAP: a real implementation returns (nil, nil) here instead, so the
-	// buyer gets ACCOUNT_NOT_FOUND and calls sync_accounts first.
-	acct := &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}
-	b.accounts[id] = acct
-	return acct, nil
+	return nil, nil
+}
+
+// syncAccounts is the provisioning path: the only place accounts are
+// created. A buyer calls sync_accounts first, then names the account — by
+// the returned account_id or by its natural key — on account-scoped calls.
+func (b *backend) syncAccounts(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	results := make([]adcp.AccountResult, 0, len(input.Accounts))
+	for _, acct := range input.Accounts {
+		domain := "unknown"
+		if acct.Brand != nil {
+			domain = acct.Brand.Domain
+		}
+		id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+		result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
+		if existing, ok := b.accounts[id]; ok {
+			result.Action = "updated"
+			result.Status = existing.Status
+		}
+		b.accounts[id] = &result
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 // getProducts returns the seller's catalog for get_products. SWAP: query
@@ -224,6 +248,7 @@ func newServer(b *backend) *mcp.Server {
 			Creative: &adcp.CreativeCapabilities{HasCreativeLibrary: adcp.Bool(true)},
 		},
 		ResolveAccount: b.resolveAccount,
+		SyncAccounts:   b.syncAccounts,
 		GetProducts:    b.getProducts,
 		CreateMediaBuy: b.createMediaBuy,
 		GetMediaBuys:   b.getMediaBuys,
