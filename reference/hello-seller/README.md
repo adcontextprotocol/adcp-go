@@ -85,10 +85,11 @@ Every item below is marked `// SWAP:` at its integration point in the source.
    response as sandbox data. A production seller sets this from real
    environment/deploy configuration, not a hardcoded literal — same for the
    `"sandbox": true` in `extensions.go`'s `updateMediaBuyResult`.
-2. **`resolveAccount`** — replace the in-memory map + auto-create-on-miss
-   with a real lookup against your account/CRM/billing system. Return
-   `(nil, nil)` for a genuinely unknown account (not an error) so the SDK
-   returns `ACCOUNT_NOT_FOUND` and the buyer calls `sync_accounts` first.
+2. **`resolveAccount`** — replace the in-memory map with a real lookup
+   against your account/CRM/billing system. It already returns `(nil, nil)`
+   for a genuinely unknown account (not an error) so the SDK returns
+   `ACCOUNT_NOT_FOUND`; accounts are created only by `sync_accounts`
+   (the provisioning path in `main.go`), never on a lookup miss.
 3. **In-memory maps → durable storage.** `backend`'s maps (`products`,
    `mediaBuys`, `creatives`) are lost on every restart. Replace with your
    real ad server / OMS / database.

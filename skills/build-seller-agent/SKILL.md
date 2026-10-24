@@ -124,7 +124,8 @@ func main() {
                 defer b.mu.RUnlock()
                 domain := ""
                 if ref.Brand != nil { domain = ref.Brand.Domain }
-                id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+                id := ref.AccountID // account_id references name the id sync_accounts returned
+                if id == "" { id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator) }
                 if acct, ok := b.accounts[id]; ok { return acct, nil }
                 return nil, nil
             },

@@ -457,3 +457,41 @@ func TestMCP_TermsRejected_RecoveryIsEnumMember(t *testing.T) {
 		t.Errorf("recovery = %q, want correctable (the buyer can revise the terms and resend)", recovery)
 	}
 }
+
+// TestMCP_GetProducts_UnknownAccountNotFound pins the tool-level side of
+// adcp-go#547 bug 3: get_products naming an account sync_accounts never
+// provisioned must answer ACCOUNT_NOT_FOUND — the resolver must not
+// fabricate an active account for the call. After sync_accounts provisions
+// the same natural key, the call succeeds.
+func TestMCP_GetProducts_UnknownAccountNotFound(t *testing.T) {
+	session := newMCPTestSession(t)
+	account := map[string]any{
+		"brand":    map[string]any{"domain": "acme-corp.com"},
+		"operator": "acme-corp.com",
+	}
+
+	result := callTool(t, session, "get_products", map[string]any{"account": account})
+	if !result.IsError {
+		t.Fatal("expected error result for an unknown account")
+	}
+	wire := structuredMap(t, result)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected adcp_error payload, got %v", wire)
+	}
+	if errPayload["code"] != "ACCOUNT_NOT_FOUND" {
+		t.Fatalf("expected ACCOUNT_NOT_FOUND, got %v", errPayload["code"])
+	}
+
+	syncResult := callTool(t, session, "sync_accounts", map[string]any{
+		"idempotency_key": "test-sync-unknown-account",
+		"accounts":        []any{account},
+	})
+	if syncResult.IsError {
+		t.Fatalf("sync_accounts must provision the account, got %v", structuredMap(t, syncResult))
+	}
+	result = callTool(t, session, "get_products", map[string]any{"account": account})
+	if result.IsError {
+		t.Fatalf("get_products must succeed after provisioning, got %v", structuredMap(t, result))
+	}
+}
