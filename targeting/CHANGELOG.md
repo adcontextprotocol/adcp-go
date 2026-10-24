@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.6.0](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.5.1...targeting/v0.6.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **identityconfig:** a deployment whose config snapshot exceeds 32 MiB on the wire or 250k entries-plus-segment-IDs, or that sets CONFIG_SOURCE_TIMEOUT=0, works today and fails after this change — raise the caps or set a positive timeout. Embedders constructing identityagent.Config directly must now set IdentityConfig.Timeout to a positive value, and scope3.WithHTTPTimeout(0) on a Source without WithHTTPClient is now an error.
+
+### Features
+
+* **identityconfig:** bound the scope3 config-source response read ([f0f0034](https://github.com/adcontextprotocol/adcp-go/commit/f0f0034ad36baf658c57578481e880a3303e2fd4))
+
 ## [0.5.1](https://github.com/adcontextprotocol/adcp-go/compare/targeting/v0.5.0...targeting/v0.5.1) (2026-09-11)
 
 
