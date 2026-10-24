@@ -1439,6 +1439,30 @@ func main() {
 		creatives: make(map[string]*creativeRecord),
 		delivery:  make(map[string]*deliveryState),
 	}
+	// Pre-provisioned sandbox account for the storyboard test kit
+	// (test-kits/acme-outdoor.yaml): the media_buy_seller storyboard names
+	// this buyer on get_products/create_media_buy without a sync_accounts
+	// step, so the operator provisions it at startup, like the seeded
+	// product catalog. Resolution itself never creates accounts — every
+	// other unknown reference still answers ACCOUNT_NOT_FOUND (#547 bug 3).
+	b.accounts["acct-acmeoutdoor.example-pinnacle-agency.example"] = &adcp.AccountResult{
+		AccountID: "acct-acmeoutdoor.example-pinnacle-agency.example",
+		Brand:     &adcp.BrandReference{Domain: "acmeoutdoor.example"},
+		Operator:  "pinnacle-agency.example",
+		Action:    "existing",
+		Status:    "active",
+	}
+	// The storyboard runner's enricher-built requests (steps without a
+	// fixture account) use its default buyer account, test.example
+	// (resolveAccount in @adcp/sdk's storyboard runner). Seed that fixture
+	// account on the same terms as the test-kit account above.
+	b.accounts["acct-test.example-test.example"] = &adcp.AccountResult{
+		AccountID: "acct-test.example-test.example",
+		Brand:     &adcp.BrandReference{Domain: "test.example"},
+		Operator:  "test.example",
+		Action:    "existing",
+		Status:    "active",
+	}
 
 	log.Fatal(adcp.Serve(func() *mcp.Server {
 		return newServer(b)
