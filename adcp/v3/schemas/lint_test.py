@@ -983,5 +983,111 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
             self.assertIn(field, drift["missing_in_go"])
 
 
+COMMITMENT_RESPONSE_SCHEMA_EXISTS = (
+    lint.SCRIPT_DIR / "media-buy" / "media-buy-commitment-response.json"
+).exists()
+
+
+class ObjectRefScalarAliasLintTest(unittest.TestCase):
+    """adcp-go#564 check 3: an object $ref must not be typed as a scalar alias."""
+
+    def setUp(self):
+        lint.gen._reset_will_generate_cache()
+
+    def tearDown(self):
+        lint.gen._reset_will_generate_cache()
+
+    def entries(self):
+        return [{
+            "kind": "struct",
+            "name": "Holder",
+            "schema": "holder.json",
+            "schema_obj": {
+                "properties": {
+                    "things": {"type": "array", "items": {"$ref": "/schemas/3.2.2/core/shape.json"}},
+                    "name": {"type": "string"},
+                },
+            },
+        }]
+
+    def test_object_ref_bound_to_a_scalar_alias_is_reported(self):
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=self.entries()),
+            mock.patch.object(lint.gen, "resolve_ref_schema", return_value={"type": "object"}),
+            mock.patch.object(lint.gen, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            reports = lint.validate_object_refs_not_scalar_aliases()
+
+        self.assertEqual(1, len(reports))
+        self.assertEqual("Holder", reports[0]["type"])
+        self.assertEqual("things", reports[0]["json"])
+        self.assertEqual("Shape", reports[0]["go_type"])
+        self.assertEqual("holder.json", reports[0]["schema"])
+        self.assertIn("REF_ALIASES", reports[0]["error"])
+
+    def test_object_ref_with_its_own_go_name_is_clean(self):
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=self.entries()),
+            mock.patch.object(lint.gen, "resolve_ref_schema", return_value={"type": "object"}),
+            mock.patch.object(lint.gen, "scalar_alias_go_names", return_value={"Other"}),
+        ):
+            self.assertEqual([], lint.validate_object_refs_not_scalar_aliases())
+
+    def test_scalar_ref_bound_to_a_scalar_alias_is_clean(self):
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=self.entries()),
+            mock.patch.object(lint.gen, "resolve_ref_schema", return_value={"type": "string"}),
+            mock.patch.object(lint.gen, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            self.assertEqual([], lint.validate_object_refs_not_scalar_aliases())
+
+    def test_non_struct_entries_are_skipped(self):
+        entries = [dict(self.entries()[0], kind="union_alias")]
+        with (
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=entries),
+            mock.patch.object(lint.gen, "resolve_ref_schema", return_value={"type": "object"}),
+            mock.patch.object(lint.gen, "scalar_alias_go_names", return_value={"Shape"}),
+        ):
+            self.assertEqual([], lint.validate_object_refs_not_scalar_aliases())
+
+    @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
+    def test_current_generated_structs_bind_no_object_ref_to_a_scalar_alias(self):
+        self.assertEqual([], lint.validate_object_refs_not_scalar_aliases())
+
+    @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
+    def test_guard_fires_on_the_tables_from_before_the_fix(self):
+        # main kept CanonicalMediaBuyAction in KNOWN_TYPES, so the generator
+        # trusted the name and typed available_actions as []string.
+        aliases = {
+            key: value for key, value in lint.gen.REF_ALIASES.items()
+            if key != "CanonicalMediaBuyAction"
+        }
+        known = set(lint.gen.KNOWN_TYPES) | {"CanonicalMediaBuyAction"}
+        with (
+            mock.patch.object(lint.gen, "REF_ALIASES", aliases),
+            mock.patch.object(lint.gen, "KNOWN_TYPES", known),
+        ):
+            lint.gen._reset_will_generate_cache()
+            reports = lint.validate_object_refs_not_scalar_aliases()
+
+        self.assertEqual(
+            [("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction")],
+            [(r["type"], r["json"], r["go_type"]) for r in reports],
+        )
+
+    @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
+    def test_strict_lint_exits_nonzero_for_a_bound_object_ref(self):
+        report = {"type": "Holder", "schema": "h.json", "json": "things", "ref": "r", "go_type": "Shape", "error": "e"}
+        with (
+            mock.patch.object(lint, "validate_object_refs_not_scalar_aliases", return_value=[report]),
+            mock.patch.object(sys, "argv", ["lint.py", "--strict"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            exit_code = lint.main()
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("Object $ref bound to a scalar Go type in 1 field(s)", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
