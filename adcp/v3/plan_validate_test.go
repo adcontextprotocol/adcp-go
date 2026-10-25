@@ -329,3 +329,39 @@ func TestSyncPlansRequest_RoundTrip(t *testing.T) {
 	require.Len(t, decoded.Plans, 1)
 	assert.Empty(t, decoded.Plans[0].Validate())
 }
+
+func TestPlan_ApprovedSellers_EmptyIsNotNull(t *testing.T) {
+	// The schema says null means any seller, so an empty list (no seller
+	// approved) must not be dropped on encode and read back as unrestricted.
+	cases := []struct {
+		name    string
+		sellers []string
+		want    string
+	}{
+		{"nil is any seller", nil, `null`},
+		{"empty is no seller", []string{}, `[]`},
+		{"listed", []string{"https://seller.example"}, `["https://seller.example"]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := validPlan()
+			p.ApprovedSellers = tc.sellers
+			b, err := json.Marshal(SyncPlansRequest{IdempotencyKey: "req-0000000000000001", Plans: []Plan{p}})
+			require.NoError(t, err)
+
+			var raw struct {
+				Plans []map[string]json.RawMessage `json:"plans"`
+			}
+			require.NoError(t, json.Unmarshal(b, &raw))
+			require.Len(t, raw.Plans, 1)
+			require.Contains(t, raw.Plans[0], "approved_sellers")
+			assert.JSONEq(t, tc.want, string(raw.Plans[0]["approved_sellers"]))
+
+			var decoded SyncPlansRequest
+			require.NoError(t, json.Unmarshal(b, &decoded))
+			require.Len(t, decoded.Plans, 1)
+			assert.Equal(t, tc.sellers == nil, decoded.Plans[0].ApprovedSellers == nil)
+			assert.Equal(t, tc.sellers, decoded.Plans[0].ApprovedSellers)
+		})
+	}
+}
