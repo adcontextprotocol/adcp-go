@@ -1070,9 +1070,13 @@ class ObjectRefScalarAliasLintTest(unittest.TestCase):
             lint.gen._reset_will_generate_cache()
             reports = lint.validate_object_refs_not_scalar_aliases()
 
+        # control_media_buy's completed variant lists the same objects.
         self.assertEqual(
-            [("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction")],
-            [(r["type"], r["json"], r["go_type"]) for r in reports],
+            [
+                ("CommittedMediaBuy", "available_actions", "CanonicalMediaBuyAction"),
+                ("ControlApplied", "available_actions", "CanonicalMediaBuyAction"),
+            ],
+            sorted((r["type"], r["json"], r["go_type"]) for r in reports),
         )
 
     @unittest.skipUnless(COMMITMENT_RESPONSE_SCHEMA_EXISTS, "commitment response schema is not present")
