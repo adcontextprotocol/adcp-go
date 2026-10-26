@@ -1,0 +1,17 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust-acknowledgements.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "acknowledgements": [
+    {
+      "grantor": "streamhaus.example",
+      "agent_url": "https://streamhaus.northwind.example/mcp",
+      "via": "adcp:adagents",
+      "profiles": { "adcp": { "delegation_type": "delegated" } }
+    },
+    {
+      "grantor": "pinnacle-news.example",
+      "agent_url": "https://pinnacle-news.northwind.example/mcp",
+      "via": "adcp:adagents"
+    }
+  ]
+}

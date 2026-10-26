@@ -6,6 +6,8 @@ Optional in AdCP 3.0 and capability-advertised via `request_signing` on `get_adc
 
 Spec: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer). Rolling out from unsigned to signed, or rotating keys: see [MIGRATION.md](./MIGRATION.md).
 
+> **AdCP 3.3: two signing profiles.** The AdCP RFC 9421 profile (`adcp/request-signing/v1`, keys through brand.json) is **deprecated in AdCP 3.3**. It keeps working through 3.x and is removed in 4.0. The **Web Bot Auth profile** (`web-bot-auth`) is experimental in 3.3 and opt-in here: see [Web Bot Auth](#web-bot-auth-experimental-adcp-33) below and the [agent identity migration guide](../../../docs/agent-identity-3-3-migration.md). `Middleware` logs the deprecation once per process unless `WebBotAuth` is configured.
+
 ## Conformance
 
 The package is validated against the spec's [conformance vectors](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/):
@@ -72,6 +74,104 @@ The signer:
 - defaults to a 300-second validity window (profile max),
 - attaches `Signature`, `Signature-Input`, and optionally `Content-Digest`,
 - uses Ed25519 (deterministic) or ES256 with IEEE P1363 (`r||s`) encoding — **not** DER.
+
+## Response size limits
+
+Agent responses are untrusted input. `NewSignedHTTPClient` caps every response
+at **4 MiB** (`signing.DefaultMaxResponseBytes`) by default — no opt-in
+required. A seller that answers `get_products` with a multi-megabyte body
+fails the call instead of driving the caller out of memory.
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:            "my-agent-ed25519-2026",
+    PrivateKey:       priv,
+    MaxResponseBytes: 32 << 20, // this seller publishes a large catalog
+    MaxSSEEventBytes: 1 << 20,  // but no single SSE event should be that big
+})
+```
+
+Per call, for the one operation that needs the headroom:
+
+```go
+ctx := signing.WithResponseLimits(ctx, signing.ResponseLimits{MaxResponseBytes: 32 << 20})
+req, _ := http.NewRequestWithContext(ctx, "POST", agentURL, body)
+resp, err := client.Do(req)
+```
+
+What the cap guarantees:
+
+- **Enforced while reading, never truncating.** An oversized `Content-Length`
+  is rejected before the body is read at all; otherwise the read that crosses
+  the limit fails. At most `limit + 1` bytes are ever pulled from the peer,
+  and the caller always gets an error — a short body never looks like a
+  complete one.
+- **Typed error.** Every rejection is a `*signing.ResponseTooLargeError` and
+  matches `errors.Is(err, signing.ErrResponseTooLarge)`. `Scope` says whether
+  the whole body or a single SSE event tripped it; `Limit`, `Read`, and
+  `ContentLength` carry the numbers. A pre-reject surfaces from `client.Do`
+  (wrapped in `*url.Error`); a mid-stream reject surfaces from the read.
+- **SSE is covered.** A `text/event-stream` response is capped per event
+  (`MaxSSEEventBytes`, which inherits `MaxResponseBytes`) *and* cumulatively
+  per call (`MaxResponseBytes`), so a peer cannot escape the limit by
+  answering with a stream. Whatever decodes the body — `bufio.Scanner`, an SSE
+  library, an MCP streamable-HTTP client — gets both checks from the wrapper
+  with no SSE-specific wiring, because the counting happens under
+  `resp.Body.Read`. A long-lived stream that legitimately runs past
+  `MaxResponseBytes` over its lifetime needs an explicit higher cumulative cap
+  (or `signing.UnlimitedResponseBytes`) with `MaxSSEEventBytes` kept tight.
+- **Decompressed bytes count.** The cap sits outside `net/http`'s transparent
+  gzip, so a body that is 100 KiB on the wire and 8 MiB inflated is rejected
+  at 8 MiB. Because net/http only decompresses the gzip it negotiated itself,
+  a capped request that carries its own `Accept-Encoding` naming a
+  compressing coding has that header dropped so negotiation — and the
+  inflation — happens under the counter. `Accept-Encoding: identity` is left
+  alone, as is any request whose cap is disabled.
+- **Opt-out is explicit.** `MaxResponseBytes: signing.UnlimitedResponseBytes`
+  (any negative value) turns the cap off. Zero means "use the default", so
+  leaving the field unset keeps you protected. Since `MaxSSEEventBytes`
+  inherits `MaxResponseBytes`, opting out of the body cap opts out of the
+  per-event cap as well — set `MaxSSEEventBytes` explicitly to keep events
+  bounded while the call runs unbounded.
+
+Two more responses the cap rejects outright, because their size cannot be
+accounted for: a `Content-Encoding` the peer was never offered (anything but
+`identity` that net/http did not inflate itself) fails with
+`*signing.UnsupportedContentEncodingError`, matching
+`errors.Is(err, signing.ErrUnsupportedContentEncoding)`.
+
+Response *headers* are bounded too, but by the transport rather than this
+wrapper: clients from `NewSignedHTTPClient` use a clone of
+`http.DefaultTransport` with `MaxResponseHeaderBytes` lowered from net/http's
+10 MiB default to `signing.DefaultMaxResponseHeaderBytes` (64 KiB), so a peer
+cannot spend megabytes on headers the body cap never sees. The clone carries
+its own connection pool, so reuse one client per peer instead of building one
+per call. A transport you pass as `Inner` is used exactly as given — set
+`MaxResponseHeaderBytes` on it yourself.
+
+Building the client yourself?
+`signing.NewResponseLimitTransport(inner, signing.ResponseLimits{})` applies
+the same cap to any `http.RoundTripper`, including the lower-level
+`(*Signer).RoundTripper`, which does not cap on its own.
+
+### Handling the rejection
+
+- **The peer picks which surface fails.** Declaring an oversized
+  `Content-Length` makes `client.Do` return the error with a nil response;
+  omitting it makes the read fail instead. Handle both — a caller that only
+  checks one can be steered into the other.
+- **Log the error, don't echo it.** `client.Do` wraps the rejection in
+  `*url.Error`, whose message includes the full request URL and query. Follow
+  the usual rule for a service boundary: `slog.Error(...)` with the error,
+  `"internal error"` on the wire.
+- **The cap does not make padding visible.** `json.NewDecoder(resp.Body).Decode(&v)`
+  stops at the first complete JSON value, so megabytes of trailing junk are
+  never read and never counted. Call `dec.More()` afterwards if you want to
+  reject a padded response rather than ignore its tail.
+- **HTTP/2 buffers below the cap.** Under h2, net/http's per-stream flow
+  control window (4 MiB) is in flight regardless of this limiter, and the
+  connection window is far larger. At crawler fan-out, tune the transport's
+  HTTP/2 settings as well.
 
 ## Verifying (seller side)
 
@@ -145,7 +245,7 @@ The verifier implements all 14 checks (13 numbered + 9a) of the [verifier checkl
 3. `tag` == `adcp/request-signing/v1`
 4. `alg` ∈ {`ed25519`, `ecdsa-p256-sha256`}
 5. window (`expires > created`, ±60s skew, ≤ 300s max)
-6. covered components (`@method`, `@target-uri`, `@authority`; `content-type` if body; `content-digest` per policy)
+6. covered components (`@method`, `@target-uri`, `@authority`; `content-type` if body; `content-digest` per policy). These are a minimum: a signer may also cover other HTTP fields. Each extra field must be present on the request; its value (every field line, trimmed and joined with `", "` per RFC 9421 §2.1) is bound into the signature like any other component. A header is authenticated only if it appears in `VerifiedSigner.CoveredComponents`. Duplicate components, derived components outside the profile (`@path`, `@query`, ...), and component parameters (including the Web Bot Auth `"signature-agent";key=...` member form, which this RFC 9421 verifier does not handle) are rejected. The `Signer` never covers extra fields.
 7. `keyid` resolves to a JWK via the configured `JWKSResolver`
 8. JWK purpose (`use=sig`, `key_ops` contains `verify`, `adcp_use=request-signing`)
 9. revocation (before crypto)
@@ -154,6 +254,60 @@ The verifier implements all 14 checks (13 numbered + 9a) of the [verifier checkl
 11. `content-digest` recompute + compare (if covered)
 12. replay dedup on `(keyid, nonce)`
 13. insert into replay cache only after every prior step passed
+
+## Web Bot Auth (experimental, AdCP 3.3)
+
+The [Web Bot Auth profile](https://adcontextprotocol.org/docs/building/by-layer/L1/wba-profile) identifies a signer by its origin. The signer names the origin in a covered `Signature-Agent` member, whose value must be exactly the canonical `https` origin: a lowercase host, no default port, and no trailing slash, path, query, fragment, or userinfo (WBA §5.2.1 and §5.5). The verifier refuses any other value with `403` before it fetches a directory. The verifier fetches the origin's key directory at `/.well-known/http-message-signatures-directory` and looks keys up by `(origin, RFC 7638 thumbprint)`. There is no capabilities call and no keyid-to-agent map. Everything here is opt-in, and the default signer never emits or covers `Signature-Agent`.
+
+Buyer side:
+
+```go
+signer, _ := signing.NewSigner(signing.SignerOptions{
+    PrivateKey:  priv,                         // KeyID is derived: the key's thumbprint
+    AgentOrigin: "https://buyer.example.com", // selects Web Bot Auth
+})
+// Publish the key directory on that origin, re-signed before it expires:
+pub, _ := signing.NewDirectoryPublisher(signing.DirectoryPublisherOptions{
+    AgentOrigin: "https://buyer.example.com", PrivateKeys: []any{priv},
+})
+mux.Handle(signing.DirectoryPath, pub)
+```
+
+`NewSignedHTTPClient` takes `AgentOrigin` too. With a `CapabilityProvider` it also needs a `ProfilesProvider`, and it refuses to send (`ErrWebBotAuthNotAdvertised`) unless the seller lists `web-bot-auth` in `request_signing.profiles`. It never falls back to RFC 9421 on its own. `go run github.com/adcontextprotocol/adcp-go/adcp/v3/cmd/adcp-wba-directory` writes a signed directory for static hosting.
+
+Seller side:
+
+```go
+keys := signing.NewDirectoryResolver(signing.DirectoryResolverOptions{})
+revocations, _ := signing.NewOriginRevocationChecker(signing.OriginRevocationCheckerOptions{Keys: keys})
+mw := signing.Middleware(signing.MiddlewareOptions{
+    Resolver: rfc9421Resolver, // the RFC 9421 profile keeps working
+    WebBotAuth: &signing.WebBotAuthOptions{
+        Keys:       keys,
+        Revocation: revocations,
+        Authorizer: &identity.BindingGate{Bindings: bindings, Records: trustRecords},
+        Authorities: []string{"seller.example.com"}, // refuse cross-seller replays
+    },
+    BoundOrigins: bindings, // no downgrade to RFC 9421 for a bound origin
+})
+```
+
+A seller that advertises only `web-bot-auth` in `request_signing.profiles` sets `WebBotAuthOptions.Exclusive`: every signed request is verified under Web Bot Auth, so an RFC 9421 signature is refused with `403` and `Accept-Signature`, and `Resolver` and `BoundOrigins` are unused. `ObserveOnly` then lets through only unsigned requests to `RequiredFor` operations; a failed signature is always rejected.
+
+- **Profile selection.** A request carrying `Signature-Agent` or a `web-bot-auth` tag is verified under Web Bot Auth only, even under `ObserveOnly`. An uncovered `Signature-Agent` member is never attributed.
+- **One signature.** A request carries exactly one `web-bot-auth` signature and exactly one `Signature-Agent` member. More than that is refused with `403` and `Accept-Signature`, even when every signature verifies on its own: an intermediary that signs a request is its signer, and whether it may act for someone else is an authorization question. Signatures under other tags are not read.
+- **Verification.** It needs only the key directory and replay state, so `VerifyWebBotAuthRequest` can run in front of the server. `created`, `expires` (300 s, 60 s skew), `keyid`, `alg`, `nonce`, and `tag` are required, and digest coverage on a body is enforced. Only the `web-bot-auth` signature is read, but a `Signature` member that is not an unparameterized byte sequence, or a `Signature-Input` member that is not an inner list, is `400` under any label (RFC 9421 §4.1 and §4.2), as Cloudflare's `http-message-sig` answers. `alg` is `ed25519` and must match the key: the profile signs and verifies with Ed25519 only. RSA keys are not Web Bot Auth keys, and P-256 keys are not either (ES256 stays on the RFC 9421 profile); a directory that lists one skips it. The nonce is 64 bytes and is scoped to the identity. The profile states no preference for signers, and this signer emits 64 random bytes as unpadded base64url. The verifier also accepts the padded standard base64 that Cloudflare's library and the WBA architecture draft's own vectors use. These are the two forms Cloudflare's `validateNonce` accepts; padded base64url and any other length are refused. `@target-uri` is the target URI as received, percent-encoding included (RFC 9421 §2.2.2), and `@authority` is normalized (§2.2.3).
+- **Unsigned requests.** An unsigned request needs a signature when it names an operation in `RequiredFor` or a method in `ProtocolMethodsRequiredFor` (read by exact member name, as the MCP SDK dispatches), carries `push_notification_config.authentication` under any letter case, or has a body that is not strict JSON (duplicate or case-variant member names), which no check can read the way the handler will. It gets the answer for what the verifier advertises. With both profiles, it is the RFC 9421 answer (`401`, `request_signature_required`) plus `Accept-Signature` for Web Bot Auth. With `Exclusive`, it is `403` with `Accept-Signature`. `AcceptSignature(body)` returns the value.
+- **Key directories.** A directory is served as `application/http-message-signatures-directory+json` (WBA §5.5.1); any other media type is refused. The profile requires signed directories (WBA Appendix B.1): one signature per usable key, covering `"@authority";req` and `content-digest`, tagged `http-message-signatures-directory`, inside its window with no clock skew. An unsigned directory, or one with a key that did not sign it, is refused. Keys the profile cannot use are skipped and need no signature. A directory that fails to resolve (network or TLS error, timeout, any status other than 200, an invalid directory, or a fetch the resolver's own limits refuse) is a **discovery failure** (WBA §6.10). It never evicts the cached directory, whose keys keep verifying for up to `MaxStale` (24 h by default, never past the directory signatures' expiry; one more 5-minute cache period when the refusal is the resolver's own). With no usable cached copy, the request is unverified: `IsDiscoveryFailure(err)`. `WebBotAuthOptions.OnDiscoveryFailure` is the local policy. The default answers 403 with `Accept-Signature`; `DiscoveryFailureAnonymous` serves the request as anonymous, except for operations in `RequiredFor`. A directory that resolves without the key is evidence that the key was removed.
+- **Errors, split by layer.** The signature path answers only with the profile's statuses and headers, never `request_signature_*` codes and never 503: `400` when a field doesn't parse; `429` with `Accept-Signature` carrying a fresh nonce for a reused signature or nonce; `403` with `Accept-Signature` for every other signature failure; and `403` without it for a revoked key. A replay store at its per-identity capacity answers `429` with `Retry-After` and no `Accept-Signature`. Any body is the one generic authentication error (`AUTH_INVALID`). Authorization outcomes after verification use the AdCP error envelope with no `Accept-Signature`:
+  - `PERMISSION_DENIED` (403, no details) for a failed binding or an unbound origin calling a signature-required operation;
+  - `SERVICE_UNAVAILABLE` (503, `Retry-After`) for a spend-committing call while the trust record or the origin's revocation list can't be read, per the outage rules in the `identity` package.
+- **Revocation is authorization.** `WebBotAuthOptions.Revocation` runs `CheckWBARevocation` after verification and records each signer's state in `VerifiedSigner.Revocation`. A revoked key is refused (403, no `Accept-Signature`). An origin with no list (`RevocationNoList`) is identity-established and can't be bound. A list that can't be read or is past grace (`RevocationStale`) fails spend-committing calls closed in `identity.BindingGate` and `identity.GrantGate`; other calls proceed, and the last verified list keeps revoking. A revocation store that can't be read (`RevocationUnavailable`) fails every bound call with `SERVICE_UNAVAILABLE`.
+- **Authority.** A verified origin with no binding is *identity-established* and gets what an anonymous caller gets. Operations in `WebBotAuthOptions.UnboundFor` (default `get_adcp_capabilities` and `get_principal`), the MCP session methods, and bodyless streamable-HTTP `GET`/`DELETE` run with the identity attached. Other operations are served as anonymous requests. Bindings and trust-record evaluation live in the [`identity`](../identity) package, which this package never imports, so the signature path cannot read a trust record.
+- **MCP handlers.** Read the signer with `VerifiedSignerFromToolRequest(req)`. A stateful MCP session binds handlers to its `initialize` request's context, so the middleware also carries every verified signer, under either profile, in the per-request `auth.TokenInfo` (only `Extra` is set, never `UserID`). Install the middleware inside any bearer-token middleware.
+- **Bodies.** A non-empty signed body must be strict JSON. Keys that differ only in case count as duplicates. Anything else gets `400`.
+
+`VerifyWebBotAuthRequest` is the standalone verifier; it returns the one verified signer. `VerifiedSigner.Profile`, `PrincipalID`, `Revocation`, and `CoveredComponents` report what verified. The profile's vectors under `testdata/wba-profile/` (adcontextprotocol/adcp#7894 at `e5929470`, pinned by checksum in `UPSTREAM.json`) all pass: both positive vectors verify, all six negative vectors get their expected status (`400`, `403`, or `429`) and the `Accept-Signature` the page shows, and the signer reproduces the positive signature byte for byte. The interop fixtures under `testdata/wba-interop/` (from adcontextprotocol/adcp-client, signed by Cloudflare's `web-bot-auth@0.2.0` and by the TypeScript SDK; provenance in `UPSTREAM.json`) verify too, percent-encoded path included, and the Go signer reproduces the TypeScript-signed requests byte for byte.
 
 ## JWKS resolution
 

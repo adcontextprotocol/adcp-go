@@ -1,0 +1,14 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://7f3a9c.sentinel-governance.example/mcp",
+      "roles": ["adcp:governance"]
+    },
+    {
+      "url": "https://b21e04.sentinel-governance.example/mcp",
+      "roles": ["adcp:governance"]
+    }
+  ]
+}

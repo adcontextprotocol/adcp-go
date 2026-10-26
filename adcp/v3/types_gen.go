@@ -9530,6 +9530,15 @@ type AuditObservation struct {
 
 // --- Support schema types ---
 
+// ValidateInputResult — Per-target result of a validate_input call. The `result_kind` discriminator (replacing the earlier
+type ValidateInputResult struct {
+	Target                 ValidateInputResultTarget `json:"target"`
+	ResultKind             string                    `json:"result_kind"`                        // Discriminator for the validation outcome. See schema description for the three
+	Violations             []ValidateInputViolation  `json:"violations,omitempty"`               // When `result_kind` is `validated_fail`, the specific constraints the manifest
+	Warnings               []ValidateInputWarning    `json:"warnings,omitempty"`                 // Non-blocking observations (e.g. LEAN policy advisories such as hover-triggered
+	MacroResolutionResults []MacroResolutionResult   `json:"macro_resolution_results,omitempty"` // Per-token compatibility against the selected target. Required or unsafe
+}
+
 // PackageInput — Package configuration for media buy creation. **Format selector contract (normative).** New 3.2
 type PackageInput struct {
 	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
@@ -9804,6 +9813,17 @@ type CanonicalAccountRef struct {
 	Sandbox      *bool         `json:"sandbox,omitempty"`
 }
 
+// CanonicalAvailableAction — A currently available MediaBuy action with the compact-lifecycle task an SDK calls to exercise it.
+type CanonicalAvailableAction struct {
+	Task                 string                      `json:"task"`
+	Action               string                      `json:"action"`
+	Mode                 CanonicalMediaBuyActionMode `json:"mode"`
+	Sla                  *SlaWindow                  `json:"sla,omitempty"`
+	ChangeTermID         string                      `json:"change_term_id,omitempty"`
+	TermsRef             string                      `json:"terms_ref,omitempty"`
+	ApplicablePackageIDs []string                    `json:"applicable_package_ids,omitempty"` // Exact eligible packages for a package-scoped action; omission means all
+}
+
 // CanonicalPerformanceStandard — Compact committed metric threshold with resolvable vendor identity and no creative or brand-asset
 type CanonicalPerformanceStandard struct {
 	Metric    PerformanceStandardMetric `json:"metric"`
@@ -9916,6 +9936,13 @@ type EventSurface struct {
 	Ext          any    `json:"ext,omitempty"`
 }
 
+// ForecastRateRange — A forecast range whose low, midpoint, and high values are rates in the inclusive interval from 0
+type ForecastRateRange struct {
+	Low  float64 `json:"low,omitempty"`  // Conservative (low-end) forecast value
+	Mid  float64 `json:"mid,omitempty"`  // Expected (most likely) forecast value
+	High float64 `json:"high,omitempty"` // Optimistic (high-end) forecast value
+}
+
 // ForecastVendorMetricValue — A forecasted value for a vendor-defined metric, emitted on ForecastPoint.vendor_metric_values
 type ForecastVendorMetricValue struct {
 	Vendor                BrandReference `json:"vendor"`                            // Vendor that defines and forecasts this metric. Matches a
@@ -9930,8 +9957,9 @@ type ForecastVendorMetricValue struct {
 
 // FormatOptionRef — Discriminated reference to a product format option. The global canonical shape is still named by
 type FormatOptionRef struct {
-	Scope          string `json:"scope,omitempty"`            // Reference resolves only against the target product's inline `format_options[]`.
-	FormatOptionID string `json:"format_option_id,omitempty"` // Stable format option ID from the target product's inline `format_options[]`.
+	Scope           string `json:"scope,omitempty"`            // Reference resolves only against the target product's inline `format_options[]`.
+	PublisherDomain string `json:"publisher_domain,omitempty"` // Publisher domain where the adagents.json declaring this format option is hosted.
+	FormatOptionID  string `json:"format_option_id,omitempty"` // Stable format option ID from the target product's inline `format_options[]`.
 }
 
 // FrequencyCapConstraints — Structured frequency-cap constraints. Count and duration declarations are exact: each uses either
@@ -10045,6 +10073,28 @@ type MacroResolutionCapability struct {
 	SupportedContexts  []MacroValueContext     `json:"supported_contexts"`
 	SupportedEncodings []MacroEncoding         `json:"supported_encodings,omitempty"` // Exact supported encoding profiles, not a maximum depth. Required for value
 	TranslationTarget  *MacroTranslationTarget `json:"translation_target,omitempty"`
+}
+
+// MacroResolutionResult — Path-addressable preflight result for one declaration. `resolvable` means the selected execution
+type MacroResolutionResult struct {
+	DeclarationID       string                   `json:"declaration_id"`
+	AssetPath           string                   `json:"asset_path"` // JSON Pointer to the asset carrying the declaration.
+	Token               string                   `json:"token"`
+	Dialect             MacroDialect             `json:"dialect"`
+	DialectNamespace    string                   `json:"dialect_namespace,omitempty"`
+	DialectRevision     string                   `json:"dialect_revision,omitempty"`
+	DialectSemantic     string                   `json:"dialect_semantic"`
+	MappingStatus       MacroMappingStatus       `json:"mapping_status"`
+	UniversalSemantic   UniversalMacro           `json:"universal_semantic,omitempty"`
+	Operation           MacroProcessingOperation `json:"operation"`
+	PerformedBy         MacroResolver            `json:"performed_by,omitempty"`
+	RequestedEncoding   MacroEncoding            `json:"requested_encoding"`
+	Required            bool                     `json:"required"`
+	UnavailableBehavior string                   `json:"unavailable_behavior"`
+	Status              string                   `json:"status"`
+	Reason              MacroResolutionReason    `json:"reason"`
+	MatchedEncodings    []MacroEncoding          `json:"matched_encodings,omitempty"` // Exact advertised profiles considered for this match, when relevant.
+	Message             string                   `json:"message,omitempty"`
 }
 
 // MacroTranslationTarget — The exact downstream-native token produced by a `translate_to_native` operation. The output asset
@@ -10349,6 +10399,14 @@ type VendorMetricOptimization struct {
 	SupportedMetrics []VendorMetricOptimizationSupportedMetric `json:"supported_metrics"` // Vendor-defined metrics this product can steer delivery toward. Each entry
 }
 
+// WarningResource — Typed AdCP identity for the resource or relationship affected by a successful-operation warning.
+type WarningResource struct {
+	ResourceType string `json:"resource_type"`
+	MediaBuyID   string `json:"media_buy_id,omitempty"`
+	PackageID    string `json:"package_id,omitempty"`
+	CreativeID   string `json:"creative_id,omitempty"`
+}
+
 // WebhookActivityRecord — Single webhook delivery attempt surfaced to a calling principal as a buyer-side debug aid.
 type WebhookActivityRecord struct {
 	IdempotencyKey   string           `json:"idempotency_key"`              // Equals the `idempotency_key` carried in the webhook payload itself (see
@@ -10430,6 +10488,39 @@ type GetProductsRejected struct {
 type GetProductsTargetingResolution struct {
 	BriefTargeting Targeting `json:"brief_targeting"` // Structured delivery constraints the seller resolved from explicit hard
 	Ext            any       `json:"ext,omitempty"`
+}
+
+// ProductPurchaseInput — Request-only canonical product selection for buy_products. It shares the strict Product Purchase
+type ProductPurchaseInput struct {
+	ProductID                    string                         `json:"product_id"`
+	PricingOptionID              string                         `json:"pricing_option_id"`
+	Pricing                      any                            `json:"pricing,omitempty"`
+	FormatOptionRefs             []FormatOptionRef              `json:"format_option_refs,omitempty"`
+	CatalogIDs                   []string                       `json:"catalog_ids,omitempty"`
+	Budget                       *float64                       `json:"budget,omitempty"`
+	DailyBudgetCap               *float64                       `json:"daily_budget_cap,omitempty"`
+	MinSpendTarget               *float64                       `json:"min_spend_target,omitempty"`
+	Impressions                  *float64                       `json:"impressions,omitempty"`
+	StartTime                    string                         `json:"start_time,omitempty"`
+	EndTime                      string                         `json:"end_time,omitempty"`
+	Pacing                       string                         `json:"pacing,omitempty"`
+	Bidding                      any                            `json:"bidding,omitempty"`
+	TargetingOverlay             any                            `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
+	OptimizationGoals            any                            `json:"optimization_goals,omitempty"`
+	AudienceEvidenceRequirements any                            `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
+	AudienceEvidencePins         []AudienceEvidencePin          `json:"audience_evidence_pins,omitempty"`
+	AgencyEstimateNumber         string                         `json:"agency_estimate_number,omitempty"`
+	Context                      any                            `json:"context,omitempty"`
+	Ext                          any                            `json:"ext,omitempty"`
+	MeasurementTerms             any                            `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
+	PerformanceStandards         []CanonicalPerformanceStandard `json:"performance_standards,omitempty"`
+}
+
+// ProposalDecline — Terminal buyer feedback for one immutable proposal snapshot.
+type ProposalDecline struct {
+	ProposalID string                `json:"proposal_id"` // Immutable proposal ID returned by request_proposals or refine_proposals.
+	Reason     ProposalDeclineReason `json:"reason"`
+	Detail     string                `json:"detail,omitempty"` // Optional short, non-identifying explanation. MUST NOT identify a competitor or
 }
 
 // PriceGuidance — Pricing guidance for auction-based bidding. Helps buyers calibrate bids with historical percentiles.
@@ -12481,6 +12572,36 @@ type PreviewCreativeBatchRequest struct {
 	ItemLimit        int                    `json:"item_limit,omitempty"`        // Maximum number of catalog items to render in this preview.
 }
 
+type DeclineProposalResult struct {
+	Outcome    string `json:"outcome"`
+	ProposalID string `json:"proposal_id"`
+	Reason     string `json:"reason,omitempty"` // Why the seller could not apply a decline. Present only for outcome unable.
+}
+
+type PurchaseBinding struct {
+	PurchaseIndex int    `json:"purchase_index"`
+	ProductID     string `json:"product_id"`
+	PackageID     string `json:"package_id"`
+}
+
+type ValidateInputTarget struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"` // Agent-local capability_id from get_adcp_capabilities
+}
+
+type ValidateInputResultTarget struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"` // Canonical format name (e.g., 'image'), product_id, URI-form third-party format
+}
+
+type ValidateInputViolation struct {
+	Rule      string         `json:"rule"`                 // Rule name (e.g., 'duration_ms_range', 'aspect_ratio', 'max_file_size_kb').
+	Expected  any            `json:"expected,omitempty"`   // Expected value or range (e.g., '28000-32000', '9:16', 200).
+	Predicted any            `json:"predicted,omitempty"`  // Platform's pre-flight estimate for this field (NOT the actual output — there
+	Field     string         `json:"field"`                // Path to the violating field (e.g., 'assets.video_main.duration_ms').
+	RetryWith map[string]any `json:"retry_with,omitempty"` // Optional advisory adjustment hint. Platforms MAY suggest a corrected input
+}
+
 // ForcedDirective — Echo of the registered directive. The next matching operation call from this sandbox account will
 type ForcedDirective struct {
 	Arm          string   `json:"arm"`                     // Arm the seller will emit on the next forced operation response.
@@ -12878,6 +12999,68 @@ type UpdateMediaBuyRequest struct {
 	Ext                    any                     `json:"ext,omitempty"`
 }
 
+// RequestProposalsRequest — Ask a seller to create one or more indicative media-plan proposals from a brief. Provide exactly
+type RequestProposalsRequest struct {
+	Account                *CanonicalAccountRef      `json:"account,omitempty"` // Alternative brand source for proposal terms. Provide either this natural-key
+	AdcpVersion            string                    `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                      `json:"adcp_major_version,omitempty"`
+	ContextID              string                    `json:"context_id,omitempty"` // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                       `json:"context,omitempty"`
+	GovernanceContext      string                    `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"`
+	IdempotencyKey         string                    `json:"idempotency_key"` // Client-generated key required for retry-safe proposal creation.
+	Brand                  *BrandKey                 `json:"brand,omitempty"` // Alternative brand source for proposal terms. Provide either top-level brand or
+	Brief                  string                    `json:"brief"`           // Campaign goal, strategy, and requirements that are not represented in
+	Criteria               *ProductDiscoveryCriteria `json:"criteria,omitempty"`
+	Opportunity            *OpportunityContext       `json:"opportunity,omitempty"` // Optional planning-cycle context that the seller associates with every proposal
+}
+
+// RequestProposalsResponse — One or more immutable draft media-plan proposals and compact canonical products referenced by
+type RequestProposalsResponse struct {
+	Outcome     string                      `json:"outcome,omitempty"`
+	Status      string                      `json:"status,omitempty"`
+	TaskID      string                      `json:"task_id,omitempty"`
+	Message     string                      `json:"message,omitempty"`
+	Errors      []AdcpError                 `json:"errors,omitempty"`
+	Context     any                         `json:"context,omitempty"`
+	Ext         any                         `json:"ext,omitempty"`
+	AdcpVersion string                      `json:"adcp_version,omitempty"`
+	Reason      string                      `json:"reason,omitempty"`
+	Suggestions []string                    `json:"suggestions,omitempty"`
+	Proposals   []CanonicalProposal         `json:"proposals,omitempty"`
+	Products    []CanonicalProduct          `json:"products,omitempty"`
+	Incomplete  []GetProductsIncompleteItem `json:"incomplete,omitempty"` // Usable partial discovery result retained from the established get_products
+	// Deprecated: Deprecated AdCP 3.x projection instruction for purchasing products returned without a proposal.
+	PurchaseContinuation map[string]any                  `json:"purchase_continuation,omitempty"` // Deprecated AdCP 3.x projection instruction for purchasing products returned
+	TargetingResolution  *GetProductsTargetingResolution `json:"targeting_resolution,omitempty"`  // Response-level confirmation of structured targeting interpreted from explicit
+	Replayed             *bool                           `json:"replayed,omitempty"`
+}
+
+// DeclineProposalsRequest — Terminally decline one or more immutable proposals. Repeating an already-applied decline with a
+type DeclineProposalsRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	ContextID              string                  `json:"context_id,omitempty"` // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                     `json:"context,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`       // Client-generated key required for retry-safe proposal decline.
+	Declines               []ProposalDecline       `json:"declines"`              // Proposal declines to apply. proposal_id is the semantic uniqueness key and
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"` // Optional planning-cycle update. Every named proposal MUST belong to this
+}
+
+// DeclineProposalsResponse — One ordered terminal result for each requested proposal decline.
+type DeclineProposalsResponse struct {
+	Status   string                  `json:"status,omitempty"`
+	TaskID   string                  `json:"task_id,omitempty"`
+	Message  string                  `json:"message,omitempty"`
+	Errors   []AdcpError             `json:"errors,omitempty"`
+	Context  any                     `json:"context,omitempty"`
+	Ext      any                     `json:"ext,omitempty"`
+	Results  []DeclineProposalResult `json:"results,omitempty"`
+	Replayed *bool                   `json:"replayed,omitempty"`
+}
+
 // GetMediaBuysRequest — Request parameters for retrieving media buy status, creative approval state, and optional delivery
 type GetMediaBuysRequest struct {
 	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
@@ -13213,6 +13396,113 @@ type RefineProposalsData struct {
 	Replayed    *bool              `json:"replayed,omitempty"`
 }
 
+// AcceptProposalRequest — Accept one committed immutable proposal. Depending on proposal_kind, acceptance creates a
+type AcceptProposalRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Name                   string                  `json:"name,omitempty"` // Human-readable MediaBuy name supplied by the buyer for trafficking UI display
+	Account                CanonicalAccountRef     `json:"account"`
+	ProposalID             string                  `json:"proposal_id"`
+	ProposalTermsDigest    string                  `json:"proposal_terms_digest"`         // terms_digest from the committed proposal. The seller MUST atomically verify
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`        // Execution amount when the committed proposal defines scalable percentages or
+	DailyBudgetCap         *float64                `json:"daily_budget_cap,omitempty"`    // Optional hard aggregate daily spend ceiling applied when the committed
+	BudgetCapTimezone      string                  `json:"budget_cap_timezone,omitempty"` // Optional shared IANA cap-day timezone override. Requires
+	IoAcceptance           *IOAcceptance           `json:"io_acceptance,omitempty"`
+	PurchaseOrderRef       string                  `json:"purchase_order_ref,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"` // Optional reporting delivery configuration established atomically when the
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"`       // Optional planning-cycle closure. Success infers closed with
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// MediaBuyCommitmentResponse is a discriminated union — use one of the generated variant structs.
+type MediaBuyCommitmentResponse interface {
+	isMediaBuyCommitmentResponse()
+}
+
+// CommittedMediaBuy — Committed Media Buy, the commitment result with status "completed".
+type CommittedMediaBuy struct {
+	Status           string                     `json:"status"`
+	MediaBuyID       string                     `json:"media_buy_id"`
+	Name             string                     `json:"name,omitempty"` // Persisted human-readable MediaBuy name for trafficking UI display and
+	Revision         int                        `json:"revision"`
+	MediaBuyStatus   MediaBuyStatus             `json:"media_buy_status,omitempty"`
+	ConfirmedAt      *string                    `json:"confirmed_at,omitempty"`
+	AcceptedProposal CanonicalProposal          `json:"accepted_proposal"`
+	PurchaseBindings []PurchaseBinding          `json:"purchase_bindings"` // Execution identities assigned to the immutable purchases. purchase_index is
+	AvailableActions []CanonicalAvailableAction `json:"available_actions"`
+	Warnings         []any                      `json:"warnings,omitempty"` // Non-blocking observations about this completed commitment. The MediaBuy was
+	Context          any                        `json:"context,omitempty"`
+	Ext              any                        `json:"ext,omitempty"`
+	Replayed         *bool                      `json:"replayed,omitempty"`
+}
+
+// CommitmentError — Commitment Error, the commitment result with status "failed".
+type CommitmentError struct {
+	Status   string      `json:"status"`
+	Errors   []AdcpError `json:"errors"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+// CommitmentSubmitted — Commitment Submitted, the commitment result with status "submitted".
+type CommitmentSubmitted struct {
+	Status   string      `json:"status"`
+	TaskID   string      `json:"task_id"`
+	Message  string      `json:"message,omitempty"`
+	Errors   []AdcpError `json:"errors,omitempty"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+func (CommittedMediaBuy) isMediaBuyCommitmentResponse()   {}
+func (CommitmentError) isMediaBuyCommitmentResponse()     {}
+func (CommitmentSubmitted) isMediaBuyCommitmentResponse() {}
+
+// AcceptProposalResponse — Compact proposal-acceptance result containing the resulting MediaBuy identity and accepted
+type AcceptProposalResponse = MediaBuyCommitmentResponse
+
+// BuyProductsRequest — Create a MediaBuy directly from published product offers. Provide exactly one brand source
+type BuyProductsRequest struct {
+	Account                CanonicalAccountRef     `json:"account"` // Execution account. A natural-key account is the single brand source and MUST
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Name                   string                  `json:"name,omitempty"`                // Human-readable name for this media buy, shared by buyer and seller for
+	Brand                  *BrandKey               `json:"brand,omitempty"`               // Brand source required when account is ID-only. Omit when account already
+	AdvertiserIndustry     AdvertiserIndustry      `json:"advertiser_industry,omitempty"` // Industry classification for this campaign. Sellers may infer it from the
+	FeedVersion            string                  `json:"feed_version"`                  // list_products feed_version containing the published offers being accepted.
+	PricingVersion         string                  `json:"pricing_version,omitempty"`     // list_products pricing_version containing the accepted rate. Buyers MUST
+	Purchases              []ProductPurchaseInput  `json:"purchases"`
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`
+	DailyBudgetCap         *float64                `json:"daily_budget_cap,omitempty"`    // Optional hard aggregate daily spend ceiling in total_budget.currency or the
+	FrequencyCap           *MediaBuyFrequencyCap   `json:"frequency_cap,omitempty"`       // Optional max-impression cap using one counter across purchases. Buyers send it
+	BudgetCapTimezone      string                  `json:"budget_cap_timezone,omitempty"` // Optional IANA timezone override shared by every aggregate and purchase daily
+	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
+	StartTime              string                  `json:"start_time"`
+	EndTime                string                  `json:"end_time"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"` // Aggregate media-buy pacing. In seller-optimized allocation, a seller declaring
+	Bidding                any                     `json:"bidding,omitempty"`
+	Paused                 *bool                   `json:"paused,omitempty"`
+	PurchaseOrderRef       string                  `json:"purchase_order_ref,omitempty"`
+	AgencyEstimateNumber   string                  `json:"agency_estimate_number,omitempty"`
+	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"` // Authorized per-buy billing entity override.
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"` // Optional reporting delivery configuration established atomically with the
+	Opportunity            *OpportunityContext     `json:"opportunity,omitempty"`       // Optional planning-cycle closure for a direct product purchase. Success infers
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// BuyProductsResponse — Compact direct-purchase result containing the MediaBuy identity and accepted immutable proposal
+type BuyProductsResponse = MediaBuyCommitmentResponse
+
 // SyncReportingStatusRequest — Submit the authenticated consumer's operational reporting status for expected configuration
 type SyncReportingStatusRequest struct {
 	AdcpVersion      string                    `json:"adcp_version,omitempty"`
@@ -13342,6 +13632,33 @@ type PreviewCreativeRequest struct {
 	PushNotificationConfig *PushNotificationConfig       `json:"push_notification_config,omitempty"` // Optional webhook configuration for terminal completion/failure notifications
 	Context                any                           `json:"context,omitempty"`
 	Ext                    any                           `json:"ext,omitempty"`
+}
+
+// ValidateInputRequest — Request payload for the validate_input task. Lets buyers preflight a creative manifest against
+type ValidateInputRequest struct {
+	Account  *AccountReference     `json:"account,omitempty"` // Optional account scope for seller-specific product validation. Required by
+	Brand    *BrandReference       `json:"brand,omitempty"`   // Optional brand scope when account is omitted or the seller keys sandbox
+	Manifest CreativeManifest      `json:"manifest"`          // Creative manifest to validate.
+	Targets  []ValidateInputTarget `json:"targets,omitempty"` // Discriminated list of validation targets. Each entry mirrors the `target`
+}
+
+// ValidateInputResponse — Response payload for the validate_input task. Returns per-target manifest validation results — one
+type ValidateInputResponse struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"`       // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`               // Transport-managed conversation identifier. On A2A, this maps to the native
+	Context                any                     `json:"context,omitempty"`                  // Per-request opaque caller-supplied correlation object echoed unchanged in the
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 TaskStatus              `json:"status"`                             // Current AdCP task state or structured outcome. Indicates whether the task
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // AdCP application-layer webhook configuration for async task updates over MCP
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Opaque authorization context issued only by an approved check_governance
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Results                []ValidateInputResult   `json:"results"`                            // Per-target validation results.
 }
 
 // GetSignalsRequest — Request parameters for discovering and refining signals. Use signal_spec for natural language

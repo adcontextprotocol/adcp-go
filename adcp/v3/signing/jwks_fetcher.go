@@ -7,8 +7,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/safefetch"
 )
 
 // JWKSResolver resolves a keyid to a JWK and the agent URL declaring it.
@@ -111,21 +114,18 @@ func (h *HTTPJWKSResolver) now() time.Time {
 	return time.Now()
 }
 
-// Resolve implements JWKSResolver.
+// Resolve implements JWKSResolver. A kid published by more than one
+// configured agent is ambiguous and resolves to none of them
+// (CodeKeyUnknown): attributing it to whichever agent a map scan reached
+// first would be nondeterministic. The Web Bot Auth profile's
+// DirectoryResolver avoids the question by looking keys up by (origin, kid).
 func (h *HTTPJWKSResolver) Resolve(ctx context.Context, keyid string) (*JWK, string, error) {
-	// First pass: look in cache.
-	for agentURL, jwksURL := range h.Agents {
-		jwk, err := h.lookupInCache(jwksURL, keyid)
-		if err != nil {
-			return nil, "", err
-		}
-		if jwk != nil {
-			return jwk, agentURL, nil
-		}
+	if jwk, agentURL, err := h.findUnique(keyid); err != nil || jwk != nil {
+		return jwk, agentURL, err
 	}
 	// Kid miss — refetch each (subject to cooldown).
 	var lastFetchErr error
-	for agentURL, jwksURL := range h.Agents {
+	for _, jwksURL := range h.Agents {
 		if !h.canRefetch(jwksURL) {
 			continue
 		}
@@ -133,12 +133,8 @@ func (h *HTTPJWKSResolver) Resolve(ctx context.Context, keyid string) (*JWK, str
 			lastFetchErr = err
 			continue
 		}
-		jwk, err := h.lookupInCache(jwksURL, keyid)
-		if err != nil {
-			return nil, "", err
-		}
-		if jwk != nil {
-			return jwk, agentURL, nil
+		if jwk, agentURL, err := h.findUnique(keyid); err != nil || jwk != nil {
+			return jwk, agentURL, err
 		}
 	}
 	if lastFetchErr != nil {
@@ -148,6 +144,27 @@ func (h *HTTPJWKSResolver) Resolve(ctx context.Context, keyid string) (*JWK, str
 		return nil, "", wrapError(CodeJWKSUnavailable, "all JWKS fetches failed", lastFetchErr)
 	}
 	return nil, "", newError(CodeKeyUnknown, "keyid not found in any agent JWKS")
+}
+
+// findUnique scans every agent's cached JWKS for keyid. A kid cached under
+// more than one agent is an error (CodeKeyUnknown).
+func (h *HTTPJWKSResolver) findUnique(keyid string) (*JWK, string, error) {
+	var found *JWK
+	var foundAgent string
+	for agentURL, jwksURL := range h.Agents {
+		jwk, err := h.lookupInCache(jwksURL, keyid)
+		if err != nil {
+			return nil, "", err
+		}
+		if jwk == nil {
+			continue
+		}
+		if found != nil && foundAgent != agentURL {
+			return nil, "", newError(CodeKeyUnknown, "keyid published by more than one agent")
+		}
+		found, foundAgent = jwk, agentURL
+	}
+	return found, foundAgent, nil
 }
 
 func (h *HTTPJWKSResolver) lookupInCache(jwksURL, keyid string) (*JWK, error) {
@@ -251,34 +268,11 @@ func newSafeHTTPClient() *http.Client {
 
 // isDisallowedIP returns true for IPs that must not be dialed per the AdCP
 // webhook SSRF rules (also applied to JWKS fetch per the spec cross-reference).
+// It shares one blocklist with the Web Bot Auth and trust-record fetches.
 func isDisallowedIP(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
 		return true
 	}
-	// Private RFC 1918 / ULA.
-	if ip4 := ip.To4(); ip4 != nil {
-		switch {
-		case ip4[0] == 0: // 0.0.0.0/8 — this-network; routes to loopback on Linux
-			return true
-		case ip4[0] == 10:
-			return true
-		case ip4[0] == 172 && ip4[1]&0xf0 == 16:
-			return true
-		case ip4[0] == 192 && ip4[1] == 168:
-			return true
-		case ip4[0] == 169 && ip4[1] == 254:
-			return true
-		case ip4[0] == 100 && ip4[1]&0xc0 == 64: // CGNAT 100.64.0.0/10
-			return true
-		case ip4[0] == 198 && ip4[1]&0xfe == 18: // 198.18.0.0/15 benchmark
-			return true
-		}
-	}
-	if ip.To4() == nil && len(ip) == net.IPv6len {
-		if ip[0]&0xfe == 0xfc { // fc00::/7 ULA
-			return true
-		}
-	}
-	return false
+	return safefetch.Blocked(addr)
 }

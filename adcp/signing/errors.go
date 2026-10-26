@@ -19,7 +19,8 @@ import (
 //	CodeAlgNotAllowed        — step 4 (alg not in allowlist)
 //	CodeWindowInvalid        — step 5 (created/expires/skew/window rules)
 //	CodeComponentsIncomplete — step 6 (required covered component missing)
-//	CodeComponentsUnexpected — step 6 (content-digest covered when forbidden)
+//	CodeComponentsUnexpected — step 6 (content-digest covered when forbidden,
+//	                           or a covered component listed twice)
 //	CodeKeyUnknown           — step 7 (keyid unresolved after refetch)
 //	CodeKeyPurposeInvalid    — step 8 (use/key_ops/adcp_use/alg mismatch)
 //	CodeKeyRevoked           — step 9 (keyid in revoked_kids)
@@ -60,7 +61,9 @@ const (
 	CodeComponentsIncomplete ErrorCode = "request_signature_components_incomplete"
 
 	// CodeComponentsUnexpected — signer covered content-digest but the verifier's
-	// policy is "forbidden".
+	// policy is "forbidden", or the covered-component list names a component
+	// more than once (RFC 9421 §2.5; webhook-profile duplicates report
+	// CodeHeaderMalformed instead).
 	CodeComponentsUnexpected ErrorCode = "request_signature_components_unexpected"
 
 	// CodeKeyUnknown — keyid cannot be resolved to a JWK (after one refetch

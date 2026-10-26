@@ -155,4 +155,10 @@ type VerifiedSigner struct {
 	VerifiedAt time.Time
 	Algorithm  Algorithm
 	Label      string
+
+	// CoveredComponents is the ordered covered-component list of the
+	// verified signature. A header field is authenticated only if it appears
+	// here; a header the signature does not cover is unauthenticated input
+	// even on a verified request.
+	CoveredComponents []string
 }

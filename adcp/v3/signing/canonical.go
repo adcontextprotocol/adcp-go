@@ -3,6 +3,7 @@ package signing
 import (
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -93,4 +94,118 @@ func buildSignatureBase(covered []string, componentValues map[string]string, sig
 	b.WriteString("\": ")
 	b.WriteString(sigParamsValue)
 	return b.String(), nil
+}
+
+// profileComponents are the covered components whose values the verifier
+// derives itself (the derived components) or reads under profile-specific
+// rules (content-type, content-digest).
+var profileComponents = map[string]struct{}{
+	componentMethod:       {},
+	componentTargetURI:    {},
+	componentAuthority:    {},
+	componentContentType:  {},
+	componentContentDigst: {},
+}
+
+// rejectDuplicateComponents enforces RFC 9421 §2.5: a component identifier
+// appears at most once in the covered list. The request profile reports
+// request_signature_components_unexpected, as the Python SDK does. The
+// webhook profile's error table has no components_unexpected code for this
+// case, so it reports webhook_signature_header_malformed, also matching the
+// Python SDK.
+func rejectDuplicateComponents(components []string, profile Profile) error {
+	seen := make(map[string]struct{}, len(components))
+	for _, name := range components {
+		if _, dup := seen[name]; dup {
+			code := CodeComponentsUnexpected
+			if profile.Tag == ProfileWebhookSigning.Tag {
+				code = CodeHeaderMalformed
+			}
+			return newError(code, "covered component listed more than once")
+		}
+		seen[name] = struct{}{}
+	}
+	return nil
+}
+
+// additionalComponentValues returns the signature-base values for every
+// covered component outside profileComponents.
+//
+// An additional component must be an HTTP field: a lowercase RFC 9110 token
+// with no component parameters (the Signature-Input parser already rejects
+// parameters). These all reject with request_signature_header_malformed,
+// the code the verifier used before for any unrecognized component, and the
+// code the Python SDK uses:
+//   - a derived component other than the profile's (@path, @query,
+//     @request-target, ...), which AdCP canonicalization does not define;
+//   - a name that is not a lowercase field-name token;
+//   - a covered field absent from the request (RFC 9421 §2.5: the signature
+//     base cannot be built);
+//   - a field value carrying CR, LF, or NUL.
+func additionalComponentValues(r *http.Request, components []string) (map[string]string, error) {
+	var out map[string]string
+	for _, name := range components {
+		if _, ok := profileComponents[name]; ok {
+			continue
+		}
+		if strings.HasPrefix(name, "@") {
+			return nil, newError(CodeHeaderMalformed, "unsupported derived component")
+		}
+		if !isLowercaseFieldName(name) {
+			return nil, newError(CodeHeaderMalformed, "covered component is not a lowercase HTTP field name")
+		}
+		v, err := coveredFieldValue(r.Header, name)
+		if err != nil {
+			return nil, err
+		}
+		if out == nil {
+			out = make(map[string]string)
+		}
+		out[name] = v
+	}
+	return out, nil
+}
+
+// coveredFieldValue returns the RFC 9421 §2.1 value of the HTTP field name:
+// every field line in order, leading and trailing SP/HTAB removed, joined
+// with ", ". Splitting one field line into several, or merging several into
+// one, therefore yields the same value, as RFC 9421 intends; a consumer that
+// relies on a covered field must read every line (http.Header.Values), not
+// just the first.
+//
+// It rejects an absent field, and a value carrying CR, LF, or NUL, which
+// could forge a line in the signature base. net/http's server rejects such
+// values, but a hand-built *http.Request may not.
+func coveredFieldValue(h http.Header, name string) (string, error) {
+	lines := h.Values(name)
+	if len(lines) == 0 {
+		return "", newError(CodeHeaderMalformed, "covered header field absent from request")
+	}
+	trimmed := make([]string, len(lines))
+	for i, line := range lines {
+		if strings.ContainsAny(line, "\r\n\x00") {
+			return "", newError(CodeHeaderMalformed, "covered header field value contains a control character")
+		}
+		trimmed[i] = strings.Trim(line, " \t")
+	}
+	return strings.Join(trimmed, ", "), nil
+}
+
+// isLowercaseFieldName reports whether s is an RFC 9110 §5.1 field-name
+// (a token) with no uppercase letters, as RFC 9421 §2.1 requires of an HTTP
+// field component name.
+func isLowercaseFieldName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case strings.IndexByte("!#$%&'*+-.^_`|~", c) >= 0:
+		default:
+			return false
+		}
+	}
+	return true
 }

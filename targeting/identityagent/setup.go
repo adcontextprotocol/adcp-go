@@ -341,12 +341,24 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 		cancelBg()
 	}()
 
-	// Identity-config service (refreshed periodically).
+	// Identity-config service (refreshed periodically). A disabled cap is
+	// a deliberate operator choice, but a silent one is indistinguishable
+	// from a typo'd minus sign, so say it out loud at startup.
+	if cfg.IdentityConfig.MaxResponseBytes < 0 {
+		logger.Warn("identity-config response size cap is DISABLED",
+			"env", "CONFIG_SOURCE_MAX_RESPONSE_BYTES", "value", cfg.IdentityConfig.MaxResponseBytes)
+	}
+	if cfg.IdentityConfig.MaxConfigEntries < 0 {
+		logger.Warn("identity-config entry cap is DISABLED",
+			"env", "CONFIG_SOURCE_MAX_CONFIG_ENTRIES", "value", cfg.IdentityConfig.MaxConfigEntries)
+	}
 	source, err := scope3.New(
 		cfg.IdentityConfig.URL,
 		cfg.IdentityConfig.Token,
 		scope3.WithHTTPTimeout(cfg.IdentityConfig.Timeout),
 		scope3.WithExtraHeaders(cfg.IdentityConfig.ExtraHeaders),
+		scope3.WithMaxResponseBytes(cfg.IdentityConfig.MaxResponseBytes),
+		scope3.WithMaxConfigEntries(cfg.IdentityConfig.MaxConfigEntries),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("init scope3 source: %w", err)

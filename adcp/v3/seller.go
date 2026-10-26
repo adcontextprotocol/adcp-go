@@ -108,6 +108,12 @@ func Register(server *mcp.Server, cfg Config) {
 	if cfg.SyncAccounts != nil {
 		addSellerTool(server, idem, "sync_accounts", "Register advertiser accounts",
 			func(ctx context.Context, req *mcp.CallToolRequest, input SyncAccountsRequest) (*mcp.CallToolResult, any, error) {
+				if cfg.SyncAccountsAuthorizer != nil {
+					if err := cfg.SyncAccountsAuthorizer(ctx, req, input.Accounts); err != nil {
+						result, out, e := errorToResult(err)
+						return attachContext(result, input.Context), out, e
+					}
+				}
 				results, err := cfg.SyncAccounts(ctx, &input)
 				if err != nil {
 					result, out, e := mutationErrorResult(idem, err)
@@ -578,6 +584,17 @@ type Config struct {
 	// transaction primitive. The callback performs the configured handler; the
 	// wrapper must commit only when it returns a valid complete batch.
 	FinalizeProposalsAtomically func(ctx context.Context, acct any, req *RefineProposalsRequest, execute func() (*RefineProposalsData, error)) (*RefineProposalsData, error)
+
+	// SyncAccountsAuthorizer, when set, runs before SyncAccounts with every
+	// account entry and must return nil for the request to proceed. An
+	// error is returned to the caller as the AdCP error it carries, and the
+	// handler never runs, so no account is created or changed. It receives
+	// the tool request so it can read per-request authentication from
+	// req.Extra: in a stateful MCP session, ctx belongs to the session's
+	// initialize request. EXPERIMENTAL: identity.GrantGate's
+	// SyncAccountsAuthorizer evaluates AdCP 3.3 demand-side grants (DR-0025)
+	// here.
+	SyncAccountsAuthorizer func(ctx context.Context, req *mcp.CallToolRequest, accounts []AccountInput) error
 
 	// --- Creative ---
 	ListCreativeFormats func(ctx context.Context, req *ListCreativeFormatsRequest) ([]CreativeFormat, error)

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://brand-agent.lumen-outfitters.example/mcp",
+      "roles": ["adcp:brand"],
+      "protocols": ["mcp"]
+    },
+    {
+      "url": "https://support-agent.lumen-outfitters.example/mcp",
+      "roles": ["acme-commerce:customer_service"],
+      "protocols": ["a2a"]
+    }
+  ],
+  "grants": [
+    {
+      "grantee": "checkout-partner.example",
+      "scopes": ["acme-commerce:checkout"]
+    }
+  ]
+}

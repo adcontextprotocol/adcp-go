@@ -24,6 +24,7 @@ type sigInput struct {
 	tag        string
 	tagSet     bool
 	dupParam   string // set if any param appeared more than once
+	seenParams map[string]struct{}
 }
 
 // parseSignatureInput parses a Signature-Input header value and returns the
@@ -85,21 +86,30 @@ func parseSignatureInput(header string) (*sigInput, error) {
 		return nil, err
 	}
 
-	// If there are additional dict entries, verify they don't repeat the chosen
-	// label — RFC 8941 dict semantics would keep the last value, but that breaks
-	// the first-label-wins contract of this parser.
+	// No label may repeat anywhere in the dictionary: RFC 8941 dict
+	// semantics would keep the last value, which another parser may not.
 	remaining := afterClose[paramsEnd:]
 	if remaining != "" {
-		if hasLabel(remaining, label) {
-			return nil, newError(CodeHeaderMalformed, "duplicate label in Signature-Input")
+		labels, ok := dictLabels(remaining)
+		if !ok {
+			return nil, newError(CodeHeaderMalformed, "malformed Signature-Input dictionary")
+		}
+		seen := map[string]struct{}{label: {}}
+		for _, l := range labels {
+			if _, dup := seen[l]; dup {
+				return nil, newError(CodeHeaderMalformed, "duplicate label in Signature-Input")
+			}
+			seen[l] = struct{}{}
 		}
 	}
 	return out, nil
 }
 
-// hasLabel returns true if s contains a dict entry with the given label.
-// s is the remainder of a Signature-Input header starting at or after a comma.
-func hasLabel(s, want string) bool {
+// dictLabels returns the labels of the Signature-Input dict entries in s,
+// the remainder of a header starting at or after a comma. It reports false
+// when an entry does not have the (...) inner-list shape.
+func dictLabels(s string) ([]string, bool) {
+	var out []string
 	rest := s
 	for len(rest) > 0 {
 		for len(rest) > 0 && (rest[0] == ' ' || rest[0] == '\t' || rest[0] == ',') {
@@ -110,27 +120,21 @@ func hasLabel(s, want string) bool {
 		}
 		eq := strings.IndexByte(rest, '=')
 		if eq <= 0 {
-			return false
+			return nil, false
 		}
-		label := strings.TrimSpace(rest[:eq])
-		if label == want {
-			return true
-		}
-		rest = rest[eq+1:]
-		// Skip the (...) inner list.
-		rest = strings.TrimLeft(rest, " \t")
+		out = append(out, strings.TrimSpace(rest[:eq]))
+		rest = strings.TrimLeft(rest[eq+1:], " \t")
 		if !strings.HasPrefix(rest, "(") {
-			return false
+			return nil, false
 		}
 		close := findMatchingClose(rest)
 		if close < 0 {
-			return false
+			return nil, false
 		}
 		rest = rest[close+1:]
-		// Skip params up to next top-level ",".
 		rest = rest[findParamsEnd(rest):]
 	}
-	return false
+	return out, true
 }
 
 // parseComponentList parses the inside of (...) — space-separated quoted strings.
@@ -138,7 +142,7 @@ func parseComponentList(inside string) ([]string, error) {
 	var comps []string
 	i := 0
 	for i < len(inside) {
-		if len(comps) > maxCoveredComponents {
+		if len(comps) >= maxCoveredComponents {
 			return nil, newError(CodeHeaderMalformed, "too many covered components")
 		}
 		// Skip whitespace.
@@ -311,6 +315,17 @@ func readParamValue(s string) (paramValue, int, error) {
 }
 
 func (si *sigInput) setParam(name string, v paramValue) error {
+	// RFC 8941 would keep the last of two same-named parameters; a parser
+	// that keeps the first would see a different signature. Reject any
+	// repeated parameter, known or not.
+	if si.seenParams == nil {
+		si.seenParams = map[string]struct{}{}
+	}
+	if _, dup := si.seenParams[name]; dup {
+		si.dupParam = name
+		return newError(CodeHeaderMalformed, fmt.Sprintf("duplicate param %q", name))
+	}
+	si.seenParams[name] = struct{}{}
 	check := func(set *bool) error {
 		if *set {
 			si.dupParam = name
@@ -412,7 +427,10 @@ func parseSignature(header, label string) (string, error) {
 		return "", newError(CodeHeaderMalformed, "Signature header too long")
 	}
 
-	// Iterate over dict entries.
+	// Iterate over every dict entry, rejecting a repeated label.
+	seen := map[string]struct{}{}
+	var found bool
+	var value string
 	rest := header
 	for len(rest) > 0 {
 		// Skip leading OWS and commas.
@@ -438,11 +456,17 @@ func parseSignature(header, label string) (string, error) {
 		if end < 0 {
 			return "", newError(CodeHeaderMalformed, "Signature value unterminated")
 		}
-		val := rest[1 : 1+end]
+		if _, dup := seen[lbl]; dup {
+			return "", newError(CodeHeaderMalformed, "duplicate label in Signature header")
+		}
+		seen[lbl] = struct{}{}
 		if lbl == label {
-			return val, nil
+			found, value = true, rest[1:1+end]
 		}
 		rest = rest[2+end:]
 	}
-	return "", newError(CodeHeaderMalformed, "label not found in Signature header")
+	if !found {
+		return "", newError(CodeHeaderMalformed, "label not found in Signature header")
+	}
+	return value, nil
 }

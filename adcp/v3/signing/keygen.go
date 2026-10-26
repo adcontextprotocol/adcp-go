@@ -57,56 +57,34 @@ func GenerateKeyForProfile(alg Algorithm, kid string, profile Profile) (*Generat
 		if err != nil {
 			return nil, err
 		}
-		pemBytes, err := encodePKCS8PEM(priv)
-		if err != nil {
-			return nil, err
-		}
-		return &GenerateKeyResult{
-			PrivateKeyPEM: pemBytes,
-			PublicJWK: JWK{
-				Kid:     kid,
-				Kty:     "OKP",
-				Crv:     "Ed25519",
-				Alg:     "EdDSA",
-				Use:     "sig",
-				KeyOps:  []string{"verify"},
-				AdcpUse: profile.AdcpUse,
-				X:       b64UrlEncodeRaw(pub),
-			},
-		}, nil
+		return newGenerateKeyResult(priv, pub, kid, jwkAlgEdDSA, profile)
 	case AlgES256:
 		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, err
 		}
-		ecdhPub, err := priv.PublicKey.ECDH()
-		if err != nil {
-			return nil, err
-		}
-		pubBytes := ecdhPub.Bytes()
-		if len(pubBytes) != 65 || pubBytes[0] != 4 {
-			return nil, errors.New("unexpected P-256 public key encoding")
-		}
-		pemBytes, err := encodePKCS8PEM(priv)
-		if err != nil {
-			return nil, err
-		}
-		return &GenerateKeyResult{
-			PrivateKeyPEM: pemBytes,
-			PublicJWK: JWK{
-				Kid:     kid,
-				Kty:     "EC",
-				Crv:     "P-256",
-				Alg:     "ES256",
-				Use:     "sig",
-				KeyOps:  []string{"verify"},
-				AdcpUse: profile.AdcpUse,
-				X:       b64UrlEncodeRaw(pubBytes[1:33]),
-				Y:       b64UrlEncodeRaw(pubBytes[33:65]),
-			},
-		}, nil
+		return newGenerateKeyResult(priv, &priv.PublicKey, kid, jwkAlgES256, profile)
 	}
 	return nil, fmt.Errorf("unsupported alg %q", alg)
+}
+
+// newGenerateKeyResult encodes priv as PKCS#8 PEM and pub as a JWK (go-jose
+// encodes the key members), adding the AdCP members.
+func newGenerateKeyResult(priv, pub any, kid string, alg jwkAlg, profile Profile) (*GenerateKeyResult, error) {
+	pemBytes, err := encodePKCS8PEM(priv)
+	if err != nil {
+		return nil, err
+	}
+	jwk, err := jwkFromPublicKey(pub)
+	if err != nil {
+		return nil, err
+	}
+	jwk.Kid = kid
+	jwk.Alg = string(alg)
+	jwk.Use = "sig"
+	jwk.KeyOps = []string{"verify"}
+	jwk.AdcpUse = profile.AdcpUse
+	return &GenerateKeyResult{PrivateKeyPEM: pemBytes, PublicJWK: jwk}, nil
 }
 
 func encodePKCS8PEM(priv any) ([]byte, error) {

@@ -1,0 +1,15 @@
+{
+  "description": "Web Bot Auth interoperability fixtures, copied byte for byte from the TypeScript SDK. Generated there against Cloudflare's reference packages web-bot-auth@0.2.0 and http-message-sig@0.3.0. Test-only keys; never use outside tests.",
+  "repository": "https://github.com/adcontextprotocol/adcp-client",
+  "commit": "577f21e82a7c9f640e69d073f0856700f3601fe7",
+  "path": "test/fixtures/wba-interop/",
+  "merged_in": "adcontextprotocol/adcp-client#3250",
+  "files": {
+    "README.md": "sha256:0466cc597a04effeb6d0d72144ce1e2b6043c03a5ac4dc7415593566dfb4a318",
+    "adcp-client-signed-body-request.json": "sha256:1cddbc211fb3544f7b5266af8b61ad33969c8112bf2551b906f11d39ad437e69",
+    "adcp-client-signed-percent-encoded-path.json": "sha256:20f2751e832ff20c8bfe8893efa87602f5453acfe30ba862e8ad9afb6c5616ab",
+    "cloudflare-signed-body-request.json": "sha256:d7ed4ee6548b6f5e87b3cfa1ef5881a5e357ec3888aaf31edd831e3e73ce57b1",
+    "cloudflare-signed-percent-encoded-path.json": "sha256:3fc3bcef09e9b3539fc9e4ffcad9e558335e6571c177cc11d0036dbaa6c12b0f",
+    "keys.json": "sha256:df42015a43758bc577f46e491d20d274195ede7dcbce2f950a7547b853652c51"
+  }
+}

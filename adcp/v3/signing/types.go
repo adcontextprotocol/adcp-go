@@ -210,4 +210,30 @@ type VerifiedSigner struct {
 	VerifiedAt time.Time
 	Algorithm  Algorithm
 	Label      string
+
+	// CoveredComponents is the ordered covered-component list of the
+	// verified signature. A header field is authenticated only if it appears
+	// here; a header the signature does not cover is unauthenticated input
+	// even on a verified request.
+	CoveredComponents []string
+
+	// Profile is the tag of the signing profile the signature verified
+	// under: "adcp/request-signing/v1", "adcp/webhook-signing/v1", or
+	// ProfileTagWebBotAuth. Under Web Bot Auth, AgentURL is the signer's
+	// canonical origin and KeyID is the key's RFC 7638 thumbprint.
+	Profile string
+
+	// PrincipalID is the seller principal bound to a Web Bot Auth origin,
+	// set by the middleware's WebBotAuthOptions.Authorizer. It is empty for
+	// an identity-established signer (verified, not bound), which carries
+	// no authority beyond an anonymous caller's.
+	PrincipalID string
+
+	// Revocation is the Web Bot Auth key's state in its origin's
+	// revocation list, set by CheckWBARevocation (the middleware runs it
+	// after verification, before the Authorizer). The authorization layer
+	// reads it: RevocationNoList cannot be bound, RevocationStale fails
+	// spend-committing calls closed, and RevocationUnavailable fails every
+	// call that would act under a binding.
+	Revocation RevocationState
 }

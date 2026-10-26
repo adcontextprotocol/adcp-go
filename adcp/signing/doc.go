@@ -47,4 +47,21 @@
 //	    }
 //	    // v.KeyID, v.AgentURL, v.VerifiedAt, v.Algorithm available for audit
 //	}
+//
+// # Response size limits
+//
+// Agent responses are untrusted input, so clients built by
+// NewSignedHTTPClient cap every response at DefaultMaxResponseBytes (4 MiB)
+// unless told otherwise. The cap is enforced while the body streams — an
+// oversized declared Content-Length is rejected before the body is read, and
+// otherwise the read that crosses the limit fails with a
+// *ResponseTooLargeError. The count is of decompressed bytes, and
+// text/event-stream responses are capped per event and cumulatively per
+// call. The same clients bound the response header block at
+// DefaultMaxResponseHeaderBytes and reject a content coding they cannot
+// account for with *UnsupportedContentEncodingError. Raise or disable the
+// body cap with
+// SignedHTTPClientOptions.MaxResponseBytes, per call with
+// WithResponseLimits, or apply the same wrapper to a hand-built client with
+// NewResponseLimitTransport.
 package signing

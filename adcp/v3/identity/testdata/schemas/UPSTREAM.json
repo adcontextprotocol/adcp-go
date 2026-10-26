@@ -1,0 +1,26 @@
+{
+  "repository": "adcontextprotocol/adcp",
+  "note": "Draft AdCP 3.3 identity schemas, copied without modification from the commits below (the same commits the Python SDK pins). They are not part of a released schema bundle; the SDK wire pin (adcp/v3/schemas/VERSION) is unchanged. Replace them from the released bundle when AdCP 3.3 ships.",
+  "sources": {
+    "core/agent-onboarding.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "core/agent-onboarding-tier.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "core/agent-onboarding-requirement.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "core/buyer-onboarding-posture.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "enums/agent-onboarding-mode.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "enums/agent-onboarding-requirement-kind.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "enums/buyer-onboarding-mode.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
+    "core/principal-relationship.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
+    "core/principal-changed-webhook.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
+    "protocol/get-principal-response.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
+    "trust/v1/trust.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
+    "core/identity-relying-party.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
+    "error-details/agent-permission-denied.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
+    "../examples/*.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae", "path": "specs/brand-identity-trust-split/examples/" }
+  },
+  "composition": {
+    "trust/v1/trust.json": [
+      "agent.profiles.adcp.onboarding ($ref core/buyer-onboarding-posture.json) from PR #8170",
+      "record_profiles.adcp.onboarding ($ref core/buyer-onboarding-posture.json) from PR #8170"
+    ]
+  }
+}

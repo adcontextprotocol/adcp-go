@@ -148,3 +148,48 @@ func TestMappedID_RespectsContextCancellation(t *testing.T) {
 	assert.True(t, errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "context canceled"),
 		"expected cancellation error, got %v", err)
 }
+
+// A sidecar that keeps streaming after a complete 200 body must not hold
+// the call open: the read is capped at 64 KiB and the drain past it is
+// bounded, so MappedID returns instead of following the stream.
+func TestMappedID_ReturnsWhileSidecarKeepsSending(t *testing.T) {
+	stop := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode([]mapping{
+			{Source: liverampSource, Mapping: map[string]string{scope3SeatID: "decoded-value"}},
+		})
+		w.(http.Flusher).Flush()
+		pad := strings.Repeat(" ", 32<<10)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			if _, err := w.Write([]byte(pad)); err != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+		}
+	}))
+	defer srv.Close()
+	// Registered last so it runs first: srv.Close waits for the handler.
+	defer close(stop)
+
+	c, err := NewClient(Config{URL: srv.URL + "/v2/map", HTTPClient: srv.Client()})
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, mapErr := c.MappedID(context.Background(), "the-env")
+		done <- mapErr
+	}()
+
+	select {
+	case mapErr := <-done:
+		assert.NoError(t, mapErr)
+	case <-time.After(10 * time.Second):
+		t.Fatal("MappedID did not return: the post-read drain is unbounded")
+	}
+}

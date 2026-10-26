@@ -17,6 +17,22 @@
 //
 // Reference: https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer
 //
+// # AdCP 3.3: the RFC 9421 profile is deprecated
+//
+// AdCP 3.3 deprecates the RFC 9421 profile. It remains fully supported
+// through 3.x and is removed in 4.0. A JWS artifact (governance context,
+// designated-task response signing, rights attestation) from an issuer
+// whose origin a trust record lists is verified with a key from that
+// origin's key directory (identity.JWSVerifier); other issuers stay on the
+// 3.2 chain. The experimental Web Bot Auth profile is opt-in:
+// SignerOptions.AgentOrigin on the signer, and MiddlewareOptions.WebBotAuth
+// (or VerifyWebBotAuthRequest) on the verifier. Under it, identity is the
+// signer's canonical origin and keys come from that origin's key directory
+// (DirectoryResolver). Verification grants no authority by itself; see the
+// identity package for bindings, trust records, and grants. The existing
+// RFC 9421 APIs are not marked Deprecated in the Go sense, so that builds
+// with staticcheck keep passing while 3.x still requires them.
+//
 // # Signer
 //
 //	priv, _, _ := signing.LoadPrivateKey(pemBytes)
@@ -55,6 +71,23 @@
 // failing request passes to next.ServeHTTP anyway (no VerifiedSigner
 // attached), and the failure is logged at INFO instead of rejected. See
 // MIGRATION.md's "Step B — warn_for" for the full staged-enforcement recipe.
+//
+// # Response size limits
+//
+// Agent responses are untrusted input, so clients built by
+// NewSignedHTTPClient cap every response at DefaultMaxResponseBytes (4 MiB)
+// unless told otherwise. The cap is enforced while the body streams — an
+// oversized declared Content-Length is rejected before the body is read, and
+// otherwise the read that crosses the limit fails with a
+// *ResponseTooLargeError. The count is of decompressed bytes, and
+// text/event-stream responses are capped per event and cumulatively per
+// call. The same clients bound the response header block at
+// DefaultMaxResponseHeaderBytes and reject a content coding they cannot
+// account for with *UnsupportedContentEncodingError. Raise or disable the
+// body cap with
+// SignedHTTPClientOptions.MaxResponseBytes, per call with
+// WithResponseLimits, or apply the same wrapper to a hand-built client with
+// NewResponseLimitTransport.
 //
 // # Testing handlers that expect signed requests
 //

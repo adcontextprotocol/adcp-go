@@ -10,6 +10,7 @@ import (
 
 func TestCreativeAssignmentWeightZeroAndExtraRoundTrip(t *testing.T) {
 	in := []byte(`{"creative_id":"cr-1","weight":0,"placement_ids":["hero"],"vendor_hint":"x"}`)
+	assertSchemaValid(t, "core/creative-assignment.json", in)
 
 	var assignment CreativeAssignment
 	require.NoError(t, json.Unmarshal(in, &assignment))
@@ -140,26 +141,30 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 }
 
 func TestPackageOptionalNumericZeroRoundTrip(t *testing.T) {
-	var input PackageInput
-	require.NoError(t, json.Unmarshal([]byte(`{
+	packageRaw := []byte(`{
 		"product_id":"prod-1",
 		"budget":0,
 		"pricing_option_id":"price-1",
 		"bid_price":0,
 		"impressions":0
-	}`), &input))
+	}`)
+	assertSchemaValid(t, "media-buy/package-request.json", packageRaw)
+	var input PackageInput
+	require.NoError(t, json.Unmarshal(packageRaw, &input))
 	require.NotNil(t, input.BidPrice)
 	require.NotNil(t, input.Impressions)
 	assert.Equal(t, float64(0), *input.BidPrice)
 	assert.Equal(t, float64(0), *input.Impressions)
 
-	var update PackageUpdate
-	require.NoError(t, json.Unmarshal([]byte(`{
+	updateRaw := []byte(`{
 		"package_id":"pkg-1",
 		"budget":0,
 		"bid_price":0,
 		"impressions":0
-	}`), &update))
+	}`)
+	assertSchemaValid(t, "media-buy/package-update.json", updateRaw)
+	var update PackageUpdate
+	require.NoError(t, json.Unmarshal(updateRaw, &update))
 	require.NotNil(t, update.Budget)
 	require.NotNil(t, update.BidPrice)
 	require.NotNil(t, update.Impressions)
@@ -167,12 +172,14 @@ func TestPackageOptionalNumericZeroRoundTrip(t *testing.T) {
 	assert.Equal(t, float64(0), *update.BidPrice)
 	assert.Equal(t, float64(0), *update.Impressions)
 
-	var keyword KeywordTargetUpdate
-	require.NoError(t, json.Unmarshal([]byte(`{
+	keywordRaw := []byte(`{
 		"keyword":"running shoes",
 		"match_type":"phrase",
 		"bid_price":0
-	}`), &keyword))
+	}`)
+	assertSchemaValid(t, "media-buy/package-update.json#/properties/keyword_targets_add/items", keywordRaw)
+	var keyword KeywordTargetUpdate
+	require.NoError(t, json.Unmarshal(keywordRaw, &keyword))
 	require.NotNil(t, keyword.BidPrice)
 	assert.Equal(t, float64(0), *keyword.BidPrice)
 }

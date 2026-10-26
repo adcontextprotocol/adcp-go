@@ -18,6 +18,13 @@ import (
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/signing"
 )
 
+// maxDrainBytes bounds how much of a non-success response body the
+// publisher reads before closing. Draining lets the connection go back to
+// the pool, but that is only worth a small, finite read: an unbounded drain
+// hands a receiver that answers with an endless body a way to stall every
+// delivery attempt.
+const maxDrainBytes int64 = 64 << 10
+
 // RetryPolicy controls Publisher's attempt cadence. Zero values select the
 // DefaultRetry fields — callers can override any subset.
 type RetryPolicy struct {
@@ -242,16 +249,19 @@ func (p *Publisher) Emit(ctx context.Context, url string, payload Payload) (*Emi
 				}, nil
 			}
 			if class == classTerminal {
-				// Drain and close so the connection returns to the pool.
-				_, _ = io.Copy(io.Discard, resp.Body)
+				// Drain a bounded prefix and close so the connection
+				// returns to the pool. The bound matters: an unbounded
+				// drain lets a receiver that never stops sending stall
+				// the delivery here.
+				_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 				_ = resp.Body.Close()
 				return nil, &PublishError{
 					URL: url, Attempts: attempts, Elapsed: p.opts.Clock().Sub(start),
 					LastStatus: lastStatus, Reason: "terminal_status",
 				}
 			}
-			// Transient — drain, close, and loop.
-			_, _ = io.Copy(io.Discard, resp.Body)
+			// Transient — drain a bounded prefix, close, and loop.
+			_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 			_ = resp.Body.Close()
 
 			if retryAfter > 0 {

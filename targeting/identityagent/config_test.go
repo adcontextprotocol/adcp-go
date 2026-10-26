@@ -32,6 +32,7 @@ func TestConfigValidate(t *testing.T) {
 			IdentityConfig: IdentityConfigSourceConfig{
 				URL:                "https://config.example/",
 				Token:              "tok",
+				Timeout:            30 * time.Second,
 				RefreshInterval:    time.Minute,
 				StartMode:          StartModeRetry,
 				StartRetryDeadline: time.Minute,
@@ -54,6 +55,23 @@ func TestConfigValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "ok", mutate: func(*Config) {}},
+		{
+			// http.Client reads a non-positive timeout as "no timeout",
+			// which leaves a trickling config endpoint able to hang a
+			// refresh forever with nothing logged.
+			name:    "config source timeout non-positive",
+			mutate:  func(c *Config) { c.IdentityConfig.Timeout = 0 },
+			wantErr: "CONFIG_SOURCE_TIMEOUT must be positive",
+		},
+		{
+			name:    "config source max response bytes below floor",
+			mutate:  func(c *Config) { c.IdentityConfig.MaxResponseBytes = 1024 },
+			wantErr: "CONFIG_SOURCE_MAX_RESPONSE_BYTES must be >=",
+		},
+		{
+			name:   "config source max response bytes negative opts out",
+			mutate: func(c *Config) { c.IdentityConfig.MaxResponseBytes = -1 },
+		},
 		{
 			name:    "port out of range",
 			mutate:  func(c *Config) { c.HTTPPort = 0 },
@@ -421,6 +439,41 @@ func TestLoadConfigFromEnv_ExtraHeaders(t *testing.T) {
 		_, err := LoadConfigFromEnv()
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty key")
+	})
+}
+
+func TestLoadConfigFromEnv_ConfigSourceMaxResponseBytes(t *testing.T) {
+	t.Setenv("CONFIG_SOURCE_URL", "https://config.example/")
+	t.Setenv("CONFIG_SOURCE_TOKEN", "tok")
+
+	t.Run("unset leaves the source default in force", func(t *testing.T) {
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		// Zero means "inherit scope3.DefaultMaxResponseBytes" — never
+		// "unlimited", so an operator who never heard of the cap is
+		// still protected.
+		assert.Zero(t, cfg.IdentityConfig.MaxResponseBytes)
+	})
+
+	t.Run("value is parsed", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_MAX_RESPONSE_BYTES", "67108864")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, int64(64<<20), cfg.IdentityConfig.MaxResponseBytes)
+	})
+
+	t.Run("negative opts out of the cap", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_MAX_RESPONSE_BYTES", "-1")
+		cfg, err := LoadConfigFromEnv()
+		require.NoError(t, err)
+		assert.Equal(t, int64(-1), cfg.IdentityConfig.MaxResponseBytes)
+	})
+
+	t.Run("non-integer surfaces as error", func(t *testing.T) {
+		t.Setenv("CONFIG_SOURCE_MAX_RESPONSE_BYTES", "32MiB")
+		_, err := LoadConfigFromEnv()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CONFIG_SOURCE_MAX_RESPONSE_BYTES")
 	})
 }
 

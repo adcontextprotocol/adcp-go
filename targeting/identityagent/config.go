@@ -272,7 +272,36 @@ type IdentityConfigSourceConfig struct {
 	// name→value pairs. Collisions with the managed headers are rejected by
 	// the source constructor.
 	ExtraHeaders map[string]string
+
+	// MaxResponseBytes caps the config-source response body. A response
+	// over the cap is rejected outright rather than truncated, so a
+	// partial snapshot is never applied over good config. Loaded from
+	// CONFIG_SOURCE_MAX_RESPONSE_BYTES; zero keeps the source default
+	// (scope3.DefaultMaxResponseBytes, 32 MiB) and a negative value
+	// disables the cap — only safe for a config endpoint you control.
+	// A positive value below minConfigMaxResponseBytes is rejected at
+	// startup: a cap that small fails every refresh, and failing loudly
+	// at boot beats discovering it from a frozen snapshot.
+	MaxResponseBytes int64
+
+	// MaxConfigEntries caps how much one config-source response may
+	// materialize — entries and segment IDs together. This is the cap that
+	// bounds memory: the byte cap bounds the wire, and the endpoint
+	// chooses how much structure it packs into those bytes. Loaded from
+	// CONFIG_SOURCE_MAX_CONFIG_ENTRIES; zero
+	// keeps the source default (scope3.DefaultMaxConfigEntries, 250k) and
+	// a negative value disables the cap. Unlike the byte cap there is no
+	// floor: a deployment with a handful of packages may legitimately want
+	// a cap in the tens.
+	MaxConfigEntries int
 }
+
+// minConfigMaxResponseBytes is the floor on a positive
+// CONFIG_SOURCE_MAX_RESPONSE_BYTES. Even an empty snapshot is a JSON object
+// with three keys, so anything under 64 KiB is a typo (bytes mistaken for
+// KiB, say) that would reject every response the endpoint ever sends.
+const minConfigMaxResponseBytes int64 = 64 << 10
+
 
 // ValkeyBlock is the per-backend Valkey configuration. Use ToRedisStoreConfig
 // to project onto the redisstore.Config the Build helper consumes.
@@ -486,6 +515,14 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	configMaxResponseBytes, err := lookupInt64("CONFIG_SOURCE_MAX_RESPONSE_BYTES", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	configMaxEntries, err := lookupInt("CONFIG_SOURCE_MAX_CONFIG_ENTRIES", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	slotIDs, err := parseTmpxSlotIDs(os.Getenv("TMPX_SLOT_IDS"))
 	if err != nil {
 		errs = append(errs, err)
@@ -600,6 +637,8 @@ func LoadConfigFromEnv() (Config, error) {
 			StartMode:          lookupString("CONFIG_START_MODE", defaultStartMode),
 			StartRetryDeadline: startRetryDeadline,
 			ExtraHeaders:       extraHeaders,
+			MaxResponseBytes:   configMaxResponseBytes,
+			MaxConfigEntries:   configMaxEntries,
 		},
 		AudienceValkey:         audienceBlock,
 		FCapValkey:             fcapBlock,
@@ -708,6 +747,16 @@ func (c Config) Validate() error {
 	}
 	if c.IdentityConfig.RefreshInterval <= 0 {
 		errs = append(errs, errors.New("CONFIG_REFRESH_INTERVAL must be positive"))
+	}
+	// The config-source client timeout is the only wall-clock bound on a
+	// peer that trickles its response: http.Client reads a non-positive
+	// value as "no timeout", which would hang a refresh forever with
+	// nothing logged.
+	if c.IdentityConfig.Timeout <= 0 {
+		errs = append(errs, errors.New("CONFIG_SOURCE_TIMEOUT must be positive"))
+	}
+	if c.IdentityConfig.MaxResponseBytes > 0 && c.IdentityConfig.MaxResponseBytes < minConfigMaxResponseBytes {
+		errs = append(errs, fmt.Errorf("CONFIG_SOURCE_MAX_RESPONSE_BYTES must be >= %d (or <= 0 for the default / no cap)", minConfigMaxResponseBytes))
 	}
 	switch c.IdentityConfig.StartMode {
 	case StartModeRetry:
@@ -937,6 +986,18 @@ func lookupInt(name string, def int) (int, error) {
 		return def, nil
 	}
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("%s=%q is not an integer: %w", name, v, err)
+	}
+	return n, nil
+}
+
+func lookupInt64(name string, def int64) (int64, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("%s=%q is not an integer: %w", name, v, err)
 	}

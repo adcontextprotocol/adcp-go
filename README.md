@@ -36,6 +36,8 @@ below, each with its own tag prefix and SemVer cadence.
 The `adcp/vN` major version tracks the AdCP protocol spec's major version 1:1.
 `adcp/v3` speaks AdCP 3.x; a hypothetical future `adcp/v4` will ship when the
 protocol spec bumps to 4.0. Other sub-modules stay on independent SemVer.
+Until AdCP 3.3 is ratified, `main` publishes `adcp/v3` as pre-releases
+(`adcp/v3.3.0-beta.N`); see [`RELEASING.md`](RELEASING.md).
 
 Upgrading from `adcp` v2 or an earlier root-module pseudo-version? See
 [`MIGRATING.md`](MIGRATING.md) for the full recipe — import path map, sample
@@ -234,6 +236,26 @@ mw := signing.Middleware(signing.MiddlewareOptions{
 http.ListenAndServe(":8080", mw(yourHandler))
 ```
 
+**Response size is capped by default:**
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:      "buyer-ed25519-2026",
+    PrivateKey: priv,
+    // MaxResponseBytes defaults to signing.DefaultMaxResponseBytes (4 MiB).
+    // Raise it for an agent with a genuinely large catalog; set
+    // signing.UnlimitedResponseBytes to turn the cap off.
+})
+```
+
+Agent responses are untrusted input, so `NewSignedHTTPClient` rejects any
+response over 4 MiB with a typed `*signing.ResponseTooLargeError` instead of
+buffering it. The cap is enforced while the body streams (declared
+`Content-Length` is pre-rejected), counts decompressed bytes, and covers SSE
+both per event and cumulatively per call. Override it per client with
+`MaxResponseBytes` / `MaxSSEEventBytes` or per call with
+`signing.WithResponseLimits`. See [`adcp/v3/signing/README.md`](adcp/v3/signing/README.md#response-size-limits).
+
 **Generate a signing keypair:**
 
 ```bash
@@ -277,6 +299,9 @@ TMP is **1.8x faster** than OpenRTB with **37% smaller** payloads.
 ## Contributing
 
 Contributions welcome! All contributors must agree to the [AgenticAdvertising.Org IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md) — the bot prompts new contributors on their first PR and a single signature covers all AAO repositories.
+
+For unanswered maintainer questions on otherwise merge-ready PRs, see the
+[five-day SDK review consensus guidance](AGENTS.md#maintainer-questions-five-day-lazy-consensus).
 
 ## License
 

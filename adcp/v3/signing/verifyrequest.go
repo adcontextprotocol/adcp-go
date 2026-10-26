@@ -109,6 +109,10 @@ func VerifyRequest(r *http.Request, opts VerifyOptions) VerifyResult {
 // Prefer MiddlewareOptions.RequiredFor when the gate is statically known per
 // operation — it enforces earlier (before the handler runs) and doesn't
 // require every handler author to remember this call.
+//
+// Inside MCP tool handlers of a stateful session, ctx belongs to the
+// session's initialize request; check VerifiedSignerFromToolRequest(req)
+// there instead.
 func RequireSigned(ctx context.Context) *Error {
 	if VerifiedSignerFromContext(ctx) != nil {
 		return nil

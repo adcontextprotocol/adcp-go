@@ -60,6 +60,12 @@ const (
 
 	// envParam is the query parameter the sidecar expects.
 	envParam = "env"
+
+	// maxDrainBytes bounds every post-response drain. Draining lets the
+	// connection go back to the keep-alive pool, but that is only worth a
+	// small, finite read: an unbounded drain hands a sidecar that never
+	// stops sending a way to stall the request on the hot path.
+	maxDrainBytes int64 = 4 * 1024
 )
 
 // ErrNoMapping is the sentinel returned by MappedID when the sidecar
@@ -188,14 +194,14 @@ func (c *Client) MappedID(ctx context.Context, env string) (string, error) {
 		// LiveRamp knows the env but the envelope is permanently
 		// unresolvable (expired / revoked). Same downstream treatment as
 		// the 200-empty-body miss.
-		_, _ = io.CopyN(io.Discard, resp.Body, 4*1024)
+		_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 		return "", ErrNoMapping
 	}
 	if resp.StatusCode != http.StatusOK {
 		// Drain a bounded prefix so the connection can be reused. A misbehaving
 		// sidecar shouldn't be allowed to wedge connections by holding the
 		// body open, so we cap reads.
-		_, _ = io.CopyN(io.Discard, resp.Body, 4*1024)
+		_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 		return "", fmt.Errorf("liveramp: sidecar status %d", resp.StatusCode)
 	}
 	// Sidecar contract: 200 + empty body = no mapping. Determined by
@@ -206,10 +212,11 @@ func (c *Client) MappedID(ctx context.Context, env string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("liveramp: read body: %w", err)
 	}
-	// Drain anything past the read limit so the connection stays
+	// Drain a bounded prefix past the read limit so the connection stays
 	// reusable. A misbehaving sidecar that streams >64 KiB doesn't get to
-	// wedge our keep-alive pool.
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// wedge our keep-alive pool — and an unbounded drain here would hand a
+	// sidecar that never stops sending a way to stall the request instead.
+	_, _ = io.CopyN(io.Discard, resp.Body, maxDrainBytes)
 	if len(body) == 0 {
 		return "", ErrNoMapping
 	}

@@ -15,18 +15,20 @@ import (
 
 func TestSSRFDisallowedIPs(t *testing.T) {
 	cases := map[string]bool{
-		"127.0.0.1":    true,  // loopback
-		"10.0.0.1":     true,  // RFC 1918
-		"172.16.5.7":   true,  // RFC 1918
-		"192.168.1.1":  true,  // RFC 1918
-		"169.254.1.1":  true,  // link-local
-		"100.64.0.1":   true,  // CGNAT
-		"::1":          true,  // IPv6 loopback
-		"fc00::1":      true,  // IPv6 ULA
-		"fe80::1":      true,  // IPv6 link-local
-		"8.8.8.8":      false, // public
-		"1.1.1.1":      false, // public
-		"2001:db8::1":  false, // documentation range (treated as public here)
+		"127.0.0.1":       true,  // loopback
+		"10.0.0.1":        true,  // RFC 1918
+		"172.16.5.7":      true,  // RFC 1918
+		"192.168.1.1":     true,  // RFC 1918
+		"169.254.1.1":     true,  // link-local
+		"100.64.0.1":      true,  // CGNAT
+		"::1":             true,  // IPv6 loopback
+		"fc00::1":         true,  // IPv6 ULA
+		"fe80::1":         true,  // IPv6 link-local
+		"8.8.8.8":         false, // public
+		"1.1.1.1":         false, // public
+		"2001:db8::1":     true,  // documentation range: never routable, blocked by the shared list
+		"2606:4700::1":    false, // public IPv6
+		"::ffff:10.0.0.1": true,  // IPv4-mapped private
 	}
 	for ipStr, want := range cases {
 		ip := parseIP(t, ipStr)
@@ -77,4 +79,26 @@ func TestHTTPJWKSResolverFetchesFromLocalServer(t *testing.T) {
 	e := AsError(err)
 	require.NotNil(t, e)
 	assert.Equal(t, CodeKeyUnknown, e.Code)
+}
+
+// TestHTTPJWKSResolverRejectsAmbiguousKid: a kid published by two agents
+// resolves to neither, rather than to whichever a map scan reaches first.
+func TestHTTPJWKSResolverRejectsAmbiguousKid(t *testing.T) {
+	h := NewHTTPJWKSResolver(map[string]string{
+		"https://a.example.com/mcp": "https://a.example.com/jwks.json",
+		"https://b.example.com/mcp": "https://b.example.com/jwks.json",
+	})
+	shared := &JWKS{Keys: []JWK{{Kid: "dup", Kty: "OKP", Crv: "Ed25519", X: "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}}}
+	for _, u := range h.Agents {
+		h.cache[u] = &jwksCacheEntry{jwks: shared, at: time.Now()}
+	}
+	_, _, err := h.Resolve(context.Background(), "dup")
+	e := AsError(err)
+	require.NotNil(t, e)
+	require.Equal(t, CodeKeyUnknown, e.Code)
+
+	h.cache["https://b.example.com/jwks.json"] = &jwksCacheEntry{jwks: &JWKS{}, at: time.Now()}
+	_, agent, err := h.Resolve(context.Background(), "dup")
+	require.NoError(t, err)
+	require.Equal(t, "https://a.example.com/mcp", agent)
 }

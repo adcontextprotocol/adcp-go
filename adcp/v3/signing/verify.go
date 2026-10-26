@@ -7,11 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"io"
+	"maps"
 	"math/big"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/strictjson"
 )
 
 // VerifyOptions configures a single call to VerifyRequestSignature.
@@ -66,7 +69,11 @@ type VerifyOptions struct {
 }
 
 // VerifyRequestSignature implements the 13-step AdCP verifier checklist plus
-// the pre-check and sub-step 9a.
+// the pre-check and sub-step 9a. It verifies the AdCP RFC 9421 profile only,
+// which AdCP 3.3 deprecates; it keeps working through 3.x and is removed in
+// 4.0. A verifier that accepts the Web Bot Auth profile routes requests for
+// which UsesWebBotAuth reports true to VerifyWebBotAuthRequest instead, as
+// Middleware does when MiddlewareOptions.WebBotAuth is set.
 //
 // Returns:
 //
@@ -146,6 +153,9 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		if err != nil {
 			return nil, err
 		}
+		if ambiguousBody(body) {
+			return nil, newError(CodeRequired, "unsigned body is not strict JSON")
+		}
 		if _, req := protocolMethodsRequiredFor[protocolMethodFromJSONRPC(body)]; req {
 			return nil, newError(CodeRequired, "protocol method requires signature")
 		}
@@ -209,6 +219,13 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	dedupNonce := string(nBytes)
 
 	// Step 6: components.
+	//
+	// The profile fixes a minimum covered set, not an exact one: RFC 9421
+	// lets a signer cover any other HTTP field. A component identifier may
+	// appear only once (RFC 9421 §2.5).
+	if err := rejectDuplicateComponents(parsed.components, profile); err != nil {
+		return nil, err
+	}
 	hasMethod := slices.Contains(parsed.components, componentMethod)
 	hasTargetURI := slices.Contains(parsed.components, componentTargetURI)
 	hasAuthority := slices.Contains(parsed.components, componentAuthority)
@@ -237,6 +254,13 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		if hasContentDigest {
 			return nil, newError(CodeComponentsUnexpected, "policy forbids content-digest coverage")
 		}
+	}
+	// Every other covered component must be an HTTP field present on this
+	// request. Its value is bound into the signature base like any other
+	// component; the verifier attaches no further meaning to it.
+	additional, err := additionalComponentValues(r, parsed.components)
+	if err != nil {
+		return nil, err
 	}
 
 	// Step 7: JWK resolution.
@@ -312,6 +336,7 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 	if hasContentDigest {
 		values[componentContentDigst] = r.Header.Get(contentDigestHeader)
 	}
+	maps.Copy(values, additional)
 	base, err := buildSignatureBase(parsed.components, values, parsed.paramsText)
 	if err != nil {
 		return nil, wrapError(CodeHeaderMalformed, "build signature base", err)
@@ -374,6 +399,9 @@ func VerifyRequestSignature(r *http.Request, opts VerifyOptions) (*VerifiedSigne
 		VerifiedAt: time.Unix(nowT, 0).UTC(),
 		Algorithm:  alg,
 		Label:      parsed.label,
+
+		CoveredComponents: slices.Clone(parsed.components),
+		Profile:           profile.Tag,
 	}, nil
 }
 
@@ -439,26 +467,50 @@ func bodyCarriesPushNotificationAuth(body []byte) bool {
 }
 
 // protocolMethodFromJSONRPC returns the exact JSON-RPC method name carried by
-// body. It treats malformed and non-JSON-RPC bodies as no protocol method; the
-// caller's ordinary schema validation remains responsible for rejecting them.
+// body, read by exact, case-sensitive member name as the MCP SDK dispatches
+// it (encoding/json would also match "Method"). It treats malformed and
+// non-JSON-RPC bodies as no protocol method; an unsigned body that is not
+// strict JSON is refused separately (ambiguousBody), so a duplicate or
+// case-variant "method" cannot name a different method here than the one
+// dispatched.
 func protocolMethodFromJSONRPC(body []byte) string {
-	var envelope struct {
-		JSONRPC string `json:"jsonrpc"`
-		Method  string `json:"method"`
-	}
-	if err := json.Unmarshal(body, &envelope); err != nil || envelope.JSONRPC != "2.0" {
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return ""
 	}
-	return envelope.Method
+	var version, method string
+	if json.Unmarshal(envelope["jsonrpc"], &version) != nil || version != "2.0" || json.Unmarshal(envelope["method"], &method) != nil {
+		return ""
+	}
+	return method
+}
+
+// ambiguousBody reports a non-empty body that is not strict JSON: not one
+// JSON value, or one with duplicate member names (including names that
+// differ only in case), or nested deeper than 32. Readers disagree about
+// such a body (encoding/json matches member names case-insensitively, the
+// MCP SDK exactly), so no check on it can be trusted to see what the
+// handler sees: an unsigned request carrying one is treated as needing a
+// signature.
+func ambiguousBody(body []byte) bool {
+	return len(bytes.TrimSpace(body)) > 0 && strictjson.Validate(body, 0) != nil
 }
 
 func hasPushNotificationAuth(v any) bool {
 	switch t := v.(type) {
 	case map[string]any:
-		if pnc, ok := t["push_notification_config"]; ok {
+		// Member names match case-insensitively, as encoding/json decodes
+		// them into handler structs: "Push_Notification_Config" and
+		// "Authentication" count.
+		for name, pnc := range t {
+			if strictjson.Fold(name) != strictjson.Fold("push_notification_config") {
+				continue
+			}
 			if m, ok := pnc.(map[string]any); ok {
-				if _, hasAuth := m["authentication"]; hasAuth {
-					return true
+				for key := range m {
+					if strictjson.Fold(key) == strictjson.Fold("authentication") {
+						return true
+					}
 				}
 			}
 		}

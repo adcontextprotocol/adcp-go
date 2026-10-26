@@ -1,5 +1,77 @@
 # Migrating adcp-go
 
+## Behavior change: signed HTTP clients cap agent responses at 4 MiB
+
+Clients built with `signing.NewSignedHTTPClient` now reject any agent response
+larger than 4 MiB. This ships as a **minor** release of `adcp/v3`: the API is
+backward compatible, but a caller that today buffers an eight-megabyte
+`get_products` answer will start seeing an error.
+
+Agent responses are untrusted input. A single oversized response is enough to
+drive a buyer, crawler, or compliance grader out of memory, and that
+protection cannot depend on every adopter remembering to opt in — so the cap
+is on by default.
+
+**What you will see.** The failing call returns a
+`*signing.ResponseTooLargeError`, which matches
+`errors.Is(err, signing.ErrResponseTooLarge)`. A response that declared an
+oversized `Content-Length` fails from `client.Do` (wrapped in `*url.Error`)
+before the body is read; anything else fails on the read that crosses the
+limit. The peer chooses which of those two surfaces you hit, so handle both.
+The body is never silently truncated. Because `client.Do` now has a new error
+path, note that `*url.Error`'s message carries the full request URL — log it,
+and keep returning `"internal error"` to your own callers.
+
+Two smaller behavior changes ride along. A response whose `Content-Encoding`
+the peer was never offered (anything but `identity` that net/http did not
+inflate itself) is rejected with `*signing.UnsupportedContentEncodingError`,
+because its inflated size is unknowable. And a client built without an
+explicit `Inner` transport now uses a clone of `http.DefaultTransport` with
+`MaxResponseHeaderBytes` lowered to 64 KiB — headers are parsed before the
+body cap can see anything, and net/http's 10 MiB default left that above the
+cap. The clone has its own connection pool, so reuse one client per peer
+rather than constructing one per call; pass your own `Inner` to keep the
+shared pool or a different header bound.
+
+**How to raise the limit.** Per client:
+
+```go
+client, _ := signing.NewSignedHTTPClient(signing.SignedHTTPClientOptions{
+    KeyID:            kid,
+    PrivateKey:       priv,
+    MaxResponseBytes: 32 << 20, // 32 MiB
+    MaxSSEEventBytes: 1 << 20,  // optional: keep single SSE events tight
+})
+```
+
+Per call, when only one operation needs the headroom:
+
+```go
+ctx := signing.WithResponseLimits(ctx, signing.ResponseLimits{MaxResponseBytes: 32 << 20})
+req, _ := http.NewRequestWithContext(ctx, "POST", agentURL, body)
+resp, err := client.Do(req)
+```
+
+To turn the cap off entirely — only for a peer you control — set
+`MaxResponseBytes: signing.UnlimitedResponseBytes`. Zero keeps the 4 MiB
+default, so an unset field leaves you protected. Because `MaxSSEEventBytes`
+inherits `MaxResponseBytes`, opting out of the body cap opts out of the
+per-event cap too; pass an explicit `MaxSSEEventBytes` alongside it if you
+want a long-running stream's individual events to stay bounded.
+
+Other details worth knowing: the cap counts decompressed bytes, so a gzip
+bomb is rejected at its inflated size. To guarantee that, a capped request
+that carries its own `Accept-Encoding` naming a compressing coding has the
+header dropped, leaving `net/http` to negotiate gzip and inflate the body
+under the counter; `Accept-Encoding: identity` and requests with the cap
+disabled are left untouched. `text/event-stream` responses are
+capped both per event and cumulatively per call, so a long-lived stream that
+legitimately exceeds 4 MiB over its lifetime needs an explicit higher
+`MaxResponseBytes`. The lower-level `(*Signer).RoundTripper` is unchanged and
+does not cap on its own; wrap it in `signing.NewResponseLimitTransport` to get
+the same protection. Full reference:
+[`adcp/v3/signing/README.md`](adcp/v3/signing/README.md#response-size-limits).
+
 ## Migrating to adcp-go v3 / sub-modules
 
 `adcp-go` 3.0 reshapes the repository into a Go multi-module workspace. If you

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://trustjson.org/schemas/v1/trust.json",
+  "last_updated": "2026-09-30T00:00:00Z",
+  "agents": [
+    {
+      "url": "https://streamhaus.northwind.example/mcp",
+      "roles": ["adcp:sales"]
+    },
+    {
+      "url": "https://pinnacle-news.northwind.example/mcp",
+      "roles": ["adcp:sales"]
+    }
+  ],
+  "acknowledgements_url": "https://northwind.example/.well-known/trust-acknowledgements.json"
+}

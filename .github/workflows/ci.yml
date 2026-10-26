@@ -212,6 +212,59 @@ jobs:
           working-directory: e2e/stack
           args: ./...
 
+  wba-interop:
+    name: Web Bot Auth Interop
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # adcontextprotocol/adcp commit whose tests/wba-interop/ harness and
+      # wba-profile vectors grade this SDK: the head of adcp#8298. Move it to
+      # the merge commit once that pull request merges.
+      ADCP_REF: "306cdfa6e565725e1a122838eafbcc980707306b"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.26"
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          # The harness's package.json requires Node 24.
+          node-version: "24"
+
+      # The spec checkout goes under RUNNER_TEMP: ./adcp is this repository's
+      # own module.
+      - name: Check out the harness at ADCP_REF
+        run: |
+          spec="$RUNNER_TEMP/adcp-spec"
+          git init -q "$spec"
+          git -C "$spec" sparse-checkout set tests/wba-interop static/compliance/source/test-vectors/wba-profile
+          git -C "$spec" fetch -q --depth 1 --filter=blob:none https://github.com/adcontextprotocol/adcp "$ADCP_REF"
+          git -C "$spec" checkout -q FETCH_HEAD
+
+      - name: Install the harness
+        run: npm ci --ignore-scripts --prefix "$RUNNER_TEMP/adcp-spec/tests/wba-interop"
+
+      - name: Build the adapter
+        working-directory: adcp/v3
+        run: go build -o "$RUNNER_TEMP/wbainterop" ./signing/internal/wbainterop
+
+      - name: Run the harness
+        run: |
+          node "$RUNNER_TEMP/adcp-spec/tests/wba-interop/run.mjs" \
+            --adapter "$RUNNER_TEMP/wbainterop" \
+            --vectors "$RUNNER_TEMP/adcp-spec/static/compliance/source/test-vectors/wba-profile" \
+            --junit wba-interop.xml
+
+      - name: Upload interop results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: wba-interop
+          if-no-files-found: ignore
+          path: wba-interop.xml
+
   storyboard:
     name: Reference Seller Storyboard
     runs-on: ubuntu-latest
