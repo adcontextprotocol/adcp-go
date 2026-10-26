@@ -51,6 +51,17 @@ boundary by itself.
 {"buying_mode": "brief", "brief": "premium display inventory"}
 ```
 
+`sync_accounts` — provision the account first. `create_media_buy` below
+names this account, and since the reference resolvers are lookup-only an
+unprovisioned account returns `ACCOUNT_NOT_FOUND`:
+
+```json
+{
+  "idempotency_key": "22222222-2222-2222-2222-222222222222",
+  "accounts": [{"brand": {"domain": "advertiser.example"}, "operator": "agency.example", "billing": "operator"}]
+}
+```
+
 `create_media_buy` (use a `product_id` and `pricing_option_id` from the
 `get_products` response above):
 

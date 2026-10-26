@@ -229,3 +229,34 @@ func TestSyncAccountsProvisionsThenResolves(t *testing.T) {
 		t.Fatalf("re-sync must report updated, got %+v", results)
 	}
 }
+
+// Entries without a natural key (no brand, or no operator — e.g. a
+// settings-update entry keyed by an `account` ref) must be skipped:
+// sync_accounts must never fabricate an "acct-unknown-" account.
+func TestSyncAccountsSkipsEntriesWithoutNaturalKey(t *testing.T) {
+	b := newBackend()
+	ctx := context.Background()
+
+	results, err := b.syncAccounts(ctx, &adcp.SyncAccountsRequest{
+		Accounts: []adcp.AccountInput{
+			{},
+			{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}},
+			{Operator: "acme-corp.com"},
+			{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("syncAccounts: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("want exactly one provisioned account, got %+v", results)
+	}
+	if len(b.accounts) != 1 {
+		t.Fatalf("want exactly one stored account, got %d: %v", len(b.accounts), b.accounts)
+	}
+	for id := range b.accounts {
+		if id == "acct-unknown-" || len(id) <= len("acct-unknown-") && id[:13] == "acct-unknown" {
+			t.Fatalf("fabricated account id %q", id)
+		}
+	}
+}

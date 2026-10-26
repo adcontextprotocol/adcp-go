@@ -95,7 +95,10 @@ func newBackend() *backend {
 // one, or any caller could enumerate/fabricate accounts by naming them.
 //
 // SWAP: look up the real account in your CRM/billing system instead of the
-// in-memory map, keeping the same return-nil-for-unknown contract.
+// in-memory map, keeping the same return-nil-for-unknown contract. In
+// production, also check that the caller principal may act for the
+// account, and honor ref.Sandbox — a sandbox reference must never resolve
+// to a production account.
 func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (any, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -124,11 +127,14 @@ func (b *backend) syncAccounts(_ context.Context, input *adcp.SyncAccountsReques
 	defer b.mu.Unlock()
 	results := make([]adcp.AccountResult, 0, len(input.Accounts))
 	for _, acct := range input.Accounts {
-		domain := "unknown"
-		if acct.Brand != nil {
-			domain = acct.Brand.Domain
+		if acct.Brand == nil || acct.Operator == "" {
+			// No natural key on this entry — e.g. a settings-update entry
+			// keyed by an `account` ref, which this SDK version's
+			// AccountInput cannot decode. Never fabricate an account from
+			// empty fields (the old code minted "acct-unknown-").
+			continue
 		}
-		id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+		id := fmt.Sprintf("acct-%s-%s", acct.Brand.Domain, acct.Operator)
 		result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
 		if existing, ok := b.accounts[id]; ok {
 			result.Action = "updated"

@@ -205,13 +205,14 @@ func TestResolveAccountInvalidFormsRejected(t *testing.T) {
 	}
 }
 
-// Sandbox is a modifier on the flattened Go type, not an identifier: it
-// does not change which schema form a reference is, and a sandbox-bearing
-// reference of either valid form still reaches the resolver (which is
-// responsible for sandbox semantics).
+// Sandbox is a modifier of the natural-key form, not an identifier: on
+// that form it does not change which schema form a reference is, and a
+// sandbox-bearing natural-key reference still reaches the resolver (which
+// is responsible for sandbox semantics). Sandbox accompanying account_id
+// is schema-invalid — the account_id arm allows no additional properties —
+// and is rejected; see TestResolveAccountSchemaEdgeForms.
 func TestResolveAccountSandboxFormsStillResolve(t *testing.T) {
 	cases := map[string]AccountReference{
-		"account_id + sandbox": {AccountID: "acc_123", Sandbox: true},
 		"natural key + sandbox": {
 			Brand: &BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com", Sandbox: true,
 		},
@@ -279,6 +280,8 @@ func TestRegisteredAccountLifecycle(t *testing.T) {
 	})
 
 	codeOf := func(args map[string]any) string {
+		// buying_mode is required by get-products-request.json.
+		args["buying_mode"] = "brief"
 		result := callRegisteredTool(t, cfg, "get_products", args)
 		if !result.IsError {
 			return ""
@@ -306,9 +309,11 @@ func TestRegisteredAccountLifecycle(t *testing.T) {
 		t.Fatalf("operator-only reference: want INVALID_REQUEST, got %q", code)
 	}
 
+	// Provisioning-mode entries carry billing (sync-accounts-request.json).
+	syncEntry := map[string]any{"brand": map[string]any{"domain": "acme-corp.com"}, "operator": "acme-corp.com", "billing": "operator"}
 	syncResult := callRegisteredTool(t, cfg, "sync_accounts", map[string]any{
 		"idempotency_key": "lifecycle-sync-1",
-		"accounts":        []any{naturalKey},
+		"accounts":        []any{syncEntry},
 	})
 	if syncResult.IsError {
 		t.Fatalf("sync_accounts must provision, got %v", structuredContentMap(t, syncResult))
@@ -318,5 +323,56 @@ func TestRegisteredAccountLifecycle(t *testing.T) {
 	}
 	if code := codeOf(map[string]any{"account": map[string]any{"account_id": "acct-acme-corp.com-acme-corp.com"}}); code != "" {
 		t.Fatalf("provisioned account_id must resolve, got error %q", code)
+	}
+}
+
+// Schema edges from the pinned bundle (review of #554): the account_id arm
+// of core/account-ref.json is additionalProperties:false, so sandbox may
+// not accompany account_id — while the natural-key arm carries sandbox as
+// a modifier (the schema's own fifth example). A present brand_id must
+// match core/brand-id.json (^[a-z0-9_]+$).
+func TestResolveAccountSchemaEdgeForms(t *testing.T) {
+	invalid := map[string]AccountReference{
+		"account_id + sandbox":   {AccountID: "acc_123", Sandbox: true},
+		"brand_id with capitals": {Brand: &BrandReference{Domain: "nova-brands.com", BrandID: "Spark"}, Operator: "pinnacle-media.com"},
+		"brand_id with dash":     {Brand: &BrandReference{Domain: "nova-brands.com", BrandID: "spark-1"}, Operator: "pinnacle-media.com"},
+	}
+	for name, ref := range invalid {
+		t.Run("invalid/"+name, func(t *testing.T) {
+			called := false
+			resolver := func(ctx context.Context, ref AccountReference) (any, error) {
+				called = true
+				return "acct-1", nil
+			}
+			_, result := resolveAccount(context.Background(), resolver, ref)
+			if called {
+				t.Fatal("resolver must not be invoked for a schema-invalid reference")
+			}
+			if result == nil || !result.IsError {
+				t.Fatalf("expected INVALID_REQUEST error result, got %v", result)
+			}
+			wire, _ := result.StructuredContent.(map[string]any)
+			payload, _ := wire["adcp_error"].(map[string]any)
+			if payload["code"] != "INVALID_REQUEST" {
+				t.Fatalf("expected INVALID_REQUEST, got %v", payload["code"])
+			}
+		})
+	}
+	valid := map[string]AccountReference{
+		"brand_id valid":        {Brand: &BrandReference{Domain: "nova-brands.com", BrandID: "spark"}, Operator: "pinnacle-media.com"},
+		"natural key + sandbox": {Brand: &BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com", Sandbox: true},
+	}
+	for name, ref := range valid {
+		t.Run("valid/"+name, func(t *testing.T) {
+			called := false
+			resolver := func(ctx context.Context, ref AccountReference) (any, error) {
+				called = true
+				return "acct-1", nil
+			}
+			acct, result := resolveAccount(context.Background(), resolver, ref)
+			if !called || result != nil || acct != "acct-1" {
+				t.Fatalf("schema-valid reference must reach the resolver (called=%v, acct=%v, result=%v)", called, acct, result)
+			}
+		})
 	}
 }

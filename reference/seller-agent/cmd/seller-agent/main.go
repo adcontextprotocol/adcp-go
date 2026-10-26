@@ -545,6 +545,11 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 // path (the SyncAccounts handler in newServer); a discovery or media-buy
 // call must never fabricate one, or any caller could enumerate accounts by
 // naming them. See adcp-go#547 bug 3.
+//
+// SWAP: when the in-memory map becomes a real account store, also check
+// that the caller principal may act for the account, and honor
+// ref.Sandbox — a sandbox reference must never resolve to a production
+// account.
 func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (any, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -1309,11 +1314,15 @@ func newServer(b *backend) *mcp.Server {
 			defer b.mu.Unlock()
 			results := make([]adcp.AccountResult, 0, len(input.Accounts))
 			for _, acct := range input.Accounts {
-				domain := "unknown"
-				if acct.Brand != nil {
-					domain = acct.Brand.Domain
+				if acct.Brand == nil || acct.Operator == "" {
+					// No natural key on this entry — e.g. a settings-update
+					// entry keyed by an `account` ref, which this SDK
+					// version's AccountInput cannot decode. Never fabricate
+					// an account from empty fields (the old code minted
+					// "acct-unknown-").
+					continue
 				}
-				id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+				id := fmt.Sprintf("acct-%s-%s", acct.Brand.Domain, acct.Operator)
 				result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
 				if existing, ok := b.accounts[id]; ok {
 					result.Action = "updated"

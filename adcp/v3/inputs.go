@@ -207,12 +207,17 @@ func isCreativeAssignmentField(key string) bool {
 
 // AccountInput is a single account in a sync_accounts request.
 type AccountInput struct {
-	Brand        *BrandReference `json:"brand,omitempty"`
-	Operator     string          `json:"operator,omitempty"`
-	Billing      string          `json:"billing,omitempty"`
-	PaymentTerms string          `json:"payment_terms,omitempty"`
-	AccountID    string          `json:"account_id,omitempty"`
-	Sandbox      bool            `json:"sandbox,omitempty"`
+	// Account is the settings-update key shape: an entry carrying an
+	// AccountRef targets an existing account instead of provisioning one
+	// from the flat Brand/Operator/Billing fields (exactly one key shape
+	// per entry — see sync-accounts-request.json).
+	Account      *AccountReference `json:"account,omitempty"`
+	Brand        *BrandReference   `json:"brand,omitempty"`
+	Operator     string            `json:"operator,omitempty"`
+	Billing      string            `json:"billing,omitempty"`
+	PaymentTerms string            `json:"payment_terms,omitempty"`
+	AccountID    string            `json:"account_id,omitempty"`
+	Sandbox      bool              `json:"sandbox,omitempty"`
 }
 
 // GovernanceAccountInput is a single account in a sync_governance request.
