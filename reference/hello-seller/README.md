@@ -51,6 +51,17 @@ boundary by itself.
 {"buying_mode": "brief", "brief": "premium display inventory"}
 ```
 
+`sync_accounts` — provision the account first. `create_media_buy` below
+names this account, and since the reference resolvers are lookup-only an
+unprovisioned account returns `ACCOUNT_NOT_FOUND`:
+
+```json
+{
+  "idempotency_key": "22222222-2222-2222-2222-222222222222",
+  "accounts": [{"brand": {"domain": "advertiser.example"}, "operator": "agency.example", "billing": "operator"}]
+}
+```
+
 `create_media_buy` (use a `product_id` and `pricing_option_id` from the
 `get_products` response above):
 
@@ -85,10 +96,11 @@ Every item below is marked `// SWAP:` at its integration point in the source.
    response as sandbox data. A production seller sets this from real
    environment/deploy configuration, not a hardcoded literal — same for the
    `"sandbox": true` in `extensions.go`'s `updateMediaBuyResult`.
-2. **`resolveAccount`** — replace the in-memory map + auto-create-on-miss
-   with a real lookup against your account/CRM/billing system. Return
-   `(nil, nil)` for a genuinely unknown account (not an error) so the SDK
-   returns `ACCOUNT_NOT_FOUND` and the buyer calls `sync_accounts` first.
+2. **`resolveAccount`** — replace the in-memory map with a real lookup
+   against your account/CRM/billing system. It already returns `(nil, nil)`
+   for a genuinely unknown account (not an error) so the SDK returns
+   `ACCOUNT_NOT_FOUND`; accounts are created only by `sync_accounts`
+   (the provisioning path in `main.go`), never on a lookup miss.
 3. **In-memory maps → durable storage.** `backend`'s maps (`products`,
    `mediaBuys`, `creatives`) are lost on every restart. Replace with your
    real ad server / OMS / database.

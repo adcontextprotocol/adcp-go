@@ -131,7 +131,6 @@ EXEMPT = {
 KNOWN_SCHEMA_GAPS = {
     'AccountInput': {
         'missing_in_go': {
-            'account': '#564',
             'billing_entity': '#564',
             'currency': '#564',
             'destination_billing_entity': '#564',

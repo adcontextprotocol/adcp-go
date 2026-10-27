@@ -457,3 +457,83 @@ func TestMCP_TermsRejected_RecoveryIsEnumMember(t *testing.T) {
 		t.Errorf("recovery = %q, want correctable (the buyer can revise the terms and resend)", recovery)
 	}
 }
+
+// TestMCP_GetProducts_UnknownAccountNotFound pins the tool-level side of
+// adcp-go#547 bug 3: get_products naming an account sync_accounts never
+// provisioned must answer ACCOUNT_NOT_FOUND — the resolver must not
+// fabricate an active account for the call. After sync_accounts provisions
+// the same natural key, the call succeeds.
+func TestMCP_GetProducts_UnknownAccountNotFound(t *testing.T) {
+	session := newMCPTestSession(t)
+	account := map[string]any{
+		"brand":    map[string]any{"domain": "acme-corp.com"},
+		"operator": "acme-corp.com",
+	}
+
+	result := callTool(t, session, "get_products", map[string]any{"account": account})
+	if !result.IsError {
+		t.Fatal("expected error result for an unknown account")
+	}
+	wire := structuredMap(t, result)
+	errPayload, ok := wire["adcp_error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected adcp_error payload, got %v", wire)
+	}
+	if errPayload["code"] != "ACCOUNT_NOT_FOUND" {
+		t.Fatalf("expected ACCOUNT_NOT_FOUND, got %v", errPayload["code"])
+	}
+
+	syncResult := callTool(t, session, "sync_accounts", map[string]any{
+		"idempotency_key": "test-sync-unknown-account",
+		"accounts":        []any{account},
+	})
+	if syncResult.IsError {
+		t.Fatalf("sync_accounts must provision the account, got %v", structuredMap(t, syncResult))
+	}
+	result = callTool(t, session, "get_products", map[string]any{"account": account})
+	if result.IsError {
+		t.Fatalf("get_products must succeed after provisioning, got %v", structuredMap(t, result))
+	}
+}
+
+// TestMCP_SyncAccounts_SkipsAccountOnlyEntries pins the review-of-#554
+// finding for sync_accounts entries: an entry keyed only by an `account`
+// ref (settings-update mode — no brand, no operator, no account_id at the
+// entry root) must be skipped, not provisioned as a fabricated
+// "acct-unknown-" account. The response counts only the entries actually
+// provisioned.
+func TestMCP_SyncAccounts_SkipsAccountOnlyEntries(t *testing.T) {
+	b := newTestBackend()
+	session := newMCPTestSessionForBackend(t, b)
+
+	syncResult := callTool(t, session, "sync_accounts", map[string]any{
+		"idempotency_key": "test-sync-account-only-entry",
+		"accounts": []any{
+			map[string]any{"account": map[string]any{"account_id": "acc_existing"}},
+			map[string]any{
+				"brand":    map[string]any{"domain": "acme-corp.com"},
+				"operator": "acme-corp.com",
+				"billing":  "operator",
+			},
+		},
+	})
+	if syncResult.IsError {
+		t.Fatalf("sync_accounts must succeed, got %v", structuredMap(t, syncResult))
+	}
+	wire := structuredMap(t, syncResult)
+	accounts, ok := wire["accounts"].([]any)
+	if !ok || len(accounts) != 1 {
+		t.Fatalf("want exactly one provisioned account in the response, got %v", wire["accounts"])
+	}
+	if len(b.accounts) != 1 {
+		t.Fatalf("want exactly one stored account, got %d: %v", len(b.accounts), b.accounts)
+	}
+	for id := range b.accounts {
+		if id == "acct-unknown-" {
+			t.Fatalf("fabricated account id %q must not be created", id)
+		}
+	}
+	if _, ok := b.accounts["acct-acme-corp.com-acme-corp.com"]; !ok {
+		t.Fatalf("the valid entry must be provisioned, got %v", b.accounts)
+	}
+}

@@ -539,6 +539,36 @@ func (b *backend) getDelivery(input *adcp.GetMediaBuyDeliveryRequest) (*adcp.Del
 	return &adcp.DeliveryData{ReportingPeriod: adcp.ReportingPeriod{Start: now.Add(-24 * time.Hour).Format(time.RFC3339), End: now.Format(time.RFC3339)}, Currency: "USD", MediaBuyDeliveries: deliveries}, nil
 }
 
+// resolveAccount is a lookup only: an unknown reference — by account_id or
+// by natural key — returns (nil, nil), and the SDK turns that into
+// ACCOUNT_NOT_FOUND. Accounts are created only through the provisioning
+// path (the SyncAccounts handler in newServer); a discovery or media-buy
+// call must never fabricate one, or any caller could enumerate accounts by
+// naming them. See adcp-go#547 bug 3.
+//
+// SWAP: when the in-memory map becomes a real account store, also check
+// that the caller principal may act for the account, and honor
+// ref.Sandbox — a sandbox reference must never resolve to a production
+// account.
+func (b *backend) resolveAccount(_ context.Context, ref adcp.AccountReference) (any, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	domain := ""
+	if ref.Brand != nil {
+		domain = ref.Brand.Domain
+	}
+	// An account_id reference names the account sync_accounts
+	// returned; look that id up before deriving the natural key.
+	id := ref.AccountID
+	if id == "" {
+		id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+	}
+	if acct, ok := b.accounts[id]; ok {
+		return acct, nil
+	}
+	return nil, nil
+}
+
 func (b *backend) forceAccountStatus(accountID, status string) (*adcp.StateTransition, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -1278,29 +1308,21 @@ func newServer(b *backend) *mcp.Server {
 				"simulate_delivery", "simulate_budget_spend",
 			}},
 		},
-		ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
-			b.mu.RLock()
-			defer b.mu.RUnlock()
-			domain := ""
-			if ref.Brand != nil {
-				domain = ref.Brand.Domain
-			}
-			id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
-			if acct, ok := b.accounts[id]; ok {
-				return acct, nil
-			}
-			return &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}, nil
-		},
+		ResolveAccount: b.resolveAccount,
 		SyncAccounts: func(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
 			b.mu.Lock()
 			defer b.mu.Unlock()
 			results := make([]adcp.AccountResult, 0, len(input.Accounts))
 			for _, acct := range input.Accounts {
-				domain := "unknown"
-				if acct.Brand != nil {
-					domain = acct.Brand.Domain
+				if acct.Brand == nil || acct.Operator == "" {
+					// No natural key on this entry — e.g. a settings-update
+					// entry keyed by an `account` ref, which this SDK
+					// version's AccountInput cannot decode. Never fabricate
+					// an account from empty fields (the old code minted
+					// "acct-unknown-").
+					continue
 				}
-				id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+				id := fmt.Sprintf("acct-%s-%s", acct.Brand.Domain, acct.Operator)
 				result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
 				if existing, ok := b.accounts[id]; ok {
 					result.Action = "updated"
@@ -1425,6 +1447,30 @@ func main() {
 		mediaBuys: make(map[string]*adcp.MediaBuyData),
 		creatives: make(map[string]*creativeRecord),
 		delivery:  make(map[string]*deliveryState),
+	}
+	// Pre-provisioned sandbox account for the storyboard test kit
+	// (test-kits/acme-outdoor.yaml): the media_buy_seller storyboard names
+	// this buyer on get_products/create_media_buy without a sync_accounts
+	// step, so the operator provisions it at startup, like the seeded
+	// product catalog. Resolution itself never creates accounts — every
+	// other unknown reference still answers ACCOUNT_NOT_FOUND (#547 bug 3).
+	b.accounts["acct-acmeoutdoor.example-pinnacle-agency.example"] = &adcp.AccountResult{
+		AccountID: "acct-acmeoutdoor.example-pinnacle-agency.example",
+		Brand:     &adcp.BrandReference{Domain: "acmeoutdoor.example"},
+		Operator:  "pinnacle-agency.example",
+		Action:    "existing",
+		Status:    "active",
+	}
+	// The storyboard runner's enricher-built requests (steps without a
+	// fixture account) use its default buyer account, test.example
+	// (resolveAccount in @adcp/sdk's storyboard runner). Seed that fixture
+	// account on the same terms as the test-kit account above.
+	b.accounts["acct-test.example-test.example"] = &adcp.AccountResult{
+		AccountID: "acct-test.example-test.example",
+		Brand:     &adcp.BrandReference{Domain: "test.example"},
+		Operator:  "test.example",
+		Action:    "existing",
+		Status:    "active",
 	}
 
 	log.Fatal(adcp.Serve(func() *mcp.Server {

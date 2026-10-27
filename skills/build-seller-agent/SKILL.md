@@ -124,7 +124,8 @@ func main() {
                 defer b.mu.RUnlock()
                 domain := ""
                 if ref.Brand != nil { domain = ref.Brand.Domain }
-                id := fmt.Sprintf("acct-%s-%s", domain, ref.Operator)
+                id := ref.AccountID // account_id references name the id sync_accounts returned
+                if id == "" { id = fmt.Sprintf("acct-%s-%s", domain, ref.Operator) }
                 if acct, ok := b.accounts[id]; ok { return acct, nil }
                 return nil, nil
             },
@@ -134,9 +135,11 @@ func main() {
                 defer b.mu.Unlock()
                 results := make([]adcp.AccountResult, 0, len(req.Accounts))
                 for _, acct := range req.Accounts {
-                    domain := "unknown"
-                    if acct.Brand != nil { domain = acct.Brand.Domain }
-                    id := fmt.Sprintf("acct-%s-%s", domain, acct.Operator)
+                    // Skip entries without a natural key (e.g. settings-update
+                    // entries keyed by an `account` ref) — never fabricate
+                    // an "acct-unknown-" account from empty fields.
+                    if acct.Brand == nil || acct.Operator == "" { continue }
+                    id := fmt.Sprintf("acct-%s-%s", acct.Brand.Domain, acct.Operator)
                     result := adcp.AccountResult{AccountID: id, Brand: acct.Brand, Operator: acct.Operator, Action: "created", Status: "active"}
                     if existing, ok := b.accounts[id]; ok { result.Action = "updated"; result.Status = existing.Status }
                     b.accounts[id] = &result

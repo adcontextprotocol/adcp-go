@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/idempotency"
@@ -34,7 +35,27 @@ import (
 //	    IdempotencyReplayTTL: 24 * time.Hour,
 //	    Idempotency: store, // optional; idempotency.New(...) built once, outside the server factory
 //	    ResolveAccount: func(ctx context.Context, ref adcp.AccountReference) (any, error) {
-//	        return db.FindAccount(ref.Brand.Domain, ref.Operator)
+//	        // The SDK validates the reference before this call (see
+//	        // Config.ResolveAccount): exactly one form is set — AccountID,
+//	        // or Brand+Operator. Brand is nil for an account_id reference —
+//	        // branch first, and honor ref.Sandbox.
+//	        var acct *db.Account
+//	        if ref.AccountID != "" {
+//	            acct = db.FindAccountByID(ref.AccountID)
+//	        } else {
+//	            acct = db.FindAccount(ref.Brand.Domain, ref.Operator)
+//	        }
+//	        if acct == nil {
+//	            return nil, nil // unknown: the SDK sends ACCOUNT_NOT_FOUND
+//	        }
+//	        // Authorization is part of the lookup, not an afterthought:
+//	        // the caller principal must be allowed to act for this account.
+//	        if !acct.Authorizes(adcp.PrincipalFromContext(ctx)) {
+//	            return nil, adcp.NewError("PERMISSION_DENIED", adcp.ErrorOptions{
+//	                Message: "The caller may not act for this account.",
+//	            })
+//	        }
+//	        return acct, nil
 //	    },
 //	    GetProducts: func(ctx context.Context, acct any, req *adcp.GetProductsRequest) (*adcp.ProductsData, error) {
 //	        return &adcp.ProductsData{Products: catalog.Query(req.Brief)}, nil
@@ -505,9 +526,33 @@ type Config struct {
 	// is built from the registered handlers.
 	Capabilities *CapabilitiesData
 
-	// ResolveAccount converts an AccountReference (brand + operator) to your
-	// internal account object. Called automatically before handlers that receive
-	// an account field. Return nil for unknown accounts (SDK sends ACCOUNT_NOT_FOUND).
+	// ResolveAccount converts an AccountReference (brand + operator, or a bare
+	// account_id) to your internal account object. Called automatically before
+	// handlers that receive an account field. Return nil for unknown accounts
+	// (SDK sends ACCOUNT_NOT_FOUND).
+	//
+	// The SDK validates a supplied reference against the pinned
+	// core/account-ref.json schema before invoking the resolver, so exactly
+	// one form is set on the reference the resolver receives: AccountID, or
+	// Brand and Operator together. Brand is nil for an account_id reference,
+	// so resolvers must branch on AccountID before dereferencing Brand. A
+	// supplied reference that matches neither schema form (for example an
+	// operator without a brand) is rejected with INVALID_REQUEST and never
+	// reaches the resolver. An omitted account field — including a decoded
+	// reference carrying no identifier — keeps the no-account path and does
+	// not invoke the resolver either. Sandbox is a modifier of the
+	// natural-key form only (the account_id arm of the schema allows no
+	// additional properties, so account_id with sandbox is rejected above);
+	// on that form it is passed through for the resolver to honor, not
+	// treated as an identifier. Two decoded shapes are
+	// deliberately indistinguishable from omission and take the same
+	// no-account path: a supplied-but-empty reference ({}, or one carrying
+	// only sandbox) and account_id: "" — the flattened Go struct cannot
+	// tell them from an absent account field, so they are not rejected.
+	// When no account is supplied, handlers run with a nil account
+	// (public discovery) — that behavior is deliberate pending a
+	// maintainer decision; sellers that require an account must enforce
+	// that in their handlers.
 	//
 	// The authenticated caller is available via PrincipalFromContext(ctx).
 	// You MUST check that this principal may act for ref; otherwise any
@@ -594,6 +639,43 @@ type ListCollectionListsResult struct {
 	Pagination *PaginationResponse
 }
 
+// accountDomainPattern is the domain pattern the pinned schemas apply to
+// both core/account-ref.json's operator and core/brand-ref.json's domain.
+var accountDomainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// brandIDPattern is the pattern core/brand-id.json applies to brand_id.
+var brandIDPattern = regexp.MustCompile(`^[a-z0-9_]+$`)
+
+// validAccountReference reports whether a supplied (identifier-bearing)
+// AccountReference matches one of the two forms in the pinned
+// core/account-ref.json schema: {account_id} alone, or the natural key
+// {brand, operator} with a schema-valid brand domain and operator. It adds
+// no rules of its own beyond the schema. The schema's oneOf arms are
+// additionalProperties:false, so sandbox — a property of the natural-key
+// arm only — may not accompany account_id, while on the natural-key form
+// it stays a modifier passed through for the resolver to honor. When
+// brand_id is present it must match core/brand-id.json. References
+// carrying no identifier at all never reach this function; resolveAccount
+// keeps them on the omitted-account path.
+func validAccountReference(ref AccountReference) bool {
+	if ref.AccountID != "" {
+		// account_id form: nothing else may accompany it — no natural-key
+		// fields, and no sandbox (the schema's account_id arm allows no
+		// additional properties).
+		return ref.Brand == nil && ref.Operator == "" && !ref.Sandbox
+	}
+	// Natural-key form: brand and operator are both required, and both
+	// domains must match the schema pattern (brand-ref requires domain).
+	if ref.Brand == nil || ref.Operator == "" {
+		return false
+	}
+	if ref.Brand.BrandID != "" && !brandIDPattern.MatchString(ref.Brand.BrandID) {
+		return false
+	}
+	return accountDomainPattern.MatchString(ref.Brand.Domain) &&
+		accountDomainPattern.MatchString(ref.Operator)
+}
+
 func resolveAccount(ctx context.Context, resolver func(context.Context, AccountReference) (any, error), ref any) (any, *mcp.CallToolResult) {
 	if resolver == nil {
 		return nil, nil
@@ -612,8 +694,30 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		result, _, _ := Errorf("INTERNAL_ERROR", ErrorOptions{Message: "unexpected account reference type"})
 		return nil, result
 	}
-	if acctRef.Brand == nil && acctRef.Operator == "" {
+	// An account_id-only reference still names an account: it must go to the
+	// resolver so an unknown ID surfaces ACCOUNT_NOT_FOUND instead of
+	// silently running with no account (public pricing).
+	//
+	// A decoded reference carrying no identifier at all — a supplied {}
+	// or {sandbox: true}, or an account_id that decoded to "" — is
+	// deliberately treated as an omitted account field here: the
+	// flattened Go struct cannot distinguish it from omission, so it
+	// takes the same no-account path and never reaches the resolver.
+	// See the Config.ResolveAccount contract.
+	if acctRef.Brand == nil && acctRef.Operator == "" && acctRef.AccountID == "" {
 		return nil, nil
+	}
+	// A supplied reference must match one of the pinned schema's two forms
+	// before it reaches the resolver: an operator-only reference would
+	// otherwise arrive with a nil Brand and crash resolvers that dereference
+	// it. See validAccountReference.
+	if !validAccountReference(acctRef) {
+		result, _, _ := Errorf("INVALID_REQUEST", ErrorOptions{
+			Message:    "Invalid account reference.",
+			Field:      "account",
+			Suggestion: "Send either an account_id, or a brand and operator together.",
+		})
+		return nil, result
 	}
 	acct, err := resolver(ctx, acctRef)
 	if err != nil {
@@ -621,10 +725,18 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		return nil, result
 	}
 	if acct == nil {
+		msg := "Account not found. Call sync_accounts first to register this brand and operator."
+		suggestion := "Call sync_accounts with the brand and operator before making this request."
+		if acctRef.AccountID != "" {
+			// Per enums/error-code.json: for an account_id, the fix is to
+			// verify the ID, not to re-register a brand/operator pair.
+			msg = "Account not found."
+			suggestion = "Verify the account_id via list_accounts, or contact the seller."
+		}
 		result, _, _ := Errorf("ACCOUNT_NOT_FOUND", ErrorOptions{
-			Message:    "Account not found. Call sync_accounts first to register this brand and operator.",
+			Message:    msg,
 			Field:      "account",
-			Suggestion: "Call sync_accounts with the brand and operator before making this request.",
+			Suggestion: suggestion,
 		})
 		return nil, result
 	}
