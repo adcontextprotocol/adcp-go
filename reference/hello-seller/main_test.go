@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3"
@@ -255,7 +256,7 @@ func TestSyncAccountsSkipsEntriesWithoutNaturalKey(t *testing.T) {
 		t.Fatalf("want exactly one stored account, got %d: %v", len(b.accounts), b.accounts)
 	}
 	for id := range b.accounts {
-		if id == "acct-unknown-" || len(id) <= len("acct-unknown-") && id[:13] == "acct-unknown" {
+		if strings.HasPrefix(id, "acct-unknown") {
 			t.Fatalf("fabricated account id %q", id)
 		}
 	}
