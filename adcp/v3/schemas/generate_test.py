@@ -2664,15 +2664,21 @@ class CommitmentResponseGenerationTest(unittest.TestCase):
             ):
                 return True
             ref = node.get("$ref")
-            if isinstance(ref, str) and ref.endswith("/media-buy/product-purchase-input.json"):
-                return False  # ProductPurchaseInput is checked as its own type below
+            if isinstance(ref, str) and ref.endswith((
+                "/media-buy/product-purchase-input.json",
+                "/media-buy/package-control.json",
+            )):
+                return False  # these are checked as their own types below
             if isinstance(ref, str) and ref not in seen:
                 seen.add(ref)
                 if reaches_null(generate.resolve_ref_schema(ref), seen):
                     return True
             return any(reaches_null(value, seen) for key, value in node.items() if key != "$ref")
 
-        for name in ("AcceptProposalRequest", "BuyProductsRequest", "ProductPurchaseInput"):
+        for name in (
+            "AcceptProposalRequest", "BuyProductsRequest", "ProductPurchaseInput",
+            "ControlMediaBuyRequest", "PackageControl",
+        ):
             schema = self.entries[name]["schema_obj"]
             required = generate.schema_required_names(schema)
             for json_name, prop in generate.schema_properties(schema).items():
@@ -2681,6 +2687,137 @@ class CommitmentResponseGenerationTest(unittest.TestCase):
                     if reaches_null(prop, set()):
                         self.assertTrue(generate.contains_dynamic_any(go_type), go_type)
                         self.assertIn((name, json_name), generate.INTENTIONAL_ANY_FIELDS)
+
+
+@unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+class ControlMediaBuyGenerationTest(unittest.TestCase):
+    """control_media_buy, and the name core/keyword-target.json needs for it."""
+
+    def setUp(self):
+        generate._reset_will_generate_cache()
+        self.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def tearDown(self):
+        generate._reset_will_generate_cache()
+
+    def test_response_is_its_own_union_of_three_variants(self):
+        self.assertEqual("union_interface", self.entries["ControlMediaBuyResponse"]["kind"])
+        self.assertEqual(
+            ["ControlApplied", "ControlError", "ControlSubmitted"],
+            [
+                name for name, entry in self.entries.items()
+                if entry["kind"] == "struct" and entry.get("variant")
+                and entry["schema"].startswith("media-buy/control-media-buy-response.json#/oneOf/")
+            ],
+        )
+
+    def test_package_patches_are_typed(self):
+        request = generate.schema_to_struct(
+            "ControlMediaBuyRequest", self.entries["ControlMediaBuyRequest"]["schema_obj"],
+        )
+        self.assertIn("Packages []PackageControl", " ".join(request.split()))
+        self.assertEqual("support", self.entries["PackageControl"]["section"])
+
+    def test_keyword_target_name_clash_is_resolved_by_an_alias(self):
+        # The inline items of core/targeting.json keep the exported name; the
+        # file package-control.json references gets its own.
+        self.assertEqual(
+            "core/targeting.json#/properties/keyword_targets/items",
+            self.entries["KeywordTarget"]["schema"],
+        )
+        self.assertEqual("core/keyword-target.json", self.entries["CanonicalKeywordTarget"]["schema"])
+        self.assertEqual("CanonicalKeywordTarget", generate.REF_ALIASES["KeywordTarget"])
+        for name in (
+            "KeywordTarget", "KeywordTargetUpdate", "KeywordTargetRef",
+            "NegativeKeywordTarget", "NegativeKeyword",
+        ):
+            with self.subTest(name=name):
+                self.assertIn(name, self.entries)
+
+        package = generate.schema_to_struct("PackageControl", self.entries["PackageControl"]["schema_obj"])
+        for field in ("KeywordTargetsAdd", "KeywordTargetsRemove", "NegativeKeywordsAdd", "NegativeKeywordsRemove"):
+            with self.subTest(field=field):
+                self.assertIn(f"{field} []CanonicalKeywordTarget", " ".join(package.split()))
+        targeting = generate.schema_to_struct("Targeting", self.entries["Targeting"]["schema_obj"])
+        self.assertIn("KeywordTargets []KeywordTarget ", " ".join(targeting.split()))
+
+    def test_the_two_keyword_target_schemas_have_the_same_fields(self):
+        # The alias keeps two Go types for one shape, as NegativeKeyword and
+        # NegativeKeywordTarget already are (there both come from one schema
+        # file; here they come from two). If the shapes diverge, each type still
+        # follows its own schema; this records that they match today.
+        inline = self.entries["KeywordTarget"]["schema_obj"]
+        file = self.entries["CanonicalKeywordTarget"]["schema_obj"]
+        self.assertEqual(set(generate.schema_properties(inline)), set(generate.schema_properties(file)))
+        self.assertEqual(generate.schema_required_names(inline), generate.schema_required_names(file))
+        self.assertEqual(inline.get("additionalProperties"), file.get("additionalProperties"))
+
+    def test_without_the_alias_discovery_reports_the_clash(self):
+        aliases = {k: v for k, v in generate.REF_ALIASES.items() if k != "KeywordTarget"}
+        with mock.patch.object(generate, "REF_ALIASES", aliases):
+            generate._reset_will_generate_cache()
+            with self.assertRaisesRegex(
+                ValueError, "auto-discovered schema type name collision.*KeywordTarget: core/keyword-target.json",
+            ):
+                generate.auto_ref_schema_paths()
+
+    def test_keyword_bid_price_is_a_pointer(self):
+        source = generate.schema_to_struct(
+            "CanonicalKeywordTarget", self.entries["CanonicalKeywordTarget"]["schema_obj"],
+        )
+        self.assertIn('BidPrice *float64 `json:"bid_price,omitempty"`', " ".join(source.split()))
+
+    def test_nullable_request_fields_are_reviewed_any_naming_536(self):
+        fields = {
+            ("ControlMediaBuyRequest", "daily_budget_cap"),
+            ("ControlMediaBuyRequest", "frequency_cap"),
+            ("ControlMediaBuyRequest", "budget_cap_timezone"),
+            ("ControlMediaBuyRequest", "bidding"),
+            ("PackageControl", "budget"),
+            ("PackageControl", "daily_budget_cap"),
+            ("PackageControl", "min_spend_target"),
+            ("PackageControl", "bidding"),
+            ("PackageControl", "targeting_overlay"),
+        }
+        for key in sorted(fields):
+            with self.subTest(field=key):
+                self.assertIn("adcp-go#536", generate.INTENTIONAL_ANY_FIELDS[key])
+                entry = self.entries[key[0]]
+                prop = generate.schema_properties(entry["schema_obj"])[key[1]]
+                go_type, _ = generate.field_go_type_info(
+                    key[0], key[1], prop, generate.schema_required_names(entry["schema_obj"]),
+                )
+                self.assertEqual("any", go_type)
+
+    def test_total_budget_reuses_the_media_buy_budget_type(self):
+        key = ("ControlMediaBuyRequest", "total_budget")
+        self.assertEqual("MediaBuyBudget", generate.CROSS_TYPE_INLINE_HINTS[key])
+        self.assertEqual("*MediaBuyBudget", generate.INLINE_TYPE_HINTS[key])
+        request = generate.schema_to_struct(
+            "ControlMediaBuyRequest", self.entries["ControlMediaBuyRequest"]["schema_obj"],
+        )
+        self.assertIn('TotalBudget *MediaBuyBudget `json:"total_budget,omitempty"`', " ".join(request.split()))
+
+    def test_optional_request_numbers_keep_an_explicit_zero(self):
+        request = generate.schema_to_struct(
+            "ControlMediaBuyRequest", self.entries["ControlMediaBuyRequest"]["schema_obj"],
+        )
+        package = generate.schema_to_struct("PackageControl", self.entries["PackageControl"]["schema_obj"])
+        self.assertIn('AdcpMajorVersion *int `json:"adcp_major_version,omitempty"`', " ".join(request.split()))
+        self.assertIn('Impressions *float64 `json:"impressions,omitempty"`', " ".join(package.split()))
+
+    def test_control_media_buy_adds_no_unreviewed_any(self):
+        report = generate.any_coverage_report()
+        self.assertEqual(
+            [],
+            [
+                (r["type"], r["json"]) for r in report["records"]
+                if r["type"] in {
+                    "ControlMediaBuyRequest", "PackageControl", "CanonicalKeywordTarget",
+                    "ControlApplied", "ControlError", "ControlSubmitted",
+                } and not r["allowed"]
+            ],
+        )
 
 
 class ObjectRefScalarAliasGuardTest(unittest.TestCase):
