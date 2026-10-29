@@ -365,6 +365,7 @@ func buildBundle(ctx context.Context, cfg Config, recorder Recorder, logger *slo
 	}
 	configSvc, err := identityconfig.New(source, cfg.IdentityConfig.RefreshInterval,
 		identityconfig.WithStartConfig(startConfigFor(cfg.IdentityConfig)),
+		identityconfig.WithMaxSnapshotEntries(cfg.IdentityConfig.MaxSnapshotEntries),
 		identityconfig.WithLogger(logger),
 		identityconfig.WithRefreshObserver(func(outcome string) {
 			recorder.ConfigRefresh(context.Background(), outcome)

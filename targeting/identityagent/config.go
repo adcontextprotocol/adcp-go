@@ -294,6 +294,17 @@ type IdentityConfigSourceConfig struct {
 	// floor: a deployment with a handful of packages may legitimately want
 	// a cap in the tens.
 	MaxConfigEntries int
+
+	// MaxSnapshotEntries bounds the snapshot the identity-config service
+	// installs, across refreshes: it caps the cumulative result of every
+	// delta the endpoint has sent over the process's life, where
+	// MaxConfigEntries caps only one response. Loaded from
+	// CONFIG_MAX_SNAPSHOT_ENTRIES; zero or negative disables the cap
+	// (the default — the previous unbounded behavior). When set, a delta
+	// that would push the installed snapshot over the cap is rejected,
+	// the prior snapshot is kept, and the refresh reports an error
+	// outcome, so a frozen snapshot is loud rather than silent.
+	MaxSnapshotEntries int
 }
 
 // minConfigMaxResponseBytes is the floor on a positive
@@ -523,6 +534,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	configMaxSnapshotEntries, err := lookupInt("CONFIG_MAX_SNAPSHOT_ENTRIES", 0)
+	if err != nil {
+		errs = append(errs, err)
+	}
 	slotIDs, err := parseTmpxSlotIDs(os.Getenv("TMPX_SLOT_IDS"))
 	if err != nil {
 		errs = append(errs, err)
@@ -639,6 +654,7 @@ func LoadConfigFromEnv() (Config, error) {
 			ExtraHeaders:       extraHeaders,
 			MaxResponseBytes:   configMaxResponseBytes,
 			MaxConfigEntries:   configMaxEntries,
+			MaxSnapshotEntries: configMaxSnapshotEntries,
 		},
 		AudienceValkey:         audienceBlock,
 		FCapValkey:             fcapBlock,
