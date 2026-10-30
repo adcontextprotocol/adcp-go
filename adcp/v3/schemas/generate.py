@@ -162,6 +162,8 @@ TOOL_SCHEMAS = [
     "media-buy/accept-proposal-response.json",
     "media-buy/buy-products-request.json",
     "media-buy/buy-products-response.json",
+    "media-buy/control-media-buy-request.json",
+    "media-buy/control-media-buy-response.json",
     # Reporting
     "media-buy/sync-reporting-status-request.json",
     "media-buy/sync-reporting-status-response.json",
@@ -324,6 +326,7 @@ SUPPORT_SCHEMAS = [
     "creative/validate-input-result.json",
     "media-buy/package-request.json",
     "media-buy/package-update.json",
+    "media-buy/package-control.json",
     "media-buy/proposal-refinement.json",
     "media-buy/proposal-budget-constraint.json",
     "media-buy/product-discovery-criteria.json",
@@ -1406,6 +1409,7 @@ CROSS_TYPE_INLINE_HINTS = {
     ('AcceptProposalRequest', 'total_budget'): 'MediaBuyBudget',
     ('BuyProductsRequest', 'total_budget'): 'MediaBuyBudget',
     ('AcceptProposalRequest', 'io_acceptance'): 'IOAcceptance',
+    ('ControlMediaBuyRequest', 'total_budget'): 'MediaBuyBudget',
 }
 
 # Named enum helpers generated from inline JSON Schema pointers. These cover
@@ -1567,6 +1571,11 @@ REF_ALIASES = {
     # CanonicalMediaBuyAction in Go; core/canonical-media-buy-action.json is the
     # object that available_actions items reference.
     'CanonicalMediaBuyAction': 'CanonicalAvailableAction',
+    # core/keyword-target.json (package-control.json's keyword add/remove rows)
+    # PascalCases to KeywordTarget, which the inline items of
+    # core/targeting.json#/properties/keyword_targets already own and export
+    # (INLINE_SCHEMA_TYPES). The two schemas are not the same file.
+    'KeywordTarget': 'CanonicalKeywordTarget',
     'AccountInput': 'AccountInput',
     'GovernanceAccountInput': 'GovernanceAccountInput',
     'CreativeInput': 'CreativeInput',
@@ -1605,12 +1614,14 @@ INLINE_TYPE_HINTS = {
     ('DeclineProposalsRequest', 'adcp_major_version'): '*int',
     ('AcceptProposalRequest', 'adcp_major_version'): '*int',
     ('BuyProductsRequest', 'adcp_major_version'): '*int',
+    ('ControlMediaBuyRequest', 'adcp_major_version'): '*int',
     # Optional request numbers: an explicit 0 cap is not the same as no cap, so
     # these are pointers.
     ('AcceptProposalRequest', 'daily_budget_cap'): '*float64',
     ('BuyProductsRequest', 'daily_budget_cap'): '*float64',
     ('AcceptProposalRequest', 'total_budget'): '*MediaBuyBudget',
     ('BuyProductsRequest', 'total_budget'): '*MediaBuyBudget',
+    ('ControlMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
     ('AcceptProposalRequest', 'io_acceptance'): '*IOAcceptance',
     ('CommittedMediaBuy', 'purchase_bindings'): 'PurchaseBinding',
     ('ProductPurchaseInput', 'format_option_refs'): '[]FormatOptionRef',
@@ -1619,9 +1630,19 @@ INLINE_TYPE_HINTS = {
     ('ProductPurchaseInput', 'daily_budget_cap'): '*float64',
     ('ProductPurchaseInput', 'min_spend_target'): '*float64',
     ('ProductPurchaseInput', 'impressions'): '*float64',
+    ('PackageControl', 'impressions'): '*float64',
     ('ProductPurchaseInput', 'pacing'): 'string',
     ('ProductPurchaseInput', 'audience_evidence_pins'): '[]AudienceEvidencePin',
     ('ProductPurchaseInput', 'performance_standards'): '[]CanonicalPerformanceStandard',
+    # control_media_buy: these request properties have a null branch, and a typed
+    # Go field decodes null like omission (daily_budget_cap's schema says "null
+    # removes it"). So each stays `any` (see INTENTIONAL_ANY_FIELDS, adcp-go#536)
+    # instead of the *float64/*string the generator would pick for a nullable type.
+    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'any',
+    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'any',
+    ('PackageControl', 'budget'): 'any',
+    ('PackageControl', 'daily_budget_cap'): 'any',
+    ('PackageControl', 'min_spend_target'): 'any',
     ('RequestProposalsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('DeclineProposalsResponse', 'results'): 'DeclineProposalResult',
     ('RefineProposalsRequest', 'refinements'): 'ProposalRefinement',
@@ -1967,6 +1988,7 @@ INLINE_TYPE_HINTS = {
     # OptimizationGoal field intentionally stays float64.
     ('CreativeAsset', 'weight'): '*float64',
     ('KeywordTarget', 'bid_price'): '*float64',
+    ('CanonicalKeywordTarget', 'bid_price'): '*float64',
     ('AudienceSelector', 'min_value'): '*float64',
     ('AudienceSelector', 'max_value'): '*float64',
     ('ForecastPoint', 'budget'): '*float64',
@@ -2035,6 +2057,18 @@ INTENTIONAL_ANY_FIELDS = {
     ('CommittedMediaBuy', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('BuyProductsRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
     ('BuyProductsRequest', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; CreateMediaBuyRequest.bidding stays any too',
+    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'type is [string, null] and null restores the default timezone; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'frequency_cap'): 'anyOf core/media-buy-frequency-cap.json or null, and null removes the cap; left dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
+    ('ControlMediaBuyRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
+    ('PackageControl', 'budget'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'min_spend_target'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
+    ('PackageControl', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('PackageControl', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
+    ('ControlApplied', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('ProductPurchaseInput', 'pricing'): 'core/canonical-pricing-option.json is not generated: its free-form parameters object has no reviewed Go type',
     ('ProductPurchaseInput', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; PackageInput.bidding stays any too',
     ('ProductPurchaseInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',

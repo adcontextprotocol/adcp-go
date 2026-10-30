@@ -9606,6 +9606,27 @@ type PackageUpdate struct {
 	Ext                    any                   `json:"ext,omitempty"`
 }
 
+// PackageControl — Operational controls for an existing package that remain inside its accepted commercial envelope.
+type PackageControl struct {
+	PackageID              string                   `json:"package_id"`
+	Budget                 any                      `json:"budget,omitempty"`           // Replace this package's hard lifetime spend cap. A number in a resulting
+	DailyBudgetCap         any                      `json:"daily_budget_cap,omitempty"` // Replace this package's subordinate hard daily cap; null removes it. Numeric
+	MinSpendTarget         any                      `json:"min_spend_target,omitempty"` // Replace this package's soft minimum-spend target. A number is valid only for
+	Impressions            *float64                 `json:"impressions,omitempty"`
+	Pacing                 Pacing                   `json:"pacing,omitempty"` // Replace package pacing, subordinate to media-buy pacing. In a resulting
+	Bidding                any                      `json:"bidding,omitempty"`
+	Paused                 *bool                    `json:"paused,omitempty"`
+	Canceled               *bool                    `json:"canceled,omitempty"` // Exercise an already-accepted unilateral package cancellation right. If seller
+	CancellationReason     string                   `json:"cancellation_reason,omitempty"`
+	TargetingOverlay       any                      `json:"targeting_overlay,omitempty"` // Per-dimension targeting patch. Omission preserves the current dimension, a
+	CatalogIDs             []string                 `json:"catalog_ids,omitempty"`       // Replace the package's promoted catalogs with references previously managed
+	KeywordTargetsAdd      []CanonicalKeywordTarget `json:"keyword_targets_add,omitempty"`
+	KeywordTargetsRemove   []CanonicalKeywordTarget `json:"keyword_targets_remove,omitempty"`
+	NegativeKeywordsAdd    []CanonicalKeywordTarget `json:"negative_keywords_add,omitempty"`
+	NegativeKeywordsRemove []CanonicalKeywordTarget `json:"negative_keywords_remove,omitempty"`
+	OptimizationGoals      []any                    `json:"optimization_goals,omitempty"`
+}
+
 // ProposalRefinement — Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with
 type ProposalRefinement struct {
 	Action                     string                    `json:"action,omitempty"`      // revise creates a new draft snapshot with changed commercial terms. finalize
@@ -10052,6 +10073,13 @@ type Indicator struct {
 type InstallmentRef struct {
 	CollectionRef CollectionRef `json:"collection_ref"`
 	InstallmentID string        `json:"installment_id"` // Installment ID within the referenced collection.
+}
+
+// CanonicalKeywordTarget — A keyword and match-mode identity used by canonical package targeting controls.
+type CanonicalKeywordTarget struct {
+	Keyword   string    `json:"keyword"`
+	MatchType MatchType `json:"match_type"`
+	BidPrice  *float64  `json:"bid_price,omitempty"`
 }
 
 // MacroEncoding — Exact encoding profile applied to a concrete substitution value. `rfc3986` encodes UTF-8 bytes
@@ -13502,6 +13530,74 @@ type BuyProductsRequest struct {
 
 // BuyProductsResponse — Compact direct-purchase result containing the MediaBuy identity and accepted immutable proposal
 type BuyProductsResponse = MediaBuyCommitmentResponse
+
+// ControlMediaBuyRequest — Apply revision-checked delivery controls or non-commercial metadata changes authorized by the
+type ControlMediaBuyRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Account                CanonicalAccountRef     `json:"account"`
+	MediaBuyID             string                  `json:"media_buy_id"`
+	Revision               int                     `json:"revision"`       // Required optimistic-concurrency revision from the latest MediaBuy snapshot.
+	Name                   string                  `json:"name,omitempty"` // Replace the human-readable MediaBuy name as revision-checked operational
+	Paused                 *bool                   `json:"paused,omitempty"`
+	Canceled               *bool                   `json:"canceled,omitempty"` // Exercise an already-accepted unilateral cancellation right. A cancellation
+	CancellationReason     string                  `json:"cancellation_reason,omitempty"`
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`
+	DailyBudgetCap         any                     `json:"daily_budget_cap,omitempty"`    // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
+	FrequencyCap           any                     `json:"frequency_cap,omitempty"`       // Replace the shared MediaBuy frequency cap; null removes it. The change applies
+	BudgetCapTimezone      any                     `json:"budget_cap_timezone,omitempty"` // Replace the shared IANA cap-day timezone override; null restores the default
+	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"` // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
+	Bidding                any                     `json:"bidding,omitempty"`
+	Packages               []PackageControl        `json:"packages,omitempty"` // Operational patches keyed by package_id. Each package_id MUST appear at most
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// ControlMediaBuyResponse is a discriminated union — use one of the generated variant structs.
+type ControlMediaBuyResponse interface {
+	isControlMediaBuyResponse()
+}
+
+type ControlApplied struct {
+	Status             string                     `json:"status"`
+	MediaBuyID         string                     `json:"media_buy_id"`
+	Revision           int                        `json:"revision"`
+	MediaBuyStatus     MediaBuyStatus             `json:"media_buy_status,omitempty"`
+	ImplementationDate *string                    `json:"implementation_date,omitempty"`
+	AffectedPackageIDs []string                   `json:"affected_package_ids,omitempty"`
+	AvailableActions   []CanonicalAvailableAction `json:"available_actions,omitempty"`
+	Warnings           []any                      `json:"warnings,omitempty"` // Non-blocking observations about this completed control. The control was still
+	Context            any                        `json:"context,omitempty"`
+	Ext                any                        `json:"ext,omitempty"`
+	Replayed           *bool                      `json:"replayed,omitempty"`
+}
+
+type ControlError struct {
+	Status   string      `json:"status"`
+	Errors   []AdcpError `json:"errors"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+type ControlSubmitted struct {
+	Status   string      `json:"status"`
+	TaskID   string      `json:"task_id"`
+	Message  string      `json:"message,omitempty"`
+	Errors   []AdcpError `json:"errors,omitempty"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+func (ControlApplied) isControlMediaBuyResponse()   {}
+func (ControlError) isControlMediaBuyResponse()     {}
+func (ControlSubmitted) isControlMediaBuyResponse() {}
 
 // SyncReportingStatusRequest — Submit the authenticated consumer's operational reporting status for expected configuration
 type SyncReportingStatusRequest struct {
