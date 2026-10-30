@@ -194,9 +194,48 @@ type GovernanceAccountInput struct {
 // CreativeInput is a single creative in a sync_creatives request.
 type CreativeInput struct {
 	CreativeID string         `json:"creative_id"`
+	RevisionID string         `json:"revision_id,omitempty"`
 	FormatID   *FormatRef     `json:"format_id,omitempty"`
 	Name       string         `json:"name,omitempty"`
 	Assets     map[string]any `json:"assets,omitempty"`
+	// Localization is the sync-only materialized-localization mutation
+	// (core/creative-localization.json), kept as `any` — the same shaping
+	// as CreativeCapabilities.Localization in types.go: the nested
+	// variant graph stays with the generated-types pipeline. The field
+	// has three states on the wire: an object transactionally replaces
+	// the source assets and the complete locale set; omission preserves
+	// the existing localization only when the top-level source assets
+	// are unchanged; and an explicit null removes the localization.
+	// Because encoding/json would decode null to nil — indistinguishable
+	// from omission — UnmarshalJSON decodes an explicit null to the
+	// ClearField() sentinel instead: test `in.Localization ==
+	// ClearField()` to detect a removal request, and note the sentinel
+	// re-encodes as null. The schema requires receivers to advertise
+	// creative.localization in get_adcp_capabilities before accepting
+	// this field, so a typed SyncCreatives hook should reject an item
+	// that carries localization unless it advertises that capability.
+	Localization any `json:"localization,omitempty"`
+}
+
+// UnmarshalJSON decodes a CreativeInput, preserving the three-state
+// semantics of the localization field: encoding/json alone would lose
+// an explicit `"localization": null` (it decodes to a nil `any`, the
+// same as omission), so a present-and-null localization is decoded to
+// the ClearField() sentinel, which re-encodes as null.
+func (c *CreativeInput) UnmarshalJSON(data []byte) error {
+	type Alias CreativeInput
+	aux := &struct{ *Alias }{Alias: (*Alias)(c)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if v, ok := raw["localization"]; ok && string(v) == "null" {
+		c.Localization = ClearField()
+	}
+	return nil
 }
 
 // CreativeFilters contains filters for list_creatives.
