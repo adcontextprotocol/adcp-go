@@ -69,7 +69,14 @@ func permissiveSchemaFor[In any]() *jsonschema.Schema {
 		rt = rt.Elem()
 	}
 
-	schema, err := jsonschema.ForType(rt, &jsonschema.ForOptions{})
+	// ForType cannot see through an Optional[T]: advertise it as *T.
+	typeSchemas, err := optionalTypeSchemas(rt)
+	if err != nil {
+		// Fallback to permissive empty schema if type inference fails.
+		return &jsonschema.Schema{Type: "object"}
+	}
+
+	schema, err := jsonschema.ForType(rt, &jsonschema.ForOptions{TypeSchemas: typeSchemas})
 	if err != nil {
 		// Fallback to permissive empty schema if type inference fails.
 		return &jsonschema.Schema{Type: "object"}
