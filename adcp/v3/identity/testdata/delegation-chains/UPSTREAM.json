@@ -1,0 +1,12 @@
+{
+  "description": "Cross-SDK delegation-chain vectors for L2 Grants in trust records (experimental in AdCP 3.3), copied byte for byte from the v3.3.0-beta.3 release of adcontextprotocol/adcp. They arrived in PR #8473, an erratum to ratified R6; the file is unchanged from that PR's head (3832036f8b2c153b7954992a2ffa06d1f5057898), which adcp-client also vendors.",
+  "repository": "https://github.com/adcontextprotocol/adcp",
+  "tag": "v3.3.0-beta.3",
+  "commit": "a6106149a2b5c929eec0caa0042adbae4ccf3a9c",
+  "pr": 8473,
+  "path": "static/test-vectors/delegation-chains.json",
+  "spec": "docs/building/by-layer/L2/accounts-and-agents.mdx#grants-in-trust-records-experimental",
+  "files": {
+    "delegation-chains.json": "sha256:962d0f954c03a03c0e27ca6c9bd6c3236bf9cac140a46b60a4c9d2392f552b86"
+  }
+}

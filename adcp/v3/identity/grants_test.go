@@ -350,16 +350,22 @@ func TestGrantExclusiveAndHooks(t *testing.T) {
 	res, _ = (&GrantEvaluator{Records: r.eval, SellerAuthorization: fail}).Check(ctx, req)
 	require.False(t, res.Authorized, "a hook error fails closed")
 
-	// exclusive_grants makes grants[] exhaustive for the scopes it names...
+	// exclusive_grants makes grants[] the complete list, whatever the
+	// scope (adcp#8473): a scope no grant names is not left to the seller...
 	r = grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"x-7k3q.com","scopes":["adcp:media_buying"]}],"exclusive_grants":true}`}))
 	res, _ = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(ctx, req)
 	require.False(t, res.Authorized)
 	require.Equal(t, GrantReasonAbsent, res.Reason)
-	// ...and only those.
 	creative := req
 	creative.Scope = ScopeCreativeGeneration
 	res, _ = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(ctx, creative)
-	require.True(t, res.Authorized)
+	require.False(t, res.Authorized)
+	require.Equal(t, GrantReasonAbsent, res.Reason)
+	// ...and an exclusive list with no grants authorizes no one.
+	r = grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[],"exclusive_grants":true}`}))
+	res, _ = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(ctx, req)
+	require.False(t, res.Authorized)
+	require.Equal(t, GrantReasonAbsent, res.Reason)
 
 	// A 200 from the brand's trust.json disables the legacy brand.json hook.
 	legacyCalled := false
@@ -838,37 +844,62 @@ func TestHostGranteeCoversNoClaim(t *testing.T) {
 	require.ErrorContains(t, err, "agents[]", "an author is told to narrow with agents[]")
 }
 
-// TestNonRegistrableGranteeScopesStayExclusive pins the rule that keeps the
-// grantee rule from failing open: a grant that covers no claim still counts
-// for exclusive_grants, so the seller's discretion is not consulted for its
-// scopes.
-func TestNonRegistrableGranteeScopesStayExclusive(t *testing.T) {
+// TestNonRegistrableGranteeStaysExclusive: a grant that covers no claim
+// leaves an exclusive record exclusive, for every scope, so ignoring the
+// grant never fails open.
+func TestNonRegistrableGranteeStaysExclusive(t *testing.T) {
 	yes := func(context.Context, GrantRequest) (bool, error) { return true, nil }
 	req := GrantRequest{AgentOrigin: agencyAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "agency-7k3q.com"}
 	for _, grantee := range []string{"buy.agency-7k3q.com", "github.io"} {
 		t.Run(grantee, func(t *testing.T) {
 			r := grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"` + grantee + `","scopes":["adcp:media_buying"]}],"exclusive_grants":true}`}))
-			hookCalled := false
-			hook := func(ctx context.Context, req GrantRequest) (bool, error) { hookCalled = true; return yes(ctx, req) }
-			res, err := (&GrantEvaluator{Records: r.eval, SellerAuthorization: hook}).Check(context.Background(), req)
-			require.NoError(t, err)
-			require.False(t, res.Authorized)
-			require.Equal(t, GrantReasonAbsent, res.Reason)
-			require.False(t, hookCalled, "the grant's scopes keep grants[] exhaustive")
-
-			// Scopes the grant does not name stay at the seller's discretion.
-			creative := req
-			creative.Scope = ScopeCreativeGeneration
-			res, err = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(context.Background(), creative)
-			require.NoError(t, err)
-			require.True(t, res.Authorized)
+			for _, scope := range []string{ScopeMediaBuying, ScopeCreativeGeneration} {
+				hookCalled := false
+				hook := func(ctx context.Context, req GrantRequest) (bool, error) { hookCalled = true; return yes(ctx, req) }
+				claim := req
+				claim.Scope = scope
+				res, err := (&GrantEvaluator{Records: r.eval, SellerAuthorization: hook}).Check(context.Background(), claim)
+				require.NoError(t, err)
+				require.False(t, res.Authorized, scope)
+				require.Equal(t, GrantReasonAbsent, res.Reason)
+				require.False(t, hookCalled, "an exclusive record never defers to the seller")
+			}
 
 			// Without exclusive_grants, the uncovered claim is at the
 			// seller's discretion.
 			r = grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": `{"grants":[{"grantee":"` + grantee + `","scopes":["adcp:media_buying"]}]}`}))
-			res, err = (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(context.Background(), req)
+			res, err := (&GrantEvaluator{Records: r.eval, SellerAuthorization: yes}).Check(context.Background(), req)
 			require.NoError(t, err)
 			require.True(t, res.Authorized)
+			require.Equal(t, GrantSourceSeller, res.Source)
 		})
 	}
+}
+
+// TestUnreadableIntermediaryIsAnOutageOnlyIfNoOtherChainAuthorizes: with
+// several candidate chains, one intermediary record that cannot be read
+// does not mask another chain that authorizes (L2 Grants in trust records).
+func TestUnreadableIntermediaryIsAnOutageOnlyIfNoOtherChainAuthorizes(t *testing.T) {
+	ctx := context.Background()
+	// The brand operates the account, so either first grant may start a chain.
+	req := GrantRequest{AgentOrigin: platformAgent, BrandDomain: "brand-7k3q.com", AccountOperator: "brand-7k3q.com"}
+	brand := `{"grants":[{"grantee":"down-7k3q.com","scopes":["adcp:media_buying"]},{"grantee":"agency-7k3q.com","scopes":["adcp:media_buying"]}],"exclusive_grants":true}`
+	agencyGrantsPlatform := `{"agents":[{"url":"https://buy.agency-7k3q.com/mcp","roles":["adcp:buying"]}],"grants":[{"grantee":"platform-7k3q.com","scopes":["adcp:media_buying"]}]}`
+
+	r := grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": brand, "agency-7k3q.com": agencyGrantsPlatform}))
+	r.server.fail(trustURL("down-7k3q.com"), errors.New("timeout"))
+	res, err := (&GrantEvaluator{Records: r.eval}).Check(ctx, req)
+	require.NoError(t, err)
+	require.True(t, res.Authorized, res.Reason)
+	require.Equal(t, GrantSourceGrant, res.Source)
+
+	// With no other chain, the unreadable record is an outage, never
+	// grant_absent, even under exclusive_grants.
+	r = grantRig(t, with(baseRecords, map[string]string{"brand-7k3q.com": brand}))
+	r.server.fail(trustURL("down-7k3q.com"), errors.New("timeout"))
+	res, err = (&GrantEvaluator{Records: r.eval}).Check(ctx, req)
+	require.NoError(t, err)
+	require.False(t, res.Authorized)
+	require.True(t, res.Unavailable)
+	require.Equal(t, GrantReasonTrustRecordUnavailable, res.Reason)
 }
