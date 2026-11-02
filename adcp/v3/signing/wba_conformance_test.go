@@ -163,7 +163,7 @@ func TestWBAVectorsArePinned(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(b, &up))
 	require.Equal(t, "https://github.com/adcontextprotocol/adcp", up.Repository)
-	require.Equal(t, "f44785a5b65db93988f30ad3d23ba5849f1a1d5e", up.Commit)
+	require.Equal(t, "a6106149a2b5c929eec0caa0042adbae4ccf3a9c", up.Commit, "v3.3.0-beta.3")
 	var vendored []string
 	require.NoError(t, filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {

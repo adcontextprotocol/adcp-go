@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3"
@@ -47,14 +48,34 @@ const (
 	GrantReasonTrustRecordUnavailable   = "trust_record_unavailable"
 	GrantReasonAuthorizationHookFailure = "authorization_hook_failed"
 	GrantReasonSignerUnlisted           = "signer_not_listed"
+	GrantReasonHouseUnavailable         = "brand_house_unavailable"
+)
+
+// What authorized a claim: GrantAuthorization.Source.
+const (
+	// GrantSourceImplicit: account.operator and the signer's operator are
+	// each the brand or its house.
+	GrantSourceImplicit = "implicit"
+	// GrantSourceGrant: a delegation chain in the house's trust record.
+	GrantSourceGrant = "grant"
+	// GrantSourceSeller: GrantEvaluator.SellerAuthorization, for a claim no
+	// chain covers when the house's grants are not exclusive.
+	GrantSourceSeller = "seller"
+	// GrantSourceLegacy: GrantEvaluator.LegacyAuthorization (brand.json
+	// authorized_operators), while the house has never published a trust
+	// record.
+	GrantSourceLegacy = "legacy"
 )
 
 // GrantAuthorization is the outcome of GrantEvaluator.Check.
 type GrantAuthorization struct {
 	Authorized bool
+	// Source is what authorized the claim (a GrantSource constant); empty
+	// on a denial.
+	Source string
 	// Reason explains a denial, for logs only.
 	Reason string
-	// LegacyFallbackAllowed reports that the brand has never published a
+	// LegacyFallbackAllowed reports that the house has never published a
 	// trust record (404/410 before any 200), the only case in which
 	// brand.json authorized_operators may still decide.
 	LegacyFallbackAllowed bool
@@ -63,7 +84,8 @@ type GrantAuthorization struct {
 	// SERVICE_UNAVAILABLE instead of grant_absent.
 	Unavailable bool
 	// ExpiresAt bounds how long an authorization may be reused: the
-	// earliest of the records' cache lifetimes and each link's valid_until.
+	// earliest of the chain's record lifetimes and each grant's valid_until
+	// (the latest-expiring chain when several authorize).
 	// It is set on every authorization, including a SellerAuthorization or
 	// LegacyAuthorization approval (bounded by one polling interval), and
 	// zero only on a denial.
@@ -119,33 +141,65 @@ func unestablishedDenial() error {
 // GrantEvaluator. An error fails closed.
 type GrantHook func(ctx context.Context, req GrantRequest) (bool, error)
 
-// GrantEvaluator evaluates demand-side grants from the brand's trust record
-// (DR-0025, specs/agent-identity-3-3.md R6):
-//   - the brand's own record authorizes, never the buyer operator's;
+// BrandHouse is the house a brand's verified brand.json names, as the
+// mutual-assertion trust model resolves it (L2 Grants in trust records).
+type BrandHouse struct {
+	// Domain is the house's domain. Its record authorizes the brand's
+	// acts-for claims.
+	Domain string
+	// BrandID is the brand's child-brand id in the house's portfolio; grant
+	// profiles.adcp.brands are checked against it. Empty keeps the claim's
+	// BrandID.
+	BrandID string
+}
+
+// HouseResolver returns the house brand.json's mutual-assertion model
+// resolves for a brand: a house redirect, or a house_domain whose
+// brand_refs[] lists the brand back. It returns nil when the model resolves
+// none, including a house that does not list the brand back: the brand is
+// then its own house. It must use only seller-verified brand.json, never a
+// buyer-selected authorizer. An error is an outage.
+type HouseResolver func(ctx context.Context, brandDomain, brandID string) (*BrandHouse, error)
+
+// GrantEvaluator evaluates demand-side grants from the house's trust record
+// (DR-0025, specs/agent-identity-3-3.md R6, and the delegation-chain rule in
+// L2 Grants in trust records, as amended by adcontextprotocol/adcp#8473):
+//   - the house's record authorizes, never the buyer operator's: the house
+//     ResolveHouse returns, or the brand's own domain without the hook or
+//     when it returns nil. No other record starts a chain;
 //   - a grant's grantee must be a registrable domain under the pinned PSL
 //     snapshot (L2 Grants in trust.json). A grant whose grantee is not one
 //     (a host such as buy.agency.com, or a public suffix such as github.io)
-//     covers no claim, and its scopes still count for exclusive_grants;
+//     covers no claim;
 //   - the account operator, the brand's domain, grantee, and the signer's
 //     operator compare as registrable domains under the same snapshot;
-//   - authority is implicit when the account operator, the brand, and the
-//     signer's operator share a registrable domain;
-//   - otherwise a chain must reach the signer's operator with the account
-//     operator on it, in one of three shapes: the brand grants the signer's
-//     operator, which is the account operator; the brand is the account
-//     operator and grants the signer's operator (a self-operated brand
-//     whose agent a platform hosts); or the brand grants the account
-//     operator, whose own record grants the signer's operator. There is no
-//     third link;
-//   - every link must cover the claim's scope, brand, countries, agent
-//     narrowing, and validity window, which is the intersection rule;
-//   - exclusive_grants makes grants[] exhaustive for the scopes it names,
-//     disabling SellerAuthorization for them. Every grant's scopes count,
-//     including a grant that covers no claim, so a record whose only grant
-//     for a scope names a host stays exhaustive for that scope;
-//   - a 200 from the brand's trust.json makes it the only source of grants,
+//   - authority is implicit when the account operator and the signer's
+//     operator are each the brand or its house, in either combination: an
+//     organization's own agents act for its child brands without a grant.
+//     The house is the one ResolveHouse returns, so implicit authority and
+//     the authorizing record never disagree. ResolveHouse is not called for
+//     a claim implicit on the brand's own domain. For every other claim, a
+//     ResolveHouse error (or a house with no registrable domain) is
+//     SERVICE_UNAVAILABLE, never grant_absent, so an outage never narrows
+//     an implicit authorization to a denial;
+//   - otherwise a delegation chain of at most two grants must reach the
+//     signer's operator: the house grants a domain, and that domain's own
+//     record may grant the next. The account operator must be the brand,
+//     the house, or the first grant's grantee. There is no third grant;
+//   - every grant in the chain must cover the claim's scope, brand,
+//     countries, agent narrowing, and validity window, which is the
+//     intersection rule;
+//   - when several chains are candidates, an intermediary record that
+//     cannot be read is an outage only if no other chain authorizes;
+//   - exclusive_grants on the house's record makes grants[] the complete
+//     list, whatever the scope: a claim no chain covers is grant_absent and
+//     SellerAuthorization is not consulted. Without it, the claim is at the
+//     seller's discretion, and a grant that does not cover the claim never
+//     narrows it. The flag in an intermediary's record, or in the brand's
+//     own record when it has a house, does not count;
+//   - a 200 from the house's trust.json makes it the only source of grants,
 //     so LegacyAuthorization (brand.json authorized_operators) runs only
-//     when the brand has never published one. A fetch failure, including a
+//     when the house has never published one. A fetch failure, including a
 //     404 or 410 after a record was published, is never absence and invokes
 //     neither hook: the last record read stands. A claim marked NonSpend is
 //     evaluated on the last records read while they are within the
@@ -161,8 +215,11 @@ type GrantEvaluator struct {
 	// brand's brand.json.
 	SellerAuthorization GrantHook
 	// LegacyAuthorization is the brand.json authorized_operators check,
-	// consulted only when the brand publishes no trust record.
+	// consulted only when the house publishes no trust record.
 	LegacyAuthorization GrantHook
+	// ResolveHouse resolves the brand's house. Nil makes every brand its
+	// own house.
+	ResolveHouse HouseResolver
 	// Clock defaults to the evaluator's clock.
 	Clock func() time.Time
 }
@@ -208,10 +265,41 @@ func (g *GrantEvaluator) Check(ctx context.Context, req GrantRequest) (GrantAuth
 			return *deny, nil
 		}
 		if signerOp == brandOp && brandOp == accountOp {
-			return GrantAuthorization{Authorized: true, ExpiresAt: signerRec.ExpiresAt}, nil
+			return GrantAuthorization{Authorized: true, Source: GrantSourceImplicit, ExpiresAt: signerRec.ExpiresAt}, nil
 		}
 	}
-	brandRec, err := g.Records.evaluateForGrant(ctx, req.BrandDomain, !req.NonSpend)
+	house, houseOp := req.BrandDomain, brandOp
+	// Grants name the house's child-brand ids; the hooks see the claim.
+	matchReq := req
+	// Implicit authority on the brand's own domain never depends on its
+	// house, so an RFC 9421 brand-implicit claim keeps reading the brand's
+	// record (Web Bot Auth returned above).
+	brandImplicit := signerOp == brandOp && brandOp == accountOp
+	if g.ResolveHouse != nil && !brandImplicit {
+		h, herr := g.ResolveHouse(ctx, req.BrandDomain, req.BrandID)
+		if herr != nil {
+			return unavailable(GrantReasonHouseUnavailable)
+		}
+		if h != nil {
+			op, ok := psl.RegistrableDomain(h.Domain)
+			if !ok {
+				// A house with no registrable domain is a resolver
+				// failure, never grant_absent.
+				return unavailable(GrantReasonHouseUnavailable)
+			}
+			house, houseOp = h.Domain, op
+			if h.BrandID != "" {
+				matchReq.BrandID = h.BrandID
+			}
+		}
+	}
+	// Implicit authority: account.operator and the signer's operator are
+	// each the brand or its house, in either combination.
+	self := func(op string) bool { return op == brandOp || op == houseOp }
+	if signerRec != nil && self(accountOp) && self(signerOp) {
+		return GrantAuthorization{Authorized: true, Source: GrantSourceImplicit, ExpiresAt: signerRec.ExpiresAt}, nil
+	}
+	houseRec, err := g.Records.evaluateForGrant(ctx, house, !req.NonSpend)
 	if err != nil {
 		if IsTrustRecordAbsent(err) {
 			if g.LegacyAuthorization != nil {
@@ -224,7 +312,7 @@ func (g *GrantEvaluator) Check(ctx context.Context, req GrantRequest) (GrantAuth
 				}
 				// Bound like any trust-record result: re-check after one
 				// polling interval.
-				return GrantAuthorization{Authorized: true, LegacyFallbackAllowed: true, ExpiresAt: g.now().Add(g.Records.PollingInterval())}, nil
+				return GrantAuthorization{Authorized: true, Source: GrantSourceLegacy, LegacyFallbackAllowed: true, ExpiresAt: g.now().Add(g.Records.PollingInterval())}, nil
 			}
 			return denied(GrantReasonTrustRecordAbsent, true)
 		}
@@ -232,123 +320,179 @@ func (g *GrantEvaluator) Check(ctx context.Context, req GrantRequest) (GrantAuth
 	}
 	if signerRec == nil {
 		// An RFC 9421 signer keeps its established onboarding path while the
-		// brand has no trust record. Once the brand serves 200, grants have
+		// house has no trust record. Once the house serves 200, grants have
 		// one source and need the signer's operator role entry.
 		var deny *GrantAuthorization
 		if signerRec, deny = g.signerListing(ctx, origin, !req.NonSpend); deny != nil {
 			return *deny, nil
 		}
-		if signerOp == brandOp && brandOp == accountOp {
-			return GrantAuthorization{Authorized: true, ExpiresAt: signerRec.ExpiresAt}, nil
+		if self(accountOp) && self(signerOp) {
+			return GrantAuthorization{Authorized: true, Source: GrantSourceImplicit, ExpiresAt: signerRec.ExpiresAt}, nil
 		}
 	}
 
+	// The one delegation-chain rule: at most two grants from the house's
+	// record to the signer's operator, every grant covering the claim, with
+	// account.operator the brand, its house, or the first grant's grantee.
 	countries := map[string]struct{}{}
 	for _, c := range req.Countries {
 		countries[c] = struct{}{}
 	}
-	match := func(grants []TrustGrant, grantee string, at time.Time) []TrustGrant {
-		var out []TrustGrant
-		for _, gr := range grants {
-			if grantMatches(gr, grantee, req, countries, at) {
-				out = append(out, gr)
+	firsts := func(at time.Time) (direct []TrustGrant, via map[string][]TrustGrant) {
+		via = map[string][]TrustGrant{}
+		for _, gr := range houseRec.Record.Grants {
+			if !isRegistrableDomain(gr.Grantee) || !grantCovers(gr, matchReq, countries, at) {
+				continue
+			}
+			if !self(accountOp) && gr.Grantee != accountOp {
+				continue
+			}
+			if gr.Grantee == signerOp {
+				direct = append(direct, gr)
+			} else {
+				via[gr.Grantee] = append(via[gr.Grantee], gr)
 			}
 		}
-		return out
+		return direct, via
 	}
-	used := []*EvaluatedTrustRecord{signerRec, brandRec}
-	first := match(brandRec.Record.Grants, accountOp, g.now())
-	var links [][]TrustGrant
-	switch {
-	case accountOp == signerOp:
-		// The brand grants the signer's operator, which is account.operator.
-		links = [][]TrustGrant{first}
-	case accountOp == brandOp:
-		// A self-operated brand (it is account.operator) grants the signer's
-		// operator directly, for example the platform hosting its agent.
-		links = [][]TrustGrant{match(brandRec.Record.Grants, signerOp, g.now())}
-	case len(first) > 0:
-		intermediary, err := g.Records.evaluateForGrant(ctx, accountOp, !req.NonSpend)
-		switch {
-		case err == nil:
-		case IsTrustRecordUnavailable(err):
-			return unavailable(GrantReasonTrustRecordUnavailable)
-		default:
-			// The intermediary publishes no record: no second link.
-			intermediary = &EvaluatedTrustRecord{OperatorDomain: accountOp, Record: &TrustRecord{}, ExpiresAt: g.now().Add(g.Records.PollingInterval())}
-		}
-		used = append(used, intermediary)
-		// Fetching the intermediary may outlive an earlier grant: evaluate
-		// both links at decision time.
-		at := g.now()
-		first = match(first, accountOp, at)
-		second := match(intermediary.Record.Grants, signerOp, at)
-		links = [][]TrustGrant{first, second}
+	direct, via := firsts(g.now())
+	var intermediaries map[string]fetchedRecord
+	if len(direct) == 0 && len(via) > 0 {
+		intermediaries = g.fetchIntermediaries(ctx, via, !req.NonSpend)
 	}
+	// Fetching an intermediary may outlive a grant or a record: decide at
+	// one instant, after every fetch.
 	now := g.now()
-	for _, r := range used {
+	for _, r := range []*EvaluatedTrustRecord{signerRec, houseRec} {
 		if !now.Before(r.ExpiresAt) {
 			return unavailable(GrantReasonTrustRecordUnavailable)
 		}
 	}
-	covered := len(links) > 0
-	for _, l := range links {
-		if len(l) == 0 {
-			covered = false
-		}
+	direct, via = firsts(now)
+	// An authorization expires at the earliest of its chain's record
+	// lifetimes and each grant's valid_until; with several chains (or
+	// several grants on one link), the latest-expiring one counts.
+	limit := earliest(signerRec.ExpiresAt, houseRec.ExpiresAt)
+	var expiry time.Time
+	if len(direct) > 0 {
+		expiry = earliest(limit, linkExpiry(direct))
 	}
-	if !covered {
-		exhaustive := false
-		if brandRec.Record.ExclusiveGrants != nil && *brandRec.Record.ExclusiveGrants {
-			// Every grant's scopes count, whatever its grantee: ignoring a
-			// grant that covers no claim here would fail open.
-			for _, gr := range brandRec.Record.Grants {
-				if scopeCovers(gr.Scopes, req.Scope) {
-					exhaustive = true
-					break
-				}
+	outage := false
+	for grantee, first := range via {
+		f, ok := intermediaries[grantee]
+		switch {
+		case !ok:
+			// A grant that became valid during the fetches: its
+			// intermediary was never read.
+			continue
+		case f.err == nil:
+		case IsTrustRecordUnavailable(f.err):
+			// Another chain may still authorize; an unreadable link is
+			// an outage only if none does.
+			outage = true
+			continue
+		default:
+			// The intermediary publishes no record: no second grant.
+			continue
+		}
+		if !now.Before(f.rec.ExpiresAt) {
+			outage = true
+			continue
+		}
+		var second []TrustGrant
+		for _, gr := range f.rec.Record.Grants {
+			if isRegistrableDomain(gr.Grantee) && gr.Grantee == signerOp && grantCovers(gr, matchReq, countries, now) {
+				second = append(second, gr)
 			}
 		}
-		if !exhaustive && g.SellerAuthorization != nil {
+		if len(second) == 0 {
+			continue
+		}
+		if e := earliest(limit, f.rec.ExpiresAt, linkExpiry(first), linkExpiry(second)); e.After(expiry) {
+			expiry = e
+		}
+	}
+	if now.Before(expiry) {
+		return GrantAuthorization{Authorized: true, Source: GrantSourceGrant, ExpiresAt: expiry}, nil
+	}
+	if outage {
+		return unavailable(GrantReasonTrustRecordUnavailable)
+	}
+	// Absence: exclusive_grants on the house's record makes grants[] the
+	// complete list, whatever the scope. Without it, the claim is at the
+	// seller's discretion, which a grant that does not cover the claim
+	// never narrows. Only the house's flag counts.
+	if houseRec.Record.ExclusiveGrants == nil || !*houseRec.Record.ExclusiveGrants {
+		if g.SellerAuthorization != nil {
 			ok, err := g.SellerAuthorization(ctx, req)
 			if err != nil {
 				return denied(GrantReasonAuthorizationHookFailure, false)
 			}
 			if ok {
-				return GrantAuthorization{Authorized: true, ExpiresAt: brandRec.ExpiresAt}, nil
+				return GrantAuthorization{Authorized: true, Source: GrantSourceSeller, ExpiresAt: houseRec.ExpiresAt}, nil
 			}
 		}
-		return denied(GrantReasonAbsent, false)
 	}
-	// Every surviving grant covers the same requested dimensions, so the
-	// best path expires at the minimum over links of each link's latest
-	// valid_until, bounded by the records' lifetimes.
-	expiry := time.Unix(math.MaxInt32, 0)
-	for _, r := range used {
-		if r.ExpiresAt.Before(expiry) {
-			expiry = r.ExpiresAt
+	return denied(GrantReasonAbsent, false)
+}
+
+// intermediaryFetchConcurrency bounds the intermediary records one
+// evaluation reads at once, so N candidate chains cost about
+// N/intermediaryFetchConcurrency fetch timeouts rather than N.
+const intermediaryFetchConcurrency = 8
+
+type fetchedRecord struct {
+	rec *EvaluatedTrustRecord
+	err error
+}
+
+// fetchIntermediaries reads each first grant's grantee record once.
+func (g *GrantEvaluator) fetchIntermediaries(ctx context.Context, via map[string][]TrustGrant, spend bool) map[string]fetchedRecord {
+	out := make(map[string]fetchedRecord, len(via))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, intermediaryFetchConcurrency)
+	for domain := range via {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			rec, err := g.Records.evaluateForGrant(ctx, domain, spend)
+			mu.Lock()
+			out[domain] = fetchedRecord{rec: rec, err: err}
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+// noExpiry stands in for a grant without valid_until.
+var noExpiry = time.Unix(math.MaxInt32, 0)
+
+// linkExpiry is the latest valid_until among a link's covering grants.
+func linkExpiry(grants []TrustGrant) time.Time {
+	var best time.Time
+	for _, gr := range grants {
+		if gr.ValidUntil == "" {
+			return noExpiry
+		}
+		if t, err := time.Parse(time.RFC3339Nano, gr.ValidUntil); err == nil && t.After(best) {
+			best = t
 		}
 	}
-	for _, l := range links {
-		var best time.Time
-		unbounded := false
-		for _, gr := range l {
-			if gr.ValidUntil == "" {
-				unbounded = true
-				break
-			}
-			if t, err := time.Parse(time.RFC3339Nano, gr.ValidUntil); err == nil && t.After(best) {
-				best = t
-			}
-		}
-		if !unbounded && best.Before(expiry) {
-			expiry = best
+	return best
+}
+
+func earliest(times ...time.Time) time.Time {
+	out := noExpiry
+	for _, t := range times {
+		if t.Before(out) {
+			out = t
 		}
 	}
-	if !now.Before(expiry) {
-		return denied(GrantReasonAbsent, false)
-	}
-	return GrantAuthorization{Authorized: true, ExpiresAt: expiry}, nil
+	return out
 }
 
 // denied is a denial outcome. A failed fetch or hook is an authorization
@@ -399,14 +543,14 @@ func scopeCovers(scopes []string, scope string) bool {
 	return false
 }
 
-// grantMatches reports whether g grants grantee (a registrable domain) the
-// requested scope, agent, brand, countries, and time. g.Grantee must itself
-// be that registrable domain under the pinned PSL snapshot (L2 Grants in
-// trust.json): a grant to a host such as buy.agency.com, or to a public
-// suffix such as github.io, covers no claim. It is never widened to the
-// host's registrable domain.
-func grantMatches(g TrustGrant, grantee string, req GrantRequest, countries map[string]struct{}, now time.Time) bool {
-	if !isRegistrableDomain(g.Grantee) || g.Grantee != grantee || !scopeCovers(g.Scopes, req.Scope) {
+// grantCovers reports whether g covers the requested scope, agent, brand,
+// countries, and time: every condition but the grantee. A caller matches
+// the grantee exactly, and only when it is a registrable domain under the
+// pinned PSL snapshot (L2 Grants in trust.json): a grant to a host such as
+// buy.agency.com, or to a public suffix such as github.io, covers no claim.
+// It is never widened to the host's registrable domain.
+func grantCovers(g TrustGrant, req GrantRequest, countries map[string]struct{}, now time.Time) bool {
+	if !scopeCovers(g.Scopes, req.Scope) {
 		return false
 	}
 	if g.Agents != nil {

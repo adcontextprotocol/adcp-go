@@ -18,6 +18,7 @@ func TestSignalPricing_VariantRoundTrip(t *testing.T) {
 		b, err := json.Marshal(p)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"pricing_option_id":"po1","model":"cpm","cpm":2.5,"currency":"USD"}`, string(b))
+		assertSchemaValid(t, "core/signal-pricing.json", b)
 	})
 
 	t.Run("percent_of_media with max_cpm", func(t *testing.T) {
@@ -25,6 +26,7 @@ func TestSignalPricing_VariantRoundTrip(t *testing.T) {
 		b, err := json.Marshal(p)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"pricing_option_id":"po2","model":"percent_of_media","percent":15,"max_cpm":5,"currency":"USD"}`, string(b))
+		assertSchemaValid(t, "core/signal-pricing.json", b)
 	})
 
 	t.Run("flat_fee", func(t *testing.T) {
@@ -32,6 +34,7 @@ func TestSignalPricing_VariantRoundTrip(t *testing.T) {
 		b, err := json.Marshal(p)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"pricing_option_id":"po3","model":"flat_fee","amount":1000,"period":"monthly","currency":"USD"}`, string(b))
+		assertSchemaValid(t, "core/signal-pricing.json", b)
 	})
 
 	t.Run("per_unit", func(t *testing.T) {
@@ -39,6 +42,7 @@ func TestSignalPricing_VariantRoundTrip(t *testing.T) {
 		b, err := json.Marshal(p)
 		require.NoError(t, err)
 		assert.JSONEq(t, `{"pricing_option_id":"po4","model":"per_unit","unit":"evaluation","unit_price":0.001,"currency":"USD"}`, string(b))
+		assertSchemaValid(t, "core/signal-pricing.json", b)
 	})
 
 	t.Run("custom without currency", func(t *testing.T) {
@@ -54,6 +58,7 @@ func TestSignalPricing_VariantRoundTrip(t *testing.T) {
 		}
 		b, err := json.Marshal(p)
 		require.NoError(t, err)
+		assertSchemaValid(t, "core/signal-pricing.json", b)
 
 		var got map[string]any
 		require.NoError(t, json.Unmarshal(b, &got))
@@ -77,6 +82,7 @@ func TestVendorPricingOption_CustomVariant(t *testing.T) {
 	}
 	b, err := json.Marshal(p)
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/vendor-pricing-option.json", b)
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(b, &got))
 	assert.Equal(t, "custom", got["model"])

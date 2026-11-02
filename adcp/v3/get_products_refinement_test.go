@@ -14,6 +14,7 @@ func TestGetProductsRefinementItemsAreTyped(t *testing.T) {
 			{"scope": "proposal", "proposal_id": "prop-1", "action": "finalize"}
 		]
 	}`)
+	assertSchemaValid(t, "media-buy/get-products-request.json", raw)
 
 	var req GetProductsRequest
 	if err := json.Unmarshal(raw, &req); err != nil {

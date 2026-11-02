@@ -12,6 +12,7 @@ func TestGeneratedDeliveryTypesRoundTrip(t *testing.T) {
 	paused := false
 	isFinal := true
 	resp := GetMediaBuyDeliveryResponse{
+		Status: TaskStatusCompleted,
 		ReportingPeriod: ReportingPeriod{
 			Start: "2026-05-25T00:00:00Z",
 			End:   "2026-05-25T23:59:59Z",
@@ -53,6 +54,7 @@ func TestGeneratedDeliveryTypesRoundTrip(t *testing.T) {
 
 	b, err := json.Marshal(resp)
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/get-media-buy-delivery-response.json", b)
 
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(b, &wire))

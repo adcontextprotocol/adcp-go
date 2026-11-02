@@ -1,6 +1,8 @@
 package identity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -122,29 +124,32 @@ func TestTypesMatchPinnedSchemas(t *testing.T) {
 	}
 	str := func(vals ...string) []string { sort.Strings(vals); return vals }
 	require.Equal(t, enum("enums/agent-onboarding-mode.json"), str(string(AgentOnboardingOpen), string(AgentOnboardingApplication), string(AgentOnboardingInviteOnly)))
-	require.Equal(t, enum("enums/buyer-onboarding-mode.json"), str(string(BuyerOnboardingConsidersUnsolicited), string(BuyerOnboardingApplication), string(BuyerOnboardingInviteOnly)))
+	// A buyer's posture uses the sellers' onboarding modes.
+	require.True(t, strings.HasSuffix(dig(t, loadSchema(t, "core/buyer-onboarding-posture.json"), "properties", "mode")["$ref"].(string), "/enums/agent-onboarding-mode.json"))
 	var kinds []string
 	for _, k := range enum("enums/agent-onboarding-requirement-kind.json") {
 		require.True(t, KnownRequirementKind(AgentOnboardingRequirementKind(k)), k)
 		kinds = append(kinds, k)
 	}
-	require.Len(t, kinds, 9)
+	require.Len(t, kinds, 8)
 	var reasons []string
 	for _, v := range dig(t, loadSchema(t, "error-details/agent-permission-denied.json"), "properties", "reason")["enum"].([]any) {
 		reasons = append(reasons, v.(string))
 	}
 	require.ElementsMatch(t, []string{PermissionDeniedSandboxOnly, PermissionDeniedGrantAbsent}, reasons)
 	var statuses []string
-	for _, v := range dig(t, loadSchema(t, "core/principal-relationship.json"), "properties", "status")["enum"].([]any) {
+	require.True(t, strings.HasSuffix(dig(t, loadSchema(t, "core/principal-relationship.json"), "properties", "status")["$ref"].(string), "/enums/principal-relationship-status.json"))
+	for _, v := range loadSchema(t, "enums/principal-relationship-status.json")["enum"].([]any) {
 		statuses = append(statuses, v.(string))
 	}
-	require.ElementsMatch(t, []string{string(RelationshipPending), string(RelationshipActive), string(RelationshipSuspended), string(RelationshipBlocked)}, statuses)
+	require.ElementsMatch(t, []string{string(RelationshipPendingApproval), string(RelationshipActive), string(RelationshipSuspended), string(RelationshipBlocked)}, statuses)
 	var changed []string
 	for _, v := range dig(t, loadSchema(t, "core/principal-changed-webhook.json"), "properties", "reason")["enum"].([]any) {
 		changed = append(changed, v.(string))
 	}
 	require.Contains(t, changed, PrincipalChangedRelationshipChanged)
 	require.Contains(t, changed, PrincipalChangedRelationshipExpiring)
+	require.Contains(t, changed, PrincipalChangedReportingSubscriptionChanged)
 	roles := dig(t, defs, "role", "anyOf", 1)["enum"].([]any)
 	require.Len(t, roles, len(adcpRoles))
 	for _, r := range roles {
@@ -204,11 +209,11 @@ func TestCapabilityExtensions(t *testing.T) {
 	require.Error(t, err)
 
 	var acct AccountCapabilities
-	require.NoError(t, json.Unmarshal([]byte(`{"supported_billing":["operator"],"sandbox":true,"agent_onboarding":{"sandbox":{"mode":"open"},"billing":{"operator":{"mode":"application","url":"https://s.example.com/apply","requirements":[{"kind":"agent_identity"},{"kind":"future_kind"}]}},"message":"m"}}`), &acct))
+	require.NoError(t, json.Unmarshal([]byte(`{"supported_billing":["operator"],"sandbox":true,"agent_onboarding":{"sandbox":{"mode":"open"},"billing":{"operator":{"mode":"application","url":"https://s.example.com/apply","requirements":[{"kind":"grant"},{"kind":"future_kind"}]}},"message":"m"}}`), &acct))
 	require.Equal(t, []string{"operator"}, acct.SupportedBilling)
 	require.Equal(t, AgentOnboardingOpen, acct.AgentOnboarding.Sandbox.Mode)
 	reqs := acct.AgentOnboarding.Billing["operator"].Requirements
-	require.Equal(t, RequirementAgentIdentity, reqs[0].Kind)
+	require.Equal(t, RequirementGrant, reqs[0].Kind)
 	require.Equal(t, AgentOnboardingRequirementKind("future_kind"), reqs[1].Kind, "unknown kinds are kept for message/url fallback")
 	require.False(t, KnownRequirementKind(reqs[1].Kind))
 	out, _ := json.Marshal(acct)
@@ -218,7 +223,37 @@ func TestCapabilityExtensions(t *testing.T) {
 	b, _ := json.Marshal(GrantAbsentDetails())
 	require.JSONEq(t, `{"scope":"agent","reason":"grant_absent"}`, string(b))
 	var rel PrincipalRelationship
-	require.NoError(t, json.Unmarshal([]byte(`{"status":"pending","setup":{"message":"sign the IO","url":"https://s.example.com/io"},"expires_at":"2027-01-01T00:00:00Z"}`), &rel))
-	require.Equal(t, RelationshipPending, rel.Status)
+	require.NoError(t, json.Unmarshal([]byte(`{"status":"pending_approval","setup":{"kind":"accept_terms","waiting_on":"buyer","message":"sign the IO","url":"https://s.example.com/io"},"expires_at":"2027-01-01T00:00:00Z"}`), &rel))
+	require.Equal(t, RelationshipPendingApproval, rel.Status)
 	require.Equal(t, "sign the IO", rel.Setup.Message)
+	require.Equal(t, "accept_terms", rel.Setup.Kind)
+	require.Equal(t, "buyer", rel.Setup.WaitingOn)
+}
+
+// TestIdentitySchemasArePinned: the vendored schemas match the checksums
+// recorded with their provenance in testdata/schemas/UPSTREAM.json, and
+// every vendored schema is pinned.
+func TestIdentitySchemasArePinned(t *testing.T) {
+	b, err := os.ReadFile("testdata/schemas/UPSTREAM.json")
+	require.NoError(t, err)
+	var up struct {
+		Files map[string]string `json:"files"`
+	}
+	require.NoError(t, json.Unmarshal(b, &up))
+	var vendored []string
+	require.NoError(t, filepath.WalkDir("testdata/schemas", func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || d.Name() == "UPSTREAM.json" {
+			return err
+		}
+		rel, _ := filepath.Rel("testdata/schemas", path)
+		vendored = append(vendored, filepath.ToSlash(rel))
+		return nil
+	}))
+	require.Len(t, up.Files, len(vendored), "every vendored schema is pinned")
+	for _, name := range vendored {
+		data, err := os.ReadFile(filepath.Join("testdata/schemas", filepath.FromSlash(name))) // #nosec G304 -- walked testdata paths.
+		require.NoError(t, err)
+		sum := sha256.Sum256(data)
+		require.Equal(t, up.Files[name], "sha256:"+hex.EncodeToString(sum[:]), name)
+	}
 }

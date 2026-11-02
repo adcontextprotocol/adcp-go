@@ -133,6 +133,7 @@ func TestProposalRefinementRoundTrip(t *testing.T) {
 
 func TestRefinementResultParsing(t *testing.T) {
 	json1 := `{"source_proposal_id":"src-1","outcome":"unable","reason_code":"commercially_declined","reason":"seller declined the ask"}`
+	assertSchemaValid(t, "media-buy/refine-proposals-response.json#/properties/results/items", []byte(json1))
 	var r RefinementResult
 	if err := json.Unmarshal([]byte(json1), &r); err != nil {
 		t.Fatal(err)

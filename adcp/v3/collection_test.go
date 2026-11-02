@@ -62,11 +62,13 @@ func TestByPublisherGenresJSON(t *testing.T) {
 
 func TestGetCollectionListRequestResolveDefault(t *testing.T) {
 	raw := `{"list_id": "list-1"}`
+	assertSchemaValid(t, "collection/get-collection-list-request.json", []byte(raw))
 	var input GetCollectionListRequest
 	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
 	require.Nil(t, input.Resolve, "expected resolve to be nil when absent")
 
 	raw = `{"list_id": "list-1", "resolve": false}`
+	assertSchemaValid(t, "collection/get-collection-list-request.json", []byte(raw))
 	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
 	require.NotNil(t, input.Resolve)
 	require.Equal(t, false, *input.Resolve, "expected resolve=false")
@@ -78,6 +80,7 @@ func TestGetCollectionListRequestResolveDefault(t *testing.T) {
 
 func TestBroadcastCreateMediaBuyWireFormat(t *testing.T) {
 	raw := `{
+		"idempotency_key": "6f1c2a9e-4b7d-4e8a-9c3f-2d5b8e7a1c40",
 		"account": {"brand": {"domain": "novamotors.com"}, "operator": "pinnacle-agency.com"},
 		"brand": {"domain": "novamotors.com"},
 		"agency_estimate_number": "PNNL-NM-2026-Q4-0847",
@@ -98,6 +101,7 @@ func TestBroadcastCreateMediaBuyWireFormat(t *testing.T) {
 			}
 		]
 	}`
+	assertSchemaValid(t, "media-buy/create-media-buy-request.json", []byte(raw))
 	var input CreateMediaBuyRequest
 	require.NoError(t, json.Unmarshal([]byte(raw), &input), "unmarshal")
 	require.Equal(t, "novamotors.com", input.Brand.Domain)

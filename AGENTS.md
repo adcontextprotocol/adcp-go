@@ -152,6 +152,8 @@ cd reference/context-agent && go test ./...
 cd e2e && go test ./...
 ```
 
+**Wire fixtures in `adcp/v3` are validated against their schema.** A test fixture that stands for a request or response on the wire goes through `assertSchemaValid(t, "<schema path>[#<JSON Pointer>]", raw)` from `adcp/v3/schema_fixture_test.go`, because the Go types accept values the schema rejects (a status outside its enum, an object in the wrong shape). Deliberately invalid fixtures (forward-compatibility and error paths) and partial fragments don't use it. The helper reads the bundle that `adcp/v3/schemas/download.sh` fetches and only logs when it is absent; CI always has it. A bundle `pattern` that Go's RE2 can't compile needs an exact translation in `re2Translations`, and `TestRE2TranslationsMatchBundle` names any that is missing or stale.
+
 ## Module structure
 
 The workspace uses Go multi-module layout. The root module has zero external dependencies. Sub-modules add deps only where needed:

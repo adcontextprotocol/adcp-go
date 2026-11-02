@@ -1,8 +1,8 @@
 {
-  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from adcontextprotocol/adcp PR #8298, which carries the vectors of PR #7894. Draft vectors for the experimental AdCP 3.3 profile, not released compliance inputs: replace them from the released test-vectors/wba-profile/ set when AdCP 3.3 ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
+  "description": "Web Bot Auth profile conformance vectors, copied byte for byte from the v3.3.0-beta.3 release of adcontextprotocol/adcp (first published in PR #7894). AdCP 3.3 is in beta, so re-pin them when it ships. The private seeds in keys.json are public test inputs; never use them outside tests.",
   "repository": "https://github.com/adcontextprotocol/adcp",
-  "pr": 8298,
-  "commit": "f44785a5b65db93988f30ad3d23ba5849f1a1d5e",
+  "tag": "v3.3.0-beta.3",
+  "commit": "a6106149a2b5c929eec0caa0042adbae4ccf3a9c",
   "path": "static/compliance/source/test-vectors/wba-profile/",
   "spec": "docs/building/by-layer/L1/wba-profile.mdx",
   "not_vendored": {

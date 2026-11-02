@@ -111,22 +111,23 @@ func TestNegotiateADCPVersionMajorPresence(t *testing.T) {
 }
 
 func TestGeneratedRequestsDecodeSupportedVersionEnvelopes(t *testing.T) {
-	var products GetProductsRequest
-	require.NoError(t, json.Unmarshal([]byte(`{
+	productsRaw := []byte(`{
 		"adcp_version": "3.0",
 		"adcp_major_version": 3,
 		"buying_mode": "brief",
 		"brief": "Launch a short test campaign."
-	}`), &products))
+	}`)
+	assertSchemaValid(t, "media-buy/get-products-request.json", productsRaw)
+	var products GetProductsRequest
+	require.NoError(t, json.Unmarshal(productsRaw, &products))
 	assert.Equal(t, "3.0", products.AdcpVersion)
 	assert.Equal(t, 3, products.AdcpMajorVersion)
 	assert.Equal(t, "brief", products.BuyingMode)
 
-	var create CreateMediaBuyRequest
-	require.NoError(t, json.Unmarshal([]byte(`{
+	createRaw := []byte(`{
 		"adcp_version": "3.2-rc.1",
 		"adcp_major_version": 3,
-		"idempotency_key": "idem-1",
+		"idempotency_key": "idem-envelope-0001",
 		"account": {"brand": {"domain": "example.com"}, "operator": "buyer"},
 		"brand": {"domain": "example.com"},
 		"start_time": "2026-06-01T00:00:00Z",
@@ -137,7 +138,10 @@ func TestGeneratedRequestsDecodeSupportedVersionEnvelopes(t *testing.T) {
 			"pricing_option_id": "cpm-1",
 			"format_option_refs": [{"scope": "product", "format_option_id": "display.standard"}]
 		}]
-	}`), &create))
+	}`)
+	assertSchemaValid(t, "media-buy/create-media-buy-request.json", createRaw)
+	var create CreateMediaBuyRequest
+	require.NoError(t, json.Unmarshal(createRaw, &create))
 	assert.Equal(t, "3.2-rc.1", create.AdcpVersion)
 	assert.Equal(t, 3, create.AdcpMajorVersion)
 	require.Len(t, create.Packages, 1)

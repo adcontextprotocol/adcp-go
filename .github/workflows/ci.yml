@@ -218,9 +218,9 @@ jobs:
     timeout-minutes: 10
     env:
       # adcontextprotocol/adcp commit whose tests/wba-interop/ harness and
-      # wba-profile vectors grade this SDK: the head of adcp#8298. Move it to
-      # the merge commit once that pull request merges.
-      ADCP_REF: "f44785a5b65db93988f30ad3d23ba5849f1a1d5e"
+      # wba-profile vectors grade this SDK: the v3.3.0-beta.3 tag. Move it with
+      # the vendored wba-profile pin.
+      ADCP_REF: "a6106149a2b5c929eec0caa0042adbae4ccf3a9c"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
