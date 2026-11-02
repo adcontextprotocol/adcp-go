@@ -743,7 +743,7 @@ func (e *TrustRecordEvaluator) Bind(ctx context.Context, signer *signing.Verifie
 // warnNonRegistrableGrantees logs each grant whose grantee is not a
 // registrable domain: a host under one, or a public suffix. Such a grant
 // covers no claim (L2 Grants in trust.json), so the operator is told why it
-// has no effect. Its scopes still count for exclusive_grants. The grantee is
+// has no effect. The record's exclusive_grants still applies. The grantee is
 // a lowercase DNS name (the schema's domain pattern), so it is safe to log.
 func (e *TrustRecordEvaluator) warnNonRegistrableGrantees(domain string, rec *TrustRecord) {
 	for i, g := range rec.Grants {

@@ -37,8 +37,8 @@ const (
 	// authority-bearing member. One rule differs by mode: Authoring
 	// requires every grantee to be a registrable domain, while Reading
 	// keeps a record whose grantee is not one (a host, or a public
-	// suffix). That grant covers no claim, and its scopes still count for
-	// exclusive_grants (L2 Grants in trust.json).
+	// suffix). That grant covers no claim, and the record's
+	// exclusive_grants still applies (L2 Grants in trust.json).
 	Reading
 )
 
@@ -147,7 +147,7 @@ func (r *TrustRecord) checkRules(owner string, mode ValidationMode) error {
 		// An author writes the registrable domain and narrows with
 		// agents[]. A reader keeps the record: a grant whose grantee is
 		// not one covers no claim (TrustRecordEvaluator logs a warning),
-		// and its scopes still count for exclusive_grants. Like the other
+		// and the record's exclusive_grants still applies. Like the other
 		// PSL rules, this needs an owner: the spec's examples use reserved
 		// .example names, which have no registrable domain.
 		if operator != "" && mode == Authoring {
