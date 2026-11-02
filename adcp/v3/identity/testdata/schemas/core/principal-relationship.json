@@ -1,35 +1,29 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/principal-relationship.json",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/principal-relationship.json",
   "title": "Principal Relationship",
   "x-status": "experimental",
-  "description": "The seller's commercial relationship with the authenticated caller, returned by get_principal only to that caller. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, which is the identity-established state of a verified signer the seller has not bound. Because it is returned only to the authenticated caller, it never acts as an onboarding oracle. See specs/agent-identity-3-3.md R8.",
+  "x-added-in": "3.3.0",
+  "description": "The seller's commercial relationship with the authenticated caller, as get_principal reports it. Present when a relationship or an application exists; omitted when the seller has no relationship with the caller and no application in progress, as for an identity-established caller (docs/building/by-layer/L1/security.mdx#web-bot-auth-identities). See docs/protocol/get_principal.mdx#relationship-status.",
   "type": "object",
   "properties": {
     "status": {
-      "type": "string",
-      "enum": ["pending", "active", "suspended", "blocked"],
-      "enumDescriptions": {
-        "pending": "An application or approval is in progress. setup, when present, carries the caller's next step.",
-        "active": "The relationship is in good standing.",
-        "suspended": "The relationship is temporarily paused; calls that need it fail with AGENT_SUSPENDED.",
-        "blocked": "The relationship is permanently denied; calls that need it fail with AGENT_BLOCKED."
-      },
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/principal-relationship-status.json",
       "description": "Current state of the relationship."
     },
     "expires_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When the relationship lapses unless renewed. Absent means no scheduled expiry. principal.changed fires with reason relationship_expiring at a seller-declared lead time before this instant."
+      "description": "When the relationship lapses unless renewed. Absent means no scheduled expiry. principal.changed fires with reason relationship_expiring at a seller-chosen lead time before this instant."
     },
     "setup": {
       "type": "object",
-      "description": "The caller's next step while status is pending, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
+      "description": "The caller's next step while status is pending_approval, in the same shape as sync_accounts setup. Specific to the authenticated caller, never seller-wide.",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
-          "description": "URL where a human at the buyer completes the step. Untrusted: surface it, never fetch or execute it."
+          "description": "URL where a human at the buyer completes the step."
         },
         "message": {
           "type": "string",
@@ -39,15 +33,31 @@
           "type": "string",
           "format": "date-time",
           "description": "When this step expires."
+        },
+        "waiting_on": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/pending-action-party.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "Experimental (account.requests). Whose turn it is: seller (application under review) or buyer (a human must complete url). Same meaning as pending-action.json."
+        },
+        "kind": {
+          "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/enums/pending-action-kind.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0",
+          "description": "What is needed. Same meaning as pending-action.json."
         }
       },
-      "required": ["message"],
+      "required": [
+        "message"
+      ],
       "additionalProperties": true
     },
     "ext": {
-      "$ref": "/schemas/core/ext.json"
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/ext.json"
     }
   },
-  "required": ["status"],
+  "required": [
+    "status"
+  ],
   "additionalProperties": true
 }

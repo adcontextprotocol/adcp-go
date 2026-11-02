@@ -1,12 +1,13 @@
 // Package identity is the EXPERIMENTAL AdCP 3.3 agent-identity layer above
 // request verification: trust.json evaluation, origin-to-principal binding,
 // demand-side grants (DR-0025), and Go types for the identity schemas that
-// are not yet in a released schema bundle (onboarding posture, principal
+// are not in the SDK's wire bundle (onboarding posture, principal
 // relationship, grant_absent, trust.json v1 without keys).
 //
 // The design is specs/agent-identity-3-3.md and DR-0023/DR-0025 in
-// adcontextprotocol/adcp. The schemas are pinned to draft commits recorded
-// in testdata/schemas/UPSTREAM.json and may change before 3.3 ships. The
+// adcontextprotocol/adcp. The schemas are pinned to the AdCP 3.3.0-beta.3
+// bundle, as testdata/schemas/UPSTREAM.json records, and may change before
+// 3.3 ships. The
 // SDK's wire pin is unchanged; nothing here is used unless configured.
 //
 // # Where the trust record is read
