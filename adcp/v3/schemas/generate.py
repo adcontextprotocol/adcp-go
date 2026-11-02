@@ -3477,7 +3477,7 @@ def enum_members(name, values):
         if v == '':
             raise ValueError(f'{name} enum value must not be empty')
         # Replace dots and other invalid chars for Go identifiers
-        safe_v = v.replace('.', '_').replace('-', '_').replace(' ', '_')
+        safe_v = v.replace('.', '_').replace('-', '_').replace(' ', '_').replace('/', '_')
         const_name = name + pascal_case(safe_v)
         if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', const_name):
             raise ValueError(f'{name} enum value {v!r} cannot be converted to a Go identifier')
