@@ -3159,9 +3159,29 @@ def field_go_type_info(type_name, json_name, prop, required_set):
         go_type = f'*{go_type}'
     return go_type, reason
 
+# Protocol-envelope fields a union branch keeps as struct fields. 3.3 moved
+# these from the branches to the response root (`allOf` core/protocol-envelope,
+# adcontextprotocol/adcp#8547), which a branch struct does not inherit. They
+# stay valid on the wire, so dropping the field would silently lose them and
+# break callers that set them.
+ENVELOPE_FIELDS = {
+    # CreateMediaBuySubmittedResponse(taskID, message) sets it.
+    'CreateMediaBuySubmitted': ('message',),
+}
+ENVELOPE_SCHEMA = 'core/protocol-envelope.json'
+
+
 def schema_to_struct(name, schema):
     """Convert a JSON schema to a Go struct definition string."""
     props = schema_properties(schema)
+    envelope_fields = ENVELOPE_FIELDS.get(name, ())
+    if envelope_fields:
+        envelope = load_schema_spec(ENVELOPE_SCHEMA).get('properties', {})
+        props = OrderedDict(props)
+        for json_name in envelope_fields:
+            if json_name not in envelope:
+                raise ValueError(f'ENVELOPE_FIELDS[{name!r}]: {ENVELOPE_SCHEMA} has no {json_name!r}')
+            props.setdefault(json_name, envelope[json_name])
     required_set = schema_required_names(schema)
     _OBJECT_REF_ALIAS_VIOLATIONS.extend(object_ref_scalar_alias_violations(name, schema))
 
@@ -3572,13 +3592,32 @@ def load_inline_enum_schema(spec):
         raise ValueError(f'{origin} matched multiple oneOf branches')
     return matches[0]
 
+def open_enum_values(name, schema):
+    """Return the named values of an open string enum.
+
+    An open enum is `anyOf` with one `enum` branch and pattern-only branches
+    (enums/universal-macro.json: the named macros plus GDPR_CONSENT_<gvl_id>).
+    The named values become constants; values matching a pattern branch are
+    valid on the wire but not "known", like any value a later schema adds.
+    Any other anyOf shape is left to an explicit decision.
+    """
+    branches = schema.get('anyOf')
+    if schema.get('type') != 'string' or not isinstance(branches, list):
+        return []
+    enums = [b for b in branches if 'enum' in b]
+    rest = [b for b in branches if 'enum' not in b]
+    if len(enums) != 1 or any(set(b) - {'pattern', 'description'} or 'pattern' not in b for b in rest):
+        raise ValueError(f'{name} anyOf is not an open enum (one enum branch plus pattern-only branches)')
+    return enums[0]['enum']
+
+
 def generate_enums(_seen=None):
     """Generate Go string constants for all enum schemas."""
     lines = []
     seen = dict(_seen or {})
 
     def append_enum(name, schema, origin, error_if_empty=False):
-        values = schema.get('enum', [])
+        values = schema.get('enum', []) or open_enum_values(name, schema)
         if not values:
             if error_if_empty:
                 raise ValueError(f'{origin} no longer defines enum values for {name}')

@@ -31,7 +31,7 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 		},
 		ReportingWebhook: &ReportingWebhook{
 			URL:                "https://buyer.example/webhooks/reporting",
-			Authentication:     LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "fedcba9876543210fedcba9876543210"},
+			Authentication:     &LegacyWebhookAuthentication{Schemes: []string{"Bearer"}, Credentials: "fedcba9876543210fedcba9876543210"},
 			ReportingFrequency: "daily",
 		},
 		IoAcceptance: &IOAcceptance{
@@ -42,7 +42,7 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 		},
 		ArtifactWebhook: &ArtifactWebhookConfig{
 			URL:            "https://buyer.example/webhooks/artifacts",
-			Authentication: LegacyWebhookAuthentication{Schemes: []string{"HMAC-SHA256"}, Credentials: "abcdef0123456789abcdef0123456789"},
+			Authentication: &LegacyWebhookAuthentication{Schemes: []string{"HMAC-SHA256"}, Credentials: "abcdef0123456789abcdef0123456789"},
 			DeliveryMode:   "batched",
 			BatchFrequency: "hourly",
 			SamplingRate:   Ptr(0.0),

@@ -8648,6 +8648,114 @@ func ParseUIDType(s string) (UIDType, error) {
 	return "", fmt.Errorf("unknown UIDType value")
 }
 
+// UniversalMacro — Standardized macro names for dynamic value substitution in creative tracking
+type UniversalMacro = string
+
+const (
+	UniversalMacroMEDIABUYID        UniversalMacro = "MEDIA_BUY_ID"
+	UniversalMacroPACKAGEID         UniversalMacro = "PACKAGE_ID"
+	UniversalMacroCREATIVEID        UniversalMacro = "CREATIVE_ID"
+	UniversalMacroCACHEBUSTER       UniversalMacro = "CACHEBUSTER"
+	UniversalMacroTIMESTAMP         UniversalMacro = "TIMESTAMP"
+	UniversalMacroCLICKURL          UniversalMacro = "CLICK_URL"
+	UniversalMacroGDPR              UniversalMacro = "GDPR"
+	UniversalMacroGDPRCONSENT       UniversalMacro = "GDPR_CONSENT"
+	UniversalMacroADDTLCONSENT      UniversalMacro = "ADDTL_CONSENT"
+	UniversalMacroUSPRIVACY         UniversalMacro = "US_PRIVACY"
+	UniversalMacroGPPSTRING         UniversalMacro = "GPP_STRING"
+	UniversalMacroGPPSID            UniversalMacro = "GPP_SID"
+	UniversalMacroIPADDRESS         UniversalMacro = "IP_ADDRESS"
+	UniversalMacroLIMITADTRACKING   UniversalMacro = "LIMIT_AD_TRACKING"
+	UniversalMacroDEVICETYPE        UniversalMacro = "DEVICE_TYPE"
+	UniversalMacroOS                UniversalMacro = "OS"
+	UniversalMacroOSVERSION         UniversalMacro = "OS_VERSION"
+	UniversalMacroDEVICEMAKE        UniversalMacro = "DEVICE_MAKE"
+	UniversalMacroDEVICEMODEL       UniversalMacro = "DEVICE_MODEL"
+	UniversalMacroUSERAGENT         UniversalMacro = "USER_AGENT"
+	UniversalMacroAPPBUNDLE         UniversalMacro = "APP_BUNDLE"
+	UniversalMacroAPPNAME           UniversalMacro = "APP_NAME"
+	UniversalMacroCOUNTRY           UniversalMacro = "COUNTRY"
+	UniversalMacroREGION            UniversalMacro = "REGION"
+	UniversalMacroCITY              UniversalMacro = "CITY"
+	UniversalMacroZIP               UniversalMacro = "ZIP"
+	UniversalMacroDMA               UniversalMacro = "DMA"
+	UniversalMacroLAT               UniversalMacro = "LAT"
+	UniversalMacroLONG              UniversalMacro = "LONG"
+	UniversalMacroDEVICEID          UniversalMacro = "DEVICE_ID"
+	UniversalMacroDEVICEIDTYPE      UniversalMacro = "DEVICE_ID_TYPE"
+	UniversalMacroDOMAIN            UniversalMacro = "DOMAIN"
+	UniversalMacroPAGEURL           UniversalMacro = "PAGE_URL"
+	UniversalMacroREFERRER          UniversalMacro = "REFERRER"
+	UniversalMacroKEYWORDS          UniversalMacro = "KEYWORDS"
+	UniversalMacroPLACEMENTID       UniversalMacro = "PLACEMENT_ID"
+	UniversalMacroFOLDPOSITION      UniversalMacro = "FOLD_POSITION"
+	UniversalMacroADWIDTH           UniversalMacro = "AD_WIDTH"
+	UniversalMacroADHEIGHT          UniversalMacro = "AD_HEIGHT"
+	UniversalMacroVIDEOID           UniversalMacro = "VIDEO_ID"
+	UniversalMacroVIDEOTITLE        UniversalMacro = "VIDEO_TITLE"
+	UniversalMacroVIDEODURATION     UniversalMacro = "VIDEO_DURATION"
+	UniversalMacroVIDEOCATEGORY     UniversalMacro = "VIDEO_CATEGORY"
+	UniversalMacroCONTENTGENRE      UniversalMacro = "CONTENT_GENRE"
+	UniversalMacroCONTENTRATING     UniversalMacro = "CONTENT_RATING"
+	UniversalMacroPLAYERWIDTH       UniversalMacro = "PLAYER_WIDTH"
+	UniversalMacroPLAYERHEIGHT      UniversalMacro = "PLAYER_HEIGHT"
+	UniversalMacroPODPOSITION       UniversalMacro = "POD_POSITION"
+	UniversalMacroPODSIZE           UniversalMacro = "POD_SIZE"
+	UniversalMacroADBREAKID         UniversalMacro = "AD_BREAK_ID"
+	UniversalMacroSTATIONID         UniversalMacro = "STATION_ID"
+	UniversalMacroCOLLECTIONNAME    UniversalMacro = "COLLECTION_NAME"
+	UniversalMacroINSTALLMENTID     UniversalMacro = "INSTALLMENT_ID"
+	UniversalMacroAUDIODURATION     UniversalMacro = "AUDIO_DURATION"
+	UniversalMacroTMPX              UniversalMacro = "TMPX"
+	UniversalMacroIMPRESSIONID      UniversalMacro = "IMPRESSION_ID"
+	UniversalMacroAXEM              UniversalMacro = "AXEM"
+	UniversalMacroCATALOGID         UniversalMacro = "CATALOG_ID"
+	UniversalMacroSKU               UniversalMacro = "SKU"
+	UniversalMacroGTIN              UniversalMacro = "GTIN"
+	UniversalMacroOFFERINGID        UniversalMacro = "OFFERING_ID"
+	UniversalMacroJOBID             UniversalMacro = "JOB_ID"
+	UniversalMacroHOTELID           UniversalMacro = "HOTEL_ID"
+	UniversalMacroFLIGHTID          UniversalMacro = "FLIGHT_ID"
+	UniversalMacroVEHICLEID         UniversalMacro = "VEHICLE_ID"
+	UniversalMacroLISTINGID         UniversalMacro = "LISTING_ID"
+	UniversalMacroSTOREID           UniversalMacro = "STORE_ID"
+	UniversalMacroPROGRAMID         UniversalMacro = "PROGRAM_ID"
+	UniversalMacroDESTINATIONID     UniversalMacro = "DESTINATION_ID"
+	UniversalMacroCREATIVEVARIANTID UniversalMacro = "CREATIVE_VARIANT_ID"
+	UniversalMacroAPPITEMID         UniversalMacro = "APP_ITEM_ID"
+	UniversalMacroITEMNAME          UniversalMacro = "ITEM_NAME"
+	UniversalMacroITEMDESCRIPTION   UniversalMacro = "ITEM_DESCRIPTION"
+	UniversalMacroITEMTAGLINE       UniversalMacro = "ITEM_TAGLINE"
+	UniversalMacroITEMPRICE         UniversalMacro = "ITEM_PRICE"
+	UniversalMacroITEMPRICECURRENCY UniversalMacro = "ITEM_PRICE_CURRENCY"
+)
+
+// KnownUniversalMacroValues returns the current schema-defined values for UniversalMacro.
+func KnownUniversalMacroValues() []UniversalMacro {
+	return []UniversalMacro{UniversalMacroMEDIABUYID, UniversalMacroPACKAGEID, UniversalMacroCREATIVEID, UniversalMacroCACHEBUSTER, UniversalMacroTIMESTAMP, UniversalMacroCLICKURL, UniversalMacroGDPR, UniversalMacroGDPRCONSENT, UniversalMacroADDTLCONSENT, UniversalMacroUSPRIVACY, UniversalMacroGPPSTRING, UniversalMacroGPPSID, UniversalMacroIPADDRESS, UniversalMacroLIMITADTRACKING, UniversalMacroDEVICETYPE, UniversalMacroOS, UniversalMacroOSVERSION, UniversalMacroDEVICEMAKE, UniversalMacroDEVICEMODEL, UniversalMacroUSERAGENT, UniversalMacroAPPBUNDLE, UniversalMacroAPPNAME, UniversalMacroCOUNTRY, UniversalMacroREGION, UniversalMacroCITY, UniversalMacroZIP, UniversalMacroDMA, UniversalMacroLAT, UniversalMacroLONG, UniversalMacroDEVICEID, UniversalMacroDEVICEIDTYPE, UniversalMacroDOMAIN, UniversalMacroPAGEURL, UniversalMacroREFERRER, UniversalMacroKEYWORDS, UniversalMacroPLACEMENTID, UniversalMacroFOLDPOSITION, UniversalMacroADWIDTH, UniversalMacroADHEIGHT, UniversalMacroVIDEOID, UniversalMacroVIDEOTITLE, UniversalMacroVIDEODURATION, UniversalMacroVIDEOCATEGORY, UniversalMacroCONTENTGENRE, UniversalMacroCONTENTRATING, UniversalMacroPLAYERWIDTH, UniversalMacroPLAYERHEIGHT, UniversalMacroPODPOSITION, UniversalMacroPODSIZE, UniversalMacroADBREAKID, UniversalMacroSTATIONID, UniversalMacroCOLLECTIONNAME, UniversalMacroINSTALLMENTID, UniversalMacroAUDIODURATION, UniversalMacroTMPX, UniversalMacroIMPRESSIONID, UniversalMacroAXEM, UniversalMacroCATALOGID, UniversalMacroSKU, UniversalMacroGTIN, UniversalMacroOFFERINGID, UniversalMacroJOBID, UniversalMacroHOTELID, UniversalMacroFLIGHTID, UniversalMacroVEHICLEID, UniversalMacroLISTINGID, UniversalMacroSTOREID, UniversalMacroPROGRAMID, UniversalMacroDESTINATIONID, UniversalMacroCREATIVEVARIANTID, UniversalMacroAPPITEMID, UniversalMacroITEMNAME, UniversalMacroITEMDESCRIPTION, UniversalMacroITEMTAGLINE, UniversalMacroITEMPRICE, UniversalMacroITEMPRICECURRENCY}
+}
+
+// IsKnownUniversalMacro reports whether v is one of the current schema-defined UniversalMacro values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownUniversalMacro(v UniversalMacro) bool {
+	switch v {
+	case UniversalMacroMEDIABUYID, UniversalMacroPACKAGEID, UniversalMacroCREATIVEID, UniversalMacroCACHEBUSTER, UniversalMacroTIMESTAMP, UniversalMacroCLICKURL, UniversalMacroGDPR, UniversalMacroGDPRCONSENT, UniversalMacroADDTLCONSENT, UniversalMacroUSPRIVACY, UniversalMacroGPPSTRING, UniversalMacroGPPSID, UniversalMacroIPADDRESS, UniversalMacroLIMITADTRACKING, UniversalMacroDEVICETYPE, UniversalMacroOS, UniversalMacroOSVERSION, UniversalMacroDEVICEMAKE, UniversalMacroDEVICEMODEL, UniversalMacroUSERAGENT, UniversalMacroAPPBUNDLE, UniversalMacroAPPNAME, UniversalMacroCOUNTRY, UniversalMacroREGION, UniversalMacroCITY, UniversalMacroZIP, UniversalMacroDMA, UniversalMacroLAT, UniversalMacroLONG, UniversalMacroDEVICEID, UniversalMacroDEVICEIDTYPE, UniversalMacroDOMAIN, UniversalMacroPAGEURL, UniversalMacroREFERRER, UniversalMacroKEYWORDS, UniversalMacroPLACEMENTID, UniversalMacroFOLDPOSITION, UniversalMacroADWIDTH, UniversalMacroADHEIGHT, UniversalMacroVIDEOID, UniversalMacroVIDEOTITLE, UniversalMacroVIDEODURATION, UniversalMacroVIDEOCATEGORY, UniversalMacroCONTENTGENRE, UniversalMacroCONTENTRATING, UniversalMacroPLAYERWIDTH, UniversalMacroPLAYERHEIGHT, UniversalMacroPODPOSITION, UniversalMacroPODSIZE, UniversalMacroADBREAKID, UniversalMacroSTATIONID, UniversalMacroCOLLECTIONNAME, UniversalMacroINSTALLMENTID, UniversalMacroAUDIODURATION, UniversalMacroTMPX, UniversalMacroIMPRESSIONID, UniversalMacroAXEM, UniversalMacroCATALOGID, UniversalMacroSKU, UniversalMacroGTIN, UniversalMacroOFFERINGID, UniversalMacroJOBID, UniversalMacroHOTELID, UniversalMacroFLIGHTID, UniversalMacroVEHICLEID, UniversalMacroLISTINGID, UniversalMacroSTOREID, UniversalMacroPROGRAMID, UniversalMacroDESTINATIONID, UniversalMacroCREATIVEVARIANTID, UniversalMacroAPPITEMID, UniversalMacroITEMNAME, UniversalMacroITEMDESCRIPTION, UniversalMacroITEMTAGLINE, UniversalMacroITEMPRICE, UniversalMacroITEMPRICECURRENCY:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseUniversalMacro returns s as UniversalMacro when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseUniversalMacro(s string) (UniversalMacro, error) {
+	v := UniversalMacro(s)
+	if IsKnownUniversalMacro(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown UniversalMacro value")
+}
+
 // UpdateFrequency — Frequency of product catalog updates
 type UpdateFrequency = string
 
@@ -14225,6 +14333,7 @@ type CreateMediaBuySubmitted struct {
 	Errors                 []AdcpError `json:"errors,omitempty"`                   // Optional advisory errors accompanying the submitted envelope. Use only for
 	Context                any         `json:"context,omitempty"`                  // Opaque media-buy-level correlation data echoed unchanged from the
 	Ext                    any         `json:"ext,omitempty"`
+	Message                string      `json:"message,omitempty"` // Human-readable summary of the task result, suitable for display to end users
 }
 
 func (CreateMediaBuySuccess) isCreateMediaBuyResponse()   {}
