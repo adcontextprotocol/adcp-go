@@ -4,7 +4,10 @@ This note covers the experimental AdCP 3.3 agent-identity support in `github.com
 
 Everything here is **opt-in and experimental**.
 - **Wire pin.** It is unchanged: `adcp/v3/schemas/VERSION` stays at 3.2.x, and nothing advertises 3.3.
-- **Pinned drafts.** The Web Bot Auth wire rules and vectors are pinned to adcontextprotocol/adcp#7894 at `e5929470` (provenance and checksums in [`adcp/v3/signing/testdata/wba-profile/UPSTREAM.json`](../adcp/v3/signing/testdata/wba-profile/UPSTREAM.json)). The identity schemas are pinned to the draft commits in [`adcp/v3/identity/testdata/schemas/UPSTREAM.json`](../adcp/v3/identity/testdata/schemas/UPSTREAM.json).
+- **Pinned inputs.** The Web Bot Auth vectors, the identity schemas, and the delegation-chain vectors are pinned to AdCP `v3.3.0-beta.3`. Provenance and checksums are in [`adcp/v3/signing/testdata/wba-profile/UPSTREAM.json`](../adcp/v3/signing/testdata/wba-profile/UPSTREAM.json), [`adcp/v3/identity/testdata/schemas/UPSTREAM.json`](../adcp/v3/identity/testdata/schemas/UPSTREAM.json), and [`adcp/v3/identity/testdata/delegation-chains/UPSTREAM.json`](../adcp/v3/identity/testdata/delegation-chains/UPSTREAM.json). Changes from the earlier drafts:
+  - A buyer's onboarding posture uses the sellers' modes (`open`, `application`, `invite_only`). `BuyerOnboardingMode` is gone, and `considers_unsolicited` is no longer valid.
+  - `agent_identity` is no longer a requirement kind. An `aao_verified` requirement needs `role` and names `verified_specialisms` (was `specialisms`), and a `storyboard` or `experimental_feature` requirement needs `id`. `documentation_url` is gone from both onboarding objects.
+  - A pending relationship's status is `pending_approval` (`RelationshipPendingApproval`), and its `setup` gains `kind` and `waiting_on`.
 - **Change.** Both may still change before 3.3 ships.
 - **Default behavior.** Existing APIs behave exactly as before unless you set the new options.
 
@@ -169,4 +172,4 @@ AdCP 3.3 deprecates the RFC 9421 profile. It stays fully functional through 3.x 
 - **Legacy module.** These features ship in `adcp/v3` only. The legacy `adcp` module is frozen at v2 (see MIGRATING.md) and received only the covered-header tolerance.
 - **Webhooks.** Web Bot Auth webhooks are ordinary signed requests and verify with the same middleware. The `adcp/v3/webhook` publisher does not sign them yet, and the `signing_profile` registration field is not modeled.
 - **Durable state.** The defaults keep bindings, revocation history, authority history, and replay state in memory. Persistent stores are the application's, behind `BindingStore`, `RevocationHistory`, `AuthorityHistory`, and `ReplayStore`. Public deployments need all four.
-- **Released inputs.** The final 3.3 schema bundle and the P7 trust-record and grant-chain vectors are upstream release dependencies. Re-pin and rerun conformance when they land.
+- **Released inputs.** The pins above are the 3.3.0-beta.3 release. Re-pin and rerun conformance when 3.3 ships. The SDK's wire bundle (`adcp/v3/schemas/VERSION`) is still 3.2.2. The Web Bot Auth interop job (`ADCP_REF` in CI) stays on its earlier harness until the SDK passes the beta.3 harness's D11 scenario (a directory key that doesn't sign), which adcontextprotocol/adcp-go#585 fixes.
