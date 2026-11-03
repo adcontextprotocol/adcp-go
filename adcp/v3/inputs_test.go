@@ -66,7 +66,7 @@ func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
 	out, err := json.Marshal(PackageUpdate{
 		PackageID:   "pkg-1",
 		Paused:      Bool(false),
-		Budget:      Float64(0),
+		Budget:      Some(0.0),
 		BidPrice:    Float64(0),
 		Impressions: Float64(0),
 		KeywordTargetsAdd: []KeywordTargetUpdate{{
@@ -165,10 +165,11 @@ func TestPackageOptionalNumericZeroRoundTrip(t *testing.T) {
 	assertSchemaValid(t, "media-buy/package-update.json", updateRaw)
 	var update PackageUpdate
 	require.NoError(t, json.Unmarshal(updateRaw, &update))
-	require.NotNil(t, update.Budget)
+	budget, ok := update.Budget.Get()
+	require.True(t, ok, "an explicit zero budget is a value, not omitted or null")
 	require.NotNil(t, update.BidPrice)
 	require.NotNil(t, update.Impressions)
-	assert.Equal(t, float64(0), *update.Budget)
+	assert.Equal(t, float64(0), budget)
 	assert.Equal(t, float64(0), *update.BidPrice)
 	assert.Equal(t, float64(0), *update.Impressions)
 

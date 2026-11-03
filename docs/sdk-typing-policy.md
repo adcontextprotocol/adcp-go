@@ -127,9 +127,22 @@ Decision:
   omitted, `null` and a value (including `0`, `false` and `[]`), and calls
   `requireOptionalOmitZero` (`adcp/v3/optional_test.go`) on the type.
 
-This is the request-side encoding. Which generated fields use it, the
-generator rule that picks them and the matching `lint.py` rules are a separate
-change; a field keeps its current type until then.
+The generator picks the fields from the schema (`adcp/v3/schemas/generate.py`).
+A property gets `Optional[T]`, tagged `omitzero`, when its schema has a null
+branch after `$ref` resolution (`type` lists `"null"`, an `anyOf` or `oneOf`
+branch is null, or `enum` or `const` allows null), it is not required, and its
+struct is reachable from a `*-request.json` tool schema and from no response
+or webhook schema. A struct that a response shares keeps pointers, which is the
+right shape for reading a response. `T` is what the generator would emit for
+the property without the pointer, so a union that falls back to `any` is
+`Optional[any]`, and the any-coverage gate keeps tracking it with its reviewed
+reason.
+
+`adcp/v3/schemas/lint.py --strict` enforces the same rule: a non-required
+request property with a null branch must be `Optional[...]` in Go, or its nulls
+must sit below an untyped parent listed in `REVIEWED_NULLABLE_PARENTS` with the
+reason. The hand-written `Plan` type is exempt from the drift check until it is
+paired with its schema, so `Plan.ApprovedSellers` is not covered yet.
 
 ## Enum Policy
 

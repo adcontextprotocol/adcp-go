@@ -1,5 +1,108 @@
 # Migrating adcp-go
 
+## 3.3.0-beta: nullable request fields are `adcp.Optional[T]` (`adcp/v3`)
+
+A request field whose schema allows `null` has three states on the wire:
+omitted (leave the stored value), `null` (clear it) and a value (replace it).
+`update_media_buy` says so: omitting `daily_budget_cap` leaves the cap and
+`null` removes it. A Go pointer holds two states, and `encoding/json` sets it
+to nil for `null`, so a seller could not tell `{}` from
+`{"daily_budget_cap":null}`, and a buyer could not send `null` at all.
+
+`adcp.Optional[T]` holds all three. The generator now emits it, tagged
+`json:"name,omitzero"`, for every request property that is optional, has a null
+branch in its schema, and sits in a struct that only requests reach. This is a
+**source-breaking** change for the fields below, and it ships in the 3.3.0-beta
+line; `@latest` stays on the 3.2.x line until 3.3.0 stable.
+
+| Field | 3.2.1 | 3.3.0-beta.0 | Now |
+| --- | --- | --- | --- |
+| `UpdateMediaBuyRequest.DailyBudgetCap` | `*float64` | `*float64` | `adcp.Optional[float64]` |
+| `UpdateMediaBuyRequest.BudgetCapTimezone` | `*string` | `*string` | `adcp.Optional[string]` |
+| `UpdateMediaBuyRequest.Bidding` | `any` | `any` | `adcp.Optional[any]` |
+| `PackageUpdate.Budget` | `*float64` | `*float64` | `adcp.Optional[float64]` |
+| `PackageUpdate.MinSpendTarget` | `*float64` | `*float64` | `adcp.Optional[float64]` |
+| `PackageUpdate.DailyBudgetCap` | `*float64` | `*float64` | `adcp.Optional[float64]` |
+| `PackageUpdate.Bidding` | `any` | `any` | `adcp.Optional[any]` |
+| `UpdateMediaBuyRequest.FrequencyCap` | n/a | `any` | `adcp.Optional[any]` |
+| `ControlMediaBuyRequest.DailyBudgetCap` | n/a | `any` | `adcp.Optional[float64]` |
+| `ControlMediaBuyRequest.BudgetCapTimezone` | n/a | `any` | `adcp.Optional[string]` |
+| `ControlMediaBuyRequest.FrequencyCap` | n/a | `any` | `adcp.Optional[any]` |
+| `ControlMediaBuyRequest.Bidding` | n/a | `any` | `adcp.Optional[any]` |
+| `PackageControl.Budget` | n/a | `any` | `adcp.Optional[float64]` |
+| `PackageControl.MinSpendTarget` | n/a | `any` | `adcp.Optional[float64]` |
+| `PackageControl.DailyBudgetCap` | n/a | `any` | `adcp.Optional[float64]` |
+| `PackageControl.Bidding` | n/a | `any` | `adcp.Optional[any]` |
+
+The `any` fields stay `any` as the value (`Optional[any]`): their schemas are
+not generated as Go types yet, and the generator still tracks them as reviewed
+`any` fallbacks.
+
+**Building a request.** `Some` sends a value, `Null` sends `null`, and the zero
+value of the field sends nothing:
+
+```go
+// before
+req := adcp.UpdateMediaBuyRequest{
+    DailyBudgetCap: adcp.Float64(5),
+    Packages: []adcp.PackageUpdate{{PackageID: "pkg_1", Budget: adcp.Float64(0)}},
+}
+
+// after
+req := adcp.UpdateMediaBuyRequest{
+    DailyBudgetCap: adcp.Some(5.0),
+    Packages: []adcp.PackageUpdate{{PackageID: "pkg_1", Budget: adcp.Some(0.0)}},
+}
+
+// clear a cap: sends "daily_budget_cap": null (a pointer could not)
+req.DailyBudgetCap = adcp.Null[float64]()
+```
+
+Write `Some(5.0)`: `Some(5)` is an `Optional[int]` and does not compile against
+a number field. A `0`, `""` or `false` is a value, not omission. For an `any`
+field write `adcp.Some[any](map[string]any{"automatic": true})` to replace and
+`adcp.Null[any]()` to clear; `adcp.ClearField()` is no longer used for these
+fields. `Some[any](nil)` is refused when the request is encoded, because it
+would send `null`, which means clear.
+
+**Handling a request.** `IsNull` and `Get` replace the nil check:
+
+```go
+// before: nil meant omitted and null alike
+if req.DailyBudgetCap != nil {
+    setCap(*req.DailyBudgetCap)
+}
+
+// after: three outcomes
+switch {
+case req.DailyBudgetCap.IsNull():
+    clearCap()
+default:
+    if v, ok := req.DailyBudgetCap.Get(); ok {
+        setCap(v)
+    } // omitted: leave the stored cap alone
+}
+```
+
+`x.Budget.Get()` replaces `*x.Budget`, and `x.Budget.IsZero()` replaces
+`x.Budget == nil` for "omitted". Do not write `*Optional[T]` in your own
+structs: decoding sets the pointer to nil for `null`.
+
+**What else changes.**
+
+- The wire changes in one place: an explicit `null` is now kept. A seller that
+  decodes a request and encodes it again, as a proxy does, used to drop
+  `"daily_budget_cap":null` and now forwards it.
+- `tools/list` is unchanged for `update_media_buy`: `AddTool` advertises an
+  `Optional[T]` as it advertised the `*T`. `control_media_buy` now advertises
+  its five typed properties (`daily_budget_cap`, `budget_cap_timezone` and the
+  package `budget`, `min_spend_target` and `daily_budget_cap`) as `number` or
+  `string` with `null`, where it advertised nothing for the `any` fields.
+- Not changed here: `Plan.ApprovedSellers`, and `targeting_overlay` on
+  `PackageInput`, `PackageUpdate`, `PackageControl` and `ProductPurchaseInput`
+  (still `any`; every dimension inside it has a null branch). A later change
+  types them.
+
 ## Behavior change: signed HTTP clients cap agent responses at 4 MiB
 
 Clients built with `signing.NewSignedHTTPClient` now reject any agent response

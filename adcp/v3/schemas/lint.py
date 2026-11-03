@@ -1126,6 +1126,132 @@ def optional_numeric_pointer_reports(go_structs):
     return reports
 
 
+# Request properties that can be omitted, null or a value (adcp-go#564 check 2).
+# A non-required request property whose schema has a null branch must be
+# `Optional[T]` in Go (adcp/v3/optional.go): a pointer or `any` decodes null like
+# omission. The generator emits it for every struct that only requests reach.
+# Where the nulls sit below an untyped (`any`) field instead, that field is
+# listed here with its reason, so each one is a reviewed decision. An entry that
+# matches no finding fails lint, so the list only shrinks.
+#
+# Plan.approved_sellers is not covered yet: Plan is in EXEMPT until it is paired
+# with its schema.
+REVIEWED_NULLABLE_PARENTS = {
+    ('ComplyTestControllerRequest', 'params'):
+        'comply_test_controller params are scenario-specific and intentionally '
+        'any; a map keeps an explicit null',
+    ('CanonicalProposal', 'forecast'):
+        'tracked AdCP 3.2 RC generator gap (generate.py SCHEMA_32_RC_ANY_FIELDS)',
+    # core/targeting-input.json: every dimension has a null branch (null clears
+    # the dimension). It is typed with Optional dimensions in a follow-up; until
+    # then the any value keeps each null.
+    ('PackageInput', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
+    ('PackageUpdate', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
+    ('PackageControl', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
+    ('ProductPurchaseInput', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
+}
+
+
+def is_optional_go_type(go_type):
+    return gen.unwrap_optional(go_type) != go_type
+
+
+def _nullable_request_struct_sources(go_structs):
+    """Yield (owner, type_name, schema_spec, schema, go types by json name) for
+    every generated or paired hand-written struct a request tool reaches."""
+    requested, _ = gen.request_reach()
+    for entry in gen.generated_schema_entries():
+        if entry['kind'] != 'struct' or entry['name'] not in requested:
+            continue
+        schema = entry['schema_obj']
+        required = gen.schema_required_names(schema)
+        go_types = {}
+        for json_name, prop in gen.schema_properties(schema).items():
+            if isinstance(prop, dict):
+                go_types[json_name], _ = gen.field_go_type_info(
+                    entry['name'], json_name, prop, required,
+                )
+        yield 'generated', entry['name'], entry['schema'], schema, go_types
+    for type_name, go_fields in sorted(go_structs.items()):
+        if type_name not in requested:
+            continue
+        schema_spec = resolve_schema_spec(type_name)
+        if schema_spec is None:
+            continue
+        try:
+            schema = load_schema_spec(schema_spec)
+        except SCHEMA_RESOLUTION_ERRORS:
+            continue
+        go_types = {tag: go_type for _, go_type, tag, _ in go_fields}
+        yield 'hand-written', type_name, schema_spec, schema, go_types
+
+
+def nullable_request_reports(go_structs):
+    """adcp-go#564 check 2. Returns (reports, matched): a report for each
+    non-required request property with a null branch that is not Optional in a
+    struct only requests reach, and for each untyped field hiding such a
+    property that is not in REVIEWED_NULLABLE_PARENTS; `matched` is the set of
+    reviewed parents that hide one."""
+    _, answered = gen.request_reach()
+    reports = []
+    matched = set()
+    for owner, type_name, schema_spec, schema, go_types in _nullable_request_struct_sources(go_structs):
+        required = gen.schema_required_names(schema)
+        for json_name, prop in gen.schema_properties(schema).items():
+            go_type = go_types.get(json_name)
+            if not isinstance(prop, dict) or go_type is None:
+                continue
+            if (
+                type_name not in answered
+                and json_name not in required
+                and gen.schema_has_null_branch(prop)
+                and not is_optional_go_type(go_type)
+            ):
+                reports.append({
+                    'kind': 'not_optional',
+                    'owner': owner,
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'json': json_name,
+                    'go_type': go_type,
+                })
+            if gen.contains_dynamic_any(go_type):
+                hidden = gen.nullable_descendants(prop)
+                if not hidden:
+                    continue
+                key = (type_name, json_name)
+                if key in REVIEWED_NULLABLE_PARENTS:
+                    matched.add(key)
+                    continue
+                reports.append({
+                    'kind': 'unreviewed_parent',
+                    'owner': owner,
+                    'type': type_name,
+                    'schema': schema_spec,
+                    'json': json_name,
+                    'go_type': go_type,
+                    'nullable': hidden[:3],
+                })
+    return reports, matched
+
+
+def stale_reviewed_nullable_parents(matched):
+    """REVIEWED_NULLABLE_PARENTS entries that hide no null branch any more."""
+    return [
+        {
+            'type': type_name,
+            'json': json_name,
+            'error': (
+                'stale reviewed parent: no optional property with a null branch '
+                'sits below it any more (the field was typed, renamed or left '
+                'the schema); delete the entry'
+            ),
+        }
+        for (type_name, json_name) in sorted(REVIEWED_NULLABLE_PARENTS)
+        if (type_name, json_name) not in matched
+    ]
+
+
 def resolve_schema_spec(type_name):
     """Return schema spec for `type_name`, or None."""
     if type_name in EXPLICIT_SCHEMA:
@@ -1403,6 +1529,8 @@ def main():
         optional_numeric_pointer_reports(go_structs),
         'optional_numeric_pointer', known_gaps, matched_gaps,
     )
+    nullable_reports, nullable_matched = nullable_request_reports(go_structs)
+    nullable_reports = nullable_reports + stale_reviewed_nullable_parents(nullable_matched)
     hand_written_inline_schema_divergence = validate_hand_written_inline_schema_divergence()
     hand_written_inline_reports = [
         r for r in (
@@ -1453,6 +1581,7 @@ def main():
             'custom_wire_field_errors': custom_wire_field_errors,
             'optional_bool_pointer': optional_bool_reports,
             'optional_numeric_pointer': optional_numeric_reports,
+            'nullable_request_fields': nullable_reports,
             'known_schema_gaps': known_gaps,
             'known_schema_gap_errors': known_gap_errors,
         }
@@ -1615,6 +1744,33 @@ def main():
                 print(f'    Go type: {r["go_type"]}')
                 print('    fix:     use *int/*float64 or add an OPTIONAL_NUMERIC_SCALAR_OK waiver')
             print()
+        if nullable_reports:
+            print(
+                'Nullable request field issues in '
+                f'{len(nullable_reports)} field(s):'
+            )
+            for r in nullable_reports:
+                print()
+                print(f'  {r["type"]}.{r["json"]}  ({r.get("schema", "reviewed parent")})')
+                if r.get('error'):
+                    print(f'    error:   {r["error"]}')
+                elif r['kind'] == 'not_optional':
+                    print(f'    owner:   {r["owner"]}')
+                    print(f'    Go type: {r["go_type"]}')
+                    print(
+                        '    fix:     the schema allows null and omission, which mean '
+                        'different things; use Optional[T] tagged omitzero '
+                        '(the generator emits it)'
+                    )
+                else:
+                    print(f'    owner:   {r["owner"]}')
+                    print(f'    Go type: {r["go_type"]}')
+                    print(f'    hides:   {", ".join(r["nullable"])}')
+                    print(
+                        '    fix:     type the field so its null properties are '
+                        'Optional, or add it to REVIEWED_NULLABLE_PARENTS with the reason'
+                    )
+            print()
         if known_gap_errors:
             print(f'Known schema gap errors ({len(known_gap_errors)}):')
             for r in known_gap_errors:
@@ -1678,6 +1834,7 @@ def main():
         or bool(optional_bool_reports)
         or bool(reports)
         or bool(optional_numeric_reports)
+        or bool(nullable_reports)
         or bool(known_gap_errors)
         or (args.strict and bool(no_schema))
     )

@@ -210,47 +210,48 @@ func TestCanonicalKeywordTargetIsNotTheTargetingKeywordTarget(t *testing.T) {
 }
 
 // Request properties whose schema allows null mean "clear it" (daily_budget_cap:
-// "null removes it"). Their Go type is a reviewed `any` until adcp-go#536
-// settles the three-state encoding, and `any` with omitempty does not keep a
-// top-level null: it decodes to nil and the key is dropped on encode, as for a
-// *float64 and as for UpdateMediaBuyRequest.frequency_cap. This pins that
-// limitation so changing it is a deliberate act of #536. The expected output
-// below is knowingly not a valid request (a package patch needs a control
-// field): a proxy that decodes and re-encodes would drop the clear.
-func TestControlMediaBuyRequestNullFieldsDecodeLikeOmission(t *testing.T) {
+// "null removes it"). Their Go type is Optional[T], so a null survives decoding
+// and re-encoding: a proxy that decodes and re-encodes keeps the clear, and a
+// buyer sends it with Null[T]().
+func TestControlMediaBuyRequestNullFieldsKeepNull(t *testing.T) {
 	requireSchemaBundle(t)
 	raw := `{"idempotency_key":"control-mb-0000007","account":{"account_id":"acc_1"},"media_buy_id":"mb_1","revision":3,"daily_budget_cap":null,"frequency_cap":null,"budget_cap_timezone":null,"bidding":null,"packages":[{"package_id":"pkg_1","budget":null,"daily_budget_cap":null,"min_spend_target":null,"bidding":null}]}`
 	assertSchemaValid(t, controlRequestSchema, []byte(raw))
 	var req ControlMediaBuyRequest
 	require.NoError(t, json.Unmarshal([]byte(raw), &req))
 
-	assert.Nil(t, req.DailyBudgetCap)
-	assert.Nil(t, req.FrequencyCap)
-	assert.Nil(t, req.BudgetCapTimezone)
-	assert.Nil(t, req.Bidding)
+	assert.True(t, req.DailyBudgetCap.IsNull())
+	assert.True(t, req.FrequencyCap.IsNull())
+	assert.True(t, req.BudgetCapTimezone.IsNull())
+	assert.True(t, req.Bidding.IsNull())
 	pkg := req.Packages[0]
-	assert.Nil(t, pkg.Budget)
-	assert.Nil(t, pkg.DailyBudgetCap)
-	assert.Nil(t, pkg.MinSpendTarget)
-	assert.Nil(t, pkg.Bidding)
+	assert.True(t, pkg.Budget.IsNull())
+	assert.True(t, pkg.DailyBudgetCap.IsNull())
+	assert.True(t, pkg.MinSpendTarget.IsNull())
+	assert.True(t, pkg.Bidding.IsNull())
 
 	out, err := json.Marshal(req)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"idempotency_key":"control-mb-0000007","account":{"account_id":"acc_1"},"media_buy_id":"mb_1","revision":3,"packages":[{"package_id":"pkg_1"}]}`, string(out))
-	// The re-encoded request has lost its only control, so it is no longer valid.
-	invalid := validateAgainstSchema(controlRequestSchema, out)
-	require.Error(t, invalid)
-	assert.NotErrorIs(t, invalid, errSchemaBundleMissing)
+	assert.JSONEq(t, raw, string(out))
+	assertSchemaValid(t, controlRequestSchema, out)
 
-	// A caller sends a clear with ClearField (inputs.go), which marshals as null
-	// in an `any` field with omitempty. That works only because these fields are
-	// `any`; the typed encoding is #536's.
+	// Omitted stays omitted: a request with none of them has none of them back.
+	var bare ControlMediaBuyRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"idempotency_key":"control-mb-0000009","account":{"account_id":"acc_1"},"media_buy_id":"mb_1","revision":3,"paused":true}`), &bare))
+	assert.True(t, bare.DailyBudgetCap.IsZero())
+	assert.True(t, bare.Bidding.IsZero())
+	out, err = json.Marshal(bare)
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), "daily_budget_cap")
+	assert.NotContains(t, string(out), "bidding")
+
+	// A caller sends a clear with Null.
 	cleared := ControlMediaBuyRequest{
 		IdempotencyKey: "control-mb-0000008", Account: CanonicalAccountRef{AccountID: "acc_1"},
 		MediaBuyID: "mb_1", Revision: 3,
-		DailyBudgetCap: ClearField(), BudgetCapTimezone: ClearField(),
-		FrequencyCap: ClearField(), Bidding: ClearField(),
-		Packages: []PackageControl{{PackageID: "pkg_1", Budget: ClearField(), DailyBudgetCap: ClearField(), MinSpendTarget: ClearField(), Bidding: ClearField()}},
+		DailyBudgetCap: Null[float64](), BudgetCapTimezone: Null[string](),
+		FrequencyCap: Null[any](), Bidding: Null[any](),
+		Packages: []PackageControl{{PackageID: "pkg_1", Budget: Null[float64](), DailyBudgetCap: Null[float64](), MinSpendTarget: Null[float64](), Bidding: Null[any]()}},
 	}
 	out, err = json.Marshal(cleared)
 	require.NoError(t, err)
@@ -259,9 +260,26 @@ func TestControlMediaBuyRequestNullFieldsDecodeLikeOmission(t *testing.T) {
 
 	// A non-null value is kept, including a zero.
 	var zero ControlMediaBuyRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"daily_budget_cap":0,"budget_cap_timezone":"UTC"}`), &zero))
-	assert.Equal(t, float64(0), zero.DailyBudgetCap)
-	assert.Equal(t, "UTC", zero.BudgetCapTimezone)
+	require.NoError(t, json.Unmarshal([]byte(`{"daily_budget_cap":0,"budget_cap_timezone":"UTC","packages":[{"package_id":"pkg_1","budget":0,"min_spend_target":0,"daily_budget_cap":0}]}`), &zero))
+	capValue, ok := zero.DailyBudgetCap.Get()
+	assert.True(t, ok)
+	assert.Equal(t, float64(0), capValue)
+	timezone, ok := zero.BudgetCapTimezone.Get()
+	assert.True(t, ok)
+	assert.Equal(t, "UTC", timezone)
+	budget, ok := zero.Packages[0].Budget.Get()
+	assert.True(t, ok)
+	assert.Equal(t, float64(0), budget)
+	minSpend, ok := zero.Packages[0].MinSpendTarget.Get()
+	assert.True(t, ok)
+	assert.Equal(t, float64(0), minSpend)
+	out, err = json.Marshal(zero)
+	require.NoError(t, err)
+	var wire map[string]any
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, float64(0), wire["daily_budget_cap"])
+	assert.Equal(t, "UTC", wire["budget_cap_timezone"])
+	assert.Equal(t, map[string]any{"package_id": "pkg_1", "budget": float64(0), "min_spend_target": float64(0), "daily_budget_cap": float64(0)}, wire["packages"].([]any)[0])
 }
 
 // implementation_date is optional and may be null. The field is a pointer, so
