@@ -409,7 +409,6 @@ func TestOptionalTypeSchemasLeavesTypesWithoutOptionalAlone(t *testing.T) {
 	for _, rt := range []reflect.Type{
 		reflect.TypeFor[testInput](),
 		reflect.TypeFor[EmptyInput](),
-		reflect.TypeFor[UpdateMediaBuyRequest](),
 		reflect.TypeFor[CreateMediaBuyRequest](),
 		reflect.TypeFor[Plan](),
 	} {

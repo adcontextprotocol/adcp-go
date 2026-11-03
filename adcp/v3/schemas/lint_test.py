@@ -302,6 +302,7 @@ class HandWrittenInlineSchemaLintTest(unittest.TestCase):
             mock.patch.object(lint, "validate_custom_wire_fields", return_value=[]),
             mock.patch.object(lint, "optional_bool_pointer_reports", return_value=[]),
             mock.patch.object(lint, "optional_numeric_pointer_reports", return_value=[]),
+            mock.patch.object(lint, "nullable_request_reports", return_value=([], set(lint.REVIEWED_NULLABLE_PARENTS))),
             mock.patch.object(
                 lint,
                 "validate_hand_written_inline_schema_divergence",
@@ -775,6 +776,11 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
                 lint, "validate_hand_written_inline_schema_specs",
                 return_value=inline_drift or [],
             ))
+            # Not what these tests are about, and it walks every schema.
+            stack.enter_context(mock.patch.object(
+                lint, "nullable_request_reports",
+                return_value=([], set(lint.REVIEWED_NULLABLE_PARENTS)),
+            ))
             for name in empty:
                 stack.enter_context(mock.patch.object(lint, name, return_value=[]))
             for target, attr, value in (
@@ -1084,6 +1090,7 @@ class ObjectRefScalarAliasLintTest(unittest.TestCase):
         report = {"type": "Holder", "schema": "h.json", "json": "things", "ref": "r", "go_type": "Shape", "error": "e"}
         with (
             mock.patch.object(lint, "validate_object_refs_not_scalar_aliases", return_value=[report]),
+            mock.patch.object(lint, "nullable_request_reports", return_value=([], set(lint.REVIEWED_NULLABLE_PARENTS))),
             mock.patch.object(sys, "argv", ["lint.py", "--strict"]),
             contextlib.redirect_stdout(io.StringIO()) as out,
         ):
@@ -1091,6 +1098,179 @@ class ObjectRefScalarAliasLintTest(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertIn("Object $ref bound to a scalar Go type in 1 field(s)", out.getvalue())
+
+
+BUNDLE_PRESENT = (lint.SCRIPT_DIR / "media-buy" / "update-media-buy-request.json").exists()
+
+
+class NullableRequestFieldLintTest(unittest.TestCase):
+    """adcp-go#564 check 2: a non-required request property with a null branch
+    must be Optional[...] in Go, or its nulls must sit below a reviewed parent."""
+
+    CAP_SCHEMA = {
+        "type": "object",
+        "properties": {
+            "cap": {"type": ["number", "null"]},
+            "needed": {"type": ["string", "null"]},
+            "plain": {"type": "string"},
+            "free": {"type": "object", "properties": {"inner": {"type": ["integer", "null"]}}},
+        },
+        "required": ["needed"],
+    }
+
+    def hand_written(self, fields, requested=("Holder",), answered=()):
+        with (
+            mock.patch.object(lint.gen, "request_reach", return_value=(frozenset(requested), frozenset(answered))),
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[]),
+            mock.patch.object(lint, "resolve_schema_spec", return_value="holder.json"),
+            mock.patch.object(lint, "load_schema_spec", return_value=self.CAP_SCHEMA),
+            mock.patch.dict(lint.REVIEWED_NULLABLE_PARENTS, {}, clear=True),
+        ):
+            return lint.nullable_request_reports({"Holder": fields})
+
+    def test_a_pointer_for_a_nullable_request_field_is_reported(self):
+        for go_type in ("*float64", "float64", "any"):
+            with self.subTest(go_type):
+                reports, _ = self.hand_written([("Cap", go_type, "cap", True)])
+                self.assertEqual(
+                    [("not_optional", "hand-written", "Holder", "cap", go_type)],
+                    [(r["kind"], r["owner"], r["type"], r["json"], r["go_type"]) for r in reports],
+                )
+
+    def test_an_optional_field_is_clean(self):
+        reports, _ = self.hand_written([("Cap", "Optional[float64]", "cap", False)])
+        self.assertEqual([], reports)
+
+    def test_a_required_nullable_field_is_not_reported(self):
+        reports, _ = self.hand_written([("Needed", "*string", "needed", False)])
+        self.assertEqual([], reports)
+
+    def test_a_struct_a_response_shares_is_not_reported(self):
+        # Shared with a response, the generator keeps a pointer, so lint wants
+        # nothing different.
+        reports, _ = self.hand_written([("Cap", "*float64", "cap", True)], answered=("Holder",))
+        self.assertEqual([], reports)
+
+    def test_a_struct_no_request_reaches_is_not_reported(self):
+        reports, _ = self.hand_written([("Cap", "*float64", "cap", True)], requested=())
+        self.assertEqual([], reports)
+
+    def test_a_field_without_a_null_branch_is_not_reported(self):
+        reports, _ = self.hand_written([("Plain", "string", "plain", True)])
+        self.assertEqual([], reports)
+
+    def test_a_generated_field_that_lost_its_optional_is_reported(self):
+        entry = {
+            "kind": "struct", "name": "Holder", "schema": "holder.json", "schema_obj": self.CAP_SCHEMA,
+        }
+        with (
+            mock.patch.object(lint.gen, "request_reach", return_value=(frozenset({"Holder"}), frozenset())),
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[entry]),
+            mock.patch.object(lint.gen, "field_go_type_info", return_value=("*float64", None)),
+            mock.patch.dict(lint.REVIEWED_NULLABLE_PARENTS, {}, clear=True),
+        ):
+            reports, _ = lint.nullable_request_reports({})
+
+        self.assertEqual(
+            [("not_optional", "generated", "Holder", "cap")],
+            [(r["kind"], r["owner"], r["type"], r["json"]) for r in reports],
+        )
+
+    def test_nulls_below_an_untyped_field_need_a_reviewed_parent(self):
+        reports, _ = self.hand_written([("Free", "any", "free", True)])
+        self.assertEqual(
+            [("unreviewed_parent", "Holder", "free", ["/inner"])],
+            [(r["kind"], r["type"], r["json"], r["nullable"]) for r in reports],
+        )
+
+        with (
+            mock.patch.object(lint.gen, "request_reach", return_value=(frozenset({"Holder"}), frozenset())),
+            mock.patch.object(lint.gen, "generated_schema_entries", return_value=[]),
+            mock.patch.object(lint, "resolve_schema_spec", return_value="holder.json"),
+            mock.patch.object(lint, "load_schema_spec", return_value=self.CAP_SCHEMA),
+            mock.patch.dict(lint.REVIEWED_NULLABLE_PARENTS, {("Holder", "free"): "reviewed"}, clear=True),
+        ):
+            reports, matched = lint.nullable_request_reports({"Holder": [("Free", "any", "free", True)]})
+        self.assertEqual([], reports)
+        self.assertEqual({("Holder", "free")}, matched)
+
+    def test_a_typed_field_is_not_an_untyped_parent(self):
+        reports, _ = self.hand_written([("Free", "Free", "free", True)])
+        self.assertEqual([], reports)
+
+    def test_a_reviewed_parent_that_hides_nothing_is_stale(self):
+        with mock.patch.dict(lint.REVIEWED_NULLABLE_PARENTS, {("Gone", "params"): "r"}, clear=True):
+            stale = lint.stale_reviewed_nullable_parents({("Other", "x")})
+            self.assertEqual([("Gone", "params")], [(r["type"], r["json"]) for r in stale])
+            self.assertIn("stale reviewed parent", stale[0]["error"])
+            self.assertEqual([], lint.stale_reviewed_nullable_parents({("Gone", "params")}))
+
+    def test_the_reviewed_parents_are_the_known_untyped_ones(self):
+        self.assertEqual(
+            {
+                ("ComplyTestControllerRequest", "params"),
+                ("CanonicalProposal", "forecast"),
+                ("PackageInput", "targeting_overlay"),
+                ("PackageUpdate", "targeting_overlay"),
+                ("PackageControl", "targeting_overlay"),
+                ("ProductPurchaseInput", "targeting_overlay"),
+            },
+            set(lint.REVIEWED_NULLABLE_PARENTS),
+        )
+        for key, reason in lint.REVIEWED_NULLABLE_PARENTS.items():
+            with self.subTest(key):
+                self.assertTrue(reason)
+        # Plan stays out until it is paired with its schema.
+        self.assertIn("Plan", lint.EXEMPT)
+        self.assertNotIn("Plan", {key[0] for key in lint.REVIEWED_NULLABLE_PARENTS})
+
+    def test_is_optional_go_type(self):
+        for go_type in ("Optional[float64]", "Optional[any]", "Optional[[]string]"):
+            self.assertTrue(lint.is_optional_go_type(go_type))
+        for go_type in ("*float64", "any", "[]Optional[float64]", "*Optional[float64]", "Optional"):
+            self.assertFalse(lint.is_optional_go_type(go_type))
+
+    def test_strict_lint_exits_nonzero_and_names_the_field(self):
+        report = {
+            "kind": "not_optional", "owner": "hand-written", "type": "Holder",
+            "schema": "holder.json", "json": "cap", "go_type": "*float64",
+        }
+        with (
+            mock.patch.object(lint, "nullable_request_reports", return_value=([report], set(lint.REVIEWED_NULLABLE_PARENTS))),
+            mock.patch.object(sys, "argv", ["lint.py", "--strict"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            exit_code = lint.main()
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("Nullable request field issues in 1 field(s)", out.getvalue())
+        self.assertIn("Holder.cap", out.getvalue())
+        self.assertIn("Optional[T]", out.getvalue())
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_current_tree_is_clean_and_every_reviewed_parent_is_used(self):
+        reports, matched = lint.nullable_request_reports(lint.parse_go_structs())
+
+        self.assertEqual([], reports)
+        self.assertEqual(set(lint.REVIEWED_NULLABLE_PARENTS), matched)
+
+    @unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+    def test_current_tree_fails_when_an_optional_goes_back_to_a_pointer(self):
+        real = lint.gen.field_go_type_info
+
+        def pointer_for_update(type_name, json_name, prop, required_set, *args, **kwargs):
+            go_type, reason = real(type_name, json_name, prop, required_set, *args, **kwargs)
+            if (type_name, json_name) == ("UpdateMediaBuyRequest", "daily_budget_cap"):
+                return "*float64", reason
+            return go_type, reason
+
+        with mock.patch.object(lint.gen, "field_go_type_info", side_effect=pointer_for_update):
+            reports, _ = lint.nullable_request_reports(lint.parse_go_structs())
+
+        self.assertEqual(
+            [("not_optional", "generated", "UpdateMediaBuyRequest", "daily_budget_cap")],
+            [(r["kind"], r["owner"], r["type"], r["json"]) for r in reports],
+        )
 
 
 if __name__ == "__main__":

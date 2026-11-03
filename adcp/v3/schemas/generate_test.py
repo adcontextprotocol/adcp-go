@@ -1,5 +1,6 @@
 import contextlib
 import io
+import re
 import shutil
 import subprocess
 import tempfile
@@ -872,7 +873,9 @@ class OptionalNumericPolicyTest(unittest.TestCase):
             "media-buy/package-update.json",
             "PackageUpdate",
             "budget",
-            "*float64",
+            # budget has a null branch and PackageUpdate is request-only, so a
+            # pointer would lose the difference between omitted and null.
+            "Optional[float64]",
         )
         self.assert_field_type(
             "media-buy/package-update.json",
@@ -2650,10 +2653,12 @@ class CommitmentResponseGenerationTest(unittest.TestCase):
             ],
         )
 
-    def test_typed_request_fields_reach_no_null_branch(self):
-        # A typed Go field decodes null like omission and drops it on encode;
-        # adcp-go#536 is deciding the request-side encoding. So every request
-        # field whose schema reaches a null branch must stay a reviewed `any`.
+    def test_request_fields_that_reach_a_null_branch_are_optional_or_reviewed_any(self):
+        # A pointer or `any` decodes null like omission; adcp.Optional[T] keeps
+        # the state. So a request property whose own schema allows null is
+        # Optional[...] in a struct only requests reach. A property that merely
+        # reaches a null branch below it (targeting_overlay: every dimension
+        # has one) is a reviewed `any` until it is typed.
         def reaches_null(node, seen):
             if isinstance(node, list):
                 return any(reaches_null(item, seen) for item in node)
@@ -2684,7 +2689,9 @@ class CommitmentResponseGenerationTest(unittest.TestCase):
             for json_name, prop in generate.schema_properties(schema).items():
                 go_type, _ = generate.field_go_type_info(name, json_name, prop, required)
                 with self.subTest(type=name, field=json_name):
-                    if reaches_null(prop, set()):
+                    if json_name not in required and generate.schema_has_null_branch(prop):
+                        self.assertTrue(go_type.startswith("Optional["), go_type)
+                    elif reaches_null(prop, set()):
                         self.assertTrue(generate.contains_dynamic_any(go_type), go_type)
                         self.assertIn((name, json_name), generate.INTENTIONAL_ANY_FIELDS)
 
@@ -2767,27 +2774,54 @@ class ControlMediaBuyGenerationTest(unittest.TestCase):
         )
         self.assertIn('BidPrice *float64 `json:"bid_price,omitempty"`', " ".join(source.split()))
 
-    def test_nullable_request_fields_are_reviewed_any_naming_536(self):
-        fields = {
-            ("ControlMediaBuyRequest", "daily_budget_cap"),
-            ("ControlMediaBuyRequest", "frequency_cap"),
-            ("ControlMediaBuyRequest", "budget_cap_timezone"),
-            ("ControlMediaBuyRequest", "bidding"),
-            ("PackageControl", "budget"),
-            ("PackageControl", "daily_budget_cap"),
-            ("PackageControl", "min_spend_target"),
-            ("PackageControl", "bidding"),
-            ("PackageControl", "targeting_overlay"),
+    def test_nullable_request_fields_are_optional(self):
+        expected = {
+            ("ControlMediaBuyRequest", "daily_budget_cap"): "Optional[float64]",
+            ("ControlMediaBuyRequest", "budget_cap_timezone"): "Optional[string]",
+            ("ControlMediaBuyRequest", "frequency_cap"): "Optional[any]",
+            ("ControlMediaBuyRequest", "bidding"): "Optional[any]",
+            ("PackageControl", "budget"): "Optional[float64]",
+            ("PackageControl", "daily_budget_cap"): "Optional[float64]",
+            ("PackageControl", "min_spend_target"): "Optional[float64]",
+            ("PackageControl", "bidding"): "Optional[any]",
         }
-        for key in sorted(fields):
+        for key, want in sorted(expected.items()):
             with self.subTest(field=key):
-                self.assertIn("adcp-go#536", generate.INTENTIONAL_ANY_FIELDS[key])
                 entry = self.entries[key[0]]
                 prop = generate.schema_properties(entry["schema_obj"])[key[1]]
                 go_type, _ = generate.field_go_type_info(
                     key[0], key[1], prop, generate.schema_required_names(entry["schema_obj"]),
                 )
-                self.assertEqual("any", go_type)
+                self.assertEqual(want, go_type)
+
+    def test_untyped_nullable_fields_keep_their_reviewed_reasons(self):
+        # Optional[any] is still `any` to the coverage gate, so these stay
+        # tracked with the reason that names why they are not typed.
+        for key in (
+            ("ControlMediaBuyRequest", "frequency_cap"),
+            ("ControlMediaBuyRequest", "bidding"),
+            ("PackageControl", "bidding"),
+            ("UpdateMediaBuyRequest", "frequency_cap"),
+        ):
+            with self.subTest(field=key):
+                reason = generate.INTENTIONAL_ANY_FIELDS[key]
+                self.assertIn("held as Optional[any]", reason)
+                self.assertNotIn("adcp-go#536", reason)
+        # The encoding is settled; no reason says it is still being decided.
+        for key, reason in generate.INTENTIONAL_ANY_FIELDS.items():
+            with self.subTest(reason_for=key):
+                self.assertNotIn("adcp-go#536", reason)
+        # The typed ones lost their allowance: they are no longer `any`.
+        for key in (
+            ("ControlMediaBuyRequest", "daily_budget_cap"),
+            ("ControlMediaBuyRequest", "budget_cap_timezone"),
+            ("PackageControl", "budget"),
+            ("PackageControl", "daily_budget_cap"),
+            ("PackageControl", "min_spend_target"),
+        ):
+            with self.subTest(field=key):
+                self.assertNotIn(key, generate.INTENTIONAL_ANY_FIELDS)
+                self.assertNotIn(key, generate.INLINE_TYPE_HINTS)
 
     def test_total_budget_reuses_the_media_buy_budget_type(self):
         key = ("ControlMediaBuyRequest", "total_budget")
@@ -2818,6 +2852,410 @@ class ControlMediaBuyGenerationTest(unittest.TestCase):
                 } and not r["allowed"]
             ],
         )
+
+
+class NullBranchTest(unittest.TestCase):
+    """schema_has_null_branch: a property that accepts null, after $ref."""
+
+    def test_every_way_to_allow_null_counts(self):
+        for name, prop in {
+            "type list": {"type": ["number", "null"]},
+            "null first in the list": {"type": ["null", "string"]},
+            "anyOf branch": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "oneOf branch": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+            "anyOf branch with a ref": {"anyOf": [{"$ref": "/schemas/3.2.2/core/x.json"}, {"type": "null"}]},
+            "nullable branch": {"anyOf": [{"type": ["string", "null"]}, {"type": "integer"}]},
+            "const null": {"const": None},
+            "enum with null": {"enum": ["a", None]},
+            "single allOf": {"allOf": [{"type": ["string", "null"]}]},
+        }.items():
+            with self.subTest(name):
+                self.assertTrue(generate.schema_has_null_branch(prop))
+
+    def test_what_does_not_allow_null_does_not_count(self):
+        for name, prop in {
+            "plain type": {"type": "number"},
+            "type list without null": {"type": ["number", "string"]},
+            "enum without null": {"enum": ["a", "b"]},
+            "const": {"const": "null"},
+            "union without null": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+            "bare null type": {"type": "null"},
+            "object whose property is nullable": {
+                "type": "object",
+                "properties": {"inner": {"type": ["string", "null"]}},
+            },
+            "array of nullable items": {"type": "array", "items": {"type": ["string", "null"]}},
+            "not a schema": True,
+            "two allOf branches": {"allOf": [{"type": ["string", "null"]}, {"minLength": 1}]},
+        }.items():
+            with self.subTest(name):
+                self.assertFalse(generate.schema_has_null_branch(prop))
+
+    def test_a_ref_is_followed_and_a_ref_cycle_ends(self):
+        schemas = {
+            "core/nullable.json": {"type": ["string", "null"]},
+            "core/plain.json": {"type": "string"},
+            "core/loop.json": {"anyOf": [{"$ref": "/schemas/3.2.2/core/loop.json"}, {"type": "string"}]},
+        }
+
+        def resolve(ref):
+            return schemas[ref.split("/schemas/3.2.2/")[1]]
+
+        with mock.patch.object(generate, "resolve_ref_schema", side_effect=resolve):
+            self.assertTrue(generate.schema_has_null_branch({"$ref": "/schemas/3.2.2/core/nullable.json"}))
+            self.assertFalse(generate.schema_has_null_branch({"$ref": "/schemas/3.2.2/core/plain.json"}))
+            self.assertFalse(generate.schema_has_null_branch({"$ref": "/schemas/3.2.2/core/loop.json"}))
+
+    def test_nullable_descendants_finds_what_an_untyped_field_hides(self):
+        schema = {
+            "type": "object",
+            "properties": {
+                "plain": {"type": "string"},
+                "own": {"type": ["string", "null"]},
+                "nested": {
+                    "type": "object",
+                    "properties": {"deep": {"anyOf": [{"type": "integer"}, {"type": "null"}]}},
+                    "required": [],
+                },
+                "list": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"cell": {"type": ["number", "null"]}},
+                }},
+                "needed": {"type": "object", "properties": {"must": {"type": ["string", "null"]}}, "required": ["must"]},
+            },
+        }
+
+        self.assertEqual(
+            ["/own", "/nested/deep", "/list/*/cell"],
+            generate.nullable_descendants(schema),
+        )
+        self.assertEqual([], generate.nullable_descendants({"type": ["string", "null"]}))
+
+
+class AnyThroughOptionalTest(unittest.TestCase):
+    def test_optional_any_is_still_any(self):
+        for go_type in (
+            "Optional[any]", "Optional[[]any]", "Optional[map[string]any]",
+            "Optional[AdcpError]", "any", "[]any",
+        ):
+            with self.subTest(go_type):
+                self.assertTrue(generate.contains_dynamic_any(go_type))
+        for go_type in ("Optional[float64]", "Optional[[]string]", "Optional[Targeting]", "*float64"):
+            with self.subTest(go_type):
+                self.assertFalse(generate.contains_dynamic_any(go_type))
+                self.assertFalse(generate.is_any_type(go_type))
+        self.assertTrue(generate.is_any_type("Optional[any]"))
+        self.assertEqual("any", generate.unwrap_optional("Optional[any]"))
+        self.assertEqual("Optional", generate.unwrap_optional("Optional"))
+        self.assertEqual("[]any", generate.unwrap_optional("[]any"))
+
+
+class OptionalRequestFixtureCase(SchemaFixtureCase):
+    """Schemas for the Optional[T] rule: a request, a response, and structs the
+    two share or do not."""
+
+    REF = "/schemas/test/"
+
+    SCHEMAS = {
+        "media-buy/update-thing-request.json": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "cap": {"type": ["number", "null"]},
+                "timezone": {"type": ["string", "null"]},
+                "union": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+                "count": {"type": ["integer", "null"]},
+                "flag": {"type": ["boolean", "null"]},
+                "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+                "mode": {"$ref": "/schemas/test/enums/mode.json"},
+                "policy": {"anyOf": [{"$ref": "/schemas/test/core/policy.json"}, {"type": "null"}]},
+                "must_send": {"type": ["string", "null"]},
+                "plain": {"type": "number"},
+                "child": {"$ref": "/schemas/test/core/child.json"},
+                "shared": {"$ref": "/schemas/test/core/shared.json"},
+            },
+            "required": ["id", "must_send"],
+        },
+        "media-buy/update-thing-response.json": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string"},
+                "shared": {"$ref": "/schemas/test/core/shared.json"},
+                "thing": {"$ref": "/schemas/test/core/thing.json"},
+            },
+            "required": ["id"],
+        },
+        "enums/mode.json": {"type": "string", "enum": ["a", "b", None]},
+        "core/policy.json": {"type": "object", "properties": {"automatic": {"type": "boolean"}}},
+        "core/child.json": {
+            "type": "object",
+            "properties": {"limit": {"type": ["integer", "null"]}, "label": {"type": "string"}},
+        },
+        "core/shared.json": {
+            "type": "object",
+            "properties": {"note": {"type": ["string", "null"]}},
+        },
+        "core/thing.json": {
+            "type": "object",
+            "properties": {"owner": {"type": ["string", "null"]}},
+        },
+    }
+
+    def setUp(self):
+        super().setUp()
+        self.install_schema_fixture(
+            self.SCHEMAS,
+            tool=[
+                "media-buy/update-thing-request.json",
+                "media-buy/update-thing-response.json",
+            ],
+        )
+        patch = mock.patch.object(generate, "resolve_ref_schema", side_effect=self.resolve_ref)
+        patch.start()
+        self.addCleanup(patch.stop)
+        generate._reset_will_generate_cache()
+        self.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def resolve_ref(self, ref):
+        path = ref[len(self.REF):].split("#", 1)[0]
+        return self.SCHEMAS.get(path)
+
+    def struct(self, name):
+        return " ".join(generate.schema_to_struct(name, self.entries[name]["schema_obj"]).split())
+
+
+class OptionalRequestFieldGenerationTest(OptionalRequestFixtureCase):
+    """The generator rule: Optional[T] for a non-required request property with
+    a null branch, in a struct that requests reach and responses do not."""
+
+    def test_only_structs_that_requests_reach_and_responses_do_not_are_request_only(self):
+        requested, answered = generate.request_reach()
+
+        self.assertIn("UpdateThingRequest", requested)
+        self.assertIn("Child", requested)
+        self.assertIn("Shared", requested)
+        self.assertIn("Shared", answered)
+        self.assertNotIn("Child", answered)
+        self.assertNotIn("Thing", requested)
+        self.assertEqual({"UpdateThingRequest", "Child"}, generate.request_only_struct_names())
+
+    def test_nullable_optional_request_properties_are_optional_omitzero(self):
+        source = self.struct("UpdateThingRequest")
+
+        for field in (
+            'Cap Optional[float64] `json:"cap,omitzero"`',
+            'Timezone Optional[string] `json:"timezone,omitzero"`',
+            # A null branch in a union: the generator emits any for the union
+            # (as for frequency_cap and bidding), so T is any.
+            'Union Optional[any] `json:"union,omitzero"`',
+            'Count Optional[int] `json:"count,omitzero"`',
+            'Flag Optional[bool] `json:"flag,omitzero"`',
+            'Tags Optional[[]string] `json:"tags,omitzero"`',
+            'Mode Optional[Mode] `json:"mode,omitzero"`',
+            'Policy Optional[any] `json:"policy,omitzero"`',
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, source)
+        # The generator never emits a pointer to an Optional, an Optional of a
+        # pointer, or omitempty on an Optional.
+        self.assertNotIn("*Optional", source)
+        self.assertNotIn("Optional[*", source)
+        for line in generate.schema_to_struct(
+            "UpdateThingRequest", self.entries["UpdateThingRequest"]["schema_obj"],
+        ).split("\n"):
+            if "Optional[" in line:
+                self.assertIn(',omitzero"`', line)
+                self.assertNotIn("omitempty", line)
+
+    def test_other_properties_keep_their_types(self):
+        source = self.struct("UpdateThingRequest")
+
+        self.assertIn('ID string `json:"id"`', source)
+        # Required: Optional is for a property that may be left out.
+        self.assertIn('MustSend *string `json:"must_send"`', source)
+        # No null branch.
+        self.assertIn('Plain float64 `json:"plain,omitempty"`', source)
+
+    def test_a_nested_request_only_struct_gets_optional_and_a_shared_one_does_not(self):
+        self.assertIn('Limit Optional[int] `json:"limit,omitzero"`', self.struct("Child"))
+        self.assertIn('Label string `json:"label,omitempty"`', self.struct("Child"))
+        # Shared with a response: a pointer, as the response needs.
+        self.assertIn('Note *string `json:"note,omitempty"`', self.struct("Shared"))
+
+    def test_a_hinted_type_that_a_response_reuses_is_shared(self):
+        hints = dict(generate.INLINE_TYPE_HINTS)
+        hints[("UpdateThingResponse", "child")] = "Child"
+        with mock.patch.object(generate, "INLINE_TYPE_HINTS", hints):
+            generate._reset_will_generate_cache()
+            self.assertEqual({"UpdateThingRequest"}, generate.request_only_struct_names())
+            self.assertIn('Limit *int `json:"limit,omitempty"`', self.struct("Child"))
+
+    def test_a_hint_pointer_is_dropped_inside_the_optional(self):
+        hints = dict(generate.INLINE_TYPE_HINTS)
+        hints[("UpdateThingRequest", "cap")] = "*float64"
+        with mock.patch.object(generate, "INLINE_TYPE_HINTS", hints):
+            self.assertIn('Cap Optional[float64] `json:"cap,omitzero"`', self.struct("UpdateThingRequest"))
+
+    def test_optional_any_stays_tracked_by_the_coverage_gate(self):
+        report = generate.any_coverage_report()
+        policy = [r for r in report["records"] if (r["type"], r["json"]) == ("UpdateThingRequest", "policy")]
+
+        self.assertEqual(1, len(policy))
+        self.assertEqual("Optional[any]", policy[0]["go_type"])
+        self.assertEqual("union", policy[0]["reason"])
+        self.assertFalse(policy[0]["allowed"])
+
+        with mock.patch.dict(generate.INTENTIONAL_ANY_FIELDS, {("UpdateThingRequest", "policy"): "reviewed"}):
+            report = generate.any_coverage_report()
+        policy = [r for r in report["records"] if (r["type"], r["json"]) == ("UpdateThingRequest", "policy")]
+        self.assertTrue(policy[0]["allowed"])
+        self.assertEqual("reviewed", policy[0]["allowance"])
+
+    def test_choosing_what_to_generate_does_not_depend_on_optional(self):
+        # The Optional rule needs the set of generated structs, and that set is
+        # decided by auto_ref_schema_paths, which asks whether a struct adds
+        # unreviewed any. That question must not ask the rule, or it would
+        # recurse.
+        def fail(*args, **kwargs):
+            raise AssertionError("auto-ref discovery asked the Optional rule")
+
+        generate._reset_will_generate_cache()
+        with mock.patch.object(generate, "request_only_struct_names", side_effect=fail):
+            self.assertIn("core/child.json", generate.auto_ref_schema_paths())
+            self.assertFalse(generate.schema_has_unreviewed_any("Child", self.SCHEMAS["core/child.json"]))
+            self.assertTrue(generate.schema_has_unreviewed_any(
+                "UpdateThingRequest", self.SCHEMAS["media-buy/update-thing-request.json"],
+            ))
+
+
+class OptionalRequestFieldWebhookSharingTest(OptionalRequestFixtureCase):
+    """A struct that a webhook payload reuses is shared too: a webhook is a
+    message the SDK decodes, like a response."""
+
+    SCHEMAS = {
+        **OptionalRequestFixtureCase.SCHEMAS,
+        "media-buy/thing-webhook.json": {
+            "type": "object",
+            "properties": {"child": {"$ref": "/schemas/test/core/child.json"}},
+        },
+    }
+
+    def setUp(self):
+        super().setUp()
+        generate.WEBHOOK_SCHEMAS = ["media-buy/thing-webhook.json"]
+        generate._reset_will_generate_cache()
+        self.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def test_a_struct_a_webhook_reuses_is_shared(self):
+        _, answered = generate.request_reach()
+
+        self.assertIn("Child", answered)
+        self.assertEqual({"UpdateThingRequest"}, generate.request_only_struct_names())
+        self.assertIn('Limit *int `json:"limit,omitempty"`', self.struct("Child"))
+
+
+@unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+class OptionalRequestFieldsInTheBundleTest(unittest.TestCase):
+    """The fields the rule gives Optional today. A new nullable request property
+    in a schema bump changes this list on purpose: review it, then update it."""
+
+    EXPECTED = {
+        ("UpdateMediaBuyRequest", "daily_budget_cap"): "Optional[float64]",
+        ("UpdateMediaBuyRequest", "budget_cap_timezone"): "Optional[string]",
+        ("UpdateMediaBuyRequest", "frequency_cap"): "Optional[any]",
+        ("UpdateMediaBuyRequest", "bidding"): "Optional[any]",
+        ("PackageUpdate", "budget"): "Optional[float64]",
+        ("PackageUpdate", "min_spend_target"): "Optional[float64]",
+        ("PackageUpdate", "daily_budget_cap"): "Optional[float64]",
+        ("PackageUpdate", "bidding"): "Optional[any]",
+        ("ControlMediaBuyRequest", "daily_budget_cap"): "Optional[float64]",
+        ("ControlMediaBuyRequest", "budget_cap_timezone"): "Optional[string]",
+        ("ControlMediaBuyRequest", "frequency_cap"): "Optional[any]",
+        ("ControlMediaBuyRequest", "bidding"): "Optional[any]",
+        ("PackageControl", "budget"): "Optional[float64]",
+        ("PackageControl", "min_spend_target"): "Optional[float64]",
+        ("PackageControl", "daily_budget_cap"): "Optional[float64]",
+        ("PackageControl", "bidding"): "Optional[any]",
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        generate._reset_will_generate_cache()
+        cls.entries = {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    @classmethod
+    def tearDownClass(cls):
+        generate._reset_will_generate_cache()
+
+    def optional_fields(self):
+        found = {}
+        for entry in self.entries.values():
+            if entry["kind"] != "struct":
+                continue
+            required = generate.schema_required_names(entry["schema_obj"])
+            for json_name, prop in generate.schema_properties(entry["schema_obj"]).items():
+                if not isinstance(prop, dict):
+                    continue
+                go_type, _ = generate.field_go_type_info(entry["name"], json_name, prop, required)
+                if go_type.startswith("Optional["):
+                    found[(entry["name"], json_name)] = go_type
+        return found
+
+    def test_the_rule_catches_exactly_these_fields(self):
+        self.assertEqual(self.EXPECTED, self.optional_fields())
+
+    def test_generated_source_tags_them_omitzero(self):
+        for (name, json_name), go_type in self.EXPECTED.items():
+            with self.subTest(field=(name, json_name)):
+                source = " ".join(generate.schema_to_struct(name, self.entries[name]["schema_obj"]).split())
+                self.assertRegex(source, rf'[A-Za-z]+ {re.escape(go_type)} `json:"{json_name},omitzero"`')
+
+    def test_every_optional_field_is_nullable_and_optional_in_the_schema(self):
+        for (name, json_name) in self.EXPECTED:
+            with self.subTest(field=(name, json_name)):
+                schema = self.entries[name]["schema_obj"]
+                self.assertNotIn(json_name, generate.schema_required_names(schema))
+                self.assertTrue(generate.schema_has_null_branch(generate.schema_properties(schema)[json_name]))
+
+    def test_nullable_properties_that_responses_share_stay_pointers(self):
+        for name, json_name in (
+            ("CommittedMediaBuy", "confirmed_at"),
+            ("DeliveryTotals", "completion_rate"),
+            ("DeliveryTotals", "quartile_data"),
+            ("WebhookActivityRecord", "http_status_code"),
+        ):
+            with self.subTest(field=(name, json_name)):
+                self.assertNotIn((name, json_name), self.optional_fields())
+                self.assertNotIn(name, generate.request_only_struct_names())
+
+    def test_untyped_parents_of_nullable_properties_are_not_optional(self):
+        # targeting_overlay's own schema is an object; the nulls sit below it.
+        for key in (("PackageInput", "targeting_overlay"), ("PackageUpdate", "targeting_overlay")):
+            with self.subTest(field=key):
+                self.assertNotIn(key, self.optional_fields())
+
+    def test_hand_written_types_get_no_optional(self):
+        for name in ("Plan", "CreativeInput", "CanonicalProposal"):
+            with self.subTest(name=name):
+                self.assertNotIn(name, {key[0] for key in self.optional_fields()})
+
+    def test_the_update_request_is_request_only(self):
+        requested, answered = generate.request_reach()
+
+        for name in ("UpdateMediaBuyRequest", "PackageUpdate", "ControlMediaBuyRequest", "PackageControl"):
+            with self.subTest(name=name):
+                self.assertIn(name, requested)
+                self.assertNotIn(name, answered)
+
+    def test_generated_output_is_unchanged_by_a_second_run(self):
+        # Two runs in one process (a warm reachability cache) give the same text.
+        def run():
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                generate.generate()
+            return out.getvalue()
+
+        self.assertEqual(run(), run())
 
 
 class ObjectRefScalarAliasGuardTest(unittest.TestCase):
@@ -3009,7 +3447,7 @@ class PackageSchemaOwnershipTest(unittest.TestCase):
                 "NegativeKeywordsRemove []KeywordTargetRef `json:\"negative_keywords_remove,omitempty\"`",
                 "CreativeAssignments []CreativeAssignment `json:\"creative_assignments,omitempty\"`",
                 "Creatives []CreativeAsset `json:\"creatives,omitempty\"`",
-                "Budget *float64 `json:\"budget,omitempty\"`",
+                "Budget Optional[float64] `json:\"budget,omitzero\"`",
                 "BidPrice *float64 `json:\"bid_price,omitempty\"`",
                 "Impressions *float64 `json:\"impressions,omitempty\"`",
                 "Ext any `json:\"ext,omitempty\"`",

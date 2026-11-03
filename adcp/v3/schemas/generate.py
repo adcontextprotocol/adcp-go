@@ -1634,15 +1634,6 @@ INLINE_TYPE_HINTS = {
     ('ProductPurchaseInput', 'pacing'): 'string',
     ('ProductPurchaseInput', 'audience_evidence_pins'): '[]AudienceEvidencePin',
     ('ProductPurchaseInput', 'performance_standards'): '[]CanonicalPerformanceStandard',
-    # control_media_buy: these request properties have a null branch, and a typed
-    # Go field decodes null like omission (daily_budget_cap's schema says "null
-    # removes it"). So each stays `any` (see INTENTIONAL_ANY_FIELDS, adcp-go#536)
-    # instead of the *float64/*string the generator would pick for a nullable type.
-    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'any',
-    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'any',
-    ('PackageControl', 'budget'): 'any',
-    ('PackageControl', 'daily_budget_cap'): 'any',
-    ('PackageControl', 'min_spend_target'): 'any',
     ('RequestProposalsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('DeclineProposalsResponse', 'results'): 'DeclineProposalResult',
     ('RefineProposalsRequest', 'refinements'): 'ProposalRefinement',
@@ -2057,21 +2048,16 @@ INTENTIONAL_ANY_FIELDS = {
     ('CommittedMediaBuy', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('BuyProductsRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
     ('BuyProductsRequest', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; CreateMediaBuyRequest.bidding stays any too',
-    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
-    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'type is [string, null] and null restores the default timezone; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
-    ('ControlMediaBuyRequest', 'frequency_cap'): 'anyOf core/media-buy-frequency-cap.json or null, and null removes the cap; left dynamic until adcp-go#536 settles the three-state encoding',
-    ('ControlMediaBuyRequest', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
+    ('ControlMediaBuyRequest', 'frequency_cap'): 'anyOf core/media-buy-frequency-cap.json or null, and null removes the cap; held as Optional[any] because the generator emits any for a union with a null branch, so the T stays any until that union is typed',
+    ('ControlMediaBuyRequest', 'bidding'): 'anyOf core/bidding-policy.json or null; held as Optional[any] until core/bidding-policy.json is generated (cost_per and roas are inline objects with no Go type yet)',
     ('ControlMediaBuyRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
-    ('PackageControl', 'budget'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
-    ('PackageControl', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
-    ('PackageControl', 'min_spend_target'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
-    ('PackageControl', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
-    ('PackageControl', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('PackageControl', 'bidding'): 'anyOf core/bidding-policy.json or null; held as Optional[any] until core/bidding-policy.json is generated (cost_per and roas are inline objects with no Go type yet)',
+    ('PackageControl', 'targeting_overlay'): 'core/targeting-input.json is not typed yet: every dimension has a null branch, so it stays any until a TargetingInput type with Optional dimensions replaces it',
     ('PackageControl', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
     ('ControlApplied', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('ProductPurchaseInput', 'pricing'): 'core/canonical-pricing-option.json is not generated: its free-form parameters object has no reviewed Go type',
     ('ProductPurchaseInput', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; PackageInput.bidding stays any too',
-    ('ProductPurchaseInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('ProductPurchaseInput', 'targeting_overlay'): 'core/targeting-input.json is not typed yet: every dimension has a null branch, so it stays any until a TargetingInput type with Optional dimensions replaces it',
     ('ProductPurchaseInput', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
     ('ProductPurchaseInput', 'audience_evidence_requirements'): 'core/product-audience-evidence-requirements.json is not generated: accepted_attestation_issuers is an array of a oneOf with no Go type yet',
     ('ProductPurchaseInput', 'measurement_terms'): 'core/canonical-measurement-terms.json is not generated: billing_measurement and makegood_policy are inline objects with no Go type yet',
@@ -2105,15 +2091,13 @@ INTENTIONAL_ANY_FIELDS = {
     ('MediaBuyAvailableAction', 'action'): 'core/media-buy-available-action-id.json is every legacy valid_actions string plus new structured-only action strings; kept dynamic rather than hardcoding the anyOf as a closed enum',
     # rc.3 request-only targeting input (adcp#7466): the create/update overlay must
     # distinguish omission (preserve) from an explicit `null` (clear) from a typed
-    # replacement value. Tracked as its own slice in adcp-go#536 (three-state
-    # HasRequiredValue sentinel encoding needs explicit maintainer sign-off before
-    # implementation) — left dynamic here rather than pre-empting that design call.
-    ('PackageInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
-    ('PackageUpdate', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
-    # rc.3 shared MediaBuy-level frequency_cap (adcp#7449): tracked as its own
-    # slice in adcp-go#536 (typed request/response, capability readback,
-    # discovery filter) — left dynamic here rather than pre-empting that work.
-    ('UpdateMediaBuyRequest', 'frequency_cap'): 'root MediaBuy frequency_cap typed request/response shape is being built in adcp-go#536; left dynamic pending that slice',
+    # replacement value. It stays any until core/targeting-input.json is typed
+    # with Optional dimensions; a null inside the any value is kept meanwhile.
+    ('PackageInput', 'targeting_overlay'): 'core/targeting-input.json is not typed yet: every dimension has a null branch, so it stays any until a TargetingInput type with Optional dimensions replaces it',
+    ('PackageUpdate', 'targeting_overlay'): 'core/targeting-input.json is not typed yet: every dimension has a null branch, so it stays any until a TargetingInput type with Optional dimensions replaces it',
+    # rc.3 shared MediaBuy-level frequency_cap (adcp#7449): the property is a
+    # union with a null branch, which the generator emits as any.
+    ('UpdateMediaBuyRequest', 'frequency_cap'): 'anyOf core/media-buy-frequency-cap.json or null, and null removes the cap; held as Optional[any] because the generator emits any for a union with a null branch, so the T stays any until that union is typed',
 }
 
 # AdCP 3.2 expands many existing schemas with shapes that this generator
@@ -2633,6 +2617,7 @@ def is_enum_ref(ref):
 
 _WILL_GENERATE_CACHE = None
 _AUTO_REF_SCHEMA_CACHE = None
+_REQUEST_REACH_CACHE = None  # (key, (requested, answered)); see request_reach
 
 def _reset_will_generate_cache():
     """Clear the cache so the next `_will_generate_set()` call rebuilds from
@@ -2700,7 +2685,9 @@ def schema_has_unreviewed_any(type_name, schema):
     for json_name, prop in props.items():
         if not isinstance(prop, dict):
             continue
-        go_type, reason = field_go_type_info(type_name, json_name, prop, required_set)
+        go_type, reason = field_go_type_info(
+            type_name, json_name, prop, required_set, wrap_optional=False,
+        )
         if not contains_dynamic_any(go_type):
             continue
         if any_allowance(type_name, json_name, go_type, reason) is None:
@@ -3112,8 +3099,17 @@ def resolve_go_type(prop, required=False):
     return go_type
 
 
+def unwrap_optional(go_type):
+    """Return T for `Optional[T]`, and any other Go type string unchanged."""
+    if go_type.startswith(OPTIONAL_PREFIX) and go_type.endswith(']'):
+        return go_type[len(OPTIONAL_PREFIX):-1]
+    return go_type
+
+
 def is_any_type(go_type):
-    """True if a generated type string includes Go's dynamic `any`."""
+    """True if a generated type string includes Go's dynamic `any`, also when
+    it sits inside an `Optional[...]`."""
+    go_type = unwrap_optional(go_type)
     return (
         go_type == 'any' or
         go_type == '[]any' or
@@ -3128,6 +3124,267 @@ def contains_dynamic_any(go_type):
     return is_any_type(go_type) or 'AdcpError' in go_type
 
 
+# --- Three-state request fields: Optional[T] -------------------------------
+#
+# A request property that has a null branch (`type: [.., "null"]`, a null
+# anyOf/oneOf branch, a null enum value or const) means three things on the wire:
+# omitted (keep what is stored), null (clear it) and a value (replace it). A
+# pointer or `any` field cannot tell the first two apart after decoding, and a
+# buyer cannot send null at all. adcp.Optional[T] holds all three states (see
+# adcp/v3/optional.go), so the generator emits it, tagged `omitzero` and never
+# `omitempty`, for every property that:
+#   - has a null branch after $ref resolution,
+#   - is not required, and
+#   - sits in a struct that a `*-request.json` tool schema reaches and no
+#     response or webhook schema reaches (a shared struct also decodes responses,
+#     where a pointer is the right shape).
+# T is what the generator would emit for the non-null part, without the pointer.
+OPTIONAL_PREFIX = 'Optional['
+
+
+def _is_null_schema(schema):
+    """True for a schema that only allows null."""
+    return isinstance(schema, dict) and (
+        schema.get('type') == 'null'
+        or ('const' in schema and schema['const'] is None)
+    )
+
+
+def schema_has_null_branch(prop, _seen=None):
+    """True when `prop` accepts null, after $ref resolution: `type` lists
+    "null", an anyOf/oneOf branch is (or itself accepts) null, or `enum` or
+    `const` allows null. Only the property's own shape counts, not the
+    properties of an object it describes."""
+    if not isinstance(prop, dict):
+        return False
+    seen = set() if _seen is None else _seen
+    ref = prop.get('$ref')
+    if isinstance(ref, str):
+        if ref in seen:
+            return False
+        seen.add(ref)
+        if schema_has_null_branch(resolve_ref_schema(ref), seen):
+            return True
+    typ = prop.get('type')
+    if isinstance(typ, list) and 'null' in typ:
+        return True
+    if 'const' in prop and prop['const'] is None:
+        return True
+    enum = prop.get('enum')
+    if isinstance(enum, list) and None in enum:
+        return True
+    for key in ('anyOf', 'oneOf'):
+        branches = prop.get(key)
+        if not isinstance(branches, list):
+            continue
+        for branch in branches:
+            if _is_null_schema(branch) or schema_has_null_branch(branch, seen):
+                return True
+    all_of = prop.get('allOf')
+    if isinstance(all_of, list) and len(all_of) == 1:
+        return schema_has_null_branch(all_of[0], seen)
+    return False
+
+
+def nullable_descendants(prop, _seen=None, _path=''):
+    """Paths of the optional properties below `prop` that have a null branch,
+    following $ref, union branches, array items and map values. `prop` itself
+    is not tested: this is what an untyped (`any`) Go field hides."""
+    found = []
+    if isinstance(prop, list):
+        for item in prop:
+            found += nullable_descendants(item, _seen, _path)
+        return found
+    if not isinstance(prop, dict):
+        return found
+    seen = frozenset() if _seen is None else _seen
+    ref = prop.get('$ref')
+    if isinstance(ref, str):
+        if ref in seen:
+            return found
+        seen = seen | {ref}
+        found += nullable_descendants(resolve_ref_schema(ref), seen, _path)
+    required = schema_required_names(prop)
+    for key in ('allOf', 'anyOf', 'oneOf'):
+        for branch in prop.get(key, []) if isinstance(prop.get(key), list) else []:
+            found += nullable_descendants(branch, seen, _path)
+    for json_name, child in (prop.get('properties') or {}).items():
+        if not isinstance(child, dict):
+            continue
+        if json_name not in required and schema_has_null_branch(child):
+            found.append(f'{_path}/{json_name}')
+        found += nullable_descendants(child, seen, f'{_path}/{json_name}')
+    for key in ('items', 'additionalProperties'):
+        if isinstance(prop.get(key), dict):
+            found += nullable_descendants(prop[key], seen, f'{_path}/*')
+    return found
+
+
+def _iter_all_refs(node):
+    """Yield every $ref under `node`, whatever its position. $defs and
+    definitions are not entered: a $ref that names one brings it in."""
+    if isinstance(node, dict):
+        ref = node.get('$ref')
+        if isinstance(ref, str):
+            yield ref
+        for key, value in node.items():
+            if key in ('$defs', 'definitions'):
+                continue
+            yield from _iter_all_refs(value)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_all_refs(item)
+
+
+def _normalize_spec(path, pointer=''):
+    return f'{path}#{pointer}' if pointer else path
+
+
+def _spec_is_covered(visited, spec):
+    """True when `spec` is a node of the schema, or inside a node, in `visited`."""
+    path, _, pointer = spec.partition('#')
+    if path in visited:
+        return True
+    if not pointer:
+        return False
+    parts = pointer.split('/')
+    return any(
+        _normalize_spec(path, '/'.join(parts[:i])) in visited
+        for i in range(2, len(parts) + 1)
+    )
+
+
+def _reachable_specs(root_specs):
+    """Schema nodes (`path.json` or `path.json#/pointer`) reachable by $ref
+    from `root_specs`, the roots included. Each node is walked whole, through
+    every union branch."""
+    visited = set()
+    queue = list(root_specs)
+    while queue:
+        spec = queue.pop()
+        if spec in visited:
+            continue
+        visited.add(spec)
+        try:
+            node = load_schema_spec(spec)
+        except SCHEMA_RESOLUTION_ERRORS:
+            continue
+        path = spec.split('#', 1)[0]
+        for ref in _iter_all_refs(node):
+            fragment = ref.partition('#')[2]
+            if ref.startswith('#'):
+                target_path = path
+            else:
+                target_path = ref_to_schema_path(ref)
+            if not target_path:
+                continue
+            queue.append(_normalize_spec(target_path, fragment))
+    return visited
+
+
+def _specs_by_struct_name():
+    """Every schema node each Go struct name is derived from, hand-written
+    structs included. A name can have several: an alias that merges two
+    schemas, or an inline type reused for sibling pointers."""
+    specs = {}
+
+    def add(name, spec):
+        specs.setdefault(name, set()).add(spec)
+
+    # Union variants of a tool response are not listed: nothing requests them.
+    for rel in (
+        CORE_SCHEMAS + SUPPORT_SCHEMAS + list(auto_ref_schema_paths())
+        + TOOL_SCHEMAS + WEBHOOK_SCHEMAS
+    ):
+        add(_schema_type_name(rel), rel)
+    for name, spec in INLINE_SCHEMA_TYPES.items():
+        add(name, spec)
+    for name, spec in HAND_WRITTEN_SCHEMA_SPECS.items():
+        add(name, spec)
+    for table in (HAND_WRITTEN_INLINE_SCHEMA_SPECS, SHARED_INLINE_OVERRIDES):
+        for name, pointers in table.items():
+            for spec in pointers:
+                add(name, spec)
+    return specs
+
+
+def _struct_names_reached(root_specs, specs_by_name):
+    """Go struct names whose schema a walk from `root_specs` reaches. A struct
+    that INLINE_TYPE_HINTS names for a field of a reached struct is reached
+    too: the hint reuses a Go type that its own schema pointer does not show."""
+    roots = set(root_specs)
+    while True:
+        visited = _reachable_specs(roots)
+        names = {
+            name for name, specs in specs_by_name.items()
+            if any(_spec_is_covered(visited, spec) for spec in specs)
+        }
+        added = False
+        for (type_name, _), hint in INLINE_TYPE_HINTS.items():
+            if type_name not in names:
+                continue
+            for ident in re.findall(r'[A-Za-z_]\w*', hint):
+                if ident in specs_by_name and ident not in names:
+                    names.add(ident)
+                    new_roots = specs_by_name[ident] - roots
+                    if new_roots:
+                        roots |= new_roots
+                        added = True
+        if not added:
+            return names
+
+
+def _request_reach_key():
+    """Everything request_reach() reads. The reach is expensive (it walks every
+    schema the tools reach) and the tables do not change while a run generates,
+    so it is kept until one of them does."""
+    return (
+        schema_exists, load_schema, ref_to_schema_path, resolve_ref_schema,
+        repr((
+            CORE_SCHEMAS, SUPPORT_SCHEMAS, TOOL_SCHEMAS, WEBHOOK_SCHEMAS,
+            INLINE_SCHEMA_TYPES, sorted(KNOWN_TYPES), INLINE_TYPE_HINTS,
+            REF_ALIASES, HAND_WRITTEN_SCHEMA_SPECS, HAND_WRITTEN_INLINE_SCHEMA_SPECS,
+            SHARED_INLINE_OVERRIDES, UNION_SCHEMA_TYPES,
+        )),
+    )
+
+
+def request_reach():
+    """(requested, answered): the Go struct names a `*-request.json` tool
+    schema reaches, and the names a tool response or webhook schema reaches."""
+    global _REQUEST_REACH_CACHE
+    key = _request_reach_key()
+    if _REQUEST_REACH_CACHE is not None and _REQUEST_REACH_CACHE[0] == key:
+        return _REQUEST_REACH_CACHE[1]
+    existing = [rel for rel in TOOL_SCHEMAS if schema_exists(rel)]
+    request_roots = [rel for rel in existing if Path(rel).stem.endswith('-request')]
+    response_roots = [rel for rel in existing if Path(rel).stem.endswith('-response')]
+    response_roots += [rel for rel in WEBHOOK_SCHEMAS if schema_exists(rel)]
+    specs_by_name = _specs_by_struct_name()
+    reach = (
+        frozenset(_struct_names_reached(request_roots, specs_by_name)),
+        frozenset(_struct_names_reached(response_roots, specs_by_name)),
+    )
+    _REQUEST_REACH_CACHE = (key, reach)
+    return reach
+
+
+def request_only_struct_names():
+    """Go struct names that a `*-request.json` tool schema reaches and no
+    tool response or webhook schema reaches. Only these get Optional fields."""
+    requested, answered = request_reach()
+    return requested - answered
+
+
+def is_optional_field(type_name, json_name, prop, required_set):
+    """True when the generator emits `Optional[T]` for this property."""
+    return (
+        json_name not in required_set
+        and schema_has_null_branch(prop)
+        and type_name in request_only_struct_names()
+    )
+
+
 def should_pointer_optional_type(go_type):
     """True when an optional zero-value field needs a pointer to omit cleanly."""
     if go_type.startswith('*') or go_type.startswith('[]') or go_type.startswith('map['):
@@ -3137,8 +3394,12 @@ def should_pointer_optional_type(go_type):
     return True
 
 
-def field_go_type_info(type_name, json_name, prop, required_set):
-    """Return the generated field type and fallback reason for a struct field."""
+def field_go_type_info(type_name, json_name, prop, required_set, wrap_optional=True):
+    """Return the generated field type and fallback reason for a struct field.
+
+    wrap_optional=False skips the Optional[T] wrapper. Optional never changes
+    whether a field is `any`, and the auto-ref filter asks this while the set
+    of generated structs is still being decided, which Optional depends on."""
     hint_key = (type_name, json_name)
     has_hint = hint_key in INLINE_TYPE_HINTS
     direct_enum_ref = not has_hint and '$ref' in prop and is_enum_ref(prop['$ref'])
@@ -3153,6 +3414,9 @@ def field_go_type_info(type_name, json_name, prop, required_set):
         go_type, reason = resolve_go_type_info(prop, json_name in required_set)
 
     is_required = json_name in required_set
+    if wrap_optional and is_optional_field(type_name, json_name, prop, required_set):
+        inner = go_type[1:] if go_type.startswith('*') else go_type
+        return f'{OPTIONAL_PREFIX}{inner}]', reason
     if not is_required and go_type == 'bool':
         go_type = '*bool'
     elif not is_required and should_pointer_optional_type(go_type) and not direct_enum_ref:
@@ -3175,7 +3439,13 @@ def schema_to_struct(name, schema):
         go_type, _ = field_go_type_info(name, json_name, prop, required_set)
         is_required = json_name in required_set
 
-        omit = 'omitempty' if not is_required else ''
+        # An Optional field is tagged omitzero, never omitempty: omitzero calls
+        # IsZero and drops only an omitted field, while omitempty would keep the
+        # unset state and, under encoding/json/v2, drop an explicit null.
+        if go_type.startswith(OPTIONAL_PREFIX):
+            omit = 'omitzero'
+        else:
+            omit = 'omitempty' if not is_required else ''
         tag = f'`json:"{json_name}'
         if omit:
             tag += f',{omit}'
