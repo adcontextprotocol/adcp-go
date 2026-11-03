@@ -43,6 +43,10 @@ type Service struct {
 	logger          *slog.Logger
 	refreshObserver func(outcome string)
 
+	// maxSnapshotEntries bounds the installed snapshot (see
+	// WithMaxSnapshotEntries). Zero or negative means unlimited.
+	maxSnapshotEntries int
+
 	snap atomic.Pointer[snapshotData]
 
 	mu      sync.Mutex // serializes Start/Stop and concurrent manual refreshes
@@ -107,6 +111,23 @@ func WithLogger(logger *slog.Logger) Option {
 		if logger != nil {
 			s.logger = logger
 		}
+	}
+}
+
+// WithMaxSnapshotEntries bounds the installed snapshot: any initial load or
+// delta refresh whose merged snapshot would hold more than n entries is
+// rejected and the prior snapshot is kept. A rejected delta reports
+// RefreshOutcomeError through the refresh observer and leaves the watermark
+// unadvanced, so a later under-cap delta can still apply; a rejected
+// initial load fails Start under StartModeFailFast (and is retried under
+// StartModeRetry). This is the cap on the live snapshot, distinct from the
+// config source's per-response cap: without it, each refresh can add new
+// keys indefinitely and the snapshot grows without bound over the process's
+// life. Zero or negative disables the cap (the default), preserving the
+// previous unbounded behavior for deployments that have not opted in.
+func WithMaxSnapshotEntries(n int) Option {
+	return func(s *Service) {
+		s.maxSnapshotEntries = n
 	}
 }
 
@@ -299,7 +320,12 @@ func (s *Service) loadAllOnce(ctx context.Context) error {
 		s.notifyRefresh(RefreshOutcomeError)
 		return fmt.Errorf("identityconfig: load all: %w", err)
 	}
-	s.snap.Store(buildSnapshotWithLogger(s.logger, snap))
+	built := buildSnapshotWithLogger(s.logger, snap)
+	if s.maxSnapshotEntries > 0 && len(built.byKey) > s.maxSnapshotEntries {
+		s.notifyRefresh(RefreshOutcomeError)
+		return fmt.Errorf("identityconfig: initial snapshot of %d entries exceeds max snapshot entries %d", len(built.byKey), s.maxSnapshotEntries)
+	}
+	s.snap.Store(built)
 	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
 }
@@ -395,7 +421,17 @@ func (s *Service) refreshDelta(ctx context.Context) error {
 		s.notifyRefresh(RefreshOutcomeSuccess)
 		return nil
 	}
-	s.snap.Store(applyDeltaWithLogger(s.logger, current, delta))
+	candidate := applyDeltaWithLogger(s.logger, current, delta)
+	if s.maxSnapshotEntries > 0 && len(candidate.byKey) > s.maxSnapshotEntries {
+		// Keep the prior snapshot entirely, including its watermark, so
+		// the next refresh re-requests from the old watermark and a later
+		// under-cap delta can still apply. The error outcome (observer)
+		// plus the refresh loop's warning make the rejection loud: a
+		// silently frozen snapshot is its own failure mode.
+		s.notifyRefresh(RefreshOutcomeError)
+		return fmt.Errorf("identityconfig: delta snapshot of %d entries exceeds max snapshot entries %d; keeping prior snapshot", len(candidate.byKey), s.maxSnapshotEntries)
+	}
+	s.snap.Store(candidate)
 	s.notifyRefresh(RefreshOutcomeSuccess)
 	return nil
 }
