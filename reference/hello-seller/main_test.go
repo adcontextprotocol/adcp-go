@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3"
@@ -163,5 +164,100 @@ func TestNewServer_RegistersWithoutPanicking(t *testing.T) {
 	server := newServer(newBackend())
 	if server == nil {
 		t.Fatal("expected non-nil server")
+	}
+}
+
+// TestResolveAccountUnknownDoesNotProvision pins bug 3 of adcp-go#547: a
+// lookup for an unknown account — by natural key or by account_id — must
+// return no account and must not create one. Provisioning happens only
+// through sync_accounts.
+func TestResolveAccountUnknownDoesNotProvision(t *testing.T) {
+	b := newBackend()
+	ctx := context.Background()
+
+	refs := map[string]adcp.AccountReference{
+		"natural key": {Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"},
+		"account_id":  {AccountID: "acc_nope"},
+	}
+	for name, ref := range refs {
+		acct, err := b.resolveAccount(ctx, ref)
+		if err != nil {
+			t.Fatalf("%s: resolveAccount: %v", name, err)
+		}
+		if acct != nil {
+			t.Fatalf("%s: unknown account must resolve to nil, got %v", name, acct)
+		}
+	}
+	if len(b.accounts) != 0 {
+		t.Fatalf("resolution must not create accounts, got %d", len(b.accounts))
+	}
+}
+
+// TestSyncAccountsProvisionsThenResolves exercises the combined behavior:
+// after sync_accounts provisions an account, resolveAccount finds it by
+// natural key and by the returned account_id; a re-sync reports "updated".
+func TestSyncAccountsProvisionsThenResolves(t *testing.T) {
+	b := newBackend()
+	ctx := context.Background()
+
+	results, err := b.syncAccounts(ctx, &adcp.SyncAccountsRequest{
+		Accounts: []adcp.AccountInput{{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"}},
+	})
+	if err != nil {
+		t.Fatalf("syncAccounts: %v", err)
+	}
+	if len(results) != 1 || results[0].Action != "created" || results[0].AccountID == "" {
+		t.Fatalf("want one created account with an id, got %+v", results)
+	}
+	id := results[0].AccountID
+
+	byKey, err := b.resolveAccount(ctx, adcp.AccountReference{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"})
+	if err != nil || byKey == nil {
+		t.Fatalf("provisioned account must resolve by natural key (acct=%v, err=%v)", byKey, err)
+	}
+	byID, err := b.resolveAccount(ctx, adcp.AccountReference{AccountID: id})
+	if err != nil || byID == nil {
+		t.Fatalf("provisioned account must resolve by account_id (acct=%v, err=%v)", byID, err)
+	}
+
+	results, err = b.syncAccounts(ctx, &adcp.SyncAccountsRequest{
+		Accounts: []adcp.AccountInput{{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"}},
+	})
+	if err != nil {
+		t.Fatalf("syncAccounts (re-sync): %v", err)
+	}
+	if len(results) != 1 || results[0].Action != "updated" {
+		t.Fatalf("re-sync must report updated, got %+v", results)
+	}
+}
+
+// Entries without a natural key (no brand, or no operator — e.g. a
+// settings-update entry keyed by an `account` ref) must be skipped:
+// sync_accounts must never fabricate an "acct-unknown-" account.
+func TestSyncAccountsSkipsEntriesWithoutNaturalKey(t *testing.T) {
+	b := newBackend()
+	ctx := context.Background()
+
+	results, err := b.syncAccounts(ctx, &adcp.SyncAccountsRequest{
+		Accounts: []adcp.AccountInput{
+			{},
+			{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}},
+			{Operator: "acme-corp.com"},
+			{Brand: &adcp.BrandReference{Domain: "acme-corp.com"}, Operator: "acme-corp.com"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("syncAccounts: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("want exactly one provisioned account, got %+v", results)
+	}
+	if len(b.accounts) != 1 {
+		t.Fatalf("want exactly one stored account, got %d: %v", len(b.accounts), b.accounts)
+	}
+	for id := range b.accounts {
+		if strings.HasPrefix(id, "acct-unknown") {
+			t.Fatalf("fabricated account id %q", id)
+		}
 	}
 }
