@@ -299,7 +299,13 @@ const (
 	isoDurationDate = `(?:\d+Y(?:\d+M)?(?:\d+D)?|\d+M(?:\d+D)?|\d+D)`
 	isoDurationTime = `T(?:\d+H(?:\d+M)?(?:\d+S)?|\d+M(?:\d+S)?|\d+S)`
 	nonZeroInt      = `\d*[1-9]\d*`
+	// The day-and-time durations in the SLA schemas, which have no Y or M.
+	slaDurationTime = `T(?:[0-9]+H(?:[0-9]+M)?(?:[0-9]+S)?|[0-9]+M(?:[0-9]+S)?|[0-9]+S)`
 )
+
+// A path_template segment that is not . or ..: no leading dot, one leading
+// dot then a non-dot, or two dots and more.
+const pathTemplateSegment = `(?:[A-Za-z0-9_={}-][A-Za-z0-9_.={}-]*|\.[A-Za-z0-9_={}-][A-Za-z0-9_.={}-]*|\.\.[A-Za-z0-9_.={}-]+)`
 
 var re2Translations = []re2Translation{
 	{
@@ -355,6 +361,7 @@ var re2Translations = []re2Translation{
 		At: []string{
 			"core/reporting-schedule-offering.json#/properties/period_duration/pattern",
 			"core/reporting-schedule.json#/properties/period_duration/pattern",
+			"core/reporting-subscription.json#/properties/selector/properties/period_duration/pattern",
 		},
 		Match:   []string{"P1D", "PT1H", "P0Y1M", "P0DT0H10M", "P1Y2M3DT4H5M6S", "P0Y1D"},
 		NoMatch: []string{"P0D", "PT0S", "P0Y0M0DT0H0M0S", "P", "PT", "P1DT"},
@@ -369,6 +376,68 @@ var re2Translations = []re2Translation{
 		},
 		Match:   []string{"PT", "P1D", "P1DT", "PT15M", "PT4H"},
 		NoMatch: []string{"P", "1D", "P1H", "PX"},
+	},
+	{
+		Original: `^P(?!$)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?(?:[0-9]+M)?(?:[0-9]+S)?)?$`,
+		RE2:      `^P(?:[0-9]+D(?:` + slaDurationTime + `)?|` + slaDurationTime + `)$`,
+		Reason:   "(?!$) rejects a bare P and T(?=[0-9]) a T with no component; the RE2 form lists a day part, a time part, or both.",
+		At: []string{
+			"core/escalation-sla.json#/properties/response_max/pattern",
+			"core/sla-window.json#/allOf/0/then/properties/completion_max/pattern",
+			"core/sla-window.json#/allOf/0/then/properties/response_max/pattern",
+		},
+		Match:   []string{"P1D", "P0D", "PT4H", "PT15M", "PT30S", "P1DT2H", "PT1H30M"},
+		NoMatch: []string{"P", "PT", "P1DT", "P1Y", "P1M", "1D", "P1H", "PT1D"},
+	},
+	{
+		Original: `^P(?=.*[1-9])(?=\d|T)(?:\d+D)?(?:T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$`,
+		RE2: `^P(?:` + nonZeroInt + `D(?:` + isoDurationTime + `)?|(?:0+D)?T(?:` + nonZeroInt + `H(?:\d+M)?(?:\d+S)?|(?:0+H)?` +
+			nonZeroInt + `M(?:\d+S)?|(?:0+H)?(?:0+M)?` + nonZeroInt + `S))$`,
+		Reason:  "A day-and-time duration with some non-zero component. The RE2 form branches on the first non-zero component; those before it are zero.",
+		At:      []string{"core/hold-policy.json#/definitions/positive_duration/pattern"},
+		Match:   []string{"P1D", "P10D", "PT1H", "P0DT1M", "P2DT0H", "PT0H5M", "PT0H0M1S"},
+		NoMatch: []string{"P0D", "PT0S", "P0DT0H0M0S", "P", "PT", "P1DT", "P1Y", "P1M", "1D"},
+	},
+	{
+		Original: `^(?!\.{1,2}$)[A-Za-z0-9_.:-]{1,64}$`,
+		RE2:      `^(?:[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,63}|\.[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,62}|\.\.[A-Za-z0-9_.:-]{1,62})$`,
+		Reason:   "(?!\\.{1,2}$) rejects . and ..; the RE2 form branches on how many leading dots there are, and asks for more after two.",
+		At:       []string{"core/reporting-subscription.json#/properties/subscription_id/pattern"},
+		Match:    []string{"sub_1", "a", ".a", "..a", "...", "a.b:c-d", strings.Repeat("a", 64), "." + strings.Repeat("a", 63), ".." + strings.Repeat("a", 62)},
+		NoMatch:  []string{"", ".", "..", "a b", "a/b", strings.Repeat("a", 65), "." + strings.Repeat("a", 64)},
+	},
+	{
+		Original: `^(?!/)(?!(?:.*/)?\.{1,2}(?:/|$))[A-Za-z0-9_.=/{}-]+$`,
+		RE2:      `^` + pathTemplateSegment + `(?:/(?:` + pathTemplateSegment + `)?)*$`,
+		Reason:   "The lookaheads reject a leading / and any . or .. segment; the RE2 form spells out a segment that is neither, empty only after the first.",
+		At: []string{
+			"core/reporting-subscription.json#/properties/destination/properties/path_template/pattern",
+			"core/reporting-subscription.json#/properties/destination_overrides/items/properties/path_template/pattern",
+		},
+		Match:   []string{"reports/{date}.csv", "a", "a/b/", "a//b", "...", "a/.x/..b", "x=1/{id}", "a/.../b"},
+		NoMatch: []string{"", "/a", ".", "..", "./a", "../a", "a/./b", "a/../b", "a/.", "a/..", "a b"},
+	},
+	{
+		Original: `^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])`,
+		RE2:      `^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`,
+		Reason:   "(?![\\s\\S]) stops ECMA-262's $ from matching before a final line terminator; RE2's $ without (?m) already matches only at the end of the text.",
+		At:       []string{"core/identifier.json#/allOf/0/then/properties/value/pattern"},
+		Match:    []string{"example.com", "*.example.com", "a.b.c"},
+		NoMatch:  []string{"example.com\n", "example", "*.example", "Example.com", "-a.com", "**.a.com"},
+	},
+	{
+		Original: `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])`,
+		RE2:      `^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$`,
+		Reason:   "(?![\\s\\S]) stops ECMA-262's $ from matching before a final line terminator; RE2's $ without (?m) already matches only at the end of the text.",
+		At:       []string{"core/identifier.json#/allOf/1/then/properties/value/pattern"},
+		Match:    []string{"example.com", "a.b.c", "x-1.example"},
+		NoMatch:  []string{"example.com\n", "example", "*.example.com", "-a.com"},
+	},
+	{
+		Original: `^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`,
+		Reason: "The 253-character bound on a whole domain has no practical RE2 form alongside the label rules, so the pattern is dropped here: " +
+			"a fixture domain's labels, TLD and length go unchecked. The identity package validates trust records itself (identity.ValidateTrustRecord).",
+		At: []string{"trust/v1/trust.json#/definitions/domain/pattern"},
 	},
 	{
 		Original: `^(?:/(?:[^~/\u0000-\u001F\u007F]|~0|~1)*)*$`,
