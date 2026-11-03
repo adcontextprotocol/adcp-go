@@ -8521,6 +8521,73 @@ type ProductFilters struct {
 	Ext                          any                           `json:"ext,omitempty"`                            // Vendor-namespaced extension parameters for seller-specific filter criteria not
 }
 
+// ProductOfferFilters — Offer, commercial-fit, availability, and reporting filters for product discovery. This compact
+type ProductOfferFilters struct {
+	DeliveryType                 DeliveryType                            `json:"delivery_type,omitempty"`
+	Exclusivity                  Exclusivity                             `json:"exclusivity,omitempty"`
+	IsFixedPrice                 *bool                                   `json:"is_fixed_price,omitempty"` // Filter fixed-price versus auction offers. Contingent pricing matches neither
+	PricingStructures            []PricingStructure                      `json:"pricing_structures,omitempty"`
+	PricingCurrencies            []string                                `json:"pricing_currencies,omitempty"`
+	FormatKinds                  []string                                `json:"format_kinds,omitempty"`
+	FormatOptionRefs             []FormatOptionRef                       `json:"format_option_refs,omitempty"`
+	StandardFormatsOnly          *bool                                   `json:"standard_formats_only,omitempty"`
+	MinExposures                 int                                     `json:"min_exposures,omitempty"`
+	StartDate                    string                                  `json:"start_date,omitempty"`           // Fixed-flight availability filter: with end_date, declares the exact flight the
+	EndDate                      string                                  `json:"end_date,omitempty"`             // Fixed-flight availability filter end. See start_date. Mutually exclusive with
+	AvailabilityHorizon          *ProductOfferFilterAvailabilityHorizon  `json:"availability_horizon,omitempty"` // Flexible-window availability discovery: the buyer is open to any bookable
+	BudgetRange                  *BudgetRange                            `json:"budget_range,omitempty"`
+	Countries                    []string                                `json:"countries,omitempty"`     // Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA'
+	Regions                      []string                                `json:"regions,omitempty"`       // Inventory coverage in the specified ISO 3166-2 subdivisions: OR within this
+	Metros                       []ProductOfferFilterMetro               `json:"metros,omitempty"`        // Inventory coverage in the specified metro areas (system and code): OR within
+	PostalAreas                  []PostalArea                            `json:"postal_areas,omitempty"`  // Inventory coverage in the specified postal areas: OR within this field, AND
+	GeoProximity                 []GeoProximityTarget                    `json:"geo_proximity,omitempty"` // Inventory coverage in the specified proximity boundaries: OR within this
+	PropertyList                 *PropertyListRef                        `json:"property_list,omitempty"` // Reference to an externally managed property list. When provided, the seller
+	Channels                     []Channels                              `json:"channels,omitempty"`
+	VideoPlacementTypes          []VideoPlacementType                    `json:"video_placement_types,omitempty"`
+	AudioDistributionTypes       []AudioDistributionType                 `json:"audio_distribution_types,omitempty"`
+	SponsoredPlacementTypes      []SponsoredPlacementType                `json:"sponsored_placement_types,omitempty"`
+	SocialPlacementSurfaces      []SocialPlacementSurface                `json:"social_placement_surfaces,omitempty"`
+	TrustedMatch                 *ProductOfferFilterTrustedMatch         `json:"trusted_match,omitempty"`
+	RequiredFeatures             *CanonicalMediaBuyFeatures              `json:"required_features,omitempty"` // Canonical protocol features the seller must support.
+	RequiredPerformanceStandards []ProductOfferFilterPerformanceStandard `json:"required_performance_standards,omitempty"`
+	RequiredMetrics              []AvailableMetric                       `json:"required_metrics,omitempty"`
+	RequiredVendorMetrics        []ProductOfferFilterVendorMetric        `json:"required_vendor_metrics,omitempty"`
+	AudienceEvidenceRequirements *ProductAudienceEvidenceRequirements    `json:"audience_evidence_requirements,omitempty"`
+	Ext                          any                                     `json:"ext,omitempty"`
+}
+
+// CanonicalMediaBuyFeatures — Compact seller features relevant to canonical product purchase. Legacy inline-creative
+type CanonicalMediaBuyFeatures struct {
+	PropertyFiltering              *bool `json:"property_filtering,omitempty"`
+	CatalogManagement              *bool `json:"catalog_management,omitempty"`
+	ReportingCommitmentSnapshots   *bool `json:"reporting_commitment_snapshots,omitempty"`     // Seller preserves the accepted per-purchase reporting contract and exposes it
+	SellerOptimizedBudget          *bool `json:"seller_optimized_budget,omitempty"`            // Core seller-optimized shared-budget contract: shared total_budget, seller
+	SellerOptimizedPackageBudgets  *bool `json:"seller_optimized_package_budgets,omitempty"`   // Package budget caps inside seller-optimized buys; implies
+	SellerOptimizedMinSpendTargets *bool `json:"seller_optimized_min_spend_targets,omitempty"` // Package minimum-spend targets inside seller-optimized buys; implies
+	SellerOptimizedPackagePacing   *bool `json:"seller_optimized_package_pacing,omitempty"`    // Package pacing inside seller-optimized buys; implies seller_optimized_budget.
+	BiddingPolicy                  any   `json:"bidding_policy,omitempty"`
+}
+
+// ProductAudienceEvidenceRequirements — Buyer-authored evidence policy for compact product discovery. Organization selectors are stable
+type ProductAudienceEvidenceRequirements struct {
+	RequirementMode                  string                        `json:"requirement_mode"`
+	EvidencePresence                 string                        `json:"evidence_presence"`
+	AcceptedMethodologies            []AudienceEvidenceMethodology `json:"accepted_methodologies,omitempty"`
+	ExcludedMethodologies            []AudienceEvidenceMethodology `json:"excluded_methodologies,omitempty"`
+	AcceptedEvidenceTypes            []string                      `json:"accepted_evidence_types,omitempty"`
+	AcceptedProviders                []BrandKey                    `json:"accepted_providers,omitempty"`
+	ExcludedProviders                []BrandKey                    `json:"excluded_providers,omitempty"`
+	AcceptedSubjectTypes             []AudienceSubjectType         `json:"accepted_subject_types,omitempty"`
+	AcceptedResolutionMethods        []AudienceResolutionMethod    `json:"accepted_resolution_methods,omitempty"`
+	MinimumConfidence                float64                       `json:"minimum_confidence,omitempty"`
+	MaximumAge                       *Duration                     `json:"maximum_age,omitempty"`
+	MethodologyDocumentationRequired *bool                         `json:"methodology_documentation_required,omitempty"`
+	IndependentAttestationRequired   *bool                         `json:"independent_attestation_required,omitempty"`
+	AcceptedAttestationIssuers       []any                         `json:"accepted_attestation_issuers,omitempty"`
+	AcceptedAttestationClaimTypes    []string                      `json:"accepted_attestation_claim_types,omitempty"`
+	Ext                              any                           `json:"ext,omitempty"`
+}
+
 // DataProviderSignalSelector — Selects signals from a data provider's adagents.json signals[]. Used for product definitions and
 type DataProviderSignalSelector struct {
 	DataProviderDomain string   `json:"data_provider_domain,omitempty"` // Domain where data provider's adagents.json is hosted (e.g., 'polk.com')
@@ -9650,7 +9717,7 @@ type BudgetConstraint struct {
 // ProductDiscoveryCriteria — Structured criteria shared by product listing and proposal requests. Offer filters decide which
 type ProductDiscoveryCriteria struct {
 	ProductIDs              []string                     `json:"product_ids,omitempty"`                // Exact seller-issued products to retrieve or use as proposal candidates.
-	OfferFilters            any                          `json:"offer_filters,omitempty"`              // Hard commercial and product-characteristic filters. Every returned product
+	OfferFilters            *ProductOfferFilters         `json:"offer_filters,omitempty"`              // Hard commercial and product-characteristic filters. Every returned product
 	TargetingOverlay        *Targeting                   `json:"targeting_overlay,omitempty"`          // Concrete delivery constraints the buyer expects to carry into
 	MediaBuyFrequencyCap    *MediaBuyFrequencyCap        `json:"media_buy_frequency_cap,omitempty"`    // Concrete aggregate max-impression cap expected at the MediaBuy root. Every
 	RequiredOverlaySupport  any                          `json:"required_overlay_support,omitempty"`   // Minimum product-scoped targeting dimensions the buyer must be able to select
@@ -10520,28 +10587,28 @@ type GetProductsTargetingResolution struct {
 
 // ProductPurchaseInput — Request-only canonical product selection for buy_products. It shares the strict Product Purchase
 type ProductPurchaseInput struct {
-	ProductID                    string                         `json:"product_id"`
-	PricingOptionID              string                         `json:"pricing_option_id"`
-	Pricing                      any                            `json:"pricing,omitempty"`
-	FormatOptionRefs             []FormatOptionRef              `json:"format_option_refs,omitempty"`
-	CatalogIDs                   []string                       `json:"catalog_ids,omitempty"`
-	Budget                       *float64                       `json:"budget,omitempty"`
-	DailyBudgetCap               *float64                       `json:"daily_budget_cap,omitempty"`
-	MinSpendTarget               *float64                       `json:"min_spend_target,omitempty"`
-	Impressions                  *float64                       `json:"impressions,omitempty"`
-	StartTime                    string                         `json:"start_time,omitempty"`
-	EndTime                      string                         `json:"end_time,omitempty"`
-	Pacing                       string                         `json:"pacing,omitempty"`
-	Bidding                      any                            `json:"bidding,omitempty"`
-	TargetingOverlay             any                            `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
-	OptimizationGoals            any                            `json:"optimization_goals,omitempty"`
-	AudienceEvidenceRequirements any                            `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
-	AudienceEvidencePins         []AudienceEvidencePin          `json:"audience_evidence_pins,omitempty"`
-	AgencyEstimateNumber         string                         `json:"agency_estimate_number,omitempty"`
-	Context                      any                            `json:"context,omitempty"`
-	Ext                          any                            `json:"ext,omitempty"`
-	MeasurementTerms             any                            `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
-	PerformanceStandards         []CanonicalPerformanceStandard `json:"performance_standards,omitempty"`
+	ProductID                    string                               `json:"product_id"`
+	PricingOptionID              string                               `json:"pricing_option_id"`
+	Pricing                      any                                  `json:"pricing,omitempty"`
+	FormatOptionRefs             []FormatOptionRef                    `json:"format_option_refs,omitempty"`
+	CatalogIDs                   []string                             `json:"catalog_ids,omitempty"`
+	Budget                       *float64                             `json:"budget,omitempty"`
+	DailyBudgetCap               *float64                             `json:"daily_budget_cap,omitempty"`
+	MinSpendTarget               *float64                             `json:"min_spend_target,omitempty"`
+	Impressions                  *float64                             `json:"impressions,omitempty"`
+	StartTime                    string                               `json:"start_time,omitempty"`
+	EndTime                      string                               `json:"end_time,omitempty"`
+	Pacing                       string                               `json:"pacing,omitempty"`
+	Bidding                      any                                  `json:"bidding,omitempty"`
+	TargetingOverlay             any                                  `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
+	OptimizationGoals            any                                  `json:"optimization_goals,omitempty"`
+	AudienceEvidenceRequirements *ProductAudienceEvidenceRequirements `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
+	AudienceEvidencePins         []AudienceEvidencePin                `json:"audience_evidence_pins,omitempty"`
+	AgencyEstimateNumber         string                               `json:"agency_estimate_number,omitempty"`
+	Context                      any                                  `json:"context,omitempty"`
+	Ext                          any                                  `json:"ext,omitempty"`
+	MeasurementTerms             any                                  `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
+	PerformanceStandards         []CanonicalPerformanceStandard       `json:"performance_standards,omitempty"`
 }
 
 // ProposalDecline — Terminal buyer feedback for one immutable proposal snapshot.
@@ -12055,6 +12122,40 @@ type ProductFilterGeometry struct {
 type ProductFilterKeyword struct {
 	Keyword   string    `json:"keyword"` // The keyword to target
 	MatchType MatchType `json:"match_type,omitempty"`
+}
+
+// ProductOfferFilterAvailabilityHorizon — Flexible-window availability discovery: the buyer is open to any bookable window inside
+type ProductOfferFilterAvailabilityHorizon struct {
+	StartTime string `json:"start_time"` // Inclusive horizon start (RFC 3339 date-time with timezone offset).
+	EndTime   string `json:"end_time"`   // Exclusive horizon end (RFC 3339 date-time with timezone offset). MUST be after
+}
+
+type ProductOfferFilterMetro struct {
+	System MetroSystem `json:"system"` // Metro classification system
+	Code   string      `json:"code"`   // Metro code within the system (e.g., '501' for NYC DMA)
+}
+
+type ProductOfferFilterTrustedMatch struct {
+	Providers     []ProductOfferFilterTrustedMatchProvider `json:"providers,omitempty"`
+	ResponseTypes []ResponseType                           `json:"response_types,omitempty"`
+}
+
+type ProductOfferFilterTrustedMatchProvider struct {
+	AgentURL      string `json:"agent_url"`
+	ContextMatch  *bool  `json:"context_match,omitempty"`
+	IdentityMatch *bool  `json:"identity_match,omitempty"`
+}
+
+type ProductOfferFilterPerformanceStandard struct {
+	Metric    PerformanceStandardMetric `json:"metric"`
+	Threshold float64                   `json:"threshold"`
+	Standard  ViewabilityStandard       `json:"standard,omitempty"`
+	Vendor    BrandKey                  `json:"vendor"`
+}
+
+type ProductOfferFilterVendorMetric struct {
+	Vendor   *BrandKey `json:"vendor,omitempty"`
+	MetricID string    `json:"metric_id,omitempty"`
 }
 
 type PriceAdjustment struct {
