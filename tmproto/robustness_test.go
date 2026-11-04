@@ -54,15 +54,65 @@ func TestAssetAccess_Redacts_String(t *testing.T) {
 }
 
 func TestAssetAccess_Redacts_GCPServiceAccount(t *testing.T) {
-	a := NewServiceAccountAccess("gcp", map[string]any{
-		"client_email": "sa@example.iam.gserviceaccount.com",
-		"private_key":  "-----BEGIN PRIVATE KEY-----\nAAAABBBBCCCC\n-----END PRIVATE KEY-----",
+	a := NewGCPServiceAccountAccess(GCPServiceAccountCredentials{
+		ClientEmail: "sa@example.iam.gserviceaccount.com",
+		PrivateKey:  "-----BEGIN PRIVATE KEY-----\nAAAABBBBCCCC\n-----END PRIVATE KEY-----",
 	})
 	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
 		s := fmt.Sprintf(format, a)
 		assert.NotContains(t, s, "AAAABBBBCCCC", "format %s leaked private_key", format)
-		assert.NotContains(t, s, "sa@example", "format %s leaked client_email", format)
+		// AssetAccess's own redaction is blanket (Method only), so the
+		// client_email doesn't surface through it either — that's fine,
+		// this test only needs to prove no secret leaks.
 	}
+}
+
+func TestGCPServiceAccountCredentials_Redacts_PrivateKey_KeepsIdentifiers(t *testing.T) {
+	c := GCPServiceAccountCredentials{ // #nosec G101 — fake PEM block exercising redaction, not a real key
+		ClientEmail: "sa@example.iam.gserviceaccount.com",
+		PrivateKey:  "-----BEGIN PRIVATE KEY-----\nAAAABBBBCCCC\n-----END PRIVATE KEY-----",
+		ProjectID:   "my-project-123",
+		TokenURI:    "https://oauth2.googleapis.com/token",
+	}
+	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
+		s := fmt.Sprintf(format, c)
+		assert.NotContains(t, s, "AAAABBBBCCCC", "format %s leaked private_key", format)
+		assert.NotContains(t, s, "BEGIN PRIVATE KEY", "format %s leaked private_key marker", format)
+	}
+	// Non-secret identifiers stay visible for debuggability.
+	s := c.String()
+	assert.Contains(t, s, "sa@example.iam.gserviceaccount.com")
+	assert.Contains(t, s, "my-project-123")
+}
+
+func TestAWSServiceAccountCredentials_Redacts_Secrets_KeepsIdentifiers(t *testing.T) {
+	c := AWSServiceAccountCredentials{
+		AccessKeyID:     "AKIAIOSFODNN7EXAMPLE",
+		SecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // #nosec G101 — fake AWS example key exercising redaction
+		SessionToken:    "FQoGZXIvYXdzEBEXAMPLESESSIONTOKEN",        // #nosec G101 — fake token exercising redaction
+		Region:          "us-east-1",
+	}
+	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
+		s := fmt.Sprintf(format, c)
+		assert.NotContains(t, s, "wJalrXUtnFEMI", "format %s leaked secret_access_key", format)
+		assert.NotContains(t, s, "EXAMPLESESSIONTOKEN", "format %s leaked session_token", format)
+	}
+	// Non-secret identifiers stay visible for debuggability.
+	s := c.String()
+	assert.Contains(t, s, "AKIAIOSFODNN7EXAMPLE")
+	assert.Contains(t, s, "us-east-1")
+}
+
+func TestRawServiceAccountCredentials_RedactsWholeMap(t *testing.T) {
+	r := RawServiceAccountCredentials{
+		Provider: "azure",
+		Fields:   map[string]any{"client_secret": "azure-super-secret-value"}, // #nosec G101 — fake secret exercising redaction
+	}
+	for _, format := range []string{"%s", "%v", "%+v", "%#v"} {
+		s := fmt.Sprintf(format, r)
+		assert.NotContains(t, s, "azure-super-secret-value", "format %s leaked raw credential field", format)
+	}
+	assert.Contains(t, r.String(), "Provider:azure")
 }
 
 func TestAssetAccess_Redacts_InsideLogging(t *testing.T) {
