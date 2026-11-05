@@ -3239,6 +3239,39 @@ class OptionalRequestFieldsInTheBundleTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertNotIn(name, {key[0] for key in self.optional_fields()})
 
+    def test_unspecified_null_fields_are_noted_while_upstream_is_silent(self):
+        # The note exists only while the schema says nothing about null. When a
+        # schema bump describes it, this fails: delete the entry.
+        self.assertEqual(
+            {
+                ("PackageControl", "budget"), ("PackageControl", "min_spend_target"),
+                ("PackageControl", "bidding"), ("ControlMediaBuyRequest", "bidding"),
+            },
+            set(generate.NULL_SEMANTICS_UNSPECIFIED),
+        )
+        for (name, json_name), note in generate.NULL_SEMANTICS_UNSPECIFIED.items():
+            with self.subTest(field=(name, json_name)):
+                prop = generate.schema_properties(self.entries[name]["schema_obj"])[json_name]
+                self.assertTrue(generate.schema_has_null_branch(prop))
+                self.assertNotIn("null", prop.get("description", "").lower())
+                self.assertLessEqual(len(note), 80, "longer notes are cut in the field comment")
+                source = generate.schema_to_struct(name, self.entries[name]["schema_obj"])
+                self.assertIn(f"// {note}", source)
+
+    def test_null_meaning_is_stated_where_the_schema_states_it(self):
+        # The fields next to those: the schema says what null means, so the
+        # generated comment is the schema's own text, not a note.
+        for name, json_name in (
+            ("PackageControl", "daily_budget_cap"), ("ControlMediaBuyRequest", "daily_budget_cap"),
+            ("ControlMediaBuyRequest", "budget_cap_timezone"), ("ControlMediaBuyRequest", "frequency_cap"),
+            ("UpdateMediaBuyRequest", "bidding"), ("PackageUpdate", "budget"),
+            ("PackageUpdate", "min_spend_target"), ("PackageUpdate", "bidding"),
+        ):
+            with self.subTest(field=(name, json_name)):
+                self.assertNotIn((name, json_name), generate.NULL_SEMANTICS_UNSPECIFIED)
+                prop = generate.schema_properties(self.entries[name]["schema_obj"])[json_name]
+                self.assertIn("null", prop["description"].lower())
+
     def test_the_update_request_is_request_only(self):
         requested, answered = generate.request_reach()
 

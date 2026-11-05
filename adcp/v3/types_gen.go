@@ -9609,12 +9609,12 @@ type PackageUpdate struct {
 // PackageControl — Operational controls for an existing package that remain inside its accepted commercial envelope.
 type PackageControl struct {
 	PackageID              string                   `json:"package_id"`
-	Budget                 Optional[float64]        `json:"budget,omitzero"`           // Replace this package's hard lifetime spend cap. A number in a resulting
+	Budget                 Optional[float64]        `json:"budget,omitzero"`           // Hard lifetime spend cap. AdCP 3.2.2 does not say what null means.
 	DailyBudgetCap         Optional[float64]        `json:"daily_budget_cap,omitzero"` // Replace this package's subordinate hard daily cap; null removes it. Numeric
-	MinSpendTarget         Optional[float64]        `json:"min_spend_target,omitzero"` // Replace this package's soft minimum-spend target. A number is valid only for
+	MinSpendTarget         Optional[float64]        `json:"min_spend_target,omitzero"` // Soft minimum-spend target. AdCP 3.2.2 does not say what null means.
 	Impressions            *float64                 `json:"impressions,omitempty"`
 	Pacing                 Pacing                   `json:"pacing,omitempty"` // Replace package pacing, subordinate to media-buy pacing. In a resulting
-	Bidding                Optional[any]            `json:"bidding,omitzero"`
+	Bidding                Optional[any]            `json:"bidding,omitzero"` // Bidding policy. AdCP 3.2.2 does not say what null means.
 	Paused                 *bool                    `json:"paused,omitempty"`
 	Canceled               *bool                    `json:"canceled,omitempty"` // Exercise an already-accepted unilateral package cancellation right. If seller
 	CancellationReason     string                   `json:"cancellation_reason,omitempty"`
@@ -13548,8 +13548,8 @@ type ControlMediaBuyRequest struct {
 	FrequencyCap           Optional[any]           `json:"frequency_cap,omitzero"`       // Replace the shared MediaBuy frequency cap; null removes it. The change applies
 	BudgetCapTimezone      Optional[string]        `json:"budget_cap_timezone,omitzero"` // Replace the shared IANA cap-day timezone override; null restores the default
 	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
-	Pacing                 Pacing                  `json:"pacing,omitempty"` // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
-	Bidding                Optional[any]           `json:"bidding,omitzero"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"`   // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
+	Bidding                Optional[any]           `json:"bidding,omitzero"`   // Bidding policy. AdCP 3.2.2 does not say what null means.
 	Packages               []PackageControl        `json:"packages,omitempty"` // Operational patches keyed by package_id. Each package_id MUST appear at most
 	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`
 	GovernanceContext      string                  `json:"governance_context,omitempty"`

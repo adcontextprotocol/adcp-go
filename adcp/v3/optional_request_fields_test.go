@@ -207,7 +207,7 @@ func TestUpdateMediaBuyRequestBuilderEncodesEachState(t *testing.T) {
 	assertSchemaValid(t, "media-buy/update-media-buy-request.json", out)
 }
 
-// Some of a nil any would send null, which means clear; the request refuses it.
+// Some of a nil any would send null, not an empty value; the request refuses it.
 func TestUpdateMediaBuyRequestRefusesSomeOfNilAny(t *testing.T) {
 	_, err := json.Marshal(UpdateMediaBuyRequest{Bidding: Some[any](nil)})
 	assert.ErrorIs(t, err, ErrOptionalNilValue)
@@ -313,43 +313,39 @@ func TestUpdateMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
 	})
 }
 
-// legacyType is the Go type a struct had before its Optional fields: *T for a
-// scalar or struct, T for an interface, slice or map, as the generator emitted
-// them. It rebuilds only the structs that contain an Optional.
-func legacyType(rt reflect.Type) (reflect.Type, bool) {
+// rebuildOptionals returns rt with every Optional field replaced by the type
+// replace gives for its T, and false when rt holds no Optional. It rebuilds only
+// the structs that contain an Optional.
+func rebuildOptionals(rt reflect.Type, replace func(elem reflect.Type) reflect.Type) (reflect.Type, bool) {
 	switch rt.Kind() {
 	case reflect.Pointer:
-		elem, changed := legacyType(rt.Elem())
+		elem, changed := rebuildOptionals(rt.Elem(), replace)
 		if changed {
 			return reflect.PointerTo(elem), true
 		}
 	case reflect.Slice:
-		elem, changed := legacyType(rt.Elem())
+		elem, changed := rebuildOptionals(rt.Elem(), replace)
 		if changed {
 			return reflect.SliceOf(elem), true
 		}
 	case reflect.Map:
-		elem, changed := legacyType(rt.Elem())
+		elem, changed := rebuildOptionals(rt.Elem(), replace)
 		if changed {
 			return reflect.MapOf(rt.Key(), elem), true
 		}
 	case reflect.Struct:
 		if isOptionalType(rt) {
-			elem, _ := legacyType(optionalElemType(rt))
-			switch elem.Kind() {
-			case reflect.Interface, reflect.Slice, reflect.Map:
-				return elem, true
-			}
-			return reflect.PointerTo(elem), true
+			elem, _ := rebuildOptionals(optionalElemType(rt), replace)
+			return replace(elem), true
 		}
 		fields := make([]reflect.StructField, rt.NumField())
 		changed := false
 		for i := range fields {
 			f := rt.Field(i)
 			if !f.IsExported() || f.Anonymous {
-				panic(fmt.Sprintf("legacyType: %v.%s is unexported or embedded", rt, f.Name))
+				panic(fmt.Sprintf("rebuildOptionals: %v.%s is unexported or embedded", rt, f.Name))
 			}
-			ft, c := legacyType(f.Type)
+			ft, c := rebuildOptionals(f.Type, replace)
 			changed = changed || c
 			tag := f.Tag
 			if isOptionalType(f.Type) {
@@ -363,6 +359,25 @@ func legacyType(rt reflect.Type) (reflect.Type, bool) {
 		}
 	}
 	return rt, false
+}
+
+// legacyType is the Go type a struct had before its Optional fields were
+// *T for a scalar or struct, T for an interface, slice or map, as the generator
+// emitted them for update_media_buy.
+func legacyType(rt reflect.Type) (reflect.Type, bool) {
+	return rebuildOptionals(rt, func(elem reflect.Type) reflect.Type {
+		switch elem.Kind() {
+		case reflect.Interface, reflect.Slice, reflect.Map:
+			return elem
+		}
+		return reflect.PointerTo(elem)
+	})
+}
+
+// anyLegacyType is the type control_media_buy's request had before its Optional
+// fields: every one of them was `any`.
+func anyLegacyType(rt reflect.Type) (reflect.Type, bool) {
+	return rebuildOptionals(rt, func(reflect.Type) reflect.Type { return reflect.TypeFor[any]() })
 }
 
 // The advertised input schema of a tool does not change when a field moves
@@ -442,4 +457,152 @@ func TestGeneratedOptionalFieldsAreTaggedOmitZero(t *testing.T) {
 	for _, v := range []any{UpdateMediaBuyRequest{}, ControlMediaBuyRequest{}, PackageUpdate{}, PackageControl{}} {
 		requireOptionalOmitZero(t, v)
 	}
+}
+
+// The control_media_buy request type changes its advertised schema on purpose:
+// its nullable numeric and string controls were `any`, which AddTool leaves out
+// of tools/list, and are Optional[T], advertised as the *T they stand for.
+// This pins the new entries exactly and requires the rest of the tool's schema
+// to be what it was.
+func TestControlMediaBuyAdvertisedSchemaChangesOnlyInTheFiveTypedControls(t *testing.T) {
+	rt := reflect.TypeFor[ControlMediaBuyRequest]()
+	legacy, changed := anyLegacyType(rt)
+	require.True(t, changed)
+
+	toMap := func(raw string) map[string]any {
+		var m map[string]any
+		require.NoError(t, json.Unmarshal([]byte(raw), &m))
+		return m
+	}
+	// The same through the real tools/list path as the schema AddTool builds.
+	listed := toMap(listedInputSchema[ControlMediaBuyRequest](t))
+	assert.Equal(t, toMap(schemaJSON(t, permissiveSchemaForType(rt))), listed)
+
+	props := func(schema map[string]any) map[string]any {
+		return schema["properties"].(map[string]any)
+	}
+	packageProps := func(schema map[string]any) map[string]any {
+		return props(props(schema)["packages"].(map[string]any)["items"].(map[string]any))
+	}
+
+	number := map[string]any{"type": []any{"null", "number"}}
+	text := map[string]any{"type": []any{"null", "string"}}
+	// Exactly these five gain an entry.
+	assert.Equal(t, number, props(listed)["daily_budget_cap"])
+	assert.Equal(t, text, props(listed)["budget_cap_timezone"])
+	assert.Equal(t, number, packageProps(listed)["budget"])
+	assert.Equal(t, number, packageProps(listed)["min_spend_target"])
+	assert.Equal(t, number, packageProps(listed)["daily_budget_cap"])
+	// An Optional[any] stays unadvertised, as the any it replaces always was.
+	for _, name := range []string{"bidding", "frequency_cap"} {
+		assert.NotContains(t, props(listed), name)
+		assert.NotContains(t, packageProps(listed), name)
+	}
+
+	// Without those five entries the schema is the legacy one, byte for byte
+	// once the JSON is normalised.
+	delete(props(listed), "daily_budget_cap")
+	delete(props(listed), "budget_cap_timezone")
+	for _, name := range []string{"budget", "min_spend_target", "daily_budget_cap"} {
+		delete(packageProps(listed), name)
+	}
+	assert.Equal(t, toMap(schemaJSON(t, permissiveSchemaForType(legacy))), listed)
+}
+
+// A control_media_buy call over MCP: null reaches the handler as IsNull at the
+// media-buy and package level, omission as IsZero, and 0 as a value.
+func TestControlMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
+	// Each call carries its own key: a key is fenced once used, and a repeat
+	// with other arguments is a conflict.
+	var calls int
+	base := func(extra map[string]any) map[string]any {
+		calls++
+		args := map[string]any{
+			"idempotency_key": fmt.Sprintf("control-mb-%07d", calls), "account": map[string]any{"account_id": "acc_1"},
+			"media_buy_id": "mb_1", "revision": 3,
+		}
+		for k, v := range extra {
+			args[k] = v
+		}
+		return args
+	}
+
+	run := func(t *testing.T, cs *mcp.ClientSession, got *ControlMediaBuyRequest) {
+		t.Helper()
+		call := func(args map[string]any) ControlMediaBuyRequest {
+			t.Helper()
+			*got = ControlMediaBuyRequest{}
+			res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "control_media_buy", Arguments: args})
+			require.NoError(t, err)
+			require.False(t, res.IsError, "%+v", res.Content)
+			return *got
+		}
+
+		omitted := call(base(map[string]any{"paused": true}))
+		assert.True(t, omitted.DailyBudgetCap.IsZero())
+		assert.True(t, omitted.BudgetCapTimezone.IsZero())
+		assert.True(t, omitted.FrequencyCap.IsZero())
+		assert.True(t, omitted.Bidding.IsZero())
+
+		cleared := call(base(map[string]any{
+			"daily_budget_cap": nil, "budget_cap_timezone": nil, "frequency_cap": nil, "bidding": nil,
+			"packages": []any{map[string]any{"package_id": "pkg_1", "budget": nil, "min_spend_target": nil, "daily_budget_cap": nil, "bidding": nil}},
+		}))
+		assert.True(t, cleared.DailyBudgetCap.IsNull())
+		assert.True(t, cleared.BudgetCapTimezone.IsNull())
+		assert.True(t, cleared.FrequencyCap.IsNull())
+		assert.True(t, cleared.Bidding.IsNull())
+		require.Len(t, cleared.Packages, 1)
+		pkg := cleared.Packages[0]
+		assert.True(t, pkg.Budget.IsNull())
+		assert.True(t, pkg.MinSpendTarget.IsNull())
+		assert.True(t, pkg.DailyBudgetCap.IsNull())
+		assert.True(t, pkg.Bidding.IsNull())
+
+		valued := call(base(map[string]any{
+			"daily_budget_cap": 0, "budget_cap_timezone": "UTC",
+			"packages": []any{map[string]any{"package_id": "pkg_1", "budget": 0, "min_spend_target": 0, "daily_budget_cap": 0, "bidding": map[string]any{"automatic": true}}},
+		}))
+		capValue, ok := valued.DailyBudgetCap.Get()
+		assert.True(t, ok)
+		assert.Equal(t, 0.0, capValue)
+		timezone, ok := valued.BudgetCapTimezone.Get()
+		assert.True(t, ok)
+		assert.Equal(t, "UTC", timezone)
+		require.Len(t, valued.Packages, 1)
+		for name, field := range map[string]Optional[float64]{
+			"budget": valued.Packages[0].Budget, "min_spend_target": valued.Packages[0].MinSpendTarget,
+			"daily_budget_cap": valued.Packages[0].DailyBudgetCap,
+		} {
+			v, ok := field.Get()
+			assert.True(t, ok, name)
+			assert.Equal(t, 0.0, v, name)
+		}
+		bidding, ok := valued.Packages[0].Bidding.Get()
+		assert.True(t, ok)
+		assert.Equal(t, map[string]any{"automatic": true}, bidding)
+		assert.True(t, valued.Bidding.IsZero())
+	}
+
+	t.Run("AddTool", func(t *testing.T) {
+		server := mcp.NewServer(&mcp.Implementation{Name: "control-test", Version: "v0.0.1"}, nil)
+		var got ControlMediaBuyRequest
+		AddTool(server, "control_media_buy", "control", func(_ context.Context, _ *mcp.CallToolRequest, in ControlMediaBuyRequest) (*mcp.CallToolResult, any, error) {
+			got = in
+			return &mcp.CallToolResult{}, nil, nil
+		})
+		run(t, connectInMemory(t, server), &got)
+	})
+
+	t.Run("WithIdempotency", func(t *testing.T) {
+		store := idempotency.New(idempotency.Options{Backend: idempotency.NewMemoryBackend(0), TTL: 24 * time.Hour})
+		server := mcp.NewServer(&mcp.Implementation{Name: "control-test", Version: "v0.0.1"}, nil)
+		server.AddReceivingMiddleware(withTestPrincipal("test-buyer"))
+		var got ControlMediaBuyRequest
+		AddTool(server, "control_media_buy", "control", WithIdempotency(store, func(_ context.Context, _ *mcp.CallToolRequest, in ControlMediaBuyRequest) (*mcp.CallToolResult, any, error) {
+			got = in
+			return &mcp.CallToolResult{}, map[string]any{}, nil
+		}))
+		run(t, connectInMemory(t, server), &got)
+	})
 }

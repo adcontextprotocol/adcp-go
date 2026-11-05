@@ -209,10 +209,10 @@ func TestCanonicalKeywordTargetIsNotTheTargetingKeywordTarget(t *testing.T) {
 	assert.IsType(t, []KeywordTarget{}, Targeting{}.KeywordTargets)
 }
 
-// Request properties whose schema allows null mean "clear it" (daily_budget_cap:
-// "null removes it"). Their Go type is Optional[T], so a null survives decoding
-// and re-encoding: a proxy that decodes and re-encodes keeps the clear, and a
-// buyer sends it with Null[T]().
+// Request properties whose schema allows null give it a meaning (daily_budget_cap:
+// "null removes it"; budget_cap_timezone: "null restores the default"). Their Go
+// type is Optional[T], so a null survives decoding and re-encoding: a proxy that
+// decodes and re-encodes keeps it, and a buyer sends it with Null[T]().
 func TestControlMediaBuyRequestNullFieldsKeepNull(t *testing.T) {
 	requireSchemaBundle(t)
 	raw := `{"idempotency_key":"control-mb-0000007","account":{"account_id":"acc_1"},"media_buy_id":"mb_1","revision":3,"daily_budget_cap":null,"frequency_cap":null,"budget_cap_timezone":null,"bidding":null,"packages":[{"package_id":"pkg_1","budget":null,"daily_budget_cap":null,"min_spend_target":null,"bidding":null}]}`

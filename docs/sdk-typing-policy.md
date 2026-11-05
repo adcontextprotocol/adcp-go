@@ -116,7 +116,7 @@ Decision:
   and encoding a cyclic value overflows the stack. `requireOptionalOmitZero`
   reports it.
 - `Some(v)` with a nil slice, map, pointer or interface is refused when
-  encoded, because it would send `null`, which means clear. A buyer sends `[]`
+  encoded, because it would send `null`, not an empty value. A buyer sends `[]`
   with `Some([]string{})`.
 - `AddTool` advertises `Optional[T]` as it advertises `*T`, so `tools/list` does
   not change when a field moves from `*T` to `Optional[T]`. A type that

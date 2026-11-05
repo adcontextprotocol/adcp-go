@@ -1144,8 +1144,22 @@ INLINE_SCHEMA_DESCRIPTIONS = {
     'CommitmentSubmitted': 'Commitment Submitted, the commitment result with status "submitted".',
 }
 
+# Nullable control_media_buy properties whose AdCP 3.2.2 schema accepts null but
+# does not say what it means: the property has no description, or its description
+# never mentions null. (Compare daily_budget_cap on the same types: "null removes
+# it".) A seller must not read a meaning into null here that upstream has not
+# given; the generated field comment says so. test_unspecified_null_fields_*
+# fails when an upstream bump starts describing null, so the note is deleted then.
+NULL_SEMANTICS_UNSPECIFIED = {
+    ('PackageControl', 'budget'): 'Hard lifetime spend cap. AdCP 3.2.2 does not say what null means.',
+    ('PackageControl', 'min_spend_target'): 'Soft minimum-spend target. AdCP 3.2.2 does not say what null means.',
+    ('PackageControl', 'bidding'): 'Bidding policy. AdCP 3.2.2 does not say what null means.',
+    ('ControlMediaBuyRequest', 'bidding'): 'Bidding policy. AdCP 3.2.2 does not say what null means.',
+}
+
 FIELD_DESCRIPTION_OVERRIDES = {
     ('GetAdcpCapabilitiesResponse', 'supported_protocols'): 'AdCP protocols this agent supports.',
+    **NULL_SEMANTICS_UNSPECIFIED,
 }
 
 ENUM_DESCRIPTION_OVERRIDES = {
@@ -3128,7 +3142,8 @@ def contains_dynamic_any(go_type):
 #
 # A request property that has a null branch (`type: [.., "null"]`, a null
 # anyOf/oneOf branch, a null enum value or const) means three things on the wire:
-# omitted (keep what is stored), null (clear it) and a value (replace it). A
+# omitted (keep what is stored), null (what the field's schema says: remove it,
+# restore a default, or clear it) and a value (replace it). A
 # pointer or `any` field cannot tell the first two apart after decoding, and a
 # buyer cannot send null at all. adcp.Optional[T] holds all three states (see
 # adcp/v3/optional.go), so the generator emits it, tagged `omitzero` and never
