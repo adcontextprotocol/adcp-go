@@ -3249,14 +3249,38 @@ class OptionalRequestFieldsInTheBundleTest(unittest.TestCase):
             },
             set(generate.NULL_SEMANTICS_UNSPECIFIED),
         )
-        for (name, json_name), note in generate.NULL_SEMANTICS_UNSPECIFIED.items():
+
+        def mentions_null(schema):
+            return "null" in (schema or {}).get("description", "").lower()
+
+        for name, json_name in sorted(generate.NULL_SEMANTICS_UNSPECIFIED):
             with self.subTest(field=(name, json_name)):
                 prop = generate.schema_properties(self.entries[name]["schema_obj"])[json_name]
                 self.assertTrue(generate.schema_has_null_branch(prop))
-                self.assertNotIn("null", prop.get("description", "").lower())
-                self.assertLessEqual(len(note), 80, "longer notes are cut in the field comment")
+                self.assertFalse(mentions_null(prop), "the property now describes null")
+                # Nor does the schema a $ref names (bidding is anyOf bidding-policy or null).
+                for branch in [prop] + list(prop.get("anyOf", [])):
+                    ref = branch.get("$ref")
+                    if ref:
+                        self.assertFalse(mentions_null(generate.resolve_ref_schema(ref)), ref)
+
+    def test_unspecified_null_comments_keep_the_schema_wording_and_add_the_note(self):
+        want = {
+            ("PackageControl", "budget"): "Replace this package's hard lifetime spend cap; the schema does not say what null means.",
+            ("PackageControl", "min_spend_target"): "Replace this package's soft minimum-spend target; the schema does not say what null means.",
+            # No description on the property: the title of the schema it names.
+            ("PackageControl", "bidding"): "Bidding Policy; the schema does not say what null means.",
+            ("ControlMediaBuyRequest", "bidding"): "Bidding Policy; the schema does not say what null means.",
+        }
+        for (name, json_name), comment in want.items():
+            with self.subTest(field=(name, json_name)):
                 source = generate.schema_to_struct(name, self.entries[name]["schema_obj"])
-                self.assertIn(f"// {note}", source)
+                self.assertIn(f"// {comment}", source)
+                self.assertNotIn("3.2.2", comment, "a bundle bump would leave the version stale")
+        # Other fields keep the usual 80-character comment.
+        source = generate.schema_to_struct("PackageControl", self.entries["PackageControl"]["schema_obj"])
+        daily = [line for line in source.splitlines() if "json:\"daily_budget_cap" in line][0]
+        self.assertLessEqual(len(daily.split("// ", 1)[1]), 80)
 
     def test_null_meaning_is_stated_where_the_schema_states_it(self):
         # The fields next to those: the schema says what null means, so the

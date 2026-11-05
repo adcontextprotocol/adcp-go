@@ -37,7 +37,8 @@ line; `@latest` stays on the 3.2.x line until 3.3.0 stable.
 
 Where the schema does not say, the SDK keeps the three states apart and leaves
 the meaning to the seller: do not read `null` as "remove" for those four fields
-until the protocol says so. Their generated field comments say the same.
+until the protocol says so. Their generated field comments say the same:
+"the schema does not say what null means".
 
 The `any` fields stay `any` as the value (`Optional[any]`): their schemas are
 not generated as Go types yet, and the generator still tracks them as reviewed
@@ -107,16 +108,59 @@ validation, audit logging, and anything that decides which fields a request
 changes. Do not write `*Optional[T]` in your own structs: decoding sets the
 pointer to nil for `null`.
 
+**If you used the `any` fields of 3.3.0-beta.0** (`ControlMediaBuyRequest`,
+`PackageControl`, and `UpdateMediaBuyRequest.FrequencyCap`), the change is from
+an interface to `Optional[T]`:
+
+| | 3.3.0-beta.0 (`any`) | Now |
+| --- | --- | --- |
+| send a number | `DailyBudgetCap: 5.0` or `adcp.Float64(5)` | `adcp.Some(5.0)` |
+| send a string | `BudgetCapTimezone: "UTC"` | `adcp.Some("UTC")` |
+| send an object (`Bidding`, `FrequencyCap`) | `Bidding: map[string]any{"automatic": true}` | `adcp.Some[any](map[string]any{"automatic": true})` |
+| send `null` | `adcp.ClearField()` | `adcp.Null[float64]()`, `adcp.Null[string]()`, `adcp.Null[any]()` |
+| read a number | `v, ok := x.DailyBudgetCap.(float64)` | `v, ok := x.DailyBudgetCap.Get()` |
+| the field is present | `x.Bidding != nil` | `!x.Bidding.IsZero()` |
+| read an object | `m, ok := x.Bidding.(map[string]any)` | `v, ok := x.Bidding.Get()` then `m, _ := v.(map[string]any)` |
+
+In beta.0 a decoded `null` was a nil interface, so `x.Bidding != nil` was false
+for it; `!x.Bidding.IsZero()` is true for `null`, which is the point.
+
 **What else changes.**
 
-- The wire changes in one place: an explicit `null` is now kept. A seller that
-  decodes a request and encodes it again, as a proxy does, used to drop
-  `"daily_budget_cap":null` and now forwards it.
+- The wire changes in two places.
+  1. An explicit `null` is now kept. A seller that decodes a request and
+     encodes it again, as a proxy does, used to drop
+     `"daily_budget_cap":null` and now forwards it.
+  2. `control_media_buy` now rejects a `daily_budget_cap`, package `budget`,
+     `min_spend_target` or package `daily_budget_cap` that is not a number, and
+     a `budget_cap_timezone` that is not a string. In 3.3.0-beta.0 the `any`
+     field passed `"daily_budget_cap":"250"` to the handler. Now `AddTool` returns
+     a tool error before the handler runs: structured `adcp_error` with code
+     `INVALID_INPUT`, message "Failed to parse input: invalid JSON or type
+     mismatch", recovery `terminal`.
 - `tools/list` is unchanged for `update_media_buy`: `AddTool` advertises an
   `Optional[T]` as it advertised the `*T`. `control_media_buy` now advertises
   its five typed properties (`daily_budget_cap`, `budget_cap_timezone` and the
   package `budget`, `min_spend_target` and `daily_budget_cap`) as `number` or
   `string` with `null`, where it advertised nothing for the `any` fields.
+- Register these request types with `adcp.AddTool`. go-sdk's `mcp.AddTool` and
+  `jsonschema.For` or `ForType` describe an `Optional[T]` as an empty `object`
+  and reject every value: `mcp.AddTool` with `UpdateMediaBuyRequest` answers
+  `"daily_budget_cap": 5` with `validating /properties/daily_budget_cap: type: 5
+  has type "integer", want "object"`. A pointer field did not have this problem.
+- Encode with `encoding/json` (or `encoding/json/v2`). An encoder that ignores
+  `omitzero`, such as json-iterator's `ConfigCompatibleWithStandardLibrary`,
+  cannot encode a request that omits any of these fields: it fails with an error
+  that names the `omitzero` tag (as a plain string there, so
+  `errors.Is(err, adcp.ErrOptionalUnset)` is false). Decoding with it works.
+- The text of `ErrOptionalNilValue` changed from the 3.3.0-beta.0 wording
+  ("... means clear; use Null[T]() to clear ..."). Match the error with
+  `errors.Is(err, adcp.ErrOptionalNilValue)`, never its message.
+- Reflection and tag tooling sees a different field: its kind is a struct
+  (`adcp.Optional[T]`), not a pointer or an interface, and its tag is
+  `json:"name,omitzero"` where it was `json:"name,omitempty"`. Code that decides
+  "optional" from a pointer kind or an `omitempty` tag must recognise
+  `adcp.Optional` too.
 - Not changed here: `Plan.ApprovedSellers`, and `targeting_overlay` on
   `PackageInput`, `PackageUpdate`, `PackageControl` and `ProductPurchaseInput`
   (still `any`; every dimension inside it has a null branch). A later change

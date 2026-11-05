@@ -561,7 +561,10 @@ func TestControlMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
 
 		valued := call(base(map[string]any{
 			"daily_budget_cap": 0, "budget_cap_timezone": "UTC",
-			"packages": []any{map[string]any{"package_id": "pkg_1", "budget": 0, "min_spend_target": 0, "daily_budget_cap": 0, "bidding": map[string]any{"automatic": true}}},
+			"packages": []any{
+				map[string]any{"package_id": "pkg_1", "budget": 0, "min_spend_target": 0, "daily_budget_cap": 0, "bidding": map[string]any{"automatic": true}},
+				map[string]any{"package_id": "pkg_2", "paused": true},
+			},
 		}))
 		capValue, ok := valued.DailyBudgetCap.Get()
 		assert.True(t, ok)
@@ -569,7 +572,7 @@ func TestControlMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
 		timezone, ok := valued.BudgetCapTimezone.Get()
 		assert.True(t, ok)
 		assert.Equal(t, "UTC", timezone)
-		require.Len(t, valued.Packages, 1)
+		require.Len(t, valued.Packages, 2)
 		for name, field := range map[string]Optional[float64]{
 			"budget": valued.Packages[0].Budget, "min_spend_target": valued.Packages[0].MinSpendTarget,
 			"daily_budget_cap": valued.Packages[0].DailyBudgetCap,
@@ -582,6 +585,15 @@ func TestControlMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, map[string]any{"automatic": true}, bidding)
 		assert.True(t, valued.Bidding.IsZero())
+
+		// The second package sets none of the four: omitted stays omitted next
+		// to a package that sets all of them.
+		untouched := valued.Packages[1]
+		assert.Equal(t, "pkg_2", untouched.PackageID)
+		assert.True(t, untouched.Budget.IsZero())
+		assert.True(t, untouched.MinSpendTarget.IsZero())
+		assert.True(t, untouched.DailyBudgetCap.IsZero())
+		assert.True(t, untouched.Bidding.IsZero())
 	}
 
 	t.Run("AddTool", func(t *testing.T) {
@@ -605,4 +617,60 @@ func TestControlMediaBuyThroughTheHandlerPathKeepsNull(t *testing.T) {
 		}))
 		run(t, connectInMemory(t, server), &got)
 	})
+}
+
+// A control that is not a number (or, for the timezone, not a string) used to
+// reach the handler as an `any`. The typed field now refuses it, and AddTool
+// answers with the SDK's invalid-input error before the handler runs.
+func TestControlMediaBuyRejectsAControlOfTheWrongType(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "control-test", Version: "v0.0.1"}, nil)
+	var handled int
+	AddTool(server, "control_media_buy", "control", func(context.Context, *mcp.CallToolRequest, ControlMediaBuyRequest) (*mcp.CallToolResult, any, error) {
+		handled++
+		return &mcp.CallToolResult{}, nil, nil
+	})
+	cs := connectInMemory(t, server)
+	base := func(extra map[string]any) map[string]any {
+		args := map[string]any{
+			"idempotency_key": "control-mb-0000001", "account": map[string]any{"account_id": "acc_1"},
+			"media_buy_id": "mb_1", "revision": 3,
+		}
+		for k, v := range extra {
+			args[k] = v
+		}
+		return args
+	}
+	pkg := func(field string, value any) map[string]any {
+		return map[string]any{"packages": []any{map[string]any{"package_id": "pkg_1", field: value}}}
+	}
+
+	for name, extra := range map[string]map[string]any{
+		"daily_budget_cap string":     {"daily_budget_cap": "250"},
+		"daily_budget_cap bool":       {"daily_budget_cap": true},
+		"budget_cap_timezone number":  {"budget_cap_timezone": 5},
+		"package budget string":       pkg("budget", "250"),
+		"package min_spend_target":    pkg("min_spend_target", "0"),
+		"package daily_budget_cap":    pkg("daily_budget_cap", "250"),
+		"package budget as an object": pkg("budget", map[string]any{"amount": 5}),
+	} {
+		t.Run(name, func(t *testing.T) {
+			res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "control_media_buy", Arguments: base(extra)})
+			require.NoError(t, err, "a tool error, not a protocol error")
+			require.True(t, res.IsError)
+			adcpError, ok := structuredContentMap(t, res)["adcp_error"].(map[string]any)
+			require.True(t, ok)
+			assert.Equal(t, "INVALID_INPUT", adcpError["code"])
+			assert.Equal(t, "Failed to parse input: invalid JSON or type mismatch", adcpError["message"])
+			assert.Equal(t, "terminal", adcpError["recovery"])
+		})
+	}
+	assert.Zero(t, handled, "the handler never ran")
+
+	// The same request with numbers and a string goes through.
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "control_media_buy", Arguments: base(map[string]any{
+		"daily_budget_cap": 250, "budget_cap_timezone": "UTC",
+	})})
+	require.NoError(t, err)
+	require.False(t, res.IsError)
+	assert.Equal(t, 1, handled)
 }

@@ -1144,22 +1144,25 @@ INLINE_SCHEMA_DESCRIPTIONS = {
     'CommitmentSubmitted': 'Commitment Submitted, the commitment result with status "submitted".',
 }
 
-# Nullable control_media_buy properties whose AdCP 3.2.2 schema accepts null but
-# does not say what it means: the property has no description, or its description
-# never mentions null. (Compare daily_budget_cap on the same types: "null removes
+# Nullable control_media_buy properties whose schema accepts null but does not
+# say what it means: the property has no description, or its description never
+# mentions null. (Compare daily_budget_cap on the same types: "null removes
 # it".) A seller must not read a meaning into null here that upstream has not
-# given; the generated field comment says so. test_unspecified_null_fields_*
-# fails when an upstream bump starts describing null, so the note is deleted then.
-NULL_SEMANTICS_UNSPECIFIED = {
-    ('PackageControl', 'budget'): 'Hard lifetime spend cap. AdCP 3.2.2 does not say what null means.',
-    ('PackageControl', 'min_spend_target'): 'Soft minimum-spend target. AdCP 3.2.2 does not say what null means.',
-    ('PackageControl', 'bidding'): 'Bidding policy. AdCP 3.2.2 does not say what null means.',
-    ('ControlMediaBuyRequest', 'bidding'): 'Bidding policy. AdCP 3.2.2 does not say what null means.',
-}
+# given, so field_description keeps the schema's own wording and appends this
+# note to the generated field comment. test_unspecified_null_fields_* fails when
+# an upstream bump starts describing null, so the entry is deleted then.
+NULL_SEMANTICS_UNSPECIFIED = frozenset({
+    ('PackageControl', 'budget'),
+    ('PackageControl', 'min_spend_target'),
+    ('PackageControl', 'bidding'),
+    ('ControlMediaBuyRequest', 'bidding'),
+})
+NULL_SEMANTICS_NOTE = 'the schema does not say what null means'
+# Longer than the usual field comment, so the note is not cut off.
+NULL_SEMANTICS_COMMENT_LIMIT = 120
 
 FIELD_DESCRIPTION_OVERRIDES = {
     ('GetAdcpCapabilitiesResponse', 'supported_protocols'): 'AdCP protocols this agent supports.',
-    **NULL_SEMANTICS_UNSPECIFIED,
 }
 
 ENUM_DESCRIPTION_OVERRIDES = {
@@ -2296,11 +2299,26 @@ def safe_comment(text, max_len=80):
         return cutoff[:word_end].rstrip(' ,;:-')
     return cutoff
 
+def null_unspecified_description(prop):
+    """The schema's own first sentence for the property (or, with none, the title
+    of the schema its $ref names), then NULL_SEMANTICS_NOTE."""
+    lead = re.split(r'(?<=\.)\s', re.sub(r'\s+', ' ', prop.get('description', '')).strip())[0]
+    if not lead:
+        for branch in [prop] + list(prop.get('anyOf', [])):
+            ref_schema = resolve_ref_schema(branch.get('$ref')) if isinstance(branch, dict) else None
+            if isinstance(ref_schema, dict) and ref_schema.get('title'):
+                lead = ref_schema['title']
+                break
+    lead = lead.rstrip('.')
+    return f'{lead}; {NULL_SEMANTICS_NOTE}.' if lead else f'{NULL_SEMANTICS_NOTE.capitalize()}.'
+
 def field_description(type_name, json_name, prop):
     """Return the preferred field description, including reviewed fallbacks."""
     override = FIELD_DESCRIPTION_OVERRIDES.get((type_name, json_name))
     if override is not None:
         return override
+    if (type_name, json_name) in NULL_SEMANTICS_UNSPECIFIED:
+        return null_unspecified_description(prop)
     desc = prop.get('description', '')
     if desc:
         return desc
@@ -3466,7 +3484,11 @@ def schema_to_struct(name, schema):
             tag += f',{omit}'
         tag += '"`'
 
-        desc = safe_comment(field_description(name, json_name, prop), 80)
+        comment_limit = (
+            NULL_SEMANTICS_COMMENT_LIMIT
+            if (name, json_name) in NULL_SEMANTICS_UNSPECIFIED else 80
+        )
+        desc = safe_comment(field_description(name, json_name, prop), comment_limit)
         comment = f' // {desc}' if desc else ''
 
         deprecated = deprecated_comment(prop)
