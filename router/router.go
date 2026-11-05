@@ -14,40 +14,7 @@ import (
 	"time"
 
 	"github.com/adcontextprotocol/adcp-go/tmproto"
-	"github.com/adcontextprotocol/adcp-go/urlcanon"
 )
-
-// canonicalizeSellerForCache normalizes a seller_agent_url for use as
-// a cache-key component. Mirrors targeting/engine.go's normalization
-// before ActivePackages lookup so the router keys the same offer set
-// under the same seller identity. Canonicalization failure falls back
-// to the raw string; note the asymmetry with the engine, which
-// returns an empty offer set on the same failure. A raw-fallback key
-// therefore never collides with a real canonical key in practice
-// (canonicalization is deterministic, so a URL that fails at the
-// router also fails at any downstream using the same canonicalizer,
-// and no live entry is ever populated under a raw-fallback key that
-// could later collide).
-func canonicalizeSellerForCache(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	if canonical, err := urlcanon.Canonicalize(raw); err == nil {
-		return canonical
-	}
-	return raw
-}
-
-// contextCountry extracts the ISO alpha-2 country from a Context Match
-// request's geo map, mirroring targeting/engine.go's use of
-// GeoCountryKey. Returns empty string when absent or wrong type.
-func contextCountry(geo map[string]any) string {
-	if geo == nil {
-		return ""
-	}
-	country, _ := geo["country"].(string)
-	return country
-}
 
 // serve_window_sec bounds from identity-match-response.json. The field is
 // required on the router→publisher hop, so the merged value MUST land inside
@@ -142,10 +109,45 @@ type Router struct {
 	contextSigs *contextSignatureCache
 
 	// contextCache is nil when caching is disabled (dev / test) or when
-	// the deployer did not wire it. Per spec §Caching, populated caches
-	// key on {property_rid, placement_id, provider_id}.
-	contextCache *ContextCache
+	// the deployer did not wire it. Populated caches key on
+	// {provider_id, cache_namespace, context_hash}. namespaceResolver is
+	// evaluated on every request before lookup; an absent/invalid result
+	// bypasses caching for that provider.
+	contextCache             *ContextCache
+	contextNamespaceResolver ContextCacheNamespaceResolver
 }
+
+// ContextCacheNamespaceStatus distinguishes request-local cache bypass from
+// provider-wide uncertainty about the current generation.
+type ContextCacheNamespaceStatus uint8
+
+const (
+	// ContextCacheNamespaceUnknown means the resolver cannot establish the
+	// current provider-wide generation. Existing entries are invalidated and
+	// the same generation cannot be reused.
+	ContextCacheNamespaceUnknown ContextCacheNamespaceStatus = iota
+	// ContextCacheNamespaceBypass means this request must not use or populate
+	// the cache (for example, current caller/property authorization denied).
+	// Existing provider entries remain valid for other authorized requests.
+	ContextCacheNamespaceBypass
+	// ContextCacheNamespaceReady means Namespace is a valid current trusted
+	// provider-wide generation and this request may use the cache.
+	ContextCacheNamespaceReady
+)
+
+// ContextCacheNamespaceResolution is the resolver's explicit cache decision.
+type ContextCacheNamespaceResolution struct {
+	Namespace string
+	Status    ContextCacheNamespaceStatus
+}
+
+// ContextCacheNamespaceResolver snapshots trusted result-affecting state that
+// is external to a provider-forwarded Context Match request. The resolver may
+// consult authenticated values placed in ctx by trusted middleware, but MUST
+// NOT derive the namespace from raw caller input, viewer data, Identity Match
+// data, credentials, credential hashes, or direct principal/tenant IDs. Ready
+// tokens must be opaque and never reused after rotation.
+type ContextCacheNamespaceResolver func(ctx context.Context, provider ProviderConfig) ContextCacheNamespaceResolution
 
 // RouterOption configures a Router.
 type RouterOption func(*Router)
@@ -192,6 +194,16 @@ func WithTMPSigner(signer *tmproto.Signer) RouterOption {
 // out on every request.
 func WithContextCache(c *ContextCache) RouterOption {
 	return func(r *Router) { r.contextCache = c }
+}
+
+// WithContextCacheNamespaceResolver supplies dynamic trusted cache namespace
+// generations for embedding deployments. Without this option, each provider's
+// CacheNamespace is used; an empty value is globally unknown and invalidates
+// any prior generation. A custom resolver fully replaces that default. It must
+// return Bypass for request-local authorization/cache ineligibility and Unknown
+// only when provider-wide generation validity cannot be established.
+func WithContextCacheNamespaceResolver(resolve ContextCacheNamespaceResolver) RouterOption {
+	return func(r *Router) { r.contextNamespaceResolver = resolve }
 }
 
 // Providers returns the router's provider set for use by health checkers and discovery.
@@ -270,6 +282,14 @@ func (r *Router) HandleContextMatch(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "failed to read request body")
+		return
+	}
+	if err := validateContextIngressIJSON(body); err != nil {
+		// Validate before typed decoding: encoding/json replaces invalid UTF-8
+		// and unpaired surrogates and applies last-wins duplicate-key semantics.
+		// Those lossy transformations must not reach forwarding or cache hashing.
+		r.logger.Debug("invalid I-JSON in context match request")
+		r.writeError(w, "", tmproto.ErrorCodeInvalidRequest, "request body is not valid JSON")
 		return
 	}
 
@@ -439,6 +459,89 @@ type contextResult struct {
 	response   *tmproto.ProviderContextMatchResponse
 }
 
+func (r *Router) captureContextCacheScope(ctx context.Context, outbound ProviderConfig) (ContextCacheScope, bool) {
+	if r.contextCache == nil {
+		return ContextCacheScope{}, false
+	}
+	current, providerRevision, ok := r.providers.GetWithRevision(outbound.ID)
+	if !ok {
+		return ContextCacheScope{}, false
+	}
+	outboundEvaluation, err := json.Marshal(outbound)
+	if err != nil {
+		return ContextCacheScope{}, false
+	}
+	currentEvaluation, err := json.Marshal(current)
+	if err != nil || !bytes.Equal(outboundEvaluation, currentEvaluation) {
+		// This request holds a stale ProviderConfig snapshot. It may neither use
+		// nor mutate cache state owned by the replacement generation.
+		return ContextCacheScope{}, false
+	}
+	currentEvaluation, err = json.Marshal(struct {
+		Provider ProviderConfig `json:"provider"`
+		Revision uint64         `json:"provider_set_revision"`
+	}{Provider: current, Revision: providerRevision})
+	if err != nil {
+		return ContextCacheScope{}, false
+	}
+	cacheEpoch, ok := r.contextCache.providerEpoch(current.ID)
+	if !ok {
+		return ContextCacheScope{}, false
+	}
+
+	var resolution ContextCacheNamespaceResolution
+	if r.contextNamespaceResolver != nil {
+		resolution = r.contextNamespaceResolver(ctx, current)
+	} else {
+		if current.CacheNamespace == "" {
+			resolution.Status = ContextCacheNamespaceUnknown
+		} else {
+			resolution = ContextCacheNamespaceResolution{
+				Namespace: current.CacheNamespace,
+				Status:    ContextCacheNamespaceReady,
+			}
+		}
+	}
+	// The resolver may block. A provider-set replacement during that interval
+	// makes every result stale even when no newer request has reached the cache.
+	// Cache mutations below are separately compare-and-swapped against the
+	// provider cache epoch captured before invoking the resolver.
+	_, latestRevision, stillRegistered := r.providers.GetWithRevision(current.ID)
+	if !stillRegistered || latestRevision != providerRevision {
+		return ContextCacheScope{}, false
+	}
+	resolvedEpoch, ok := r.contextCache.providerEpoch(current.ID)
+	if !ok || resolvedEpoch != cacheEpoch {
+		// Another resolver completed while this one was in flight. Every stale
+		// outcome is request-local bypass: Ready may not rotate backward, Unknown
+		// may not invalidate forward, and Bypass remains non-mutating.
+		return ContextCacheScope{}, false
+	}
+	switch resolution.Status {
+	case ContextCacheNamespaceBypass:
+		return ContextCacheScope{}, false
+	case ContextCacheNamespaceReady:
+		if validContextCacheNamespace(resolution.Namespace) {
+			return r.contextCache.captureAtRevisionIfEpoch(current.ID, resolution.Namespace, currentEvaluation, providerRevision, cacheEpoch)
+		}
+	}
+	// Unknown status, malformed Ready namespace, and unrecognized status all
+	// mean provider-wide validity cannot be established. Invalidate only the
+	// matching provider evaluation revision; request-local denial must use
+	// Bypass above and never reaches this path.
+	r.contextCache.invalidateEvaluationIfEpoch(current.ID, currentEvaluation, providerRevision, cacheEpoch)
+	return ContextCacheScope{}, false
+}
+
+// contextCacheScopeCurrent re-reads trusted namespace and provider state but
+// compares it with the original opaque scope. It never substitutes the fresh
+// scope for insertion, so lookup, outbound call, and Put all remain bound to
+// one captured generation.
+func (r *Router) contextCacheScopeCurrent(ctx context.Context, provider ProviderConfig, captured ContextCacheScope) bool {
+	current, ok := r.captureContextCacheScope(ctx, provider)
+	return ok && current == captured
+}
+
 func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, cmReq *tmproto.ContextMatchRequest, body []byte) []contextResult {
 	var mu sync.Mutex
 	results := make([]contextResult, 0, len(providers))
@@ -446,61 +549,10 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 
 	for _, p := range providers {
 		wg.Go(func() {
-			// Cache hit short-circuit — before health check, signing, or
-			// dial. Spec §Caching lists {property_rid, placement_id,
-			// provider_id} as the recommended key; we extend it with
-			// canonicalized seller_agent_url and country because this
-			// repo's targeting engine scopes ActivePackages by both,
-			// and keying on placement alone would let one seller's
-			// cached offers be served to another seller's request
-			// during the TTL window (cross-tenant disclosure). The
-			// request's package_ids are not part of the key because
-			// active packages are placement-scoped (spec: "MUST NOT
-			// vary by user"), and country stays constant per viewer's
-			// geo which the publisher does not vary per user.
-			//
-			// The cache check runs before the circuit-breaker gate: a
-			// warm response is still useful when the provider went
-			// down, and the TTL bounds staleness. Race note: if a
-			// provider's circuit trips after a targeting-config
-			// change but before it can emit a fresh response with
-			// cache_ttl=0 (the spec's disable-caching signal), the
-			// router keeps serving the pre-change offers until the
-			// entry ages out. Bounded by the entry's TTL — the
-			// operator trades a brief post-change stale window for
-			// availability during the outage.
-			cacheSeller := canonicalizeSellerForCache(cmReq.SellerAgentURL)
-			cacheCountry := contextCountry(cmReq.Geo)
-			if r.contextCache != nil {
-				if cached, ok := r.contextCache.Get(cmReq.PropertyRID, cmReq.PlacementID, p.ID, cacheSeller, cacheCountry); ok {
-					// The merger overwrites RequestID from the current
-					// request downstream (mergeContextResponses), so we
-					// don't touch cached.RequestID here — any assignment
-					// would be dead.
-					mu.Lock()
-					results = append(results, contextResult{providerID: p.ID, response: cached})
-					mu.Unlock()
-					return
-				}
-			}
-
-			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
-				if r.metrics != nil {
-					r.metrics.IncExcluded(p.ID)
-				}
-				return
-			}
-			if r.health != nil {
-				r.health.IncrInflight(p.ID)
-				defer r.health.DecrInflight(p.ID)
-			}
-
-			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
-			defer cancel()
-
 			// Filter packages if provider has PackageIDs configured. The
-			// signing input must reflect what the provider actually receives,
-			// so we sign over the filtered request — not the original.
+			// signing input and context_hash must reflect exactly what the
+			// provider receives, so both use this filtered request rather than
+			// the publisher-facing request.
 			signed := cmReq
 			callBody := body
 			if len(p.PackageIDs) > 0 {
@@ -517,6 +569,55 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 					return
 				}
 			}
+
+			// A cache scope is available only when the deployment establishes a
+			// trusted external-state generation. The context hash covers the
+			// complete validated, enriched, credential-stripped and
+			// provider-filtered request except $schema and request_id. Cache
+			// lookup remains before health/signing/dial so a valid warm entry can
+			// serve through a provider outage.
+			var cacheScope ContextCacheScope
+			var contextHash [32]byte
+			cacheable := false
+			if scope, ok := r.captureContextCacheScope(ctx, p); ok {
+				hash, err := ContextHash(callBody)
+				if err != nil {
+					if !errors.Is(err, ErrContextHashComplexity) {
+						// Do not log the error: canonicalization failures can contain
+						// request fragments. A generated provider-forwarded body should
+						// never fail, and safe behavior is simply to bypass caching.
+						r.logger.Error("failed to compute context cache hash", "provider", p.ID)
+					}
+				} else {
+					cacheScope, contextHash, cacheable = scope, hash, true
+					if cached, hit := r.contextCache.GetScoped(cacheScope, contextHash); hit {
+						// Re-resolve current trusted state before using the hit. This
+						// keeps auth/property authorization and entitlement checks on
+						// the warm path and observes rotations racing the lookup.
+						if r.contextCacheScopeCurrent(ctx, p, cacheScope) {
+							mu.Lock()
+							results = append(results, contextResult{providerID: p.ID, response: cached})
+							mu.Unlock()
+							return
+						}
+						cacheable = false
+					}
+				}
+			}
+
+			if r.health != nil && r.health.IsCircuitOpen(p.ID) {
+				if r.metrics != nil {
+					r.metrics.IncExcluded(p.ID)
+				}
+				return
+			}
+			if r.health != nil {
+				r.health.IncrInflight(p.ID)
+				defer r.health.DecrInflight(p.ID)
+			}
+
+			callCtx, cancel := context.WithTimeout(ctx, r.effectiveTimeout(p.Timeout))
+			defer cancel()
 
 			sigHeaders := r.signContextHeaders(signed, p.Endpoint)
 
@@ -560,8 +661,8 @@ func (r *Router) fanOutContext(ctx context.Context, providers []ProviderConfig, 
 			// Cache the fresh response BEFORE returning it to the merger.
 			// The cache clones on both Put and Get, so downstream mutation
 			// (e.g. RequestID overwrites on hits) cannot corrupt entries.
-			if r.contextCache != nil {
-				r.contextCache.Put(cmReq.PropertyRID, cmReq.PlacementID, p.ID, cacheSeller, cacheCountry, &cmResp)
+			if cacheable && r.contextCacheScopeCurrent(ctx, p, cacheScope) {
+				r.contextCache.PutScoped(cacheScope, contextHash, &cmResp)
 			}
 
 			mu.Lock()

@@ -1175,10 +1175,9 @@ func TestRouterContextMatch_LatencyBudgetCapsFanOut(t *testing.T) {
 }
 
 // End-to-end: with a cache attached, a repeat Context Match on the
-// same {property_rid, placement_id} keys off the cache and skips the
-// provider network call entirely. The current request's request_id is
-// stamped onto the cached response (only field that varies across
-// reuses within a placement).
+// same provider-forwarded request and namespace keys off the cache and skips
+// the provider network call entirely. The current request's request_id is
+// stamped onto the cached response.
 func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
 	var hits atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -1194,7 +1193,7 @@ func TestRouterContextMatch_CacheHitAvoidsNetworkCall(t *testing.T) {
 	defer provider.Close()
 
 	r := testRouter([]ProviderConfig{
-		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second, CacheNamespace: "generation-1"},
 	})
 	r.contextCache = NewContextCache(1 * time.Minute)
 
@@ -1256,7 +1255,7 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 	defer provider.Close()
 
 	r := testRouter([]ProviderConfig{
-		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second, CacheNamespace: "generation-1"},
 	})
 	// Very short router default so a naive impl that ignored the
 	// provider TTL would evict between our two calls.
@@ -1288,9 +1287,9 @@ func TestRouterContextMatch_ProviderCacheTTLOverrideEndToEnd(t *testing.T) {
 }
 
 // Cross-seller isolation end-to-end: seller A hits, cache fills;
-// seller B's request under the same {property_rid, placement_id} MUST
-// re-fan-out to the provider and see B's own offers, not A's cached
-// ones. Regression guard for the High-severity finding on adcp-go
+// seller B's request under the same property/placement MUST re-fan-out because
+// seller_agent_url participates in context_hash, and see B's own offers rather
+// than A's cached ones. Regression guard for the High-severity finding on adcp-go
 // #410 (cross-tenant offer disclosure through a placement-only cache
 // key).
 func TestRouterContextMatch_CacheIsolatesAcrossSellers(t *testing.T) {
@@ -1317,7 +1316,7 @@ func TestRouterContextMatch_CacheIsolatesAcrossSellers(t *testing.T) {
 	defer provider.Close()
 
 	r := testRouter([]ProviderConfig{
-		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second, CacheNamespace: "generation-1"},
 	})
 	r.contextCache = NewContextCache(1 * time.Hour)
 
@@ -1363,9 +1362,9 @@ func TestRouterContextMatch_CacheIsolatesAcrossSellers(t *testing.T) {
 }
 
 // Symmetric to the cross-seller isolation test: two requests under
-// the same {property_rid, placement_id, provider_id, seller_agent_url}
-// but different Geo.country MUST re-fan-out — country is a component
-// of the targeting engine's ActivePackages scope (see engine.go),
+// the same property/placement/provider/seller but different Geo.country MUST
+// re-fan-out — the complete geo object participates in context_hash and country
+// is a component of the targeting engine's ActivePackages scope (see engine.go),
 // same failure-mode class as the seller isolation.
 func TestRouterContextMatch_CacheIsolatesAcrossCountries(t *testing.T) {
 	var hits atomic.Int32
@@ -1384,7 +1383,7 @@ func TestRouterContextMatch_CacheIsolatesAcrossCountries(t *testing.T) {
 	defer provider.Close()
 
 	r := testRouter([]ProviderConfig{
-		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second, CacheNamespace: "generation-1"},
 	})
 	r.contextCache = NewContextCache(1 * time.Hour)
 
@@ -1437,7 +1436,7 @@ func TestRouterContextMatch_ProviderDisablesCaching(t *testing.T) {
 	defer provider.Close()
 
 	r := testRouter([]ProviderConfig{
-		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second},
+		{ID: "prov", Endpoint: provider.URL, ContextMatch: true, Timeout: 1 * time.Second, CacheNamespace: "generation-1"},
 	})
 	r.contextCache = NewContextCache(1 * time.Hour) // long default the disable must override
 

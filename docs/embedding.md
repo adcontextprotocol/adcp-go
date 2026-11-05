@@ -41,6 +41,83 @@ r := router.NewRouter(providers, registry, nil, health,
 
 This lets you add OpenTelemetry tracing, custom TLS, mutual TLS, or any `http.RoundTripper` middleware to provider calls.
 
+## Context Match response caching
+
+The response cache keys each entry by `{provider_id, cache_namespace,
+context_hash}`. `context_hash` is SHA-256 over RFC 8785 JCS of the exact
+validated provider-forwarded request after removing only `$schema` and
+`request_id`; array order and every other field remain significant.
+
+The router rejects malformed raw Context Match representations before typed
+decoding (invalid UTF-8, unpaired surrogates, duplicate member names, or
+trailing data), then hashes the validated, enriched, credential-stripped, and
+provider-filtered body actually forwarded. Unicode noncharacters are preserved
+deterministically. To bound the maintained JCS implementation's sorting work,
+objects above 64 members, documents above 2,048 total members, or nesting above
+64 levels bypass response caching only; a valid request is still forwarded and
+does not become a client or provider error.
+
+Caching fails closed. A provider without a safe namespace always fans out. For
+static deployments, set `ProviderConfig.CacheNamespace` to an opaque generation
+token and rotate it whenever any result-affecting state outside the request
+changes: outbound auth/tenant, authorization or entitlement revision, active
+packages/provider configuration, endpoint, deployed model, or targeting rules.
+Never use credentials, hashes derived from credentials, direct principal or
+tenant IDs, request values, viewer data, or Identity Match data. Tokens must not
+be reused after rotation.
+
+Static namespaces are safe only when the host enforces current caller and
+property authorization before invoking `HandleContextMatch`. Deployments whose
+outbound auth or entitlement scope can vary per call should resolve a trusted
+generation dynamically:
+
+```go
+r, err := router.NewRouter(providers, registry, health,
+    router.WithContextCache(router.NewContextCache(5*time.Minute)),
+    router.WithContextCacheNamespaceResolver(
+        func(ctx context.Context, p router.ProviderConfig) router.ContextCacheNamespaceResolution {
+            if !currentRequestAuthorized(ctx, p.ID) {
+                // Request-local denial bypasses without flushing entries that
+                // remain valid for other authorized callers.
+                return router.ContextCacheNamespaceResolution{
+                    Status: router.ContextCacheNamespaceBypass,
+                }
+            }
+            generation, valid := trustedDeploymentState.CacheGeneration(ctx, p.ID)
+            if !valid {
+                // Provider-wide uncertainty invalidates the old generation and
+                // requires a novel token before caching resumes.
+                return router.ContextCacheNamespaceResolution{
+                    Status: router.ContextCacheNamespaceUnknown,
+                }
+            }
+            return router.ContextCacheNamespaceResolution{
+                Namespace: generation,
+                Status:    router.ContextCacheNamespaceReady,
+            }
+        },
+    ),
+)
+```
+
+The resolver receives no Context Match or Identity Match object. It may consult
+authenticated state placed in `ctx` by trusted middleware. It runs on warm hits
+and again before insertion; the router retains the originally captured
+generation across lookup, outbound call, and insertion so an old in-flight
+response cannot populate a newer namespace. Return
+`ContextCacheNamespaceBypass` for request-specific authorization denial or
+cache ineligibility; this never mutates provider-wide cache state. Return
+`ContextCacheNamespaceUnknown` only when the current global generation cannot
+be established; this purges and blocks reuse of the prior generation.
+
+The cache retains a bounded history of 1,024 namespace generations per
+provider so an old token can never be accepted again. Exhausting that history
+permanently bypasses caching for the provider until process restart rather than
+discarding replay protection. The reference router exports
+`tmp_context_cache_generation_exhausted_total{provider=...}`; embedders can
+implement the optional `ContextCacheGenerationMetrics` extension. The metric
+contains only the stable provider ID, never namespace material.
+
 ## Injecting your logger
 
 The router logs at `Debug` level for protocol errors and write failures. By default it uses `slog.Default()`. Use `WithLogger` to route logs into your own system:
