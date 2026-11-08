@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -444,11 +445,23 @@ func TestValidatePublisherDomain(t *testing.T) {
 		wantErr bool
 	}{
 		{"happy path", "example.com", false},
+		{"subdomain", "edition.example.com", false},
+		{"single label", "pub1", false},
 		{"empty", "", true},
 		{"pipe", "foo|bar", true},
 		{"newline", "foo\nbar", true},
 		{"space", "foo bar", true},
 		{"del", "foo\x7fbar", true},
+		{"pasted url", "https://www.example.com/path", true},
+		{"wildcard", "*.example.com", true},
+		{"uppercase", "Example.com", true},
+		{"port", "example.com:8080", true},
+		{"trailing dot", "example.com.", true},
+		{"underscore", "ex_ample.com", true},
+		{"label starts with hyphen", "-example.com", true},
+		{"label ends with hyphen", "example-.com", true},
+		{"empty label", "example..com", true},
+		{"label too long", strings.Repeat("a", 64) + ".com", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

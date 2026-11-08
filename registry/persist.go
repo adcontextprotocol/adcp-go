@@ -1,6 +1,10 @@
 package registry
 
-import "context"
+import (
+	"context"
+	"regexp"
+	"strings"
+)
 
 // Store persists registry state across process restarts so an in-memory
 // index can be rehydrated without re-bootstrapping the feed. All methods
@@ -61,10 +65,22 @@ type Store interface {
 	LoadAgents(ctx context.Context) ([]AgentProfile, error)
 }
 
+// publisherDomainPattern is the publisher_domain pattern from
+// property/base-property-source.json in the AdCP schema bundle: a bare
+// lowercase hostname, labels of lowercase letters, digits, and interior
+// hyphens, dots between labels. It admits single-label values and
+// rejects URL syntax, wildcards, ports, and trailing dots by shape.
+var publisherDomainPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
 // ValidatePublisherDomain rejects values that would break the
 // {publisher_domain}|{authorization_type} field-name encoding used by
-// every Store backend. Backends must call this from PutAuth and
-// RemoveAuthEntry before touching the wire.
+// every Store backend, and values that are not a bare lowercase
+// hostname under the publisher_domain pattern in
+// property/base-property-source.json. The strict shape matters beyond
+// the encoding: a publisher_domain pasted as a URL
+// ("https://www.example.com/path") would otherwise be stored as a
+// registry key no seller can match. Backends must call this from
+// PutAuth and RemoveAuthEntry before touching the wire.
 func ValidatePublisherDomain(publisherDomain string) error {
 	if publisherDomain == "" {
 		return &InvalidDomainError{Domain: publisherDomain, Reason: "empty"}
@@ -78,10 +94,21 @@ func ValidatePublisherDomain(publisherDomain string) error {
 			return &InvalidDomainError{Domain: publisherDomain, Reason: "contains control or whitespace byte"}
 		}
 	}
+	if len(publisherDomain) > 253 {
+		return &InvalidDomainError{Domain: publisherDomain, Reason: "exceeds 253 characters"}
+	}
+	if !publisherDomainPattern.MatchString(publisherDomain) {
+		return &InvalidDomainError{Domain: publisherDomain, Reason: "not a bare lowercase hostname"}
+	}
+	for _, label := range strings.Split(publisherDomain, ".") {
+		if len(label) > 63 {
+			return &InvalidDomainError{Domain: publisherDomain, Reason: "label exceeds 63 characters"}
+		}
+	}
 	return nil
 }
 
-// InvalidDomainError is returned when a publisher_domain fails encoding
+// InvalidDomainError is returned when a publisher_domain fails
 // validation. The feed should never produce one of these; if it does,
 // the event is dropped from the persistent path so a misbehaving
 // upstream can't poison the keyspace.
