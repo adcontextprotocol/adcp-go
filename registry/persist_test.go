@@ -474,3 +474,34 @@ func TestValidatePublisherDomain(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePublisherDomainKey(t *testing.T) {
+	// The removal-path check enforces only the field-name encoding, so
+	// entries written before the strict hostname shape existed stay
+	// revocable.
+	cases := []struct {
+		name    string
+		domain  string
+		wantErr bool
+	}{
+		{"happy path", "example.com", false},
+		{"legacy uppercase", "Example.COM", false},
+		{"legacy trailing dot", "example.com.", false},
+		{"legacy wildcard", "*.example.com", false},
+		{"legacy underscore", "ex_ample.com", false},
+		{"empty", "", true},
+		{"pipe", "foo|bar", true},
+		{"space", "foo bar", true},
+		{"newline", "foo\nbar", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidatePublisherDomainKey(tc.domain)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

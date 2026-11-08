@@ -302,7 +302,7 @@ func (s *Syncer) applyEvent(ctx context.Context, event FeedEvent) error {
 			s.log.Warn("revocation event missing required fields", "event_id", event.EventID)
 			return nil
 		}
-		if err := ValidatePublisherDomain(revoke.PublisherDomain); err != nil {
+		if err := ValidatePublisherDomainKey(revoke.PublisherDomain); err != nil {
 			s.log.Warn("dropping revocation event with invalid publisher_domain",
 				"event_id", event.EventID, "publisher_domain", revoke.PublisherDomain, "error", err)
 			return nil
