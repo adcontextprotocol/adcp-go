@@ -1281,6 +1281,17 @@ func newServer(b *backend) *mcp.Server {
 		ResolveAccount: func(_ context.Context, ref adcp.AccountReference) (any, error) {
 			b.mu.RLock()
 			defer b.mu.RUnlock()
+			// Discovery must not provision: only accounts registered through
+			// sync_accounts resolve. Unknown refs return nil, which the SDK
+			// turns into ACCOUNT_NOT_FOUND.
+			if ref.AccountID != "" {
+				for _, acct := range b.accounts {
+					if acct.AccountID == ref.AccountID {
+						return acct, nil
+					}
+				}
+				return nil, nil
+			}
 			domain := ""
 			if ref.Brand != nil {
 				domain = ref.Brand.Domain
@@ -1289,7 +1300,7 @@ func newServer(b *backend) *mcp.Server {
 			if acct, ok := b.accounts[id]; ok {
 				return acct, nil
 			}
-			return &adcp.AccountResult{AccountID: id, Brand: ref.Brand, Operator: ref.Operator, Action: "existing", Status: "active"}, nil
+			return nil, nil
 		},
 		SyncAccounts: func(_ context.Context, input *adcp.SyncAccountsRequest) ([]adcp.AccountResult, error) {
 			b.mu.Lock()

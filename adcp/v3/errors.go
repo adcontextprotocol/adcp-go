@@ -74,6 +74,8 @@ func Error[T any](code string, opts ErrorOptions) (*mcp.CallToolResult, T, error
 	recovery := opts.Recovery
 	if recovery == "" {
 		recovery = defaultRecovery(code)
+	} else {
+		recovery = normalizeRecovery(recovery)
 	}
 
 	payload := adcpErrorPayload{
@@ -107,14 +109,45 @@ func Errorf(code string, opts ErrorOptions) (*mcp.CallToolResult, any, error) {
 	return Error[any](code, opts)
 }
 
+// normalizeRecovery rewrites an explicit Recovery value that predates the
+// core/error.json enum onto the enum member with the same meaning. The SDK
+// used to document "retry", "revise" and "contact_support" as the Recovery
+// vocabulary, and existing integrations may still pass them:
+//
+//	retry           -> transient
+//	revise          -> correctable
+//	contact_support -> terminal
+//
+// Values already in the enum pass through unchanged, and any other value is
+// left untouched so a misbehaving caller stays visible.
+func normalizeRecovery(recovery string) string {
+	switch recovery {
+	case "retry":
+		return "transient"
+	case "revise":
+		return "correctable"
+	case "contact_support":
+		return "terminal"
+	default:
+		return recovery
+	}
+}
+
+// defaultRecovery classifies a code when the caller supplies no Recovery.
+// Every return value is a member of the recovery enum closed by
+// core/error.json ("transient", "correctable", "terminal"). Published codes
+// follow the enumMetadata in the pinned enums/error-code.json; MISSING_FIELD,
+// INVALID_FIELD and INTERNAL_ERROR are SDK-internal.
 func defaultRecovery(code string) string {
 	switch code {
 	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
 		return "transient"
-	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
-		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
+	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "TERMS_REJECTED",
+		"ACCOUNT_SETUP_REQUIRED",
+		"MISSING_FIELD", // SDK-internal, unpublished
+		"INVALID_FIELD": // SDK-internal, unpublished
 		return "correctable"
-	default:
+	default: // includes ACCOUNT_NOT_FOUND and INTERNAL_ERROR
 		return "terminal"
 	}
 }
