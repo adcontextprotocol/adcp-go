@@ -21,7 +21,7 @@ type Plan struct {
 	HumanReviewRequired        bool                  `json:"human_review_required,omitempty"`
 	HumanOverride              *HumanOverride        `json:"human_override,omitempty"`
 	CustomPolicies             []PolicyEntry         `json:"custom_policies,omitempty"`
-	ApprovedSellers            []string              `json:"approved_sellers,omitempty"`
+	ApprovedSellers            []string              `json:"approved_sellers"` // No omitempty: nil encodes as null (any seller), [] as no seller approved.
 	Delegations                []PlanDelegation      `json:"delegations,omitempty"`
 	Portfolio                  *PlanPortfolio        `json:"portfolio,omitempty"`
 	Ext                        map[string]any        `json:"ext,omitempty"`
