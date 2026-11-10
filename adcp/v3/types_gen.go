@@ -9646,15 +9646,15 @@ type PackageInput struct {
 
 // PackageUpdate — Package update configuration for update_media_buy. Identifies package by package_id and specifies
 type PackageUpdate struct {
-	PackageID      string   `json:"package_id"`                 // Seller's ID of package to update
-	Budget         *float64 `json:"budget,omitempty"`           // Updated hard spend cap for this package in the media-buy currency. Every
-	MinSpendTarget *float64 `json:"min_spend_target,omitempty"` // Updated soft lifetime spend target for this package. A number is valid only
-	Pacing         Pacing   `json:"pacing,omitempty"`           // Updated package pacing, subordinate to media-buy pacing. In a resulting
+	PackageID      string            `json:"package_id"`                // Seller's ID of package to update
+	Budget         Optional[float64] `json:"budget,omitzero"`           // Updated hard spend cap for this package in the media-buy currency. Every
+	MinSpendTarget Optional[float64] `json:"min_spend_target,omitzero"` // Updated soft lifetime spend target for this package. A number is valid only
+	Pacing         Pacing            `json:"pacing,omitempty"`          // Updated package pacing, subordinate to media-buy pacing. In a resulting
 	// Deprecated: DEPRECATED in 3.2 and removed in the next major.
 	BidPrice               *float64              `json:"bid_price,omitempty"`                // DEPRECATED in 3.2 and removed in the next major. Use bidding. A package update
-	Bidding                any                   `json:"bidding,omitempty"`                  // Replace the complete package-authored bidding policy. An object replaces any
+	Bidding                Optional[any]         `json:"bidding,omitzero"`                   // Replace the complete package-authored bidding policy. An object replaces any
 	Impressions            *float64              `json:"impressions,omitempty"`              // Updated impression goal for this package
-	DailyBudgetCap         *float64              `json:"daily_budget_cap,omitempty"`         // Replace this package's hard daily cap; null removes it. Numeric changes apply
+	DailyBudgetCap         Optional[float64]     `json:"daily_budget_cap,omitzero"`          // Replace this package's hard daily cap; null removes it. Numeric changes apply
 	StartTime              string                `json:"start_time,omitempty"`               // Updated flight start date/time for this package in ISO 8601 format. Must fall
 	EndTime                string                `json:"end_time,omitempty"`                 // Updated flight end date/time for this package in ISO 8601 format. Must fall
 	Paused                 *bool                 `json:"paused,omitempty"`                   // Pause/resume specific package (true = paused, false = active)
@@ -9676,12 +9676,12 @@ type PackageUpdate struct {
 // PackageControl — Operational controls for an existing package that remain inside its accepted commercial envelope.
 type PackageControl struct {
 	PackageID              string                   `json:"package_id"`
-	Budget                 any                      `json:"budget,omitempty"`           // Replace this package's hard lifetime spend cap. A number in a resulting
-	DailyBudgetCap         any                      `json:"daily_budget_cap,omitempty"` // Replace this package's subordinate hard daily cap; null removes it. Numeric
-	MinSpendTarget         any                      `json:"min_spend_target,omitempty"` // Replace this package's soft minimum-spend target. A number is valid only for
+	Budget                 Optional[float64]        `json:"budget,omitzero"`           // Replace this package's hard lifetime spend cap; the schema does not say what null means.
+	DailyBudgetCap         Optional[float64]        `json:"daily_budget_cap,omitzero"` // Replace this package's subordinate hard daily cap; null removes it. Numeric
+	MinSpendTarget         Optional[float64]        `json:"min_spend_target,omitzero"` // Replace this package's soft minimum-spend target; the schema does not say what null means.
 	Impressions            *float64                 `json:"impressions,omitempty"`
 	Pacing                 Pacing                   `json:"pacing,omitempty"` // Replace package pacing, subordinate to media-buy pacing. In a resulting
-	Bidding                any                      `json:"bidding,omitempty"`
+	Bidding                Optional[any]            `json:"bidding,omitzero"` // Bidding Policy; the schema does not say what null means.
 	Paused                 *bool                    `json:"paused,omitempty"`
 	Canceled               *bool                    `json:"canceled,omitempty"` // Exercise an already-accepted unilateral package cancellation right. If seller
 	CancellationReason     string                   `json:"cancellation_reason,omitempty"`
@@ -13112,12 +13112,12 @@ type UpdateMediaBuyRequest struct {
 	StartTime              string                  `json:"start_time,omitempty"`
 	EndTime                string                  `json:"end_time,omitempty"`                 // New end date/time in ISO 8601 format
 	TotalBudget            any                     `json:"total_budget,omitempty"`             // Updated hard aggregate lifetime budget. currency MUST equal the existing
-	DailyBudgetCap         *float64                `json:"daily_budget_cap,omitempty"`         // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
-	FrequencyCap           any                     `json:"frequency_cap,omitempty"`            // Replace the hard MediaBuy-level frequency cap; null removes it. Changes apply
-	BudgetCapTimezone      *string                 `json:"budget_cap_timezone,omitempty"`      // Replace the shared IANA cap-day timezone; null restores the default selected
+	DailyBudgetCap         Optional[float64]       `json:"daily_budget_cap,omitzero"`          // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
+	FrequencyCap           Optional[any]           `json:"frequency_cap,omitzero"`             // Replace the hard MediaBuy-level frequency cap; null removes it. Changes apply
+	BudgetCapTimezone      Optional[string]        `json:"budget_cap_timezone,omitzero"`       // Replace the shared IANA cap-day timezone; null restores the default selected
 	BudgetAllocation       *BudgetAllocation       `json:"budget_allocation,omitempty"`        // Updated allocation configuration. Switching between fixed and seller-optimized
 	Pacing                 Pacing                  `json:"pacing,omitempty"`                   // Updated aggregate media-buy pacing. Package pacing remains subordinate to this
-	Bidding                any                     `json:"bidding,omitempty"`                  // Replace the complete media-buy-authored bidding default. An object replaces
+	Bidding                Optional[any]           `json:"bidding,omitzero"`                   // Replace the complete media-buy-authored bidding default. An object replaces
 	Packages               []PackageUpdate         `json:"packages,omitempty"`                 // Package-specific updates for existing packages
 	InvoiceRecipient       *BusinessEntity         `json:"invoice_recipient,omitempty"`        // Update who receives the invoice for this buy. When provided, the seller
 	NewPackages            []PackageInput          `json:"new_packages,omitempty"`             // New packages to add to this media buy. Uses the same schema as
@@ -13645,12 +13645,12 @@ type ControlMediaBuyRequest struct {
 	Canceled               *bool                   `json:"canceled,omitempty"` // Exercise an already-accepted unilateral cancellation right. A cancellation
 	CancellationReason     string                  `json:"cancellation_reason,omitempty"`
 	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`
-	DailyBudgetCap         any                     `json:"daily_budget_cap,omitempty"`    // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
-	FrequencyCap           any                     `json:"frequency_cap,omitempty"`       // Replace the shared MediaBuy frequency cap; null removes it. The change applies
-	BudgetCapTimezone      any                     `json:"budget_cap_timezone,omitempty"` // Replace the shared IANA cap-day timezone override; null restores the default
+	DailyBudgetCap         Optional[float64]       `json:"daily_budget_cap,omitzero"`    // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
+	FrequencyCap           Optional[any]           `json:"frequency_cap,omitzero"`       // Replace the shared MediaBuy frequency cap; null removes it. The change applies
+	BudgetCapTimezone      Optional[string]        `json:"budget_cap_timezone,omitzero"` // Replace the shared IANA cap-day timezone override; null restores the default
 	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
-	Pacing                 Pacing                  `json:"pacing,omitempty"` // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
-	Bidding                any                     `json:"bidding,omitempty"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"`   // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
+	Bidding                Optional[any]           `json:"bidding,omitzero"`   // Bidding Policy; the schema does not say what null means.
 	Packages               []PackageControl        `json:"packages,omitempty"` // Operational patches keyed by package_id. Each package_id MUST appear at most
 	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`
 	GovernanceContext      string                  `json:"governance_context,omitempty"`

@@ -116,7 +116,7 @@ Decision:
   and encoding a cyclic value overflows the stack. `requireOptionalOmitZero`
   reports it.
 - `Some(v)` with a nil slice, map, pointer or interface is refused when
-  encoded, because it would send `null`, which means clear. A buyer sends `[]`
+  encoded, because it would send `null`, not an empty value. A buyer sends `[]`
   with `Some([]string{})`.
 - `AddTool` advertises `Optional[T]` as it advertises `*T`, so `tools/list` does
   not change when a field moves from `*T` to `Optional[T]`. A type that
@@ -127,9 +127,26 @@ Decision:
   omitted, `null` and a value (including `0`, `false` and `[]`), and calls
   `requireOptionalOmitZero` (`adcp/v3/optional_test.go`) on the type.
 
-This is the request-side encoding. Which generated fields use it, the
-generator rule that picks them and the matching `lint.py` rules are a separate
-change; a field keeps its current type until then.
+The generator picks the fields from the schema (`adcp/v3/schemas/generate.py`).
+A property gets `Optional[T]`, tagged `omitzero`, when its schema has a null
+branch after `$ref` resolution (`type` lists `"null"`, an `anyOf` or `oneOf`
+branch is null, or `enum` or `const` allows null), it is not required, and its
+struct is reachable from a `*-request.json` tool schema and from no response
+or webhook schema. A struct that a response shares keeps pointers, which is the
+right shape for reading a response. `T` is what the generator would emit for
+the property without the pointer, so a union that falls back to `any` is
+`Optional[any]`, and the any-coverage gate keeps tracking it with its reviewed
+reason.
+
+`adcp/v3/schemas/lint.py --strict` enforces the same rule: a non-required
+request property with a null branch must be `Optional[...]` in Go, or be listed
+in `REVIEWED_NULLABLE_FIELDS` with the reason, as must an untyped field whose
+nulls sit below it (`targeting_overlay`) and a hand-written `any` that carries
+the null branch itself (`CreativeInput.Localization`, which keeps null with a
+`ClearField` sentinel until it moves to `Optional`). The hand-written `Plan`
+type is exempt from the drift check until it is paired with its schema, so
+`Plan.ApprovedSellers` is not covered yet: it encodes nil as null, and `Optional`
+would also tell omitted apart.
 
 ## Enum Policy
 
