@@ -139,10 +139,14 @@ the property without the pointer, so a union that falls back to `any` is
 reason.
 
 `adcp/v3/schemas/lint.py --strict` enforces the same rule: a non-required
-request property with a null branch must be `Optional[...]` in Go, or its nulls
-must sit below an untyped parent listed in `REVIEWED_NULLABLE_PARENTS` with the
-reason. The hand-written `Plan` type is exempt from the drift check until it is
-paired with its schema, so `Plan.ApprovedSellers` is not covered yet.
+request property with a null branch must be `Optional[...]` in Go, or be listed
+in `REVIEWED_NULLABLE_FIELDS` with the reason, as must an untyped field whose
+nulls sit below it (`targeting_overlay`) and a hand-written `any` that carries
+the null branch itself (`CreativeInput.Localization`, which keeps null with a
+`ClearField` sentinel until it moves to `Optional`). The hand-written `Plan`
+type is exempt from the drift check until it is paired with its schema, so
+`Plan.ApprovedSellers` is not covered yet: it encodes nil as null, and `Optional`
+would also tell omitted apart.
 
 ## Enum Policy
 

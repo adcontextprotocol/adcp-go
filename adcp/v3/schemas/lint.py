@@ -1128,13 +1128,15 @@ def optional_numeric_pointer_reports(go_structs):
 # A non-required request property whose schema has a null branch must be
 # `Optional[T]` in Go (adcp/v3/optional.go): a pointer or `any` decodes null like
 # omission. The generator emits it for every struct that only requests reach.
-# Where the nulls sit below an untyped (`any`) field instead, that field is
-# listed here with its reason, so each one is a reviewed decision. An entry that
+# Two cases are listed here instead, each with its reason, so each is a reviewed
+# decision: an untyped (`any`) field whose nulls sit below it, and a hand-written
+# field that has the null branch itself and is not Optional yet. An entry that
 # matches no finding fails lint, so the list only shrinks.
 #
 # Plan.approved_sellers is not covered yet: Plan is in EXEMPT until it is paired
-# with its schema.
-REVIEWED_NULLABLE_PARENTS = {
+# with its schema. It encodes nil as null, so it keeps the null; Optional would
+# also tell omitted apart, in a follow-up.
+REVIEWED_NULLABLE_FIELDS = {
     ('ComplyTestControllerRequest', 'params'):
         'comply_test_controller params are scenario-specific and intentionally '
         'any; a map keeps an explicit null',
@@ -1147,6 +1149,10 @@ REVIEWED_NULLABLE_PARENTS = {
     ('PackageUpdate', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
     ('PackageControl', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
     ('ProductPurchaseInput', 'targeting_overlay'): 'targeting-input.json is typed in a follow-up',
+    # Hand-written, and the null branch is on the field itself.
+    ('CreativeInput', 'localization'):
+        'hand-written any with a ClearField sentinel from the CreativeInput '
+        'change; moves to Optional with the typed TargetingInput in the next slice',
 }
 
 
@@ -1187,9 +1193,9 @@ def _nullable_request_struct_sources(go_structs):
 def nullable_request_reports(go_structs):
     """adcp-go#564 check 2. Returns (reports, matched): a report for each
     non-required request property with a null branch that is not Optional in a
-    struct only requests reach, and for each untyped field hiding such a
-    property that is not in REVIEWED_NULLABLE_PARENTS; `matched` is the set of
-    reviewed parents that hide one."""
+    struct only requests reach, and for each untyped field that hides such a
+    property, unless the field is in REVIEWED_NULLABLE_FIELDS. `matched` is the
+    set of reviewed fields that were one of those or hid one."""
     _, answered = gen.request_reach()
     reports = []
     matched = set()
@@ -1205,6 +1211,9 @@ def nullable_request_reports(go_structs):
                 and gen.schema_has_null_branch(prop)
                 and not is_optional_go_type(go_type)
             ):
+                if (type_name, json_name) in REVIEWED_NULLABLE_FIELDS:
+                    matched.add((type_name, json_name))
+                    continue
                 reports.append({
                     'kind': 'not_optional',
                     'owner': owner,
@@ -1218,7 +1227,7 @@ def nullable_request_reports(go_structs):
                 if not hidden:
                     continue
                 key = (type_name, json_name)
-                if key in REVIEWED_NULLABLE_PARENTS:
+                if key in REVIEWED_NULLABLE_FIELDS:
                     matched.add(key)
                     continue
                 reports.append({
@@ -1234,18 +1243,18 @@ def nullable_request_reports(go_structs):
 
 
 def stale_reviewed_nullable_parents(matched):
-    """REVIEWED_NULLABLE_PARENTS entries that hide no null branch any more."""
+    """REVIEWED_NULLABLE_FIELDS entries that match no finding any more."""
     return [
         {
             'type': type_name,
             'json': json_name,
             'error': (
-                'stale reviewed parent: no optional property with a null branch '
-                'sits below it any more (the field was typed, renamed or left '
-                'the schema); delete the entry'
+                'stale reviewed field: it neither has a null branch itself nor hides '
+                'one below it any more (the field is Optional now, was renamed or '
+                'left the schema); delete the entry'
             ),
         }
-        for (type_name, json_name) in sorted(REVIEWED_NULLABLE_PARENTS)
+        for (type_name, json_name) in sorted(REVIEWED_NULLABLE_FIELDS)
         if (type_name, json_name) not in matched
     ]
 
@@ -1749,7 +1758,7 @@ def main():
             )
             for r in nullable_reports:
                 print()
-                print(f'  {r["type"]}.{r["json"]}  ({r.get("schema", "reviewed parent")})')
+                print(f'  {r["type"]}.{r["json"]}  ({r.get("schema", "reviewed field")})')
                 if r.get('error'):
                     print(f'    error:   {r["error"]}')
                 elif r['kind'] == 'not_optional':
@@ -1766,7 +1775,7 @@ def main():
                     print(f'    hides:   {", ".join(r["nullable"])}')
                     print(
                         '    fix:     type the field so its null properties are '
-                        'Optional, or add it to REVIEWED_NULLABLE_PARENTS with the reason'
+                        'Optional, or add it to REVIEWED_NULLABLE_FIELDS with the reason'
                     )
             print()
         if known_gap_errors:

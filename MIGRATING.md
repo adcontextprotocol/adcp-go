@@ -161,10 +161,17 @@ for it; `!x.Bidding.IsZero()` is true for `null`, which is the point.
   `json:"name,omitzero"` where it was `json:"name,omitempty"`. Code that decides
   "optional" from a pointer kind or an `omitempty` tag must recognise
   `adcp.Optional` too.
-- Not changed here: `Plan.ApprovedSellers`, and `targeting_overlay` on
-  `PackageInput`, `PackageUpdate`, `PackageControl` and `ProductPurchaseInput`
-  (still `any`; every dimension inside it has a null branch). A later change
-  types them.
+- Not changed here, and each keeps the null it has today:
+  - `CreativeInput.Localization` stays `any`. Its `UnmarshalJSON` decodes an
+    explicit `null` to the `adcp.ClearField()` sentinel, which re-encodes as
+    `null`; keep testing `in.Localization == adcp.ClearField()` for a removal.
+    It moves to `Optional` in a later change.
+  - `Plan.ApprovedSellers` stays `[]string` without `omitempty`: `nil` encodes
+    as `null` (any seller) and `[]` as no seller approved. `Optional` would also
+    tell omitted apart; a later change.
+  - `targeting_overlay` on `PackageInput`, `PackageUpdate`, `PackageControl` and
+    `ProductPurchaseInput` stays `any`; every dimension inside it has a null
+    branch. A later change types them.
 
 ## Behavior change: signed HTTP clients cap agent responses at 4 MiB
 
