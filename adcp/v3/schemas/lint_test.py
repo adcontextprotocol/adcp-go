@@ -698,7 +698,7 @@ class RequiredPropertiesDeclaredLintTest(unittest.TestCase):
         undeclared = set(lint.gen.schema_required_names(schema)) - set(lint.gen.schema_properties(schema))
         message = (
             "the validate_input warning shape changed upstream: once it declares field, move "
-            "ValidateInputWarning back from types.go, KNOWN_TYPES and EXEMPT to INLINE_SCHEMA_TYPES"
+            "ValidateInputWarning back from types.go and KNOWN_TYPES to INLINE_SCHEMA_TYPES"
         )
         self.assertEqual({"field"}, undeclared, message)
         self.assertEqual({"rule", "expected", "predicted"}, set(lint.gen.schema_properties(schema)), message)
@@ -769,6 +769,8 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
             "optional_bool_pointer_reports",
             "optional_numeric_pointer_reports",
             "validate_hand_written_inline_schema_divergence",
+            "validate_exempt_config",
+            "validate_known_gaps_bundle",
         ]
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(
@@ -798,7 +800,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
 
     ALL_GAPS = {
         "Shape": {
-            "missing_in_go": {"tags": "#564", "status": "#564"},
+            "missing_in_go": {"tags": "#901", "status": "#901"},
             "extra_in_go": {"legacy": "#545"},
             "required_with_omitempty": {"name": "adcontextprotocol/adcp#8212"},
         },
@@ -823,8 +825,8 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         self.assertEqual([], payload["known_schema_gap_errors"])
         self.assertEqual(
             {
-                ("missing_in_go", "status", "#564"),
-                ("missing_in_go", "tags", "#564"),
+                ("missing_in_go", "status", "#901"),
+                ("missing_in_go", "tags", "#901"),
                 ("extra_in_go", "legacy", "#545"),
                 ("required_with_omitempty", "name", "adcontextprotocol/adcp#8212"),
             },
@@ -832,7 +834,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         )
 
     def test_known_gap_suppresses_only_its_own_field(self):
-        gaps = {"Shape": {"missing_in_go": {"tags": "#564"}}}
+        gaps = {"Shape": {"missing_in_go": {"tags": "#901"}}}
         rc, payload = self.run_strict_lint(gaps)
 
         self.assertEqual(1, rc)
@@ -849,7 +851,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
             "extra_in_go": [],
             "required_with_omitempty": [],
         }
-        gaps = {"Shape": {"missing_in_go": {"tags": "#564"}}}
+        gaps = {"Shape": {"missing_in_go": {"tags": "#901"}}}
         rc, payload = self.run_strict_lint(gaps, inline_drift=[inline_drift])
 
         self.assertEqual(1, rc)
@@ -862,8 +864,8 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
 
     def test_known_gap_is_scoped_to_its_kind_and_type(self):
         gaps = {
-            "Shape": {"missing_in_go": {"legacy": "#564"}},
-            "Other": {"missing_in_go": {"tags": "#564"}},
+            "Shape": {"missing_in_go": {"legacy": "#901"}},
+            "Other": {"missing_in_go": {"tags": "#901"}},
         }
         known = []
         matched = set()
@@ -886,7 +888,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         gaps = {
             "Shape": {
                 **self.ALL_GAPS["Shape"],
-                "missing_in_go": {**self.ALL_GAPS["Shape"]["missing_in_go"], "id": "#564"},
+                "missing_in_go": {**self.ALL_GAPS["Shape"]["missing_in_go"], "id": "#901"},
             },
         }
         rc, payload = self.run_strict_lint(gaps)
@@ -901,7 +903,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         self.assertIn("stale", errors[0]["error"])
 
     def test_entries_for_an_unpaired_type_fail(self):
-        gaps = {**self.ALL_GAPS, "Unpaired": {"missing_in_go": {"x": "#564"}}}
+        gaps = {**self.ALL_GAPS, "Unpaired": {"missing_in_go": {"x": "#901"}}}
         rc, payload = self.run_strict_lint(gaps)
 
         self.assertEqual(1, rc)
@@ -911,12 +913,12 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         )
 
     def test_entry_without_issue_reference_fails(self):
-        for ref in ("", "TODO", "564", "#", "#0", "#564\n", " #564", "https://example.com/1", None):
+        for ref in ("", "TODO", "564", "#", "#0", "#901\n", " #901", "https://example.com/1", None):
             with self.subTest(ref=ref):
                 gaps = {
                     "Shape": {
                         **self.ALL_GAPS["Shape"],
-                        "missing_in_go": {"tags": "#564", "status": ref},
+                        "missing_in_go": {"tags": "#901", "status": ref},
                     },
                 }
                 rc, payload = self.run_strict_lint(gaps)
@@ -930,8 +932,30 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
                     [(e["type"], e.get("json")) for e in payload["known_schema_gap_errors"]],
                 )
 
+    def test_an_umbrella_owner_fails_and_suppresses_nothing(self):
+        gaps = {
+            "Shape": {
+                **self.ALL_GAPS["Shape"],
+                "missing_in_go": {"tags": "#564", "status": "#901"},
+            },
+        }
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(1, rc)
+        self.assertEqual(["tags"], payload["drift"][0]["missing_in_go"])
+        errors = payload["known_schema_gap_errors"]
+        self.assertEqual([("Shape", "tags")], [(e["type"], e.get("json")) for e in errors])
+        self.assertIn("umbrella", errors[0]["error"])
+
+    def test_a_cross_repository_issue_is_not_an_umbrella(self):
+        gaps = {"Shape": {**self.ALL_GAPS["Shape"], "missing_in_go": {"tags": "other/repo#564", "status": "#901"}}}
+        rc, payload = self.run_strict_lint(gaps)
+
+        self.assertEqual(0, rc)
+        self.assertEqual([], payload["known_schema_gap_errors"])
+
     def test_unknown_kind_fails(self):
-        gaps = {"Shape": {**self.ALL_GAPS["Shape"], "missing": {"tags": "#564"}}}
+        gaps = {"Shape": {**self.ALL_GAPS["Shape"], "missing": {"tags": "#901"}}}
         rc, payload = self.run_strict_lint(gaps)
 
         self.assertEqual(1, rc)
@@ -948,7 +972,7 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
         ]
         known = []
         matched = set()
-        gaps = {"Shape": {"optional_bool_pointer": {"sandbox": "#564"}}}
+        gaps = {"Shape": {"optional_bool_pointer": {"sandbox": "#901"}}}
         with mock.patch.object(lint, "KNOWN_SCHEMA_GAPS", gaps):
             kept = lint.split_known_pointer_reports(
                 reports, "optional_bool_pointer", known, matched,
@@ -963,6 +987,18 @@ class KnownSchemaGapsLintTest(unittest.TestCase):
 
     def test_current_known_gaps_have_issue_references(self):
         self.assertEqual([], lint.validate_known_schema_gaps_config())
+
+    def test_a_plain_umbrella_never_owns_an_entry(self):
+        owners = [
+            ref
+            for kinds in lint.KNOWN_SCHEMA_GAPS.values()
+            for fields in kinds.values()
+            for ref in fields.values()
+        ] + [ref for _, ref in lint.EXEMPT_UNPAIRED.values()]
+
+        self.assertTrue(owners)
+        for ref in owners:
+            self.assertNotIn(ref, lint.UMBRELLA_ISSUES)
 
     def test_known_gap_types_are_paired(self):
         for type_name in lint.KNOWN_SCHEMA_GAPS:
@@ -989,7 +1025,7 @@ COMMITMENT_RESPONSE_SCHEMA_EXISTS = (
 
 
 class ObjectRefScalarAliasLintTest(unittest.TestCase):
-    """adcp-go#564 check 3: an object $ref must not be typed as a scalar alias."""
+    """adcp-go#901 check 3: an object $ref must not be typed as a scalar alias."""
 
     def setUp(self):
         lint.gen._reset_will_generate_cache()
@@ -1091,6 +1127,442 @@ class ObjectRefScalarAliasLintTest(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertIn("Object $ref bound to a scalar Go type in 1 field(s)", out.getvalue())
+
+
+PLAN_BUDGET_SCHEMA_SPEC = lint.gen.HAND_WRITTEN_SCHEMA_SPECS["PlanBudget"]
+PLAN_BUDGET_SCHEMA_EXISTS = (
+    lint.SCRIPT_DIR / PLAN_BUDGET_SCHEMA_SPEC.split("#", 1)[0]
+).exists()
+
+
+class ExemptConfigLintTest(unittest.TestCase):
+    """adcp-go#901, check 4: EXEMPT holds only what lint cannot compare."""
+
+    def validate(self, no_schema=None, unpaired=None, structs=("Thing",), paired=None):
+        go_structs = {name: [] for name in structs}
+        with (
+            mock.patch.object(lint, "EXEMPT_NO_SCHEMA", no_schema or {}),
+            mock.patch.object(lint, "EXEMPT_UNPAIRED", unpaired or {}),
+            mock.patch.object(lint, "EXPLICIT_SCHEMA", paired or {}),
+            mock.patch.object(lint.gen, "HAND_WRITTEN_INLINE_SCHEMA_SPECS", {}),
+        ):
+            return lint.validate_exempt_config(go_structs)
+
+    def test_current_lists_are_clean(self):
+        self.assertEqual([], lint.validate_exempt_config(lint.parse_go_structs()))
+
+    def test_exempt_is_the_union_of_both_lists(self):
+        self.assertEqual(
+            set(lint.EXEMPT_NO_SCHEMA) | set(lint.EXEMPT_UNPAIRED), lint.EXEMPT,
+        )
+
+    def test_a_valid_entry_in_each_list_is_clean(self):
+        self.assertEqual([], self.validate(
+            no_schema={"Thing": "a handler table"},
+            unpaired={"Other": ("blocked on the rework", "#901")},
+            structs=("Thing", "Other"),
+        ))
+
+    def test_an_entry_that_is_no_scanned_struct_fails(self):
+        # A response-builder func and a generated type are not structs lint scans.
+        for name in ("SyncCreativesResponse", "DeliveryTotals"):
+            with self.subTest(name=name):
+                reports = self.validate(no_schema={name: "because"}, structs=("Thing",))
+                self.assertEqual([name], [r["type"] for r in reports])
+                self.assertIn("not a struct", reports[0]["error"])
+
+    def test_an_entry_that_is_also_paired_fails(self):
+        reports = self.validate(
+            unpaired={"Thing": ("blocked", "#901")}, paired={"Thing": "thing.json"},
+        )
+        self.assertEqual(1, len(reports))
+        self.assertIn("paired", reports[0]["error"])
+
+    def test_an_entry_in_both_lists_fails(self):
+        reports = self.validate(
+            no_schema={"Thing": "a"}, unpaired={"Thing": ("b", "#901")},
+        )
+        self.assertIn("both", [r["list"] for r in reports])
+
+    def test_an_entry_without_a_reason_fails(self):
+        for reason in ("", "  ", None):
+            with self.subTest(reason=reason):
+                self.assertEqual(
+                    ["needs a reason"],
+                    [r["error"] for r in self.validate(no_schema={"Thing": reason})],
+                )
+                self.assertEqual(
+                    ["needs a reason"],
+                    [r["error"] for r in self.validate(unpaired={"Thing": (reason, "#901")})],
+                )
+
+    def test_an_unpaired_entry_without_an_issue_fails(self):
+        for ref in ("", "TODO-issue", "564", "#0", None):
+            with self.subTest(ref=ref):
+                reports = self.validate(unpaired={"Thing": ("blocked", ref)})
+                self.assertEqual(1, len(reports))
+                self.assertIn("issue", reports[0]["error"])
+
+    def test_an_unpaired_entry_owned_by_an_umbrella_fails(self):
+        reports = self.validate(unpaired={"Thing": ("blocked", "#564")})
+
+        self.assertEqual(1, len(reports))
+        self.assertIn("umbrella", reports[0]["error"])
+
+    def test_an_unpaired_entry_accepts_a_cross_repository_issue(self):
+        self.assertEqual(
+            [], self.validate(unpaired={"Thing": ("blocked", "adcontextprotocol/adcp#8212")}),
+        )
+
+    def test_a_no_schema_entry_with_a_schema_file_by_its_name_fails(self):
+        with mock.patch.object(lint, "resolve_schema_spec", return_value="core/thing.json"):
+            reports = self.validate(no_schema={"Thing": "because"})
+        self.assertEqual(1, len(reports))
+        self.assertIn("pair it", reports[0]["error"])
+
+    def test_each_current_unpaired_entry_carries_its_reason_and_issue(self):
+        for name, (reason, ref) in lint.EXEMPT_UNPAIRED.items():
+            with self.subTest(name=name):
+                self.assertTrue(reason.strip())
+                self.assertRegex(ref, lint.ISSUE_REF_RE)
+
+    def test_strict_lint_exits_nonzero_for_an_exempt_error(self):
+        report = {"type": "Gone", "list": "EXEMPT_NO_SCHEMA", "error": "not a struct"}
+        with (
+            mock.patch.object(lint, "validate_exempt_config", return_value=[report]),
+            mock.patch.object(sys, "argv", ["lint.py", "--strict"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            exit_code = lint.main()
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("EXEMPT errors (1)", out.getvalue())
+
+
+class KnownGapsBundleLintTest(unittest.TestCase):
+    """The gap table is a baseline of one bundle, which schemas/VERSION names."""
+
+    def test_current_baseline_matches_the_bundle_version(self):
+        self.assertEqual([], lint.validate_known_gaps_bundle())
+
+    def test_a_different_bundle_fails(self):
+        with mock.patch.object(lint, "KNOWN_SCHEMA_GAPS_BUNDLE", "0.0.0"):
+            reports = lint.validate_known_gaps_bundle()
+
+        self.assertEqual(1, len(reports))
+        self.assertIn("0.0.0", reports[0]["error"])
+        self.assertIn((lint.SCRIPT_DIR / "VERSION").read_text().strip(), reports[0]["error"])
+
+    def test_an_unreadable_version_file_fails(self):
+        with mock.patch.object(lint.Path, "read_text", side_effect=OSError("gone")):
+            reports = lint.validate_known_gaps_bundle()
+
+        self.assertEqual(1, len(reports))
+        self.assertIn("cannot read", reports[0]["error"])
+
+    def test_a_stale_baseline_fails_strict_lint(self):
+        with (
+            mock.patch.object(lint, "KNOWN_SCHEMA_GAPS_BUNDLE", "0.0.0"),
+            mock.patch.object(sys, "argv", ["lint.py", "--strict"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            exit_code = lint.main()
+
+        self.assertEqual(1, exit_code)
+        self.assertIn("baselined on bundle 0.0.0", out.getvalue())
+
+
+@unittest.skipUnless(PLAN_BUDGET_SCHEMA_EXISTS, "sync_plans schema is not present")
+class PairedTypeDriftLintTest(unittest.TestCase):
+    """A hand-written type that left EXEMPT fails strict lint when it drifts."""
+
+    PAIRED_FROM_EXEMPT = (
+        "PlanBudget", "PlanDelegationBudget", "PlanPortfolioBudgetCap",
+        "ReportingPeriod", "ReportingReceiptResult", "CancellationFee",
+        "BillingMeasurement", "BaseCollectionSource", "SignalID", "ActivationKey",
+    )
+
+    def run_strict(self, go_structs):
+        with (
+            mock.patch.object(lint, "parse_go_structs", return_value=go_structs),
+            mock.patch.object(sys, "argv", ["lint.py", "--strict", "--json"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            rc = lint.main()
+        return rc, json.loads(out.getvalue())
+
+    def test_pairing_the_real_sources_passes(self):
+        rc, payload = self.run_strict(lint.parse_go_structs())
+
+        self.assertEqual(0, rc, payload["drift"])
+
+    def test_each_type_that_left_exempt_is_compared(self):
+        structs = lint.parse_go_structs()
+        for name in self.PAIRED_FROM_EXEMPT:
+            with self.subTest(name=name):
+                self.assertNotIn(name, lint.EXEMPT)
+                self.assertTrue(
+                    name in lint.EXPLICIT_SCHEMA
+                    or lint.resolve_schema_spec(name) is not None,
+                )
+                self.assertIn(name, structs)
+
+    def test_a_field_dropped_from_a_paired_type_fails(self):
+        for name, dropped in (
+            ("PlanBudget", "currency"),
+            ("PlanDelegationBudget", "amount"),
+            ("ReportingPeriod", "end"),
+            ("ReportingReceiptResult", "errors"),
+            ("BillingMeasurement", "vendor"),
+        ):
+            with self.subTest(name=name, dropped=dropped):
+                structs = lint.parse_go_structs()
+                structs[name] = [f for f in structs[name] if f[2] != dropped]
+
+                rc, payload = self.run_strict(structs)
+
+                self.assertEqual(1, rc)
+                missing = {
+                    (r["type"], f) for r in payload["drift"] for f in r["missing_in_go"]
+                }
+                self.assertIn((name, dropped), missing)
+
+    def test_a_field_added_to_a_paired_type_fails(self):
+        structs = lint.parse_go_structs()
+        structs["PlanBudget"] = structs["PlanBudget"] + [
+            ("Surplus", "string", "surplus", True),
+        ]
+
+        rc, payload = self.run_strict(structs)
+
+        self.assertEqual(1, rc)
+        extra = {(r["type"], f) for r in payload["drift"] for f in r["extra_in_go"]}
+        self.assertIn(("PlanBudget", "surplus"), extra)
+
+    def test_a_required_field_made_omitempty_fails(self):
+        structs = lint.parse_go_structs()
+        structs["PlanBudget"] = [
+            (n, t, tag, True if tag == "total" else omit)
+            for n, t, tag, omit in structs["PlanBudget"]
+        ]
+
+        rc, payload = self.run_strict(structs)
+
+        self.assertEqual(1, rc)
+        flagged = {
+            (r["type"], f) for r in payload["drift"] for f in r["required_with_omitempty"]
+        }
+        self.assertIn(("PlanBudget", "total"), flagged)
+
+    def test_without_the_envelope_subtraction_the_envelope_is_missing_in_go(self):
+        with mock.patch.object(lint, "ENVELOPE_PAYLOAD_TYPES", set()):
+            rc, payload = self.run_strict(lint.parse_go_structs())
+
+        self.assertEqual(1, rc)
+        missing = {(r["type"], f) for r in payload["drift"] for f in r["missing_in_go"]}
+        self.assertIn(("ProductsData", "task_id"), missing)
+        self.assertIn(("DeliveryData", "replayed"), missing)
+
+    def test_a_known_gap_that_closes_fails_as_stale(self):
+        structs = lint.parse_go_structs()
+        structs["PreviewRender"] = [f for f in structs["PreviewRender"] if f[2] != "html"]
+
+        rc, payload = self.run_strict(structs)
+
+        self.assertEqual(1, rc)
+        stale = {
+            (e["type"], e.get("json")) for e in payload["known_schema_gap_errors"]
+        }
+        self.assertIn(("PreviewRender", "html"), stale)
+
+
+class EnvelopePayloadLintTest(unittest.TestCase):
+    """DeliveryData and ProductsData are compared without the protocol envelope."""
+
+    SCHEMA = {
+        "type": "object",
+        "required": ["products", "task_id"],
+        "properties": {
+            "products": {"type": "array"},
+            "pagination": {"type": "object"},
+            "status": {"type": "string"},
+            "task_id": {"type": "string"},
+        },
+    }
+    GO_FIELDS = [
+        ("Products", "[]Product", "products", False),
+        ("Status", "string", "status", False),
+    ]
+
+    def diff(self, envelope_types, go_fields=None):
+        with (
+            mock.patch.object(lint, "ENVELOPE_PAYLOAD_TYPES", envelope_types),
+            mock.patch.object(lint, "protocol_envelope_properties", return_value={"status", "task_id"}),
+            mock.patch.object(lint, "load_schema_spec", return_value=self.SCHEMA),
+        ):
+            return lint.diff_type("Shape", go_fields or self.GO_FIELDS, "core/product.json")
+
+    def test_envelope_properties_are_not_missing_from_the_payload_type(self):
+        drift = self.diff({"Shape"})
+
+        self.assertEqual(["pagination"], drift["missing_in_go"])
+        self.assertEqual([], drift["extra_in_go"])
+
+    def test_a_type_outside_the_set_is_compared_with_the_envelope(self):
+        drift = self.diff(set())
+
+        self.assertEqual(["pagination", "task_id"], drift["missing_in_go"])
+
+    def test_a_payload_field_dropped_still_fails(self):
+        drift = self.diff({"Shape"}, [("Status", "string", "status", False)])
+
+        self.assertEqual(["pagination", "products"], drift["missing_in_go"])
+
+    def test_the_envelope_comes_from_the_schema_file(self):
+        optional = lint.protocol_envelope_properties()
+
+        self.assertTrue({"task_id", "replayed", "message"} <= optional)
+
+    def test_the_required_envelope_properties_are_not_subtracted(self):
+        envelope = lint.load_schema(lint.SCRIPT_DIR / lint.ENVELOPE_SCHEMA)
+
+        self.assertEqual(["status"], envelope["required"])
+        self.assertNotIn("status", lint.protocol_envelope_properties())
+
+    def test_a_required_envelope_property_the_type_lacks_is_missing(self):
+        schema = {
+            "type": "object",
+            "required": ["status"],
+            "properties": {"products": {"type": "array"}, "status": {"type": "string"}},
+        }
+        with (
+            mock.patch.object(lint, "ENVELOPE_PAYLOAD_TYPES", {"Shape"}),
+            mock.patch.object(lint, "protocol_envelope_properties", return_value={"task_id"}),
+            mock.patch.object(lint, "load_schema_spec", return_value=schema),
+        ):
+            drift = lint.diff_type(
+                "Shape", [("Products", "[]Product", "products", False)], "core/product.json",
+            )
+
+        self.assertEqual(["status"], drift["missing_in_go"])
+
+    def test_the_payload_types_are_the_two_response_data_types(self):
+        self.assertEqual({"DeliveryData", "ProductsData"}, lint.ENVELOPE_PAYLOAD_TYPES)
+
+
+class WaiverDerivationLintTest(unittest.TestCase):
+    """Findings the schema itself shows to be false positives are not reported."""
+
+    def test_a_boolean_defaulting_to_false_keeps_its_pointer(self):
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean", "default": False}, {}))
+
+    def test_a_boolean_pinned_to_true_needs_no_pointer(self):
+        self.assertTrue(lint.bool_false_is_omission("f", {"type": "boolean", "const": True}, {}))
+
+    def test_a_boolean_pinned_or_forbidden_by_every_branch_needs_no_pointer(self):
+        schema = {"oneOf": [
+            {"required": ["a"], "not": {"required": ["f"]}},
+            {"required": ["f"], "properties": {"f": {"const": True}}, "not": {"required": ["a"]}},
+        ]}
+        self.assertTrue(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_branch_that_leaves_the_boolean_free_keeps_its_pointer(self):
+        schema = {"oneOf": [
+            {"required": ["f"], "properties": {"f": {"type": "boolean"}}},
+            {"required": ["f"], "properties": {"f": {"const": True}}},
+        ]}
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_branch_that_allows_false_keeps_its_pointer(self):
+        schema = {"oneOf": [{"properties": {"f": {"const": False}}}, {"properties": {"f": {"const": True}}}]}
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_branches_that_only_forbid_the_boolean_do_not_waive_it(self):
+        schema = {"oneOf": [{"not": {"required": ["f"]}}]}
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_boolean_no_branch_mentions_keeps_its_pointer(self):
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, {"oneOf": [{"required": ["g"]}]}))
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, {}))
+
+    def test_a_zero_the_schema_rejects_is_not_a_loss(self):
+        for prop in (
+            {"type": "integer", "minimum": 1},
+            {"type": "string", "minLength": 1},
+            {"type": "string", "enum": ["a", "b"]},
+            {"type": "array", "minItems": 1},
+            {"type": "object", "minProperties": 1},
+            {"type": "string", "const": "x"},
+        ):
+            with self.subTest(prop=prop):
+                self.assertTrue(lint.go_zero_is_schema_invalid(prop))
+
+    def test_a_zero_the_schema_accepts_is_a_loss(self):
+        for prop in (
+            {"type": "integer", "minimum": 0},
+            {"type": "integer"},
+            {"type": "string"},
+            {"type": "string", "enum": ["", "a"]},
+            {"type": "array"},
+            {"type": ["string", "null"], "format": "date-time"},
+            {"type": "boolean"},
+            {"type": ["string", "integer"], "minLength": 1},
+            None,
+        ):
+            with self.subTest(prop=prop):
+                self.assertFalse(lint.go_zero_is_schema_invalid(prop))
+
+    def test_a_ref_to_an_enum_is_followed(self):
+        enum = {"type": "string", "enum": ["a", "b"]}
+        with mock.patch.object(lint, "_resolve_ref", return_value=enum):
+            self.assertTrue(lint.go_zero_is_schema_invalid({"$ref": "/schemas/3.2.2/core/x.json"}))
+
+    def test_diff_type_waives_only_the_invalid_zero(self):
+        schema = {
+            "type": "object",
+            "required": ["revision", "name"],
+            "properties": {
+                "revision": {"type": "integer", "minimum": 1},
+                "name": {"type": "string"},
+            },
+        }
+        go_fields = [
+            ("Revision", "int", "revision", True),
+            ("Name", "string", "name", True),
+        ]
+        with mock.patch.object(lint, "load_schema_spec", return_value=schema):
+            drift = lint.diff_type("Shape", go_fields, "core/product.json")
+
+        self.assertEqual(["name"], drift["required_with_omitempty"])
+
+    @unittest.skipUnless(PLAN_BUDGET_SCHEMA_EXISTS, "sync_plans schema is not present")
+    def test_the_real_false_positives_are_not_reported(self):
+        with (
+            mock.patch.object(sys, "argv", ["lint.py", "--strict", "--json"]),
+            contextlib.redirect_stdout(io.StringIO()) as out,
+        ):
+            lint.main()
+        payload = json.loads(out.getvalue())
+        reported = {(g["type"], g["kind"], g["json"]) for g in payload["known_schema_gaps"]}
+
+        for waived in (
+            ("PlanBudget", "optional_bool_pointer", "reallocation_unlimited"),
+            ("MediaBuyData", "required_with_omitempty", "revision"),
+            ("ReportingReceipt", "required_with_omitempty", "verification_profile"),
+            ("ReportingReceipt", "required_with_omitempty", "reporting_materialization_id"),
+            ("GovernanceAccountInput", "required_with_omitempty", "governance_agents"),
+        ):
+            with self.subTest(waived=waived):
+                self.assertNotIn(waived, reported)
+        # A zero the schema accepts and a boolean with a default or no default
+        # stay reported.
+        self.assertIn(("MediaBuyData", "required_with_omitempty", "confirmed_at"), reported)
+        self.assertIn(("AccountInput", "optional_bool_pointer", "sandbox"), reported)
+        self.assertIn(("AccountReference", "optional_bool_pointer", "sandbox"), reported)
+        self.assertIn(("Plan", "optional_bool_pointer", "human_review_required"), reported)
+        self.assertIn(("DeliveryData", "missing_in_go", "status"), reported)
+
+
 
 
 if __name__ == "__main__":
