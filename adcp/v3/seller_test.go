@@ -227,6 +227,7 @@ func TestCapabilitiesResponseWireShape(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
+	assertEncodingSchemaValid(t, "protocol/get-adcp-capabilities-response.json", result.StructuredContent)
 	b, err := json.Marshal(result.StructuredContent)
 	require.NoError(t, err)
 	var wire map[string]any

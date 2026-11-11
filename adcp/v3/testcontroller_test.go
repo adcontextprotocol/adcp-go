@@ -21,6 +21,7 @@ func TestListScenarios(t *testing.T) {
 
 	var resp listScenariosResponse
 	text := result.Content[0].(*mcp.TextContent).Text
+	assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
 	require.NoError(t, json.Unmarshal([]byte(text), &resp))
 
 	require.True(t, resp.Success, "expected success=true")
@@ -34,6 +35,7 @@ func TestUnknownScenario(t *testing.T) {
 
 	var resp controllerErrorResponse
 	text := result.Content[0].(*mcp.TextContent).Text
+	assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
 	require.NoError(t, json.Unmarshal([]byte(text), &resp))
 
 	assert.Equal(t, "UNKNOWN_SCENARIO", resp.Error)
@@ -51,6 +53,7 @@ func TestMissingParams(t *testing.T) {
 
 	var resp controllerErrorResponse
 	text := result.Content[0].(*mcp.TextContent).Text
+	assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
 	require.NoError(t, json.Unmarshal([]byte(text), &resp))
 
 	assert.Equal(t, "INVALID_PARAMS", resp.Error)
@@ -74,6 +77,7 @@ func TestForceAccountStatus(t *testing.T) {
 
 	var resp StateTransition
 	text := result.Content[0].(*mcp.TextContent).Text
+	assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
 	require.NoError(t, json.Unmarshal([]byte(text), &resp))
 
 	assert.Equal(t, "suspended", resp.CurrentState)
@@ -97,6 +101,7 @@ func TestControllerErrorHandling(t *testing.T) {
 
 	var resp controllerErrorResponse
 	text := result.Content[0].(*mcp.TextContent).Text
+	assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
 	require.NoError(t, json.Unmarshal([]byte(text), &resp))
 
 	assert.Equal(t, "NOT_FOUND", resp.Error)
