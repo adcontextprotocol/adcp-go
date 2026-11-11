@@ -37,8 +37,9 @@ type ContextSignals struct {
 	ContentPolicies []string `json:"content_policies,omitempty"`
 
 	// Summary is a publisher-generated natural-language summary of the content
-	// for relevance judgment. Useful for LLM-native buyers. Untrusted input.
-	Summary string `json:"summary,omitempty"`
+	// for relevance judgment. Useful for LLM-native buyers. Untrusted input —
+	// see UntrustedText.
+	Summary UntrustedText `json:"summary,omitempty"`
 
 	// Embedding is the content embedding as a base64-encoded int8 vector.
 	// Captures semantic content beyond topics and keywords. EmbeddingModel and
