@@ -102,7 +102,7 @@ func main() {
 	}
 
 	configPath := filepath.Join(*outDir, ConfigFileName)
-	if err := writeJSON(configPath, routerConfig()); err != nil {
+	if err := writeJSON(configPath, routerConfigFile(routerConfig())); err != nil {
 		log.Fatalf("bootstrap: write %s: %v", configPath, err)
 	}
 
@@ -166,12 +166,13 @@ func routerConfig() router.ServerConfig {
 		LatencyBudgetMs: latencyBudgetMs,
 		Providers: []router.ProviderConfig{
 			{
-				ID:           fixture.ContextProviderID,
-				Endpoint:     fixture.ContextAgentEndpoint,
-				Status:       router.ProviderStatusActive,
-				ContextMatch: true,
-				WireFormats:  []string{"json"},
-				Timeout:      providerTimeoutMs * time.Millisecond,
+				ID:             fixture.ContextProviderID,
+				Endpoint:       fixture.ContextAgentEndpoint,
+				Status:         router.ProviderStatusActive,
+				ContextMatch:   true,
+				WireFormats:    []string{"json"},
+				CacheNamespace: fixture.ContextCacheNamespace,
+				Timeout:        providerTimeoutMs * time.Millisecond,
 			},
 			{
 				ID:            fixture.IdentityProviderID,
@@ -207,6 +208,31 @@ func routerConfig() router.ServerConfig {
 			FeedToken: fixture.RegistryFeedToken,
 		},
 	}
+}
+
+// routerConfigFile exposes input-only provider fields while materializing the
+// router's private config file. ProviderConfig deliberately omits
+// CacheNamespace from ordinary JSON so /providers cannot disclose generation
+// metadata; the bootstrap writer is the one narrow place that must emit it.
+type routerConfigFileDocument struct {
+	router.ServerConfig
+	Providers []routerConfigFileProvider `json:"providers"`
+}
+
+type routerConfigFileProvider struct {
+	router.ProviderConfig
+	CacheNamespace string `json:"cache_namespace,omitempty"`
+}
+
+func routerConfigFile(config router.ServerConfig) routerConfigFileDocument {
+	providers := make([]routerConfigFileProvider, len(config.Providers))
+	for i, provider := range config.Providers {
+		providers[i] = routerConfigFileProvider{
+			ProviderConfig: provider,
+			CacheNamespace: provider.CacheNamespace,
+		}
+	}
+	return routerConfigFileDocument{ServerConfig: config, Providers: providers}
 }
 
 func writePrivateKeyPEM(path string, priv ed25519.PrivateKey) error {
