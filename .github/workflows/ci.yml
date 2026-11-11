@@ -125,7 +125,11 @@ jobs:
 
       - name: Test targeting module
         working-directory: targeting
-        run: go test -race -count=1 ./...
+        # glidestore is left out on toolchains that reject valkey-glide's
+        # prebuilt archive; see the script.
+        run: |
+          pkgs=$(../scripts/ci/targeting-packages.sh)
+          go test -race -count=1 $pkgs
 
       - name: Test context agent
         working-directory: reference/context-agent
@@ -195,12 +199,21 @@ jobs:
           working-directory: adcp/v3
           args: ./...
 
+      # golangci-lint cannot skip a package whose import fails to type-check,
+      # so the list excludes glidestore on toolchains that reject
+      # valkey-glide's prebuilt archive; see the script.
+      - name: List targeting packages
+        id: targeting-packages
+        run: |
+          list=$(scripts/ci/targeting-packages.sh)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
       - name: Run golangci-lint (targeting)
         uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7
         with:
           version: v2.11
           working-directory: targeting
-          args: ./...
+          args: ${{ steps.targeting-packages.outputs.list }}
 
       # The containerized end-to-end stack's tooling. The stack itself runs in
       # the separate e2e-stack workflow, which only fires on paths that affect
