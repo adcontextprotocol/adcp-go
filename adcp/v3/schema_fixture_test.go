@@ -83,6 +83,15 @@ func assertSchemaValid(t testing.TB, ref string, raw []byte) {
 	}
 }
 
+// assertEncodingSchemaValid encodes v as JSON, as a tool result's structured
+// content is encoded on the wire, and checks it with assertSchemaValid.
+func assertEncodingSchemaValid(t testing.TB, ref string, v any) {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	assertSchemaValid(t, ref, raw)
+}
+
 // requireSchemaBundle skips a test that is only about the bundle, and fails
 // it under CI.
 func requireSchemaBundle(t testing.TB) *schemaBundle {
@@ -121,6 +130,12 @@ type knownInvalidFixture struct {
 	Patch func(doc map[string]any) // repairs the defect named by Error and nothing else
 }
 
+// Issues that track the entries below.
+const (
+	issueEmptyProductsList      = "https://github.com/adcontextprotocol/adcp-go/issues/611"
+	issueResponseEnvelopeStatus = "https://github.com/adcontextprotocol/adcp-go/issues/612"
+)
+
 func setField(name string, value any) func(map[string]any) {
 	return func(doc map[string]any) { doc[name] = value }
 }
@@ -129,7 +144,67 @@ func setField(name string, value any) func(map[string]any) {
 // the fixture invalid. The list can only shrink: an entry whose fixture
 // validates fails its test until it is removed. The fixtures stay as they are,
 // so fixing the Go type turns them green and the entry goes with it.
-var knownInvalidFixtures = map[string]knownInvalidFixture{}
+var knownInvalidFixtures = map[string]knownInvalidFixture{
+	// GetProductsResponse.Products is `omitempty`, but a standard get_products
+	// response must carry products, empty when nothing matches: the schema
+	// requires it in the else branch that follows status rejected and failed.
+	// The three fixtures below encode an empty list.
+	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_proposals media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_incomplete media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	"TestGetProductsIncompleteRoundTrip media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	// SDK response builders emit no or an empty envelope status, which the
+	// response schema requires of every response: MediaBuyResponse sends a
+	// create_media_buy success with none (ProductsResponse and
+	// CapabilitiesResponse inject it, and CreateMediaBuySuccess has no field
+	// for it); MediaBuysResponse builds from a media buy list alone, so status
+	// is encoded as ""; and comply_test_controller results carry none.
+	"TestMediaBuyResponseUsesCreateSuccessFields media-buy/create-media-buy-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating media-buy/create-media-buy-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestMediaBuysResponseNilListEmitsEmptyArray media-buy/get-media-buys-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating media-buy/get-media-buys-response.json: validating /allOf/1: validating core/protocol-envelope.json: validating /properties/status: validating enums/task-status.json: enum:  does not equal any of: [submitted working input-required completed canceled failed rejected auth-required unknown]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestListScenarios compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestUnknownScenario compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestMissingParams compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestForceAccountStatus compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestControllerErrorHandling compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	}}
 
 // schemaErrorText is a validation error without the bundle's base URL, so an
 // entry's Error does not change with the bundle version it was recorded on.
@@ -901,13 +976,17 @@ func TestAssertSchemaValidReports(t *testing.T) {
 	assert.True(t, check("known, patch repairs nothing", invalid, entry(invalid, func(map[string]any) {})).failed(),
 		"a patch that does not repair the fixture fails")
 
-	// The fixture has a second defect behind the recorded one. Its raw error
-	// is the recorded one, so only the patched fixture shows the other.
-	rec := check("known, second defect", twoDefects, &knownInvalidFixture{
-		Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1",
-		Error: recorded(invalid),
-		Patch: fixMid,
-	})
+	// The fixture has a second defect behind the recorded one. jsonschema-go
+	// reports either at random, so take a run that reports the recorded one: the
+	// raw error then matches, and only the patched fixture shows the other.
+	want := recorded(invalid)
+	var rawErr error
+	for i := 0; i < 500 && (rawErr == nil || schemaErrorText(rawErr) != want); i++ {
+		rawErr = validateAgainstSchema(ref, twoDefects)
+	}
+	require.Equal(t, want, schemaErrorText(rawErr), "the recorded defect was not reported in 500 runs")
+	known := knownInvalidFixture{Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1", Error: want, Patch: fixMid}
+	rec := runRecorded("known, second defect", func(rec *recordingT) { assertKnownInvalid(rec, ref, twoDefects, rawErr, known) })
 	assert.True(t, rec.failed(), "a listed fixture with a defect beyond the recorded one fails")
 }
 
