@@ -1,11 +1,14 @@
 import contextlib
 import io
+import json
+import re
 import shutil
 import subprocess
 import tempfile
 import textwrap
 import unittest
 from collections import OrderedDict
+from pathlib import Path
 from unittest import mock
 
 import generate
@@ -3015,6 +3018,637 @@ class PackageSchemaOwnershipTest(unittest.TestCase):
                 "Ext any `json:\"ext,omitempty\"`",
             ],
         )
+
+
+def outcome_union_schema(**overrides):
+    """The shape of list_products' response: one set of top-level properties and
+    a oneOf whose branches only switch required and `not: {required}`."""
+    schema = {
+        "$id": "https://example.test/schemas/test/media-buy/list-things-response.json",
+        "type": "object",
+        "discriminator": {"propertyName": "outcome"},
+        "properties": {
+            "outcome": {"type": "string", "enum": ["listed", "unchanged"], "description": "Which shape this is."},
+            "products": {"type": "array", "items": {"type": "string"}},
+            "feed_version": {"type": "string"},
+            "cache_scope": {"type": "string", "enum": ["public", "account"]},
+            "next_cursor": {"type": "string"},
+        },
+        "oneOf": [
+            {
+                "properties": {"outcome": {"type": "string", "const": "listed"}},
+                "required": ["outcome", "products", "feed_version", "cache_scope"],
+            },
+            {
+                "properties": {"outcome": {"type": "string", "const": "unchanged"}},
+                "required": ["outcome", "feed_version", "cache_scope"],
+                "not": {"required": ["products"]},
+            },
+        ],
+        "additionalProperties": False,
+    }
+    schema.update(overrides)
+    return schema
+
+
+class FlatRequiredUnionTest(SchemaFixtureCase):
+    """A top-level response oneOf that only switches required fields is one flat
+    struct with a Validate; every other oneOf keeps its existing path."""
+
+    ENVELOPES = {
+        "core/protocol-envelope.json": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "message": {"type": "string"},
+            },
+            "required": ["status"],
+        },
+        "core/version-envelope.json": {
+            "type": "object",
+            "properties": {"adcp_version": {"type": "string"}},
+        },
+    }
+
+    def install_response(self, schema, extra=None):
+        schemas = {"media-buy/list-things-response.json": schema, **self.ENVELOPES, **(extra or {})}
+        self.install_schema_fixture(schemas, tool=["media-buy/list-things-response.json"])
+
+        def resolve_ref_schema(ref):
+            path = generate.ref_to_schema_path(ref)
+            return schemas[path] if path else None
+
+        patcher = mock.patch.object(generate, "resolve_ref_schema", side_effect=resolve_ref_schema)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def envelope_allof(self, *paths):
+        return [{"$ref": f"/schemas/test/{path}"} for path in paths]
+
+    def test_the_list_products_shape_is_recognised(self):
+        spec = generate.flat_required_union(outcome_union_schema())
+
+        self.assertEqual("outcome", spec["discriminator"])
+        self.assertEqual(["listed", "unchanged"], spec["enum"])
+        self.assertEqual(["outcome", "feed_version", "cache_scope"], spec["shared_required"])
+        self.assertEqual(
+            [
+                {"value": "listed", "required": ["products"], "forbidden": []},
+                {"value": "unchanged", "required": [], "forbidden": ["products"]},
+            ],
+            spec["branches"],
+        )
+
+    def test_it_becomes_one_struct_with_a_typed_discriminator(self):
+        self.install_response(outcome_union_schema())
+        entries = {e["name"]: e for e in generate.generated_schema_entries()}
+        entry = entries["ListThingsResponse"]
+        self.assertEqual("struct", entry["kind"])
+        self.assertIsNotNone(entry["flat_union"])
+        # No union interface and no variant structs.
+        self.assertEqual(["ListThingsResponse"], list(entries))
+
+        source = generate.schema_to_struct("ListThingsResponse", entry["schema_obj"])
+        flat = " ".join(source.split())
+        # What every branch requires is required; what only one branch requires
+        # stays optional in Go, and Validate carries the rest.
+        self.assertIn('Outcome ListThingsResponseOutcome `json:"outcome"`', flat)
+        self.assertIn('FeedVersion string `json:"feed_version"`', flat)
+        self.assertIn('CacheScope string `json:"cache_scope"`', flat)
+        self.assertIn('Products []string `json:"products,omitzero"`', flat)
+        self.assertIn('NextCursor string `json:"next_cursor,omitempty"`', flat)
+
+        with mock.patch.object(generate, "SCRIPT_DIR", Path("/nonexistent")), \
+                mock.patch.object(generate, "INLINE_ENUM_TYPES", OrderedDict()):
+            enums = generate.generate_enums()
+        self.assertIn("type ListThingsResponseOutcome = string", enums)
+        self.assertIn('ListThingsResponseOutcomeListed ListThingsResponseOutcome = "listed"', " ".join(enums.split()))
+        self.assertIn("func ParseListThingsResponseOutcome(", enums)
+
+    def test_validate_states_each_branch(self):
+        schema = outcome_union_schema()
+        spec = generate.flat_required_union(schema)
+        self.install_response(schema)
+        source = generate.flat_union_methods("ListThingsResponse", schema, spec)
+
+        self.assertIn("func (r ListThingsResponse) Validate(opts ...ValidationOption) []ValidationIssue {", source)
+        for shared in ("Outcome", "FeedVersion", "CacheScope"):
+            self.assertIn(f'if r.{shared} == "" {{', source)
+        branch = lambda value: source.split(f"case ListThingsResponseOutcome{value}:")[1].split("case ", 1)[0].split("default:")[0]
+        self.assertIn('if r.Products == nil {\n\t\t\tissues = appendRequired(issues, "products")', branch("Listed"))
+        self.assertNotIn("appendUnsupportedIfSet", branch("Listed"))
+        self.assertIn('appendUnsupportedIfSet(issues, "products", r.Products != nil)', branch("Unchanged"))
+        self.assertNotIn("appendRequired", branch("Unchanged"))
+        self.assertIn("cfg.strictEnums", source)
+
+    def test_a_conditional_slice_is_omitzero_and_documented(self):
+        # omitzero drops nil and keeps a non-nil empty slice as []; omitempty
+        # would drop both. There is no MarshalJSON, which an embedding type
+        # would promote and lose its own fields to.
+        schema = outcome_union_schema()
+        spec = generate.flat_required_union(schema)
+        self.install_response(schema)
+        struct = generate.schema_to_struct("ListThingsResponse", schema)
+        self.assertIn('Products []string `json:"products,omitzero"`', " ".join(struct.split()))
+        self.assertIn(
+            "// For listed, send a non-nil empty slice for an empty value; "
+            "nil omits the key and Validate reports it.",
+            struct,
+        )
+        # Only the fields the branches switch; a plain optional slice is omitempty.
+        plain = outcome_union_schema()
+        plain["properties"]["tags"] = {"type": "array", "items": {"type": "string"}}
+        self.install_response(plain)
+        self.assertIn(
+            'Tags []string `json:"tags,omitempty"`',
+            " ".join(generate.schema_to_struct("ListThingsResponse", plain).split()),
+        )
+        source = generate.flat_union_methods("ListThingsResponse", schema, spec)
+        self.assertNotIn("MarshalJSON", source)
+        self.assertNotIn("MarshalJSON", struct)
+
+        # A scalar that only some branches require gets no omitzero.
+        scalar = outcome_union_schema()
+        scalar["properties"]["products"] = {"type": "string"}
+        self.install_response(scalar)
+        flat = " ".join(generate.schema_to_struct("ListThingsResponse", scalar).split())
+        self.assertIn('Products string `json:"products,omitempty"`', flat)
+        self.assertNotIn("non-nil empty", flat)
+
+    def test_validate_documents_presence_and_checks_strict_enums(self):
+        schema = outcome_union_schema()
+        spec = generate.flat_required_union(schema)
+        self.install_response(schema)
+        source = generate.flat_union_methods("ListThingsResponse", schema, spec)
+
+        self.assertIn("An empty string counts as missing", source)
+        self.assertIn("stricter than the schema", source)
+        self.assertIn("a nil slice or map is missing, an empty one is", source)
+        # A plain string field with an enum is checked under WithStrictEnums only.
+        self.assertIn(
+            'if cfg.strictEnums && r.CacheScope != "" {\n\t\tswitch r.CacheScope {\n'
+            '\t\tcase "public", "account":\n\t\tdefault:\n'
+            '\t\t\tissues = appendUnknownEnum(issues, "cache_scope")',
+            source,
+        )
+        # The discriminator has its own typed check; other fields have no enum.
+        self.assertEqual(1, source.count("appendUnknownEnum"))
+        self.assertNotIn('r.Outcome != "" {\n\t\tswitch', source)
+
+    def test_a_required_scalar_that_go_cannot_tell_from_absent_is_refused(self):
+        schema = outcome_union_schema()
+        schema["properties"]["total"] = {"type": "integer"}
+        schema["oneOf"][0]["required"].append("total")
+        self.install_response(schema)
+
+        with self.assertRaisesRegex(ValueError, "ListThingsResponse.total is int"):
+            generate.flat_union_methods(
+                "ListThingsResponse", schema, generate.flat_required_union(schema),
+            )
+
+    def test_it_tolerates_a_top_level_allof_composing_the_envelopes(self):
+        # 3.3.0-beta.3 composes core/protocol-envelope.json into every task
+        # response (adcp#8547); 3.2.2 pairs it with core/version-envelope.json.
+        for paths in (
+            ("core/protocol-envelope.json",),
+            ("core/version-envelope.json", "core/protocol-envelope.json"),
+        ):
+            with self.subTest(allof=paths):
+                schema = outcome_union_schema(allOf=self.envelope_allof(*paths))
+                self.install_response(schema)
+
+                spec = generate.flat_required_union(schema)
+                self.assertIsNotNone(spec)
+                self.assertEqual(["outcome", "feed_version", "cache_scope"], spec["shared_required"])
+
+                entries = {e["name"]: e for e in generate.generated_schema_entries()}
+                self.assertEqual("struct", entries["ListThingsResponse"]["kind"])
+                flat = " ".join(generate.schema_to_struct(
+                    "ListThingsResponse", entries["ListThingsResponse"]["schema_obj"],
+                ).split())
+                # The envelope's fields join the struct, as on every other response,
+                # and its required `status` is required.
+                self.assertIn('Status string `json:"status"`', flat)
+                self.assertIn('Message string `json:"message,omitempty"`', flat)
+                self.assertIn('Outcome ListThingsResponseOutcome `json:"outcome"`', flat)
+                self.assertIn('Products []string `json:"products,omitzero"`', flat)
+                # And the rules are unchanged.
+                source = generate.flat_union_methods("ListThingsResponse", schema, spec)
+                self.assertIn('appendUnsupportedIfSet(issues, "products", r.Products != nil)', source)
+
+    def test_any_other_allof_entry_keeps_it_off_the_rule(self):
+        for entry in (
+            {"$ref": "/schemas/test/core/other.json"},
+            {"if": {"required": ["x"]}, "then": {"required": ["y"]}},
+            {"$ref": "/schemas/test/core/protocol-envelope.json", "description": "extra keyword"},
+        ):
+            with self.subTest(entry=entry):
+                self.install_response(
+                    outcome_union_schema(allOf=[entry]), extra={"core/other.json": {"type": "object"}},
+                )
+                self.assertIsNone(generate.flat_required_union(outcome_union_schema(allOf=[entry])))
+
+    def test_each_departure_from_the_shape_is_not_the_rule(self):
+        def mutated(mutate):
+            schema = outcome_union_schema()
+            mutate(schema)
+            return schema
+
+        cases = {
+            # list_account_changes: a branch declares a property of its own.
+            "a branch adds a property": mutated(lambda s: s["oneOf"][1]["properties"].update({"errors": {"minItems": 1}})),
+            # get_reporting_status: titled branches that nest their own oneOf.
+            "a branch nests a oneOf": mutated(lambda s: s["oneOf"][0].update({"oneOf": [{"required": ["products"]}]})),
+            "a branch has an if": mutated(lambda s: s["oneOf"][0].update({"if": {"required": ["products"]}})),
+            "no discriminator": mutated(lambda s: s.pop("discriminator")),
+            "discriminator is not a property": mutated(lambda s: s.update({"discriminator": {"propertyName": "kind"}})),
+            "discriminator has no enum": mutated(lambda s: s["properties"]["outcome"].pop("enum")),
+            "a branch constant is outside the enum": mutated(lambda s: s["oneOf"][1]["properties"]["outcome"].update({"const": "other"})),
+            "a branch constant repeats": mutated(lambda s: s["oneOf"][1]["properties"]["outcome"].update({"const": "listed"})),
+            "an enum value has no branch": mutated(lambda s: s["properties"]["outcome"]["enum"].append("expired")),
+            "a branch does not require the discriminator": mutated(lambda s: s["oneOf"][1].update({"required": ["feed_version"]})),
+            "a branch requires an undeclared field": mutated(lambda s: s["oneOf"][0]["required"].append("ghost")),
+            "not carries more than required": mutated(lambda s: s["oneOf"][1]["not"].update({"properties": {"products": {}}})),
+            "not forbids an undeclared field": mutated(lambda s: s["oneOf"][1].update({"not": {"required": ["ghost"]}})),
+            "a branch is not an object": mutated(lambda s: s["oneOf"].append(True)),
+            "one branch only": mutated(lambda s: s.update({"oneOf": s["oneOf"][:1]})),
+            "a top-level anyOf": mutated(lambda s: s.update({"anyOf": [{"required": ["products"]}]})),
+            # A keyword the generator does not model is a rule Validate would
+            # not enforce, so the match refuses it (array-form dependencies are
+            # modelled: see FlatUnionDependenciesTest).
+            "schema-form dependencies": mutated(lambda s: s.update({"dependencies": {"next_cursor": {"required": ["products"]}}})),
+            "dependencies on an undeclared key": mutated(lambda s: s.update({"dependencies": {"ghost": ["products"]}})),
+            "dependencies requiring an undeclared field": mutated(lambda s: s.update({"dependencies": {"next_cursor": ["ghost"]}})),
+            "dependencies that are not an object": mutated(lambda s: s.update({"dependencies": ["products"]})),
+            "dependencies with a non-array value": mutated(lambda s: s.update({"dependencies": {"next_cursor": "products"}})),
+            "a top-level if/then": mutated(lambda s: s.update({"if": {"required": ["products"]}, "then": {"required": ["feed_version"]}})),
+            "patternProperties": mutated(lambda s: s.update({"patternProperties": {"^x_": {}}})),
+            "propertyNames": mutated(lambda s: s.update({"propertyNames": {"maxLength": 40}})),
+            "minProperties": mutated(lambda s: s.update({"minProperties": 2})),
+            "a top-level not that forbids a declared property": mutated(lambda s: s.update({"not": {"anyOf": [{"required": ["next_cursor"]}]}})),
+            "a top-level not of another shape": mutated(lambda s: s.update({"not": {"properties": {"outcome": {"const": "x"}}}})),
+            "an allOf ref with a fragment": mutated(lambda s: s.update({"allOf": [{"$ref": "/schemas/test/core/protocol-envelope.json#/properties/status"}]})),
+            "type is not object": mutated(lambda s: s.update({"type": "array"})),
+            "no oneOf": mutated(lambda s: s.pop("oneOf")),
+        }
+        self.install_response(outcome_union_schema())
+        for name, schema in cases.items():
+            with self.subTest(name):
+                self.assertIsNone(generate.flat_required_union(schema))
+
+    def test_a_request_never_takes_the_rule(self):
+        self.install_schema_fixture(
+            {"media-buy/list-things-request.json": outcome_union_schema()},
+            tool=["media-buy/list-things-request.json"],
+        )
+        self.assertEqual([], generate.flat_union_tool_responses())
+        # It takes the request path, which refuses a top-level oneOf.
+        with self.assertRaisesRegex(ValueError, "top-level tool oneOf request"):
+            list(generate.generated_schema_entries())
+
+    def test_what_the_rule_may_ignore_at_the_top_level(self):
+        # 3.2.2 list-products-response: additionalProperties, annotations, and a
+        # `not` that forbids fields the schema does not declare.
+        schema = outcome_union_schema(**{
+            "title": "List Things", "description": "d", "x-status": "stable", "examples": [],
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "not": {"anyOf": [{"required": ["proposals"]}, {"required": ["pagination"]}]},
+        })
+        self.assertIsNotNone(generate.flat_required_union(schema))
+        self.assertIsNotNone(generate.flat_required_union(outcome_union_schema(
+            **{"not": {"required": ["proposals"]}},
+        )))
+
+    def test_the_required_set_follows_the_tool_response_gate(self):
+        # Shared requirements reach the struct only for a schema that is a
+        # TOOL_SCHEMAS response, the same gate that emits the enum and Validate.
+        self.install_response(outcome_union_schema())
+        self.assertEqual(
+            {"outcome", "feed_version", "cache_scope"},
+            generate.schema_required_names(outcome_union_schema()),
+        )
+        elsewhere = outcome_union_schema(**{"$id": "https://example.test/schemas/test/core/thing.json"})
+        self.assertIsNotNone(generate.flat_required_union(elsewhere))
+        self.assertEqual(set(), generate.schema_required_names(elsewhere))
+        anonymous = outcome_union_schema()
+        del anonymous["$id"]
+        self.assertEqual(set(), generate.schema_required_names(anonymous))
+        self.assertIsNone(generate.tool_flat_union("media-buy/list-things-response.json", anonymous))
+
+    def dependency_schema(self):
+        schema = outcome_union_schema()
+        schema["properties"]["collections"] = {"type": "array", "items": {"type": "string"}}
+        schema["dependencies"] = {"collections": ["products"]}
+        return schema
+
+    def test_array_dependencies_are_modelled(self):
+        schema = self.dependency_schema()
+        self.install_response(schema)
+        spec = generate.flat_required_union(schema)
+        self.assertEqual([{"key": "collections", "required": ["products"]}], spec["dependencies"])
+        # Both names matter to presence, so both are omitzero.
+        struct = " ".join(generate.schema_to_struct("ListThingsResponse", schema).split())
+        self.assertIn('Collections []string `json:"collections,omitzero"`', struct)
+        self.assertIn('Products []string `json:"products,omitzero"`', struct)
+
+        source = generate.flat_union_methods("ListThingsResponse", schema, spec)
+        self.assertIn("// collections present requires products", source)
+        self.assertIn(
+            'if r.Collections != nil {\n\t\tif r.Products == nil && !reported("products") {\n'
+            '\t\t\tissues = appendRequired(issues, "products")',
+            source,
+        )
+        # Checked after the branches.
+        self.assertLess(source.index("switch r.Outcome"), source.index("if r.Collections != nil"))
+
+        # No dependencies, no dependency code.
+        plain = generate.flat_union_methods(
+            "ListThingsResponse", outcome_union_schema(),
+            generate.flat_required_union(outcome_union_schema()),
+        )
+        self.assertNotIn("reported", plain)
+
+    @unittest.skipUnless(shutil.which("go"), "go command not found")
+    def test_dependencies_validate_at_runtime_and_agree_with_the_schema(self):
+        schema = self.dependency_schema()
+        self.install_response(schema)
+        spec = generate.flat_required_union(schema)
+        base = {"feed_version": "f", "cache_scope": "public"}
+        cases = [
+            ("key with its dependent", {**base, "outcome": "listed", "collections": ["c"], "products": []}, []),
+            ("neither", {**base, "outcome": "listed", "products": []}, []),
+            ("dependent without the key", {**base, "outcome": "unchanged"}, []),
+            # listed already reports products, so it is not reported twice.
+            ("key without the dependent, listed", {**base, "outcome": "listed", "collections": ["c"]},
+             ["products:REQUIRED_FIELD"]),
+            ("key without the dependent, unchanged", {**base, "outcome": "unchanged", "collections": ["c"]},
+             ["products:REQUIRED_FIELD"]),
+            # An empty key is still present.
+            ("empty key without the dependent", {**base, "outcome": "listed", "collections": []},
+             ["products:REQUIRED_FIELD"]),
+            ("key with the dependent, unchanged", {**base, "outcome": "unchanged", "collections": ["c"], "products": []},
+             ["products:UNSUPPORTED_FIELD"]),
+        ]
+        # An outcome outside the enum runs no branch; the dependency still holds
+        # (the schema rejects the outcome itself, so it is not compared).
+        unknown = ("unknown outcome", {**base, "outcome": "partial", "collections": ["c"]}, ["products:REQUIRED_FIELD"])
+
+        generated = "\n".join([
+            generate.enum_to_type("ListThingsResponseOutcome", "", spec["enum"]),
+            generate.schema_to_struct("ListThingsResponse", schema),
+            generate.flat_union_methods("ListThingsResponse", schema, spec),
+        ])
+        program = textwrap.dedent("""
+            package main
+
+            import (
+                "encoding/json"
+                "fmt"
+                "os"
+            )
+
+            type ValidationIssue struct{ Field, Code, Message string }
+            type validationConfig struct{ strictEnums bool }
+            type ValidationOption func(*validationConfig)
+
+            func newValidationConfig(opts []ValidationOption) validationConfig {
+                var c validationConfig
+                for _, o := range opts {
+                    o(&c)
+                }
+                return c
+            }
+            func appendRequired(i []ValidationIssue, f string) []ValidationIssue {
+                return append(i, ValidationIssue{f, "REQUIRED_FIELD", ""})
+            }
+            func appendUnsupportedIfSet(i []ValidationIssue, f string, set bool) []ValidationIssue {
+                if !set {
+                    return i
+                }
+                return append(i, ValidationIssue{f, "UNSUPPORTED_FIELD", ""})
+            }
+            func appendUnknownEnum(i []ValidationIssue, f string) []ValidationIssue {
+                return append(i, ValidationIssue{f, "UNKNOWN_ENUM_VALUE", ""})
+            }
+            func appendUnknownVariant(i []ValidationIssue, f string) []ValidationIssue {
+                return append(i, ValidationIssue{f, "UNKNOWN_VARIANT", ""})
+            }
+
+            """) + generated + textwrap.dedent("""
+
+            func main() {
+                raw, err := os.ReadFile("cases.json")
+                if err != nil {
+                    panic(err)
+                }
+                var cases []json.RawMessage
+                if err := json.Unmarshal(raw, &cases); err != nil {
+                    panic(err)
+                }
+                out := [][]string{}
+                for _, c := range cases {
+                    var r ListThingsResponse
+                    if err := json.Unmarshal(c, &r); err != nil {
+                        panic(err)
+                    }
+                    got := []string{}
+                    for _, i := range r.Validate() {
+                        got = append(got, i.Field+":"+i.Code)
+                    }
+                    out = append(out, got)
+                }
+                if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
+                    panic(err)
+                }
+                _ = fmt.Sprint()
+            }
+        """)
+        every = cases + [unknown]
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(f"{tmp}/go.mod", "w") as f:
+                f.write("module deptest\n\ngo 1.22\n")
+            with open(f"{tmp}/main.go", "w") as f:
+                f.write(program)
+            with open(f"{tmp}/cases.json", "w") as f:
+                json.dump([instance for _, instance, _ in every], f)
+            result = subprocess.run(
+                ["go", "run", "."], cwd=tmp, check=True, capture_output=True, text=True,
+            )
+        got = json.loads(result.stdout)
+        for (name, instance, want), issues in zip(every, got):
+            with self.subTest(name):
+                self.assertEqual(want, issues)
+
+        # Where the schema can judge the instance, it agrees: valid exactly when
+        # Validate reports nothing. (Needs the jsonschema package, which CI's
+        # python does not install; the expectations above hold without it.)
+        try:
+            import jsonschema
+        except ImportError:
+            return
+        validator = jsonschema.Draft7Validator(schema)
+        for (name, instance, want), issues in zip(cases, got):
+            with self.subTest(schema=name):
+                self.assertEqual(validator.is_valid(instance), not issues, instance)
+
+
+@unittest.skipUnless(BUNDLE_PRESENT, "schema bundle has not been downloaded")
+class ListProductsGenerationTest(unittest.TestCase):
+    """list_products, and the two responses the flat-union rule must not catch."""
+
+    def setUp(self):
+        generate._reset_will_generate_cache()
+
+    def tearDown(self):
+        generate._reset_will_generate_cache()
+
+    def entries(self):
+        return {entry["name"]: entry for entry in generate.generated_schema_entries()}
+
+    def test_the_response_is_one_flat_struct(self):
+        entries = self.entries()
+        response = entries["ListProductsResponse"]
+        self.assertEqual("struct", response["kind"])
+        self.assertEqual("outcome", response["flat_union"]["discriminator"])
+        self.assertEqual(
+            ["outcome", "feed_version", "cache_scope"], response["flat_union"]["shared_required"],
+        )
+        self.assertEqual(
+            [("listed", ["products"], []), ("unchanged", [], ["products"])],
+            [(b["value"], b["required"], b["forbidden"]) for b in response["flat_union"]["branches"]],
+        )
+        # No union interface and no variant structs beside it.
+        self.assertEqual(
+            [],
+            [n for n in entries if n.startswith("ListProducts") and n not in (
+                "ListProductsRequest", "ListProductsResponse", "ListProductsIncompleteItem",
+            )],
+        )
+        source = " ".join(generate.schema_to_struct("ListProductsResponse", response["schema_obj"]).split())
+        for field in (
+            'Outcome ListProductsResponseOutcome `json:"outcome"`',
+            'Products []CanonicalProduct `json:"products,omitzero"`',
+            'FeedVersion string `json:"feed_version"`',
+            'CacheScope string `json:"cache_scope"`',
+            'Incomplete []ListProductsIncompleteItem `json:"incomplete,omitempty"`',
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, source)
+
+    def test_the_request_is_typed_where_the_response_of_its_peers_is_not(self):
+        request = generate.schema_to_struct(
+            "ListProductsRequest", self.entries()["ListProductsRequest"]["schema_obj"],
+        )
+        flat = " ".join(request.split())
+        self.assertIn('AdcpMajorVersion *int `json:"adcp_major_version,omitempty"`', flat)
+        self.assertIn('Fields []ProductField `json:"fields,omitempty"`', flat)
+        enums = generate.generate_enums()
+        self.assertIn("type ProductField = string", enums)
+        items = generate.load_schema("media-buy/product-fields.json")["items"]["enum"]
+        declared = re.findall(r'^\tProductField\w+ +ProductField = "([^"]+)"$', enums, re.MULTILINE)
+        self.assertEqual(items, declared)
+
+    def test_the_new_types_add_no_unreviewed_any(self):
+        report = generate.any_coverage_report()
+        self.assertEqual(
+            [],
+            [
+                (r["type"], r["json"]) for r in report["records"]
+                if r["type"] in ("ListProductsRequest", "ListProductsResponse", "ListProductsIncompleteItem")
+                and not r["allowed"]
+            ],
+        )
+
+    def test_incomplete_has_its_own_item_type(self):
+        # list_products' incomplete.scope has no `proposals` value, so the item is
+        # not GetProductsIncompleteItem; their enums differ and lint compares only
+        # property names.
+        scopes = lambda path: generate.load_schema_spec(path)["properties"]["scope"]["enum"]
+        self.assertNotEqual(
+            scopes("media-buy/list-products-response.json#/properties/incomplete/items"),
+            scopes("media-buy/get-products-response.json#/properties/incomplete/items"),
+        )
+        self.assertEqual(
+            "ListProductsIncompleteItem",
+            generate.INLINE_TYPE_HINTS[("ListProductsResponse", "incomplete")],
+        )
+
+    def test_the_rule_catches_only_list_products(self):
+        # Recursive, so nested schemas (core/assets/*, core/requirements/*, ...)
+        # are swept too; bundled/ and mcp/ hold copies of the same schemas.
+        matches = sorted(
+            str(path.relative_to(generate.SCRIPT_DIR))
+            for path in generate.SCRIPT_DIR.rglob("*.json")
+            if path.relative_to(generate.SCRIPT_DIR).parts[0] not in ("bundled", "mcp")
+            and generate.flat_required_union(generate.load_schema(path))
+        )
+        self.assertEqual(["media-buy/list-products-response.json"], matches)
+
+    def test_get_reporting_status_and_list_account_changes_stay_as_they_are(self):
+        for path in (
+            "media-buy/get-reporting-status-response.json",
+            "account/list-account-changes-response.json",
+        ):
+            with self.subTest(path=path):
+                schema = generate.load_schema(path)
+                self.assertIn("oneOf", schema)
+                self.assertIsNone(generate.flat_required_union(schema))
+
+        # Added to the tool list, each takes the path it always took: the
+        # reporting status as a union with named variants, the account feed with
+        # the error about untitled branches that carry properties.
+        with mock.patch.object(generate, "TOOL_SCHEMAS", ["media-buy/get-reporting-status-response.json"]):
+            generate._reset_will_generate_cache()
+            kinds = {e["name"]: e["kind"] for e in generate.generated_schema_entries()
+                     if e["name"] in ("GetReportingStatusResponse",)}
+            self.assertEqual({"GetReportingStatusResponse": "union_interface"}, kinds)
+        with mock.patch.object(generate, "TOOL_SCHEMAS", ["account/list-account-changes-response.json"]):
+            generate._reset_will_generate_cache()
+            with self.assertRaisesRegex(ValueError, "oneOf branch 0 must have a title"):
+                list(generate.generated_schema_entries())
+
+    def test_the_rule_still_holds_when_the_bundle_composes_the_envelope(self):
+        # What 3.3.0-beta.3 does to list-products-response.json (adcp#8547).
+        base = "https://adcontextprotocol.org/schemas/3.2.2/core/"
+        composed = generate.load_schema("media-buy/list-products-response.json")
+        composed = type(composed)(composed)
+        composed["allOf"] = [{"$ref": base + "protocol-envelope.json"}]
+
+        spec = generate.flat_required_union(composed)
+        self.assertIsNotNone(spec)
+        self.assertEqual("outcome", spec["discriminator"])
+        flat = " ".join(generate.schema_to_struct("ListProductsResponse", composed).split())
+        self.assertIn('Status TaskStatus `json:"status"`', flat)
+        self.assertIn('Outcome ListProductsResponseOutcome `json:"outcome"`', flat)
+        self.assertIn('Products []CanonicalProduct `json:"products,omitzero"`', flat)
+        self.assertIn(
+            'appendUnsupportedIfSet(issues, "products", r.Products != nil)',
+            generate.flat_union_methods("ListProductsResponse", composed, spec),
+        )
+
+    def test_a_bundle_that_adds_array_dependencies_still_matches(self):
+        # 3.3.0-beta.3 adds `dependencies: {"collections": ["products"]}` to
+        # list-products-response.json (and declares collections). The rule is
+        # modelled, so the match holds and Validate carries it.
+        composed = generate.load_schema("media-buy/list-products-response.json")
+        composed = type(composed)(composed)
+        composed["properties"] = type(composed["properties"])(composed["properties"])
+        composed["properties"]["collections"] = {"type": "array", "items": {"type": "string"}}
+        composed["dependencies"] = {"collections": ["products"]}
+
+        spec = generate.flat_required_union(composed)
+        self.assertIsNotNone(spec)
+        self.assertEqual([{"key": "collections", "required": ["products"]}], spec["dependencies"])
+        flat = " ".join(generate.schema_to_struct("ListProductsResponse", composed).split())
+        self.assertIn('Collections []string `json:"collections,omitzero"`', flat)
+        self.assertIn('Products []CanonicalProduct `json:"products,omitzero"`', flat)
+        source = generate.flat_union_methods("ListProductsResponse", composed, spec)
+        self.assertIn("if r.Collections != nil {", source)
+        self.assertIn('if r.Products == nil && !reported("products") {', source)
+
+        # The schema form is a rule it does not model, so that bump stops here.
+        composed["dependencies"] = {"collections": {"required": ["products"]}}
+        self.assertIsNone(generate.flat_required_union(composed))
 
 
 if __name__ == "__main__":

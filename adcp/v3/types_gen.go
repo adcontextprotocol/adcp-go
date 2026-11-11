@@ -8293,6 +8293,110 @@ func ParseOptimizationMetric(s string) (OptimizationMetric, error) {
 	return "", fmt.Errorf("unknown OptimizationMetric value")
 }
 
+// ProductField enum values
+type ProductField = string
+
+const (
+	ProductFieldProductID                  ProductField = "product_id"
+	ProductFieldName                       ProductField = "name"
+	ProductFieldDescription                ProductField = "description"
+	ProductFieldPublisherProperties        ProductField = "publisher_properties"
+	ProductFieldChannels                   ProductField = "channels"
+	ProductFieldVideoPlacementTypes        ProductField = "video_placement_types"
+	ProductFieldAudioDistributionTypes     ProductField = "audio_distribution_types"
+	ProductFieldSponsoredPlacementTypes    ProductField = "sponsored_placement_types"
+	ProductFieldSocialPlacementSurfaces    ProductField = "social_placement_surfaces"
+	ProductFieldFormatOptions              ProductField = "format_options"
+	ProductFieldPlacements                 ProductField = "placements"
+	ProductFieldDeliveryType               ProductField = "delivery_type"
+	ProductFieldExclusivity                ProductField = "exclusivity"
+	ProductFieldPricingOptions             ProductField = "pricing_options"
+	ProductFieldForecast                   ProductField = "forecast"
+	ProductFieldReportingCapabilities      ProductField = "reporting_capabilities"
+	ProductFieldMeasurementTerms           ProductField = "measurement_terms"
+	ProductFieldPerformanceStandards       ProductField = "performance_standards"
+	ProductFieldCatalogTypes               ProductField = "catalog_types"
+	ProductFieldSignalTargetingAllowed     ProductField = "signal_targeting_allowed"
+	ProductFieldSignalTargetingRules       ProductField = "signal_targeting_rules"
+	ProductFieldDemographicTargeting       ProductField = "demographic_targeting"
+	ProductFieldOverlaySupport             ProductField = "overlay_support"
+	ProductFieldCollections                ProductField = "collections"
+	ProductFieldCollectionTargetingAllowed ProductField = "collection_targeting_allowed"
+	ProductFieldMediaBuySupport            ProductField = "media_buy_support"
+	ProductFieldAudienceEvidence           ProductField = "audience_evidence"
+	ProductFieldAudienceEvidenceSelections ProductField = "audience_evidence_selections"
+	ProductFieldMaxOptimizationGoals       ProductField = "max_optimization_goals"
+	ProductFieldCatalogMatch               ProductField = "catalog_match"
+	ProductFieldListApplications           ProductField = "list_applications"
+	ProductFieldBriefRelevance             ProductField = "brief_relevance"
+	ProductFieldTargetingResolution        ProductField = "targeting_resolution"
+	ProductFieldAcceptancePolicyProfileIDs ProductField = "acceptance_policy_profile_ids"
+	ProductFieldIdentity                   ProductField = "identity"
+	ProductFieldExecutionRequirements      ProductField = "execution_requirements"
+	ProductFieldExpiresAt                  ProductField = "expires_at"
+	ProductFieldAllowedActions             ProductField = "allowed_actions"
+)
+
+// KnownProductFieldValues returns the current schema-defined values for ProductField.
+func KnownProductFieldValues() []ProductField {
+	return []ProductField{ProductFieldProductID, ProductFieldName, ProductFieldDescription, ProductFieldPublisherProperties, ProductFieldChannels, ProductFieldVideoPlacementTypes, ProductFieldAudioDistributionTypes, ProductFieldSponsoredPlacementTypes, ProductFieldSocialPlacementSurfaces, ProductFieldFormatOptions, ProductFieldPlacements, ProductFieldDeliveryType, ProductFieldExclusivity, ProductFieldPricingOptions, ProductFieldForecast, ProductFieldReportingCapabilities, ProductFieldMeasurementTerms, ProductFieldPerformanceStandards, ProductFieldCatalogTypes, ProductFieldSignalTargetingAllowed, ProductFieldSignalTargetingRules, ProductFieldDemographicTargeting, ProductFieldOverlaySupport, ProductFieldCollections, ProductFieldCollectionTargetingAllowed, ProductFieldMediaBuySupport, ProductFieldAudienceEvidence, ProductFieldAudienceEvidenceSelections, ProductFieldMaxOptimizationGoals, ProductFieldCatalogMatch, ProductFieldListApplications, ProductFieldBriefRelevance, ProductFieldTargetingResolution, ProductFieldAcceptancePolicyProfileIDs, ProductFieldIdentity, ProductFieldExecutionRequirements, ProductFieldExpiresAt, ProductFieldAllowedActions}
+}
+
+// IsKnownProductField reports whether v is one of the current schema-defined ProductField values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownProductField(v ProductField) bool {
+	switch v {
+	case ProductFieldProductID, ProductFieldName, ProductFieldDescription, ProductFieldPublisherProperties, ProductFieldChannels, ProductFieldVideoPlacementTypes, ProductFieldAudioDistributionTypes, ProductFieldSponsoredPlacementTypes, ProductFieldSocialPlacementSurfaces, ProductFieldFormatOptions, ProductFieldPlacements, ProductFieldDeliveryType, ProductFieldExclusivity, ProductFieldPricingOptions, ProductFieldForecast, ProductFieldReportingCapabilities, ProductFieldMeasurementTerms, ProductFieldPerformanceStandards, ProductFieldCatalogTypes, ProductFieldSignalTargetingAllowed, ProductFieldSignalTargetingRules, ProductFieldDemographicTargeting, ProductFieldOverlaySupport, ProductFieldCollections, ProductFieldCollectionTargetingAllowed, ProductFieldMediaBuySupport, ProductFieldAudienceEvidence, ProductFieldAudienceEvidenceSelections, ProductFieldMaxOptimizationGoals, ProductFieldCatalogMatch, ProductFieldListApplications, ProductFieldBriefRelevance, ProductFieldTargetingResolution, ProductFieldAcceptancePolicyProfileIDs, ProductFieldIdentity, ProductFieldExecutionRequirements, ProductFieldExpiresAt, ProductFieldAllowedActions:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseProductField returns s as ProductField when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseProductField(s string) (ProductField, error) {
+	v := ProductField(s)
+	if IsKnownProductField(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ProductField value")
+}
+
+// ListProductsResponseOutcome — Whether this response carries a product page or confirms that the selected
+type ListProductsResponseOutcome = string
+
+const (
+	ListProductsResponseOutcomeListed    ListProductsResponseOutcome = "listed"
+	ListProductsResponseOutcomeUnchanged ListProductsResponseOutcome = "unchanged"
+)
+
+// KnownListProductsResponseOutcomeValues returns the current schema-defined values for ListProductsResponseOutcome.
+func KnownListProductsResponseOutcomeValues() []ListProductsResponseOutcome {
+	return []ListProductsResponseOutcome{ListProductsResponseOutcomeListed, ListProductsResponseOutcomeUnchanged}
+}
+
+// IsKnownListProductsResponseOutcome reports whether v is one of the current schema-defined ListProductsResponseOutcome values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownListProductsResponseOutcome(v ListProductsResponseOutcome) bool {
+	switch v {
+	case ListProductsResponseOutcomeListed, ListProductsResponseOutcomeUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseListProductsResponseOutcome returns s as ListProductsResponseOutcome when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseListProductsResponseOutcome(s string) (ListProductsResponseOutcome, error) {
+	v := ListProductsResponseOutcome(s)
+	if IsKnownListProductsResponseOutcome(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ListProductsResponseOutcome value")
+}
+
 // --- Union helper types ---
 
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
@@ -11653,6 +11757,12 @@ type GetProductsIncompleteItem struct {
 	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time is expected to resolve this scope. Allows the buyer
 }
 
+type ListProductsIncompleteItem struct {
+	Scope         string    `json:"scope"`
+	Description   string    `json:"description"`
+	EstimatedWait *Duration `json:"estimated_wait,omitempty"`
+}
+
 type SyncPlansPlan struct {
 	PlanID           string                    `json:"plan_id"`                     // Plan identifier.
 	Status           string                    `json:"status"`                      // Sync result status. 'active' means sync succeeded; 'error' means sync failed.
@@ -13001,6 +13111,83 @@ type GetProductsResponse struct {
 	Unchanged              *bool                              `json:"unchanged,omitempty"`                // Present and `true` ONLY on wholesale-mode responses when the request carried
 	Sandbox                *bool                              `json:"sandbox,omitempty"`                  // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                                `json:"ext,omitempty"`
+}
+
+// ListProductsRequest — Read seller offers with structured discovery criteria. When criteria includes catalog, provide
+type ListProductsRequest struct {
+	AdcpVersion            string                    `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                      `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                    `json:"idempotency_key,omitempty"` // Optional replay key accepted uniformly on read calls.
+	ContextID              string                    `json:"context_id,omitempty"`      // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                       `json:"context,omitempty"`
+	GovernanceContext      string                    `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"` // Uniform per-call envelope field accepted for SDK compatibility. This does not
+	Account                *CanonicalAccountRef      `json:"account,omitempty"`                  // Account scope for pricing and availability. A natural-key account is the
+	Brand                  *BrandKey                 `json:"brand,omitempty"`
+	Criteria               *ProductDiscoveryCriteria `json:"criteria,omitempty"`
+	Fields                 []ProductField            `json:"fields,omitempty"`
+	Cursor                 string                    `json:"cursor,omitempty"`
+	MaxResults             int                       `json:"max_results,omitempty"`
+	IfFeedVersion          string                    `json:"if_feed_version,omitempty"`    // Opaque feed version returned by a prior list_products response or wholesale
+	IfPricingVersion       string                    `json:"if_pricing_version,omitempty"` // Opaque pricing version returned by a prior list_products response. Valid only
+}
+
+// ListProductsResponse — Canonical product offers and continuation state. Every product carries product_id and name; other
+type ListProductsResponse struct {
+	Outcome ListProductsResponseOutcome `json:"outcome"` // Whether this response carries a product page or confirms that the selected
+	// For listed, send a non-nil empty slice for an empty value; nil omits the key and Validate reports it.
+	Products       []CanonicalProduct           `json:"products,omitzero"`
+	NextCursor     string                       `json:"next_cursor,omitempty"`     // Cursor for the next page. Omitted when this is the last page.
+	FeedVersion    string                       `json:"feed_version"`              // Opaque version of the selected offer feed. For wholesale webhook consumers
+	PricingVersion string                       `json:"pricing_version,omitempty"` // Opaque version of the selected pricing layer.
+	CacheScope     string                       `json:"cache_scope"`
+	Incomplete     []ListProductsIncompleteItem `json:"incomplete,omitempty"` // Usable partial response with explicitly missing product-list scopes.
+	Replayed       *bool                        `json:"replayed,omitempty"`
+	Context        any                          `json:"context,omitempty"`
+	Ext            any                          `json:"ext,omitempty"`
+}
+
+// Validate checks what the oneOf in ListProductsResponse's schema adds to its field types:
+// the fields every outcome requires, then the fields the outcome in
+// hand requires or forbids. ListProductsResponse is one flat struct, so Go's zero
+// values cannot enforce them. An empty string counts as missing, which is
+// stricter than the schema (it only requires the key) and matches the other
+// validators in this package; a nil slice or map is missing, an empty one is
+// present. It is opt-in and forward-compatible: a value outside the current
+// enum is accepted (only the shared fields are checked for it) unless
+// WithStrictEnums is supplied, which reports it.
+func (r ListProductsResponse) Validate(opts ...ValidationOption) []ValidationIssue {
+	cfg := newValidationConfig(opts)
+	var issues []ValidationIssue
+	if r.Outcome == "" {
+		issues = appendRequired(issues, "outcome")
+	}
+	if r.FeedVersion == "" {
+		issues = appendRequired(issues, "feed_version")
+	}
+	if r.CacheScope == "" {
+		issues = appendRequired(issues, "cache_scope")
+	}
+	if cfg.strictEnums && r.CacheScope != "" {
+		switch r.CacheScope {
+		case "public", "account":
+		default:
+			issues = appendUnknownEnum(issues, "cache_scope")
+		}
+	}
+	switch r.Outcome {
+	case ListProductsResponseOutcomeListed:
+		if r.Products == nil {
+			issues = appendRequired(issues, "products")
+		}
+	case ListProductsResponseOutcomeUnchanged:
+		issues = appendUnsupportedIfSet(issues, "products", r.Products != nil)
+	default:
+		if cfg.strictEnums && r.Outcome != "" {
+			issues = appendUnknownVariant(issues, "outcome")
+		}
+	}
+	return issues
 }
 
 // CreateMediaBuyRequest — Deprecated AdCP 3.x compatibility request for creating a MediaBuy. New 3.2 callers use
