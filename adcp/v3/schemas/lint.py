@@ -1192,52 +1192,60 @@ def optional_bool_pointer_candidate(json_name, prop, required_set):
     return prop.get('type') == 'boolean'
 
 
-def _branch_mentions(branch, json_name):
-    forbidden = (branch.get('not') or {}).get('required') or []
-    return (
-        json_name in (branch.get('properties') or {})
-        or json_name in (branch.get('required') or [])
-        or json_name in forbidden
-    )
-
-
 def _branch_pins_true(branch, json_name):
     prop = (branch.get('properties') or {}).get(json_name)
     return isinstance(prop, dict) and prop.get('const') is True
 
 
 def _branch_forbids(branch, json_name):
+    """True when no value of `json_name` can satisfy the branch.
+
+    The branch lists it under `not.required`, gives it the false schema, or is
+    closed (`additionalProperties: false`) without declaring it.
+    """
     forbidden = (branch.get('not') or {}).get('required') or []
-    prop = (branch.get('properties') or {}).get(json_name)
-    return json_name in forbidden or prop is False
+    properties = branch.get('properties') or {}
+    return (
+        json_name in forbidden
+        or properties.get(json_name) is False
+        or (
+            branch.get('additionalProperties') is False
+            and json_name not in properties
+        )
+    )
 
 
 def bool_false_is_omission(json_name, prop, schema):
     """True when the schema leaves an explicit false no meaning of its own.
 
-    The property is `const: true`, or the schema pins it to true in a
-    oneOf/anyOf/allOf branch and every branch that mentions it either pins it
-    true or forbids it. False is then invalid wherever it can be written, and
-    omission is the only way to say it. A boolean with a default, or one a
-    branch leaves free, is not waived: false and omission can differ, and
-    generated structs make the same field a *bool.
+    The property is `const: true`, or a conjunct (`allOf`) pins it to true, or
+    every branch of a oneOf/anyOf pins it true, forbids it, or is closed without
+    it, and at least one pins it. A branch that does not mention the property
+    but stays open still admits an explicit false, so it blocks the waiver.
+    Omission is then the only way to say false. A boolean with a default, or
+    one a branch leaves free, is not waived: false and omission can differ,
+    and generated structs make the same field a *bool.
     """
     if prop.get('const') is True:
         return True
-    branches = [
-        branch
-        for key in ('oneOf', 'anyOf', 'allOf')
-        for branch in schema.get(key, [])
-        if isinstance(branch, dict) and _branch_mentions(branch, json_name)
-    ]
-    return (
-        bool(branches)
-        and all(
-            _branch_pins_true(b, json_name) or _branch_forbids(b, json_name)
-            for b in branches
-        )
-        and any(_branch_pins_true(b, json_name) for b in branches)
-    )
+    if any(
+        isinstance(branch, dict) and _branch_pins_true(branch, json_name)
+        for branch in schema.get('allOf', [])
+    ):
+        return True
+    for key in ('oneOf', 'anyOf'):
+        branches = [b for b in schema.get(key, []) if isinstance(b, dict)]
+        if not branches:
+            continue
+        if (
+            all(
+                _branch_pins_true(b, json_name) or _branch_forbids(b, json_name)
+                for b in branches
+            )
+            and any(_branch_pins_true(b, json_name) for b in branches)
+        ):
+            return True
+    return False
 
 
 def optional_bool_pointer_reports(go_structs):

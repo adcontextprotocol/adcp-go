@@ -1477,6 +1477,45 @@ class WaiverDerivationLintTest(unittest.TestCase):
         schema = {"oneOf": [{"properties": {"f": {"const": False}}}, {"properties": {"f": {"const": True}}}]}
         self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
 
+    def test_an_open_branch_that_does_not_mention_the_boolean_keeps_its_pointer(self):
+        # An open branch admits an explicit false without saying so.
+        schema = {"oneOf": [
+            {"required": ["f"], "properties": {"f": {"const": True}}},
+            {"required": ["g"], "properties": {"g": {"type": "string"}}},
+        ]}
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_closed_branch_that_does_not_mention_the_boolean_forbids_it(self):
+        schema = {"oneOf": [
+            {"required": ["f"], "properties": {"f": {"const": True}}},
+            {
+                "required": ["g"],
+                "properties": {"g": {"type": "string"}},
+                "additionalProperties": False,
+            },
+        ]}
+        self.assertTrue(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_closed_branch_that_declares_the_boolean_does_not_forbid_it(self):
+        schema = {"oneOf": [
+            {"required": ["f"], "properties": {"f": {"const": True}}},
+            {"properties": {"f": {"type": "boolean"}}, "additionalProperties": False},
+        ]}
+        self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_a_conjunct_that_pins_the_boolean_needs_no_pointer(self):
+        schema = {"allOf": [{"properties": {"f": {"const": True}}}, {"required": ["g"]}]}
+        self.assertTrue(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
+
+    def test_an_anyof_is_held_to_the_same_rule(self):
+        pinned = {"required": ["f"], "properties": {"f": {"const": True}}}
+        self.assertTrue(lint.bool_false_is_omission(
+            "f", {"type": "boolean"}, {"anyOf": [pinned, {"not": {"required": ["f"]}}]},
+        ))
+        self.assertFalse(lint.bool_false_is_omission(
+            "f", {"type": "boolean"}, {"anyOf": [pinned, {"required": ["g"]}]},
+        ))
+
     def test_branches_that_only_forbid_the_boolean_do_not_waive_it(self):
         schema = {"oneOf": [{"not": {"required": ["f"]}}]}
         self.assertFalse(lint.bool_false_is_omission("f", {"type": "boolean"}, schema))
