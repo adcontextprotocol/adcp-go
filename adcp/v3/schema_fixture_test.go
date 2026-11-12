@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +34,17 @@ import (
 // The reference is a path under adcp/v3/schemas, optionally followed by a JSON
 // Pointer into that file. Schemas are read from disk only: every $ref resolves
 // through the bundle's own $id URLs, never the network.
+//
+// Three lists keep the helper from going quiet, and each fails closed:
+//   - re2Translations names, by schema pointer, each of the bundle's patterns
+//     that Go's RE2 cannot compile and gives the RE2 pattern used in its place.
+//     A pattern that does not compile and is not listed fails the load, and
+//     with it every fixture whose schema reaches it.
+//   - knownInvalidFixtures names the fixtures that are invalid today because
+//     of the Go types and not the fixture. Each entry carries an issue link and
+//     the error it must still produce; it fails once the fixture validates.
+//   - Without the bundle, the helper skips on a developer machine and fails
+//     under CI (the CI environment variable), where download.sh has run.
 
 const (
 	schemaBundleDir = "schemas"
@@ -41,15 +54,28 @@ const (
 // errSchemaBundleMissing reports that adcp/v3/schemas/download.sh has not run.
 var errSchemaBundleMissing = errors.New("schemas not downloaded; run adcp/v3/schemas/download.sh")
 
-// assertSchemaValid fails t when raw is not valid against ref. Without a
-// downloaded bundle it only logs, so the caller's other assertions still run,
-// as the other tests that read schemas/ skip rather than fail; CI downloads
-// the bundle before go test.
+// runsUnderCI reports whether the tests run in a CI job, which sets CI.
+func runsUnderCI() bool { return os.Getenv("CI") != "" }
+
+// assertSchemaValid fails t when raw is not valid against ref, except for a
+// fixture listed in knownInvalidFixtures, which must still fail as recorded.
+// Without a downloaded bundle it only logs on a developer machine, so the
+// caller's other assertions still run, as the other tests that read schemas/
+// skip rather than fail; under CI, where download.sh runs before go test, a
+// missing bundle fails the test instead of leaving every fixture unchecked.
 func assertSchemaValid(t testing.TB, ref string, raw []byte) {
 	t.Helper()
 	err := validateAgainstSchema(ref, raw)
 	if errors.Is(err, errSchemaBundleMissing) {
+		if runsUnderCI() {
+			t.Fatalf("%s: not validated under CI: %v", ref, err)
+		}
 		t.Logf("%s: not validated: %v", ref, err)
+		return
+	}
+	if known, ok := knownInvalidFixtures[knownInvalidKey(t, ref)]; ok {
+		assertKnownInvalid(t, ref, raw, err, known)
+
 		return
 	}
 	if err != nil {
@@ -57,17 +83,169 @@ func assertSchemaValid(t testing.TB, ref string, raw []byte) {
 	}
 }
 
-// requireSchemaBundle skips a test that is only about the bundle.
+// assertEncodingSchemaValid encodes v as JSON, as a tool result's structured
+// content is encoded on the wire, and checks it with assertSchemaValid.
+func assertEncodingSchemaValid(t testing.TB, ref string, v any) {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	require.NoError(t, err)
+	assertSchemaValid(t, ref, raw)
+}
+
+// requireSchemaBundle skips a test that is only about the bundle, and fails
+// it under CI.
 func requireSchemaBundle(t testing.TB) *schemaBundle {
 	t.Helper()
 	b, err := loadSchemaBundle()
 	if errors.Is(err, errSchemaBundleMissing) {
+		if runsUnderCI() {
+			t.Fatalf("%v", err)
+		}
 		t.Skip(err.Error())
 	}
 	require.NoError(t, err)
 
 	return b
 }
+
+// knownInvalidFixturesBundle is the bundle version the entries below were
+// recorded against. TestKnownInvalidFixturesWellFormed fails when schemas/
+// holds another version, so a bundle bump re-reads every entry: a failure that
+// the new bundle fixes or moves is removed or re-recorded, never left behind.
+const knownInvalidFixturesBundle = "3.2.2"
+
+// knownInvalidFixture records one fixture that does not validate because of
+// the Go types, not because the fixture is wrong.
+//
+// jsonschema-go reports only the first error, so an entry that merely expected
+// the fixture to fail would stop checking everything else in it. With two
+// defects, which one is reported first is random, because it follows the
+// iteration order of the schema's properties map; the second-defect case in
+// TestAssertSchemaValidReports relies on that. assertKnownInvalid therefore
+// requires two things: the raw fixture fails with exactly Error, and the
+// fixture validates in full once Patch has repaired that one defect.
+type knownInvalidFixture struct {
+	Issue string                   // link to the issue that tracks the defect; an unowned entry stays forever
+	Error string                   // the exact validation error of the raw fixture, as schemaErrorText prints it
+	Patch func(doc map[string]any) // repairs the defect named by Error and nothing else
+}
+
+// Issues that track the entries below.
+const (
+	issueEmptyProductsList      = "https://github.com/adcontextprotocol/adcp-go/issues/611"
+	issueResponseEnvelopeStatus = "https://github.com/adcontextprotocol/adcp-go/issues/612"
+)
+
+func setField(name string, value any) func(map[string]any) {
+	return func(doc map[string]any) { doc[name] = value }
+}
+
+// knownInvalidFixtures maps "<test name> <schema ref>" to the defect that makes
+// the fixture invalid. The list can only shrink: an entry whose fixture
+// validates fails its test until it is removed. The fixtures stay as they are,
+// so fixing the Go type turns them green and the entry goes with it.
+var knownInvalidFixtures = map[string]knownInvalidFixture{
+	// GetProductsResponse.Products is `omitempty`, but a standard get_products
+	// response must carry products, empty when nothing matches: the schema
+	// requires it in the else branch that follows status rejected and failed.
+	// The three fixtures below encode an empty list.
+	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_proposals media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_incomplete media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	"TestGetProductsIncompleteRoundTrip media-buy/get-products-response.json": {
+		Issue: issueEmptyProductsList,
+		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
+		Patch: setField("products", []any{}),
+	},
+	// SDK response builders emit no or an empty envelope status, which the
+	// response schema requires of every response: MediaBuyResponse sends a
+	// create_media_buy success with none (ProductsResponse and
+	// CapabilitiesResponse inject it, and CreateMediaBuySuccess has no field
+	// for it); MediaBuysResponse builds from a media buy list alone, so status
+	// is encoded as ""; and comply_test_controller results carry none.
+	"TestMediaBuyResponseUsesCreateSuccessFields media-buy/create-media-buy-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating media-buy/create-media-buy-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestMediaBuysResponseNilListEmitsEmptyArray media-buy/get-media-buys-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating media-buy/get-media-buys-response.json: validating /allOf/1: validating core/protocol-envelope.json: validating /properties/status: validating enums/task-status.json: enum:  does not equal any of: [submitted working input-required completed canceled failed rejected auth-required unknown]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestListScenarios compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestUnknownScenario compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestMissingParams compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestForceAccountStatus compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	},
+	"TestControllerErrorHandling compliance/comply-test-controller-response.json": {
+		Issue: issueResponseEnvelopeStatus,
+		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
+		Patch: setField("status", "completed"),
+	}}
+
+// schemaErrorText is a validation error without the bundle's base URL, so an
+// entry's Error does not change with the bundle version it was recorded on.
+func schemaErrorText(err error) string {
+	text := err.Error()
+	if b, bundleErr := loadSchemaBundle(); bundleErr == nil {
+		text = strings.ReplaceAll(text, b.base, "")
+	}
+
+	return text
+}
+
+// assertKnownInvalid checks a fixture on knownInvalidFixtures; err is what
+// validating raw against ref returned.
+func assertKnownInvalid(t testing.TB, ref string, raw []byte, err error, known knownInvalidFixture) {
+	t.Helper()
+	if err == nil {
+		t.Errorf("fixture is valid against %s now; remove its entry from knownInvalidFixtures (%s)", ref, known.Issue)
+		return
+	}
+	if got := schemaErrorText(err); got != known.Error {
+		t.Errorf("fixture is invalid against %s, but not as recorded (%s).\nrecorded: %s\ngot:      %s", ref, known.Issue, known.Error, got)
+		return
+	}
+	var doc map[string]any
+	if jsonErr := json.Unmarshal(raw, &doc); jsonErr != nil {
+		t.Errorf("fixture is not a JSON object: %v", jsonErr)
+		return
+	}
+	known.Patch(doc)
+	patched, jsonErr := json.Marshal(doc)
+	if jsonErr != nil {
+		t.Errorf("patched fixture does not encode: %v", jsonErr)
+		return
+	}
+	if patchedErr := validateAgainstSchema(ref, patched); patchedErr != nil {
+		t.Errorf("fixture has more than the recorded defect: it is still invalid against %s once the entry's Patch is applied (%s):\n%v", ref, known.Issue, patchedErr)
+	}
+}
+
+func knownInvalidKey(t testing.TB, ref string) string { return t.Name() + " " + ref }
 
 func validateAgainstSchema(ref string, raw []byte) error {
 	b, err := loadSchemaBundle()
@@ -179,6 +357,16 @@ func readTranslatedSchema(rel string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	return translateSchema(rel, raw, re2Translations)
+}
+
+// translateSchema applies translations to the schema document raw, which is the
+// bundle file rel. It fails closed: a pattern that does not compile as RE2 and
+// is not listed for its location, or whose text differs from the listed
+// original, is an error, and so is a patternProperties key that does not
+// compile.
+func translateSchema(rel string, raw []byte, translations []re2Translation) ([]byte, error) {
 	// UseNumber keeps numbers as written through the re-encoding below.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -193,7 +381,7 @@ func readTranslatedSchema(rel string) ([]byte, error) {
 		if _, err := regexp.Compile(p); err == nil {
 			return
 		}
-		tr, ok := re2TranslationAt(at)
+		tr, ok := re2TranslationAt(translations, at)
 		if !ok || tr.Original != p {
 			errs = append(errs, fmt.Errorf("%s: pattern %q does not compile as Go RE2 and has no entry in re2Translations", at, p))
 			return
@@ -399,8 +587,8 @@ var re2Translations = []re2Translation{
 	},
 }
 
-func re2TranslationAt(at string) (re2Translation, bool) {
-	for _, tr := range re2Translations {
+func re2TranslationAt(translations []re2Translation, at string) (re2Translation, bool) {
+	for _, tr := range translations {
 		if slices.Contains(tr.At, at) {
 			return tr, true
 		}
@@ -637,4 +825,221 @@ func TestAssertSchemaValidRejectsKnownBadFixtures(t *testing.T) {
 		require.NoError(t, err)
 		assert.NoError(t, validateAgainstSchema(ref, requestShaped))
 	})
+}
+
+// TestTranslateSchemaFailsClosed shows that the loader never skips a pattern
+// it cannot compile: only a pattern listed at its own location, with its own
+// text, is translated, and anything else fails the load.
+func TestTranslateSchemaFailsClosed(t *testing.T) {
+	const lookahead = `^(?!x)a$`
+	doc := func(pattern string) []byte {
+		return []byte(`{"type":"object","properties":{"a":{"type":"string","pattern":` + strconv.Quote(pattern) + `}}}`)
+	}
+	listed := re2Translation{
+		Original: lookahead,
+		RE2:      `^a$`,
+		Reason:   "the lookahead excludes only a string the rest rejects",
+		At:       []string{"x.json#/properties/a/pattern"},
+	}
+
+	t.Run("an unlisted pattern fails", func(t *testing.T) {
+		_, err := translateSchema("x.json", doc(lookahead), nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "x.json#/properties/a/pattern")
+		assert.Contains(t, err.Error(), "no entry in re2Translations")
+	})
+	t.Run("an entry for another location does not cover it", func(t *testing.T) {
+		other := listed
+		other.At = []string{"x.json#/properties/b/pattern"}
+		_, err := translateSchema("x.json", doc(lookahead), []re2Translation{other})
+		require.Error(t, err)
+	})
+	t.Run("an entry for another file does not cover it", func(t *testing.T) {
+		other := listed
+		other.At = []string{"y.json#/properties/a/pattern"}
+		_, err := translateSchema("x.json", doc(lookahead), []re2Translation{other})
+		require.Error(t, err)
+	})
+	t.Run("a listed location whose pattern changed fails", func(t *testing.T) {
+		_, err := translateSchema("x.json", doc(`^(?!y)a$`), []re2Translation{listed})
+		require.Error(t, err)
+	})
+	t.Run("a patternProperties key that does not compile fails", func(t *testing.T) {
+		raw := []byte(`{"type":"object","patternProperties":{"^(?!x)a$":{"type":"string"}}}`)
+		_, err := translateSchema("x.json", raw, []re2Translation{listed})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "patternProperties key")
+	})
+	t.Run("a listed pattern is translated", func(t *testing.T) {
+		out, err := translateSchema("x.json", doc(lookahead), []re2Translation{listed})
+		require.NoError(t, err)
+		assert.Contains(t, string(out), `"^a$"`)
+		assert.NotContains(t, string(out), "(?!")
+	})
+	t.Run("a pattern that compiles is left alone", func(t *testing.T) {
+		out, err := translateSchema("x.json", doc(`^a+$`), nil)
+		require.NoError(t, err)
+		assert.Contains(t, string(out), `"^a+$"`)
+	})
+	t.Run("pattern text inside example data is not a keyword", func(t *testing.T) {
+		raw := []byte(`{"type":"object","examples":[{"pattern":"^(?!x)a$"}],"properties":{"a":{"const":{"pattern":"(?=x)"}}}}`)
+		_, err := translateSchema("x.json", raw, nil)
+		require.NoError(t, err)
+	})
+}
+
+// recordingT stands in for a test, so a test can assert what assertSchemaValid
+// and requireSchemaBundle report. Fatal and skip calls end the goroutine they
+// run on, as they end a test, so use it through runRecorded.
+type recordingT struct {
+	testing.TB
+	name    string
+	errors  []string
+	fatals  []string
+	skipped bool
+}
+
+func (r *recordingT) Helper()             {}
+func (r *recordingT) Name() string        { return r.name }
+func (r *recordingT) Logf(string, ...any) {}
+func (r *recordingT) Errorf(f string, a ...any) {
+	r.errors = append(r.errors, fmt.Sprintf(f, a...))
+}
+
+func (r *recordingT) Fatalf(f string, a ...any) {
+	r.fatals = append(r.fatals, fmt.Sprintf(f, a...))
+	runtime.Goexit()
+}
+
+func (r *recordingT) Skip(a ...any) {
+	r.skipped = true
+	runtime.Goexit()
+}
+
+func (r *recordingT) failed() bool { return len(r.errors) > 0 || len(r.fatals) > 0 }
+
+// runRecorded runs fn against a recordingT on its own goroutine, and returns
+// once fn has returned or ended the goroutine with a fatal or a skip.
+func runRecorded(name string, fn func(rec *recordingT)) *recordingT {
+	rec := &recordingT{name: name}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn(rec)
+	}()
+	<-done
+
+	return rec
+}
+
+// TestAssertSchemaValidReports shows what assertSchemaValid does with a fixture
+// that is valid, one that is invalid, and the fixtures on the known-failures
+// list.
+func TestAssertSchemaValidReports(t *testing.T) {
+	requireSchemaBundle(t)
+	const ref = "core/forecast-rate-range.json"
+	valid := []byte(`{"low":0,"mid":0.25,"high":1}`)
+	invalid := []byte(`{"low":0,"mid":"high","high":1}`)
+	twoDefects := []byte(`{"low":0,"mid":"high","high":"x"}`)
+
+	recorded := func(raw []byte) string {
+		err := validateAgainstSchema(ref, raw)
+		require.Error(t, err)
+
+		return schemaErrorText(err)
+	}
+	check := func(name string, raw []byte, known *knownInvalidFixture) *recordingT {
+		return runRecorded(name, func(rec *recordingT) {
+			if known != nil {
+				knownInvalidFixtures[knownInvalidKey(rec, ref)] = *known
+				defer delete(knownInvalidFixtures, knownInvalidKey(rec, ref))
+			}
+			assertSchemaValid(rec, ref, raw)
+		})
+	}
+	fixMid := setField("mid", 0.25)
+	entry := func(raw []byte, patch func(map[string]any)) *knownInvalidFixture {
+		return &knownInvalidFixture{Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1", Error: recorded(raw), Patch: patch}
+	}
+
+	assert.False(t, check("valid", valid, nil).failed())
+	assert.True(t, check("invalid", invalid, nil).failed(), "an invalid fixture must fail")
+
+	assert.False(t, check("known", invalid, entry(invalid, fixMid)).failed(),
+		"a listed fixture that fails as recorded and validates once patched passes")
+	assert.True(t, check("known but valid", valid, entry(invalid, fixMid)).failed(),
+		"a listed fixture that validates must be removed from the list")
+	assert.True(t, check("known, other reason", invalid, &knownInvalidFixture{Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1", Error: "no such defect", Patch: fixMid}).failed(),
+		"a listed fixture must fail with exactly the recorded error")
+	assert.True(t, check("known, error recorded as a part", invalid, &knownInvalidFixture{Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1", Error: "type", Patch: fixMid}).failed(),
+		"a part of the error is not the error")
+	assert.True(t, check("known, patch repairs nothing", invalid, entry(invalid, func(map[string]any) {})).failed(),
+		"a patch that does not repair the fixture fails")
+
+	// The fixture has a second defect behind the recorded one. jsonschema-go
+	// reports either at random, so take a run that reports the recorded one: the
+	// raw error then matches, and only the patched fixture shows the other.
+	want := recorded(invalid)
+	var rawErr error
+	for i := 0; i < 500 && (rawErr == nil || schemaErrorText(rawErr) != want); i++ {
+		rawErr = validateAgainstSchema(ref, twoDefects)
+	}
+	require.Equal(t, want, schemaErrorText(rawErr), "the recorded defect was not reported in 500 runs")
+	known := knownInvalidFixture{Issue: "https://github.com/adcontextprotocol/adcp-go/issues/1", Error: want, Patch: fixMid}
+	rec := runRecorded("known, second defect", func(rec *recordingT) { assertKnownInvalid(rec, ref, twoDefects, rawErr, known) })
+	assert.True(t, rec.failed(), "a listed fixture with a defect beyond the recorded one fails")
+}
+
+// TestBundleMissing shows how the helpers behave without the bundle: they fail
+// under CI, where download.sh has run, and skip or log elsewhere.
+func TestBundleMissing(t *testing.T) {
+	original := loadSchemaBundle
+	t.Cleanup(func() { loadSchemaBundle = original })
+	loadSchemaBundle = func() (*schemaBundle, error) { return nil, errSchemaBundleMissing }
+	fixture := []byte(`{}`)
+
+	t.Run("under CI the fixture helper fails", func(t *testing.T) {
+		t.Setenv("CI", "1")
+		rec := runRecorded("ci", func(rec *recordingT) { assertSchemaValid(rec, "core/forecast-rate-range.json", fixture) })
+		assert.Len(t, rec.fatals, 1)
+		assert.False(t, rec.skipped)
+	})
+	t.Run("under CI the bundle requirement fails", func(t *testing.T) {
+		t.Setenv("CI", "1")
+		rec := runRecorded("ci", func(rec *recordingT) { requireSchemaBundle(rec) })
+		assert.Len(t, rec.fatals, 1)
+		assert.False(t, rec.skipped)
+	})
+	t.Run("elsewhere the fixture helper only logs", func(t *testing.T) {
+		t.Setenv("CI", "")
+		rec := runRecorded("local", func(rec *recordingT) { assertSchemaValid(rec, "core/forecast-rate-range.json", fixture) })
+		assert.False(t, rec.failed())
+		assert.False(t, rec.skipped)
+	})
+	t.Run("elsewhere the bundle requirement skips", func(t *testing.T) {
+		t.Setenv("CI", "")
+		rec := runRecorded("local", func(rec *recordingT) { requireSchemaBundle(rec) })
+		assert.False(t, rec.failed())
+		assert.True(t, rec.skipped)
+	})
+}
+
+// issueLink is the shape every knownInvalidFixtures entry must have.
+var issueLink = regexp.MustCompile(`^https://github\.com/adcontextprotocol/adcp(-go)?/issues/[1-9][0-9]*$`)
+
+// TestKnownInvalidFixturesWellFormed holds the known-failures list to its
+// rules: every entry has an issue link, a recorded error and a patch, and the
+// list was recorded against the bundle in schemas/.
+func TestKnownInvalidFixturesWellFormed(t *testing.T) {
+	version, err := os.ReadFile(filepath.Join(schemaBundleDir, "VERSION"))
+	require.NoError(t, err)
+	assert.Equal(t, strings.TrimSpace(string(version)), knownInvalidFixturesBundle,
+		"schemas/VERSION moved: re-run the fixtures on the list against the new bundle, then update knownInvalidFixturesBundle")
+
+	for key, k := range knownInvalidFixtures {
+		assert.Regexp(t, issueLink, k.Issue, "%s: every entry links the issue that tracks it", key)
+		assert.NotEmpty(t, k.Error, "%s: record the error the fixture must still produce", key)
+		assert.NotNil(t, k.Patch, "%s: give the patch that repairs the recorded defect", key)
+		assert.Contains(t, key, " ", "%s: the key is \"<test name> <schema ref>\"", key)
+	}
 }
