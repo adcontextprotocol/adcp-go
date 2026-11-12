@@ -48,188 +48,363 @@ CUSTOM_WIRE_FIELDS = {
     'CheckGovernanceCondition': {'required_value'},
 }
 
-# Types we deliberately do not diff against a named schema file:
-#   - oneOf union flatteners (Go can't express oneOf natively)
-#   - error/helper types that carry no schema
-#   - testcontroller types with no schema
-#   - response-builder "types" that are actually functions
-#   - inline item shapes whose schema is nested under a tool response
-EXEMPT = {
-    # oneOf union flatteners
-    'BrandReference', 'AccountReference', 'ActivationKey', 'SignalID',
-    # errors + helpers
-    'Error', 'ErrorOptions',
-    # testcontroller (no schema)
-    'TestControllerStore', 'StateTransition', 'SimulateDeliveryParams',
-    'ReportedSpend', 'SimulateBudgetParams', 'SimulationResult',
-    'TestControllerError',
-    # validate_input warnings: the schema requires `field` but does not declare
-    # it; types.go defines the warning from the violation shape it names.
-    'ValidateInputWarning',
-    # inputs (agent-specific helpers, schemas are inline in request schemas)
-    'EmptyInput', 'EventSourceInput', 'SignalFilters',
-    # response builders (funcs, not structs — KNOWN_TYPES collision guard)
-    'SyncCreativesResponse', 'SyncAccountsResponse', 'GovernanceResponse',
-    'ListCreativesResponse', 'PreviewCreativeResponse', 'BuildCreativeResponse',
-    'CreativeFormatsResponse', 'SignalsResponse', 'ActivateSignalResponse',
-    'SyncCatalogsResponse', 'SyncEventSourcesResponse', 'LogEventResponse',
-    'PerformanceFeedbackResponse',
-    # plan types — inline nested in sync-plans-request.json, generator cannot descend
-    'Plan', 'PlanBudget', 'PlanDelegationBudget', 'PlanPortfolioBudgetCap',
-    'HumanOverride',
-    # sync-response inline items (schemas live inside tool response schemas)
-    'AccountResult', 'AccountSetup', 'CreativeResult', 'CatalogResult',
-    'EventSourceResult', 'LogEventResult', 'GovernanceResult',
-    'GovernanceAccount', 'GovernanceAgent', 'CreativeListItem',
-    'MediaBuyListItem', 'MediaBuyData',
-    'PackageStatus', 'PackageCreativeApproval',
-    'DeliveryTotals', 'DeliveryData',
-    'ReportingPeriod', 'PreviewResult',
-    'PreviewRender', 'BuildCreativeResult', 'ProductsData',
-    # Legacy capability response wrapper also carries transport-envelope fields;
-    # migrate it separately from schema bundle upgrades.
-    'CapabilitiesData',
-    'CheckGovernanceCondition',
-    # collection response wrappers — responses with embedded payload
-    'CreateCollectionListResponse', 'GetCollectionListResponse',
-    'UpdateCollectionListResponse', 'DeleteCollectionListResponse',
-    'ListCollectionListsResponse',
-    # collection list structural types (hand-shaped, separate review)
-    'CollectionList', 'BaseCollectionSource', 'ResolvedCollection',
-    'CollectionPagination',  # no Go field holds it; GetCollectionListRequest uses CollectionRequestPagination
-    # nested shapes embedded inside other schemas — no top-level schema file
-    'BillingMeasurement',  # nested in measurement-terms.json
-    'CancellationFee',     # nested in cancellation-policy.json
-    # Render / AssetSlot intentionally deferred to the format.json rework task
-    'Render', 'AssetSlot',
-    # PublisherPropertySelector is a hand-flattened oneOf; publisher-property-
-    # selector.json is a oneOf of three variants and has no top-level properties.
-    'PublisherPropertySelector',
-    # OptimizationGoal is hand-flattened from a oneOf and preserves unknown
-    # top-level keys for replacement-update round trips.
-    'OptimizationGoal',
-    # Reporting types hand-written from core schemas
-    'ReportingStatusResult', 'ReportingReceipt', 'ReportingReceiptResult',
+# Hand-written types that are the payload of a response whose schema also lists
+# the protocol envelope (core/protocol-envelope.json). The transport adds the
+# envelope's optional properties (task_id, replayed, ...), so lint compares
+# these types with the node minus those. The envelope's required properties
+# (status) are not subtracted: nothing adds them, so a type that lacks one drops it.
+ENVELOPE_SCHEMA = 'core/protocol-envelope.json'
+ENVELOPE_PAYLOAD_TYPES = {'DeliveryData', 'ProductsData'}
+
+# Hand-written types lint does not diff against a schema. Everything else in
+# KNOWN_TYPES that is a struct in a scanned Go file is paired: through
+# generate.py's HAND_WRITTEN_SCHEMA_SPECS or HAND_WRITTEN_INLINE_SCHEMA_SPECS,
+# or by a schema file whose name PascalCases to the type. A oneOf flattener is
+# paired with its union schema, and lint compares the union of the variants'
+# properties. A name that is no struct lint scans (a response-builder func, a
+# generated type, an alias) has nothing to exempt and does not belong here;
+# validate_exempt_config fails the run on one, and on a type that is also paired.
+#
+# Two lists, by why the type is not compared:
+#   EXEMPT_NO_SCHEMA  no schema node can describe the type, ever. A reason, no
+#                     issue.
+#   EXEMPT_UNPAIRED   a node exists, or should, and pairing is blocked today.
+#                     A reason and the issue that unblocks it, as `#123` or
+#                     `owner/repo#123`, never an umbrella issue; the entry goes
+#                     when that issue closes.
+EXEMPT_NO_SCHEMA = {
+    'EmptyInput': 'argument type of tools whose request declares no properties',
+    'ErrorOptions': 'options of the Error builder, not a wire shape',
+    'TestControllerStore': 'a table of handler funcs, not a wire shape',
+    'TestControllerError': 'a Go error type, not a wire shape',
+    'SimulateDeliveryParams': (
+        'comply_test_controller `params` is one object for every scenario: its '
+        'schema declares the properties of all of them and allows more, so a '
+        'scenario\'s own shape has no schema node'
+    ),
+    'SimulateBudgetParams': 'see SimulateDeliveryParams',
 }
 
+# An issue that tracks a whole burn-down (adcp-go#564) cannot own an entry: it
+# stays open while the entries exist, which is how an entry becomes permanent.
+# Every EXEMPT_UNPAIRED and KNOWN_SCHEMA_GAPS entry names the narrower issue
+# that closes it.
+UMBRELLA_ISSUES = {'#564'}
+
+# Each owner is an issue reference; the umbrella issue is rejected as one.
+GENERATED_TYPES = '#613'
+OPTIONAL_POINTERS = '#614'
+RESPONSE_ENVELOPE_STATUS = '#612'
+UNPAIRED_TYPES = '#615'
+WIRE_BUGS = '#611'
+
+EXEMPT_UNPAIRED = {
+    'HumanOverride': (
+        'Plan.human_override has no schema node: the plan item is closed '
+        '(additionalProperties: false) and declares no such property. Removing '
+        'the field is breaking; Plan lists it in KNOWN_SCHEMA_GAPS',
+        WIRE_BUGS,
+    ),
+    'AssetSlot': (
+        'format.json assets items are a oneOf of typed asset shapes that '
+        'AssetSlot flattens; deferred to the format.json rework',
+        UNPAIRED_TYPES,
+    ),
+    'PackageStatus': (
+        'embeds Package and marshals by hand, so its wire fields are not '
+        'struct tags, which lint reads',
+        UNPAIRED_TYPES,
+    ),
+    **{
+        name: (
+            'exported but nothing in the SDK takes or returns it; it is a '
+            'subset of its schema node, and removing it is breaking',
+            UNPAIRED_TYPES,
+        )
+        for name in (
+            'BuildCreativeResult', 'CreativeListItem', 'LogEventResult',
+            'MediaBuyListItem', 'PreviewResult',
+        )
+    },
+}
+
+EXEMPT = set(EXEMPT_NO_SCHEMA) | set(EXEMPT_UNPAIRED)
+
 # Field-level drift a paired hand-written type carries today. Pairing a type in
-# generate.py's HAND_WRITTEN_SCHEMA_SPECS and taking it out of EXEMPT makes lint
-# compare it with its schema; the drift it already has is listed here, field by
-# field, so --strict passes while every gap is still printed in each run.
+# generate.py's HAND_WRITTEN_SCHEMA_SPECS makes lint compare it with its schema;
+# the drift it already has is listed here, field by field, so --strict passes
+# while every gap is still printed in each run.
 #
 #   Go type name -> finding kind -> {json field: issue that owns the gap}
 #
 # Kinds are the lists lint reports for a paired type: missing_in_go,
 # extra_in_go and required_with_omitempty (schema drift), and
 # optional_bool_pointer and optional_numeric_pointer (hand-written pointer
-# checks). Each entry names its issue as `#123` or `owner/repo#123`; #564 owns
-# what no narrower issue covers yet, and stays open while it owns entries. An
-# entry that no longer matches a finding fails lint, so the list only shrinks:
-# the PR that adds a field deletes its entry. Entries are keyed by type, so for
+# checks). Each entry names its issue as `#123` or `owner/repo#123`, never an
+# umbrella issue (UMBRELLA_ISSUES). An entry that no longer matches a finding
+# fails lint, so the list only shrinks: the PR that adds a field deletes its
+# entry. Entries are keyed by type, so for
 # a type with several HAND_WRITTEN_INLINE_SCHEMA_SPECS pointers one entry
 # covers that field on every pointer.
+#
+# The table is a baseline of one schema bundle, and bundle upgrades move it:
+# fields appear, are renamed or leave. KNOWN_SCHEMA_GAPS_BUNDLE records which
+# one; lint fails when schemas/VERSION differs, so the upgrade's PR re-reads each
+# entry against the new bundle and records the new version here.
+KNOWN_SCHEMA_GAPS_BUNDLE = '3.2.2'
+
+
+def _owned(ref, *fields):
+    """One issue owning several fields: {field: ref} for a gap-table row."""
+    return {field: ref for field in fields}
+
+
 KNOWN_SCHEMA_GAPS = {
     'AccountInput': {
-        'missing_in_go': {
-            'account': '#564',
-            'billing_entity': '#564',
-            'currency': '#564',
-            'destination_billing_entity': '#564',
-            'notification_configs': '#564',
-            'operator_identity': '#564',
-            'operator_unit': '#564',
-            'preferred_reporting_protocol': '#564',
-            'reporting_delivery_configs': '#564',
-            'revision': '#564',
-            'timezone': '#564',
-        },
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'account', 'billing_entity', 'currency', 'destination_billing_entity',
+            'notification_configs', 'operator_identity', 'operator_unit',
+            'preferred_reporting_protocol', 'reporting_delivery_configs', 'revision',
+            'timezone',
+        ),
         # Top-level account_id is not a sync_accounts property; settings-update
         # entries carry it inside `account`.
-        'extra_in_go': {
-            'account_id': '#564',
-        },
+        'extra_in_go': _owned(GENERATED_TYPES, 'account_id'),
         # lint asks for *bool on every optional boolean so an explicit false
         # survives omitempty; the schema gives sandbox no default.
-        'optional_bool_pointer': {
-            'sandbox': '#564',
-        },
+        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
+    },
+    'AccountReference': {
+        # Natural-key fields of an account: operator_unit, currency, timezone.
+        'missing_in_go': _owned(
+            WIRE_BUGS,
+            'currency', 'operator_unit', 'timezone',
+        ),
+        # lint asks for *bool on every optional boolean so an explicit false
+        # survives omitempty; changing the field type is breaking.
+        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
+    },
+    'AccountResult': {
+        # The Go item carries 9 of the schema item's 27 properties.
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'account', 'authorization', 'billing_entity', 'credit_limit', 'currency',
+            'destination_billing_entity', 'errors', 'identity_change',
+            'identity_change_preview', 'name', 'notification_configs', 'operator_unit',
+            'rate_card', 'reporting_delivery_configs', 'revision', 'sandbox',
+            'timezone', 'warnings',
+        ),
+    },
+    'BillingMeasurement': {
+        # An optional schema field the Go struct lacks.
+        'missing_in_go': _owned(GENERATED_TYPES, 'finalization_deadline_hours'),
+    },
+    'BrandReference': {
+        # countries is part of the advertiser identity key.
+        'missing_in_go': _owned(WIRE_BUGS, 'brand_kit_override', 'countries'),
+    },
+    'CancellationFee': {
+        # lint asks for a pointer on an optional number so an explicit zero
+        # survives omitempty; changing the field type is breaking.
+        'optional_numeric_pointer': _owned(OPTIONAL_POINTERS, 'amount', 'rate'),
     },
     'CatalogInput': {
-        'missing_in_go': {
-            'category': '#564',
-            'content_id_type': '#564',
-            'conversion_events': '#564',
-            'feed_field_mappings': '#564',
-            'feed_format': '#564',
-            'gtins': '#564',
-            'ids': '#564',
-            'name': '#564',
-            'query': '#564',
-            'tags': '#564',
-            'type': '#564',
-            'update_frequency': '#564',
-            'url': '#564',
-        },
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'category', 'content_id_type', 'conversion_events', 'feed_field_mappings',
+            'feed_format', 'gtins', 'ids', 'name', 'query', 'tags', 'type',
+            'update_frequency', 'url',
+        ),
+    },
+    'CatalogResult': {
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'catalog_generation', 'changes', 'errors', 'item_issues', 'items_pending',
+            'items_rejected', 'last_synced_at', 'next_fetch_at', 'platform_id',
+            'warnings',
+        ),
+        # lint asks for a pointer on an optional number so an explicit zero
+        # survives omitempty; changing the field type is breaking.
+        'optional_numeric_pointer': _owned(
+            OPTIONAL_POINTERS,
+            'item_count', 'items_approved',
+        ),
+    },
+    'CollectionList': {
+        'missing_in_go': _owned(WIRE_BUGS, 'account'),
+        # principal is not a property of collection-list.json.
+        'extra_in_go': _owned(WIRE_BUGS, 'principal'),
     },
     'CreativeFilters': {
-        'missing_in_go': {
-            'accounts': '#564',
-            'asset_types': '#564',
-            'assigned_to_packages': '#564',
-            'concept_ids': '#564',
-            'created_after': '#564',
-            'created_before': '#564',
-            'ext': '#564',
-            'format_kinds': '#564',
-            'has_served': '#564',
-            'has_variables': '#564',
-            'indicator_types': '#564',
-            'media_buy_ids': '#564',
-            'name_contains': '#564',
-            'statuses': '#564',
-            'tags': '#564',
-            'tags_any': '#564',
-            'unassigned': '#564',
-            'updated_after': '#564',
-            'updated_before': '#564',
-        },
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'accounts', 'asset_types', 'assigned_to_packages', 'concept_ids',
+            'created_after', 'created_before', 'ext', 'format_kinds', 'has_served',
+            'has_variables', 'indicator_types', 'media_buy_ids', 'name_contains',
+            'statuses', 'tags', 'tags_any', 'unassigned', 'updated_after',
+            'updated_before',
+        ),
     },
     'CreativeInput': {
-        'missing_in_go': {
-            'component_assets': '#564',
-            'format_kind': '#564',
-            'format_option_ref': '#564',
-            'industry_identifiers': '#564',
-            'inputs': '#564',
-            'placement_ids': '#564',
-            'placement_refs': '#564',
-            'provenance': '#564',
-            'representation_selection': '#564',
-            'rights': '#564',
-            'status': '#564',
-            'tags': '#564',
-            'weight': '#564',
-        },
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'component_assets', 'format_kind', 'format_option_ref',
+            'industry_identifiers', 'inputs', 'placement_ids', 'placement_refs',
+            'provenance', 'representation_selection', 'rights', 'status', 'tags',
+            'weight',
+        ),
         # The schema allows an empty name and an empty assets object, which
         # omitempty drops, leaving the item without a required property.
-        'required_with_omitempty': {
-            'assets': '#564',
-            'name': '#564',
+        'required_with_omitempty': _owned(GENERATED_TYPES, 'assets', 'name'),
+    },
+    'CreativeResult': {
+        # adcp-go#365 owns the CreativeResult gap, rejection_reason included.
+        'missing_in_go': _owned(
+            '#365',
+            'account', 'assigned_to', 'assignment_errors', 'changes', 'expires_at',
+            'localization', 'macro_resolution_results', 'platform_id', 'preview_url',
+            'revision_id', 'warnings',
+        ),
+        'extra_in_go': _owned('#365', 'rejection_reason'),
+    },
+    'DeliveryData': {
+        # Compared without the envelope's optional properties
+        # (ENVELOPE_PAYLOAD_TYPES); its required status is compared, and no
+        # response builder sets it.
+        'missing_in_go': {
+            **_owned(RESPONSE_ENVELOPE_STATUS, 'status'),
+            **_owned(
+                GENERATED_TYPES,
+                'adcp_major_version', 'adcp_version', 'aggregated_totals',
+                'attribution_window', 'errors', 'ext', 'next_expected_at',
+                'notification_type', 'pagination', 'partial_data',
+                'reporting_revision', 'reporting_revision_binding', 'reporting_rows',
+                'sandbox', 'sequence_number', 'unavailable_count',
+            ),
         },
+    },
+    'EventSourceInput': {
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'action_source', 'allowed_domains', 'event_types', 'name', 'surface',
+            'value_currencies',
+        ),
+    },
+    'EventSourceResult': {
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'action_source', 'errors', 'event_types', 'ext', 'health', 'managed_by',
+            'name', 'seller_id', 'surface', 'value_currencies',
+        ),
+    },
+    'GovernanceAccount': {
+        # An account-ref natural key; Go carries the brand + operator variant
+        # only.
+        'missing_in_go': _owned(
+            WIRE_BUGS,
+            'account_id', 'currency', 'operator_unit', 'sandbox', 'timezone',
+        ),
     },
     'GovernanceAccountInput': {
         # The accounts[] item is closed (additionalProperties: false), so a
         # request that sets either field fails schema validation.
-        'extra_in_go': {
-            'brand': '#564',
-            'operator': '#564',
-        },
-        # omitempty drops only a nil account or an empty governance_agents,
-        # which the schema rejects anyway (required, minItems: 1).
-        'required_with_omitempty': {
-            'account': '#564',
-            'governance_agents': '#564',
-        },
+        'extra_in_go': _owned(WIRE_BUGS, 'brand', 'operator'),
+        # omitempty drops only a nil account, which the schema rejects anyway
+        # (required).
+        'required_with_omitempty': _owned(WIRE_BUGS, 'account'),
+    },
+    'GovernanceAgent': {
+        # categories is not a property of the response item. The request item,
+        # which requires `authentication`, is not compared: the two differ and
+        # this type serves both.
+        'extra_in_go': _owned(WIRE_BUGS, 'categories'),
+    },
+    'GovernanceResult': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'errors'),
+    },
+    'MediaBuyData': {
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'accepted_proposal', 'accepted_proposal_id',
+            'accepted_proposal_terms_digest', 'bidding', 'budget_allocation',
+            'budget_cap_timezone', 'daily_budget_cap', 'frequency_cap',
+            'indicator_types_evaluated', 'indicators', 'indicators_as_of',
+            'indicators_evaluated_scope', 'name', 'pacing', 'rejection_reason',
+            'status_as_of', 'webhook_activity',
+        ),
+        # omitempty drops an empty confirmed_at, which the schema requires.
+        'required_with_omitempty': _owned(WIRE_BUGS, 'confirmed_at'),
+    },
+    'OptimizationGoal': {
+        # Unknown top-level keys round-trip through Extra, so a replacement update
+        # does not drop them.
+        'missing_in_go': _owned(GENERATED_TYPES, 'metric_id', 'standard', 'vendor'),
+    },
+    'PackageCreativeApproval': {
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'approval_scopes', 'indicator_types_evaluated', 'indicators',
+            'indicators_as_of', 'indicators_evaluated_scope',
+        ),
+    },
+    'Plan': {
+        # The plan item is closed (additionalProperties: false) and declares no
+        # human_override. Removing the field is breaking.
+        'extra_in_go': _owned(WIRE_BUGS, 'human_override'),
+        # lint asks for *bool on every optional boolean so an explicit false
+        # survives omitempty; changing the field type is breaking.
+        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'human_review_required'),
+    },
+    'PlanBudget': {
+        # An optional schema field the Go struct lacks.
+        'missing_in_go': _owned(GENERATED_TYPES, 'accounting_mode'),
+    },
+    'PreviewRender': {
+        'missing_in_go': _owned(
+            WIRE_BUGS,
+            'embedding', 'preview_html', 'renderer',
+        ),
+        # html is not a property of preview-render.json (preview_html is).
+        'extra_in_go': _owned(WIRE_BUGS, 'html'),
+    },
+    'ProductsData': {
+        # Compared without the envelope's optional properties
+        # (ENVELOPE_PAYLOAD_TYPES).
+        'missing_in_go': _owned(
+            GENERATED_TYPES,
+            'adcp_major_version', 'adcp_version', 'catalog_applied', 'errors', 'ext',
+            'extensions', 'filter_diagnostics', 'incomplete', 'pagination',
+            'property_list_applied', 'proposals', 'reason', 'suggestions',
+            'targeting_resolution',
+        ),
+        # lint asks for *bool on every optional boolean so an explicit false
+        # survives omitempty; changing the field type is breaking.
+        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
+    },
+    'PublisherPropertySelector': {
+        'missing_in_go': _owned('#120', 'publisher_domains'),
+    },
+    'ReportingPeriod': {
+        # An optional schema field the Go struct lacks.
+        'missing_in_go': _owned(GENERATED_TYPES, 'timezone'),
+    },
+    'ReportingReceipt': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'observed_control_totals'),
+        # omitempty drops a nil observed_row_count, which the schema requires.
+        'required_with_omitempty': _owned(GENERATED_TYPES, 'observed_row_count'),
+    },
+    'ResolvedCollection': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'collection_id', 'publisher_domain'),
+    },
+    'SignalFilters': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'data_providers', 'ext', 'max_percent'),
+    },
+    'SimulationResult': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'context', 'ext', 'message'),
+    },
+    'StateTransition': {
+        'missing_in_go': _owned(GENERATED_TYPES, 'context', 'ext', 'message'),
     },
 }
 
@@ -243,11 +418,24 @@ KNOWN_SCHEMA_GAP_KINDS = (
 DRIFT_GAP_KINDS = ('missing_in_go', 'extra_in_go', 'required_with_omitempty')
 ISSUE_REF_RE = re.compile(r'(?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#[1-9][0-9]*')
 
+
+def _owner_problem(ref):
+    """Why `ref` cannot own an entry, or None."""
+    if not isinstance(ref, str) or not ISSUE_REF_RE.fullmatch(ref):
+        return 'needs the issue that owns it, as #123 or owner/repo#123'
+    if ref in UMBRELLA_ISSUES:
+        return (
+            f'{ref} is an umbrella issue and cannot own an entry; name the '
+            'issue that closes it'
+        )
+    return None
+
 # Map hand-written Go type name → schema path (relative to schemas/).
 # For types whose Go name doesn't match schema filename-derived PascalCase,
 # this table declares the pairing explicitly. A shape with no standalone schema
 # file is paired by JSON pointer (`file.json#/pointer`) to the node that its
-# holding field maps to; types with no schema node at all belong in EXEMPT.
+# holding field maps to; types with no schema node at all belong in
+# EXEMPT_NO_SCHEMA, and types whose pairing is blocked in EXEMPT_UNPAIRED.
 EXPLICIT_SCHEMA = gen.HAND_WRITTEN_SCHEMA_SPECS
 
 # STRUCT_RE assumes gofmt layout (closing `}` at column 0) and top-level
@@ -1004,6 +1192,62 @@ def optional_bool_pointer_candidate(json_name, prop, required_set):
     return prop.get('type') == 'boolean'
 
 
+def _branch_pins_true(branch, json_name):
+    prop = (branch.get('properties') or {}).get(json_name)
+    return isinstance(prop, dict) and prop.get('const') is True
+
+
+def _branch_forbids(branch, json_name):
+    """True when no value of `json_name` can satisfy the branch.
+
+    The branch lists it under `not.required`, gives it the false schema, or is
+    closed (`additionalProperties: false`) without declaring it.
+    """
+    forbidden = (branch.get('not') or {}).get('required') or []
+    properties = branch.get('properties') or {}
+    return (
+        json_name in forbidden
+        or properties.get(json_name) is False
+        or (
+            branch.get('additionalProperties') is False
+            and json_name not in properties
+        )
+    )
+
+
+def bool_false_is_omission(json_name, prop, schema):
+    """True when the schema leaves an explicit false no meaning of its own.
+
+    The property is `const: true`, or a conjunct (`allOf`) pins it to true, or
+    every branch of a oneOf/anyOf pins it true, forbids it, or is closed without
+    it, and at least one pins it. A branch that does not mention the property
+    but stays open still admits an explicit false, so it blocks the waiver.
+    Omission is then the only way to say false. A boolean with a default, or
+    one a branch leaves free, is not waived: false and omission can differ,
+    and generated structs make the same field a *bool.
+    """
+    if prop.get('const') is True:
+        return True
+    if any(
+        isinstance(branch, dict) and _branch_pins_true(branch, json_name)
+        for branch in schema.get('allOf', [])
+    ):
+        return True
+    for key in ('oneOf', 'anyOf'):
+        branches = [b for b in schema.get(key, []) if isinstance(b, dict)]
+        if not branches:
+            continue
+        if (
+            all(
+                _branch_pins_true(b, json_name) or _branch_forbids(b, json_name)
+                for b in branches
+            )
+            and any(_branch_pins_true(b, json_name) for b in branches)
+        ):
+            return True
+    return False
+
+
 def optional_bool_pointer_reports(go_structs):
     """Find optional boolean fields that need pointers to preserve false."""
     reports = []
@@ -1048,6 +1292,8 @@ def optional_bool_pointer_reports(go_structs):
             if not isinstance(prop, dict):
                 continue
             if not optional_bool_pointer_candidate(json_name, prop, required_set):
+                continue
+            if bool_false_is_omission(json_name, prop, schema):
                 continue
             go_type = fields_by_json.get(json_name)
             if go_type == 'bool':
@@ -1141,6 +1387,54 @@ def resolve_schema_spec(type_name):
     return None
 
 
+def go_zero_is_schema_invalid(prop):
+    """True when the schema rejects the Go zero value of this property's type.
+
+    A required field tagged omitempty is dropped from the wire when it holds
+    its zero value. When the schema rejects that value anyway (an integer with
+    `minimum: 1`, a string with `minLength: 1` or an enum without "", an array
+    with `minItems: 1`), the drop loses nothing a valid payload carries.
+    """
+    if not isinstance(prop, dict):
+        return False
+    merged = dict(prop)
+    ref = merged.pop('$ref', None)
+    if ref:
+        resolved = _resolve_ref(ref)
+        if isinstance(resolved, dict):
+            merged = {**resolved, **merged}
+    kind = merged.get('type')
+    kinds = [k for k in (kind if isinstance(kind, list) else [kind]) if k != 'null']
+    if len(kinds) != 1:
+        return False
+    if kinds[0] in ('integer', 'number'):
+        return numeric_zero_invalid(merged)
+    if kinds[0] == 'string':
+        return (
+            merged.get('minLength', 0) >= 1
+            or ('enum' in merged and '' not in merged['enum'])
+            or ('const' in merged and merged['const'] != '')
+        )
+    if kinds[0] == 'array':
+        return merged.get('minItems', 0) >= 1
+    if kinds[0] == 'object':
+        return merged.get('minProperties', 0) >= 1
+    return False
+
+
+_ENVELOPE_PROPERTIES = []
+
+
+def protocol_envelope_properties():
+    """The optional properties core/protocol-envelope.json adds to a response."""
+    if not _ENVELOPE_PROPERTIES:
+        schema = load_schema(SCRIPT_DIR / ENVELOPE_SCHEMA)
+        _ENVELOPE_PROPERTIES.append(
+            set(schema.get('properties', {})) - set(schema.get('required', []))
+        )
+    return _ENVELOPE_PROPERTIES[0]
+
+
 def diff_type(type_name, go_fields, schema_spec):
     """Compare a hand-written Go struct against its JSON schema. Returns a dict
     describing the drift, or None if clean."""
@@ -1164,12 +1458,21 @@ def diff_type(type_name, go_fields, schema_spec):
         return None
     go_tags = {tag for _, _, tag, _ in go_fields}
     go_tags.update(CUSTOM_WIRE_FIELDS.get(type_name, set()))
+    if type_name in ENVELOPE_PAYLOAD_TYPES:
+        # The transport adds the envelope's optional properties; the rest is compared.
+        envelope = protocol_envelope_properties()
+        schema_props = schema_props - envelope
+        schema_required = schema_required - envelope
+        go_tags = go_tags - envelope
+        go_fields = [f for f in go_fields if f[2] not in envelope]
+    schema_prop_defs = gen.schema_properties(schema)
     # A required field marked `omitempty` in Go is silently dropped from the
     # wire when the zero value is present — a distinct failure mode from
     # missing/extra fields, worth flagging separately so the fix is obvious.
     required_with_omitempty = sorted({
         tag for _, _, tag, omitempty in go_fields
         if omitempty and tag in schema_required
+        and not go_zero_is_schema_invalid(schema_prop_defs.get(tag))
     })
     missing = sorted(schema_props - go_tags)
     extra = sorted(go_tags - schema_props)
@@ -1191,14 +1494,16 @@ How to fix drift:
     schema-shaped — delete the hand-written version and remove the type name
     from KNOWN_TYPES in generate.py so the generator owns it.
   - `extra in Go`: a field exists in Go but not in the schema. Remove it from
-    types.go, OR if the schema uses oneOf and the field belongs to a variant,
-    add the type to EXEMPT in lint.py (oneOf-flattener case).
+    types.go. A oneOf flattener is paired with its union schema, so a field
+    that belongs to one variant is not extra.
   - `required+omitempty`: the schema marks this field required but Go has
     `omitempty` in its tag. Drop `,omitempty` — Go will silently drop required
     fields from the wire when the zero value is present.
   - Pairing a type whose fields cannot be fixed in the same PR: list each
     finding in KNOWN_SCHEMA_GAPS with the issue that owns it, rather than
-    leaving the whole type in EXEMPT.
+    leaving the whole type out of the comparison. EXEMPT_NO_SCHEMA and
+    EXEMPT_UNPAIRED are for types lint cannot compare at all; each entry has
+    a reason, and EXEMPT_UNPAIRED the issue that unblocks it.
 See adcp/v3/schemas/generate.py's KNOWN_TYPES comment for criteria on hand-written
 vs generator-owned types."""
 
@@ -1223,7 +1528,7 @@ def _assert_exempt_subset_known(go_structs):
 
 
 def validate_known_schema_gaps_config():
-    """Require every KNOWN_SCHEMA_GAPS entry to have a known kind and an issue."""
+    """Require every KNOWN_SCHEMA_GAPS entry to have a known kind and an owner."""
     reports = []
     for type_name, kinds in sorted(KNOWN_SCHEMA_GAPS.items()):
         for kind, fields in sorted(kinds.items()):
@@ -1238,23 +1543,21 @@ def validate_known_schema_gaps_config():
                 })
                 continue
             for json_name, ref in sorted(fields.items()):
-                if not isinstance(ref, str) or not ISSUE_REF_RE.fullmatch(ref):
+                problem = _owner_problem(ref)
+                if problem:
                     reports.append({
                         'type': type_name,
                         'kind': kind,
                         'json': json_name,
                         'ref': ref,
-                        'error': (
-                            'known gap needs the issue that owns it, as #123 '
-                            'or owner/repo#123'
-                        ),
+                        'error': f'known gap {problem}',
                     })
     return reports
 
 
 def _known_gap_ref(type_name, kind, json_name):
     ref = KNOWN_SCHEMA_GAPS.get(type_name, {}).get(kind, {}).get(json_name)
-    if isinstance(ref, str) and ISSUE_REF_RE.fullmatch(ref):
+    if _owner_problem(ref) is None:
         return ref
     return None
 
@@ -1337,7 +1640,7 @@ def stale_known_schema_gaps(matched):
             for json_name, ref in sorted(fields.items()):
                 if (type_name, kind, json_name) in matched:
                     continue
-                if not isinstance(ref, str) or not ISSUE_REF_RE.fullmatch(ref):
+                if _owner_problem(ref):
                     continue  # validate_known_schema_gaps_config reports it
                 reports.append({
                     'type': type_name,
@@ -1351,6 +1654,76 @@ def stale_known_schema_gaps(matched):
                         'delete the entry or fix the pairing'
                     ),
                 })
+    return reports
+
+
+def validate_known_gaps_bundle():
+    """Require KNOWN_SCHEMA_GAPS to be baselined on the bundle in schemas/VERSION."""
+    try:
+        version = (SCRIPT_DIR / 'VERSION').read_text().strip()
+    except OSError as e:
+        return [{
+            'type': 'KNOWN_SCHEMA_GAPS',
+            'kind': 'bundle',
+            'error': f'cannot read schemas/VERSION to check the baseline: {e}',
+        }]
+    if version == KNOWN_SCHEMA_GAPS_BUNDLE:
+        return []
+    return [{
+        'type': 'KNOWN_SCHEMA_GAPS',
+        'kind': 'bundle',
+        'error': (
+            f'KNOWN_SCHEMA_GAPS is baselined on bundle {KNOWN_SCHEMA_GAPS_BUNDLE} '
+            f'but schemas/VERSION is {version}: re-read every entry against the '
+            'new bundle, then set KNOWN_SCHEMA_GAPS_BUNDLE'
+        ),
+    }]
+
+
+def validate_exempt_config(go_structs):
+    """Hold EXEMPT_NO_SCHEMA and EXEMPT_UNPAIRED to their rules.
+
+    Every entry names a struct lint scans, has a reason, and is not also paired.
+    An EXEMPT_UNPAIRED entry names the issue that unblocks it, and an
+    EXEMPT_NO_SCHEMA entry has no schema file by its name to pair.
+    """
+    reports = []
+    paired = set(EXPLICIT_SCHEMA) | set(gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS)
+
+    def report(type_name, list_name, error):
+        reports.append({'type': type_name, 'list': list_name, 'error': error})
+
+    for type_name in sorted(set(EXEMPT_NO_SCHEMA) & set(EXEMPT_UNPAIRED)):
+        report(type_name, 'both', 'listed in EXEMPT_NO_SCHEMA and EXEMPT_UNPAIRED')
+    entries = (
+        [(t, 'EXEMPT_NO_SCHEMA', r, None) for t, r in EXEMPT_NO_SCHEMA.items()]
+        + [(t, 'EXEMPT_UNPAIRED', r[0], r[1]) for t, r in EXEMPT_UNPAIRED.items()]
+    )
+    for type_name, list_name, reason, ref in sorted(entries):
+        if type_name not in go_structs:
+            report(
+                type_name, list_name,
+                'not a struct in the scanned Go files (a func, alias or '
+                'generated type has nothing to exempt); delete the entry',
+            )
+            continue
+        if type_name in paired:
+            report(
+                type_name, list_name,
+                'paired in HAND_WRITTEN_SCHEMA_SPECS or '
+                'HAND_WRITTEN_INLINE_SCHEMA_SPECS, so it is compared; delete '
+                'the entry',
+            )
+        if not isinstance(reason, str) or not reason.strip():
+            report(type_name, list_name, 'needs a reason')
+        if list_name == 'EXEMPT_NO_SCHEMA' and resolve_schema_spec(type_name):
+            report(
+                type_name, list_name,
+                'a schema file is named after this type; pair it instead of '
+                'exempting it',
+            )
+        if list_name == 'EXEMPT_UNPAIRED' and _owner_problem(ref):
+            report(type_name, list_name, f'issue: {_owner_problem(ref)}')
     return reports
 
 
@@ -1378,6 +1751,7 @@ def main():
     go_structs = parse_go_structs()
     custom_json_methods = parse_custom_json_methods()
     _assert_exempt_subset_known(go_structs)
+    exempt_errors = validate_exempt_config(go_structs)
     reports = []
     no_schema = []
     inline_schema_errors = validate_inline_schema_specs()
@@ -1414,6 +1788,8 @@ def main():
     for type_name in sorted(gen.KNOWN_TYPES):
         if type_name in EXEMPT:
             continue
+        if type_name in gen.HAND_WRITTEN_INLINE_SCHEMA_SPECS:
+            continue  # paired by pointer and diffed above
         if type_name not in go_structs:
             # Type listed in KNOWN_TYPES but not found in hand-written sources —
             # either a stale entry or defined in a file we don't scan.
@@ -1431,7 +1807,9 @@ def main():
             reports.append(drift)
 
     known_gap_errors = (
-        validate_known_schema_gaps_config() + stale_known_schema_gaps(matched_gaps)
+        validate_known_gaps_bundle()
+        + validate_known_schema_gaps_config()
+        + stale_known_schema_gaps(matched_gaps)
     )
     known_gaps.sort(key=lambda g: (g['type'], g['schema'], g['kind'], g['json']))
 
@@ -1453,6 +1831,7 @@ def main():
             'optional_numeric_pointer': optional_numeric_reports,
             'known_schema_gaps': known_gaps,
             'known_schema_gap_errors': known_gap_errors,
+            'exempt_errors': exempt_errors,
         }
         print(json.dumps(out, indent=2))
     else:
@@ -1613,6 +1992,13 @@ def main():
                 print(f'    Go type: {r["go_type"]}')
                 print('    fix:     use *int/*float64 or add an OPTIONAL_NUMERIC_SCALAR_OK waiver')
             print()
+        if exempt_errors:
+            print(f'EXEMPT errors ({len(exempt_errors)}):')
+            for r in exempt_errors:
+                print()
+                print(f'  {r["type"]}  ({r["list"]})')
+                print(f'    error: {r["error"]}')
+            print()
         if known_gap_errors:
             print(f'Known schema gap errors ({len(known_gap_errors)}):')
             for r in known_gap_errors:
@@ -1659,7 +2045,7 @@ def main():
         if no_schema:
             print()
             print('Types in KNOWN_TYPES with no schema correspondent '
-                  '(candidates for deletion or EXEMPT):')
+                  '(pair them, or list them in EXEMPT_NO_SCHEMA or EXEMPT_UNPAIRED):')
             for t in no_schema:
                 print(f'  - {t}')
 
@@ -1677,6 +2063,7 @@ def main():
         or bool(reports)
         or bool(optional_numeric_reports)
         or bool(known_gap_errors)
+        or bool(exempt_errors)
         or (args.strict and bool(no_schema))
     )
     return 1 if (args.strict and has_problems) else 0

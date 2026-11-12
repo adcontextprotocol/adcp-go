@@ -53,7 +53,7 @@ KNOWN_TYPES = {
     'EventSourceResult', 'LogEventResult',
     'CheckGovernanceCondition',
     # validate_input warning items require `field` without declaring it, so a
-    # generated struct would drop it; hand-written in types.go (lint EXEMPT).
+    # generated struct would drop it; hand-written in types.go.
     'ValidateInputWarning',
     # oneOf schemas — hand-writing flattens the union into a single struct with
     # all variant fields.
@@ -1576,6 +1576,51 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'ReportingAdjustmentReceipt': 'core/reporting-adjustment-receipt.json',
     'ReportingConsumerStatus': 'core/reporting-consumer-status.json',
     'ReportingConsumerStatusPeriod': 'core/reporting-consumer-status.json#/properties/period',
+    # Hand-written types that stood in lint's EXEMPT set. oneOf flatteners are
+    # paired with their union schema (lint compares the union of the variants'
+    # properties); response items and nested shapes with the node their holding
+    # field maps to. The drift each still carries is listed field by field in
+    # lint.py's KNOWN_SCHEMA_GAPS.
+    'AccountReference': 'core/account-ref.json',
+    'ActivationKey': 'core/activation-key.json',
+    'BrandReference': 'core/brand-ref.json',
+    'OptimizationGoal': 'core/optimization-goal.json',
+    'PublisherPropertySelector': 'core/publisher-property-selector.json',
+    'SignalID': 'core/signal-id.json',
+    'AccountResult': 'account/sync-accounts-response.json#/oneOf/0/properties/accounts/items',
+    'CatalogResult': 'media-buy/sync-catalogs-response.json#/oneOf/0/properties/catalogs/items',
+    'CreativeResult': 'creative/sync-creatives-response.json#/oneOf/0/properties/creatives/items',
+    'EventSourceInput': 'media-buy/sync-event-sources-request.json#/properties/event_sources/items',
+    'EventSourceResult': 'media-buy/sync-event-sources-response.json#/oneOf/0/properties/event_sources/items',
+    'GovernanceAccount': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items/properties/account',
+    # Request and response items differ (the request's carries a required
+    # `authentication`), and the Go type serves both; the response's is compared.
+    'GovernanceAgent': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items/properties/governance_agents/items',
+    'GovernanceResult': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items',
+    'DeliveryData': 'media-buy/get-media-buy-delivery-response.json',
+    'ProductsData': 'media-buy/get-products-response.json',
+    'MediaBuyData': 'media-buy/get-media-buys-response.json#/properties/media_buys/items',
+    'PackageCreativeApproval': 'media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items',
+    'PreviewRender': 'creative/preview-render.json',
+    'Render': 'creative/preview-render.json#/oneOf/0/properties/dimensions',
+    'ReportingPeriod': 'media-buy/get-media-buy-delivery-response.json#/properties/reporting_period',
+    'ReportingReceipt': 'core/reporting-receipt.json',
+    'ReportingReceiptResult': 'media-buy/sync-reporting-receipts-response.json#/properties/results/items',
+    'ReportingStatusResult': 'media-buy/sync-reporting-status-response.json#/properties/results/items',
+    'BaseCollectionSource': 'collection/base-collection-source.json',
+    'CollectionList': 'collection/collection-list.json',
+    'CollectionPagination': 'collection/get-collection-list-request.json#/properties/pagination',
+    'ResolvedCollection': 'collection/get-collection-list-response.json#/properties/collections/items',
+    'BillingMeasurement': 'core/measurement-terms.json#/properties/billing_measurement',
+    'CancellationFee': 'core/cancellation-policy.json#/properties/cancellation_fee',
+    'Plan': 'governance/sync-plans-request.json#/properties/plans/items',
+    'PlanBudget': 'governance/sync-plans-request.json#/properties/plans/items/properties/budget',
+    'PlanDelegationBudget': 'governance/sync-plans-request.json#/properties/plans/items/properties/delegations/items/properties/budget_limit',
+    'PlanPortfolioBudgetCap': 'governance/sync-plans-request.json#/properties/plans/items/properties/portfolio/properties/total_budget_cap',
+    'SignalFilters': 'core/signal-filters.json',
+    'StateTransition': 'compliance/comply-test-controller-response.json#/oneOf/1',
+    'SimulationResult': 'compliance/comply-test-controller-response.json#/oneOf/2',
+    'ReportedSpend': 'compliance/comply-test-controller-request.json#/properties/params/properties/reported_spend',
 }
 
 # Hand-written inline types that do not have standalone schema files but should
