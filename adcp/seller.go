@@ -404,7 +404,7 @@ func resolveAccount(ctx context.Context, resolver func(context.Context, AccountR
 		result, _, _ := Errorf("INTERNAL_ERROR", ErrorOptions{Message: "unexpected account reference type"})
 		return nil, result
 	}
-	if acctRef.Brand == nil && acctRef.Operator == "" {
+	if acctRef.AccountID == "" && acctRef.Brand == nil && acctRef.Operator == "" {
 		return nil, nil
 	}
 	acct, err := resolver(ctx, acctRef)

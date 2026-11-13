@@ -163,6 +163,7 @@ func defaultRecovery(code string) string {
 	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
 		return "transient"
 	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "TERMS_REJECTED",
+		"ACCOUNT_SETUP_REQUIRED",
 		"MISSING_FIELD", // SDK-internal, unpublished
 		"INVALID_FIELD": // SDK-internal, unpublished
 		return "correctable"

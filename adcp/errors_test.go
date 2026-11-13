@@ -32,6 +32,7 @@ func TestDefaultRecovery(t *testing.T) {
 		{"BUDGET_TOO_LOW", "correctable"},
 		{"INVALID_REQUEST", "correctable"},
 		{"TERMS_REJECTED", "correctable"},
+		{"ACCOUNT_SETUP_REQUIRED", "correctable"},
 		{"ACCOUNT_NOT_FOUND", "terminal"},
 		{"MISSING_FIELD", "correctable"}, // SDK-internal, unpublished
 		{"INVALID_FIELD", "correctable"}, // SDK-internal, unpublished
