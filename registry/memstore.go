@@ -90,7 +90,7 @@ func (m *MemoryStore) PutAuth(_ context.Context, e AuthorizationEntry) error {
 }
 
 func (m *MemoryStore) RemoveAuthEntry(_ context.Context, agentURL, publisherDomain string) error {
-	if err := ValidatePublisherDomain(publisherDomain); err != nil {
+	if err := ValidatePublisherDomainKey(publisherDomain); err != nil {
 		return err
 	}
 	m.mu.Lock()
