@@ -196,10 +196,6 @@ KNOWN_SCHEMA_GAPS = {
             'timezone', 'warnings',
         ),
     },
-    'BillingMeasurement': {
-        # An optional schema field the Go struct lacks.
-        'missing_in_go': _owned(GENERATED_TYPES, 'finalization_deadline_hours'),
-    },
     'BrandReference': {
         # countries is part of the advertiser identity key.
         'missing_in_go': _owned(WIRE_BUGS, 'brand_kit_override', 'countries'),
@@ -356,10 +352,6 @@ KNOWN_SCHEMA_GAPS = {
         # survives omitempty; changing the field type is breaking.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'human_review_required'),
     },
-    'PlanBudget': {
-        # An optional schema field the Go struct lacks.
-        'missing_in_go': _owned(GENERATED_TYPES, 'accounting_mode'),
-    },
     'PreviewRender': {
         'missing_in_go': _owned(
             WIRE_BUGS,
@@ -384,10 +376,6 @@ KNOWN_SCHEMA_GAPS = {
     },
     'PublisherPropertySelector': {
         'missing_in_go': _owned('#120', 'publisher_domains'),
-    },
-    'ReportingPeriod': {
-        # An optional schema field the Go struct lacks.
-        'missing_in_go': _owned(GENERATED_TYPES, 'timezone'),
     },
     'ReportingReceipt': {
         'missing_in_go': _owned(GENERATED_TYPES, 'observed_control_totals'),
