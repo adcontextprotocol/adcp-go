@@ -20,7 +20,17 @@ finding; any `adcp/schemas/VERSION` bump without regen is a `high` finding. A
 hand-written struct in `adcp/types.go` is the supported escape hatch only when
 its name is listed in `KNOWN_TYPES` in `adcp/schemas/generate.py` (and, for
 flattened `oneOf`, in `EXEMPT` in `adcp/schemas/lint.py`); a mismatch that would
-fail `python3 adcp/schemas/lint.py --strict` is drift.
+fail `python3 adcp/schemas/lint.py --strict` is drift. In `adcp/v3` the same
+holds with one difference: a flattened `oneOf` is not exempt. Its struct is
+paired with the union schema in `HAND_WRITTEN_SCHEMA_SPECS` (generate.py), and
+lint compares the union of the variants' properties. Drift that cannot be fixed
+in the same change is a `KNOWN_SCHEMA_GAPS` entry in `adcp/v3/schemas/lint.py`,
+owned by an issue that is not an umbrella issue; a schema bundle bump re-reads
+the table and records the bundle in `KNOWN_SCHEMA_GAPS_BUNDLE`. `EXEMPT_NO_SCHEMA`
+and `EXEMPT_UNPAIRED` there hold only types lint cannot compare, each with a
+reason and, for `EXEMPT_UNPAIRED`, an owning issue. An entry without an owner,
+with an umbrella owner, or for a type that has a schema node is a finding, and
+so is a new exemption that pairing the type or a gap entry would replace.
 
 ### Mandatory: TMP signing / verification semantics
 
