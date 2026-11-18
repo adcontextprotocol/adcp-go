@@ -6,7 +6,7 @@ require (
 	github.com/adcontextprotocol/adcp-go/registry v0.1.0
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.42.0
-	github.com/valkey-io/valkey-glide/go/v2 v2.3.1
+	github.com/valkey-io/valkey-glide/go/v2 v2.6.1
 )
 
 require (

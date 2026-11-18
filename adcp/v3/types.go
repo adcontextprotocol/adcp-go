@@ -1229,8 +1229,9 @@ type DeliveryData struct {
 }
 
 type ReportingPeriod struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // MarshalJSON preserves the schema-required spend field even when it is zero.
@@ -1520,9 +1521,10 @@ type MeasurementTerms struct {
 
 // BillingMeasurement identifies the vendor whose measurement is authoritative for invoicing.
 type BillingMeasurement struct {
-	Vendor             *BrandReference `json:"vendor"`
-	MaxVariancePercent float64         `json:"max_variance_percent,omitempty"`
-	MeasurementWindow  string          `json:"measurement_window,omitempty"`
+	Vendor                    *BrandReference `json:"vendor"`
+	MaxVariancePercent        float64         `json:"max_variance_percent,omitempty"`
+	MeasurementWindow         string          `json:"measurement_window,omitempty"`
+	FinalizationDeadlineHours *int            `json:"finalization_deadline_hours,omitempty"` // a pointer so an explicit 0 (final record due at window close) survives omitempty
 }
 
 // MakegoodPolicy declares available remedies when a threshold is breached.

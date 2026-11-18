@@ -8,8 +8,10 @@ import (
 
 func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 	req := CreateMediaBuyRequest{
-		IdempotencyKey: "idem-1",
+		IdempotencyKey: "idem-typed-fields-1",
 		Account:        AccountReference{AccountID: "acct-1"},
+		ProposalID:     "proposal-1",
+		TotalBudget:    Ptr(MediaBuyBudget{Amount: 10000, Currency: "USD"}),
 		Brand:          BrandReference{Domain: "brand.example"},
 		StartTime:      "2026-06-01T00:00:00Z",
 		EndTime:        "2026-06-30T00:00:00Z",
@@ -53,6 +55,7 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal request: %v", err)
 	}
+	assertSchemaValid(t, "media-buy/create-media-buy-request.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"address":{"street":"1 Market St","city":"San Francisco","postal_code":"94105","country":"US"}`,
@@ -91,13 +94,16 @@ func TestGeneratedCoreRefsMarshalTypedFields(t *testing.T) {
 
 func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 	cases := []struct {
-		name  string
-		value any
-		want  []string
+		name   string
+		schema string // when set, the encoding must be valid against it
+		value  any
+		want   []string
 	}{
 		{
-			name: "get products property list",
+			name:   "get products property list",
+			schema: "media-buy/get-products-request.json",
 			value: GetProductsRequest{
+				BuyingMode:   "wholesale",
 				PropertyList: Ptr(PropertyListRef{AgentURL: "https://lists.example/mcp", ListID: "pl-123"}),
 				TimeBudget:   Ptr(Duration{Interval: 5, Unit: "minutes"}),
 			},
@@ -107,10 +113,11 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "targeting typed refs",
+			name:   "targeting typed refs",
+			schema: "core/targeting.json",
 			value: Targeting{
-				DaypartTargets: []DaypartTarget{{Days: []string{"mon", "tue"}, StartHour: 9, EndHour: 17}},
-				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: Ptr(ReachUnit("user")), Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
+				DaypartTargets: []DaypartTarget{{Days: []string{"monday", "tuesday"}, StartHour: 9, EndHour: 17}},
+				FrequencyCap:   Ptr(FrequencyCap{MaxImpressions: 3, Per: Ptr(ReachUnit(ReachUnitIndividuals)), Window: Ptr(Duration{Interval: 7, Unit: "days"})}),
 				PropertyList:   Ptr(PropertyListRef{AgentURL: "https://lists.example/mcp", ListID: "pl-456"}),
 				GeoMetros:      []GeoMetroTarget{{System: "nielsen_dma", Values: []string{"501"}}},
 				StoreCatchments: []TargetingStoreCatchment{{
@@ -122,8 +129,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				KeywordTargets: []KeywordTarget{{Keyword: "running shoes", MatchType: "phrase"}},
 			},
 			want: []string{
-				`"daypart_targets":[{"days":["mon","tue"],"start_hour":9,"end_hour":17}]`,
-				`"frequency_cap":{"max_impressions":3,"per":"user","window":{"interval":7,"unit":"days"}}`,
+				`"daypart_targets":[{"days":["monday","tuesday"],"start_hour":9,"end_hour":17}]`,
+				`"frequency_cap":{"max_impressions":3,"per":"individuals","window":{"interval":7,"unit":"days"}}`,
 				`"property_list":{"agent_url":"https://lists.example/mcp","list_id":"pl-456"}`,
 				`"geo_metros":[{"system":"nielsen_dma","values":["501"]}]`,
 				`"store_catchments":[{"catalog_id":"stores","store_ids":["store-1"],"catchment_ids":["drive"]}]`,
@@ -132,10 +139,12 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "catalog mapping",
+			name:   "catalog mapping",
+			schema: "core/catalog.json",
 			value: Catalog{
 				CatalogID:         "cat-1",
 				Name:              "Catalog",
+				Type:              CatalogTypeProduct,
 				FeedFieldMappings: []CatalogFieldMapping{{FeedField: "sku", CatalogField: "id"}},
 			},
 			want: []string{
@@ -143,7 +152,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "event attribution",
+			name:   "event attribution",
+			schema: "core/event.json",
 			value: Event{
 				EventID:   "evt-1",
 				EventType: "purchase",
@@ -159,7 +169,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "signal range",
+			name:   "signal range",
+			schema: "core/signal-definition.json",
 			value: Signal{
 				ID:        "affinity_score",
 				Name:      "Affinity Score",
@@ -171,7 +182,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "delivery metrics",
+			name:   "delivery metrics",
+			schema: "core/delivery-metrics.json",
 			value: DeliveryTotals{
 				QuartileData:   Ptr(DeliveryQuartileData{Q1Views: 10, Q4Views: 4}),
 				ByEventType:    []DeliveryEventTypeMetrics{{EventType: "purchase", Count: 2, Value: 42}},
@@ -188,9 +200,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "proposal total budget",
+			name:   "proposal total budget",
+			schema: "media-buy/create-media-buy-request.json",
 			value: CreateMediaBuyRequest{
-				IdempotencyKey: "idem-budget",
+				IdempotencyKey: "idem-budget-0000001",
 				Account:        AccountReference{AccountID: "acct-1"},
 				ProposalID:     "proposal-1",
 				TotalBudget:    Ptr(MediaBuyBudget{Amount: 10000, Currency: "USD"}),
@@ -201,9 +214,12 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "get products proposals",
+			name:   "get products proposals",
+			schema: "media-buy/get-products-response.json",
 			value: GetProductsResponse{
-				Products: []Product{},
+				Status:     TaskStatusCompleted,
+				CacheScope: "public",
+				Products:   []Product{},
 				Proposals: []Proposal{{
 					ProposalID:     "proposal-1",
 					Name:           "Balanced launch plan",
@@ -212,7 +228,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 						ProductID:            "premium-display",
 						AllocationPercentage: 60,
 						PricingOptionID:      "pd-cpm",
-						DaypartTargets:       []DaypartTarget{{Days: []string{"mon"}, StartHour: 9, EndHour: 17}},
+						DaypartTargets:       []DaypartTarget{{Days: []string{"monday"}, StartHour: 9, EndHour: 17}},
 					}},
 					InsertionOrder: &InsertionOrder{
 						IoID: "io-1",
@@ -234,16 +250,19 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 			want: []string{
 				`"proposals":[{"proposal_id":"proposal-1","name":"Balanced launch plan","allocations":[{"product_id":"premium-display","allocation_percentage":60,"pricing_option_id":"pd-cpm"`,
-				`"daypart_targets":[{"days":["mon"],"start_hour":9,"end_hour":17}]`,
+				`"daypart_targets":[{"days":["monday"],"start_hour":9,"end_hour":17}]`,
 				`"insertion_order":{"io_id":"io-1","terms":{"advertiser":"Acme","publisher":"Example Publisher","total_budget":{"amount":10000,"currency":"USD"}`,
 				`"requires_signature":true}`,
 				`"total_budget_guidance":{"min":5000,"recommended":10000,"currency":"USD"}`,
 			},
 		},
 		{
-			name: "get products incomplete",
+			name:   "get products incomplete",
+			schema: "media-buy/get-products-response.json",
 			value: GetProductsResponse{
-				Products: []Product{},
+				Status:     TaskStatusCompleted,
+				CacheScope: "public",
+				Products:   []Product{},
 				Incomplete: []GetProductsIncompleteItem{{
 					Scope:         "forecast",
 					Description:   "Forecast is still running.",
@@ -255,8 +274,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "sync plans response plans",
+			name:   "sync plans response plans",
+			schema: "governance/sync-plans-response.json",
 			value: SyncPlansResponse{
+				Status: TaskStatusCompleted,
 				Plans: []SyncPlansPlan{{
 					PlanID:  "plan-1",
 					Status:  "active",
@@ -278,7 +299,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "governance findings",
+			name:   "governance findings",
+			schema: "governance/check-governance-response.json",
 			value: CheckGovernanceResponse{
 				CheckID:     "check-1",
 				Verdict:     "denied",
@@ -300,11 +322,13 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "governance conditions",
+			name:   "governance conditions",
+			schema: "governance/check-governance-response.json",
 			value: CheckGovernanceResponse{
 				CheckID:     "check-1",
 				Verdict:     "conditions",
 				PlanID:      "plan-1",
+				ExpiresAt:   "2026-06-01T00:00:00Z",
 				Explanation: "Approval requires a smaller budget.",
 				Conditions: []CheckGovernanceCondition{{
 					Field:            "planned_delivery.total_budget",
@@ -318,8 +342,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "plan audit logs",
+			name:   "plan audit logs",
+			schema: "governance/get-plan-audit-logs-response.json",
 			value: GetPlanAuditLogsResponse{
+				Status: TaskStatusCompleted,
 				Plans: []PlanAuditLog{{
 					PlanID:      "plan-1",
 					PlanVersion: 2,
@@ -393,7 +419,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "report plan outcome findings",
+			name:   "report plan outcome findings",
+			schema: "governance/report-plan-outcome-response.json",
 			value: ReportPlanOutcomeResponse{
 				OutcomeID:    "outcome-1",
 				OutcomeState: "findings",
@@ -409,7 +436,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "creative format disclosures",
+			name:   "creative format disclosures",
+			schema: "core/format.json",
 			value: CreativeFormat{
 				FormatID: FormatRef{AgentURL: "https://seller.example/mcp", ID: "display_300x250"},
 				Name:     "Display",
@@ -422,23 +450,24 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 					Manifest: map[string]any{"sections": []any{"assets"}},
 				},
 				DisclosureCapabilities: []CreativeFormatDisclosureCapability{{
-					Position:    "overlay_top_left",
-					Persistence: []string{"initial", "persistent"},
+					Position:    "overlay",
+					Persistence: []string{"initial", "continuous"},
 				}},
 			},
 			want: []string{
 				`"format_card":{"format_id":{"agent_url":"https://seller.example/mcp","id":"format_card_standard"},"manifest":{"title":"Display"}}`,
-				`"disclosure_capabilities":[{"position":"overlay_top_left","persistence":["initial","persistent"]}]`,
+				`"disclosure_capabilities":[{"position":"overlay","persistence":["initial","continuous"]}]`,
 				`"format_card_detailed":{"format_id":{"agent_url":"https://seller.example/mcp","id":"format_card_detailed"},"manifest":{"sections":["assets"]}}`,
 			},
 		},
 		{
-			name: "creative asset inputs",
+			name:   "creative asset inputs",
+			schema: "core/creative-asset.json",
 			value: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
 				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "gen_display"},
-				Assets:     map[string]any{"headline": "Sale"},
+				Assets:     map[string]any{"headline": map[string]any{"asset_type": "text", "content": "Sale"}},
 				Inputs: []CreativeAssetInput{{
 					Name:               "default",
 					Macros:             map[string]string{"CITY": "Honolulu"},
@@ -457,7 +486,7 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 							RenderGuidance: &ProvenanceDisclosureRenderGuidance{
 								Persistence:   "initial",
 								MinDurationMs: 3000,
-								Positions:     []string{"overlay_top_left"},
+								Positions:     []string{"overlay"},
 							},
 						}},
 					},
@@ -468,12 +497,13 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 				`"inputs":[{"name":"default","macros":{"CITY":"Honolulu"},"context_description":"Warm-weather retail offer"}]`,
 				`"provenance":{"digital_source_type":"trained_algorithmic_media","ai_tool":{"name":"Creative model","provider":"Seller"}`,
 				`"c2pa":{"manifest_url":"https://seller.example/c2pa/creative-1"}`,
-				`"disclosure":{"required":true,"jurisdictions":[{"country":"US","regulation":"ca_sb_942","render_guidance":{"persistence":"initial","min_duration_ms":3000,"positions":["overlay_top_left"]}}]}`,
+				`"disclosure":{"required":true,"jurisdictions":[{"country":"US","regulation":"ca_sb_942","render_guidance":{"persistence":"initial","min_duration_ms":3000,"positions":["overlay"]}}]}`,
 				`"verification":[{"verified_by":"Verifier","result":"ai_generated","confidence":0.95}]`,
 			},
 		},
 		{
-			name: "delivery package breakdowns",
+			name:   "delivery package breakdowns",
+			schema: "media-buy/get-media-buy-delivery-response.json#/properties/media_buy_deliveries/items/properties/by_package/items",
 			value: PackageDelivery{
 				PackageID:    "pkg-1",
 				Spend:        10,
@@ -501,7 +531,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "delivery reporting request options",
+			name:   "delivery reporting request options",
+			schema: "media-buy/get-media-buy-delivery-request.json",
 			value: GetMediaBuyDeliveryRequest{
 				MediaBuyIDs: []string{"mb-1"},
 				AttributionWindow: &DeliveryAttributionWindow{
@@ -521,7 +552,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "media buy status filter scalar",
+			name:   "media buy status filter scalar",
+			schema: "media-buy/get-media-buys-request.json",
 			value: GetMediaBuysRequest{
 				StatusFilter: NewMediaBuyStatusFilter(MediaBuyStatusActive),
 			},
@@ -530,7 +562,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "delivery status filter array",
+			name:   "delivery status filter array",
+			schema: "media-buy/get-media-buy-delivery-request.json",
 			value: GetMediaBuyDeliveryRequest{
 				MediaBuyIDs: []string{"mb-1"},
 				StatusFilter: NewMediaBuyStatusFilter(
@@ -543,7 +576,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "package input optimization goals",
+			name:   "package input optimization goals",
+			schema: "media-buy/package-request.json",
 			value: PackageInput{
 				ProductID:       "prod-1",
 				PricingOptionID: "po-1",
@@ -566,7 +600,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "optimization goal preserves explicit zero value factor",
+			name:   "optimization goal preserves explicit zero value factor",
+			schema: "media-buy/package-request.json",
 			value: PackageInput{
 				ProductID:       "prod-1",
 				PricingOptionID: "po-1",
@@ -585,7 +620,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "package optimization goals typed",
+			name:   "package optimization goals typed",
+			schema: "core/package.json",
 			value: Package{
 				PackageID: "pkg-1",
 				OptimizationGoals: []OptimizationGoal{{
@@ -598,7 +634,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "package update optimization goals typed",
+			name:   "package update optimization goals typed",
+			schema: "media-buy/package-update.json",
 			value: PackageUpdate{
 				PackageID: "pkg-1",
 				OptimizationGoals: []OptimizationGoal{{
@@ -611,8 +648,10 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "creative agent refs",
+			name:   "creative agent refs",
+			schema: "media-buy/list-creative-formats-response.json",
 			value: ListCreativeFormatsResponse{
+				Status:  TaskStatusCompleted,
 				Formats: []CreativeFormat{},
 				CreativeAgents: []CreativeAgentRef{{
 					AgentURL:     "https://creative.example/mcp",
@@ -625,9 +664,11 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "build creative preview inputs",
+			name:   "build creative preview inputs",
+			schema: "media-buy/build-creative-request.json",
 			value: BuildCreativeRequest{
-				IdempotencyKey: "idem-preview-123",
+				IdempotencyKey:     "idem-preview-123",
+				TargetCapabilityID: "image",
 				PreviewInputs: []BuildCreativePreviewInput{{
 					Name:               "mobile",
 					Macros:             map[string]string{"CITY": "Honolulu"},
@@ -639,9 +680,12 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "media buy daily breakdown",
+			name:   "media buy daily breakdown",
+			schema: "media-buy/get-media-buy-delivery-response.json#/properties/media_buy_deliveries/items",
 			value: MediaBuyDelivery{
 				MediaBuyID:     "mb-1",
+				Status:         "active",
+				ByPackage:      []PackageDelivery{},
 				Totals:         MediaBuyDeliveryTotals{Impressions: 100, Spend: 10},
 				DailyBreakdown: []MediaBuyDailyBreakdown{{Date: "2026-06-01", Impressions: 100, Spend: 10}},
 			},
@@ -650,23 +694,26 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "performance feedback measurement period",
+			name:   "performance feedback measurement period",
+			schema: "media-buy/provide-performance-feedback-request.json",
 			value: ProvidePerformanceFeedbackRequest{
 				MediaBuyID:        "mb-1",
-				IdempotencyKey:    "idem-1",
+				IdempotencyKey:    "idem-feedback-0001",
 				MeasurementPeriod: DatetimeRange{Start: "2026-06-01T00:00:00Z", End: "2026-06-30T23:59:59Z"},
 				PerformanceIndex:  1,
-				MetricType:        "roas",
-				FeedbackSource:    "buyer",
+				MetricType:        MetricTypeConversionRate,
+				FeedbackSource:    FeedbackSourceBuyerAttribution,
 			},
 			want: []string{
 				`"measurement_period":{"start":"2026-06-01T00:00:00Z","end":"2026-06-30T23:59:59Z"}`,
 			},
 		},
 		{
-			name: "create success planned delivery",
+			name:   "create success planned delivery",
+			schema: "media-buy/create-media-buy-response.json#/oneOf/0",
 			value: CreateMediaBuySuccess{
 				MediaBuyID:       "mb-1",
+				Revision:         1,
 				Packages:         []Package{},
 				PlannedDelivery:  Ptr(PlannedDelivery{TotalBudget: 1000, Currency: "USD"}),
 				InvoiceRecipient: Ptr(BusinessEntity{LegalName: "Acme Corporation"}),
@@ -677,7 +724,8 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			},
 		},
 		{
-			name: "policy entry exemplars",
+			name:   "policy entry exemplars",
+			schema: "governance/policy-entry.json",
 			value: PolicyEntry{
 				PolicyID:    "policy-1",
 				Enforcement: "must",
@@ -704,6 +752,9 @@ func TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields(t *testing.T) {
 			raw, err := json.Marshal(tc.value)
 			if err != nil {
 				t.Fatalf("marshal %s: %v", tc.name, err)
+			}
+			if tc.schema != "" {
+				assertSchemaValid(t, tc.schema, raw)
 			}
 			body := string(raw)
 			for _, want := range tc.want {
@@ -886,6 +937,7 @@ func TestGovernanceFindingsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal check governance response: %v", err)
 	}
+	assertSchemaValid(t, "governance/check-governance-response.json", raw)
 	var decodedCheck CheckGovernanceResponse
 	if err := json.Unmarshal(raw, &decodedCheck); err != nil {
 		t.Fatalf("unmarshal check governance response: %v", err)
@@ -918,6 +970,7 @@ func TestGovernanceFindingsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal report plan outcome response: %v", err)
 	}
+	assertSchemaValid(t, "governance/report-plan-outcome-response.json", raw)
 	var decodedOutcome ReportPlanOutcomeResponse
 	if err := json.Unmarshal(raw, &decodedOutcome); err != nil {
 		t.Fatalf("unmarshal report plan outcome response: %v", err)
@@ -936,6 +989,7 @@ func TestGovernanceFindingsRoundTrip(t *testing.T) {
 
 func TestSyncPlansResponsePlansRoundTrip(t *testing.T) {
 	resp := SyncPlansResponse{
+		Status: TaskStatusCompleted,
 		Plans: []SyncPlansPlan{{
 			PlanID:  "plan-1",
 			Status:  "active",
@@ -957,6 +1011,7 @@ func TestSyncPlansResponsePlansRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal sync plans response: %v", err)
 	}
+	assertSchemaValid(t, "governance/sync-plans-response.json", raw)
 
 	var decoded SyncPlansResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -979,7 +1034,9 @@ func TestSyncPlansResponsePlansRoundTrip(t *testing.T) {
 
 func TestGetProductsIncompleteRoundTrip(t *testing.T) {
 	resp := GetProductsResponse{
-		Products: []Product{},
+		Status:     TaskStatusCompleted,
+		CacheScope: "public",
+		Products:   []Product{},
 		Incomplete: []GetProductsIncompleteItem{{
 			Scope:         "forecast",
 			Description:   "Forecast is still running.",
@@ -991,6 +1048,7 @@ func TestGetProductsIncompleteRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal get products response: %v", err)
 	}
+	assertSchemaValid(t, "media-buy/get-products-response.json", raw)
 
 	var decoded GetProductsResponse
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -1029,6 +1087,7 @@ func TestPolicyEntryExemplarsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal policy entry: %v", err)
 	}
+	assertSchemaValid(t, "governance/policy-entry.json", raw)
 
 	var decoded PolicyEntry
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -1048,7 +1107,8 @@ func TestPolicyEntryExemplarsRoundTrip(t *testing.T) {
 func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	req := ReportPlanOutcomeRequest{
 		PlanID:            "plan-1",
-		IdempotencyKey:    "idem-1",
+		IdempotencyKey:    "idem-report-0001",
+		CheckID:           "check-1",
 		Outcome:           "delivery",
 		GovernanceContext: "ctx-1",
 		Delivery: Ptr(ReportPlanOutcomeDelivery{
@@ -1069,6 +1129,7 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal report plan outcome request: %v", err)
 	}
+	assertSchemaValid(t, "governance/report-plan-outcome-request.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"impressions":0`,
@@ -1097,7 +1158,8 @@ func TestReportPlanOutcomeDeliveryPreservesExplicitZero(t *testing.T) {
 func TestReportPlanOutcomeSellerResponsePreservesExplicitZero(t *testing.T) {
 	req := ReportPlanOutcomeRequest{
 		PlanID:            "plan-1",
-		IdempotencyKey:    "idem-1",
+		IdempotencyKey:    "idem-report-0001",
+		CheckID:           "check-1",
 		Outcome:           "completed",
 		GovernanceContext: "ctx-1",
 		SellerResponse: Ptr(ReportPlanOutcomeSellerResponse{
@@ -1113,6 +1175,7 @@ func TestReportPlanOutcomeSellerResponsePreservesExplicitZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal report plan outcome request: %v", err)
 	}
+	assertSchemaValid(t, "governance/report-plan-outcome-request.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"committed_budget":0`,
@@ -1143,7 +1206,8 @@ func TestReportPlanOutcomeSellerResponsePreservesExplicitZero(t *testing.T) {
 func TestReportPlanOutcomeErrorRoundTrip(t *testing.T) {
 	req := ReportPlanOutcomeRequest{
 		PlanID:            "plan-1",
-		IdempotencyKey:    "idem-1",
+		IdempotencyKey:    "idem-report-0001",
+		CheckID:           "check-1",
 		Outcome:           "failed",
 		GovernanceContext: "ctx-1",
 		Error: &ReportPlanOutcomeError{
@@ -1156,6 +1220,7 @@ func TestReportPlanOutcomeErrorRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal report plan outcome request: %v", err)
 	}
+	assertSchemaValid(t, "governance/report-plan-outcome-request.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"error":{"code":"seller_timeout","message":"seller timed out"}`,
@@ -1199,6 +1264,7 @@ func TestReportPlanOutcomePlanSummaryPreservesExplicitZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal report plan outcome response: %v", err)
 	}
+	assertSchemaValid(t, "governance/report-plan-outcome-response.json", raw)
 	body := string(raw)
 	for _, want := range []string{
 		`"total_committed":0`,

@@ -16,11 +16,12 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		DeliveryType:        "guaranteed",
 		PricingOptions:      []PricingOption{{PricingOptionID: "pd-cpm", PricingModel: "cpm", FixedPrice: Ptr(15.0), Currency: "USD"}},
 		Placements: []Placement{{
-			PlacementID: "homepage",
-			Name:        "Homepage",
-			Kind:        "publisher_ref",
-			Mode:        "targetable",
-			FormatIDs:   []FormatRef{{AgentURL: "https://seller.example/mcp", ID: "display_300x250"}},
+			PlacementID:     "homepage",
+			PublisherDomain: "example.com",
+			Name:            "Homepage",
+			Kind:            "publisher_ref",
+			Mode:            "targetable",
+			FormatIDs:       []FormatRef{{AgentURL: "https://seller.example/mcp", ID: "display_300x250"}},
 		}},
 		Forecast: &DeliveryForecast{
 			Points: []ForecastPoint{{
@@ -29,7 +30,7 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 					"impressions": {Mid: 100000},
 				},
 			}},
-			Method:   "historical",
+			Method:   "modeled",
 			Currency: "USD",
 		},
 		OutcomeMeasurement: &OutcomeMeasurement{
@@ -63,11 +64,11 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		},
 		CreativePolicy: &CreativePolicy{
 			CoBranding:         "optional",
-			LandingPage:        "required",
+			LandingPage:        "any",
 			TemplatesAvailable: true,
 		},
 		MeasurementReadiness: &MeasurementReadiness{
-			Status:             "ready",
+			Status:             "good",
 			RequiredEventTypes: []string{"purchase"},
 			Issues: []DiagnosticIssue{{
 				Severity: "info",
@@ -102,7 +103,7 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 		},
 		DataProviderSignals: []DataProviderSignalSelector{{
 			DataProviderDomain: "signals.example",
-			SelectionType:      "signal_ids",
+			SelectionType:      "by_id",
 			SignalIDs:          []string{"auto_intenders"},
 		}},
 		Collections: []CollectionSelector{{
@@ -117,11 +118,11 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 			Status:          "scheduled",
 			DurationSeconds: 1800,
 			FlexibleEnd:     Ptr(false),
-			ContentRating:   &ContentRating{System: "tvpg", Rating: "TV-G"},
+			ContentRating:   &ContentRating{System: "tv_parental", Rating: "TV-G"},
 			Topics:          []string{"basketball", "playoffs"},
 			Special: &Special{
 				Name:     "Championship Week",
-				Category: "sports",
+				Category: "championship",
 				Starts:   "2026-06-14T00:00:00Z",
 			},
 			GuestTalent: []Talent{{
@@ -154,26 +155,27 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal product: %v", err)
 	}
+	assertSchemaValid(t, "core/product.json", raw)
 	body := string(raw)
 	for _, want := range []string{
-		`"placements":[{"kind":"publisher_ref","placement_id":"homepage","name":"Homepage","mode":"targetable"`,
-		`"forecast":{"points":[{"budget":1000,"metrics":{"impressions":{"mid":100000}}}],"method":"historical","currency":"USD"}`,
+		`"placements":[{"kind":"publisher_ref","placement_id":"homepage","publisher_domain":"example.com","name":"Homepage","mode":"targetable"`,
+		`"forecast":{"points":[{"budget":1000,"metrics":{"impressions":{"mid":100000}}}],"method":"modeled","currency":"USD"}`,
 		`"outcome_measurement":{"type":"brand_lift","attribution":"matched_market","reporting":"weekly"}`,
 		`"delivery_measurement":{"provider":"MRC-accredited display measurement","notes":"50% in-view for 1s"}`,
 		`"product_card":{"title":"Premium Display","price_label":"From $15 CPM"}`,
 		`"product_card_detailed":{"title":"Premium Display","description":"High-impact display placements.","specifications":[{"label":"Format","value":"Display"}]}`,
 		`"reporting_capabilities":{"available_reporting_frequencies":["daily"],"expected_delay_minutes":60`,
-		`"creative_policy":{"co_branding":"optional","landing_page":"required","templates_available":true}`,
-		`"measurement_readiness":{"status":"ready","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
+		`"creative_policy":{"co_branding":"optional","landing_page":"any","templates_available":true}`,
+		`"measurement_readiness":{"status":"good","required_event_types":["purchase"],"issues":[{"severity":"info","message":"purchase events are active"}]}`,
 		`"metric_optimization":{"supported_metrics":["clicks","reach"],"supported_targets":["cost_per"]}`,
 		`"conversion_tracking":{"action_sources":["website"],"supported_targets":["cost_per"],"platform_managed":true}`,
 		`"catalog_match":{"matched_ids":["sku-1"],"matched_count":1,"submitted_count":10}`,
 		`"trusted_match":{"context_match":true,"response_types":["activation"],"providers":[{"agent_url":"https://tmp.example/mcp","context_match":true}]}`,
 		`"material_submission":{"url":"https://seller.example/materials","instructions":"Upload print-ready PDF."}`,
-		`"data_provider_signals":[{"data_provider_domain":"signals.example","selection_type":"signal_ids","signal_ids":["auto_intenders"]}]`,
+		`"data_provider_signals":[{"data_provider_domain":"signals.example","selection_type":"by_id","signal_ids":["auto_intenders"]}]`,
 		`"collections":[{"publisher_domain":"example.com","collection_ids":["sports"]}]`,
 		`"installments":[{"installment_id":"ep-1","collection_id":"sports","name":"Finals Preview","scheduled_at":"2026-06-15T20:00:00Z","status":"scheduled","duration_seconds":1800,"flexible_end":false`,
-		`"special":{"name":"Championship Week","category":"sports","starts":"2026-06-14T00:00:00Z"}`,
+		`"special":{"name":"Championship Week","category":"championship","starts":"2026-06-14T00:00:00Z"}`,
 		`"guest_talent":[{"role":"host","name":"Avery Smith"}]`,
 		`"ad_inventory":{"expected_breaks":3,"total_ad_seconds":360,"max_ad_duration_seconds":30,"unplanned_breaks":false,"supported_formats":["video"]}`,
 		`"deadlines":{"booking_deadline":"2026-06-10T00:00:00Z","material_deadlines":[{"stage":"final","due_at":"2026-06-12T00:00:00Z","label":"Approved video creative"}]}`,
@@ -187,21 +189,24 @@ func TestGeneratedProductRefsMarshalTypedFields(t *testing.T) {
 
 func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 	cases := []struct {
-		name  string
-		v     any
-		want  []string
-		deny  []string
-		check func(t *testing.T, raw []byte)
+		name   string
+		schema string // the schema the encoding must be valid against
+		v      any
+		want   []string
+		deny   []string
+		check  func(t *testing.T, raw []byte)
 	}{
 		{
-			name: "pricing option nil fixed price",
-			v:    PricingOption{PricingOptionID: "auction", PricingModel: "cpm", Currency: "USD"},
-			deny: []string{`"fixed_price"`},
+			name:   "pricing option nil fixed price",
+			schema: "core/pricing-option.json",
+			v:      PricingOption{PricingOptionID: "auction", PricingModel: "cpm", Currency: "USD"},
+			deny:   []string{`"fixed_price"`},
 		},
 		{
-			name: "pricing option zero fixed price",
-			v:    PricingOption{PricingOptionID: "fixed-zero", PricingModel: "cpm", Currency: "USD", FixedPrice: Ptr(0.0)},
-			want: []string{`"fixed_price":0`},
+			name:   "pricing option zero fixed price",
+			schema: "core/pricing-option.json",
+			v:      PricingOption{PricingOptionID: "fixed-zero", PricingModel: "cpm", Currency: "USD", FixedPrice: Ptr(0.0)},
+			want:   []string{`"fixed_price":0`},
 			check: func(t *testing.T, raw []byte) {
 				var got PricingOption
 				requireJSONRoundTrip(t, raw, &got)
@@ -211,14 +216,16 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			},
 		},
 		{
-			name: "forecast point nil budget",
-			v:    ForecastPoint{Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
-			deny: []string{`"budget"`},
+			name:   "forecast point nil budget",
+			schema: "core/forecast-point.json",
+			v:      ForecastPoint{Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
+			deny:   []string{`"budget"`},
 		},
 		{
-			name: "forecast point zero budget",
-			v:    ForecastPoint{Budget: Ptr(0.0), Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
-			want: []string{`"budget":0`},
+			name:   "forecast point zero budget",
+			schema: "core/forecast-point.json",
+			v:      ForecastPoint{Budget: Ptr(0.0), Metrics: map[string]ForecastRange{"impressions": {Mid: 1000}}},
+			want:   []string{`"budget":0`},
 			check: func(t *testing.T, raw []byte) {
 				var got ForecastPoint
 				requireJSONRoundTrip(t, raw, &got)
@@ -228,19 +235,21 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			},
 		},
 		{
-			name: "audience selector nil bounds",
+			name:   "audience selector nil bounds",
+			schema: "core/audience-selector.json",
 			v: AudienceSelector{
 				Type:      "signal",
-				SignalID:  &SignalID{AgentURL: "https://signals.example/mcp", ID: "score"},
+				SignalID:  &SignalID{Source: "agent", AgentURL: "https://signals.example/mcp", ID: "score"},
 				ValueType: "numeric",
 			},
 			deny: []string{`"min_value"`, `"max_value"`},
 		},
 		{
-			name: "audience selector zero bounds",
+			name:   "audience selector zero bounds",
+			schema: "core/audience-selector.json",
 			v: AudienceSelector{
 				Type:      "signal",
-				SignalID:  &SignalID{AgentURL: "https://signals.example/mcp", ID: "score"},
+				SignalID:  &SignalID{Source: "agent", AgentURL: "https://signals.example/mcp", ID: "score"},
 				ValueType: "numeric",
 				MinValue:  Ptr(0.0),
 				MaxValue:  Ptr(0.0),
@@ -258,22 +267,24 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			},
 		},
 		{
-			name: "creative asset nil weight",
+			name:   "creative asset nil weight",
+			schema: "core/creative-asset.json",
 			v: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
 				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
-				Assets:     map[string]any{"image": "asset-1"},
+				Assets:     map[string]any{"image": map[string]any{"asset_type": "image", "url": "https://cdn.seller.example/display.jpg", "width": 300, "height": 250}},
 			},
 			deny: []string{`"weight"`},
 		},
 		{
-			name: "creative asset zero weight",
+			name:   "creative asset zero weight",
+			schema: "core/creative-asset.json",
 			v: CreativeAsset{
 				CreativeID: "creative-1",
 				Name:       "Creative",
 				FormatID:   &FormatRef{AgentURL: "https://seller.example/mcp", ID: "display"},
-				Assets:     map[string]any{"image": "asset-1"},
+				Assets:     map[string]any{"image": map[string]any{"asset_type": "image", "url": "https://cdn.seller.example/display.jpg", "width": 300, "height": 250}},
 				Weight:     Ptr(0.0),
 			},
 			want: []string{`"weight":0`},
@@ -286,14 +297,16 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			},
 		},
 		{
-			name: "keyword target nil bid price",
-			v:    KeywordTarget{Keyword: "running shoes", MatchType: "phrase"},
-			deny: []string{`"bid_price"`},
+			name:   "keyword target nil bid price",
+			schema: "core/keyword-target.json",
+			v:      KeywordTarget{Keyword: "running shoes", MatchType: "phrase"},
+			deny:   []string{`"bid_price"`},
 		},
 		{
-			name: "keyword target zero bid price",
-			v:    KeywordTarget{Keyword: "running shoes", MatchType: "phrase", BidPrice: Ptr(0.0)},
-			want: []string{`"bid_price":0`},
+			name:   "keyword target zero bid price",
+			schema: "core/keyword-target.json",
+			v:      KeywordTarget{Keyword: "running shoes", MatchType: "phrase", BidPrice: Ptr(0.0)},
+			want:   []string{`"bid_price":0`},
 			check: func(t *testing.T, raw []byte) {
 				var got KeywordTarget
 				requireJSONRoundTrip(t, raw, &got)
@@ -310,6 +323,7 @@ func TestOptionalNumericPointersPreserveExplicitZero(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
+			assertSchemaValid(t, tc.schema, raw)
 			body := string(raw)
 			for _, want := range tc.want {
 				if !strings.Contains(body, want) {
@@ -354,6 +368,7 @@ func TestGeneratedOneOfRefsMarshalFlattenedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal get signals request: %v", err)
 	}
+	assertSchemaValid(t, "signals/get-signals-request.json", rawReq)
 	if !strings.Contains(string(rawReq), `"destinations":[{"type":"platform","platform":"the-trade-desk"}]`) {
 		t.Fatalf("destinations did not marshal as typed field: %s", rawReq)
 	}
@@ -362,6 +377,7 @@ func TestGeneratedOneOfRefsMarshalFlattenedFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal planned delivery: %v", err)
 	}
+	assertSchemaValid(t, "core/planned-delivery.json", rawPlan)
 	if !strings.Contains(string(rawPlan), `"audience_targeting":[{"type":"description","description":"likely auto intenders"}]`) {
 		t.Fatalf("audience targeting did not marshal as typed field: %s", rawPlan)
 	}
@@ -387,6 +403,7 @@ func TestGeneratedPackagePriceBreakdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal package: %v", err)
 	}
+	assertSchemaValid(t, "core/package.json", raw)
 	if !strings.Contains(string(raw), `"price_breakdown":{"list_price":20,"adjustments":[{"kind":"discount","name":"volume","amount":5}]}`) {
 		t.Fatalf("price breakdown did not marshal as typed field: %s", raw)
 	}

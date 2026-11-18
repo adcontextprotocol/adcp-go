@@ -140,13 +140,14 @@ reason.
 
 `adcp/v3/schemas/lint.py --strict` enforces the same rule: a non-required
 request property with a null branch must be `Optional[...]` in Go, or be listed
-in `REVIEWED_NULLABLE_FIELDS` with the reason, as must an untyped field whose
-nulls sit below it (`targeting_overlay`) and a hand-written `any` that carries
-the null branch itself (`CreativeInput.Localization`, which keeps null with a
-`ClearField` sentinel until it moves to `Optional`). The hand-written `Plan`
-type is exempt from the drift check until it is paired with its schema, so
-`Plan.ApprovedSellers` is not covered yet: it encodes nil as null, and `Optional`
-would also tell omitted apart.
+in `REVIEWED_NULLABLE_FIELDS` with its reason and an owner. So must an untyped
+field whose nulls sit below it (`targeting_overlay`), and a hand-written field
+that carries the null branch itself and is not `Optional` yet:
+`CreativeInput.Localization` keeps null with a `ClearField` sentinel, and
+`Plan.ApprovedSellers` encodes nil as null, where `Optional` would also tell
+omitted apart. Every entry has an owner: the narrower issue that closes it (never
+the umbrella issue, as in the other gap tables), or `INTENDED` for an `any` that
+stays by design.
 
 ## Enum Policy
 

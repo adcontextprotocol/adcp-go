@@ -23,6 +23,15 @@ const validLocalization = `{
 	"unmatched_locale_action": "serve_default"
 }`
 
+// creativeItemSchema is one creative in a sync_creatives request.
+const creativeItemSchema = "creative/sync-creatives-request.json#/properties/creatives/items"
+
+// creativeItemBase holds the fields a schema-valid creative item needs, so a
+// fixture that varies only localization stays valid.
+const creativeItemBase = `"creative_id": "cr-1", "revision_id": "rev-7", "name": "Summer Sale",
+	"format_id": {"agent_url": "https://formats.example.com", "id": "display_static"},
+	"assets": {"image": {"asset_type": "image", "url": "https://cdn.example.com/summer.jpg", "width": 300, "height": 250}}`
+
 // TestCreativeInputRevisionAndLocalizationRoundTrip verifies CreativeInput
 // carries revision_id and localization on the wire (issue #567). The
 // sync-creatives-request schema adds both fields to the creative-asset item:
@@ -42,6 +51,9 @@ func TestCreativeInputRevisionAndLocalizationRoundTrip(t *testing.T) {
 		"assets": {"image": {"asset_type": "image", "url": "https://cdn.example.com/summer.jpg", "width": 300, "height": 250}},
 		"localization": ` + validLocalization + `
 	}`
+
+	assertSchemaValid(t, creativeItemSchema, []byte(payload))
+	assertSchemaValid(t, "core/creative-localization.json", []byte(validLocalization))
 
 	var got CreativeInput
 	require.NoError(t, json.Unmarshal([]byte(payload), &got))
@@ -76,9 +88,10 @@ func TestCreativeInputRevisionAndLocalizationRoundTrip(t *testing.T) {
 // removal request; UnmarshalJSON decodes it to the ClearField() sentinel,
 // which re-encodes as null.
 func TestCreativeInputLocalizationThreeStates(t *testing.T) {
-	base := `"creative_id": "cr-1", "revision_id": "rev-7"`
+	base := creativeItemBase
 
 	t.Run("omitted stays omitted", func(t *testing.T) {
+		assertSchemaValid(t, creativeItemSchema, []byte(`{`+base+`}`))
 		var got CreativeInput
 		require.NoError(t, json.Unmarshal([]byte(`{`+base+`}`), &got))
 		assert.Nil(t, got.Localization)
@@ -88,6 +101,7 @@ func TestCreativeInputLocalizationThreeStates(t *testing.T) {
 	})
 
 	t.Run("null decodes to ClearField and re-encodes as null", func(t *testing.T) {
+		assertSchemaValid(t, creativeItemSchema, []byte(`{`+base+`, "localization": null}`))
 		var got CreativeInput
 		require.NoError(t, json.Unmarshal([]byte(`{`+base+`, "localization": null}`), &got))
 		// Note: the sentinel is a typed nil pointer, so compare it
@@ -106,6 +120,7 @@ func TestCreativeInputLocalizationThreeStates(t *testing.T) {
 	t.Run("object round-trips as an object", func(t *testing.T) {
 		var got CreativeInput
 		payload := `{` + base + `, "localization": ` + validLocalization + `}`
+		assertSchemaValid(t, creativeItemSchema, []byte(payload))
 		require.NoError(t, json.Unmarshal([]byte(payload), &got))
 		require.NotNil(t, got.Localization)
 		assert.NotEqual(t, ClearField(), got.Localization)
@@ -118,8 +133,15 @@ func TestCreativeInputLocalizationThreeStates(t *testing.T) {
 	})
 
 	t.Run("buyer-side ClearField encodes as null", func(t *testing.T) {
-		raw, err := json.Marshal(CreativeInput{CreativeID: "cr-1", Localization: ClearField()})
+		raw, err := json.Marshal(CreativeInput{
+			CreativeID:   "cr-1",
+			Name:         "Summer Sale",
+			FormatID:     &FormatRef{AgentURL: "https://formats.example.com", ID: "display_static"},
+			Assets:       map[string]any{"image": map[string]any{"asset_type": "image", "url": "https://cdn.example.com/summer.jpg", "width": 300, "height": 250}},
+			Localization: ClearField(),
+		})
 		require.NoError(t, err)
+		assertSchemaValid(t, creativeItemSchema, raw)
 		assert.Contains(t, string(raw), `"localization":null`)
 	})
 }

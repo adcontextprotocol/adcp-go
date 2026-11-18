@@ -33,6 +33,7 @@ type Plan struct {
 type PlanBudget struct {
 	Total                 float64                         `json:"total"`
 	Currency              string                          `json:"currency"`
+	AccountingMode        string                          `json:"accounting_mode,omitempty"` // gross_commitment (the default when omitted) or verified_net_cost
 	PerSellerMaxPct       float64                         `json:"per_seller_max_pct,omitempty"`
 	ReallocationThreshold *float64                        `json:"reallocation_threshold,omitempty"`
 	ReallocationUnlimited bool                            `json:"reallocation_unlimited,omitempty"`

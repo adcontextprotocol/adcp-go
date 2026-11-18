@@ -269,6 +269,7 @@ func TestRestrictedAttribute_AgeAndFamilialStatus(t *testing.T) {
 	}
 	b, err := json.Marshal(p)
 	require.NoError(t, err)
+	assertSchemaValid(t, "governance/sync-plans-request.json#/properties/plans/items", b)
 
 	var decoded Plan
 	require.NoError(t, json.Unmarshal(b, &decoded))
@@ -287,6 +288,7 @@ func TestBrandReference_InlineOverrides_RoundTrip(t *testing.T) {
 	}
 	b, err := json.Marshal(brand)
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/brand-ref.json", b)
 
 	var decoded BrandReference
 	require.NoError(t, json.Unmarshal(b, &decoded))
@@ -323,6 +325,7 @@ func TestSyncPlansRequest_RoundTrip(t *testing.T) {
 	}
 	b, err := json.Marshal(req)
 	require.NoError(t, err)
+	assertSchemaValid(t, "governance/sync-plans-request.json", b)
 
 	var decoded SyncPlansRequest
 	require.NoError(t, json.Unmarshal(b, &decoded))
@@ -348,6 +351,7 @@ func TestPlan_ApprovedSellers_EmptyIsNotNull(t *testing.T) {
 			p.ApprovedSellers = tc.sellers
 			b, err := json.Marshal(SyncPlansRequest{IdempotencyKey: "req-0000000000000001", Plans: []Plan{p}})
 			require.NoError(t, err)
+			assertSchemaValid(t, "governance/sync-plans-request.json", b)
 
 			var raw struct {
 				Plans []map[string]json.RawMessage `json:"plans"`
