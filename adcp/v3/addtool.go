@@ -64,7 +64,11 @@ func AddTool[In any](server *mcp.Server, name, description string, handler func(
 // property documentation and type information for tool discovery
 // while accepting extra protocol fields.
 func permissiveSchemaFor[In any]() *jsonschema.Schema {
-	rt := reflect.TypeFor[In]()
+	return permissiveSchemaForType(reflect.TypeFor[In]())
+}
+
+// permissiveSchemaForType is permissiveSchemaFor for a reflect.Type.
+func permissiveSchemaForType(rt reflect.Type) *jsonschema.Schema {
 	if rt.Kind() == reflect.Pointer {
 		rt = rt.Elem()
 	}
