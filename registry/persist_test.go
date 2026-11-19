@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -444,15 +445,58 @@ func TestValidatePublisherDomain(t *testing.T) {
 		wantErr bool
 	}{
 		{"happy path", "example.com", false},
+		{"subdomain", "edition.example.com", false},
+		{"single label", "pub1", false},
 		{"empty", "", true},
 		{"pipe", "foo|bar", true},
 		{"newline", "foo\nbar", true},
 		{"space", "foo bar", true},
 		{"del", "foo\x7fbar", true},
+		{"pasted url", "https://www.example.com/path", true},
+		{"wildcard", "*.example.com", true},
+		{"uppercase", "Example.com", true},
+		{"port", "example.com:8080", true},
+		{"trailing dot", "example.com.", true},
+		{"underscore", "ex_ample.com", true},
+		{"label starts with hyphen", "-example.com", true},
+		{"label ends with hyphen", "example-.com", true},
+		{"empty label", "example..com", true},
+		{"label too long", strings.Repeat("a", 64) + ".com", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidatePublisherDomain(tc.domain)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestValidatePublisherDomainKey(t *testing.T) {
+	// The removal-path check enforces only the field-name encoding, so
+	// entries written before the strict hostname shape existed stay
+	// revocable.
+	cases := []struct {
+		name    string
+		domain  string
+		wantErr bool
+	}{
+		{"happy path", "example.com", false},
+		{"legacy uppercase", "Example.COM", false},
+		{"legacy trailing dot", "example.com.", false},
+		{"legacy wildcard", "*.example.com", false},
+		{"legacy underscore", "ex_ample.com", false},
+		{"empty", "", true},
+		{"pipe", "foo|bar", true},
+		{"space", "foo bar", true},
+		{"newline", "foo\nbar", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidatePublisherDomainKey(tc.domain)
 			if tc.wantErr {
 				assert.Error(t, err)
 			} else {
