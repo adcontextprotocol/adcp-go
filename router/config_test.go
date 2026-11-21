@@ -1,6 +1,8 @@
 package router
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,6 +115,27 @@ func TestValidateProviderConfig(t *testing.T) {
 		p := &ProviderConfig{ID: "bad\x00id", ContextMatch: true}
 		assert.Error(t, ValidateProviderConfig(p, budget), "expected error for ID with null byte")
 	})
+
+	t.Run("cache namespace bounded and printable", func(t *testing.T) {
+		for _, namespace := range []string{"contains space", "line\nbreak", strings.Repeat("x", MaxContextCacheNamespaceBytes+1)} {
+			p := &ProviderConfig{ID: "p1", ContextMatch: true, CacheNamespace: namespace}
+			assert.Error(t, ValidateProviderConfig(p, budget))
+		}
+		p := &ProviderConfig{ID: "p1", ContextMatch: true, CacheNamespace: "rules-2026.09.13"}
+		assert.NoError(t, ValidateProviderConfig(p, budget))
+	})
+}
+
+func TestProviderConfig_CacheNamespaceAcceptedButNeverMarshaled(t *testing.T) {
+	const marker = "sensitive-generation-marker"
+	var provider ProviderConfig
+	require.NoError(t, json.Unmarshal([]byte(`{"provider_id":"p1","endpoint":"https://provider.example","context_match":true,"cache_namespace":"`+marker+`"}`), &provider))
+	assert.Equal(t, marker, provider.CacheNamespace)
+
+	encoded, err := json.Marshal(provider)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), marker)
+	assert.NotContains(t, string(encoded), "cache_namespace")
 }
 
 func TestEffectiveStatus(t *testing.T) {
@@ -159,7 +182,7 @@ func TestEffectiveTimeout(t *testing.T) {
 func TestProviderSet_ActiveFiltersByStatus(t *testing.T) {
 	ps := NewProviderSet([]ProviderConfig{
 		{ID: "active", Status: ProviderStatusActive, ContextMatch: true},
-		{ID: "empty-status", ContextMatch: true},         // defaults to active
+		{ID: "empty-status", ContextMatch: true}, // defaults to active
 		{ID: "inactive", Status: ProviderStatusInactive, ContextMatch: true},
 		{ID: "draining", Status: ProviderStatusDraining, ContextMatch: true},
 	})

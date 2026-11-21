@@ -1,6 +1,7 @@
 package router
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -169,6 +170,31 @@ providers:
 	assert.False(t, cfg.Cache.Disabled)
 	assert.Equal(t, 120, cfg.Cache.DefaultTTLSeconds)
 	assert.Equal(t, 2*time.Minute, cfg.Cache.DefaultTTL())
+}
+
+func TestLoadServerConfig_AcceptsProviderCacheNamespaceJSONAndYAML(t *testing.T) {
+	const marker = "authz17-packages42-model9-rules6"
+	tests := []struct {
+		name string
+		file string
+		body string
+	}{
+		{"JSON", "config.json", `{"providers":[{"provider_id":"p1","endpoint":"https://provider.example/agent","context_match":true,"cache_namespace":"` + marker + `"}]}`},
+		{"YAML", "config.yaml", "providers:\n  - provider_id: p1\n    endpoint: https://provider.example/agent\n    context_match: true\n    cache_namespace: " + marker + "\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeFile(t, t.TempDir(), tt.file, tt.body)
+			cfg, err := LoadServerConfig(path)
+			require.NoError(t, err)
+			require.Len(t, cfg.Providers, 1)
+			assert.Equal(t, marker, cfg.Providers[0].CacheNamespace)
+			encoded, err := json.Marshal(cfg.Providers[0])
+			require.NoError(t, err)
+			assert.NotContains(t, string(encoded), marker, "admin-facing ProviderConfig JSON must redact namespace metadata")
+			assert.NotContains(t, string(encoded), "cache_namespace")
+		})
+	}
 }
 
 // DefaultTTL falls back to DefaultContextCacheTTL (5 min) whenever the

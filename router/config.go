@@ -27,10 +27,10 @@ var tmpxSlotIDPattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 // numeric ranges and length caps so a registration that would fail
 // downstream schema validation is rejected at startup instead.
 const (
-	providerIDMaxLen = 64
+	providerIDMaxLen     = 64
 	providerTimeoutMinMs = 5
 	providerTimeoutMaxMs = 5000
-	tmpxSlotsMaxItems = 2
+	tmpxSlotsMaxItems    = 2
 )
 
 // ProviderStatus is the schema-generated provider lifecycle type.
@@ -54,6 +54,19 @@ type ProviderConfig struct {
 	ContextMatch  bool           `json:"context_match"`
 	IdentityMatch bool           `json:"identity_match"`
 	WireFormats   []string       `json:"wire_formats"`
+
+	// CacheNamespace is an opaque, deployment-controlled generation token for
+	// result-affecting state outside Context Match request bodies. It must rotate
+	// when outbound auth/tenant, authorization or entitlement revision, active
+	// packages, provider config, deployed model, or targeting rules change. It
+	// must never contain credentials, credential-derived values, direct
+	// principal/tenant identifiers, request values, or viewer/Identity Match
+	// data. Empty disables response caching for this provider.
+	//
+	// The value is accepted from cache_namespace on config input but deliberately
+	// omitted from JSON output because even non-secret namespace metadata is
+	// operationally sensitive (notably on the /providers admin endpoint).
+	CacheNamespace string `json:"-"`
 
 	// Provider-side filters — router skips this provider for non-matching requests.
 	PropertyIDs        []string `json:"property_ids,omitempty"`         // Match on publisher's property_id slug (empty = all)
@@ -104,8 +117,9 @@ func (p *ProviderConfig) UnmarshalJSON(data []byte) error {
 	type providerConfigAlias ProviderConfig
 	aux := struct {
 		*providerConfigAlias
-		ProviderID string `json:"provider_id"`
-		TimeoutMs  *int   `json:"timeout_ms"`
+		ProviderID     string `json:"provider_id"`
+		TimeoutMs      *int   `json:"timeout_ms"`
+		CacheNamespace string `json:"cache_namespace"`
 	}{providerConfigAlias: (*providerConfigAlias)(p)}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -116,6 +130,7 @@ func (p *ProviderConfig) UnmarshalJSON(data []byte) error {
 	if aux.TimeoutMs != nil {
 		p.Timeout = time.Duration(*aux.TimeoutMs) * time.Millisecond
 	}
+	p.CacheNamespace = aux.CacheNamespace
 	return nil
 }
 
@@ -158,6 +173,9 @@ func ValidateProviderConfig(p *ProviderConfig, latencyBudget time.Duration) erro
 	}
 	if p.Priority < 0 {
 		return fmt.Errorf("provider %q: priority must be >= 0 (schema §priority)", p.ID)
+	}
+	if p.CacheNamespace != "" && !validContextCacheNamespace(p.CacheNamespace) {
+		return fmt.Errorf("provider %q: cache_namespace must be 1-%d printable non-whitespace ASCII bytes", p.ID, MaxContextCacheNamespaceBytes)
 	}
 	if p.Timeout != 0 {
 		ms := p.Timeout / time.Millisecond
