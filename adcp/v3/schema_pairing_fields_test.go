@@ -125,7 +125,8 @@ func TestReportingPeriodTimezoneThroughDeliveryData(t *testing.T) {
 	var d DeliveryData
 	require.NoError(t, json.Unmarshal(raw, &d))
 	require.Equal(t, "America/New_York", d.ReportingPeriod.Timezone)
+	require.Equal(t, TaskStatusCompleted, d.Status)
 	out, err := json.Marshal(d)
 	require.NoError(t, err)
-	require.JSONEq(t, payload, string(out))
+	require.JSONEq(t, string(raw), string(out))
 }

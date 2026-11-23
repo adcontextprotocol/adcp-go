@@ -132,8 +132,7 @@ type knownInvalidFixture struct {
 
 // Issues that track the entries below.
 const (
-	issueEmptyProductsList      = "https://github.com/adcontextprotocol/adcp-go/issues/611"
-	issueResponseEnvelopeStatus = "https://github.com/adcontextprotocol/adcp-go/issues/612"
+	issueEmptyProductsList = "https://github.com/adcontextprotocol/adcp-go/issues/611"
 )
 
 func setField(name string, value any) func(map[string]any) {
@@ -164,47 +163,7 @@ var knownInvalidFixtures = map[string]knownInvalidFixture{
 		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
 		Patch: setField("products", []any{}),
 	},
-	// SDK response builders emit no or an empty envelope status, which the
-	// response schema requires of every response: MediaBuyResponse sends a
-	// create_media_buy success with none (ProductsResponse and
-	// CapabilitiesResponse inject it, and CreateMediaBuySuccess has no field
-	// for it); MediaBuysResponse builds from a media buy list alone, so status
-	// is encoded as ""; and comply_test_controller results carry none.
-	"TestMediaBuyResponseUsesCreateSuccessFields media-buy/create-media-buy-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating media-buy/create-media-buy-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestMediaBuysResponseNilListEmitsEmptyArray media-buy/get-media-buys-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating media-buy/get-media-buys-response.json: validating /allOf/1: validating core/protocol-envelope.json: validating /properties/status: validating enums/task-status.json: enum:  does not equal any of: [submitted working input-required completed canceled failed rejected auth-required unknown]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestListScenarios compliance/comply-test-controller-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestUnknownScenario compliance/comply-test-controller-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestMissingParams compliance/comply-test-controller-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestForceAccountStatus compliance/comply-test-controller-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	},
-	"TestControllerErrorHandling compliance/comply-test-controller-response.json": {
-		Issue: issueResponseEnvelopeStatus,
-		Error: `validating root: validating compliance/comply-test-controller-response.json: validating /allOf/1: validating core/protocol-envelope.json: required: missing properties: ["status"]`,
-		Patch: setField("status", "completed"),
-	}}
+}
 
 // schemaErrorText is a validation error without the bundle's base URL, so an
 // entry's Error does not change with the bundle version it was recorded on.

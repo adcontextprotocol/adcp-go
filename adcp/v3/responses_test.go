@@ -20,9 +20,8 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// The builder adds no envelope status to a success, which the response
-	// schema requires; knownInvalidFixtures records it. The body is checked
-	// against the success branch on its own.
+	// The builder adds the envelope status the response schema requires
+	// (#612). The body is also checked against the success branch on its own.
 	assertEncodingSchemaValid(t, "media-buy/create-media-buy-response.json", result.StructuredContent)
 	assertEncodingSchemaValid(t, "media-buy/create-media-buy-response.json#/oneOf/0", result.StructuredContent)
 	wire, ok := result.StructuredContent.(map[string]any)
