@@ -1597,6 +1597,7 @@ class WaiverDerivationLintTest(unittest.TestCase):
         # stay reported.
         self.assertIn(("MediaBuyData", "required_with_omitempty", "confirmed_at"), reported)
         self.assertIn(("AccountInput", "optional_bool_pointer", "sandbox"), reported)
+        self.assertIn(("AccountReference", "optional_bool_pointer", "sandbox"), reported)
         self.assertIn(("Plan", "optional_bool_pointer", "human_review_required"), reported)
         self.assertIn(("DeliveryData", "missing_in_go", "status"), reported)
 

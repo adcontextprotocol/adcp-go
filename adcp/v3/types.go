@@ -570,10 +570,6 @@ type BrandKitOverrideColors struct {
 // id counts), Currency, Timezone and Sandbox qualify the second form: part of
 // the natural account key in AdCP 3.2, lookup filters on the account in 3.3,
 // with the same wire shape in both.
-//
-// Sandbox is a *bool because the schema gives it a default of false: nil is
-// absent and means the production account, a pointer to false is an explicit
-// false that is re-encoded as such.
 type AccountReference struct {
 	AccountID    string          `json:"account_id,omitempty"`
 	Brand        *BrandReference `json:"brand,omitempty"`
@@ -581,7 +577,7 @@ type AccountReference struct {
 	OperatorUnit *OperatorUnit   `json:"operator_unit,omitempty"`
 	Currency     string          `json:"currency,omitempty"`
 	Timezone     string          `json:"timezone,omitempty"`
-	Sandbox      *bool           `json:"sandbox,omitempty"`
+	Sandbox      bool            `json:"sandbox,omitempty"`
 }
 
 // PublisherPropertySelector is the flattened union of the three variants in

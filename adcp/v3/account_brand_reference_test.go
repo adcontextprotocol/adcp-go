@@ -10,8 +10,8 @@ import (
 // The fields of AccountReference (core/account-ref.json) and
 // BrandReference (core/brand-ref.json) that the hand-written types once
 // dropped (adcontextprotocol/adcp-go#611). Each fixture is valid against the
-// schema and sets every property it names, so a missing field or a lost false
-// fails the round trip.
+// schema and sets every property it names, so a missing field fails the round
+// trip.
 
 const (
 	accountRefSchema = "core/account-ref.json"
@@ -36,22 +36,14 @@ func TestAccountReferenceRoundTrip(t *testing.T) {
 		require.Equal(t, OperatorUnit{ID: "234284238", Name: "Nova EMEA"}, *ref.OperatorUnit)
 		require.Equal(t, "EUR", ref.Currency)
 		require.Equal(t, "Europe/Amsterdam", ref.Timezone)
-		require.NotNil(t, ref.Sandbox)
-		require.True(t, *ref.Sandbox)
+		require.True(t, ref.Sandbox)
 		require.Equal(t, []string{"DE", "NL"}, ref.Brand.Countries)
-	})
-
-	t.Run("explicit sandbox false is re-encoded as false", func(t *testing.T) {
-		ref := requireRoundTrip[AccountReference](t, accountRefSchema,
-			`{"brand":{"domain":"acme-corp.com"},"operator":"acme-corp.com","sandbox":false}`)
-		require.NotNil(t, ref.Sandbox)
-		require.False(t, *ref.Sandbox)
 	})
 
 	t.Run("absent sandbox stays absent", func(t *testing.T) {
 		ref := requireRoundTrip[AccountReference](t, accountRefSchema,
 			`{"brand":{"domain":"acme-corp.com"},"operator":"acme-corp.com"}`)
-		require.Nil(t, ref.Sandbox)
+		require.False(t, ref.Sandbox)
 	})
 
 	t.Run("operator unit without a name", func(t *testing.T) {
@@ -63,14 +55,14 @@ func TestAccountReferenceRoundTrip(t *testing.T) {
 	t.Run("account_id alone", func(t *testing.T) {
 		ref := requireRoundTrip[AccountReference](t, accountRefSchema, `{"account_id":"acc_acme_001"}`)
 		require.Equal(t, "acc_acme_001", ref.AccountID)
-		require.Nil(t, ref.Sandbox)
+		require.False(t, ref.Sandbox)
 		require.Nil(t, ref.OperatorUnit)
 	})
 
 	t.Run("a built reference encodes the same way", func(t *testing.T) {
-		withFalse, err := json.Marshal(AccountReference{Operator: "acme-corp.com", Sandbox: Bool(false)})
+		built, err := json.Marshal(AccountReference{Operator: "acme-corp.com", Currency: "EUR", Sandbox: true})
 		require.NoError(t, err)
-		require.JSONEq(t, `{"operator":"acme-corp.com","sandbox":false}`, string(withFalse))
+		require.JSONEq(t, `{"operator":"acme-corp.com","currency":"EUR","sandbox":true}`, string(built))
 
 		unset, err := json.Marshal(AccountReference{Operator: "acme-corp.com"})
 		require.NoError(t, err)
@@ -123,19 +115,18 @@ func TestAccountReferenceThroughGetMediaBuyDeliveryRequest(t *testing.T) {
 			"operator_unit":{"id":"234284238","name":"Nova EMEA"},
 			"currency":"EUR",
 			"timezone":"Europe/Amsterdam",
-			"sandbox":false
+			"sandbox":true
 		},
 		"media_buy_ids":["mb_1"]
 	}`)
 	require.NotNil(t, req.Account)
-	require.NotNil(t, req.Account.Sandbox)
-	require.False(t, *req.Account.Sandbox)
+	require.True(t, req.Account.Sandbox)
 	require.Equal(t, "EUR", req.Account.Currency)
 	require.Equal(t, "Run further", req.Account.Brand.BrandKitOverride.Tagline)
 
 	absent := requireRoundTrip[GetMediaBuyDeliveryRequest](t, ref,
 		`{"account":{"brand":{"domain":"acme-corp.com"},"operator":"acme-corp.com"}}`)
-	require.Nil(t, absent.Account.Sandbox)
+	require.False(t, absent.Account.Sandbox)
 }
 
 // AdCP 3.3 opens these objects (additionalProperties: true), so a seller on
@@ -171,8 +162,7 @@ func TestAccountReferenceIgnoresUnknownKeys(t *testing.T) {
 	require.Equal(t, OperatorUnit{ID: "234284238", Name: "Nova EMEA"}, *ref.OperatorUnit)
 	require.Equal(t, "EUR", ref.Currency)
 	require.Equal(t, "Europe/Amsterdam", ref.Timezone)
-	require.NotNil(t, ref.Sandbox)
-	require.True(t, *ref.Sandbox)
+	require.True(t, ref.Sandbox)
 	require.Equal(t, "nova-athletics.example", ref.Brand.Domain)
 	require.Equal(t, "spark", ref.Brand.BrandID)
 	require.Equal(t, []string{"NL"}, ref.Brand.Countries)

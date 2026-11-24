@@ -175,6 +175,11 @@ KNOWN_SCHEMA_GAPS = {
         # survives omitempty; the schema gives sandbox no default.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
     },
+    'AccountReference': {
+        # lint asks for *bool on every optional boolean so an explicit false
+        # survives omitempty; changing the field type is breaking.
+        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
+    },
     'AccountResult': {
         # The Go item carries 9 of the schema item's 27 properties.
         'missing_in_go': _owned(
