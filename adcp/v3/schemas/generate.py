@@ -116,6 +116,9 @@ KNOWN_TYPES = {
     'PlanChannels', 'PlanChannelMixTarget', 'PlanDelegation',
     'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
     'HumanOverride', 'DataSubjectContestation',
+    # brand-ref.json's open inline brand_kit_override and its colors object;
+    # hand-written next to BrandReference in types.go.
+    'BrandKitOverride', 'BrandKitOverrideColors',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -1572,6 +1575,8 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'CollectionListFilters': 'collection/collection-list-filters.json',
     'DistributionID': 'collection/collection-list-filters.json#/properties/exclude_distribution_ids/items',
     'DataSubjectContestation': 'core/brand-ref.json#/properties/data_subject_contestation',
+    'BrandKitOverride': 'core/brand-ref.json#/properties/brand_kit_override',
+    'BrandKitOverrideColors': 'core/brand-ref.json#/properties/brand_kit_override/properties/colors',
     'MakegoodPolicy': 'core/measurement-terms.json#/properties/makegood_policy',
     'ReportingAdjustmentReceipt': 'core/reporting-adjustment-receipt.json',
     'ReportingConsumerStatus': 'core/reporting-consumer-status.json',

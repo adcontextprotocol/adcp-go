@@ -175,16 +175,6 @@ KNOWN_SCHEMA_GAPS = {
         # survives omitempty; the schema gives sandbox no default.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
     },
-    'AccountReference': {
-        # Natural-key fields of an account: operator_unit, currency, timezone.
-        'missing_in_go': _owned(
-            WIRE_BUGS,
-            'currency', 'operator_unit', 'timezone',
-        ),
-        # lint asks for *bool on every optional boolean so an explicit false
-        # survives omitempty; changing the field type is breaking.
-        'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
-    },
     'AccountResult': {
         # The Go item carries 9 of the schema item's 27 properties.
         'missing_in_go': _owned(
@@ -195,10 +185,6 @@ KNOWN_SCHEMA_GAPS = {
             'rate_card', 'reporting_delivery_configs', 'revision', 'sandbox',
             'timezone', 'warnings',
         ),
-    },
-    'BrandReference': {
-        # countries is part of the advertiser identity key.
-        'missing_in_go': _owned(WIRE_BUGS, 'brand_kit_override', 'countries'),
     },
     'CancellationFee': {
         # lint asks for a pointer on an optional number so an explicit zero

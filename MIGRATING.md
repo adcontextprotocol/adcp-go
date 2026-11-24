@@ -581,6 +581,10 @@ be populated.
   Use nil when the field is absent and `adcp.Bool(true)` when requesting
   cancellation. The AdCP schema constrains `canceled` to true; do not send
   `adcp.Bool(false)` to mean resume. Use `Paused: adcp.Bool(false)` for resume.
+- `AccountReference.Sandbox` is `*bool`. Use nil to omit it (the production
+  account) and `adcp.Bool(true)` or `adcp.Bool(false)` to send it.
+  `AccountReference` also gains `OperatorUnit`, `Currency` and `Timezone`, and
+  `BrandReference` gains `Countries` and `BrandKitOverride`.
 - `CreativeAssignments` is now `[]adcp.CreativeAssignment`. Use
   `adcp.Float64(0)` for an explicit paused creative weight; omitted weight
   still means equal rotation. Seller-specific assignment fields round-trip via
