@@ -80,13 +80,49 @@ func TestReportUsageRecordDistinguishesZeroFromAbsent(t *testing.T) {
 
 // The schema requires idempotency_key, reporting_period and usage on the
 // request and accepted and status on the response, so a zero value of each is
-// still written.
+// still written, an unset usage list included.
 func TestReportUsageRequiredFieldsAreAlwaysEncoded(t *testing.T) {
 	req, err := json.Marshal(ReportUsageRequest{Usage: []ReportUsageRecord{{}}})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"idempotency_key":"","reporting_period":{"start":"","end":""},"usage":[{"account":{},"vendor_cost":0,"currency":""}]}`, string(req))
 
+	empty, err := json.Marshal(ReportUsageRequest{})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"idempotency_key":"","reporting_period":{"start":"","end":""},"usage":null}`, string(empty))
+
 	resp, err := json.Marshal(ReportUsageResponse{})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"status":"","accepted":0}`, string(resp))
+}
+
+// adcp_major_version is deprecated and optional: a request without it decodes
+// to nil, so a handler can tell a sender that left it off from one that sent a
+// version.
+func TestReportUsageRequestMajorVersionAbsentIsNil(t *testing.T) {
+	fixture := []byte(`{"idempotency_key":"report-usage-nomajor-01","reporting_period":{"start":"2026-10-01T00:00:00Z","end":"2026-10-31T23:59:59Z"},"usage":[{"account":{"account_id":"acct_1"},"vendor_cost":1,"currency":"EUR"}]}`)
+	assertSchemaValid(t, "account/report-usage-request.json", fixture)
+	var req ReportUsageRequest
+	require.NoError(t, json.Unmarshal(fixture, &req))
+	assert.Nil(t, req.AdcpMajorVersion)
+
+	withMajor := []byte(`{"adcp_major_version":3,"idempotency_key":"report-usage-nomajor-01","reporting_period":{"start":"2026-10-01T00:00:00Z","end":"2026-10-31T23:59:59Z"},"usage":[{"account":{"account_id":"acct_1"},"vendor_cost":1,"currency":"EUR"}]}`)
+	var reqMajor ReportUsageRequest
+	require.NoError(t, json.Unmarshal(withMajor, &reqMajor))
+	require.NotNil(t, reqMajor.AdcpMajorVersion)
+	assert.Equal(t, 3, *reqMajor.AdcpMajorVersion)
+}
+
+// The request and each usage record are open objects (additionalProperties:
+// true), so a sender on a later AdCP version may add keys this SDK does not
+// know. Decoding such a payload succeeds and leaves every known field as it
+// would be without the extra keys.
+func TestReportUsageOpenObjectsAcceptUnknownKeys(t *testing.T) {
+	known := []byte(`{"idempotency_key":"report-usage-open-0001","reporting_period":{"start":"2026-10-01T00:00:00Z","end":"2026-10-31T23:59:59Z"},"usage":[{"account":{"account_id":"acct_1"},"vendor_cost":5,"currency":"EUR","impressions":10}]}`)
+	extra := []byte(`{"idempotency_key":"report-usage-open-0001","reporting_period":{"start":"2026-10-01T00:00:00Z","end":"2026-10-31T23:59:59Z"},"future_request_field":{"a":1},"usage":[{"account":{"account_id":"acct_1"},"vendor_cost":5,"currency":"EUR","impressions":10,"future_record_field":"x"}]}`)
+	assertSchemaValid(t, "account/report-usage-request.json", known)
+	assertSchemaValid(t, "account/report-usage-request.json", extra)
+	var want, got ReportUsageRequest
+	require.NoError(t, json.Unmarshal(known, &want))
+	require.NoError(t, json.Unmarshal(extra, &got))
+	assert.Equal(t, want, got)
 }

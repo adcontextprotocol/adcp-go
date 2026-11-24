@@ -1314,7 +1314,6 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
 })
 
 OPEN_INLINE_SCHEMA_TYPES = frozenset({
-    'ReportUsageRecord',
     'RefinementCapability',
     'ReportPlanOutcomeError',
     'ReachWindow',
@@ -1416,6 +1415,7 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'CreativeBriefDisclosure',
     'EventContentItem',
     'UserMatchUID',
+    'ReportUsageRecord',
 })
 
 # Shared inline helper types are generated from one schema pointer but reused by
