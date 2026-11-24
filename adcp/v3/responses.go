@@ -81,6 +81,12 @@ func withEnvelopeStatus(data any, status string) any {
 	if err := json.Unmarshal(b, &wire); err != nil {
 		return data
 	}
+	if wire == nil {
+		// data marshalled to JSON null (e.g. a nil store result); there
+		// is no object to carry a status, and writing to the nil map
+		// would panic.
+		return data
+	}
 	if _, ok := wire["status"]; !ok {
 		wire["status"] = status
 	}

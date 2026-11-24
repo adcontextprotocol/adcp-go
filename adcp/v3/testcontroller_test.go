@@ -83,6 +83,51 @@ func TestForceAccountStatus(t *testing.T) {
 	assert.Equal(t, "suspended", resp.CurrentState)
 }
 
+func TestCustomScenarioEnvelopeStatus(t *testing.T) {
+	cases := []struct {
+		name       string
+		result     any
+		wantStatus string
+	}{
+		{"map without status", map[string]any{"success": true}, "completed"},
+		{"map with own status", map[string]any{"success": true, "status": "working"}, "working"},
+		{"value StateTransition", StateTransition{Success: true, PreviousState: "active", CurrentState: "suspended"}, "completed"},
+		{"value SimulationResult", SimulationResult{Success: true, Simulated: map[string]any{"impressions": 10}}, "completed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &TestControllerStore{
+				CustomScenario:  func(scenario string, params map[string]any) (any, error) { return tc.result, nil },
+				CustomScenarios: []string{"custom"},
+			}
+			result, _, err := handleTestController(store, controllerInput{Scenario: "custom"})
+			require.NoError(t, err)
+			require.False(t, result.IsError, "expected success")
+
+			text := result.Content[0].(*mcp.TextContent).Text
+			assertSchemaValid(t, "compliance/comply-test-controller-response.json", []byte(text))
+			var wire map[string]any
+			require.NoError(t, json.Unmarshal([]byte(text), &wire))
+			assert.Equal(t, tc.wantStatus, wire["status"])
+		})
+	}
+}
+
+func TestNilStoreResultDoesNotPanic(t *testing.T) {
+	store := &TestControllerStore{
+		ForceAccountStatus: func(id, status string) (*StateTransition, error) { return nil, nil },
+	}
+	result, _, err := handleTestController(store, controllerInput{
+		Scenario: "force_account_status",
+		Params:   map[string]any{"account_id": "acc-1", "status": "suspended"},
+	})
+	require.NoError(t, err)
+	require.False(t, result.IsError, "expected success")
+	// A (nil, nil) store result marshals to null, as it did before #612;
+	// injecting a status must not panic on the nil wire map.
+	assert.Equal(t, "null", result.Content[0].(*mcp.TextContent).Text)
+}
+
 func TestControllerErrorHandling(t *testing.T) {
 	store := &TestControllerStore{
 		ForceMediaBuyStatus: func(id, status, reason string) (*StateTransition, error) {

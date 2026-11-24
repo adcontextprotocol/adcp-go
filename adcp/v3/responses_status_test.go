@@ -85,6 +85,21 @@ func TestResponseBuildersEmitEnvelopeStatus(t *testing.T) {
 	assert.Equal(t, "completed", statusOf(t, result.StructuredContent))
 }
 
+// TestWithEnvelopeStatus pins the merge rules: a status the value
+// already carries is kept, a missing one is defaulted, and a nil value
+// (JSON null) passes through instead of panicking on a nil wire map.
+func TestWithEnvelopeStatus(t *testing.T) {
+	kept, ok := withEnvelopeStatus(map[string]any{"status": "working"}, "completed").(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "working", kept["status"])
+
+	added, ok := withEnvelopeStatus(map[string]any{"success": true}, "completed").(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "completed", added["status"])
+
+	assert.Nil(t, withEnvelopeStatus(nil, "completed"))
+}
+
 // TestDeliveryResponseStatus validates a delivery response against the
 // bundled schema: DeliveryData now carries the envelope status and the
 // builder defaults it to completed without mutating the caller's value.
