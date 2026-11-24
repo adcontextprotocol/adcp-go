@@ -12823,6 +12823,28 @@ type PurchaseBinding struct {
 	PackageID     string `json:"package_id"`
 }
 
+type ReportUsageRecord struct {
+	Account              AccountReference `json:"account"`                           // Account for this usage record.
+	MediaBuyID           string           `json:"media_buy_id,omitempty"`            // Seller-assigned media buy identifier. Links this usage record to a specific
+	VendorCost           float64          `json:"vendor_cost"`                       // Amount owed to the vendor for this record, denominated in currency.
+	Currency             string           `json:"currency"`                          // ISO 4217 currency code.
+	PricingOptionID      string           `json:"pricing_option_id,omitempty"`       // Pricing option identifier from the vendor's discovery response (e.g.
+	Impressions          *int             `json:"impressions,omitempty"`             // Impressions delivered using this vendor service.
+	MediaSpend           *float64         `json:"media_spend,omitempty"`             // Media spend in currency for the period. Required when a percent_of_media
+	Conversions          *float64         `json:"conversions,omitempty"`             // Number of attributed conversion events for the reporting period. Optional
+	ConversionValue      *float64         `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions for the reporting period, in
+	CommissionableValue  *float64         `json:"commissionable_value,omitempty"`    // Settled attributed value eligible for commission, in currency. Required when
+	SignalAgentSegmentID string           `json:"signal_agent_segment_id,omitempty"` // Signal identifier from get_signals. Required for signals agents.
+	StandardsID          string           `json:"standards_id,omitempty"`            // Content standards configuration identifier. Required for governance agents.
+	RightsID             string           `json:"rights_id,omitempty"`               // Rights grant identifier from acquire_rights. Required for brand/rights agents.
+	CreativeID           string           `json:"creative_id,omitempty"`             // Creative identifier from build_creative or list_creatives. Required for
+	BuildVariantID       string           `json:"build_variant_id,omitempty"`        // Optional. When the reported creative_id was promoted from a specific
+	PropertyListID       string           `json:"property_list_id,omitempty"`        // Property list identifier from list_property_lists. Required for property list
+	Final                *bool            `json:"final,omitempty"`                   // Whether this usage record represents the reporter's final
+	FinalizedAt          string           `json:"finalized_at,omitempty"`            // ISO 8601 timestamp at which the reporter considered these numbers final.
+	MeasurementWindow    string           `json:"measurement_window,omitempty"`      // Which measurement window this record represents, referencing a window_id from
+}
+
 type ValidateInputTarget struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"` // Agent-local capability_id from get_adcp_capabilities
@@ -13042,6 +13064,40 @@ type ListAccountsResponse struct {
 	Errors                 []AdcpError                `json:"errors,omitempty"`                   // Task-specific errors and warnings
 	Pagination             *PaginationResponse        `json:"pagination,omitempty"`
 	Ext                    any                        `json:"ext,omitempty"`
+}
+
+// ReportUsageRequest — Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs
+type ReportUsageRequest struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion *int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey   string              `json:"idempotency_key"`              // Client-generated unique key for this request. If a request with the same key
+	ReportingPeriod  DatetimeRange       `json:"reporting_period"`             // The time range covered by this usage report. Applies to all records in the
+	Usage            []ReportUsageRecord `json:"usage"`                        // One or more usage records. Each record is self-contained: it carries its own
+	Context          any                 `json:"context,omitempty"`
+	Ext              any                 `json:"ext,omitempty"`
+}
+
+// ReportUsageResponse — Response from report_usage. Partial acceptance is valid — records that pass validation are stored
+type ReportUsageResponse struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Transport-managed conversation identifier. On A2A, this maps to the native
+	Context                any                     `json:"context,omitempty"`
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 TaskStatus              `json:"status"`                             // Current AdCP task state or structured outcome. Indicates whether the task
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // AdCP application-layer webhook configuration for async task updates over MCP
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Opaque authorization context issued only by an approved check_governance
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Accepted               int                     `json:"accepted"`                           // Number of usage records successfully stored.
+	Errors                 []AdcpError             `json:"errors,omitempty"`                   // Validation errors for individual records. The field property identifies which
+	Sandbox                *bool                   `json:"sandbox,omitempty"`                  // When true, the account is a sandbox account and no billing occurred.
+	Ext                    any                     `json:"ext,omitempty"`
 }
 
 // GetProductsRequest — AdCP 3.x compatibility request for discovering and changing advertising products and proposals.
