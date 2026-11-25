@@ -163,7 +163,7 @@ KNOWN_SCHEMA_GAPS = {
     'AccountInput': {
         'missing_in_go': _owned(
             GENERATED_TYPES,
-            'account', 'billing_entity', 'currency', 'destination_billing_entity',
+            'billing_entity', 'currency', 'destination_billing_entity',
             'notification_configs', 'operator_identity', 'operator_unit',
             'preferred_reporting_protocol', 'reporting_delivery_configs', 'revision',
             'timezone',
