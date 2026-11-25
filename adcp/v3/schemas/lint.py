@@ -318,8 +318,6 @@ KNOWN_SCHEMA_GAPS = {
             'indicators_evaluated_scope', 'name', 'pacing', 'rejection_reason',
             'status_as_of', 'webhook_activity',
         ),
-        # omitempty drops an empty confirmed_at, which the schema requires.
-        'required_with_omitempty': _owned(WIRE_BUGS, 'confirmed_at'),
     },
     'OptimizationGoal': {
         # Unknown top-level keys round-trip through Extra, so a replacement update
@@ -340,14 +338,6 @@ KNOWN_SCHEMA_GAPS = {
         # lint asks for *bool on every optional boolean so an explicit false
         # survives omitempty; changing the field type is breaking.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'human_review_required'),
-    },
-    'PreviewRender': {
-        'missing_in_go': _owned(
-            WIRE_BUGS,
-            'embedding', 'preview_html', 'renderer',
-        ),
-        # html is not a property of preview-render.json (preview_html is).
-        'extra_in_go': _owned(WIRE_BUGS, 'html'),
     },
     'ProductsData': {
         # Compared without the envelope's optional properties

@@ -130,11 +130,6 @@ type knownInvalidFixture struct {
 	Patch func(doc map[string]any) // repairs the defect named by Error and nothing else
 }
 
-// Issues that track the entries below.
-const (
-	issueEmptyProductsList = "https://github.com/adcontextprotocol/adcp-go/issues/611"
-)
-
 func setField(name string, value any) func(map[string]any) {
 	return func(doc map[string]any) { doc[name] = value }
 }
@@ -143,27 +138,7 @@ func setField(name string, value any) func(map[string]any) {
 // the fixture invalid. The list can only shrink: an entry whose fixture
 // validates fails its test until it is removed. The fixtures stay as they are,
 // so fixing the Go type turns them green and the entry goes with it.
-var knownInvalidFixtures = map[string]knownInvalidFixture{
-	// GetProductsResponse.Products is `omitempty`, but a standard get_products
-	// response must carry products, empty when nothing matches: the schema
-	// requires it in the else branch that follows status rejected and failed.
-	// The three fixtures below encode an empty list.
-	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_proposals media-buy/get-products-response.json": {
-		Issue: issueEmptyProductsList,
-		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
-		Patch: setField("products", []any{}),
-	},
-	"TestGeneratedCoreRefsAcrossSurfacesMarshalTypedFields/get_products_incomplete media-buy/get-products-response.json": {
-		Issue: issueEmptyProductsList,
-		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
-		Patch: setField("products", []any{}),
-	},
-	"TestGetProductsIncompleteRoundTrip media-buy/get-products-response.json": {
-		Issue: issueEmptyProductsList,
-		Error: `validating root: validating media-buy/get-products-response.json: validating /else: validating /else/else: validating /else/else/else: required: missing properties: ["products"]`,
-		Patch: setField("products", []any{}),
-	},
-}
+var knownInvalidFixtures = map[string]knownInvalidFixture{}
 
 // schemaErrorText is a validation error without the bundle's base URL, so an
 // entry's Error does not change with the bundle version it was recorded on.

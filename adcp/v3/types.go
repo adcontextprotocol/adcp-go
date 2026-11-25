@@ -639,6 +639,52 @@ type ProductsData struct {
 	Context              any                                `json:"context,omitempty"`
 }
 
+// emptyProductsWire decides how a get_products response with no products
+// encodes the products member, as media-buy/get-products-response.json asks.
+// The schema's if/then/else requires products[] on a standard response, and
+// forbids it when unchanged is present (a wholesale "unchanged" confirmation)
+// or when status is rejected (get-products-rejected.json). On status failed it
+// does not require products; the SDK omits an empty list there too, as
+// AdCP 3.3 rc.3 also does. It returns the raw `[]` when the member must be
+// present and nil when it must be absent. This holds under 3.2.2 and 3.3 rc.3.
+func emptyProductsWire(status string, unchanged *bool) json.RawMessage {
+	if unchanged != nil || status == TaskStatusRejected || status == TaskStatusFailed {
+		return nil
+	}
+
+	return json.RawMessage(`[]`)
+}
+
+// MarshalJSON keeps an empty products list on a standard response. Products is
+// omitempty in the generated struct, so an empty or nil list would otherwise
+// drop the member the schema requires. A non-empty list encodes as it always
+// did, whatever the status.
+func (r GetProductsResponse) MarshalJSON() ([]byte, error) {
+	type getProductsResponse GetProductsResponse
+	if len(r.Products) > 0 {
+		return json.Marshal(getProductsResponse(r))
+	}
+
+	return json.Marshal(struct {
+		getProductsResponse
+		Products json.RawMessage `json:"products,omitempty"`
+	}{getProductsResponse(r), emptyProductsWire(r.Status, r.Unchanged)})
+}
+
+// MarshalJSON writes an empty or nil Products as `[]` on a standard response,
+// not `null`, and omits it where the schema forbids it; see emptyProductsWire.
+func (d ProductsData) MarshalJSON() ([]byte, error) {
+	type productsData ProductsData
+	if len(d.Products) > 0 {
+		return json.Marshal(productsData(d))
+	}
+
+	return json.Marshal(struct {
+		productsData
+		Products json.RawMessage `json:"products,omitempty"`
+	}{productsData(d), emptyProductsWire(d.Status, d.Unchanged)})
+}
+
 // PricingOption is the flattened union of all variants in pricing-option.json.
 // The schema is a oneOf of 9 pricing models (cpm, vcpm, cpc, cpcv, cpv, cpp,
 // cpa, flat_rate, time); the Go representation carries every variant's fields
@@ -1105,7 +1151,10 @@ type MediaBuyData struct {
 	StartTime        string                    `json:"start_time,omitempty"`
 	EndTime          string                    `json:"end_time,omitempty"`
 	InvoiceRecipient *BusinessEntity           `json:"invoice_recipient,omitempty"`
-	ConfirmedAt      string                    `json:"confirmed_at,omitempty"`
+	// ConfirmedAt is when the seller committed the buy. Empty means not yet
+	// confirmed (deferred or manual approval) and encodes as null: the schema
+	// requires the key and allows null. MarshalJSON writes it.
+	ConfirmedAt      string                    `json:"confirmed_at"`
 	Cancellation     any                       `json:"cancellation,omitempty"`
 	CreativeDeadline string                    `json:"creative_deadline,omitempty"`
 	Revision         int                       `json:"revision,omitempty"`
@@ -1138,22 +1187,28 @@ type Impairment struct {
 	Remediation  string               `json:"remediation,omitempty"`
 }
 
-// MarshalJSON preserves an explicitly empty valid_actions array. In the protocol,
-// [] means no actions are available; omission means the seller did not say.
+// MarshalJSON keeps the two wire rules the struct tags cannot express:
+//   - confirmed_at is required and nullable: an empty ConfirmedAt encodes as
+//     null, not as an absent key.
+//   - an explicitly empty valid_actions array stays: [] means no actions are
+//     available, omission means the seller did not say.
+//
+// The outer fields shadow the embedded ones of the same name, so the encoder
+// does the work in one pass.
 func (d MediaBuyData) MarshalJSON() ([]byte, error) {
 	type mediaBuyData MediaBuyData
-	b, err := json.Marshal(mediaBuyData(d))
-	if err != nil {
-		return nil, err
+	out := struct {
+		mediaBuyData
+		ConfirmedAt  *string   `json:"confirmed_at"`
+		ValidActions *[]string `json:"valid_actions,omitempty"`
+	}{mediaBuyData: mediaBuyData(d)}
+	if d.ConfirmedAt != "" {
+		out.ConfirmedAt = &d.ConfirmedAt
 	}
-	if d.ValidActions == nil {
-		return b, nil
+	if d.ValidActions != nil {
+		out.ValidActions = &d.ValidActions
 	}
-	var out map[string]any
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, err
-	}
-	out["valid_actions"] = d.ValidActions
+
 	return json.Marshal(out)
 }
 
@@ -1330,13 +1385,89 @@ type Preview struct {
 	Renders   []PreviewRender `json:"renders"`
 }
 
+// PreviewRender is one rendered piece of a creative preview
+// (creative/preview-render.json), a oneOf on OutputFormat: "url" requires
+// PreviewURL, "html" requires PreviewHTML, "both" requires both. The schema
+// leaves the variants open (AdCP 3.3 sets additionalProperties: true on all
+// three), so unknown keys are ignored on decode.
+//
+// PreviewHTML is the schema's preview_html: untrusted HTML that a consumer
+// renders only as an iframe srcdoc with an empty sandbox token set.
 type PreviewRender struct {
 	RenderID     string  `json:"render_id"`
 	OutputFormat string  `json:"output_format"`
 	PreviewURL   string  `json:"preview_url,omitempty"`
-	HTML         string  `json:"html,omitempty"`
+	PreviewHTML  string  `json:"preview_html,omitempty"`
 	Role         string  `json:"role"`
 	Dimensions   *Render `json:"dimensions,omitempty"`
+
+	// Embedding is optional iframe-embedding metadata. It is advisory and never
+	// loosens the consumer's own sandbox and CSP.
+	Embedding *PreviewEmbedding `json:"embedding,omitempty"`
+	// Renderer is optional audit metadata naming the implementation that
+	// produced this render. It never grants authority.
+	Renderer *PreviewRendererMetadata `json:"renderer,omitempty"`
+
+	// HTML is the earlier name of PreviewHTML. It is never a wire key: the
+	// schema has no "html" property, so an HTML render that carried it was
+	// invalid. MarshalJSON emits its value as preview_html when PreviewHTML is
+	// empty (PreviewHTML wins when both are set), and UnmarshalJSON fills it
+	// from preview_html so code that still reads HTML keeps working.
+	//
+	// Deprecated: use PreviewHTML. HTML is kept so existing code compiles and
+	// will be removed in the next major version.
+	HTML string `json:"-"`
+}
+
+// MarshalJSON encodes the render with the schema's property names. A render
+// that sets only the deprecated HTML field is encoded with preview_html, and
+// "html" never appears.
+func (r PreviewRender) MarshalJSON() ([]byte, error) {
+	type previewRender PreviewRender
+	if r.PreviewHTML == "" {
+		r.PreviewHTML = r.HTML
+	}
+
+	return json.Marshal(previewRender(r))
+}
+
+// UnmarshalJSON decodes a render and mirrors preview_html into the deprecated
+// HTML field, so a reader of either field sees the markup.
+func (r *PreviewRender) UnmarshalJSON(data []byte) error {
+	type previewRender PreviewRender
+	var d previewRender
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	d.HTML = d.PreviewHTML
+	*r = PreviewRender(d)
+
+	return nil
+}
+
+// PreviewEmbedding is the optional embedding metadata of a PreviewRender
+// (creative/preview-render.json embedding). The object is open: unknown keys
+// are ignored on decode. RecommendedSandbox is a pointer because the only
+// value the schema allows is the empty string, which a plain string with
+// omitempty would drop.
+type PreviewEmbedding struct {
+	RecommendedSandbox *string `json:"recommended_sandbox,omitempty"`
+	RequiresHTTPS      *bool   `json:"requires_https,omitempty"`
+	SupportsFullscreen *bool   `json:"supports_fullscreen,omitempty"`
+	CSPPolicy          string  `json:"csp_policy,omitempty"`
+}
+
+// PreviewRendererMetadata identifies the implementation that produced a
+// preview render (core/preview-renderer-metadata.json). It records origin and
+// safety behavior for audit and never grants authority. The object is open:
+// unknown keys are ignored on decode. RenderingOrigin is "platform_native" or
+// "agent_approximation".
+type PreviewRendererMetadata struct {
+	RendererID         string `json:"renderer_id"`
+	Version            string `json:"version"`
+	Export             string `json:"export"`
+	RenderingOrigin    string `json:"rendering_origin"`
+	TrackingSuppressed bool   `json:"tracking_suppressed"`
 }
 
 type BuildCreativeResult struct {

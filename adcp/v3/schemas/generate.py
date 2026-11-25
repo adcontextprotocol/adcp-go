@@ -119,6 +119,9 @@ KNOWN_TYPES = {
     # brand-ref.json's open inline brand_kit_override and its colors object;
     # hand-written next to BrandReference in types.go.
     'BrandKitOverride', 'BrandKitOverrideColors',
+    # preview-render.json's open inline embedding object and the renderer
+    # metadata it references; hand-written next to PreviewRender in types.go.
+    'PreviewEmbedding', 'PreviewRendererMetadata',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -1631,6 +1634,8 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'MediaBuyData': 'media-buy/get-media-buys-response.json#/properties/media_buys/items',
     'PackageCreativeApproval': 'media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items',
     'PreviewRender': 'creative/preview-render.json',
+    'PreviewEmbedding': 'creative/preview-render.json#/oneOf/1/properties/embedding',
+    'PreviewRendererMetadata': 'core/preview-renderer-metadata.json',
     'Render': 'creative/preview-render.json#/oneOf/0/properties/dimensions',
     'ReportingPeriod': 'media-buy/get-media-buy-delivery-response.json#/properties/reporting_period',
     'ReportingReceipt': 'core/reporting-receipt.json',
