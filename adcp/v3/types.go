@@ -639,6 +639,52 @@ type ProductsData struct {
 	Context              any                                `json:"context,omitempty"`
 }
 
+// emptyProductsWire decides how a get_products response with no products
+// encodes the products member, as media-buy/get-products-response.json asks.
+// The schema's if/then/else requires products[] on a standard response, and
+// forbids it when unchanged is present (a wholesale "unchanged" confirmation)
+// or when status is rejected (get-products-rejected.json). On status failed it
+// does not require products; the SDK omits an empty list there too, as
+// AdCP 3.3 rc.3 also does. It returns the raw `[]` when the member must be
+// present and nil when it must be absent. This holds under 3.2.2 and 3.3 rc.3.
+func emptyProductsWire(status string, unchanged *bool) json.RawMessage {
+	if unchanged != nil || status == TaskStatusRejected || status == TaskStatusFailed {
+		return nil
+	}
+
+	return json.RawMessage(`[]`)
+}
+
+// MarshalJSON keeps an empty products list on a standard response. Products is
+// omitempty in the generated struct, so an empty or nil list would otherwise
+// drop the member the schema requires. A non-empty list encodes as it always
+// did, whatever the status.
+func (r GetProductsResponse) MarshalJSON() ([]byte, error) {
+	type getProductsResponse GetProductsResponse
+	if len(r.Products) > 0 {
+		return json.Marshal(getProductsResponse(r))
+	}
+
+	return json.Marshal(struct {
+		getProductsResponse
+		Products json.RawMessage `json:"products,omitempty"`
+	}{getProductsResponse(r), emptyProductsWire(r.Status, r.Unchanged)})
+}
+
+// MarshalJSON writes an empty or nil Products as `[]` on a standard response,
+// not `null`, and omits it where the schema forbids it; see emptyProductsWire.
+func (d ProductsData) MarshalJSON() ([]byte, error) {
+	type productsData ProductsData
+	if len(d.Products) > 0 {
+		return json.Marshal(productsData(d))
+	}
+
+	return json.Marshal(struct {
+		productsData
+		Products json.RawMessage `json:"products,omitempty"`
+	}{productsData(d), emptyProductsWire(d.Status, d.Unchanged)})
+}
+
 // PricingOption is the flattened union of all variants in pricing-option.json.
 // The schema is a oneOf of 9 pricing models (cpm, vcpm, cpc, cpcv, cpv, cpp,
 // cpa, flat_rate, time); the Go representation carries every variant's fields
