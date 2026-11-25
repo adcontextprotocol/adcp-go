@@ -339,14 +339,6 @@ KNOWN_SCHEMA_GAPS = {
         # survives omitempty; changing the field type is breaking.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'human_review_required'),
     },
-    'PreviewRender': {
-        'missing_in_go': _owned(
-            WIRE_BUGS,
-            'embedding', 'preview_html', 'renderer',
-        ),
-        # html is not a property of preview-render.json (preview_html is).
-        'extra_in_go': _owned(WIRE_BUGS, 'html'),
-    },
     'ProductsData': {
         # Compared without the envelope's optional properties
         # (ENVELOPE_PAYLOAD_TYPES).

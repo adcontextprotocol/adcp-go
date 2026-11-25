@@ -1365,7 +1365,7 @@ class PairedTypeDriftLintTest(unittest.TestCase):
 
     def test_a_known_gap_that_closes_fails_as_stale(self):
         structs = lint.parse_go_structs()
-        structs["PreviewRender"] = [f for f in structs["PreviewRender"] if f[2] != "html"]
+        structs["Plan"] = [f for f in structs["Plan"] if f[2] != "human_override"]
 
         rc, payload = self.run_strict(structs)
 
@@ -1373,7 +1373,7 @@ class PairedTypeDriftLintTest(unittest.TestCase):
         stale = {
             (e["type"], e.get("json")) for e in payload["known_schema_gap_errors"]
         }
-        self.assertIn(("PreviewRender", "html"), stale)
+        self.assertIn(("Plan", "human_override"), stale)
 
 
 class EnvelopePayloadLintTest(unittest.TestCase):
