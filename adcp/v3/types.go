@@ -1105,7 +1105,10 @@ type MediaBuyData struct {
 	StartTime        string                    `json:"start_time,omitempty"`
 	EndTime          string                    `json:"end_time,omitempty"`
 	InvoiceRecipient *BusinessEntity           `json:"invoice_recipient,omitempty"`
-	ConfirmedAt      string                    `json:"confirmed_at,omitempty"`
+	// ConfirmedAt is when the seller committed the buy. Empty means not yet
+	// confirmed (deferred or manual approval) and encodes as null: the schema
+	// requires the key and allows null. MarshalJSON writes it.
+	ConfirmedAt      string                    `json:"confirmed_at"`
 	Cancellation     any                       `json:"cancellation,omitempty"`
 	CreativeDeadline string                    `json:"creative_deadline,omitempty"`
 	Revision         int                       `json:"revision,omitempty"`
@@ -1138,22 +1141,28 @@ type Impairment struct {
 	Remediation  string               `json:"remediation,omitempty"`
 }
 
-// MarshalJSON preserves an explicitly empty valid_actions array. In the protocol,
-// [] means no actions are available; omission means the seller did not say.
+// MarshalJSON keeps the two wire rules the struct tags cannot express:
+//   - confirmed_at is required and nullable: an empty ConfirmedAt encodes as
+//     null, not as an absent key.
+//   - an explicitly empty valid_actions array stays: [] means no actions are
+//     available, omission means the seller did not say.
+//
+// The outer fields shadow the embedded ones of the same name, so the encoder
+// does the work in one pass.
 func (d MediaBuyData) MarshalJSON() ([]byte, error) {
 	type mediaBuyData MediaBuyData
-	b, err := json.Marshal(mediaBuyData(d))
-	if err != nil {
-		return nil, err
+	out := struct {
+		mediaBuyData
+		ConfirmedAt  *string   `json:"confirmed_at"`
+		ValidActions *[]string `json:"valid_actions,omitempty"`
+	}{mediaBuyData: mediaBuyData(d)}
+	if d.ConfirmedAt != "" {
+		out.ConfirmedAt = &d.ConfirmedAt
 	}
-	if d.ValidActions == nil {
-		return b, nil
+	if d.ValidActions != nil {
+		out.ValidActions = &d.ValidActions
 	}
-	var out map[string]any
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, err
-	}
-	out["valid_actions"] = d.ValidActions
+
 	return json.Marshal(out)
 }
 
