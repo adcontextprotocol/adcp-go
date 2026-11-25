@@ -39,7 +39,8 @@ const (
 //
 // Given a request type with a field `DailyBudgetCap Optional[float64]`, a
 // seller decides what a request means: omitted preserves the stored value,
-// null clears it, a value replaces it.
+// a value replaces it, and null means what the field's schema says (daily_budget_cap
+// removes the cap, budget_cap_timezone restores the default timezone).
 //
 //	if req.DailyBudgetCap.IsNull() {
 //		clearCap()
@@ -50,13 +51,14 @@ const (
 // A buyer builds the same request. Write Some(250.0), because Some(250) infers
 // Optional[int]:
 //
-//	req.DailyBudgetCap = adcp.Null[float64]() // clear
+//	req.DailyBudgetCap = adcp.Null[float64]() // null: remove the cap
 //	req.DailyBudgetCap = adcp.Some(250.0)     // replace
 //
 // A zero value (0, "", false) or an empty collection ([] or {}) is a value,
 // not omission. Some of a nil slice, map, pointer or interface is refused when
-// encoded, because it would send null, which means clear: use Null[T]() to
-// clear, or Some of an empty collection to replace with an empty one.
+// encoded, because it would send null, a different request from an empty
+// collection: use Null[T]() to send null, or Some of an empty collection to
+// replace with an empty one.
 //
 // A value that encodes as null (a nil slice, map, pointer or interface, a
 // json.RawMessage holding null, or a T whose MarshalJSON returns null) is
@@ -83,7 +85,8 @@ func Some[T any](v T) Optional[T] {
 }
 
 // Null returns an Optional that encodes as JSON null: the field is sent as
-// null, which asks the seller to clear it.
+// null, whose meaning the field's schema gives (usually remove it or restore its
+// default).
 func Null[T any]() Optional[T] {
 	return Optional[T]{state: optionalNull}
 }
@@ -110,8 +113,8 @@ func (o Optional[T]) Get() (T, bool) {
 var ErrOptionalUnset = errors.New("adcp.Optional: omitted value encoded; tag the field `json:\"name,omitzero\"`")
 
 // ErrOptionalNilValue is returned when Some holds a value that encodes as null
-// (a nil slice, map, pointer or interface), which would mean clear.
-var ErrOptionalNilValue = errors.New("adcp.Optional: a value that encodes as null (Some of a nil slice, map, pointer or interface) means clear; use Null[T]() to clear or Some of an empty value to replace")
+// (a nil slice, map, pointer or interface), which is not an empty value.
+var ErrOptionalNilValue = errors.New("adcp.Optional: a value that encodes as null (Some of a nil slice, map, pointer or interface) sends null, not an empty value; use Null[T]() to send null or Some of an empty value to replace")
 
 // MarshalJSON encodes null, or the value. It returns [ErrOptionalUnset] for an
 // omitted value and [ErrOptionalNilValue] for a value that encodes as null.

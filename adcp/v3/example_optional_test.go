@@ -13,7 +13,7 @@ type updateRequest struct {
 	DailyBudgetCap adcp.Optional[float64] `json:"daily_budget_cap,omitzero"`
 }
 
-// A buyer leaves a field out, sends null to clear it, or sends a value. Write
+// A buyer leaves a field out, sends null, or sends a value. Write
 // Some(250.0) for a number field: Some(250) infers Optional[int].
 func ExampleOptional_buyer() {
 	for _, req := range []updateRequest{
@@ -60,8 +60,8 @@ func ExampleOptional_seller() {
 	// set the cap to 0
 }
 
-// Some of a nil slice, map, pointer or interface would encode as null, which
-// means clear, so encoding it is an error.
+// Some of a nil slice, map, pointer or interface would encode as null, not as
+// an empty value, so encoding it is an error.
 func ExampleSome() {
 	_, err := json.Marshal(struct {
 		Seller adcp.Optional[[]string] `json:"approved_sellers,omitzero"`
@@ -77,7 +77,7 @@ func ExampleSome() {
 	// {"approved_sellers":[]}
 }
 
-// Null sends an explicit null, which asks the seller to clear the field.
+// Null sends an explicit null, whose meaning the field's schema gives.
 func ExampleNull() {
 	wire, _ := json.Marshal(updateRequest{DailyBudgetCap: adcp.Null[float64]()})
 	fmt.Println(string(wire))
