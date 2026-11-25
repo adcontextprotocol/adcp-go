@@ -1587,6 +1587,7 @@ class WaiverDerivationLintTest(unittest.TestCase):
         for waived in (
             ("PlanBudget", "optional_bool_pointer", "reallocation_unlimited"),
             ("MediaBuyData", "required_with_omitempty", "revision"),
+            ("MediaBuyData", "required_with_omitempty", "confirmed_at"),
             ("ReportingReceipt", "required_with_omitempty", "verification_profile"),
             ("ReportingReceipt", "required_with_omitempty", "reporting_materialization_id"),
             ("GovernanceAccountInput", "required_with_omitempty", "governance_agents"),
@@ -1595,7 +1596,6 @@ class WaiverDerivationLintTest(unittest.TestCase):
                 self.assertNotIn(waived, reported)
         # A zero the schema accepts and a boolean with a default or no default
         # stay reported.
-        self.assertIn(("MediaBuyData", "required_with_omitempty", "confirmed_at"), reported)
         self.assertIn(("AccountInput", "optional_bool_pointer", "sandbox"), reported)
         self.assertIn(("AccountReference", "optional_bool_pointer", "sandbox"), reported)
         self.assertIn(("Plan", "optional_bool_pointer", "human_review_required"), reported)
