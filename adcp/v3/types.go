@@ -530,18 +530,54 @@ type ComplianceTestingCapabilities struct {
 // inline overrides for callers that cannot modify the brand's canonical
 // brand.json — used by governance to resolve Annex III vertical detection and
 // GDPR Art 22(3) contestation contacts when brand.json is out of reach.
+//
+// Countries is a set of ISO 3166-1 alpha-2 codes that qualifies the advertiser
+// (AdCP 3.2: part of the advertiser identity key, which producers sort
+// lexicographically; AdCP 3.3: an account attribute that filters a lookup). The
+// wire shape is the same in both. BrandKitOverride is the per-call override of
+// the logo, colors, voice and tagline that brand.json would otherwise supply.
 type BrandReference struct {
 	Domain                  string                   `json:"domain"`
 	BrandID                 string                   `json:"brand_id,omitempty"`
+	Countries               []string                 `json:"countries,omitempty"`
 	Industries              []string                 `json:"industries,omitempty"`
 	DataSubjectContestation *DataSubjectContestation `json:"data_subject_contestation,omitempty"`
+	BrandKitOverride        *BrandKitOverride        `json:"brand_kit_override,omitempty"`
 }
 
+// BrandKitOverride is the inline brand-kit override of a BrandReference
+// (core/brand-ref.json brand_kit_override). The schema leaves the object open
+// (additionalProperties: true); like the other open inline objects it is a
+// plain struct that ignores unknown keys on decode.
+type BrandKitOverride struct {
+	Logo    *ImageAsset             `json:"logo,omitempty"`
+	Colors  *BrandKitOverrideColors `json:"colors,omitempty"`
+	Voice   string                  `json:"voice,omitempty"`
+	Tagline string                  `json:"tagline,omitempty"`
+}
+
+// BrandKitOverrideColors holds the per-slot color overrides (hex strings) of a
+// BrandKitOverride. The merge with brand.json is per slot, so an absent slot
+// stays absent.
+type BrandKitOverrideColors struct {
+	Primary   string `json:"primary,omitempty"`
+	Secondary string `json:"secondary,omitempty"`
+	Accent    string `json:"accent,omitempty"`
+}
+
+// AccountReference identifies an advertiser account (core/account-ref.json): by
+// the seller-assigned AccountID, or by Brand + Operator. OperatorUnit (only its
+// id counts), Currency, Timezone and Sandbox qualify the second form: part of
+// the natural account key in AdCP 3.2, lookup filters on the account in 3.3,
+// with the same wire shape in both.
 type AccountReference struct {
-	AccountID string          `json:"account_id,omitempty"`
-	Brand     *BrandReference `json:"brand,omitempty"`
-	Operator  string          `json:"operator,omitempty"`
-	Sandbox   bool            `json:"sandbox,omitempty"`
+	AccountID    string          `json:"account_id,omitempty"`
+	Brand        *BrandReference `json:"brand,omitempty"`
+	Operator     string          `json:"operator,omitempty"`
+	OperatorUnit *OperatorUnit   `json:"operator_unit,omitempty"`
+	Currency     string          `json:"currency,omitempty"`
+	Timezone     string          `json:"timezone,omitempty"`
+	Sandbox      bool            `json:"sandbox,omitempty"`
 }
 
 // PublisherPropertySelector is the flattened union of the three variants in
@@ -1229,8 +1265,9 @@ type DeliveryData struct {
 }
 
 type ReportingPeriod struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	Timezone string `json:"timezone,omitempty"`
 }
 
 // MarshalJSON preserves the schema-required spend field even when it is zero.
@@ -1520,9 +1557,10 @@ type MeasurementTerms struct {
 
 // BillingMeasurement identifies the vendor whose measurement is authoritative for invoicing.
 type BillingMeasurement struct {
-	Vendor             *BrandReference `json:"vendor"`
-	MaxVariancePercent float64         `json:"max_variance_percent,omitempty"`
-	MeasurementWindow  string          `json:"measurement_window,omitempty"`
+	Vendor                    *BrandReference `json:"vendor"`
+	MaxVariancePercent        float64         `json:"max_variance_percent,omitempty"`
+	MeasurementWindow         string          `json:"measurement_window,omitempty"`
+	FinalizationDeadlineHours *int            `json:"finalization_deadline_hours,omitempty"` // a pointer so an explicit 0 (final record due at window close) survives omitempty
 }
 
 // MakegoodPolicy declares available remedies when a threshold is breached.

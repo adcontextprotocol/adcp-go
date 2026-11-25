@@ -48,7 +48,7 @@ Required tests for future changes:
 - MCP tool schema changes for `create_media_buy` and `update_media_buy` must be
   explainable by schema changes, not local convenience fields.
 - Optional false/zero values used in package create/update requests must round
-  trip when represented by pointer fields.
+  trip when represented by pointer or `Optional` fields.
 
 ## Optional Scalar Policy
 
@@ -58,6 +58,10 @@ observe it.
 
 Decision:
 
+- Exception, for any scalar type: a request field whose schema also allows
+  `null` is `adcp.Optional[T]` in `adcp/v3`, not a pointer, because a pointer
+  holds only two states (see Three-State Request Fields below). The rules
+  below apply to the other optional fields.
 - Optional booleans are pointers. `false` is often an explicit operation
   (`paused: false`, `canceled: false` must not be emitted accidentally).
 - Optional request numbers are pointers when explicit zero is meaningful, when
@@ -71,7 +75,8 @@ Decision:
 - Optional strings remain values unless the schema or protocol text gives
   omission a different meaning from the empty string.
 - `Float64`, `Bool`, and `Ptr` helpers are the public convenience path for
-  setting explicit optional scalar values.
+  setting explicit optional scalar values. For an `Optional` field, `Some` and
+  `Null` are.
 
 Migration rule:
 
@@ -83,6 +88,48 @@ Migration rule:
   semantically distinct. Numeric exceptions require a documented
   `OPTIONAL_NUMERIC_SCALAR_OK` waiver in `adcp/schemas/lint.py`. Boolean
   exceptions have no waiver; file an upstream schema clarification first.
+
+## Three-State Request Fields
+
+A request field whose schema allows `null` has three states on the wire:
+omitted, `null` and a value. The protocol gives them different meanings: in
+`update_media_buy`, omitting `daily_budget_cap` leaves it unchanged and `null`
+removes it. A pointer cannot hold all three. Go's `encoding/json` sets a pointer
+field to nil for `null` without calling `UnmarshalJSON`, so a seller reading a
+`*float64` cannot tell `{}` from `{"daily_budget_cap":null}`, and re-encoding
+drops the key.
+
+Decision:
+
+- Use `adcp.Optional[T]` (module `adcp/v3`), a value type whose zero value is
+  omitted. It decodes `null` to the null state, `adcp.Null[T]()` encodes
+  `null`, and `adcp.Some(v)` encodes a value. `IsNull`, `Get` and `IsZero` read
+  the state.
+- Tag every `Optional` struct field `json:"name,omitzero"`. Never `omitempty`:
+  it does not drop an omitted struct, and under `encoding/json/v2` it also drops
+  `null`. `MarshalJSON` returns an error for an omitted value, so a missing
+  `omitzero` fails when the request is encoded instead of sending the wrong
+  thing.
+- Never use `*Optional[T]`: decoding sets the pointer to nil for `null`.
+- Never use `Optional` in a type that contains itself through the `Optional`
+  (through a pointer, slice or map): decoding is quadratic in the nesting depth
+  and encoding a cyclic value overflows the stack. `requireOptionalOmitZero`
+  reports it.
+- `Some(v)` with a nil slice, map, pointer or interface is refused when
+  encoded, because it would send `null`, which means clear. A buyer sends `[]`
+  with `Some([]string{})`.
+- `AddTool` advertises `Optional[T]` as it advertises `*T`, so `tools/list` does
+  not change when a field moves from `*T` to `Optional[T]`. A type that
+  `jsonschema.ForType` cannot describe, or that contains itself through an
+  `Optional`, takes the same permissive fallback as before.
+- `adcp.ClearField()` stays for fields that remain `any`.
+- A change that adds `Optional` fields to a type adds a round-trip test for
+  omitted, `null` and a value (including `0`, `false` and `[]`), and calls
+  `requireOptionalOmitZero` (`adcp/v3/optional_test.go`) on the type.
+
+This is the request-side encoding. Which generated fields use it, the
+generator rule that picks them and the matching `lint.py` rules are a separate
+change; a field keeps its current type until then.
 
 ## Enum Policy
 

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/adcontextprotocol/adcp-go/adcp/v3"
 	"github.com/adcontextprotocol/adcp-go/adcp/v3/internal/psl"
@@ -37,8 +38,8 @@ const (
 	// authority-bearing member. One rule differs by mode: Authoring
 	// requires every grantee to be a registrable domain, while Reading
 	// keeps a record whose grantee is not one (a host, or a public
-	// suffix). That grant covers no claim, and its scopes still count for
-	// exclusive_grants (L2 Grants in trust.json).
+	// suffix). That grant covers no claim, and the record's
+	// exclusive_grants still applies (L2 Grants in trust.json).
 	Reading
 )
 
@@ -147,7 +148,7 @@ func (r *TrustRecord) checkRules(owner string, mode ValidationMode) error {
 		// An author writes the registrable domain and narrows with
 		// agents[]. A reader keeps the record: a grant whose grantee is
 		// not one covers no claim (TrustRecordEvaluator logs a warning),
-		// and its scopes still count for exclusive_grants. Like the other
+		// and the record's exclusive_grants still applies. Like the other
 		// PSL rules, this needs an owner: the spec's examples use reserved
 		// .example names, which have no registrable domain.
 		if operator != "" && mode == Authoring {
@@ -332,6 +333,31 @@ func (v *trustValidator) stringArray(path string, m map[string]any, key string, 
 		if s, ok := v.str(p, e); ok && check != nil {
 			check(p, s)
 		}
+	}
+}
+
+// maxLength is a stringArray check: at most n characters, which JSON Schema
+// counts in code points.
+func (v *trustValidator) maxLength(n int) func(string, string) {
+	return func(path, s string) {
+		if utf8.RuneCountInString(s) > n {
+			v.fail(path, fmt.Sprintf("must be at most %d characters", n))
+		}
+	}
+}
+
+// boundedStr is optStr with maxLength n.
+func (v *trustValidator) boundedStr(path string, m map[string]any, key string, n int) {
+	if x, ok := m[key]; ok {
+		if s, ok := v.str(path+"."+key, x); ok {
+			v.maxLength(n)(path+"."+key, s)
+		}
+	}
+}
+
+func (v *trustValidator) maxItems(path string, m map[string]any, key string, n int) {
+	if a, ok := m[key].([]any); ok && len(a) > n {
+		v.fail(path+"."+key, fmt.Sprintf("must have at most %d items", n))
 	}
 }
 
@@ -579,10 +605,10 @@ func (v *trustValidator) buyerPosture(path string, x any) {
 		return
 	}
 	if s, ok := v.str(path+".mode", m["mode"]); ok {
-		switch BuyerOnboardingMode(s) {
-		case BuyerOnboardingConsidersUnsolicited, BuyerOnboardingApplication, BuyerOnboardingInviteOnly:
+		switch AgentOnboardingMode(s) {
+		case AgentOnboardingOpen, AgentOnboardingApplication, AgentOnboardingInviteOnly:
 		default:
-			v.fail(path+".mode", "is not a buyer onboarding mode")
+			v.fail(path+".mode", "is not an onboarding mode")
 		}
 	}
 	if r, ok := m["requirements"]; ok {
@@ -592,9 +618,6 @@ func (v *trustValidator) buyerPosture(path string, x any) {
 	}
 	if u, ok := m["url"]; ok {
 		v.uri(path+".url", u)
-	}
-	if u, ok := m["documentation_url"]; ok {
-		v.uri(path+".documentation_url", u)
 	}
 	v.optStr(path, m, "message")
 	if e, ok := m["ext"]; ok {
@@ -621,11 +644,24 @@ func (v *trustValidator) requirement(path string, x any) {
 		}
 		return
 	}
-	v.optStr(path, m, "role")
-	v.stringArray(path, m, "verification_modes", 1, false, nil)
-	v.stringArray(path, m, "specialisms", 1, false, nil)
-	v.optStr(path, m, "adcp_version")
-	v.optStr(path, m, "id")
+	kind, _ := m["kind"].(string)
+	switch AgentOnboardingRequirementKind(kind) {
+	case RequirementAAOVerified:
+		if _, ok := m["role"]; !ok {
+			v.fail(path+".role", "is required for aao_verified")
+		}
+	case RequirementStoryboard, RequirementExperimentalFeature:
+		if _, ok := m["id"]; !ok {
+			v.fail(path+".id", "is required for "+kind)
+		}
+	}
+	v.boundedStr(path, m, "role", 128)
+	v.stringArray(path, m, "verification_modes", 1, false, v.maxLength(128))
+	v.maxItems(path, m, "verification_modes", 32)
+	v.stringArray(path, m, "verified_specialisms", 1, false, v.maxLength(128))
+	v.maxItems(path, m, "verified_specialisms", 32)
+	v.boundedStr(path, m, "adcp_version", 32)
+	v.boundedStr(path, m, "id", 128)
 	if e, ok := m["ext"]; ok {
 		v.object(path+".ext", e, nil)
 	}

@@ -2,6 +2,7 @@ package signing
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,8 +141,8 @@ func TestVerifyDirectoryResponseRejectsTampering(t *testing.T) {
 			resign(r, []byte(`{"keys":[],"keys":[]}`))
 		}, origin, wbaTestNow},
 		{"no keys", func(r *DirectoryResponse) { resign(r, []byte(`{"keys":[]}`)) }, origin, wbaTestNow},
-		// The profile requires signed directories, one signature per key
-		// (WBA Appendix B.1).
+		// The profile uses only keys with a valid signature, so an unsigned
+		// directory yields no usable key (WBA Appendix B.1).
 		{"unsigned directory", func(r *DirectoryResponse) {
 			r.Header.Del("Signature")
 			r.Header.Del("Signature-Input")
@@ -150,10 +151,6 @@ func TestVerifyDirectoryResponseRejectsTampering(t *testing.T) {
 		{"unsigned directory with a digest", func(r *DirectoryResponse) {
 			r.Header.Del("Signature")
 			r.Header.Del("Signature-Input")
-		}, origin, wbaTestNow},
-		{"one key without a signature", func(r *DirectoryResponse) {
-			r.Header.Set("Signature-Input", strings.SplitN(r.Header.Get("Signature-Input"), ", key2=", 2)[0])
-			r.Header.Set("Signature", strings.SplitN(r.Header.Get("Signature"), ", key2=", 2)[0])
 		}, origin, wbaTestNow},
 		{"only a P-256 key (ES256 is not a Web Bot Auth algorithm)", func(r *DirectoryResponse) {
 			p256, _ := jwkFromPublicKey(&newP256(t).PublicKey)
@@ -200,6 +197,43 @@ func TestVerifyDirectoryResponseRejectsTampering(t *testing.T) {
 			keys, err := VerifyDirectoryResponse(origin, resp, wbaTestNow)
 			require.NoError(t, err)
 			require.Contains(t, keys, jwkA.Kid, "keys are indexed by thumbprint")
+		})
+	}
+}
+
+// TestVerifyDirectoryResponseIgnoresUnprovenAndMalformedKeys: a verifier
+// uses each Ed25519 key that has a valid signature on the response and
+// ignores every other key (directory draft §5; WBA Appendix B.1): a key
+// that does not sign, a key whose signature does not verify, and a
+// malformed Ed25519 key it cannot import (RFC 7517 §5). The directory is
+// not refused, and the ignored keys are not returned.
+func TestVerifyDirectoryResponseIgnoresUnprovenAndMalformedKeys(t *testing.T) {
+	origin := "https://buyer.example.com"
+	signer, other := newEd25519(t), newEd25519(t)
+	signerJWK, _ := PublicDirectoryKey(signer)
+	otherJWK, _ := PublicDirectoryKey(other)
+	body := func(extra ...string) []byte {
+		return []byte(`{"keys":[` + strings.Join(append([]string{mustJSON(t, signerJWK)}, extra...), ",") + `]}`)
+	}
+	cases := map[string]*DirectoryResponse{
+		"an Ed25519 key that does not sign": signDirectoryBody(t, origin, body(mustJSON(t, otherJWK)), signer),
+		"an Ed25519 key whose signature does not verify": func() *DirectoryResponse {
+			r := signDirectoryBody(t, origin, body(mustJSON(t, otherJWK)), signer, other)
+			bad := base64.StdEncoding.EncodeToString(make([]byte, 64))
+			r.Header.Set("Signature", strings.SplitN(r.Header.Get("Signature"), ", key2=", 2)[0]+", key2=:"+bad+":")
+			return r
+		}(),
+		"malformed Ed25519 keys, one with no x and one with a 31-byte x": signDirectoryBody(t, origin, body(
+			`{"kty":"OKP","crv":"Ed25519","kid":"malformed-no-x","use":"sig"}`,
+			`{"kty":"OKP","crv":"Ed25519","kid":"malformed-short-x","x":"`+base64.RawURLEncoding.EncodeToString(make([]byte, 31))+`","use":"sig"}`,
+		), signer),
+	}
+	for name, resp := range cases {
+		t.Run(name, func(t *testing.T) {
+			keys, err := VerifyDirectoryResponse(origin, resp, wbaTestNow)
+			require.NoError(t, err)
+			require.Len(t, keys, 1)
+			require.Contains(t, keys, signerJWK.Kid)
 		})
 	}
 }

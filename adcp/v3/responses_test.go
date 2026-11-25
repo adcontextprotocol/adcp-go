@@ -11,6 +11,8 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 	result, out, err := MediaBuyResponse(&CreateMediaBuySuccess{
 		MediaBuyID:      "mb-1",
 		MediaBuyStatus:  "active",
+		ConfirmedAt:     Ptr("2026-06-01T00:00:00Z"),
+		Revision:        1,
 		Packages:        []Package{{PackageID: "pkg-1"}},
 		ValidActions:    []string{"pause", "cancel"},
 		PlannedDelivery: &PlannedDelivery{TotalBudget: 1000},
@@ -18,6 +20,11 @@ func TestMediaBuyResponseUsesCreateSuccessFields(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// The builder adds no envelope status to a success, which the response
+	// schema requires; knownInvalidFixtures records it. The body is checked
+	// against the success branch on its own.
+	assertEncodingSchemaValid(t, "media-buy/create-media-buy-response.json", result.StructuredContent)
+	assertEncodingSchemaValid(t, "media-buy/create-media-buy-response.json#/oneOf/0", result.StructuredContent)
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "active", wire["media_buy_status"])
@@ -35,6 +42,7 @@ func TestMediaBuyResponseSubmittedUsesTypedTaskFields(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	assertEncodingSchemaValid(t, "media-buy/create-media-buy-response.json", result.StructuredContent)
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "submitted", wire["status"])
@@ -91,9 +99,12 @@ func TestMediaBuyResponseSubmittedRequiresTaskID(t *testing.T) {
 
 func TestMediaBuyResponsePreservesEmptyValidActions(t *testing.T) {
 	result, _, err := MediaBuysDataResponse(&GetMediaBuysResponse{
+		Status: TaskStatusCompleted,
 		MediaBuys: []MediaBuyData{{
 			MediaBuyID:   "mb-1",
 			Status:       "canceled",
+			ConfirmedAt:  "2026-06-01T00:00:00Z",
+			Revision:     1,
 			Currency:     "USD",
 			TotalBudget:  100,
 			Packages:     []PackageStatus{{Package: Package{PackageID: "pkg-1"}}},
@@ -101,6 +112,7 @@ func TestMediaBuyResponsePreservesEmptyValidActions(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertEncodingSchemaValid(t, "media-buy/get-media-buys-response.json", result.StructuredContent)
 
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
@@ -120,9 +132,12 @@ func TestMediaBuyResponsePreservesEmptyValidActions(t *testing.T) {
 // above already proves for CreateMediaBuySuccess. See adcp-go#162.
 func TestMediaBuysDataResponseExtDoesNotOverwriteTypedFields(t *testing.T) {
 	result, _, err := MediaBuysDataResponse(&GetMediaBuysResponse{
+		Status: TaskStatusCompleted,
 		MediaBuys: []MediaBuyData{{
 			MediaBuyID:   "mb-1",
 			Status:       "active",
+			ConfirmedAt:  "2026-06-01T00:00:00Z",
+			Revision:     1,
 			Currency:     "USD",
 			TotalBudget:  100,
 			Packages:     []PackageStatus{{Package: Package{PackageID: "pkg-1"}}},
@@ -134,6 +149,7 @@ func TestMediaBuysDataResponseExtDoesNotOverwriteTypedFields(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertEncodingSchemaValid(t, "media-buy/get-media-buys-response.json", result.StructuredContent)
 
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
@@ -154,6 +170,7 @@ func TestMediaBuysDataResponseExtDoesNotOverwriteTypedFields(t *testing.T) {
 func TestMediaBuysResponseNilListEmitsEmptyArray(t *testing.T) {
 	result, _, err := MediaBuysResponse(nil, true)
 	require.NoError(t, err)
+	assertEncodingSchemaValid(t, "media-buy/get-media-buys-response.json", result.StructuredContent)
 
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)
@@ -165,9 +182,12 @@ func TestMediaBuysResponseNilListEmitsEmptyArray(t *testing.T) {
 
 func TestMediaBuysDataResponseIncludesPackageStatusFields(t *testing.T) {
 	result, _, err := MediaBuysDataResponse(&GetMediaBuysResponse{
+		Status: TaskStatusCompleted,
 		MediaBuys: []MediaBuyData{{
 			MediaBuyID:  "mb-1",
 			Status:      "active",
+			ConfirmedAt: "2026-06-01T00:00:00Z",
+			Revision:    1,
 			Currency:    "USD",
 			TotalBudget: 100,
 			InvoiceRecipient: &BusinessEntity{
@@ -195,6 +215,7 @@ func TestMediaBuysDataResponseIncludesPackageStatusFields(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertEncodingSchemaValid(t, "media-buy/get-media-buys-response.json", result.StructuredContent)
 
 	wire, ok := result.StructuredContent.(map[string]any)
 	require.True(t, ok)

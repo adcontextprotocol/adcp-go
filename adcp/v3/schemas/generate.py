@@ -53,7 +53,7 @@ KNOWN_TYPES = {
     'EventSourceResult', 'LogEventResult',
     'CheckGovernanceCondition',
     # validate_input warning items require `field` without declaring it, so a
-    # generated struct would drop it; hand-written in types.go (lint EXEMPT).
+    # generated struct would drop it; hand-written in types.go.
     'ValidateInputWarning',
     # oneOf schemas — hand-writing flattens the union into a single struct with
     # all variant fields.
@@ -116,6 +116,9 @@ KNOWN_TYPES = {
     'PlanChannels', 'PlanChannelMixTarget', 'PlanDelegation',
     'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
     'HumanOverride', 'DataSubjectContestation',
+    # brand-ref.json's open inline brand_kit_override and its colors object;
+    # hand-written next to BrandReference in types.go.
+    'BrandKitOverride', 'BrandKitOverrideColors',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -130,9 +133,13 @@ TOOL_SCHEMAS = [
     "account/sync-governance-response.json",
     "account/list-accounts-request.json",
     "account/list-accounts-response.json",
+    "account/report-usage-request.json",
+    "account/report-usage-response.json",
     # Media buy
     "media-buy/get-products-request.json",
     "media-buy/get-products-response.json",
+    "media-buy/list-products-request.json",
+    "media-buy/list-products-response.json",
     "media-buy/create-media-buy-request.json",
     "media-buy/create-media-buy-response.json",
     "media-buy/update-media-buy-request.json",
@@ -162,6 +169,8 @@ TOOL_SCHEMAS = [
     "media-buy/accept-proposal-response.json",
     "media-buy/buy-products-request.json",
     "media-buy/buy-products-response.json",
+    "media-buy/control-media-buy-request.json",
+    "media-buy/control-media-buy-response.json",
     # Reporting
     "media-buy/sync-reporting-status-request.json",
     "media-buy/sync-reporting-status-response.json",
@@ -228,6 +237,9 @@ CORE_SCHEMAS = [
     "core/audience-selector.json",
     "core/product.json",
     "core/product-filters.json",
+    "core/product-offer-filters.json",
+    "core/canonical-media-buy-features.json",
+    "core/product-audience-evidence-requirements.json",
     "core/data-provider-signal-selector.json",
     "core/placement.json",
     "core/delivery-forecast.json",
@@ -324,6 +336,7 @@ SUPPORT_SCHEMAS = [
     "creative/validate-input-result.json",
     "media-buy/package-request.json",
     "media-buy/package-update.json",
+    "media-buy/package-control.json",
     "media-buy/proposal-refinement.json",
     "media-buy/proposal-budget-constraint.json",
     "media-buy/product-discovery-criteria.json",
@@ -735,6 +748,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "media-buy/get-products-response.json#/properties/incomplete/items",
     ),
     (
+        "ListProductsIncompleteItem",
+        "media-buy/list-products-response.json#/properties/incomplete/items",
+    ),
+    (
         "SyncPlansPlan",
         "governance/sync-plans-response.json#/properties/plans/items",
     ),
@@ -966,6 +983,30 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "core/product-filters.json#/properties/keywords/items",
     ),
     (
+        "ProductOfferFilterAvailabilityHorizon",
+        "core/product-offer-filters.json#/properties/availability_horizon",
+    ),
+    (
+        "ProductOfferFilterMetro",
+        "core/product-offer-filters.json#/properties/metros/items",
+    ),
+    (
+        "ProductOfferFilterTrustedMatch",
+        "core/product-offer-filters.json#/properties/trusted_match",
+    ),
+    (
+        "ProductOfferFilterTrustedMatchProvider",
+        "core/product-offer-filters.json#/properties/trusted_match/properties/providers/items",
+    ),
+    (
+        "ProductOfferFilterPerformanceStandard",
+        "core/product-offer-filters.json#/properties/required_performance_standards/items",
+    ),
+    (
+        "ProductOfferFilterVendorMetric",
+        "core/product-offer-filters.json#/properties/required_vendor_metrics/items",
+    ),
+    (
         "PriceAdjustment",
         "pricing-options/price-breakdown.json#/properties/adjustments/items",
     ),
@@ -1080,6 +1121,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "#/oneOf/0/properties/purchase_bindings/items",
     ),
     (
+        "ReportUsageRecord",
+        "account/report-usage-request.json#/properties/usage/items",
+    ),
+    (
         "ValidateInputTarget",
         "creative/validate-input-request.json#/properties/targets/items",
     ),
@@ -1175,6 +1220,7 @@ FIELD_DESCRIPTION_FALLBACK_SPECS = {
 # helper cannot silently default to data-dropping open-object semantics.
 CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'DeclineProposalResult',
+    'ListProductsIncompleteItem',
     'PurchaseBinding',
     'RefinementConstraints',
     'CPMConstraint',
@@ -1262,6 +1308,10 @@ CLOSED_INLINE_SCHEMA_TYPES = frozenset({
     'ProductFilterRadius',
     'ProductFilterGeometry',
     'ProductFilterKeyword',
+    'ProductOfferFilterAvailabilityHorizon',
+    'ProductOfferFilterMetro',
+    'ProductOfferFilterTrustedMatch',
+    'ProductOfferFilterVendorMetric',
     'PolicyRegulatoryFramework',
     'ForecastPointDimension',
 })
@@ -1277,6 +1327,8 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'DeliveryWindow',
     'DeliveryWindowPackage',
     'ProductCardSpecification',
+    'ProductOfferFilterTrustedMatchProvider',
+    'ProductOfferFilterPerformanceStandard',
     'GetProductsFilterDiagnostics',
     'CapabilitiesWholesaleFeedVersioning',
     'CapabilitiesWholesaleFeedWebhooks',
@@ -1366,6 +1418,7 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'CreativeBriefDisclosure',
     'EventContentItem',
     'UserMatchUID',
+    'ReportUsageRecord',
 })
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -1406,6 +1459,7 @@ CROSS_TYPE_INLINE_HINTS = {
     ('AcceptProposalRequest', 'total_budget'): 'MediaBuyBudget',
     ('BuyProductsRequest', 'total_budget'): 'MediaBuyBudget',
     ('AcceptProposalRequest', 'io_acceptance'): 'IOAcceptance',
+    ('ControlMediaBuyRequest', 'total_budget'): 'MediaBuyBudget',
 }
 
 # Named enum helpers generated from inline JSON Schema pointers. These cover
@@ -1418,6 +1472,12 @@ INLINE_ENUM_TYPES = OrderedDict([
             "one_of_kind": "metric",
             "property": "metric",
         },
+    ),
+    # media-buy/product-fields.json is an array of this enum; the request's
+    # `fields` is []ProductField (INLINE_TYPE_HINTS).
+    (
+        "ProductField",
+        {"schema": "media-buy/product-fields.json#/items"},
     ),
 ])
 
@@ -1522,10 +1582,57 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'CollectionListFilters': 'collection/collection-list-filters.json',
     'DistributionID': 'collection/collection-list-filters.json#/properties/exclude_distribution_ids/items',
     'DataSubjectContestation': 'core/brand-ref.json#/properties/data_subject_contestation',
+    'BrandKitOverride': 'core/brand-ref.json#/properties/brand_kit_override',
+    'BrandKitOverrideColors': 'core/brand-ref.json#/properties/brand_kit_override/properties/colors',
     'MakegoodPolicy': 'core/measurement-terms.json#/properties/makegood_policy',
     'ReportingAdjustmentReceipt': 'core/reporting-adjustment-receipt.json',
     'ReportingConsumerStatus': 'core/reporting-consumer-status.json',
     'ReportingConsumerStatusPeriod': 'core/reporting-consumer-status.json#/properties/period',
+    # Hand-written types that stood in lint's EXEMPT set. oneOf flatteners are
+    # paired with their union schema (lint compares the union of the variants'
+    # properties); response items and nested shapes with the node their holding
+    # field maps to. The drift each still carries is listed field by field in
+    # lint.py's KNOWN_SCHEMA_GAPS.
+    'AccountReference': 'core/account-ref.json',
+    'ActivationKey': 'core/activation-key.json',
+    'BrandReference': 'core/brand-ref.json',
+    'OptimizationGoal': 'core/optimization-goal.json',
+    'PublisherPropertySelector': 'core/publisher-property-selector.json',
+    'SignalID': 'core/signal-id.json',
+    'AccountResult': 'account/sync-accounts-response.json#/oneOf/0/properties/accounts/items',
+    'CatalogResult': 'media-buy/sync-catalogs-response.json#/oneOf/0/properties/catalogs/items',
+    'CreativeResult': 'creative/sync-creatives-response.json#/oneOf/0/properties/creatives/items',
+    'EventSourceInput': 'media-buy/sync-event-sources-request.json#/properties/event_sources/items',
+    'EventSourceResult': 'media-buy/sync-event-sources-response.json#/oneOf/0/properties/event_sources/items',
+    'GovernanceAccount': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items/properties/account',
+    # Request and response items differ (the request's carries a required
+    # `authentication`), and the Go type serves both; the response's is compared.
+    'GovernanceAgent': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items/properties/governance_agents/items',
+    'GovernanceResult': 'account/sync-governance-response.json#/oneOf/0/properties/accounts/items',
+    'DeliveryData': 'media-buy/get-media-buy-delivery-response.json',
+    'ProductsData': 'media-buy/get-products-response.json',
+    'MediaBuyData': 'media-buy/get-media-buys-response.json#/properties/media_buys/items',
+    'PackageCreativeApproval': 'media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/packages/items/properties/creative_approvals/items',
+    'PreviewRender': 'creative/preview-render.json',
+    'Render': 'creative/preview-render.json#/oneOf/0/properties/dimensions',
+    'ReportingPeriod': 'media-buy/get-media-buy-delivery-response.json#/properties/reporting_period',
+    'ReportingReceipt': 'core/reporting-receipt.json',
+    'ReportingReceiptResult': 'media-buy/sync-reporting-receipts-response.json#/properties/results/items',
+    'ReportingStatusResult': 'media-buy/sync-reporting-status-response.json#/properties/results/items',
+    'BaseCollectionSource': 'collection/base-collection-source.json',
+    'CollectionList': 'collection/collection-list.json',
+    'CollectionPagination': 'collection/get-collection-list-request.json#/properties/pagination',
+    'ResolvedCollection': 'collection/get-collection-list-response.json#/properties/collections/items',
+    'BillingMeasurement': 'core/measurement-terms.json#/properties/billing_measurement',
+    'CancellationFee': 'core/cancellation-policy.json#/properties/cancellation_fee',
+    'Plan': 'governance/sync-plans-request.json#/properties/plans/items',
+    'PlanBudget': 'governance/sync-plans-request.json#/properties/plans/items/properties/budget',
+    'PlanDelegationBudget': 'governance/sync-plans-request.json#/properties/plans/items/properties/delegations/items/properties/budget_limit',
+    'PlanPortfolioBudgetCap': 'governance/sync-plans-request.json#/properties/plans/items/properties/portfolio/properties/total_budget_cap',
+    'SignalFilters': 'core/signal-filters.json',
+    'StateTransition': 'compliance/comply-test-controller-response.json#/oneOf/1',
+    'SimulationResult': 'compliance/comply-test-controller-response.json#/oneOf/2',
+    'ReportedSpend': 'compliance/comply-test-controller-request.json#/properties/params/properties/reported_spend',
 }
 
 # Hand-written inline types that do not have standalone schema files but should
@@ -1567,6 +1674,11 @@ REF_ALIASES = {
     # CanonicalMediaBuyAction in Go; core/canonical-media-buy-action.json is the
     # object that available_actions items reference.
     'CanonicalMediaBuyAction': 'CanonicalAvailableAction',
+    # core/keyword-target.json (package-control.json's keyword add/remove rows)
+    # PascalCases to KeywordTarget, which the inline items of
+    # core/targeting.json#/properties/keyword_targets already own and export
+    # (INLINE_SCHEMA_TYPES). The two schemas are not the same file.
+    'KeywordTarget': 'CanonicalKeywordTarget',
     'AccountInput': 'AccountInput',
     'GovernanceAccountInput': 'GovernanceAccountInput',
     'CreativeInput': 'CreativeInput',
@@ -1593,6 +1705,16 @@ INLINE_TYPE_HINTS = {
     ('PreviewCreativeRequest', 'inputs'): 'PreviewCreativeInput',
     ('PreviewCreativeRequest', 'requests'): 'PreviewCreativeBatchRequest',
     ('PreviewCreativeBatchRequest', 'inputs'): 'PreviewCreativeInput',
+    ('ReportUsageRequest', 'adcp_major_version'): '*int',
+    ('ReportUsageRequest', 'usage'): 'ReportUsageRecord',
+    # Optional usage quantities: an explicit 0 (no impressions, no media spend, no
+    # commissionable value) is a reported value, not an absent one, so these are
+    # pointers.
+    ('ReportUsageRecord', 'impressions'): '*int',
+    ('ReportUsageRecord', 'media_spend'): '*float64',
+    ('ReportUsageRecord', 'conversions'): '*float64',
+    ('ReportUsageRecord', 'conversion_value'): '*float64',
+    ('ReportUsageRecord', 'commissionable_value'): '*float64',
     ('ValidateInputRequest', 'targets'): 'ValidateInputTarget',
     ('ValidateInputResult', 'target'): 'ValidateInputResultTarget',
     ('ValidateInputResult', 'violations'): 'ValidateInputViolation',
@@ -1605,12 +1727,17 @@ INLINE_TYPE_HINTS = {
     ('DeclineProposalsRequest', 'adcp_major_version'): '*int',
     ('AcceptProposalRequest', 'adcp_major_version'): '*int',
     ('BuyProductsRequest', 'adcp_major_version'): '*int',
+    ('ControlMediaBuyRequest', 'adcp_major_version'): '*int',
+    ('ListProductsRequest', 'adcp_major_version'): '*int',
+    # media-buy/product-fields.json: a non-empty array of the ProductField enum.
+    ('ListProductsRequest', 'fields'): '[]ProductField',
     # Optional request numbers: an explicit 0 cap is not the same as no cap, so
     # these are pointers.
     ('AcceptProposalRequest', 'daily_budget_cap'): '*float64',
     ('BuyProductsRequest', 'daily_budget_cap'): '*float64',
     ('AcceptProposalRequest', 'total_budget'): '*MediaBuyBudget',
     ('BuyProductsRequest', 'total_budget'): '*MediaBuyBudget',
+    ('ControlMediaBuyRequest', 'total_budget'): '*MediaBuyBudget',
     ('AcceptProposalRequest', 'io_acceptance'): '*IOAcceptance',
     ('CommittedMediaBuy', 'purchase_bindings'): 'PurchaseBinding',
     ('ProductPurchaseInput', 'format_option_refs'): '[]FormatOptionRef',
@@ -1619,9 +1746,19 @@ INLINE_TYPE_HINTS = {
     ('ProductPurchaseInput', 'daily_budget_cap'): '*float64',
     ('ProductPurchaseInput', 'min_spend_target'): '*float64',
     ('ProductPurchaseInput', 'impressions'): '*float64',
+    ('PackageControl', 'impressions'): '*float64',
     ('ProductPurchaseInput', 'pacing'): 'string',
     ('ProductPurchaseInput', 'audience_evidence_pins'): '[]AudienceEvidencePin',
     ('ProductPurchaseInput', 'performance_standards'): '[]CanonicalPerformanceStandard',
+    # control_media_buy: these request properties have a null branch, and a typed
+    # Go field decodes null like omission (daily_budget_cap's schema says "null
+    # removes it"). So each stays `any` (see INTENTIONAL_ANY_FIELDS, adcp-go#536)
+    # instead of the *float64/*string the generator would pick for a nullable type.
+    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'any',
+    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'any',
+    ('PackageControl', 'budget'): 'any',
+    ('PackageControl', 'daily_budget_cap'): 'any',
+    ('PackageControl', 'min_spend_target'): 'any',
     ('RequestProposalsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('DeclineProposalsResponse', 'results'): 'DeclineProposalResult',
     ('RefineProposalsRequest', 'refinements'): 'ProposalRefinement',
@@ -1759,6 +1896,10 @@ INLINE_TYPE_HINTS = {
     ('PolicyExemplars', 'fail'): 'PolicyExemplar',
     ('GetProductsResponse', 'incomplete'): 'GetProductsIncompleteItem',
     ('GetProductsIncompleteItem', 'estimated_wait'): '*Duration',
+    # list_products: scope has no `proposals` value here, so the item is its own
+    # type and not GetProductsIncompleteItem.
+    ('ListProductsResponse', 'incomplete'): 'ListProductsIncompleteItem',
+    ('ListProductsIncompleteItem', 'estimated_wait'): '*Duration',
     ('SyncPlansResponse', 'plans'): 'SyncPlansPlan',
     ('SyncPlansPlan', 'categories'): 'SyncPlansPlanCategory',
     ('SyncPlansPlan', 'resolved_policies'): 'SyncPlansResolvedPolicy',
@@ -1869,6 +2010,13 @@ INLINE_TYPE_HINTS = {
     ('ProductFilters', 'required_geo_targeting'): 'ProductFilterGeoTargetingRequirement',
     ('ProductFilters', 'postal_areas'): 'PostalArea',
     ('ProductFilters', 'geo_proximity'): 'ProductFilterGeoProximity',
+    ('ProductOfferFilters', 'availability_horizon'): '*ProductOfferFilterAvailabilityHorizon',
+    ('ProductOfferFilters', 'metros'): 'ProductOfferFilterMetro',
+    ('ProductOfferFilters', 'trusted_match'): '*ProductOfferFilterTrustedMatch',
+    ('ProductOfferFilters', 'geo_proximity'): '[]GeoProximityTarget',
+    ('ProductOfferFilters', 'required_performance_standards'): 'ProductOfferFilterPerformanceStandard',
+    ('ProductOfferFilters', 'required_vendor_metrics'): 'ProductOfferFilterVendorMetric',
+    ('ProductOfferFilterTrustedMatch', 'providers'): 'ProductOfferFilterTrustedMatchProvider',
     ('ProductFilters', 'keywords'): 'ProductFilterKeyword',
     ('ProductFilterBudgetRange', 'min'): '*float64',
     ('ProductFilterBudgetRange', 'max'): '*float64',
@@ -1967,6 +2115,7 @@ INLINE_TYPE_HINTS = {
     # OptimizationGoal field intentionally stays float64.
     ('CreativeAsset', 'weight'): '*float64',
     ('KeywordTarget', 'bid_price'): '*float64',
+    ('CanonicalKeywordTarget', 'bid_price'): '*float64',
     ('AudienceSelector', 'min_value'): '*float64',
     ('AudienceSelector', 'max_value'): '*float64',
     ('ForecastPoint', 'budget'): '*float64',
@@ -2035,11 +2184,24 @@ INTENTIONAL_ANY_FIELDS = {
     ('CommittedMediaBuy', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('BuyProductsRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
     ('BuyProductsRequest', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; CreateMediaBuyRequest.bidding stays any too',
+    ('ControlMediaBuyRequest', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'budget_cap_timezone'): 'type is [string, null] and null restores the default timezone; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'frequency_cap'): 'anyOf core/media-buy-frequency-cap.json or null, and null removes the cap; left dynamic until adcp-go#536 settles the three-state encoding',
+    ('ControlMediaBuyRequest', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
+    ('ControlMediaBuyRequest', 'budget_allocation'): 'core/canonical-budget-allocation.json is a discriminated oneOf (fixed, seller_optimized) whose seller_optimized branch references core/canonical-optimization-goal.json, which is not generated',
+    ('PackageControl', 'budget'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'daily_budget_cap'): 'type is [number, null] and null removes the cap; a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'min_spend_target'): 'type is [number, null]; the schema does not say what null means here (daily_budget_cap says null removes it), and a typed field decodes null like omission, so it stays dynamic until adcp-go#536 settles the three-state encoding',
+    ('PackageControl', 'bidding'): 'anyOf core/bidding-policy.json or null; left dynamic until adcp-go#536 settles the three-state encoding (core/bidding-policy.json is not generated either)',
+    ('PackageControl', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
+    ('PackageControl', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
+    ('ControlApplied', 'warnings'): 'core/warning.json is open (additionalProperties: true) and its free-form details has no reviewed Go type; CreateMediaBuySuccess.warnings stays []any for the same reason, so the two move together',
     ('ProductPurchaseInput', 'pricing'): 'core/canonical-pricing-option.json is not generated: its free-form parameters object has no reviewed Go type',
     ('ProductPurchaseInput', 'bidding'): 'core/bidding-policy.json is not generated: cost_per and roas are inline objects with no Go type yet; PackageInput.bidding stays any too',
     ('ProductPurchaseInput', 'targeting_overlay'): 'core/targeting-input.json three-state (omit/value/null-clear) encoding is being decided in adcp-go#536; left dynamic pending that design',
     ('ProductPurchaseInput', 'optimization_goals'): 'core/canonical-optimization-goal.json is a discriminated oneOf whose target, target_frequency and event_sources are inline objects with no Go type yet',
-    ('ProductPurchaseInput', 'audience_evidence_requirements'): 'core/product-audience-evidence-requirements.json is not generated: accepted_attestation_issuers is an array of a oneOf with no Go type yet',
+    ('ProductAudienceEvidenceRequirements', 'accepted_attestation_issuers'): 'accepted_attestation_issuers items are a discriminated oneOf (brand/agent/origin) with no Go union type yet',
+    ('CanonicalMediaBuyFeatures', 'bidding_policy'): 'core/bidding-policy-capability.json is not generated: its scope_capability/policy_profile shapes are local definitions whose supported_combinations items are a oneOf with no Go type yet',
     ('ProductPurchaseInput', 'measurement_terms'): 'core/canonical-measurement-terms.json is not generated: billing_measurement and makegood_policy are inline objects with no Go type yet',
     ('ValidateInputViolation', 'expected'): 'validate_input expected values are untyped: a string, a number or a range',
     ('ValidateInputViolation', 'predicted'): 'validate_input predicted values are untyped: a string, a number or a range',
@@ -2222,7 +2384,6 @@ SCHEMA_32_RC_ANY_FIELDS = {
     ('ProductCardDetailed', 'reference_assets'),
     ('ProductDiscoveryCriteria', 'acceptance_context'),
     ('ProductDiscoveryCriteria', 'catalog'),
-    ('ProductDiscoveryCriteria', 'offer_filters'),
     ('ProductDiscoveryCriteria', 'outcome_target'),
     ('ProductDiscoveryCriteria', 'required_overlay_support'),
     ('ProductFilters', 'audience_activation_methods'),
@@ -2508,6 +2669,221 @@ def _allof_refs(branch):
         if isinstance(part, dict) and isinstance(part.get('$ref'), str)
     }
 
+# Envelope schemas a flat-union response may compose through its top-level
+# allOf. 3.3.0-beta.3 adds core/protocol-envelope.json to every task response
+# (adcp#8547); 3.2.2 already pairs it with core/version-envelope.json on most.
+FLAT_UNION_ENVELOPE_PATHS = frozenset({
+    'core/protocol-envelope.json',
+    'core/version-envelope.json',
+})
+
+# Keywords that annotate a oneOf branch without constraining the instance.
+_BRANCH_ANNOTATION_KEYS = frozenset({'title', 'description', '$comment', 'examples'})
+
+# The top-level keywords flat_required_union models or can ignore: the shape's
+# own, array-form `dependencies` (modelled: see flat_required_union),
+# annotations, and additionalProperties (the struct drops unknown fields either
+# way, as for every generated type). `x-*` extension keywords are annotations
+# too. Any other keyword is a rule it does not model.
+_FLAT_UNION_TOP_LEVEL_KEYS = frozenset({
+    'type', 'properties', 'oneOf', 'discriminator', 'allOf', 'not',
+    'additionalProperties', 'dependencies',
+    '$schema', '$id', 'title', 'description', '$comment', 'examples',
+    'deprecated', 'definitions', '$defs',
+})
+
+def _string_list(value):
+    if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+        return list(value)
+    return None
+
+def flat_required_union(schema):
+    """Recognise a discriminated oneOf whose branches only switch which
+    top-level properties are required or forbidden, else return None.
+
+    The shape (list_products' `outcome: listed | unchanged`):
+
+    - top-level `properties` declare every field, the discriminator among them
+      with an `enum`;
+    - `discriminator: {propertyName}` and a top-level `oneOf` of two or more
+      branches;
+    - each branch holds `required` (naming the discriminator), a `properties`
+      that holds only the discriminator's `const`, and optionally
+      `not: {required: [...]}`; nothing else but annotations;
+    - the branch constants are distinct and are the discriminator's enum;
+    - a top-level `allOf` may only compose the envelope schemas
+      (FLAT_UNION_ENVELOPE_PATHS) by whole-file `$ref`, which add fields but no
+      variants.
+
+    The match refuses rather than skips. The top-level keys are an allowlist
+    (_FLAT_UNION_TOP_LEVEL_KEYS): a keyword this function does not model
+    (`dependencies`, `if`/`then`, `patternProperties`, `anyOf`, ...) is a rule
+    the generated Validate would not enforce, so its presence is not the shape,
+    and a bundle that adds one fails the generator loudly instead of dropping
+    the rule. A top-level `not` is allowed only when every field it names is not
+    a declared property, as in 3.2.2 (it forbids `proposals` and the like).
+
+    Anything else stays on the existing paths: branches that carry properties
+    of their own (list_account_changes), or nested oneOf (get_reporting_status),
+    are not this shape. Go represents the match as ONE flat struct; the
+    per-branch rules become a generated Validate.
+
+    Returns {'discriminator', 'enum', 'shared_required', 'branches',
+    'dependencies'}, where each branch is {'value', 'required', 'forbidden'} and
+    `required` is what the branch requires beyond `shared_required`.
+    `dependencies` is the array form of a top-level `dependencies`, as
+    [{'key', 'required'}]: 3.3.0-beta.3's list-products-response adds
+    {"collections": ["products"]}. Its fields and the key must be declared; the
+    schema form is refused.
+    """
+    if not isinstance(schema, dict):
+        return None
+    branches = schema.get('oneOf')
+    disc = schema.get('discriminator')
+    if (
+        not isinstance(branches, list) or len(branches) < 2
+        or not isinstance(disc, dict)
+        or not isinstance(disc.get('propertyName'), str)
+    ):
+        return None
+    if any(
+        key not in _FLAT_UNION_TOP_LEVEL_KEYS and not key.startswith('x-')
+        for key in schema
+    ):
+        return None
+    if schema.get('type', 'object') != 'object':
+        return None
+    name = disc['propertyName']
+    props = schema.get('properties')
+    if not isinstance(props, dict) or not isinstance(props.get(name), dict):
+        return None
+    enum = props[name].get('enum')
+    if not isinstance(enum, list) or not all(isinstance(v, str) for v in enum):
+        return None
+
+    if 'not' in schema and not _top_level_not_forbids_only_undeclared(schema['not'], props):
+        return None
+
+    dependencies = []
+    raw_dependencies = schema.get('dependencies', {})
+    if not isinstance(raw_dependencies, dict):
+        return None
+    for key, dependents in raw_dependencies.items():
+        # Array form only: "if key is present, these are required". The schema
+        # form (an object value) is a rule this does not model.
+        dependents = _string_list(dependents)
+        if key not in props or dependents is None or any(d not in props for d in dependents):
+            return None
+        dependencies.append({'key': key, 'required': dependents})
+
+    all_of = schema.get('allOf', [])
+    if not isinstance(all_of, list):
+        return None
+    for item in all_of:
+        if not isinstance(item, dict) or set(item) != {'$ref'}:
+            return None
+        ref = item['$ref']
+        if not isinstance(ref, str) or '#' in ref:
+            return None
+        if ref_to_schema_path(ref) not in FLAT_UNION_ENVELOPE_PATHS:
+            return None
+
+    parsed = []
+    for branch in branches:
+        if not isinstance(branch, dict):
+            return None
+        if not set(branch) <= {'required', 'properties', 'not'} | _BRANCH_ANNOTATION_KEYS:
+            return None
+        required = _string_list(branch.get('required'))
+        branch_props = branch.get('properties')
+        if required is None or name not in required:
+            return None
+        if (
+            not isinstance(branch_props, dict) or set(branch_props) != {name}
+            or not isinstance(branch_props[name], dict)
+            or not isinstance(branch_props[name].get('const'), str)
+        ):
+            return None
+        forbidden = []
+        if 'not' in branch:
+            negation = branch['not']
+            if not isinstance(negation, dict) or set(negation) != {'required'}:
+                return None
+            forbidden = _string_list(negation['required'])
+            if forbidden is None:
+                return None
+        if any(field not in props for field in required + forbidden):
+            return None
+        parsed.append({
+            'value': branch_props[name]['const'],
+            'required': required,
+            'forbidden': forbidden,
+        })
+
+    values = [b['value'] for b in parsed]
+    if len(set(values)) != len(values) or set(values) != set(enum):
+        return None
+
+    shared = [
+        field for field in parsed[0]['required']
+        if all(field in b['required'] for b in parsed)
+    ]
+    for b in parsed:
+        b['required'] = [f for f in b['required'] if f not in shared]
+    return {
+        'discriminator': name,
+        'enum': list(enum),
+        'shared_required': shared,
+        'branches': parsed,
+        'dependencies': dependencies,
+    }
+
+def _top_level_not_forbids_only_undeclared(negation, props):
+    """True when a top-level `not` only forbids fields the schema does not
+    declare: `{required: [a]}` or `{anyOf: [{required: [a]}, ...]}`. Such a
+    rule has no Go field to check, so the struct needs nothing for it."""
+    if not isinstance(negation, dict):
+        return False
+    if set(negation) == {'required'}:
+        groups = [negation]
+    elif set(negation) == {'anyOf'} and isinstance(negation['anyOf'], list):
+        groups = negation['anyOf']
+    else:
+        return False
+    for group in groups:
+        if not isinstance(group, dict) or set(group) != {'required'}:
+            return False
+        names = _string_list(group['required'])
+        if names is None or any(n in props for n in names):
+            return False
+    return True
+
+def flat_union_conditional_fields(spec):
+    """JSON names whose presence matters to a flat union's Validate beyond the
+    shared required set: what some branches require or forbid, and the keys and
+    dependents of `dependencies`."""
+    names = []
+    for branch in spec['branches']:
+        for json_name in branch['required'] + branch['forbidden']:
+            if json_name not in names:
+                names.append(json_name)
+    for dependency in spec['dependencies']:
+        for json_name in [dependency['key']] + dependency['required']:
+            if json_name not in names:
+                names.append(json_name)
+    return names
+
+def _is_tool_response_object(schema):
+    """True for a schema loaded from a TOOL_SCHEMAS response, matched by its
+    `$id`. The flat-union rule belongs to those: the enum and the Validate it
+    needs are emitted only for them (tool_flat_union), so the required set
+    (schema_required_names) must follow the same gate."""
+    sid = schema.get('$id') if isinstance(schema, dict) else None
+    return isinstance(sid, str) and any(
+        is_tool_response_schema(path) and sid.endswith('/' + path)
+        for path in TOOL_SCHEMAS
+    )
+
 def schema_required_names(schema, _visited=None):
     """Return fields required by the schema. For generation, allOf-required
     fields are required; anyOf/oneOf branch requirements are intentionally not
@@ -2526,6 +2902,10 @@ def schema_required_names(schema, _visited=None):
         if ref_schema:
             required.update(schema_required_names(ref_schema, _visited))
     required.update(schema.get('required', []))
+    flat = flat_required_union(schema)
+    if flat and _is_tool_response_object(schema):
+        # Every branch of a flat union requires these, so the struct does too.
+        required.update(flat['shared_required'])
     for branch in schema.get('allOf', []):
         required.update(schema_required_names(branch, _visited))
     for key in ('oneOf', 'anyOf'):
@@ -2606,6 +2986,8 @@ def _reset_will_generate_cache():
     `generate()` to guarantee correctness when the module is used across
     multiple runs (e.g. imported by lint.py then invoked standalone)."""
     global _WILL_GENERATE_CACHE, _AUTO_REF_SCHEMA_CACHE, _SCALAR_ALIAS_NAMES_CACHE
+    global _FLAT_UNION_TYPES_CACHE
+    _FLAT_UNION_TYPES_CACHE = None
     _WILL_GENERATE_CACHE = None
     _AUTO_REF_SCHEMA_CACHE = None
     _SCALAR_ALIAS_NAMES_CACHE = None
@@ -3103,12 +3485,56 @@ def should_pointer_optional_type(go_type):
     return True
 
 
+def tool_flat_union(path, schema):
+    """The flat_required_union spec of a tool response schema, else None.
+    Only responses qualify: a request has no oneOf to flatten (see
+    validate_top_level_tool_union)."""
+    if not is_tool_response_schema(path) or not _is_tool_response_object(schema):
+        return None
+    return flat_required_union(schema)
+
+def flat_union_tool_responses():
+    """`(Go name, path, schema, spec)` for each TOOL_SCHEMAS response that is a
+    flat required-only union, in TOOL_SCHEMAS order."""
+    found = []
+    for path in TOOL_SCHEMAS:
+        if not schema_exists(path):
+            continue
+        schema = load_schema(path)
+        spec = tool_flat_union(path, schema)
+        if spec:
+            stem = Path(path).stem
+            found.append((REF_ALIASES.get(pascal_case(stem), pascal_case(stem)), path, schema, spec))
+    return found
+
+def flat_union_enum_name(type_name, discriminator):
+    """Go name of the enum type a flat union's discriminator takes."""
+    return f'{type_name}{pascal_case(discriminator)}'
+
+_FLAT_UNION_TYPES_CACHE = None
+
+def flat_union_discriminator_types():
+    """{(Go struct name, JSON discriminator): enum type name} for flat unions."""
+    global _FLAT_UNION_TYPES_CACHE
+    if _FLAT_UNION_TYPES_CACHE is None:
+        _FLAT_UNION_TYPES_CACHE = {
+            (name, spec['discriminator']): flat_union_enum_name(name, spec['discriminator'])
+            for name, _, _, spec in flat_union_tool_responses()
+        }
+    return _FLAT_UNION_TYPES_CACHE
+
 def field_go_type_info(type_name, json_name, prop, required_set):
     """Return the generated field type and fallback reason for a struct field."""
     hint_key = (type_name, json_name)
+    flat_enum = flat_union_discriminator_types().get(hint_key)
     has_hint = hint_key in INLINE_TYPE_HINTS
-    direct_enum_ref = not has_hint and '$ref' in prop and is_enum_ref(prop['$ref'])
-    if has_hint:
+    direct_enum_ref = bool(flat_enum) or (
+        not has_hint and '$ref' in prop and is_enum_ref(prop['$ref'])
+    )
+    if flat_enum:
+        # The discriminator of a flat union is its generated enum type.
+        go_type, reason = flat_enum, None
+    elif has_hint:
         hint_type = INLINE_TYPE_HINTS[hint_key]
         if prop.get('type', '') == 'array':
             go_type = f'[]{hint_type}'
@@ -3130,6 +3556,8 @@ def schema_to_struct(name, schema):
     props = schema_properties(schema)
     required_set = schema_required_names(schema)
     _OBJECT_REF_ALIAS_VIOLATIONS.extend(object_ref_scalar_alias_violations(name, schema))
+    flat = flat_required_union(schema) if _is_tool_response_object(schema) else None
+    flat_conditional = flat_union_conditional_fields(flat) if flat else []
 
     fields = []
     for json_name, prop in props.items():
@@ -3142,6 +3570,10 @@ def schema_to_struct(name, schema):
         is_required = json_name in required_set
 
         omit = 'omitempty' if not is_required else ''
+        if flat and json_name in flat_conditional and go_type.startswith(('[]', 'map[')):
+            # omitzero, not omitempty: nil is absent and an empty non-nil value
+            # is sent, as a branch that requires the field needs for an empty page.
+            omit = 'omitzero'
         tag = f'`json:"{json_name}'
         if omit:
             tag += f',{omit}'
@@ -3153,6 +3585,16 @@ def schema_to_struct(name, schema):
         deprecated = deprecated_comment(prop)
         if deprecated:
             fields.append(f'\t// {deprecated}')
+        if flat and json_name in flat_conditional and go_type.startswith(('[]', 'map[')):
+            values = [
+                b['value'] for b in flat['branches'] if json_name in b['required']
+            ]
+            if values:
+                fields.append(
+                    f'\t// For {" and ".join(values)}, send a non-nil empty '
+                    f'{"slice" if go_type.startswith("[]") else "map"} for an '
+                    'empty value; nil omits the key and Validate reports it.'
+                )
         fields.append(f'\t{go_name} {go_type} {tag}{comment}')
 
     desc = safe_comment(
@@ -3161,6 +3603,159 @@ def schema_to_struct(name, schema):
     )
     doc = f'// {name} — {desc}\n' if desc else ''
     return f'{doc}type {name} struct {{\n' + '\n'.join(fields) + '\n}\n'
+
+def _flat_union_presence(name, json_name, go_type, enum_types):
+    """Go test for "this field was sent" on a flat union struct, as
+    `(is_set, is_unset)` expressions over the field value `v`.
+
+    Only types whose zero value cannot be a real value qualify: a string, a
+    slice, a map, a pointer, `any`. A required `int`, `float64` or `bool` has no
+    absent state in Go, so a Validate could not check it; that is refused
+    rather than skipped, because a silent gap is how a rule goes unenforced."""
+    string_like = go_type == 'string' or go_type in enum_types or (
+        go_type in scalar_alias_go_names() and go_type not in ('int', 'float64', 'bool')
+    )
+    if string_like:
+        return '!= ""', '== ""'
+    if go_type.startswith(('[]', 'map[', '*')) or go_type == 'any':
+        return '!= nil', '== nil'
+    raise ValueError(
+        f'{name}.{json_name} is {go_type}, whose zero value is a valid value, '
+        'so a flat union Validate cannot tell it from absent; give the field a '
+        'pointer type in INLINE_TYPE_HINTS'
+    )
+
+def flat_union_methods(name, schema, spec):
+    """Validate for a flat union struct.
+
+    Validate states, per discriminator value, what the oneOf branches say: the
+    fields every branch requires are checked first, then the branch's own
+    required set and its `not: {required}` set. An unknown discriminator value
+    is only reported under WithStrictEnums, like every other flattened oneOf in
+    this package (validation.go), because a newer seller may send a new value.
+
+    A top-level array-form `dependencies` (a key whose presence requires other
+    fields) is checked after the branches, for any discriminator value.
+
+    Presence is Go's: a string is present when non-empty (stricter than the
+    schema, which only requires the key; validation.go's convention), a slice,
+    map or pointer when non-nil. The struct tags a conditional slice or map
+    `omitzero`, so a non-nil empty one is sent as [] and agrees with Validate.
+
+    Under WithStrictEnums a plain string field whose schema has an `enum` (such
+    as cache_scope) is also checked against it.
+    """
+    disc = spec['discriminator']
+    props = schema_properties(schema)
+    required_set = schema_required_names(schema)
+    enum_name = flat_union_enum_name(name, disc)
+    enum_types = {enum_name}
+    consts = {value: const for const, value in enum_members(enum_name, spec['enum'])}
+
+    def field_info(json_name):
+        go_type, _ = field_go_type_info(name, json_name, props[json_name], required_set)
+        return pascal_case(json_name), go_type
+
+    lines = []
+
+    shared = [disc] + [f for f in spec['shared_required'] if f != disc]
+    lines += [
+        f'// Validate checks what the oneOf in {name}\'s schema adds to its field types:',
+        f'// the fields every {disc} requires, then the fields the {disc} in',
+        f'// hand requires or forbids. {name} is one flat struct, so Go\'s zero',
+        '// values cannot enforce them. An empty string counts as missing, which is',
+        '// stricter than the schema (it only requires the key) and matches the other',
+        '// validators in this package; a nil slice or map is missing, an empty one is',
+        '// present. It is opt-in and forward-compatible: a value outside the current',
+        '// enum is accepted (only the shared fields are checked for it) unless',
+        '// WithStrictEnums is supplied, which reports it.',
+        *[
+            f'// {d["key"]} present requires {", ".join(d["required"])} (the schema\'s dependencies).'
+            for d in spec['dependencies']
+        ],
+        f'func (r {name}) Validate(opts ...ValidationOption) []ValidationIssue {{',
+        '\tcfg := newValidationConfig(opts)',
+        '\tvar issues []ValidationIssue',
+    ]
+    for json_name in shared:
+        go_name, go_type = field_info(json_name)
+        _, unset = _flat_union_presence(name, json_name, go_type, enum_types)
+        lines += [
+            f'\tif r.{go_name} {unset} {{',
+            f'\t\tissues = appendRequired(issues, "{json_name}")',
+            '\t}',
+        ]
+    for json_name, prop in props.items():
+        values = prop.get('enum') if isinstance(prop, dict) else None
+        go_name, go_type = field_info(json_name) if isinstance(prop, dict) else (None, None)
+        if (
+            json_name == disc or go_type != 'string'
+            or not isinstance(values, list) or not values
+            or not all(isinstance(v, str) for v in values)
+        ):
+            continue
+        cases = ', '.join(json.dumps(v) for v in values)
+        lines += [
+            f'\tif cfg.strictEnums && r.{go_name} != "" {{',
+            f'\t\tswitch r.{go_name} {{',
+            f'\t\tcase {cases}:',
+            '\t\tdefault:',
+            f'\t\t\tissues = appendUnknownEnum(issues, "{json_name}")',
+            '\t\t}',
+            '\t}',
+        ]
+    lines.append(f'\tswitch r.{pascal_case(disc)} {{')
+    for branch in spec['branches']:
+        lines.append(f'\tcase {consts[branch["value"]]}:')
+        for json_name in branch['required']:
+            go_name, go_type = field_info(json_name)
+            _, unset = _flat_union_presence(name, json_name, go_type, enum_types)
+            lines += [
+                f'\t\tif r.{go_name} {unset} {{',
+                f'\t\t\tissues = appendRequired(issues, "{json_name}")',
+                '\t\t}',
+            ]
+        for json_name in branch['forbidden']:
+            go_name, go_type = field_info(json_name)
+            is_set, _ = _flat_union_presence(name, json_name, go_type, enum_types)
+            lines.append(
+                f'\t\tissues = appendUnsupportedIfSet(issues, "{json_name}", r.{go_name} {is_set})'
+            )
+    lines += [
+        '\tdefault:',
+        f'\t\tif cfg.strictEnums && r.{pascal_case(disc)} != "" {{',
+        f'\t\t\tissues = appendUnknownVariant(issues, "{disc}")',
+        '\t\t}',
+        '\t}',
+    ]
+    if spec['dependencies']:
+        # After the switch, so a dependent a branch already reported missing is
+        # not reported twice.
+        lines += [
+            '\treported := func(field string) bool {',
+            '\t\tfor _, issue := range issues {',
+            '\t\t\tif issue.Field == field && issue.Code == "REQUIRED_FIELD" {',
+            '\t\t\t\treturn true',
+            '\t\t\t}',
+            '\t\t}',
+            '\t\treturn false',
+            '\t}',
+        ]
+    for dependency in spec['dependencies']:
+        key_name, key_type = field_info(dependency['key'])
+        key_set, _ = _flat_union_presence(name, dependency['key'], key_type, enum_types)
+        lines.append(f'\tif r.{key_name} {key_set} {{')
+        for json_name in dependency['required']:
+            go_name, go_type = field_info(json_name)
+            _, unset = _flat_union_presence(name, json_name, go_type, enum_types)
+            lines += [
+                f'\t\tif r.{go_name} {unset} && !reported("{json_name}") {{',
+                f'\t\t\tissues = appendRequired(issues, "{json_name}")',
+                '\t\t}',
+            ]
+        lines.append('\t}')
+    lines += ['\treturn issues', '}']
+    return '\n'.join(lines) + '\n'
 
 def is_tool_response_schema(path):
     return Path(path).stem.endswith('-response')
@@ -3506,12 +4101,17 @@ def enum_to_type(name, desc, values):
 
 def inline_enum_origin(spec):
     schema = spec.get('schema')
+    if 'one_of_kind' not in spec:
+        return str(schema)
     kind = spec.get('one_of_kind')
     prop = spec.get('property')
     return f'{schema} oneOf kind={kind} property={prop}'
 
 def load_inline_enum_schema(spec):
     schema_spec = spec.get('schema')
+    if schema_spec and 'one_of_kind' not in spec and 'property' not in spec:
+        # The pointer names the enum schema itself (an array's `#/items`).
+        return load_schema_spec(schema_spec)
     kind = spec.get('one_of_kind')
     prop = spec.get('property')
     if not schema_spec or not kind or not prop:
@@ -3571,6 +4171,15 @@ def generate_enums(_seen=None):
             raise ValueError(f'INLINE_ENUM_TYPES[{name!r}]: {e}') from e
         origin = inline_enum_origin(spec)
         append_enum(name, schema, origin, error_if_empty=True)
+
+    for name, path, schema, spec in flat_union_tool_responses():
+        disc = spec['discriminator']
+        append_enum(
+            flat_union_enum_name(name, disc),
+            schema_properties(schema)[disc],
+            f'{path} discriminator {disc}',
+            error_if_empty=True,
+        )
 
     return '\n'.join(lines)
 
@@ -3632,6 +4241,18 @@ def generated_schema_entries():
             if name in generated:
                 continue
             generated.add(name)
+
+            flat = tool_flat_union(path, schema) if section == 'tool' else None
+            if flat:
+                yield {
+                    'section': section,
+                    'name': name,
+                    'schema': path,
+                    'schema_obj': schema,
+                    'kind': 'struct',
+                    'flat_union': flat,
+                }
+                continue
 
             if section == 'tool' and 'oneOf' in schema:
                 validate_top_level_tool_union(name, schema, path)
@@ -3926,6 +4547,14 @@ def generate():
         if name in generated:
             continue
         generated.add(name)
+
+        # A oneOf that only switches required fields is one flat struct, with
+        # the discriminator's enum emitted with the other enums.
+        flat = tool_flat_union(path, schema)
+        if flat:
+            print(schema_to_struct(name, schema))
+            print(flat_union_methods(name, schema, flat))
+            continue
 
         # Handle oneOf at top level (like preview-creative-response.json)
         if 'oneOf' in schema:

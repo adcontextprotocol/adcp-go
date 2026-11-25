@@ -1,26 +1,28 @@
 {
   "repository": "adcontextprotocol/adcp",
-  "note": "Draft AdCP 3.3 identity schemas, copied without modification from the commits below (the same commits the Python SDK pins). They are not part of a released schema bundle; the SDK wire pin (adcp/v3/schemas/VERSION) is unchanged. Replace them from the released bundle when AdCP 3.3 ships.",
-  "sources": {
-    "core/agent-onboarding.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "core/agent-onboarding-tier.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "core/agent-onboarding-requirement.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "core/buyer-onboarding-posture.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "enums/agent-onboarding-mode.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "enums/agent-onboarding-requirement-kind.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "enums/buyer-onboarding-mode.json": { "pr": 8170, "commit": "8d3591e70e9a717c7fdfb513360a796fba24ca9a" },
-    "core/principal-relationship.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
-    "core/principal-changed-webhook.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
-    "protocol/get-principal-response.json": { "pr": 8168, "commit": "45540941dfd61e80ab8a463f780cb147c82a32f0" },
-    "trust/v1/trust.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
-    "core/identity-relying-party.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
-    "error-details/agent-permission-denied.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae" },
-    "../examples/*.json": { "pr": 8169, "commit": "3ce6a14d7afaa71fa78ddf2223ed0421e01205ae", "path": "specs/brand-identity-trust-split/examples/" }
+  "note": "AdCP 3.3 identity schemas, copied without modification from the signed 3.3.0-beta.3 protocol bundle (https://adcontextprotocol.org/protocol/3.3.0-beta.3.tgz, Sigstore-verified by adcp/v3/schemas/download.sh). The SDK wire pin (adcp/v3/schemas/VERSION) is separate. AdCP 3.3 is in beta: re-pin when it ships.",
+  "bundle": "3.3.0-beta.3",
+  "tag": "v3.3.0-beta.3",
+  "commit": "a6106149a2b5c929eec0caa0042adbae4ccf3a9c",
+  "files": {
+    "core/agent-onboarding-requirement.json": "sha256:00f7d678fd3b3ec2a1a6254cfd6c4e788492b00c496ae0a75db7780682593ba6",
+    "core/agent-onboarding-tier.json": "sha256:eb79480d3c8d25633b4b9a3dfc8d523c48a7f720c155762b0bf0f806a16d6a7b",
+    "core/agent-onboarding.json": "sha256:c82cfbcfced0a58682b8eafb6dc177a16d12138f25336b84a88589c1f47914ac",
+    "core/buyer-onboarding-posture.json": "sha256:d46b94dc1b74c5a5a80c46698db623027e40a25f8af2f7c2ee0e77c1a2f60c14",
+    "core/identity-relying-party.json": "sha256:514f1dc88fba2d725af553d5c42cbc1e114d5878cc4f0bbc361e122a223d8e0a",
+    "core/principal-changed-webhook.json": "sha256:80346577be59f7aea7e5107064749f8326e9d660f41be655a4215e49371abec2",
+    "core/principal-relationship.json": "sha256:9b5d1d02ffba58e4d664ea388ba0d617be976677254cdccc6d5f7c7c6d5a6eaf",
+    "enums/agent-onboarding-mode.json": "sha256:63141dc3f9d139f47dfb15223ed19bbb74e06e1abd735e46155f6cee5e461d2a",
+    "enums/agent-onboarding-requirement-kind.json": "sha256:ad4e3fa39d2e503cef15c2240cd89b49d5a155b746aa9d3126d1669425ba7e35",
+    "enums/pending-action-kind.json": "sha256:d37d8e44cfc4a29d36089467964c258afe62af87a8989fdd2503647c09a12088",
+    "enums/pending-action-party.json": "sha256:e520c2bac10890c7cf6a0c27b36389588b02f31f96fe6ac6437b1de7f97c79bd",
+    "enums/principal-relationship-status.json": "sha256:3048cf6a0f729f6133d26814dffb6ad382dac93e0e708a7abc161958bdcee99f",
+    "error-details/agent-permission-denied.json": "sha256:72652939637fe735f8462717e60b70e0753dd488772595574b137297fa37be2e",
+    "protocol/get-principal-response.json": "sha256:0861f92fe3a57a210b08379120f04101143ef60cd27d7b27496df21c16ffd2e7",
+    "trust/v1/trust.json": "sha256:0ff8e76d4df0832bc90287cdf35b614decafe61dc7e11da0e421694970c5358c"
   },
-  "composition": {
-    "trust/v1/trust.json": [
-      "agent.profiles.adcp.onboarding ($ref core/buyer-onboarding-posture.json) from PR #8170",
-      "record_profiles.adcp.onboarding ($ref core/buyer-onboarding-posture.json) from PR #8170"
-    ]
+  "examples": {
+    "path": "specs/brand-identity-trust-split/examples/",
+    "note": "../examples/*.json, byte for byte from the same tag (unchanged since PR #8169)."
   }
 }

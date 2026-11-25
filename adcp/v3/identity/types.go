@@ -11,7 +11,7 @@ import (
 )
 
 // Types in this file mirror the experimental AdCP 3.3 identity schemas
-// pinned in testdata/schemas/UPSTREAM.json. TestTypesMatchPinnedSchemas
+// pinned (from the 3.3.0-beta.3 bundle) in testdata/schemas/UPSTREAM.json. TestTypesMatchPinnedSchemas
 // keeps their JSON members in step with those schemas.
 
 // Profiles is an open, per-protocol profiles object: the adcp namespace is
@@ -224,7 +224,6 @@ const (
 type AgentOnboardingRequirementKind string
 
 const (
-	RequirementAgentIdentity       AgentOnboardingRequirementKind = "agent_identity"
 	RequirementGrant               AgentOnboardingRequirementKind = "grant"
 	RequirementBillingEntity       AgentOnboardingRequirementKind = "billing_entity"
 	RequirementContract            AgentOnboardingRequirementKind = "contract"
@@ -239,7 +238,7 @@ const (
 // defines.
 func KnownRequirementKind(k AgentOnboardingRequirementKind) bool {
 	switch k {
-	case RequirementAgentIdentity, RequirementGrant, RequirementBillingEntity, RequirementContract,
+	case RequirementGrant, RequirementBillingEntity, RequirementContract,
 		RequirementCreditApplication, RequirementAAOVerified, RequirementStoryboard, RequirementSandbox,
 		RequirementExperimentalFeature:
 		return true
@@ -247,24 +246,17 @@ func KnownRequirementKind(k AgentOnboardingRequirementKind) bool {
 	return false
 }
 
-// BuyerOnboardingMode is enums/buyer-onboarding-mode.json.
-type BuyerOnboardingMode string
-
-const (
-	BuyerOnboardingConsidersUnsolicited BuyerOnboardingMode = "considers_unsolicited"
-	BuyerOnboardingApplication          BuyerOnboardingMode = "application"
-	BuyerOnboardingInviteOnly           BuyerOnboardingMode = "invite_only"
-)
-
 // AgentOnboardingRequirement is core/agent-onboarding-requirement.json.
 type AgentOnboardingRequirement struct {
 	Kind              AgentOnboardingRequirementKind `json:"kind"`
 	Role              string                         `json:"role,omitempty"`
 	VerificationModes []string                       `json:"verification_modes,omitempty"`
-	Specialisms       []string                       `json:"specialisms,omitempty"`
-	AdcpVersion       string                         `json:"adcp_version,omitempty"`
-	ID                string                         `json:"id,omitempty"`
-	Ext               map[string]any                 `json:"ext,omitempty"`
+	// VerifiedSpecialisms (aao_verified) are specialisms the badge's
+	// verified_specialisms claim must include.
+	VerifiedSpecialisms []string       `json:"verified_specialisms,omitempty"`
+	AdcpVersion         string         `json:"adcp_version,omitempty"`
+	ID                  string         `json:"id,omitempty"`
+	Ext                 map[string]any `json:"ext,omitempty"`
 }
 
 // AgentOnboardingTier is core/agent-onboarding-tier.json.
@@ -278,22 +270,21 @@ type AgentOnboardingTier struct {
 // AgentOnboarding is core/agent-onboarding.json, the seller's
 // account.agent_onboarding capability. Seller-wide and advisory.
 type AgentOnboarding struct {
-	Sandbox          *AgentOnboardingTier           `json:"sandbox,omitempty"`
-	Billing          map[string]AgentOnboardingTier `json:"billing,omitempty"`
-	URL              string                         `json:"url,omitempty"`
-	DocumentationURL string                         `json:"documentation_url,omitempty"`
-	Message          string                         `json:"message,omitempty"`
-	Ext              map[string]any                 `json:"ext,omitempty"`
+	Sandbox *AgentOnboardingTier           `json:"sandbox,omitempty"`
+	Billing map[string]AgentOnboardingTier `json:"billing,omitempty"`
+	URL     string                         `json:"url,omitempty"`
+	Message string                         `json:"message,omitempty"`
+	Ext     map[string]any                 `json:"ext,omitempty"`
 }
 
-// BuyerOnboardingPosture is core/buyer-onboarding-posture.json.
+// BuyerOnboardingPosture is core/buyer-onboarding-posture.json. Its mode
+// uses the sellers' enums/agent-onboarding-mode.json.
 type BuyerOnboardingPosture struct {
-	Mode             BuyerOnboardingMode          `json:"mode"`
-	Requirements     []AgentOnboardingRequirement `json:"requirements,omitempty"`
-	URL              string                       `json:"url,omitempty"`
-	DocumentationURL string                       `json:"documentation_url,omitempty"`
-	Message          string                       `json:"message,omitempty"`
-	Ext              map[string]any               `json:"ext,omitempty"`
+	Mode         AgentOnboardingMode          `json:"mode"`
+	Requirements []AgentOnboardingRequirement `json:"requirements,omitempty"`
+	URL          string                       `json:"url,omitempty"`
+	Message      string                       `json:"message,omitempty"`
+	Ext          map[string]any               `json:"ext,omitempty"`
 }
 
 // FeatureAgentOnboarding is the experimental_features id a seller that
@@ -344,10 +335,10 @@ func AdvertisedRequestSigningProfiles(capabilities []byte) ([]string, error) {
 type RelationshipStatus string
 
 const (
-	RelationshipPending   RelationshipStatus = "pending"
-	RelationshipActive    RelationshipStatus = "active"
-	RelationshipSuspended RelationshipStatus = "suspended"
-	RelationshipBlocked   RelationshipStatus = "blocked"
+	RelationshipPendingApproval RelationshipStatus = "pending_approval"
+	RelationshipActive          RelationshipStatus = "active"
+	RelationshipSuspended       RelationshipStatus = "suspended"
+	RelationshipBlocked         RelationshipStatus = "blocked"
 )
 
 // PrincipalRelationship is core/principal-relationship.json, the
@@ -362,6 +353,11 @@ type PrincipalRelationship struct {
 
 // PrincipalRelationshipSetup is the caller's next step while pending.
 type PrincipalRelationshipSetup struct {
+	// Kind is what is needed (enums/pending-action-kind.json).
+	Kind string `json:"kind,omitempty"`
+	// WaitingOn is whose turn it is: seller or buyer
+	// (enums/pending-action-party.json).
+	WaitingOn string `json:"waiting_on,omitempty"`
 	URL       string `json:"url,omitempty"`
 	Message   string `json:"message"`
 	ExpiresAt string `json:"expires_at,omitempty"`
@@ -369,8 +365,9 @@ type PrincipalRelationshipSetup struct {
 
 // principal.changed reasons added in 3.3.
 const (
-	PrincipalChangedRelationshipChanged  = "relationship_changed"
-	PrincipalChangedRelationshipExpiring = "relationship_expiring"
+	PrincipalChangedRelationshipChanged          = "relationship_changed"
+	PrincipalChangedRelationshipExpiring         = "relationship_expiring"
+	PrincipalChangedReportingSubscriptionChanged = "reporting_subscription_changed"
 )
 
 // error-details/agent-permission-denied.json reasons.

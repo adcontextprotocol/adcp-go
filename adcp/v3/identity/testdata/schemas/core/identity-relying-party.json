@@ -1,12 +1,12 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "/schemas/core/identity-relying-party.json",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/identity-relying-party.json",
   "title": "Identity Relying Party",
   "type": "object",
   "description": "A verified-identity relying party an entity or brand operates. Used for attestation provenance in TMP Identity Match (the buyer checks a forwarded attestation's relying_party_id against the owner's published list). Issuer-agnostic; World ID is the first issuer.",
   "properties": {
     "issuer": {
-      "$ref": "/schemas/core/brand-ref.json",
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-beta.3/core/brand-ref.json",
       "description": "Identity issuer / attestation authority, referenced as a vendor BrandRef (e.g. {\"domain\": \"world.org\"}) — the same vendor-reference shape AdCP uses for measurement and signals vendors. The issuer's canonical domain is the anchor; it need not host a brand.json, but if it does, that is where its verifier metadata (scheme versions, verify endpoint, JWKs) lives. Issuer-agnostic: World ID, ISO 18013-5 mDL, and W3C-VC issuers all reference by domain. The relying party is namespaced by the issuer — identity is the tuple (issuer.domain, issuer.brand_id, relying_party_id), mirroring (vendor.domain, vendor.brand_id, metric_id)."
     },
     "scheme": {
@@ -31,5 +31,6 @@
     "issuer",
     "relying_party_id"
   ],
-  "additionalProperties": false
+  "additionalProperties": false,
+  "x-added-in": "3.3.0"
 }

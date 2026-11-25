@@ -97,14 +97,16 @@ func TestGeneratedCapabilitiesResponseUsesTypedBlocks(t *testing.T) {
 
 func TestDeploymentOptionalBoolPreservesFalse(t *testing.T) {
 	deployment := Deployment{
-		Type:   "agent",
-		IsLive: Bool(false),
+		Type:     "agent",
+		AgentURL: "https://agent.example/mcp",
+		IsLive:   Bool(false),
 	}
 
 	raw, err := json.Marshal(deployment)
 	if err != nil {
 		t.Fatalf("marshal deployment: %v", err)
 	}
+	assertSchemaValid(t, "core/deployment.json", raw)
 	if !strings.Contains(string(raw), `"is_live":false`) {
 		t.Fatalf("marshaled deployment dropped false is_live:\n%s", raw)
 	}
@@ -117,6 +119,8 @@ func TestDeploymentOptionalBoolPreservesFalse(t *testing.T) {
 		t.Fatalf("deployment false pointer did not round-trip: %#v", decoded)
 	}
 
+	// Not schema-valid on purpose: deployment.json requires is_live, and this
+	// encoding shows that an unset pointer is omitted, not written as false.
 	raw, err = json.Marshal(Deployment{Type: "agent"})
 	if err != nil {
 		t.Fatalf("marshal deployment without is_live: %v", err)
@@ -137,6 +141,7 @@ func TestMeasurementWindowOptionalBoolPreservesFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal measurement window: %v", err)
 	}
+	assertSchemaValid(t, "core/measurement-window.json", raw)
 	if !strings.Contains(string(raw), `"is_guarantee_basis":false`) {
 		t.Fatalf("marshaled measurement window dropped false is_guarantee_basis:\n%s", raw)
 	}
@@ -169,6 +174,7 @@ func TestCapabilitiesAnonymousDiscoveryIsTriState(t *testing.T) {
 			if string(mb) != tc.want {
 				t.Fatalf("media_buy = %s, want %s", mb, tc.want)
 			}
+			assertSchemaValid(t, "protocol/get-adcp-capabilities-response.json#/properties/media_buy", mb)
 			sig, err := json.Marshal(SignalsCapabilities{AnonymousDiscovery: tc.val})
 			if err != nil {
 				t.Fatal(err)
@@ -176,6 +182,7 @@ func TestCapabilitiesAnonymousDiscoveryIsTriState(t *testing.T) {
 			if string(sig) != tc.want {
 				t.Fatalf("signals = %s, want %s", sig, tc.want)
 			}
+			assertSchemaValid(t, "protocol/get-adcp-capabilities-response.json#/properties/signals", sig)
 
 			var gotMB MediaBuyCapabilities
 			if err := json.Unmarshal(mb, &gotMB); err != nil {

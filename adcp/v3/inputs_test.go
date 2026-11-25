@@ -42,6 +42,7 @@ func TestUpdateMediaBuyOptionalFlagsMarshal(t *testing.T) {
 		Paused:         Bool(true),
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/update-media-buy-request.json", out)
 
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
@@ -55,11 +56,28 @@ func TestUpdateMediaBuyOptionalFlagsMarshal(t *testing.T) {
 		Canceled:       Bool(false),
 	})
 	require.NoError(t, err)
+	// Deliberately not validated: update-media-buy-request.json allows only
+	// canceled: true, and this request exists to show that an explicit false
+	// is encoded rather than dropped as a zero value.
 
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, false, wire["canceled"])
 	assert.NotContains(t, wire, "paused")
+
+	out, err = json.Marshal(UpdateMediaBuyRequest{
+		IdempotencyKey: "idem-123456789014",
+		Account:        AccountReference{AccountID: "acct-1"},
+		MediaBuyID:     "mb-1",
+		Paused:         Bool(false),
+	})
+	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/update-media-buy-request.json", out)
+
+	wire = nil
+	require.NoError(t, json.Unmarshal(out, &wire))
+	assert.Equal(t, false, wire["paused"])
+	assert.NotContains(t, wire, "canceled")
 }
 
 func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
@@ -80,6 +98,7 @@ func TestPackageUpdateOptionalFlagsAndCreativeAssignmentsMarshal(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/package-update.json", out)
 
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
@@ -112,7 +131,7 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 		Paused:          Bool(false),
 		BidPrice:        Float64(0),
 		Impressions:     Float64(0),
-		Catalogs:        []Catalog{{Type: "products"}},
+		Catalogs:        []Catalog{{Type: CatalogTypeProduct}},
 		CreativeAssignments: []CreativeAssignment{{
 			CreativeID: "cr-1",
 		}},
@@ -120,11 +139,12 @@ func TestPackageInputOptionalZeroAndSchemaFieldsMarshal(t *testing.T) {
 			CreativeID: "cr-new-1",
 			Name:       "New creative",
 			FormatID:   &FormatRef{ID: "display-banner"},
-			Assets:     map[string]any{"image": map[string]any{"url": "https://example.com/image.png"}},
+			Assets:     map[string]any{"image": map[string]any{"asset_type": "image", "url": "https://example.com/image.png", "width": 300, "height": 250}},
 		}},
 		Ext: map[string]any{"buyer_ref": "corr-1"},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/package-request.json", out)
 
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
@@ -191,6 +211,7 @@ func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
 		PricingOptionID: "price-1",
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/package-request.json", out)
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.NotContains(t, wire, "bid_price")
@@ -200,6 +221,7 @@ func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
 		PackageID: "pkg-1",
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/package-update.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.NotContains(t, wire, "budget")
@@ -211,6 +233,7 @@ func TestPackageOptionalNumericNilOmitsFields(t *testing.T) {
 		MatchType: "phrase",
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "media-buy/package-update.json#/properties/keyword_targets_add/items", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.NotContains(t, wire, "bid_price")
@@ -224,6 +247,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "creative/list-creatives-request.json", out)
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -232,10 +256,11 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 	}, wire["sort"])
 
 	out, err = json.Marshal(ArtifactWebhookPayload{
-		IdempotencyKey: "idem-1",
+		IdempotencyKey: "idem-artifact-0001",
 		MediaBuyID:     "mb-1",
 		BatchID:        "batch-1",
 		Timestamp:      "2026-05-28T00:00:00Z",
+		Artifacts:      []ArtifactWebhookArtifact{},
 		Pagination: &ArtifactWebhookPagination{
 			TotalArtifacts: 25,
 			BatchNumber:    1,
@@ -243,6 +268,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "content-standards/artifact-webhook-payload.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -261,6 +287,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "account/sync-governance-response.json#/oneOf/0", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	accounts, ok := wire["accounts"].([]any)
@@ -274,7 +301,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 	out, err = json.Marshal(PreviewCreativeRequest{
 		RequestType: "batch",
 		Requests: []PreviewCreativeBatchRequest{{
-			CreativeManifest: &CreativeManifest{Assets: map[string]any{}},
+			CreativeManifest: &CreativeManifest{FormatKind: "image", Assets: map[string]any{}},
 			Inputs: []PreviewCreativeInput{{
 				Name:   "mobile",
 				Macros: map[string]string{"city": "Honolulu"},
@@ -283,6 +310,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		}},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "creative/preview-creative-request.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	requests, ok := wire["requests"].([]any)
@@ -310,6 +338,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		SubmittedAt:      "2026-05-28T00:00:00Z",
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/performance-feedback.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -333,6 +362,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/planned-delivery.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -351,6 +381,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/account.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -369,6 +400,7 @@ func TestGeneratedInlineLeafObjectsMarshal(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/creative-brief.json", out)
 	wire = nil
 	require.NoError(t, json.Unmarshal(out, &wire))
 	assert.Equal(t, map[string]any{
@@ -391,6 +423,7 @@ func TestCreativeAssignmentTypedFieldsOverrideExtraCollisions(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+	assertSchemaValid(t, "core/creative-assignment.json", out)
 
 	var wire map[string]any
 	require.NoError(t, json.Unmarshal(out, &wire))

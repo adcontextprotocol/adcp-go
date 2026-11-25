@@ -8293,6 +8293,110 @@ func ParseOptimizationMetric(s string) (OptimizationMetric, error) {
 	return "", fmt.Errorf("unknown OptimizationMetric value")
 }
 
+// ProductField enum values
+type ProductField = string
+
+const (
+	ProductFieldProductID                  ProductField = "product_id"
+	ProductFieldName                       ProductField = "name"
+	ProductFieldDescription                ProductField = "description"
+	ProductFieldPublisherProperties        ProductField = "publisher_properties"
+	ProductFieldChannels                   ProductField = "channels"
+	ProductFieldVideoPlacementTypes        ProductField = "video_placement_types"
+	ProductFieldAudioDistributionTypes     ProductField = "audio_distribution_types"
+	ProductFieldSponsoredPlacementTypes    ProductField = "sponsored_placement_types"
+	ProductFieldSocialPlacementSurfaces    ProductField = "social_placement_surfaces"
+	ProductFieldFormatOptions              ProductField = "format_options"
+	ProductFieldPlacements                 ProductField = "placements"
+	ProductFieldDeliveryType               ProductField = "delivery_type"
+	ProductFieldExclusivity                ProductField = "exclusivity"
+	ProductFieldPricingOptions             ProductField = "pricing_options"
+	ProductFieldForecast                   ProductField = "forecast"
+	ProductFieldReportingCapabilities      ProductField = "reporting_capabilities"
+	ProductFieldMeasurementTerms           ProductField = "measurement_terms"
+	ProductFieldPerformanceStandards       ProductField = "performance_standards"
+	ProductFieldCatalogTypes               ProductField = "catalog_types"
+	ProductFieldSignalTargetingAllowed     ProductField = "signal_targeting_allowed"
+	ProductFieldSignalTargetingRules       ProductField = "signal_targeting_rules"
+	ProductFieldDemographicTargeting       ProductField = "demographic_targeting"
+	ProductFieldOverlaySupport             ProductField = "overlay_support"
+	ProductFieldCollections                ProductField = "collections"
+	ProductFieldCollectionTargetingAllowed ProductField = "collection_targeting_allowed"
+	ProductFieldMediaBuySupport            ProductField = "media_buy_support"
+	ProductFieldAudienceEvidence           ProductField = "audience_evidence"
+	ProductFieldAudienceEvidenceSelections ProductField = "audience_evidence_selections"
+	ProductFieldMaxOptimizationGoals       ProductField = "max_optimization_goals"
+	ProductFieldCatalogMatch               ProductField = "catalog_match"
+	ProductFieldListApplications           ProductField = "list_applications"
+	ProductFieldBriefRelevance             ProductField = "brief_relevance"
+	ProductFieldTargetingResolution        ProductField = "targeting_resolution"
+	ProductFieldAcceptancePolicyProfileIDs ProductField = "acceptance_policy_profile_ids"
+	ProductFieldIdentity                   ProductField = "identity"
+	ProductFieldExecutionRequirements      ProductField = "execution_requirements"
+	ProductFieldExpiresAt                  ProductField = "expires_at"
+	ProductFieldAllowedActions             ProductField = "allowed_actions"
+)
+
+// KnownProductFieldValues returns the current schema-defined values for ProductField.
+func KnownProductFieldValues() []ProductField {
+	return []ProductField{ProductFieldProductID, ProductFieldName, ProductFieldDescription, ProductFieldPublisherProperties, ProductFieldChannels, ProductFieldVideoPlacementTypes, ProductFieldAudioDistributionTypes, ProductFieldSponsoredPlacementTypes, ProductFieldSocialPlacementSurfaces, ProductFieldFormatOptions, ProductFieldPlacements, ProductFieldDeliveryType, ProductFieldExclusivity, ProductFieldPricingOptions, ProductFieldForecast, ProductFieldReportingCapabilities, ProductFieldMeasurementTerms, ProductFieldPerformanceStandards, ProductFieldCatalogTypes, ProductFieldSignalTargetingAllowed, ProductFieldSignalTargetingRules, ProductFieldDemographicTargeting, ProductFieldOverlaySupport, ProductFieldCollections, ProductFieldCollectionTargetingAllowed, ProductFieldMediaBuySupport, ProductFieldAudienceEvidence, ProductFieldAudienceEvidenceSelections, ProductFieldMaxOptimizationGoals, ProductFieldCatalogMatch, ProductFieldListApplications, ProductFieldBriefRelevance, ProductFieldTargetingResolution, ProductFieldAcceptancePolicyProfileIDs, ProductFieldIdentity, ProductFieldExecutionRequirements, ProductFieldExpiresAt, ProductFieldAllowedActions}
+}
+
+// IsKnownProductField reports whether v is one of the current schema-defined ProductField values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownProductField(v ProductField) bool {
+	switch v {
+	case ProductFieldProductID, ProductFieldName, ProductFieldDescription, ProductFieldPublisherProperties, ProductFieldChannels, ProductFieldVideoPlacementTypes, ProductFieldAudioDistributionTypes, ProductFieldSponsoredPlacementTypes, ProductFieldSocialPlacementSurfaces, ProductFieldFormatOptions, ProductFieldPlacements, ProductFieldDeliveryType, ProductFieldExclusivity, ProductFieldPricingOptions, ProductFieldForecast, ProductFieldReportingCapabilities, ProductFieldMeasurementTerms, ProductFieldPerformanceStandards, ProductFieldCatalogTypes, ProductFieldSignalTargetingAllowed, ProductFieldSignalTargetingRules, ProductFieldDemographicTargeting, ProductFieldOverlaySupport, ProductFieldCollections, ProductFieldCollectionTargetingAllowed, ProductFieldMediaBuySupport, ProductFieldAudienceEvidence, ProductFieldAudienceEvidenceSelections, ProductFieldMaxOptimizationGoals, ProductFieldCatalogMatch, ProductFieldListApplications, ProductFieldBriefRelevance, ProductFieldTargetingResolution, ProductFieldAcceptancePolicyProfileIDs, ProductFieldIdentity, ProductFieldExecutionRequirements, ProductFieldExpiresAt, ProductFieldAllowedActions:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseProductField returns s as ProductField when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseProductField(s string) (ProductField, error) {
+	v := ProductField(s)
+	if IsKnownProductField(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ProductField value")
+}
+
+// ListProductsResponseOutcome — Whether this response carries a product page or confirms that the selected
+type ListProductsResponseOutcome = string
+
+const (
+	ListProductsResponseOutcomeListed    ListProductsResponseOutcome = "listed"
+	ListProductsResponseOutcomeUnchanged ListProductsResponseOutcome = "unchanged"
+)
+
+// KnownListProductsResponseOutcomeValues returns the current schema-defined values for ListProductsResponseOutcome.
+func KnownListProductsResponseOutcomeValues() []ListProductsResponseOutcome {
+	return []ListProductsResponseOutcome{ListProductsResponseOutcomeListed, ListProductsResponseOutcomeUnchanged}
+}
+
+// IsKnownListProductsResponseOutcome reports whether v is one of the current schema-defined ListProductsResponseOutcome values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func IsKnownListProductsResponseOutcome(v ListProductsResponseOutcome) bool {
+	switch v {
+	case ListProductsResponseOutcomeListed, ListProductsResponseOutcomeUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseListProductsResponseOutcome returns s as ListProductsResponseOutcome when s is one of the current schema-defined values.
+// It is an opt-in strict helper; JSON unmarshalling preserves unknown values.
+func ParseListProductsResponseOutcome(s string) (ListProductsResponseOutcome, error) {
+	v := ListProductsResponseOutcome(s)
+	if IsKnownListProductsResponseOutcome(v) {
+		return v, nil
+	}
+	return "", fmt.Errorf("unknown ListProductsResponseOutcome value")
+}
+
 // --- Union helper types ---
 
 // MediaBuyStatusFilter — Filter by status. Can be a single status or array of statuses
@@ -8519,6 +8623,73 @@ type ProductFilters struct {
 	Keywords                     []ProductFilterKeyword        `json:"keywords,omitempty"`                       // DEPRECATED legacy product eligibility filter. Retained get_products handlers
 	AudienceEvidenceRequirements *AudienceEvidenceRequirements `json:"audience_evidence_requirements,omitempty"` // Buyer policy for evaluating Product.audience_evidence. In required mode
 	Ext                          any                           `json:"ext,omitempty"`                            // Vendor-namespaced extension parameters for seller-specific filter criteria not
+}
+
+// ProductOfferFilters — Offer, commercial-fit, availability, and reporting filters for product discovery. This compact
+type ProductOfferFilters struct {
+	DeliveryType                 DeliveryType                            `json:"delivery_type,omitempty"`
+	Exclusivity                  Exclusivity                             `json:"exclusivity,omitempty"`
+	IsFixedPrice                 *bool                                   `json:"is_fixed_price,omitempty"` // Filter fixed-price versus auction offers. Contingent pricing matches neither
+	PricingStructures            []PricingStructure                      `json:"pricing_structures,omitempty"`
+	PricingCurrencies            []string                                `json:"pricing_currencies,omitempty"`
+	FormatKinds                  []string                                `json:"format_kinds,omitempty"`
+	FormatOptionRefs             []FormatOptionRef                       `json:"format_option_refs,omitempty"`
+	StandardFormatsOnly          *bool                                   `json:"standard_formats_only,omitempty"`
+	MinExposures                 int                                     `json:"min_exposures,omitempty"`
+	StartDate                    string                                  `json:"start_date,omitempty"`           // Fixed-flight availability filter: with end_date, declares the exact flight the
+	EndDate                      string                                  `json:"end_date,omitempty"`             // Fixed-flight availability filter end. See start_date. Mutually exclusive with
+	AvailabilityHorizon          *ProductOfferFilterAvailabilityHorizon  `json:"availability_horizon,omitempty"` // Flexible-window availability discovery: the buyer is open to any bookable
+	BudgetRange                  *BudgetRange                            `json:"budget_range,omitempty"`
+	Countries                    []string                                `json:"countries,omitempty"`     // Filter by country coverage using ISO 3166-1 alpha-2 codes (e.g., ['US', 'CA'
+	Regions                      []string                                `json:"regions,omitempty"`       // Inventory coverage in the specified ISO 3166-2 subdivisions: OR within this
+	Metros                       []ProductOfferFilterMetro               `json:"metros,omitempty"`        // Inventory coverage in the specified metro areas (system and code): OR within
+	PostalAreas                  []PostalArea                            `json:"postal_areas,omitempty"`  // Inventory coverage in the specified postal areas: OR within this field, AND
+	GeoProximity                 []GeoProximityTarget                    `json:"geo_proximity,omitempty"` // Inventory coverage in the specified proximity boundaries: OR within this
+	PropertyList                 *PropertyListRef                        `json:"property_list,omitempty"` // Reference to an externally managed property list. When provided, the seller
+	Channels                     []Channels                              `json:"channels,omitempty"`
+	VideoPlacementTypes          []VideoPlacementType                    `json:"video_placement_types,omitempty"`
+	AudioDistributionTypes       []AudioDistributionType                 `json:"audio_distribution_types,omitempty"`
+	SponsoredPlacementTypes      []SponsoredPlacementType                `json:"sponsored_placement_types,omitempty"`
+	SocialPlacementSurfaces      []SocialPlacementSurface                `json:"social_placement_surfaces,omitempty"`
+	TrustedMatch                 *ProductOfferFilterTrustedMatch         `json:"trusted_match,omitempty"`
+	RequiredFeatures             *CanonicalMediaBuyFeatures              `json:"required_features,omitempty"` // Canonical protocol features the seller must support.
+	RequiredPerformanceStandards []ProductOfferFilterPerformanceStandard `json:"required_performance_standards,omitempty"`
+	RequiredMetrics              []AvailableMetric                       `json:"required_metrics,omitempty"`
+	RequiredVendorMetrics        []ProductOfferFilterVendorMetric        `json:"required_vendor_metrics,omitempty"`
+	AudienceEvidenceRequirements *ProductAudienceEvidenceRequirements    `json:"audience_evidence_requirements,omitempty"`
+	Ext                          any                                     `json:"ext,omitempty"`
+}
+
+// CanonicalMediaBuyFeatures — Compact seller features relevant to canonical product purchase. Legacy inline-creative
+type CanonicalMediaBuyFeatures struct {
+	PropertyFiltering              *bool `json:"property_filtering,omitempty"`
+	CatalogManagement              *bool `json:"catalog_management,omitempty"`
+	ReportingCommitmentSnapshots   *bool `json:"reporting_commitment_snapshots,omitempty"`     // Seller preserves the accepted per-purchase reporting contract and exposes it
+	SellerOptimizedBudget          *bool `json:"seller_optimized_budget,omitempty"`            // Core seller-optimized shared-budget contract: shared total_budget, seller
+	SellerOptimizedPackageBudgets  *bool `json:"seller_optimized_package_budgets,omitempty"`   // Package budget caps inside seller-optimized buys; implies
+	SellerOptimizedMinSpendTargets *bool `json:"seller_optimized_min_spend_targets,omitempty"` // Package minimum-spend targets inside seller-optimized buys; implies
+	SellerOptimizedPackagePacing   *bool `json:"seller_optimized_package_pacing,omitempty"`    // Package pacing inside seller-optimized buys; implies seller_optimized_budget.
+	BiddingPolicy                  any   `json:"bidding_policy,omitempty"`
+}
+
+// ProductAudienceEvidenceRequirements — Buyer-authored evidence policy for compact product discovery. Organization selectors are stable
+type ProductAudienceEvidenceRequirements struct {
+	RequirementMode                  string                        `json:"requirement_mode"`
+	EvidencePresence                 string                        `json:"evidence_presence"`
+	AcceptedMethodologies            []AudienceEvidenceMethodology `json:"accepted_methodologies,omitempty"`
+	ExcludedMethodologies            []AudienceEvidenceMethodology `json:"excluded_methodologies,omitempty"`
+	AcceptedEvidenceTypes            []string                      `json:"accepted_evidence_types,omitempty"`
+	AcceptedProviders                []BrandKey                    `json:"accepted_providers,omitempty"`
+	ExcludedProviders                []BrandKey                    `json:"excluded_providers,omitempty"`
+	AcceptedSubjectTypes             []AudienceSubjectType         `json:"accepted_subject_types,omitempty"`
+	AcceptedResolutionMethods        []AudienceResolutionMethod    `json:"accepted_resolution_methods,omitempty"`
+	MinimumConfidence                float64                       `json:"minimum_confidence,omitempty"`
+	MaximumAge                       *Duration                     `json:"maximum_age,omitempty"`
+	MethodologyDocumentationRequired *bool                         `json:"methodology_documentation_required,omitempty"`
+	IndependentAttestationRequired   *bool                         `json:"independent_attestation_required,omitempty"`
+	AcceptedAttestationIssuers       []any                         `json:"accepted_attestation_issuers,omitempty"`
+	AcceptedAttestationClaimTypes    []string                      `json:"accepted_attestation_claim_types,omitempty"`
+	Ext                              any                           `json:"ext,omitempty"`
 }
 
 // DataProviderSignalSelector — Selects signals from a data provider's adagents.json signals[]. Used for product definitions and
@@ -9606,6 +9777,27 @@ type PackageUpdate struct {
 	Ext                    any                   `json:"ext,omitempty"`
 }
 
+// PackageControl — Operational controls for an existing package that remain inside its accepted commercial envelope.
+type PackageControl struct {
+	PackageID              string                   `json:"package_id"`
+	Budget                 any                      `json:"budget,omitempty"`           // Replace this package's hard lifetime spend cap. A number in a resulting
+	DailyBudgetCap         any                      `json:"daily_budget_cap,omitempty"` // Replace this package's subordinate hard daily cap; null removes it. Numeric
+	MinSpendTarget         any                      `json:"min_spend_target,omitempty"` // Replace this package's soft minimum-spend target. A number is valid only for
+	Impressions            *float64                 `json:"impressions,omitempty"`
+	Pacing                 Pacing                   `json:"pacing,omitempty"` // Replace package pacing, subordinate to media-buy pacing. In a resulting
+	Bidding                any                      `json:"bidding,omitempty"`
+	Paused                 *bool                    `json:"paused,omitempty"`
+	Canceled               *bool                    `json:"canceled,omitempty"` // Exercise an already-accepted unilateral package cancellation right. If seller
+	CancellationReason     string                   `json:"cancellation_reason,omitempty"`
+	TargetingOverlay       any                      `json:"targeting_overlay,omitempty"` // Per-dimension targeting patch. Omission preserves the current dimension, a
+	CatalogIDs             []string                 `json:"catalog_ids,omitempty"`       // Replace the package's promoted catalogs with references previously managed
+	KeywordTargetsAdd      []CanonicalKeywordTarget `json:"keyword_targets_add,omitempty"`
+	KeywordTargetsRemove   []CanonicalKeywordTarget `json:"keyword_targets_remove,omitempty"`
+	NegativeKeywordsAdd    []CanonicalKeywordTarget `json:"negative_keywords_add,omitempty"`
+	NegativeKeywordsRemove []CanonicalKeywordTarget `json:"negative_keywords_remove,omitempty"`
+	OptimizationGoals      []any                    `json:"optimization_goals,omitempty"`
+}
+
 // ProposalRefinement — Fork an immutable proposal or finalize a draft into a held committed snapshot. Revising with
 type ProposalRefinement struct {
 	Action                     string                    `json:"action,omitempty"`      // revise creates a new draft snapshot with changed commercial terms. finalize
@@ -9629,7 +9821,7 @@ type BudgetConstraint struct {
 // ProductDiscoveryCriteria — Structured criteria shared by product listing and proposal requests. Offer filters decide which
 type ProductDiscoveryCriteria struct {
 	ProductIDs              []string                     `json:"product_ids,omitempty"`                // Exact seller-issued products to retrieve or use as proposal candidates.
-	OfferFilters            any                          `json:"offer_filters,omitempty"`              // Hard commercial and product-characteristic filters. Every returned product
+	OfferFilters            *ProductOfferFilters         `json:"offer_filters,omitempty"`              // Hard commercial and product-characteristic filters. Every returned product
 	TargetingOverlay        *Targeting                   `json:"targeting_overlay,omitempty"`          // Concrete delivery constraints the buyer expects to carry into
 	MediaBuyFrequencyCap    *MediaBuyFrequencyCap        `json:"media_buy_frequency_cap,omitempty"`    // Concrete aggregate max-impression cap expected at the MediaBuy root. Every
 	RequiredOverlaySupport  any                          `json:"required_overlay_support,omitempty"`   // Minimum product-scoped targeting dimensions the buyer must be able to select
@@ -10052,6 +10244,13 @@ type Indicator struct {
 type InstallmentRef struct {
 	CollectionRef CollectionRef `json:"collection_ref"`
 	InstallmentID string        `json:"installment_id"` // Installment ID within the referenced collection.
+}
+
+// CanonicalKeywordTarget — A keyword and match-mode identity used by canonical package targeting controls.
+type CanonicalKeywordTarget struct {
+	Keyword   string    `json:"keyword"`
+	MatchType MatchType `json:"match_type"`
+	BidPrice  *float64  `json:"bid_price,omitempty"`
 }
 
 // MacroEncoding — Exact encoding profile applied to a concrete substitution value. `rfc3986` encodes UTF-8 bytes
@@ -10492,28 +10691,28 @@ type GetProductsTargetingResolution struct {
 
 // ProductPurchaseInput — Request-only canonical product selection for buy_products. It shares the strict Product Purchase
 type ProductPurchaseInput struct {
-	ProductID                    string                         `json:"product_id"`
-	PricingOptionID              string                         `json:"pricing_option_id"`
-	Pricing                      any                            `json:"pricing,omitempty"`
-	FormatOptionRefs             []FormatOptionRef              `json:"format_option_refs,omitempty"`
-	CatalogIDs                   []string                       `json:"catalog_ids,omitempty"`
-	Budget                       *float64                       `json:"budget,omitempty"`
-	DailyBudgetCap               *float64                       `json:"daily_budget_cap,omitempty"`
-	MinSpendTarget               *float64                       `json:"min_spend_target,omitempty"`
-	Impressions                  *float64                       `json:"impressions,omitempty"`
-	StartTime                    string                         `json:"start_time,omitempty"`
-	EndTime                      string                         `json:"end_time,omitempty"`
-	Pacing                       string                         `json:"pacing,omitempty"`
-	Bidding                      any                            `json:"bidding,omitempty"`
-	TargetingOverlay             any                            `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
-	OptimizationGoals            any                            `json:"optimization_goals,omitempty"`
-	AudienceEvidenceRequirements any                            `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
-	AudienceEvidencePins         []AudienceEvidencePin          `json:"audience_evidence_pins,omitempty"`
-	AgencyEstimateNumber         string                         `json:"agency_estimate_number,omitempty"`
-	Context                      any                            `json:"context,omitempty"`
-	Ext                          any                            `json:"ext,omitempty"`
-	MeasurementTerms             any                            `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
-	PerformanceStandards         []CanonicalPerformanceStandard `json:"performance_standards,omitempty"`
+	ProductID                    string                               `json:"product_id"`
+	PricingOptionID              string                               `json:"pricing_option_id"`
+	Pricing                      any                                  `json:"pricing,omitempty"`
+	FormatOptionRefs             []FormatOptionRef                    `json:"format_option_refs,omitempty"`
+	CatalogIDs                   []string                             `json:"catalog_ids,omitempty"`
+	Budget                       *float64                             `json:"budget,omitempty"`
+	DailyBudgetCap               *float64                             `json:"daily_budget_cap,omitempty"`
+	MinSpendTarget               *float64                             `json:"min_spend_target,omitempty"`
+	Impressions                  *float64                             `json:"impressions,omitempty"`
+	StartTime                    string                               `json:"start_time,omitempty"`
+	EndTime                      string                               `json:"end_time,omitempty"`
+	Pacing                       string                               `json:"pacing,omitempty"`
+	Bidding                      any                                  `json:"bidding,omitempty"`
+	TargetingOverlay             any                                  `json:"targeting_overlay,omitempty"` // Per-dimension targeting input. Omission inherits the selected product's
+	OptimizationGoals            any                                  `json:"optimization_goals,omitempty"`
+	AudienceEvidenceRequirements *ProductAudienceEvidenceRequirements `json:"audience_evidence_requirements,omitempty"` // Buyer evidence-admissibility policy carried into the accepted purchase snapshot.
+	AudienceEvidencePins         []AudienceEvidencePin                `json:"audience_evidence_pins,omitempty"`
+	AgencyEstimateNumber         string                               `json:"agency_estimate_number,omitempty"`
+	Context                      any                                  `json:"context,omitempty"`
+	Ext                          any                                  `json:"ext,omitempty"`
+	MeasurementTerms             any                                  `json:"measurement_terms,omitempty"` // Published or negotiated billing-measurement and makegood terms for this
+	PerformanceStandards         []CanonicalPerformanceStandard       `json:"performance_standards,omitempty"`
 }
 
 // ProposalDecline — Terminal buyer feedback for one immutable proposal snapshot.
@@ -11558,6 +11757,12 @@ type GetProductsIncompleteItem struct {
 	EstimatedWait *Duration `json:"estimated_wait,omitempty"` // How much additional time is expected to resolve this scope. Allows the buyer
 }
 
+type ListProductsIncompleteItem struct {
+	Scope         string    `json:"scope"`
+	Description   string    `json:"description"`
+	EstimatedWait *Duration `json:"estimated_wait,omitempty"`
+}
+
 type SyncPlansPlan struct {
 	PlanID           string                    `json:"plan_id"`                     // Plan identifier.
 	Status           string                    `json:"status"`                      // Sync result status. 'active' means sync succeeded; 'error' means sync failed.
@@ -12027,6 +12232,40 @@ type ProductFilterGeometry struct {
 type ProductFilterKeyword struct {
 	Keyword   string    `json:"keyword"` // The keyword to target
 	MatchType MatchType `json:"match_type,omitempty"`
+}
+
+// ProductOfferFilterAvailabilityHorizon — Flexible-window availability discovery: the buyer is open to any bookable window inside
+type ProductOfferFilterAvailabilityHorizon struct {
+	StartTime string `json:"start_time"` // Inclusive horizon start (RFC 3339 date-time with timezone offset).
+	EndTime   string `json:"end_time"`   // Exclusive horizon end (RFC 3339 date-time with timezone offset). MUST be after
+}
+
+type ProductOfferFilterMetro struct {
+	System MetroSystem `json:"system"` // Metro classification system
+	Code   string      `json:"code"`   // Metro code within the system (e.g., '501' for NYC DMA)
+}
+
+type ProductOfferFilterTrustedMatch struct {
+	Providers     []ProductOfferFilterTrustedMatchProvider `json:"providers,omitempty"`
+	ResponseTypes []ResponseType                           `json:"response_types,omitempty"`
+}
+
+type ProductOfferFilterTrustedMatchProvider struct {
+	AgentURL      string `json:"agent_url"`
+	ContextMatch  *bool  `json:"context_match,omitempty"`
+	IdentityMatch *bool  `json:"identity_match,omitempty"`
+}
+
+type ProductOfferFilterPerformanceStandard struct {
+	Metric    PerformanceStandardMetric `json:"metric"`
+	Threshold float64                   `json:"threshold"`
+	Standard  ViewabilityStandard       `json:"standard,omitempty"`
+	Vendor    BrandKey                  `json:"vendor"`
+}
+
+type ProductOfferFilterVendorMetric struct {
+	Vendor   *BrandKey `json:"vendor,omitempty"`
+	MetricID string    `json:"metric_id,omitempty"`
 }
 
 type PriceAdjustment struct {
@@ -12584,6 +12823,28 @@ type PurchaseBinding struct {
 	PackageID     string `json:"package_id"`
 }
 
+type ReportUsageRecord struct {
+	Account              AccountReference `json:"account"`                           // Account for this usage record.
+	MediaBuyID           string           `json:"media_buy_id,omitempty"`            // Seller-assigned media buy identifier. Links this usage record to a specific
+	VendorCost           float64          `json:"vendor_cost"`                       // Amount owed to the vendor for this record, denominated in currency.
+	Currency             string           `json:"currency"`                          // ISO 4217 currency code.
+	PricingOptionID      string           `json:"pricing_option_id,omitempty"`       // Pricing option identifier from the vendor's discovery response (e.g.
+	Impressions          *int             `json:"impressions,omitempty"`             // Impressions delivered using this vendor service.
+	MediaSpend           *float64         `json:"media_spend,omitempty"`             // Media spend in currency for the period. Required when a percent_of_media
+	Conversions          *float64         `json:"conversions,omitempty"`             // Number of attributed conversion events for the reporting period. Optional
+	ConversionValue      *float64         `json:"conversion_value,omitempty"`        // Total monetary value of attributed conversions for the reporting period, in
+	CommissionableValue  *float64         `json:"commissionable_value,omitempty"`    // Settled attributed value eligible for commission, in currency. Required when
+	SignalAgentSegmentID string           `json:"signal_agent_segment_id,omitempty"` // Signal identifier from get_signals. Required for signals agents.
+	StandardsID          string           `json:"standards_id,omitempty"`            // Content standards configuration identifier. Required for governance agents.
+	RightsID             string           `json:"rights_id,omitempty"`               // Rights grant identifier from acquire_rights. Required for brand/rights agents.
+	CreativeID           string           `json:"creative_id,omitempty"`             // Creative identifier from build_creative or list_creatives. Required for
+	BuildVariantID       string           `json:"build_variant_id,omitempty"`        // Optional. When the reported creative_id was promoted from a specific
+	PropertyListID       string           `json:"property_list_id,omitempty"`        // Property list identifier from list_property_lists. Required for property list
+	Final                *bool            `json:"final,omitempty"`                   // Whether this usage record represents the reporter's final
+	FinalizedAt          string           `json:"finalized_at,omitempty"`            // ISO 8601 timestamp at which the reporter considered these numbers final.
+	MeasurementWindow    string           `json:"measurement_window,omitempty"`      // Which measurement window this record represents, referencing a window_id from
+}
+
 type ValidateInputTarget struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"` // Agent-local capability_id from get_adcp_capabilities
@@ -12805,6 +13066,40 @@ type ListAccountsResponse struct {
 	Ext                    any                        `json:"ext,omitempty"`
 }
 
+// ReportUsageRequest — Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs
+type ReportUsageRequest struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion *int                `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	IdempotencyKey   string              `json:"idempotency_key"`              // Client-generated unique key for this request. If a request with the same key
+	ReportingPeriod  DatetimeRange       `json:"reporting_period"`             // The time range covered by this usage report. Applies to all records in the
+	Usage            []ReportUsageRecord `json:"usage"`                        // One or more usage records. Each record is self-contained: it carries its own
+	Context          any                 `json:"context,omitempty"`
+	Ext              any                 `json:"ext,omitempty"`
+}
+
+// ReportUsageResponse — Response from report_usage. Partial acceptance is valid — records that pass validation are stored
+type ReportUsageResponse struct {
+	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
+	// Deprecated: DEPRECATED in favor of adcp_version (release-precision string).
+	AdcpMajorVersion       int                     `json:"adcp_major_version,omitempty"` // DEPRECATED in favor of adcp_version (release-precision string). Servers MUST
+	ContextID              string                  `json:"context_id,omitempty"`         // Transport-managed conversation identifier. On A2A, this maps to the native
+	Context                any                     `json:"context,omitempty"`
+	TaskID                 string                  `json:"task_id,omitempty"`                  // Unique identifier for tracking asynchronous operations. Present when a task
+	Status                 TaskStatus              `json:"status"`                             // Current AdCP task state or structured outcome. Indicates whether the task
+	Message                string                  `json:"message,omitempty"`                  // Human-readable summary of the task result. Provides natural language
+	Timestamp              string                  `json:"timestamp,omitempty"`                // ISO 8601 timestamp when the response was generated. Useful for debugging
+	Replayed               *bool                   `json:"replayed,omitempty"`                 // Set to true when this response was returned from the idempotency cache rather
+	AdcpError              AdcpError               `json:"adcp_error,omitempty"`               // Transport-envelope error signal for fatal task failures. Per the two-layer
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"` // AdCP application-layer webhook configuration for async task updates over MCP
+	GovernanceContext      string                  `json:"governance_context,omitempty"`       // Opaque authorization context issued only by an approved check_governance
+	Payload                map[string]any          `json:"payload,omitempty"`                  // Conceptual grouping for the task-specific response data defined by individual
+	Accepted               int                     `json:"accepted"`                           // Number of usage records successfully stored.
+	Errors                 []AdcpError             `json:"errors,omitempty"`                   // Validation errors for individual records. The field property identifies which
+	Sandbox                *bool                   `json:"sandbox,omitempty"`                  // When true, the account is a sandbox account and no billing occurred.
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
 // GetProductsRequest — AdCP 3.x compatibility request for discovering and changing advertising products and proposals.
 type GetProductsRequest struct {
 	AdcpVersion string `json:"adcp_version,omitempty"` // Release-precision AdCP version (VERSION.RELEASE, e.g. "3.0", "3.1"
@@ -12872,6 +13167,83 @@ type GetProductsResponse struct {
 	Unchanged              *bool                              `json:"unchanged,omitempty"`                // Present and `true` ONLY on wholesale-mode responses when the request carried
 	Sandbox                *bool                              `json:"sandbox,omitempty"`                  // When true, this response contains simulated data from sandbox mode.
 	Ext                    any                                `json:"ext,omitempty"`
+}
+
+// ListProductsRequest — Read seller offers with structured discovery criteria. When criteria includes catalog, provide
+type ListProductsRequest struct {
+	AdcpVersion            string                    `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                      `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                    `json:"idempotency_key,omitempty"` // Optional replay key accepted uniformly on read calls.
+	ContextID              string                    `json:"context_id,omitempty"`      // MCP compatibility field: servers ignore this value; A2A uses transport-native
+	Context                any                       `json:"context,omitempty"`
+	GovernanceContext      string                    `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig   `json:"push_notification_config,omitempty"` // Uniform per-call envelope field accepted for SDK compatibility. This does not
+	Account                *CanonicalAccountRef      `json:"account,omitempty"`                  // Account scope for pricing and availability. A natural-key account is the
+	Brand                  *BrandKey                 `json:"brand,omitempty"`
+	Criteria               *ProductDiscoveryCriteria `json:"criteria,omitempty"`
+	Fields                 []ProductField            `json:"fields,omitempty"`
+	Cursor                 string                    `json:"cursor,omitempty"`
+	MaxResults             int                       `json:"max_results,omitempty"`
+	IfFeedVersion          string                    `json:"if_feed_version,omitempty"`    // Opaque feed version returned by a prior list_products response or wholesale
+	IfPricingVersion       string                    `json:"if_pricing_version,omitempty"` // Opaque pricing version returned by a prior list_products response. Valid only
+}
+
+// ListProductsResponse — Canonical product offers and continuation state. Every product carries product_id and name; other
+type ListProductsResponse struct {
+	Outcome ListProductsResponseOutcome `json:"outcome"` // Whether this response carries a product page or confirms that the selected
+	// For listed, send a non-nil empty slice for an empty value; nil omits the key and Validate reports it.
+	Products       []CanonicalProduct           `json:"products,omitzero"`
+	NextCursor     string                       `json:"next_cursor,omitempty"`     // Cursor for the next page. Omitted when this is the last page.
+	FeedVersion    string                       `json:"feed_version"`              // Opaque version of the selected offer feed. For wholesale webhook consumers
+	PricingVersion string                       `json:"pricing_version,omitempty"` // Opaque version of the selected pricing layer.
+	CacheScope     string                       `json:"cache_scope"`
+	Incomplete     []ListProductsIncompleteItem `json:"incomplete,omitempty"` // Usable partial response with explicitly missing product-list scopes.
+	Replayed       *bool                        `json:"replayed,omitempty"`
+	Context        any                          `json:"context,omitempty"`
+	Ext            any                          `json:"ext,omitempty"`
+}
+
+// Validate checks what the oneOf in ListProductsResponse's schema adds to its field types:
+// the fields every outcome requires, then the fields the outcome in
+// hand requires or forbids. ListProductsResponse is one flat struct, so Go's zero
+// values cannot enforce them. An empty string counts as missing, which is
+// stricter than the schema (it only requires the key) and matches the other
+// validators in this package; a nil slice or map is missing, an empty one is
+// present. It is opt-in and forward-compatible: a value outside the current
+// enum is accepted (only the shared fields are checked for it) unless
+// WithStrictEnums is supplied, which reports it.
+func (r ListProductsResponse) Validate(opts ...ValidationOption) []ValidationIssue {
+	cfg := newValidationConfig(opts)
+	var issues []ValidationIssue
+	if r.Outcome == "" {
+		issues = appendRequired(issues, "outcome")
+	}
+	if r.FeedVersion == "" {
+		issues = appendRequired(issues, "feed_version")
+	}
+	if r.CacheScope == "" {
+		issues = appendRequired(issues, "cache_scope")
+	}
+	if cfg.strictEnums && r.CacheScope != "" {
+		switch r.CacheScope {
+		case "public", "account":
+		default:
+			issues = appendUnknownEnum(issues, "cache_scope")
+		}
+	}
+	switch r.Outcome {
+	case ListProductsResponseOutcomeListed:
+		if r.Products == nil {
+			issues = appendRequired(issues, "products")
+		}
+	case ListProductsResponseOutcomeUnchanged:
+		issues = appendUnsupportedIfSet(issues, "products", r.Products != nil)
+	default:
+		if cfg.strictEnums && r.Outcome != "" {
+			issues = appendUnknownVariant(issues, "outcome")
+		}
+	}
+	return issues
 }
 
 // CreateMediaBuyRequest — Deprecated AdCP 3.x compatibility request for creating a MediaBuy. New 3.2 callers use
@@ -13502,6 +13874,74 @@ type BuyProductsRequest struct {
 
 // BuyProductsResponse — Compact direct-purchase result containing the MediaBuy identity and accepted immutable proposal
 type BuyProductsResponse = MediaBuyCommitmentResponse
+
+// ControlMediaBuyRequest — Apply revision-checked delivery controls or non-commercial metadata changes authorized by the
+type ControlMediaBuyRequest struct {
+	AdcpVersion            string                  `json:"adcp_version,omitempty"`
+	AdcpMajorVersion       *int                    `json:"adcp_major_version,omitempty"`
+	IdempotencyKey         string                  `json:"idempotency_key"`
+	Account                CanonicalAccountRef     `json:"account"`
+	MediaBuyID             string                  `json:"media_buy_id"`
+	Revision               int                     `json:"revision"`       // Required optimistic-concurrency revision from the latest MediaBuy snapshot.
+	Name                   string                  `json:"name,omitempty"` // Replace the human-readable MediaBuy name as revision-checked operational
+	Paused                 *bool                   `json:"paused,omitempty"`
+	Canceled               *bool                   `json:"canceled,omitempty"` // Exercise an already-accepted unilateral cancellation right. A cancellation
+	CancellationReason     string                  `json:"cancellation_reason,omitempty"`
+	TotalBudget            *MediaBuyBudget         `json:"total_budget,omitempty"`
+	DailyBudgetCap         any                     `json:"daily_budget_cap,omitempty"`    // Replace the hard aggregate daily cap; null removes it. Numeric changes apply
+	FrequencyCap           any                     `json:"frequency_cap,omitempty"`       // Replace the shared MediaBuy frequency cap; null removes it. The change applies
+	BudgetCapTimezone      any                     `json:"budget_cap_timezone,omitempty"` // Replace the shared IANA cap-day timezone override; null restores the default
+	BudgetAllocation       any                     `json:"budget_allocation,omitempty"`
+	Pacing                 Pacing                  `json:"pacing,omitempty"` // Replace aggregate media-buy pacing. In seller-optimized allocation, a seller
+	Bidding                any                     `json:"bidding,omitempty"`
+	Packages               []PackageControl        `json:"packages,omitempty"` // Operational patches keyed by package_id. Each package_id MUST appear at most
+	ReportingWebhook       *ReportingWebhook       `json:"reporting_webhook,omitempty"`
+	GovernanceContext      string                  `json:"governance_context,omitempty"`
+	PushNotificationConfig *PushNotificationConfig `json:"push_notification_config,omitempty"`
+	Context                any                     `json:"context,omitempty"`
+	Ext                    any                     `json:"ext,omitempty"`
+}
+
+// ControlMediaBuyResponse is a discriminated union — use one of the generated variant structs.
+type ControlMediaBuyResponse interface {
+	isControlMediaBuyResponse()
+}
+
+type ControlApplied struct {
+	Status             string                     `json:"status"`
+	MediaBuyID         string                     `json:"media_buy_id"`
+	Revision           int                        `json:"revision"`
+	MediaBuyStatus     MediaBuyStatus             `json:"media_buy_status,omitempty"`
+	ImplementationDate *string                    `json:"implementation_date,omitempty"`
+	AffectedPackageIDs []string                   `json:"affected_package_ids,omitempty"`
+	AvailableActions   []CanonicalAvailableAction `json:"available_actions,omitempty"`
+	Warnings           []any                      `json:"warnings,omitempty"` // Non-blocking observations about this completed control. The control was still
+	Context            any                        `json:"context,omitempty"`
+	Ext                any                        `json:"ext,omitempty"`
+	Replayed           *bool                      `json:"replayed,omitempty"`
+}
+
+type ControlError struct {
+	Status   string      `json:"status"`
+	Errors   []AdcpError `json:"errors"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+type ControlSubmitted struct {
+	Status   string      `json:"status"`
+	TaskID   string      `json:"task_id"`
+	Message  string      `json:"message,omitempty"`
+	Errors   []AdcpError `json:"errors,omitempty"`
+	Context  any         `json:"context,omitempty"`
+	Ext      any         `json:"ext,omitempty"`
+	Replayed *bool       `json:"replayed,omitempty"`
+}
+
+func (ControlApplied) isControlMediaBuyResponse()   {}
+func (ControlError) isControlMediaBuyResponse()     {}
+func (ControlSubmitted) isControlMediaBuyResponse() {}
 
 // SyncReportingStatusRequest — Submit the authenticated consumer's operational reporting status for expected configuration
 type SyncReportingStatusRequest struct {
