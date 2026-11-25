@@ -1330,13 +1330,89 @@ type Preview struct {
 	Renders   []PreviewRender `json:"renders"`
 }
 
+// PreviewRender is one rendered piece of a creative preview
+// (creative/preview-render.json), a oneOf on OutputFormat: "url" requires
+// PreviewURL, "html" requires PreviewHTML, "both" requires both. The schema
+// leaves the variants open (AdCP 3.3 sets additionalProperties: true on all
+// three), so unknown keys are ignored on decode.
+//
+// PreviewHTML is the schema's preview_html: untrusted HTML that a consumer
+// renders only as an iframe srcdoc with an empty sandbox token set.
 type PreviewRender struct {
 	RenderID     string  `json:"render_id"`
 	OutputFormat string  `json:"output_format"`
 	PreviewURL   string  `json:"preview_url,omitempty"`
-	HTML         string  `json:"html,omitempty"`
+	PreviewHTML  string  `json:"preview_html,omitempty"`
 	Role         string  `json:"role"`
 	Dimensions   *Render `json:"dimensions,omitempty"`
+
+	// Embedding is optional iframe-embedding metadata. It is advisory and never
+	// loosens the consumer's own sandbox and CSP.
+	Embedding *PreviewEmbedding `json:"embedding,omitempty"`
+	// Renderer is optional audit metadata naming the implementation that
+	// produced this render. It never grants authority.
+	Renderer *PreviewRendererMetadata `json:"renderer,omitempty"`
+
+	// HTML is the earlier name of PreviewHTML. It is never a wire key: the
+	// schema has no "html" property, so an HTML render that carried it was
+	// invalid. MarshalJSON emits its value as preview_html when PreviewHTML is
+	// empty (PreviewHTML wins when both are set), and UnmarshalJSON fills it
+	// from preview_html so code that still reads HTML keeps working.
+	//
+	// Deprecated: use PreviewHTML. HTML is kept so existing code compiles and
+	// will be removed in the next major version.
+	HTML string `json:"-"`
+}
+
+// MarshalJSON encodes the render with the schema's property names. A render
+// that sets only the deprecated HTML field is encoded with preview_html, and
+// "html" never appears.
+func (r PreviewRender) MarshalJSON() ([]byte, error) {
+	type previewRender PreviewRender
+	if r.PreviewHTML == "" {
+		r.PreviewHTML = r.HTML
+	}
+
+	return json.Marshal(previewRender(r))
+}
+
+// UnmarshalJSON decodes a render and mirrors preview_html into the deprecated
+// HTML field, so a reader of either field sees the markup.
+func (r *PreviewRender) UnmarshalJSON(data []byte) error {
+	type previewRender PreviewRender
+	var d previewRender
+	if err := json.Unmarshal(data, &d); err != nil {
+		return err
+	}
+	d.HTML = d.PreviewHTML
+	*r = PreviewRender(d)
+
+	return nil
+}
+
+// PreviewEmbedding is the optional embedding metadata of a PreviewRender
+// (creative/preview-render.json embedding). The object is open: unknown keys
+// are ignored on decode. RecommendedSandbox is a pointer because the only
+// value the schema allows is the empty string, which a plain string with
+// omitempty would drop.
+type PreviewEmbedding struct {
+	RecommendedSandbox *string `json:"recommended_sandbox,omitempty"`
+	RequiresHTTPS      *bool   `json:"requires_https,omitempty"`
+	SupportsFullscreen *bool   `json:"supports_fullscreen,omitempty"`
+	CSPPolicy          string  `json:"csp_policy,omitempty"`
+}
+
+// PreviewRendererMetadata identifies the implementation that produced a
+// preview render (core/preview-renderer-metadata.json). It records origin and
+// safety behavior for audit and never grants authority. The object is open:
+// unknown keys are ignored on decode. RenderingOrigin is "platform_native" or
+// "agent_approximation".
+type PreviewRendererMetadata struct {
+	RendererID         string `json:"renderer_id"`
+	Version            string `json:"version"`
+	Export             string `json:"export"`
+	RenderingOrigin    string `json:"rendering_origin"`
+	TrackingSuppressed bool   `json:"tracking_suppressed"`
 }
 
 type BuildCreativeResult struct {
