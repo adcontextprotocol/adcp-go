@@ -1606,7 +1606,6 @@ class WaiverDerivationLintTest(unittest.TestCase):
         self.assertIn(("AccountInput", "optional_bool_pointer", "sandbox"), reported)
         self.assertIn(("AccountReference", "optional_bool_pointer", "sandbox"), reported)
         self.assertIn(("Plan", "optional_bool_pointer", "human_review_required"), reported)
-        self.assertIn(("DeliveryData", "missing_in_go", "status"), reported)
 
 
 BUNDLE_PRESENT = (lint.SCRIPT_DIR / "media-buy" / "update-media-buy-request.json").exists()

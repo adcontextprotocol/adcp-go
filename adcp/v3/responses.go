@@ -67,11 +67,37 @@ func MediaBuyResponse(data CreateMediaBuyResponse) (*mcp.CallToolResult, any, er
 	}
 }
 
+// withEnvelopeStatus returns data as a JSON object with the protocol
+// envelope status set to status when the value carries none of its own.
+// CreateMediaBuySuccess is a generated union branch with no Status field,
+// so its builder adds the envelope status the response schema requires
+// (#612) at the wire level instead of editing generated code.
+func withEnvelopeStatus(data any, status string) any {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return data
+	}
+	var wire map[string]any
+	if err := json.Unmarshal(b, &wire); err != nil {
+		return data
+	}
+	if wire == nil {
+		// data marshalled to JSON null (e.g. a nil store result); there
+		// is no object to carry a status, and writing to the nil map
+		// would panic.
+		return data
+	}
+	if _, ok := wire["status"]; !ok {
+		wire["status"] = status
+	}
+	return wire
+}
+
 func createMediaBuySuccessResponse(data *CreateMediaBuySuccess) (*mcp.CallToolResult, any, error) {
 	if data == nil {
 		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "create media buy success response is required"})
 	}
-	return buildResult(fmt.Sprintf("Media buy %s created", data.MediaBuyID), data), data, nil
+	return buildResult(fmt.Sprintf("Media buy %s created", data.MediaBuyID), withEnvelopeStatus(data, "completed")), data, nil
 }
 
 func createMediaBuyErrorResponse(data *CreateMediaBuyError) (*mcp.CallToolResult, any, error) {
@@ -137,23 +163,38 @@ func MediaBuysDataResponse(data *GetMediaBuysResponse) (*mcp.CallToolResult, any
 	if data.MediaBuys == nil {
 		data.MediaBuys = []MediaBuyData{}
 	}
-	return buildResult(fmt.Sprintf("Found %d media buys", len(data.MediaBuys)), data), data, nil
+	out := data
+	if data.Status == "" {
+		copy := *data
+		copy.Status = TaskStatusCompleted
+		out = &copy
+	}
+	return buildResult(fmt.Sprintf("Found %d media buys", len(out.MediaBuys)), out), out, nil
 }
 
 // DeliveryResponse builds a get_media_buy_delivery response.
 func DeliveryResponse(data *DeliveryData) (*mcp.CallToolResult, any, error) {
-	return buildResult(fmt.Sprintf("Delivery data for %d media buys", len(data.MediaBuyDeliveries)), data), data, nil
+	if data == nil {
+		return Errorf("INVALID_REQUEST", ErrorOptions{Message: "delivery response is required"})
+	}
+	out := data
+	if data.Status == "" {
+		copy := *data
+		copy.Status = TaskStatusCompleted
+		out = &copy
+	}
+	return buildResult(fmt.Sprintf("Delivery data for %d media buys", len(out.MediaBuyDeliveries)), out), out, nil
 }
 
 // SyncAccountsResponse builds a sync_accounts response.
 func SyncAccountsResponse(accounts []AccountResult, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"accounts": accounts, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "accounts": accounts, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Synced %d accounts", len(accounts)), out), out, nil
 }
 
 // GovernanceResponse builds a sync_governance response.
 func GovernanceResponse(accounts []GovernanceResult) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"accounts": accounts}
+	out := map[string]any{"status": "completed", "accounts": accounts}
 	return buildResult("Governance synced", out), out, nil
 }
 
@@ -161,7 +202,7 @@ func GovernanceResponse(accounts []GovernanceResult) (*mcp.CallToolResult, any, 
 
 // SyncCreativesResponse builds a sync_creatives response.
 func SyncCreativesResponse(creatives []CreativeResult, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"creatives": creatives, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "creatives": creatives, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Synced %d creatives", len(creatives)), out), out, nil
 }
 
@@ -170,6 +211,7 @@ func SyncCreativesResponse(creatives []CreativeResult, sandbox bool) (*mcp.CallT
 func ListCreativesResponse(creatives []map[string]any) (*mcp.CallToolResult, any, error) {
 	n := len(creatives)
 	out := map[string]any{
+		"status": "completed",
 		"query_summary": map[string]any{
 			"total_matching": n,
 			"returned":       n,
@@ -186,6 +228,7 @@ func ListCreativesResponse(creatives []map[string]any) (*mcp.CallToolResult, any
 // PreviewCreativeResponse builds a preview_creative response for a single creative.
 func PreviewCreativeResponse(creativeID, name, previewURL string, width, height int) (*mcp.CallToolResult, any, error) {
 	out := map[string]any{
+		"status":        "completed",
 		"response_type": "single",
 		"previews": []map[string]any{{
 			"preview_id": "preview-" + creativeID,
@@ -205,13 +248,13 @@ func PreviewCreativeResponse(creativeID, name, previewURL string, width, height 
 
 // BuildCreativeResponse builds a build_creative response.
 func BuildCreativeResponse(manifest map[string]any, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"creative_manifest": manifest, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "creative_manifest": manifest, "sandbox": sandbox}
 	return buildResult("Creative built", out), out, nil
 }
 
 // CreativeFormatsResponse builds a list_creative_formats response.
 func CreativeFormatsResponse(formats []CreativeFormat, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"formats": formats, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "formats": formats, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Found %d formats", len(formats)), out), out, nil
 }
 
@@ -219,13 +262,13 @@ func CreativeFormatsResponse(formats []CreativeFormat, sandbox bool) (*mcp.CallT
 
 // SignalsResponse builds a get_signals response.
 func SignalsResponse(signals []Signal, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"signals": signals, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "signals": signals, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Found %d signals", len(signals)), out), out, nil
 }
 
 // ActivateSignalResponse builds an activate_signal response.
 func ActivateSignalResponse(deployments []Deployment, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"deployments": deployments, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "deployments": deployments, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Activated %d deployments", len(deployments)), out), out, nil
 }
 
@@ -233,20 +276,20 @@ func ActivateSignalResponse(deployments []Deployment, sandbox bool) (*mcp.CallTo
 
 // SyncCatalogsResponse builds a sync_catalogs response.
 func SyncCatalogsResponse(catalogs []CatalogResult, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"catalogs": catalogs, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "catalogs": catalogs, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Synced %d catalogs", len(catalogs)), out), out, nil
 }
 
 // SyncEventSourcesResponse builds a sync_event_sources response.
 func SyncEventSourcesResponse(sources []EventSourceResult, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"event_sources": sources, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "event_sources": sources, "sandbox": sandbox}
 	return buildResult(fmt.Sprintf("Synced %d event sources", len(sources)), out), out, nil
 }
 
 // LogEventResponse builds a log_event response.
 // matchQuality is the attribution match quality score (0.0-1.0). Use 0 to omit.
 func LogEventResponse(received, processed int, matchQuality float64, sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"events_received": received, "events_processed": processed, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "events_received": received, "events_processed": processed, "sandbox": sandbox}
 	if matchQuality > 0 {
 		out["match_quality"] = matchQuality
 	}
@@ -255,7 +298,7 @@ func LogEventResponse(received, processed int, matchQuality float64, sandbox boo
 
 // PerformanceFeedbackResponse builds a provide_performance_feedback response.
 func PerformanceFeedbackResponse(sandbox bool) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"success": true, "sandbox": sandbox}
+	out := map[string]any{"status": "completed", "success": true, "sandbox": sandbox}
 	return buildResult("Feedback received", out), out, nil
 }
 
@@ -263,13 +306,13 @@ func PerformanceFeedbackResponse(sandbox bool) (*mcp.CallToolResult, any, error)
 
 // CreateCollectionListResponse builds a create_collection_list response.
 func CreateCollectionListResponse(list *CollectionList, authToken string) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"list": list, "auth_token": authToken}
+	out := map[string]any{"status": "completed", "list": list, "auth_token": authToken}
 	return buildResult(fmt.Sprintf("Collection list %q created", list.Name), out), out, nil
 }
 
 // GetCollectionListResponse builds a get_collection_list response.
 func GetCollectionListResponse(list *CollectionList, collections []ResolvedCollection, pagination *PaginationResponse) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"list": list}
+	out := map[string]any{"status": "completed", "list": list}
 	if collections != nil {
 		out["collections"] = collections
 	}
@@ -281,19 +324,19 @@ func GetCollectionListResponse(list *CollectionList, collections []ResolvedColle
 
 // UpdateCollectionListResponse builds an update_collection_list response.
 func UpdateCollectionListResponse(list *CollectionList) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"list": list}
+	out := map[string]any{"status": "completed", "list": list}
 	return buildResult(fmt.Sprintf("Collection list %q updated", list.Name), out), out, nil
 }
 
 // DeleteCollectionListResponse builds a delete_collection_list response.
 func DeleteCollectionListResponse(listID string) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"deleted": true, "list_id": listID}
+	out := map[string]any{"status": "completed", "deleted": true, "list_id": listID}
 	return buildResult(fmt.Sprintf("Collection list %s deleted", listID), out), out, nil
 }
 
 // ListCollectionListsResponse builds a list_collection_lists response.
 func ListCollectionListsResponse(lists []CollectionList, pagination *PaginationResponse) (*mcp.CallToolResult, any, error) {
-	out := map[string]any{"lists": lists}
+	out := map[string]any{"status": "completed", "lists": lists}
 	if pagination != nil {
 		out["pagination"] = pagination
 	}

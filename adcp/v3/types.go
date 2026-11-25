@@ -1258,6 +1258,7 @@ type PackageSnapshot struct {
 }
 
 type DeliveryData struct {
+	Status             TaskStatus         `json:"status,omitempty"`
 	ReportingPeriod    ReportingPeriod    `json:"reporting_period"`
 	Currency           string             `json:"currency"`
 	MediaBuyDeliveries []MediaBuyDelivery `json:"media_buy_deliveries"`

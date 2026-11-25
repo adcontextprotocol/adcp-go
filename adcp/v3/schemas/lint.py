@@ -94,7 +94,6 @@ UMBRELLA_ISSUES = {'#564'}
 # Each owner is an issue reference; the umbrella issue is rejected as one.
 GENERATED_TYPES = '#613'
 OPTIONAL_POINTERS = '#614'
-RESPONSE_ENVELOPE_STATUS = '#612'
 UNPAIRED_TYPES = '#615'
 WIRE_BUGS = '#611'
 
@@ -163,7 +162,7 @@ KNOWN_SCHEMA_GAPS = {
     'AccountInput': {
         'missing_in_go': _owned(
             GENERATED_TYPES,
-            'account', 'billing_entity', 'currency', 'destination_billing_entity',
+            'billing_entity', 'currency', 'destination_billing_entity',
             'notification_configs', 'operator_identity', 'operator_unit',
             'preferred_reporting_protocol', 'reporting_delivery_configs', 'revision',
             'timezone',
@@ -260,7 +259,6 @@ KNOWN_SCHEMA_GAPS = {
         # (ENVELOPE_PAYLOAD_TYPES); its required status is compared, and no
         # response builder sets it.
         'missing_in_go': {
-            **_owned(RESPONSE_ENVELOPE_STATUS, 'status'),
             **_owned(
                 GENERATED_TYPES,
                 'adcp_major_version', 'adcp_version', 'aggregated_totals',
