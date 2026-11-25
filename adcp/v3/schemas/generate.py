@@ -116,6 +116,9 @@ KNOWN_TYPES = {
     'PlanChannels', 'PlanChannelMixTarget', 'PlanDelegation',
     'PlanDelegationBudget', 'PlanPortfolio', 'PlanPortfolioBudgetCap',
     'HumanOverride', 'DataSubjectContestation',
+    # brand-ref.json's open inline brand_kit_override and its colors object;
+    # hand-written next to BrandReference in types.go.
+    'BrandKitOverride', 'BrandKitOverrideColors',
 }
 
 # Schemas we want to generate Go types for (request/response pairs for each tool)
@@ -130,6 +133,8 @@ TOOL_SCHEMAS = [
     "account/sync-governance-response.json",
     "account/list-accounts-request.json",
     "account/list-accounts-response.json",
+    "account/report-usage-request.json",
+    "account/report-usage-response.json",
     # Media buy
     "media-buy/get-products-request.json",
     "media-buy/get-products-response.json",
@@ -1116,6 +1121,10 @@ INLINE_SCHEMA_TYPES = OrderedDict([
         "#/oneOf/0/properties/purchase_bindings/items",
     ),
     (
+        "ReportUsageRecord",
+        "account/report-usage-request.json#/properties/usage/items",
+    ),
+    (
         "ValidateInputTarget",
         "creative/validate-input-request.json#/properties/targets/items",
     ),
@@ -1409,6 +1418,7 @@ OPEN_INLINE_SCHEMA_TYPES = frozenset({
     'CreativeBriefDisclosure',
     'EventContentItem',
     'UserMatchUID',
+    'ReportUsageRecord',
 })
 
 # Shared inline helper types are generated from one schema pointer but reused by
@@ -1572,6 +1582,8 @@ HAND_WRITTEN_SCHEMA_SPECS = {
     'CollectionListFilters': 'collection/collection-list-filters.json',
     'DistributionID': 'collection/collection-list-filters.json#/properties/exclude_distribution_ids/items',
     'DataSubjectContestation': 'core/brand-ref.json#/properties/data_subject_contestation',
+    'BrandKitOverride': 'core/brand-ref.json#/properties/brand_kit_override',
+    'BrandKitOverrideColors': 'core/brand-ref.json#/properties/brand_kit_override/properties/colors',
     'MakegoodPolicy': 'core/measurement-terms.json#/properties/makegood_policy',
     'ReportingAdjustmentReceipt': 'core/reporting-adjustment-receipt.json',
     'ReportingConsumerStatus': 'core/reporting-consumer-status.json',
@@ -1693,6 +1705,16 @@ INLINE_TYPE_HINTS = {
     ('PreviewCreativeRequest', 'inputs'): 'PreviewCreativeInput',
     ('PreviewCreativeRequest', 'requests'): 'PreviewCreativeBatchRequest',
     ('PreviewCreativeBatchRequest', 'inputs'): 'PreviewCreativeInput',
+    ('ReportUsageRequest', 'adcp_major_version'): '*int',
+    ('ReportUsageRequest', 'usage'): 'ReportUsageRecord',
+    # Optional usage quantities: an explicit 0 (no impressions, no media spend, no
+    # commissionable value) is a reported value, not an absent one, so these are
+    # pointers.
+    ('ReportUsageRecord', 'impressions'): '*int',
+    ('ReportUsageRecord', 'media_spend'): '*float64',
+    ('ReportUsageRecord', 'conversions'): '*float64',
+    ('ReportUsageRecord', 'conversion_value'): '*float64',
+    ('ReportUsageRecord', 'commissionable_value'): '*float64',
     ('ValidateInputRequest', 'targets'): 'ValidateInputTarget',
     ('ValidateInputResult', 'target'): 'ValidateInputResultTarget',
     ('ValidateInputResult', 'violations'): 'ValidateInputViolation',

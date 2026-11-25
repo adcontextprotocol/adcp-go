@@ -162,7 +162,7 @@ KNOWN_SCHEMA_GAPS = {
     'AccountInput': {
         'missing_in_go': _owned(
             GENERATED_TYPES,
-            'account', 'billing_entity', 'currency', 'destination_billing_entity',
+            'billing_entity', 'currency', 'destination_billing_entity',
             'notification_configs', 'operator_identity', 'operator_unit',
             'preferred_reporting_protocol', 'reporting_delivery_configs', 'revision',
             'timezone',
@@ -175,11 +175,6 @@ KNOWN_SCHEMA_GAPS = {
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
     },
     'AccountReference': {
-        # Natural-key fields of an account: operator_unit, currency, timezone.
-        'missing_in_go': _owned(
-            WIRE_BUGS,
-            'currency', 'operator_unit', 'timezone',
-        ),
         # lint asks for *bool on every optional boolean so an explicit false
         # survives omitempty; changing the field type is breaking.
         'optional_bool_pointer': _owned(OPTIONAL_POINTERS, 'sandbox'),
@@ -194,10 +189,6 @@ KNOWN_SCHEMA_GAPS = {
             'rate_card', 'reporting_delivery_configs', 'revision', 'sandbox',
             'timezone', 'warnings',
         ),
-    },
-    'BrandReference': {
-        # countries is part of the advertiser identity key.
-        'missing_in_go': _owned(WIRE_BUGS, 'brand_kit_override', 'countries'),
     },
     'CancellationFee': {
         # lint asks for a pointer on an optional number so an explicit zero

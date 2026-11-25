@@ -112,8 +112,12 @@ func defaultRecovery(code string) string {
 	case "RATE_LIMITED", "SERVICE_UNAVAILABLE":
 		return "transient"
 	case "BUDGET_TOO_LOW", "INVALID_REQUEST", "MISSING_FIELD", "INVALID_FIELD",
-		"ACCOUNT_NOT_FOUND", "TERMS_REJECTED":
+		"TERMS_REJECTED":
 		return "correctable"
+	case "ACCOUNT_NOT_FOUND":
+		// enums/error-code.json classifies ACCOUNT_NOT_FOUND as terminal;
+		// matches the v1 module (adcp/errors.go).
+		return "terminal"
 	default:
 		return "terminal"
 	}
