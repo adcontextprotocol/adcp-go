@@ -77,6 +77,7 @@ type controllerInput struct {
 }
 
 type controllerErrorResponse struct {
+	Status       string `json:"status"`
 	Success      bool   `json:"success"`
 	Error        string `json:"error"`
 	ErrorDetail  string `json:"error_detail"`
@@ -280,17 +281,28 @@ func wrapSimResult(result *SimulationResult, err error) (*mcp.CallToolResult, an
 }
 
 func controllerOK(data any) (*mcp.CallToolResult, any, error) {
-	b, _ := json.Marshal(data)
+	// Every comply_test_controller response composes the protocol
+	// envelope, which requires a status (#612). The status is added on
+	// the wire rather than as a struct field: StateTransition and
+	// SimulationResult are lint-paired with the comply-test-controller
+	// oneOf variants, which exclude the envelope, and a CustomScenario
+	// may return any shape (a map, a value StateTransition, ...), so no
+	// type switch can cover every caller. withEnvelopeStatus preserves
+	// a status the value already carries and returns non-object values
+	// (including a nil store result) unchanged.
+	wire := withEnvelopeStatus(data, "completed")
+	b, _ := json.Marshal(wire)
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{
 			&mcp.TextContent{Text: string(b)},
 		},
-		StructuredContent: jsonRoundTrip(data),
+		StructuredContent: jsonRoundTrip(wire),
 	}, data, nil
 }
 
 func controllerErr(code, detail, currentState string) (*mcp.CallToolResult, any, error) {
 	resp := controllerErrorResponse{
+		Status:       "completed",
 		Success:      false,
 		Error:        code,
 		ErrorDetail:  detail,
