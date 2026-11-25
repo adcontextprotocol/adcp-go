@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.3.0-beta.1](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.3.0-beta.0...adcp/v3.3.0-beta.1) (2026-11-25)
+
+
+### Features
+
+* **adcp/v3:** add revision_id and localization to CreativeInput ([#581](https://github.com/adcontextprotocol/adcp-go/issues/581)) ([e4e388f](https://github.com/adcontextprotocol/adcp-go/commit/e4e388f30db8729cf897e25f3b6dce419207cc28))
+* **adcp/v3:** add three schema fields missing from hand-written types ([#620](https://github.com/adcontextprotocol/adcp-go/issues/620)) ([0ebfadb](https://github.com/adcontextprotocol/adcp-go/commit/0ebfadb537603b3a7eee4f4ac0e1214774c5eff4))
+* **adcp/v3:** generate list_products request and response types ([#616](https://github.com/adcontextprotocol/adcp-go/issues/616)) ([a9754a5](https://github.com/adcontextprotocol/adcp-go/commit/a9754a549a81bf54d43a308f1c5a85eab0cca04c))
+* **adcp/v3:** generate report_usage request and response types ([#626](https://github.com/adcontextprotocol/adcp-go/issues/626)) ([3433072](https://github.com/adcontextprotocol/adcp-go/commit/3433072b7bf00bca37967dcb7c52241e12692c35))
+* **adcp/v3:** generate typed ProductOfferFilters for criteria.offer_filters ([#604](https://github.com/adcontextprotocol/adcp-go/issues/604)) ([eebca87](https://github.com/adcontextprotocol/adcp-go/commit/eebca87ce7b7b84717d42f75705d3c4a04f8f38e))
+
+
+### Bug Fixes
+
+* **adcp/v3:** add the missing account and brand reference fields ([#627](https://github.com/adcontextprotocol/adcp-go/issues/627)) ([5126bac](https://github.com/adcontextprotocol/adcp-go/commit/5126bac3c74a2a5452f53d81c6c0f86b10873928))
+* **adcp/v3:** emit confirmed_at as null on unconfirmed media buys ([#629](https://github.com/adcontextprotocol/adcp-go/issues/629)) ([21e18df](https://github.com/adcontextprotocol/adcp-go/commit/21e18df5dac8447c84da354ae87e0504de7790d1))
+* **adcp/v3:** emit protocol-envelope status from every response builder ([#625](https://github.com/adcontextprotocol/adcp-go/issues/625)) ([ab506a8](https://github.com/adcontextprotocol/adcp-go/commit/ab506a80be5d0642f3d80f5d8ac3f4726de389b4))
+* **adcp/v3:** encode and decode PreviewRender per its schema ([#628](https://github.com/adcontextprotocol/adcp-go/issues/628)) ([e88b884](https://github.com/adcontextprotocol/adcp-go/commit/e88b88413898b6c8d8853b8c19906d88ec921120))
+* **adcp/v3:** keep an empty approved_sellers list on the wire ([#594](https://github.com/adcontextprotocol/adcp-go/issues/594)) ([88fcab7](https://github.com/adcontextprotocol/adcp-go/commit/88fcab7228d0db4a6d06347a0b6cdfba2ad56144)), closes [#536](https://github.com/adcontextprotocol/adcp-go/issues/536)
+* **adcp/v3:** keep an empty products list on a standard get_products response ([#630](https://github.com/adcontextprotocol/adcp-go/issues/630)) ([23f9cff](https://github.com/adcontextprotocol/adcp-go/commit/23f9cffdd097c7491f21fee7519f0ce88303795e))
+* **adcp:** resolve account_id-only refs, reject invalid refs, lookup-only reference resolvers ([#547](https://github.com/adcontextprotocol/adcp-go/issues/547) bugs 1+3) ([#554](https://github.com/adcontextprotocol/adcp-go/issues/554)) ([235caaf](https://github.com/adcontextprotocol/adcp-go/commit/235caafa05cde0a4c8e20f8287f89723afe6cb5b))
+
 ## [3.3.0-beta.0](https://github.com/adcontextprotocol/adcp-go/compare/adcp/v3.2.1...adcp/v3.3.0-beta.0) (2026-11-02)
 
 
