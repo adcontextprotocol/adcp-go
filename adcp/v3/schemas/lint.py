@@ -318,8 +318,6 @@ KNOWN_SCHEMA_GAPS = {
             'indicators_evaluated_scope', 'name', 'pacing', 'rejection_reason',
             'status_as_of', 'webhook_activity',
         ),
-        # omitempty drops an empty confirmed_at, which the schema requires.
-        'required_with_omitempty': _owned(WIRE_BUGS, 'confirmed_at'),
     },
     'OptimizationGoal': {
         # Unknown top-level keys round-trip through Extra, so a replacement update
