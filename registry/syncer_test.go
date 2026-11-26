@@ -201,6 +201,34 @@ func TestSyncer_AppliesAuthorizationRevoked(t *testing.T) {
 	waitFor(t, func() bool { return !auth.Check("https://agent.com", "pub.com") })
 }
 
+func TestSyncer_RevokesLegacyLooseDomain(t *testing.T) {
+	// An entry written before the strict publisher_domain shape check
+	// existed (here: uppercase) must stay revocable — the revocation
+	// path validates with the loose key check, not the strict write
+	// check, or the grant would be stranded.
+	auth := NewAuthIndex()
+	require.NoError(t, auth.Add(context.Background(), AuthorizationEntry{
+		AgentURL: "https://agent.com", PublisherDomain: "Example.COM", AuthorizationType: "publisher_properties",
+	}))
+	require.True(t, auth.Check("https://agent.com", "Example.COM"))
+
+	events := []FeedEvent{
+		{EventID: "e1", EventType: "authorization.revoked", EntityType: "authorization", EntityID: "a:d",
+			Payload: mustMarshal(map[string]string{"agent_url": "https://agent.com", "publisher_domain": "Example.COM"}),
+			Actor:   "test"},
+	}
+	cursor := "e1"
+	srv := feedServer(t, []feedPage{{events: events, cursor: &cursor, hasMore: false}})
+	defer srv.Close()
+
+	syncer := newTestSyncer(srv.URL, NewPropertyIndex(), auth, NewAgentIndex())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	go func() { _ = syncer.Run(ctx) }()
+
+	waitFor(t, func() bool { return !auth.Check("https://agent.com", "Example.COM") })
+}
+
 func TestSyncer_AppliesAgentEvents(t *testing.T) {
 	events := []FeedEvent{
 		{
