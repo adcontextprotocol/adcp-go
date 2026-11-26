@@ -676,3 +676,84 @@ func TestService_LenReflectsSnapshot(t *testing.T) {
 	assert.Equal(t, 3, svc.Len(), "Len should still reflect every entry after an upsert+remove delta")
 	assert.Nil(t, svc.Get("https://seller.example/agent", "pkg-1"), "removed entry should not be readable")
 }
+
+func TestService_MaxSnapshotEntriesRejectsOverCapDelta(t *testing.T) {
+	src := newMemorySource()
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-2", nil, time.Unix(100, 0))
+
+	// A delta that would grow the snapshot to 3 entries against a cap of 2.
+	src.queueDelta(Delta{
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-3"}, TargetSegments: nil}},
+		LastUpdatedAt: time.Unix(200, 0),
+	})
+	// A later under-cap delta: removes pkg-1, so the snapshot stays at 2.
+	src.queueDelta(Delta{
+		Removed:       []Key{{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-1"}},
+		LastUpdatedAt: time.Unix(300, 0),
+	})
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, 10*time.Millisecond,
+		WithMaxSnapshotEntries(2), WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	require.Eventually(t, func() bool {
+		return slices.Contains(rec.snapshot(), RefreshOutcomeError)
+	}, time.Second, 5*time.Millisecond, "over-cap delta should report an error outcome")
+
+	// The prior snapshot is kept whole: the over-cap entry never lands.
+	// (Len is not asserted here — the next 10ms tick may already have
+	// applied the queued under-cap delta by the time this runs.)
+	_, present := svc.Lookup("https://seller.example/agent", "pkg-3")
+	assert.False(t, present, "over-cap upsert must not land")
+
+	// The service is not wedged: the later under-cap delta still applies,
+	// and it re-requests from the unadvanced watermark.
+	require.Eventually(t, func() bool {
+		_, present := svc.Lookup("https://seller.example/agent", "pkg-1")
+		return !present
+	}, time.Second, 5*time.Millisecond, "later under-cap delta should still apply")
+	assert.Equal(t, 1, svc.Len())
+}
+
+func TestService_MaxSnapshotEntriesAllowsExactlyAtCap(t *testing.T) {
+	src := newMemorySource()
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(100, 0))
+	src.queueDelta(Delta{
+		Upserted:      []Entry{{Key: Key{SellerAgentURL: "https://seller.example/agent", PackageID: "pkg-2"}, TargetSegments: nil}},
+		LastUpdatedAt: time.Unix(200, 0),
+	})
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, 10*time.Millisecond,
+		WithMaxSnapshotEntries(2), WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+	require.NoError(t, svc.Start(context.Background()))
+	defer svc.Stop()
+
+	require.Eventually(t, func() bool {
+		_, present := svc.Lookup("https://seller.example/agent", "pkg-2")
+		return present
+	}, time.Second, 5*time.Millisecond, "delta landing exactly at the cap should install")
+	assert.Equal(t, 2, svc.Len())
+	assert.NotContains(t, rec.snapshot(), RefreshOutcomeError)
+}
+
+func TestService_MaxSnapshotEntriesRejectsOverCapInitialLoad(t *testing.T) {
+	src := newMemorySource()
+	src.put("https://seller.example/agent", "pkg-1", nil, time.Unix(100, 0))
+	src.put("https://seller.example/agent", "pkg-2", nil, time.Unix(100, 0))
+
+	rec := &outcomeRecorder{}
+	svc, err := New(src, time.Hour,
+		WithMaxSnapshotEntries(1), WithRefreshObserver(rec.record))
+	require.NoError(t, err)
+
+	require.Error(t, svc.Start(context.Background()),
+		"fail-fast initial load over the cap should fail loudly, not install a partial snapshot")
+	assert.Equal(t, []string{RefreshOutcomeError}, rec.snapshot())
+	assert.Equal(t, 0, svc.Len(), "no snapshot should be installed on a rejected initial load")
+}
