@@ -879,16 +879,14 @@ func decodeAllowedActions(p *adcp.Product) []productAllowedAction {
 }
 
 // deprecatedAssignments returns the request's assignments shorthand.
-//
-//lint:ignore SA1019 assignments is deprecated for senders and removed in a future major, but a 3.x seller must still honor it when a buyer sends it.
 func deprecatedAssignments(input *adcp.SyncCreativesRequest) []adcp.SyncCreativeAssignment {
+	//lint:ignore SA1019 assignments is deprecated for senders and removed in a future major, but a 3.x seller must still honor it when a buyer sends it.
 	return input.Assignments
 }
 
 // deprecatedFormatIDs returns the request's format_ids filter.
-//
-//lint:ignore SA1019 format_ids is deprecated for senders in AdCP 3.2 and removed in 4.0, but a 3.x seller must still honor it when a buyer sends it.
 func deprecatedFormatIDs(input *adcp.ListCreativeFormatsRequest) []adcp.FormatRef {
+	//lint:ignore SA1019 format_ids is deprecated for senders in AdCP 3.2 and removed in 4.0, but a 3.x seller must still honor it when a buyer sends it.
 	return input.FormatIDs
 }
 
