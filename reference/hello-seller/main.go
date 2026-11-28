@@ -57,6 +57,15 @@ type backend struct {
 	nextBuyID int
 }
 
+// budgetValue dereferences an optional package budget (PackageInput.Budget
+// is a *float64 on the 3.3 line); an absent budget counts as zero.
+func budgetValue(b *float64) float64 {
+	if b == nil {
+		return 0
+	}
+	return *b
+}
+
 func newBackend() *backend {
 	url := agentURL()
 	product := adcp.Product{
@@ -176,11 +185,11 @@ func (b *backend) createMediaBuy(_ context.Context, _ any, input *adcp.CreateMed
 			PackageID:       fmt.Sprintf("%s-pkg-%d", id, i+1),
 			ProductID:       p.ProductID,
 			PricingOptionID: p.PricingOptionID,
-			Budget:          p.Budget,
+			Budget:          budgetValue(p.Budget),
 			StartTime:       p.StartTime,
 			EndTime:         p.EndTime,
 		}})
-		totalBudget += p.Budget
+		totalBudget += budgetValue(p.Budget)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
