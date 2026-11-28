@@ -501,7 +501,7 @@ func (b *backend) syncCreatives(input *adcp.SyncCreativesRequest) ([]adcp.Creati
 		b.creatives[c.CreativeID] = &creativeRecord{ID: c.CreativeID, Name: c.Name, FormatID: c.FormatID, Status: "approved", PreviousStatus: previousStatus, StatusUpdatedAt: now, ImpairmentSeq: impairmentSeq, Assets: c.Assets}
 		results = append(results, adcp.CreativeResult{CreativeID: c.CreativeID, Action: action})
 	}
-	for _, assign := range input.Assignments {
+	for _, assign := range deprecatedAssignments(input) {
 		if assign.CreativeID == "" || assign.PackageID == "" {
 			continue
 		}
@@ -876,6 +876,20 @@ func decodeAllowedActions(p *adcp.Product) []productAllowedAction {
 		}
 	}
 	return out
+}
+
+// deprecatedAssignments returns the request's assignments shorthand.
+//
+//lint:ignore SA1019 assignments is deprecated for senders and removed in a future major, but a 3.x seller must still honor it when a buyer sends it.
+func deprecatedAssignments(input *adcp.SyncCreativesRequest) []adcp.SyncCreativeAssignment {
+	return input.Assignments
+}
+
+// deprecatedFormatIDs returns the request's format_ids filter.
+//
+//lint:ignore SA1019 format_ids is deprecated for senders in AdCP 3.2 and removed in 4.0, but a 3.x seller must still honor it when a buyer sends it.
+func deprecatedFormatIDs(input *adcp.ListCreativeFormatsRequest) []adcp.FormatRef {
+	return input.FormatIDs
 }
 
 func decodeAny(in any, out any) error {
@@ -1454,9 +1468,9 @@ func newServer(b *backend) *mcp.Server {
 			return &adcp.GetMediaBuysResponse{MediaBuys: buys}, nil
 		},
 		ListCreativeFormats: func(_ context.Context, input *adcp.ListCreativeFormatsRequest) ([]adcp.CreativeFormat, error) {
-			if len(input.FormatIDs) > 0 {
-				filtered := make([]adcp.CreativeFormat, 0, len(input.FormatIDs))
-				for _, want := range input.FormatIDs {
+			if ids := deprecatedFormatIDs(input); len(ids) > 0 {
+				filtered := make([]adcp.CreativeFormat, 0, len(ids))
+				for _, want := range ids {
 					for _, format := range formats {
 						if format.FormatID.AgentURL == want.AgentURL && format.FormatID.ID == want.ID {
 							filtered = append(filtered, format)
