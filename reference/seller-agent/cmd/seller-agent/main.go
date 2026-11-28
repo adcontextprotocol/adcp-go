@@ -100,6 +100,37 @@ func reportingCapabilities() adcp.ReportingCapabilities {
 
 func boolPtr(v bool) *bool { return &v }
 
+// budgetValue dereferences an optional package budget (PackageInput.Budget
+// is a *float64 on the 3.3 line); an absent budget counts as zero.
+func budgetValue(b *float64) float64 {
+	if b == nil {
+		return 0
+	}
+	return *b
+}
+
+// targetingFromAny converts a request targeting_overlay into the concrete
+// *adcp.Targeting a stored package carries. The generated request types
+// carry targeting_overlay as any (its three-states-per-dimension encoding
+// is adcp-go#624), so values arrive as decoded JSON, or as a *Targeting
+// when a caller built the request in Go.
+func targetingFromAny(v any) *adcp.Targeting {
+	switch t := v.(type) {
+	case nil:
+		return nil
+	case *adcp.Targeting:
+		return t
+	case adcp.Targeting:
+		return &t
+	default:
+		var out adcp.Targeting
+		if decodeAny(v, &out) == nil {
+			return &out
+		}
+		return nil
+	}
+}
+
 // responseBusinessEntity removes write-only payment fields before storing or
 // echoing business entities in seller responses.
 func responseBusinessEntity(in *adcp.BusinessEntity) *adcp.BusinessEntity {
@@ -191,9 +222,11 @@ func (b *backend) seedProduct(productID string, fixture map[string]any) {
 		}
 	}
 	if raw, ok := fixture["allowed_actions"]; ok {
-		var allowed []adcp.ProductAllowedAction
+		var allowed []productAllowedAction
 		if decodeAny(raw, &allowed) == nil {
-			product.AllowedActions = allowed
+			if arr, ok := raw.([]any); ok {
+				product.AllowedActions = arr
+			}
 		}
 	}
 	b.products[productID] = &product
@@ -295,7 +328,7 @@ func (b *backend) updateMediaBuy(input adcp.UpdateMediaBuyRequest) (*mcp.CallToo
 			buy.Packages[i].Paused = upd.Paused
 		}
 		if upd.TargetingOverlay != nil {
-			buy.Packages[i].TargetingOverlay = upd.TargetingOverlay
+			buy.Packages[i].TargetingOverlay = targetingFromAny(upd.TargetingOverlay)
 		}
 		if upd.Budget != nil {
 			buy.Packages[i].Budget = *upd.Budget
@@ -391,11 +424,11 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 		pkgs = append(pkgs, adcp.PackageStatus{
 			Package: adcp.Package{
 				PackageID: fmt.Sprintf("%s-pkg-%d", id, i+1), ProductID: p.ProductID,
-				PricingOptionID: p.PricingOptionID, Budget: p.Budget,
+				PricingOptionID: p.PricingOptionID, Budget: budgetValue(p.Budget),
 				StartTime: p.StartTime, EndTime: p.EndTime,
 				AgencyEstimateNumber: p.AgencyEstimateNumber,
 				MeasurementTerms:     p.MeasurementTerms, PerformanceStandards: p.PerformanceStandards,
-				TargetingOverlay:    p.TargetingOverlay,
+				TargetingOverlay:    targetingFromAny(p.TargetingOverlay),
 				CreativeAssignments: p.CreativeAssignments,
 				Context:             p.Context,
 			},
@@ -403,7 +436,7 @@ func (b *backend) createMediaBuy(input *adcp.CreateMediaBuyRequest) (*adcp.Media
 	}
 	var totalBudget float64
 	for _, p := range input.Packages {
-		totalBudget += p.Budget
+		totalBudget += budgetValue(p.Budget)
 	}
 	status := "pending_creatives"
 	if hasCreatives {
@@ -816,6 +849,35 @@ func combineViewability(a, b *adcp.DeliveryViewability) *adcp.DeliveryViewabilit
 	return &out
 }
 
+// productAllowedAction is this agent's typed view of one entry in
+// Product.AllowedActions. The generated Product type carries
+// allowed_actions as []any (the schema item has no generated Go type on
+// the 3.3 line), so entries are decoded into this shape, which mirrors
+// the ProductAllowedAction struct the released v3.0.0 module generated.
+type productAllowedAction struct {
+	Action          adcp.MediaBuyValidAction  `json:"action"`
+	Modes           []adcp.MediaBuyActionMode `json:"modes"`
+	AllowedStatuses []adcp.MediaBuyStatus     `json:"allowed_statuses,omitempty"`
+	Sla             *adcp.SlaWindow           `json:"sla,omitempty"`
+	TermsRef        string                    `json:"terms_ref,omitempty"`
+}
+
+// decodeAllowedActions decodes a product's allowed_actions entries,
+// skipping any entry that does not carry a usable action.
+func decodeAllowedActions(p *adcp.Product) []productAllowedAction {
+	if p == nil || len(p.AllowedActions) == 0 {
+		return nil
+	}
+	out := make([]productAllowedAction, 0, len(p.AllowedActions))
+	for _, raw := range p.AllowedActions {
+		var a productAllowedAction
+		if decodeAny(raw, &a) == nil && a.Action != "" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func decodeAny(in any, out any) error {
 	b, err := json.Marshal(in)
 	if err != nil {
@@ -832,7 +894,7 @@ func (b *backend) availableActionsForBuy(buy *adcp.MediaBuyData) []adcp.MediaBuy
 		if product == nil {
 			continue
 		}
-		for _, allowed := range product.AllowedActions {
+		for _, allowed := range decodeAllowedActions(product) {
 			mode, ok := resolvedActionMode(allowed)
 			if seen[string(allowed.Action)] || !actionAllowedForStatus(allowed, buy.Status) || !actionAllowedForBuyStatus(allowed.Action, buy.Status) || !ok {
 				continue
@@ -849,7 +911,7 @@ func (b *backend) availableActionsForBuy(buy *adcp.MediaBuyData) []adcp.MediaBuy
 	return actions
 }
 
-func actionAllowedForStatus(action adcp.ProductAllowedAction, status string) bool {
+func actionAllowedForStatus(action productAllowedAction, status string) bool {
 	if len(action.AllowedStatuses) == 0 {
 		return true
 	}
@@ -881,7 +943,7 @@ func actionAllowedForBuyStatus(action adcp.MediaBuyValidAction, status string) b
 	}
 }
 
-func resolvedActionMode(action adcp.ProductAllowedAction) (adcp.MediaBuyActionMode, bool) {
+func resolvedActionMode(action productAllowedAction) (adcp.MediaBuyActionMode, bool) {
 	preferred := []adcp.MediaBuyActionMode{
 		adcp.MediaBuyActionModeSelfServe,
 		adcp.MediaBuyActionModeConditionalSelfServe,
@@ -907,24 +969,24 @@ func actionModeAllowsDirectUpdate(mode adcp.MediaBuyActionMode) bool {
 func (b *backend) buyUsesStructuredActions(buy *adcp.MediaBuyData) bool {
 	for _, pkg := range buy.Packages {
 		product := b.products[pkg.ProductID]
-		if product != nil && len(product.AllowedActions) > 0 {
+		if len(decodeAllowedActions(product)) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
-func (b *backend) productActionForPackage(pkg adcp.PackageStatus, action adcp.MediaBuyValidAction) (adcp.ProductAllowedAction, bool) {
+func (b *backend) productActionForPackage(pkg adcp.PackageStatus, action adcp.MediaBuyValidAction) (productAllowedAction, bool) {
 	product := b.products[pkg.ProductID]
 	if product == nil {
-		return adcp.ProductAllowedAction{}, false
+		return productAllowedAction{}, false
 	}
-	for _, allowed := range product.AllowedActions {
+	for _, allowed := range decodeAllowedActions(product) {
 		if allowed.Action == action {
 			return allowed, true
 		}
 	}
-	return adcp.ProductAllowedAction{}, false
+	return productAllowedAction{}, false
 }
 
 func (b *backend) enforceAvailableAction(buy *adcp.MediaBuyData, input adcp.UpdateMediaBuyRequest) (*mcp.CallToolResult, any, error, bool) {
@@ -1089,7 +1151,6 @@ func mediaBuyCreateSuccess(buy *adcp.MediaBuyData) *adcp.CreateMediaBuySuccess {
 		MediaBuyID:       buy.MediaBuyID,
 		Account:          buy.Account,
 		InvoiceRecipient: responseBusinessEntity(buy.InvoiceRecipient),
-		Status:           buy.Status,
 		MediaBuyStatus:   buy.Status,
 		ConfirmedAt:      confirmedAt,
 		CreativeDeadline: buy.CreativeDeadline,

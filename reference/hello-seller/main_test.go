@@ -27,7 +27,7 @@ func TestHelloSellerSmoke(t *testing.T) {
 	product := products.Products[0]
 
 	resp, err := b.createMediaBuy(ctx, nil, &adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: product.ProductID, PricingOptionID: "pd-cpm-15", Budget: 1000}},
+		Packages: []adcp.PackageInput{{ProductID: product.ProductID, PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(1000)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy: %v", err)
@@ -61,7 +61,7 @@ func TestHelloSellerSmoke(t *testing.T) {
 func TestUpdateMediaBuy_PauseAndCancel(t *testing.T) {
 	b := newBackend()
 	resp, err := b.createMediaBuy(context.Background(), nil, &adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 1000}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(1000)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy: %v", err)
@@ -137,7 +137,7 @@ func TestSyncAndListCreatives(t *testing.T) {
 func TestGetDelivery(t *testing.T) {
 	b := newBackend()
 	resp, err := b.createMediaBuy(context.Background(), nil, &adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 1000}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(1000)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy: %v", err)

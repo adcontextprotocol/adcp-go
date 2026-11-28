@@ -89,8 +89,8 @@ func TestMCP_CreateMediaBuy_WithoutCreatives(t *testing.T) {
 		t.Fatalf("create_media_buy returned error result: %s", mustMarshal(t, result.StructuredContent))
 	}
 	wire := structuredMap(t, result)
-	if wire["status"] != "pending_creatives" {
-		t.Errorf("want status pending_creatives, got %v", wire["status"])
+	if wire["media_buy_status"] != "pending_creatives" {
+		t.Errorf("want media_buy_status pending_creatives, got %v", wire["media_buy_status"])
 	}
 	if id, _ := wire["media_buy_id"].(string); id == "" {
 		t.Error("expected non-empty media_buy_id")
@@ -112,8 +112,8 @@ func TestMCP_CreateMediaBuy_WithCreatives(t *testing.T) {
 		t.Fatalf("create_media_buy returned error result: %s", mustMarshal(t, result.StructuredContent))
 	}
 	wire := structuredMap(t, result)
-	if wire["status"] != "active" {
-		t.Errorf("want status active when creatives supplied at create, got %v", wire["status"])
+	if wire["media_buy_status"] != "active" {
+		t.Errorf("want media_buy_status active when creatives supplied at create, got %v", wire["media_buy_status"])
 	}
 }
 

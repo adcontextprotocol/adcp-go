@@ -21,7 +21,7 @@ func newTestBackend() *backend {
 
 func mustCreateBuy(t *testing.T, b *backend, withCreatives bool) *adcp.MediaBuyData {
 	t.Helper()
-	pkg := adcp.PackageInput{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 1000}
+	pkg := adcp.PackageInput{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(1000)}
 	if withCreatives {
 		pkg.CreativeAssignments = []adcp.CreativeAssignment{{CreativeID: "cr-initial"}}
 	}
@@ -34,9 +34,14 @@ func mustCreateBuy(t *testing.T, b *backend, withCreatives bool) *adcp.MediaBuyD
 	return buy
 }
 
-func structuredProduct(id string, actions ...adcp.ProductAllowedAction) *adcp.Product {
+func structuredProduct(id string, actions ...productAllowedAction) *adcp.Product {
 	product := newProduct(id, id, "structured action test product", "guaranteed", []string{"display"}, []adcp.FormatRef{{AgentURL: "http://test", ID: "display_300x250"}}, []adcp.PricingOption{{PricingOptionID: "default", PricingModel: "cpm", Currency: "USD", FixedPrice: adcp.Ptr(10.0)}})
-	product.AllowedActions = actions
+	for _, a := range actions {
+		var raw any
+		if err := decodeAny(a, &raw); err == nil {
+			product.AllowedActions = append(product.AllowedActions, raw)
+		}
+	}
 	return &product
 }
 
@@ -45,7 +50,7 @@ func structuredProduct(id string, actions ...adcp.ProductAllowedAction) *adcp.Pr
 func TestCreateMediaBuy_WithoutCreatives(t *testing.T) {
 	b := newTestBackend()
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: adcp.Float64(500)}},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -85,7 +90,7 @@ func TestCreateMediaBuy_ScrubsWriteOnlyInvoiceRecipientBank(t *testing.T) {
 			LegalName: "Acme Corporation",
 			Bank:      &adcp.BankAccount{AccountHolder: "Acme Corporation", AccountNumber: "123456789"},
 		},
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: adcp.Float64(500)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy: %v", err)
@@ -326,7 +331,7 @@ func TestUpdateMediaBuy_UnsupportedActionsReturnInvalidAction(t *testing.T) {
 					NewPackages: []adcp.PackageInput{{
 						ProductID:       "premium-display",
 						PricingOptionID: "pd-cpm-15",
-						Budget:          500,
+						Budget:          adcp.Float64(500),
 					}},
 				}
 			},
@@ -355,14 +360,14 @@ func TestUpdateMediaBuy_UnsupportedActionsReturnInvalidAction(t *testing.T) {
 func TestUpdateMediaBuy_RefreshesAvailableActionsAndTotalBudget(t *testing.T) {
 	b := newTestBackend()
 	b.products["structured-budget"] = structuredProduct("structured-budget",
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionDecreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}, AllowedStatuses: []adcp.MediaBuyStatus{adcp.MediaBuyStatusActive}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionDecreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}, AllowedStatuses: []adcp.MediaBuyStatus{adcp.MediaBuyStatusActive}},
 	)
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
 		Packages: []adcp.PackageInput{{
 			ProductID:            "structured-budget",
 			PricingOptionID:      "default",
-			Budget:               1000,
+			Budget:               adcp.Float64(1000),
 			CreativeAssignments:  []adcp.CreativeAssignment{{CreativeID: "cr-budget"}},
 			AgencyEstimateNumber: "estimate-1",
 		}},
@@ -403,15 +408,15 @@ func TestUpdateMediaBuy_RefreshesAvailableActionsAndTotalBudget(t *testing.T) {
 func TestUpdateMediaBuy_AvailableActionsResolveTargetPackageRules(t *testing.T) {
 	b := newTestBackend()
 	b.products["budget-self-serve"] = structuredProduct("budget-self-serve",
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeSelfServe}},
 	)
 	b.products["budget-approval"] = structuredProduct("budget-approval",
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionIncreaseBudget, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval}},
 	)
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
 		Packages: []adcp.PackageInput{
-			{ProductID: "budget-self-serve", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
-			{ProductID: "budget-approval", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
+			{ProductID: "budget-self-serve", PricingOptionID: "default", Budget: adcp.Float64(1000), CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
+			{ProductID: "budget-approval", PricingOptionID: "default", Budget: adcp.Float64(1000), CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
 		},
 	})
 	if err != nil {
@@ -440,11 +445,11 @@ func TestUpdateMediaBuy_AvailableActionsResolveTargetPackageRules(t *testing.T) 
 func TestUpdateMediaBuy_AvailableActionsAllowSecondSelfServeModeAndResume(t *testing.T) {
 	b := newTestBackend()
 	b.products["pause-resume"] = structuredProduct("pause-resume",
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionPause, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval, adcp.MediaBuyActionModeSelfServe}},
-		adcp.ProductAllowedAction{Action: adcp.MediaBuyValidActionResume, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeConditionalSelfServe}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionPause, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeRequiresApproval, adcp.MediaBuyActionModeSelfServe}},
+		productAllowedAction{Action: adcp.MediaBuyValidActionResume, Modes: []adcp.MediaBuyActionMode{adcp.MediaBuyActionModeConditionalSelfServe}},
 	)
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "pause-resume", PricingOptionID: "default", Budget: 1000, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-pause"}}}},
+		Packages: []adcp.PackageInput{{ProductID: "pause-resume", PricingOptionID: "default", Budget: adcp.Float64(1000), CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-pause"}}}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy: %v", err)
@@ -481,7 +486,7 @@ func TestImpairmentsRequireMaterialCreativeImpactAndNewReopenID(t *testing.T) {
 		Packages: []adcp.PackageInput{{
 			ProductID:       "premium-display",
 			PricingOptionID: "pd-cpm-15",
-			Budget:          1000,
+			Budget:          adcp.Float64(1000),
 			CreativeAssignments: []adcp.CreativeAssignment{
 				{CreativeID: "cr-primary"},
 				{CreativeID: "cr-backup"},
@@ -692,8 +697,8 @@ func TestDeliveryReporting_SimulateDeliveryWeightsSpendByBudget(t *testing.T) {
 	b := newTestBackend()
 	buy, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
 		Packages: []adcp.PackageInput{
-			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 100, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
-			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: 300, CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
+			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(100), CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-a"}}},
+			{ProductID: "premium-display", PricingOptionID: "pd-cpm-15", Budget: adcp.Float64(300), CreativeAssignments: []adcp.CreativeAssignment{{CreativeID: "cr-b"}}},
 		},
 	})
 	if err != nil {
@@ -833,7 +838,7 @@ func TestCustomScenario_ForceCreateMediaBuyArm_Submitted(t *testing.T) {
 	}
 
 	resp, err := b.createMediaBuyResponse(&adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: adcp.Float64(500)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy after forced arm: %v", err)
@@ -854,7 +859,7 @@ func TestCustomScenario_ForceCreateMediaBuyArm_Submitted(t *testing.T) {
 
 	// Forced arm is consumed — next create should be normal.
 	next, err := b.createMediaBuy(&adcp.CreateMediaBuyRequest{
-		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: 500}},
+		Packages: []adcp.PackageInput{{ProductID: "premium-display", Budget: adcp.Float64(500)}},
 	})
 	if err != nil {
 		t.Fatalf("createMediaBuy after arm consumed: %v", err)
@@ -998,6 +1003,9 @@ func TestValidActions_CoversEveryKnownMediaBuyValidAction(t *testing.T) {
 		adcp.MediaBuyValidActionPause:                     {supported: true, reason: "active buys can pause"},
 		adcp.MediaBuyValidActionResume:                    {supported: true, reason: "paused buys can resume"},
 		adcp.MediaBuyValidActionCancel:                    {supported: true, reason: "non-terminal buys can cancel"},
+		adcp.MediaBuyValidActionUpdateName:                {reason: "unsupported: no rename path in the reference implementation"},
+		adcp.MediaBuyValidActionUpdateBudgetAllocation:    {reason: "unsupported: no budget-allocation update path in the reference implementation"},
+		adcp.MediaBuyValidActionUpdateBidding:             {reason: "unsupported: no bidding-update path in the reference implementation"},
 		adcp.MediaBuyValidActionUpdatePackages:            {supported: true, reason: "package creative/targeting updates are implemented"},
 		adcp.MediaBuyValidActionSyncCreatives:             {supported: true, reason: "creative assignment flow is implemented"},
 		adcp.MediaBuyValidActionUpdateBudget:              {reason: "unsupported: reference seller budget is package-level and fixed at create time"},
